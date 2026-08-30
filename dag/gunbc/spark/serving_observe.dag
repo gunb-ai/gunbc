@@ -210,7 +210,7 @@ import gunbc.spark.serving_readback_parse {
 
 // OBSERVATION PRODUCER (SPARK-SERVE-BIND-0 item B) over FleetSsh — callers supply a sealed
 // FleetSshExecutionContext rather than hardcoding one credential route.
-
+//
 // Wet observation only; a green witness over fixture strings is not proof gpt-oss:20b is serving.
 // Runtime closure identity requires the release-archive admission receipt under
 // ~/.local/share/gunbc/spark-serving/ (archive digest admitted at materialization — not proof of
