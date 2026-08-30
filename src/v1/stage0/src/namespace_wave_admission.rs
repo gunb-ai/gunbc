@@ -408,58 +408,35 @@ pub struct TransitionAdmission {
 /// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
 /// merging -- base and head then both carry the relocation, the rows report stale, and they are
 /// removed by that trigger exactly as the four shrinks above were.
+/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so on every pull_request
+/// build from here the merge base and head both carry the relocation, no run can produce the
+/// deltas the six rows above named, and they report stale -- refusing every PR. Removed by
+/// the trigger they were authored with, in the first merge of main that carried the
+/// relocation on both sides.
+/// SIXTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
+/// `BuildLane` and `WitnessesLane` moved (not duplicated) from
+/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
+/// which the census itself named as its next rung -- so the census's
+/// `required_ci_host_verdict_rows` now binds those spellings through the roster.
+/// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
+/// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
+/// merges and MUST be removed then, exactly as the shrinks above were.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "rust-source-prefix-relocation-01",
+        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_product_reachability",
-            in_declaration: "path_is_test_harness",
-            spelling: "rust_source_prefix_stage0_test",
+            module: "gunbc.required_ci_host_verdict_census",
+            in_declaration: "required_ci_host_verdict_rows",
+            spelling: "BuildLane",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "rust-source-prefix-relocation-02",
+        label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_product_reachability",
-            in_declaration: "path_is_test_harness",
-            spelling: "rust_source_prefix_test_harness",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-03",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_stage0_example",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-04",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_stage0_test",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-05",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_test_harness",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "rust-source-prefix-relocation-06",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.stage0_rust_source_lifecycle_scaffold",
-            in_declaration: "rust_source_discovery_prefix_hints",
-            spelling: "rust_source_prefix_tooling",
+            module: "gunbc.required_ci_host_verdict_census",
+            in_declaration: "required_ci_host_verdict_rows",
+            spelling: "WitnessesLane",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
