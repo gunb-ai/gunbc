@@ -2,7 +2,7 @@ module gunbc.stage0_partition_rebuild_scope
 
 import std.types { String, List, Bool }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
-import extdeps.rust.cargo { CargoDependency, LocalPathDep, RegistryDep }
+import extdeps.cargo { CargoDependency, LocalPathDep, RegistryDep }
 import gunbc.stage0_crate_partition_generated {
   GeneratedPartitionCrateRow,
   generated_partition_crate_rows
