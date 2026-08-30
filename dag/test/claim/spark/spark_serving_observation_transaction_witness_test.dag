@@ -51,6 +51,10 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_transaction_missing_legs,
   spark_serving_required_probe_legs,
   spark_serving_observation_attempt_of,
+  spark_serving_hermetic_provenance_of,
+  spark_serving_provenance_host,
+  spark_serving_provenance_observation_attempt,
+  spark_serving_provenance_credential,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,
   SparkServingReportObservation,
@@ -318,4 +322,68 @@ test fn the_observation_attempt_is_a_join_of_fleet_attempt_host_and_phase() -> B
     fleet_attempt: "run-8" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
   )
   !(here == other_host) && !(here == other_run)
+}
+
+// THE POST-APPLY READING IS A DIFFERENT OBSERVATION, NOT A SECOND LOOK AT THE SAME ONE.
+//
+// spark_serving_replan_rows used to take linger_enabled: Bool, acquire a transaction, and then
+// ignore that transaction's linger capture in favour of the Bool -- so a post-apply verdict planned
+// against a loginctl reading taken BEFORE the transaction, spliced into facts taken during it. The
+// parameter is deleted, so there is nowhere left to put an independently observed value, and the
+// phase now travels instead. This claim pins the two phases apart at the identity grain the receipt
+// will record.
+test fn the_post_apply_reading_carries_its_own_phase_identity() -> Bool {
+  let plan = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-9" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
+  )
+  let post = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-9" as NonEmptyStr,
+    host: subject_host,
+    phase: SparkServingPostApplyObservation,
+  )
+  !(plan == post)
+}
+
+// LINGER APPEARS ONCE PER PHASE, WHICH IS WHAT MAKES "READ IT TWICE" A COVERAGE ERROR RATHER THAN A
+// STYLE ONE. A second linger capture in one transaction is a duplicate and refuses; none at all is
+// missing and refuses. So each phase has exactly one, by construction rather than by discipline.
+test fn exactly_one_linger_capture_belongs_to_a_phase() -> Bool {
+  let doubled = concat(complete_captures(), [capture(request: LingerRequest, out: "again")])
+  let dropped = filter(
+    complete_captures(),
+    c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("linger" as NonEmptyStr)),
+  )
+  match admission(captures: doubled) {
+    SparkServingTransactionAdmitted { txn: _ } => false
+    SparkServingTransactionRefused { cause: _ } =>
+      match admission(captures: dropped) {
+        SparkServingTransactionAdmitted { txn: _ } => false
+        SparkServingTransactionRefused { cause: _ } =>
+          match admission(captures: complete_captures()) {
+            SparkServingTransactionAdmitted { txn: _ } => true
+            SparkServingTransactionRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+// A REFUSED OR HERMETIC PROVENANCE IS NOT SOMETHING TO PLAN FROM.
+//
+// The post-apply verdict, the plan-time axis and the report all require an ACQUIRED observation.
+// This is the property that lets them: only the acquired arm answers with an observation attempt, so
+// a consumer that needs one cannot be handed a refusal wearing plausible strings -- which is exactly
+// what the old fabricated "unreached: ..." provenance was.
+test fn only_an_acquired_provenance_answers_with_an_observation_attempt() -> Bool {
+  let hermetic = spark_serving_hermetic_provenance_of(
+    host: subject_host,
+    fixture_identity: "witness" as NonEmptyStr,
+  )
+  match spark_serving_provenance_observation_attempt(p: hermetic) {
+    Present { value: _ } => false
+    Absent =>
+      match spark_serving_provenance_credential(p: hermetic) {
+        Present { value: _ } => false
+        Absent => spark_serving_provenance_host(p: hermetic) == subject_host
+      }
+  }
 }
