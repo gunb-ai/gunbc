@@ -1665,3 +1665,154 @@ test fn ciprobe_english_emit_fresh_no_diags() -> Bool {
 test fn ciprobe_english_emit_fresh_equals_receipt() -> Bool {
   emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model) == english_emit_add_receipt
 }
+
+test fn ciprobe_english_receipt_reason_has_advisory() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "advisory")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_cost() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "cost")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_residue() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "residue")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_share() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "share")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_budget() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "budget")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_infer() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "infer")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_grounding() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "grounding")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_translate() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "translate")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_emit() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "emit")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_serialize() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "serialize")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_grammar() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "grammar")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_token() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "token")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_lex() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "lex")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_realiz() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "realiz")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_frontier() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "frontier")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_not_derived() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "not_derived")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_english() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "english")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_reason_has_parse() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => string_contains(symbol_lexeme(sym: ds.head.reason), "parse")
+    _ => false
+  }
+}
+
+
+test fn ciprobe_english_receipt_diag_count_is_one() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => is_empty(xs: ds.tail)
+    _ => false
+  }
+}

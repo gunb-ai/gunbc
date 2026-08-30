@@ -40,7 +40,6 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
-  None,
   Outcome,
   Rejected,
   Unavailable,
@@ -58,6 +57,15 @@ import v2.std.verification {
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
+// THE DIAGNOSTICS CONSTRUCTOR IS QUALIFIED, NOT IMPORTED, and the reason is measured rather
+// than stylistic (gunbc#9727, floor runs 33300816664 / 33302506547): with `None` reached
+// through the selective import, `(d == None)` answered TRUE for a receipt carrying
+// diagnostics and FALSE for a parse carrying none inside the required floor, while a
+// verbatim copy of the same witness body written with `v2.std.diagnostic.None` answered
+// correctly in the same claim frame. That is the rostered selective-import binding defect
+// (bare names bind by last-import-wins and the frame's closure, so the same spelling denotes
+// different declarations under claim_batch and under the floor). Qualifying the constructor
+// is the corpus idiom until the resolver repair lands; it is a workaround and is named as one.
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data english_emit_add_emitted_root: Node = english_add_fn_emitted_node()
@@ -176,7 +184,7 @@ data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == english_add_fn_source_text) && (d == None)
+      (source.carried == english_add_fn_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -189,7 +197,7 @@ fn english_emit_add_matches_serialize_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match english_emit_add_receipt {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (d == None) && (ad == None)
+          (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -247,7 +255,7 @@ test fn english_emit_add_ingest_round_trip_holds() -> Bool {
           english_emit_add_parse_identity_matches(
             root: tree,
             expected: english_emit_add_emitted_root
-          ) && (d == None)
+          ) && (d == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
   }
