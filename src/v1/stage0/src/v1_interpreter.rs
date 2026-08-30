@@ -602,10 +602,15 @@ fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
 }
 
 pub fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
+    // Field identity is the canonical spelling, never the order in which one evaluation
+    // frame encountered it. Some host-built values construct their fields directly rather
+    // than through `sorted_fields`; a binary search silently made lookup depend on those two
+    // unrelated orders agreeing. Records are small, and the exact identity scan is total for
+    // both direct and sorted constructors.
     fields
-        .binary_search_by_key(&sym.0, |(s, _)| s.0)
-        .ok()
-        .map(|i| &fields[i].1)
+        .iter()
+        .find(|(field, _)| *field == sym)
+        .map(|(_, value)| value)
 }
 
 pub fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
