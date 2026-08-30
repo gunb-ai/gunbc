@@ -1,6 +1,6 @@
 module extdeps.iproute2.ss
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool }
 import std.algebra { trim }
 
 data ss_authority_note: String = "ss(8) from iproute2, cited to the upstream manual. The socket-statistics query this repository consumes is a LISTENING-SOCKET ENUMERATION filtered to one port, whose answer is the population itself rather than a status code."
@@ -25,12 +25,12 @@ data ss_authority_note: String = "ss(8) from iproute2, cited to the upstream man
 // Cited to ss(8), iproute2. `-H` suppresses the header so the line count IS the population count,
 // `-l` selects listening sockets, `-t` restricts to TCP, `-n` keeps ports numeric so the filter and
 // the output speak the same vocabulary.
-data ss_query_exit_ok: Int = 0
-
-fn ss_listening_tcp_port_argv_words(port: Int) -> String {
-  join(["ss -H -l -t -n sport = :", to_string(port)], "")
-}
-
+//
+// The invocation is described here rather than minted as an argv builder, and the success status is
+// not minted at all, because nothing reads either yet: the probe capture site that will issue this
+// command is P0's wet half. A row authored ahead of its consumer is the artifact-with-no-consumer
+// §6 warns about, and this module had two of them within an hour of the same trim being applied to
+// its curl and pgrep neighbours -- which is why the rule is written down here rather than remembered.
 // AN EMPTY COMPLETED ENUMERATION IS AN OBSERVATION, and the trimmed-empty test is what separates it
 // from a query that printed nothing because it never ran. The caller only reaches this on a capture
 // that already carries a successful completion.
