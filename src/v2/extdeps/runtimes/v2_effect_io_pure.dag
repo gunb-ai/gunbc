@@ -403,9 +403,6 @@ fn effect_io_pure_roundtrip_through_store(
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
     Accepted { value: written, diagnostics: None } =>
-      // Generic '==' on RuntimeValue is refused by the equality admission wall; the typed
-      // RuntimeValueEquality verdict decides, and only a decided Equal advances this witness --
-      // Differ and Unavailable are both explicit non-passes, never a silent Bool collapse.
       match runtime_value_equality(a: written, b: payload) {
         RuntimeValuesEqual =>
           let store1 = effect_io_pure_apply_write(
