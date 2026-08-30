@@ -7,9 +7,7 @@ import gunbc.machine_intake_subject {
   SubjectCurrency,
   SubjectCurrent,
   SubjectStale,
-  stale_axes_all,
-  stale_axes,
-  subject_currency_of_axes,
+  merge_subject_currency,
   compare_qualification_subject,
 }
 import gunbc.machine_intake_phase {
@@ -75,8 +73,9 @@ fn phase_standing(
         acc
       } else {
         let digest = intake_receipt_structural_fingerprint(envelope: r)
-        match compare_qualification_subject(admitted: subject, observed: r.subject.subject) {
-          SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
+        let currency = compare_qualification_subject(admitted: subject, observed: r.subject.subject)
+        match currency {
+          SubjectStale { axes: _ } =>
             match acc {
               PhaseSatisfiedByReceipt { receipt: _ } => acc
               PhaseRefusedByReceipt { owner: _, cause: _, receipt: _ } => acc
@@ -84,7 +83,7 @@ fn phase_standing(
               PhaseUnobserved =>
                 PhaseReceiptSubjectMismatch {
                   receipt: digest,
-                  currency: SubjectStale { first_axis: head_axis, further_axes: rest_axes },
+                  currency: currency,
                 }
             }
           SubjectCurrent =>
@@ -146,22 +145,6 @@ type AdmissionFold {
 // subject's currency; the fold still merges rather than overwriting so the
 // answer stays correct if the ledger ever admits retries under a superseded
 // subject. Never a constant.
-fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
-  match left {
-    SubjectCurrent => right
-    SubjectStale { first_axis: lh, further_axes: lr } =>
-      match right {
-        SubjectCurrent => left
-        SubjectStale { first_axis: rh, further_axes: rr } =>
-          subject_currency_of_axes(
-            axes: stale_axes_all |> filter(a =>
-              (stale_axes(first_axis: lh, further_axes: lr) |> any(x => x == a))
-                || (stale_axes(first_axis: rh, further_axes: rr) |> any(x => x == a))
-            ),
-          )
-      }
-  }
-}
 
 // The admission predicate, as a fold over the required roster, reading ONLY
 // a validated ledger (one genesis, linked, one subject and attempt, monotone)

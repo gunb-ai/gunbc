@@ -21,11 +21,16 @@ import gunbc.machine_intake_subject {
   SpdSerialAbsent,
   SpdSerialDuplicated,
   SpdSerialRead,
+  SubjectCurrency,
   SubjectCurrent,
   SubjectStale,
   StaleAxis,
+  StaleAxes,
+  stale_axis_items,
+  merge_subject_currency,
   AssemblyManifestStale,
   FirmwareManifestStale,
+  QualificationSubject,
   UnitIdentityInputs,
   UnitKey,
   UnitKeyBound,
@@ -87,8 +92,8 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
-    SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
-      list_length(items: rest_axes) == 0 && head_axis == AssemblyManifestStale
+    SubjectStale { axes: axes } =>
+      list_length(items: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
     SubjectCurrent => false
   }
 }
@@ -104,8 +109,8 @@ test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
-    SubjectStale { first_axis: head_axis, further_axes: rest_axes } =>
-      list_length(items: rest_axes) == 0 && head_axis == FirmwareManifestStale
+    SubjectStale { axes: axes } =>
+      list_length(items: axes.further_axes) == 0 && axes.first_axis == FirmwareManifestStale
     SubjectCurrent => false
   }
 }
@@ -176,4 +181,39 @@ test fn dimm_label_without_spd_serial_is_not_electronically_bound() -> Bool {
     SpdSerialDuplicated { serial: _ } => false
   }
   unbound_electronic == false && bound_electronic
+}
+
+// THE MERGE LAW ITSELF, WHICH THE CONTROLS ABOVE DO NOT REACH (review 57612
+// follow-up). Every control above compares two subjects that already differ on
+// the axes asserted, so merge_subject_currency is never the thing under test:
+// a raw concatenation, a duplicate-retaining union, or a caller-order-dependent
+// one all satisfy them. This merges two INDEPENDENTLY DERIVED one-axis
+// standings and requires the canonical ordered population in BOTH argument
+// orders, so caller-order dependence goes red; requires a self-merge to stay
+// at cardinality one, so duplicate retention goes red; and requires
+// SubjectCurrent to be the identity on both sides.
+data merge_base: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
+data merge_assembly_moved: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
+data merge_firmware_moved: QualificationSubject = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
+
+fn is_assembly_then_firmware(currency: SubjectCurrency) -> Bool {
+  match currency {
+    SubjectCurrent => false
+    SubjectStale { axes: axes } =>
+      stale_axis_items(axes: axes) == [AssemblyManifestStale, FirmwareManifestStale]
+  }
+}
+
+test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool {
+  let assembly_only = compare_qualification_subject(admitted: merge_base, observed: merge_assembly_moved)
+  let firmware_only = compare_qualification_subject(admitted: merge_base, observed: merge_firmware_moved)
+  is_assembly_then_firmware(currency: merge_subject_currency(left: assembly_only, right: firmware_only))
+    && is_assembly_then_firmware(currency: merge_subject_currency(left: firmware_only, right: assembly_only))
+    && match merge_subject_currency(left: assembly_only, right: assembly_only) {
+      SubjectCurrent => false
+      SubjectStale { axes: axes } =>
+        list_length(items: axes.further_axes) == 0 && axes.first_axis == AssemblyManifestStale
+    }
+    && merge_subject_currency(left: SubjectCurrent, right: assembly_only) == assembly_only
+    && merge_subject_currency(left: assembly_only, right: SubjectCurrent) == assembly_only
 }

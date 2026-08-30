@@ -249,32 +249,51 @@ type StaleAxis
   | AssemblyManifestStale
   | FirmwareManifestStale
 
-// SPLIT-FIELD, SO THE EMPTY STALE STANDING IS UNWRITABLE (review 57612, and
-// the correction that followed it). Carrying `axes: List<StaleAxis>` made the
-// empty list unreachable only along this module's constructor: any other
-// module could still author `SubjectStale { axes: [] }` -- a stale standing
-// naming nothing, which is SubjectCurrent wearing the other variant, the same
-// defect the three parallel Booleans had. std has no generic NonEmptyList
-// carrier, so this takes the shape the corpus already uses for a nonempty
-// population (extdeps.external_authority external_model_scope_citations_shape_note,
-// the gunbc.doc_graph_roots precedent): one required head plus the rest. The
-// bad state has no constructor now rather than no reachable caller.
+// SEALED AND SPLIT-FIELD: TWO DIFFERENT INVALID STATES, TWO DIFFERENT WALLS
+// (review 57612 and the corrections that followed it). Carrying
+// `axes: List<StaleAxis>` on the variant made the empty list unreachable only
+// along this module's constructor -- any module could author
+// `SubjectStale { axes: [] }`, a stale standing naming nothing, which is
+// SubjectCurrent wearing the other variant and the same defect the three
+// parallel Booleans had. It could equally author a duplicated or
+// out-of-roster-order list. Those are separate classes and neither one wall
+// closes both.
+//
+// EMPTINESS is closed by the SHAPE: std has no generic NonEmptyList carrier,
+// so this is the form the corpus already uses for a nonempty population
+// (extdeps.external_authority external_model_scope_citations_shape_note, the
+// gunbc.doc_graph_roots precedent) -- one required head plus the rest, so the
+// empty population has no constructor anywhere, this module included.
+//
+// DUPLICATION AND ORDER are closed by SEALING: StaleAxes is sole_constructor,
+// so the only mints are in this module, both of which derive their population
+// by filtering stale_axes_all and therefore cannot repeat an axis or reorder
+// one. A cross-module record literal refuses with SoleConstructorViolation.
+// SubjectCurrency itself stays open, because SubjectCurrent carries nothing
+// and sealing it would route a harmless construction through this authority
+// for no wall.
+type StaleAxes sole_constructor {
+  first_axis: StaleAxis
+  further_axes: List<StaleAxis>
+}
+
 type SubjectCurrency
   = SubjectCurrent
-  | SubjectStale { first_axis: StaleAxis, further_axes: List<StaleAxis> }
+  | SubjectStale { axes: StaleAxes }
 
-// The two directions across that split, so no consumer re-derives either.
+// The two directions across the split, so no consumer re-derives either.
 // subject_currency_of_axes is the ONE place a filtered axis population becomes
 // a standing, and it is what makes an empty population SubjectCurrent instead
 // of a stale standing with nothing in it.
-fn stale_axes(first_axis: StaleAxis, further_axes: List<StaleAxis>) -> List<StaleAxis> {
-  concat([first_axis], further_axes)
+fn stale_axis_items(axes: StaleAxes) -> List<StaleAxis> {
+  concat([axes.first_axis], axes.further_axes)
 }
 
 fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
   match axes.first() {
     Absent => SubjectCurrent
-    Present { value: head } => SubjectStale { first_axis: head, further_axes: axes.skip(n: 1) }
+    Present { value: head } =>
+      SubjectStale { axes: StaleAxes { first_axis: head, further_axes: axes.skip(n: 1) } }
   }
 }
 
@@ -296,6 +315,30 @@ fn compare_qualification_subject(admitted: QualificationSubject, observed: Quali
     AssemblyManifestStale => assembly_changed
     FirmwareManifestStale => firmware_changed
   }))
+}
+
+// THE SECOND LEGITIMATE MINT, AND IT LIVES BESIDE THE FIRST (review 57612
+// follow-up). Merging two standings for one subject is a union over the axis
+// identity, computed by filtering the same canonical roster both sides were
+// derived from -- so the merged standing carries the roster's order and not
+// the order the two sides were measured in, and an axis present on both sides
+// appears once. It cannot live in the consuming module now that StaleAxes is
+// sealed, and it should not have: a mint is a fact about the carrier.
+fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
+  match left {
+    SubjectCurrent => right
+    SubjectStale { axes: la } =>
+      match right {
+        SubjectCurrent => left
+        SubjectStale { axes: ra } =>
+          subject_currency_of_axes(
+            axes: stale_axes_all |> filter(a =>
+              (stale_axis_items(axes: la) |> any(x => x == a))
+                || (stale_axis_items(axes: ra) |> any(x => x == a))
+            ),
+          )
+      }
+  }
 }
 
 type IntakeAttemptId = NonEmptyStr where brand("IntakeAttemptId")
