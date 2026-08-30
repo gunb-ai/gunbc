@@ -562,7 +562,7 @@ test fn absent_probe_receipt_refuses_the_redfish_arm() -> Bool {
 
 // RULING §2 CONTROL — collection discovered is NOT a plan floor.
 test fn redfish_collection_discovery_alone_does_not_plan() -> Bool {
-  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_collection_only }), staging: staging_wrong_redfish_digest) {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_collection_only }), staging: staging_all) {
     BootDeliveryRefused { cause: c } =>
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
