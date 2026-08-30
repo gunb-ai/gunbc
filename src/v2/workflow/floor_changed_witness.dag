@@ -4,6 +4,7 @@ import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
 }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition,
@@ -15,6 +16,7 @@ import v2.workflow.floor_terminal_ledger {
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.std.integer { Int }
 
 // THE CHANGED-WITNESS PROJECTION (operator-relayed ruling, 2026-08-30).
 //
@@ -39,9 +41,34 @@ import v2.std.text { String }
 type ChangedWitnessExecutionStanding =
     PlannedAndPassed
   | PlannedAndKnownRedHeld
+  | PlannedAndPassedWithCostDebtObserved { observation: ChangedWitnessCostObservation }
+  | CostObservationMissingUnderVerdictOnly
   | PlannedWithoutTerminalVerdict
   | Declined { disposition: RequiredFloorDisposition }
   | MissingDisposition
+
+// WHAT THE RUN MEASURED FOR ONE CHANGED COST-DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator
+// ruling 2026-08-30). The ordinary CPU line travels WITH the measurement rather than being
+// looked up by a reader, so a published observation cannot be compared against a line the run
+// did not use.
+//
+// THE OBSERVATION IS A RECEIPT, NOT A REPAYMENT. It never edits or deletes the authored roster
+// row: a single run landing under the line does not establish that a row whose observations
+// ranged through 505ms has become safely ordinary, and the row leaves through the explicit
+// debt-removal transaction or not at all.
+type ChangedWitnessCostObservation {
+  marginal_cpu_ms: Int
+  wall_ms: Int
+  cpu_line_ms: Int
+}
+
+// WHETHER THE RUN HAS THAT MEASUREMENT. Absent is an arm and not a zero: a claim that executed
+// under the verdict-only override with NO published cost has had its CPU gate stood down and
+// nothing put in its place, which is the absorbing-fallback shape DESIGN section 5 forbids. It
+// therefore reds (`CostObservationMissingUnderVerdictOnly`) rather than passing as ordinary.
+type ChangedWitnessCostReading =
+    CostObserved { observation: ChangedWitnessCostObservation }
+  | CostUnobserved
 
 // WHAT THE RUN CAN READ ABOUT ONE CHANGED IDENTITY, shaped exactly as the disposition receipt
 // is: one optional disposition row, and — only meaningful on a Planned row — one optional
@@ -55,12 +82,14 @@ type ChangedWitnessTerminalReading =
 type ChangedWitnessDispositionReading =
     DispositionRow {
       disposition: RequiredFloorDisposition,
-      terminal: ChangedWitnessTerminalReading
+      terminal: ChangedWitnessTerminalReading,
+      cost_policy: ChangedWitnessCostPolicy,
+      cost: ChangedWitnessCostReading
     }
   | NoDispositionRow
 
-// THE FOLD. Five standings from two receipt facts, and every red is one of the three the ruling
-// names: declined, missing, nonterminal.
+// THE FOLD. Seven standings from the receipt facts, and every red is one of the four the rulings
+// name: declined, missing, nonterminal, or a verdict-only override with no published cost.
 //
 // `PlannedAndPassed` MEANS an ordinary Pass. `PlannedAndKnownRedHeld` carries the distinct
 // terminal fact that an enrolled expected-red failed exactly as enrolled (DESIGN §4b(4) keeps
@@ -78,53 +107,90 @@ type ChangedWitnessDispositionReading =
 // CHANGED-SET grain — the line that names the identity the PR touched. The twelve outcome arms
 // are spelled rather than wildcarded so a thirteenth `ClaimDisposition` arm must be classified
 // here, never absorbed.
+//
+// `PlannedAndPassedWithCostDebtObserved` and `CostObservationMissingUnderVerdictOnly` are the two
+// arms the FLOOR-CHANGED-COST-0 ruling adds, and they exist only under
+// `ChangedCostDebtVerdictOnly` -- the join of changed selection with cost-debt enrollment. The
+// first is green and CARRIES the measurement; the second is red and is the discriminating refusal
+// for a gate stood down with nothing published in its place.
+
+// THE GREEN VERDICT UNDER EACH POLICY. Ordinary selection keeps the standing it always had;
+// the verdict-only override keeps the COST FACT in the standing rather than laundering it into
+// an ordinary pass, so a reader of the changed-set lines can never mistake a row that ran on a
+// stood-down CPU gate for a row that ran under one.
+fn changed_witness_green_standing(
+  cost_policy: ChangedWitnessCostPolicy,
+  cost: ChangedWitnessCostReading,
+) -> ChangedWitnessExecutionStanding {
+  match cost_policy {
+    OrdinaryChangedWitnessCostPolicy => PlannedAndPassed {}
+    ChangedCostDebtVerdictOnly =>
+      match cost {
+        CostObserved { observation: o } => PlannedAndPassedWithCostDebtObserved { observation: o }
+        CostUnobserved => CostObservationMissingUnderVerdictOnly {}
+      }
+  }
+}
+
+// ONE CLASSIFICATION OF THE TERMINAL OUTCOME, SHARED BY BOTH PLANNED DISPOSITIONS. An earlier
+// revision spelled this match twice -- once under `Planned` and once under
+// `PlannedAsChangedWitness` -- with identical arms, so a thirteenth `ClaimDisposition` arm had to
+// be classified in two places that could classify it differently (DESIGN section 2). The two
+// dispositions differ in WHY the identity ran, which the disposition itself carries; they have
+// never differed in how a verdict is judged.
+//
+// `PassedOverBudget` IS THE ONE ARM THE POLICY MOVES, and it moves in exactly one direction: it
+// stays red under the ordinary policy -- an ordinary changed witness that exceeds the CPU line
+// still reds -- and is green under `ChangedCostDebtVerdictOnly`, where the line was observed and
+// not gating by ruling. Every other arm answers identically under both policies: a semantic
+// `Failed`, a panic, a route gap, a runtime error, an unreadable observation, and a budget
+// refusal that preempted the verdict (which is what the still-armed WALL deadline produces) all
+// remain red, because none of them reached the verdict the changed set exists to learn.
+fn changed_witness_planned_standing(
+  terminal: ChangedWitnessTerminalReading,
+  cost_policy: ChangedWitnessCostPolicy,
+  cost: ChangedWitnessCostReading,
+) -> ChangedWitnessExecutionStanding {
+  match terminal {
+    NotExecuted => PlannedWithoutTerminalVerdict {}
+    TerminalOutcome { outcome: o } =>
+      match o {
+        Passed => changed_witness_green_standing(cost_policy: cost_policy, cost: cost)
+        KnownRedNowPassing => changed_witness_green_standing(cost_policy: cost_policy, cost: cost)
+        KnownRedHeld => PlannedAndKnownRedHeld {}
+        PassedOverBudget =>
+          match cost_policy {
+            OrdinaryChangedWitnessCostPolicy => PlannedWithoutTerminalVerdict {}
+            ChangedCostDebtVerdictOnly =>
+              match cost {
+                CostObserved { observation: obs } =>
+                  PlannedAndPassedWithCostDebtObserved { observation: obs }
+                CostUnobserved => CostObservationMissingUnderVerdictOnly {}
+              }
+          }
+        Failed => PlannedWithoutTerminalVerdict {}
+        BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
+        HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
+        ObservationUnreadableBeforeVerdict => PlannedWithoutTerminalVerdict {}
+      }
+  }
+}
+
 fn changed_witness_execution_standing(
   reading: ChangedWitnessDispositionReading,
 ) -> ChangedWitnessExecutionStanding {
   match reading {
     NoDispositionRow => MissingDisposition {}
-    DispositionRow { disposition: d, terminal: t } =>
+    DispositionRow { disposition: d, terminal: t, cost_policy: p, cost: c } =>
       match d {
-        Planned =>
-          match t {
-            NotExecuted => PlannedWithoutTerminalVerdict {}
-            TerminalOutcome { outcome: o } =>
-              match o {
-                Passed => PlannedAndPassed {}
-                Failed => PlannedWithoutTerminalVerdict {}
-                KnownRedHeld => PlannedAndKnownRedHeld {}
-                KnownRedNowPassing => PlannedAndPassed {}
-                BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                PassedOverBudget => PlannedWithoutTerminalVerdict {}
-                BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
-                HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
-                ObservationUnreadableBeforeVerdict => PlannedWithoutTerminalVerdict {}
-              }
-          }
+        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c)
         PlannedAsChangedWitness =>
-          match t {
-            NotExecuted => PlannedWithoutTerminalVerdict {}
-            TerminalOutcome { outcome: o } =>
-              match o {
-                Passed => PlannedAndPassed {}
-                Failed => PlannedWithoutTerminalVerdict {}
-                KnownRedHeld => PlannedAndKnownRedHeld {}
-                KnownRedNowPassing => PlannedAndPassed {}
-                BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                PassedOverBudget => PlannedWithoutTerminalVerdict {}
-                BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
-                HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-                NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
-                ObservationUnreadableBeforeVerdict => PlannedWithoutTerminalVerdict {}
-              }
-          }
+          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c)
         DeclinedLongModule { matched_prefix: _ } => Declined { disposition: d }
         DeclinedFixtureMember { matched_prefix: _ } => Declined { disposition: d }
         DeclinedOutsideRequiredGate => Declined { disposition: d }
@@ -144,6 +210,8 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
   match standing {
     PlannedAndPassed => false
     PlannedAndKnownRedHeld => false
+    PlannedAndPassedWithCostDebtObserved { observation: _ } => false
+    CostObservationMissingUnderVerdictOnly => true
     PlannedWithoutTerminalVerdict => true
     Declined { disposition: _ } => true
     MissingDisposition => true
