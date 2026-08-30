@@ -185,6 +185,8 @@ data floor_lane_job_id: String = "required-witnesses-floor"
 
 data build_lane_job_id: String = "required-witnesses-build"
 
+data fabric_evidence_job_id: String = "fabric-evidence"
+
 // The workflow's own name, hoisted to a declaration because a second consumer now joins on
 // it. gunbc.fleet_desired_admission refuses a workflow_run payload whose workflow_name is
 // not the required floor's; spelling "witnesses" a second time there would fork the name
@@ -666,6 +668,36 @@ fn build_lane_run_step() -> Step {
     if_condition: Present { value: witness_floor_precondition() },
     continue_on_error: none,
     timeout_minutes: none
+  }
+}
+
+// FCI-EVIDENCE-0 is enrolled in its own parallel fabric lane, after that lane builds the
+// exact-tree gunbc and before any later wet fabric gate can cite its run-boundary contract.
+// The shell is the manager-approved
+// sequencing carrier; its dissolve-on is modeled lifecycle actuation sufficient to sequence a
+// wet gate from .dag. Fabric facts remain ProcessExit assertions and named Filesystem.Write values.
+// The 55-minute step bound is derived from the executed 13-row roster and the worst observed
+// per-row wall interval of 169 seconds: 13 * 169 * 1.5 = 3295.5 seconds, rounded up. Distinct
+// gunbc host processes are the process-edge subject, so reducing their count would remove the
+// boundary rather than reduce the cost of observing it.
+data fabric_ci_evidence_calibration_timeout_minutes: Int = 55
+
+// Checkout, isolated toolchain setup and the exact-tree release build took 3.5 minutes on the
+// measured warm run. Fifteen minutes is that observation rounded up and given more than fourfold
+// cold-run headroom; the job cap derives it beside the calibration wall rather than overriding it.
+data fabric_ci_evidence_prelude_allowance_minutes: Int = 15
+
+fn fabric_ci_evidence_calibration_step() -> Step {
+  RunStep {
+    name: Present { value: "Calibrate fabric CI evidence boundary" },
+    id: none,
+    run: "bash tools/fabric_ci_evidence_calibration.sh\n",
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: witness_floor_precondition() },
+    continue_on_error: none,
+    timeout_minutes: Present { value: fabric_ci_evidence_calibration_timeout_minutes }
   }
 }
 
@@ -1339,6 +1371,47 @@ fn rust_unit_tests_job() -> Job {
   }
 }
 
+fn fabric_evidence_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(build_script: witness_floor_build_script()),
+    items: [
+      WitnessFloorBoundStep {
+        step: fabric_ci_evidence_calibration_step(),
+        role: capability_neutral,
+        step_name: "Calibrate fabric CI evidence boundary",
+      },
+    ],
+  )
+}
+
+fn fabric_evidence_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: fabric_evidence_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn fabric_evidence_job() -> Job {
+  Job {
+    id: fabric_evidence_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: fabric_evidence_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: fabric_ci_evidence_calibration_timeout_minutes + fabric_ci_evidence_prelude_allowance_minutes,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn build_lane_job() -> Job {
   Job {
     id: build_lane_job_id,
@@ -1573,6 +1646,7 @@ fn required_lanes_run_id_expression() -> String {
 // to emit any yaml at all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
+data required_lanes_gate_fabric_var: String = "FABRIC_EVIDENCE"
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
 data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
@@ -1587,6 +1661,7 @@ fn required_lanes_aggregate_script_outcome() -> String? {
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
       floor_var: required_lanes_gate_floor_var,
+      fabric_var: required_lanes_gate_fabric_var,
       pull_request_var: required_lanes_gate_pull_request_var,
       event_name_var: required_lanes_gate_event_name_var,
       measured_head_var: required_lanes_gate_measured_head_var,
@@ -1641,6 +1716,7 @@ fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
   [
     kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
     kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
+    kv(key: required_lanes_gate_fabric_var, value: yaml_string(s: required_lane_result_expression(job_id: fabric_evidence_job_id))),
     kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
     kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
     kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
@@ -1671,7 +1747,7 @@ fn required_lanes_aggregate_job() -> Job {
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: [required_lanes_aggregate_step()],
-    needs: [build_lane_job_id, floor_lane_job_id],
+    needs: [build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id],
     env: none,
     outputs: none,
     if_condition: Present { value: required_lanes_aggregate_job_condition() },
@@ -1722,7 +1798,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), required_lanes_aggregate_job()]
+  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), fabric_evidence_job(), required_lanes_aggregate_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
@@ -1742,7 +1818,7 @@ data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_f
 // whole-workflow closure would be the wrong shape, and checking only the job that existed first
 // would leave the new one guarded by nothing while the emission still refused on its behalf.
 // That is the inert half DESIGN §6 names: machinery that exists and gates nothing.
-data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and witness_floor_capability_closure_holds and build_lane_capability_closure_holds; adding a third job without adding its conjunct would emit that job unchecked."
+data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and every job capability closure, including the independent fabric-evidence lane; adding a job without adding its conjunct would emit that job unchecked."
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
@@ -1758,7 +1834,7 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && required_lanes_gate_is_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && fabric_evidence_capability_closure_holds() && required_lanes_gate_is_renderable() {
         WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
       } else {
         WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }
