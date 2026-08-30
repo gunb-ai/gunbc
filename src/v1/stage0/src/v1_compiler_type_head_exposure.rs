@@ -46,3 +46,54 @@ pub fn type_declaration_identity_key(decl_file: String, declared_name: String) -
         declared_name.clone(),
     )
 }
+
+pub fn type_head_exposure_is_kernel_scalar(exposure: Rc<TypeHeadExposure>) -> bool {
+    match (*exposure.clone()).clone() {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+            if matches!(view.as_ref(), TypeHeadView::KernelScalarHead { .. }) =>
+        {
+            let TypeHeadView::KernelScalarHead {
+                type_identity: _, ..
+            } = view.as_ref()
+            else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn type_head_exposure_is_product(exposure: Rc<TypeHeadExposure>) -> bool {
+    match (*exposure.clone()).clone() {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+            if matches!(view.as_ref(), TypeHeadView::ProductHead { .. }) =>
+        {
+            let TypeHeadView::ProductHead {
+                type_identity: _, ..
+            } = view.as_ref()
+            else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn type_head_exposure_is_coproduct(exposure: Rc<TypeHeadExposure>) -> bool {
+    match (*exposure.clone()).clone() {
+        TypeHeadExposure::ExposedTypeHead { ref view, .. }
+            if matches!(view.as_ref(), TypeHeadView::CoproductHead { .. }) =>
+        {
+            let TypeHeadView::CoproductHead {
+                type_identity: _, ..
+            } = view.as_ref()
+            else {
+                unreachable!()
+            };
+            true
+        }
+        _ => false,
+    }
+}
