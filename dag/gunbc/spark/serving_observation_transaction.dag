@@ -88,7 +88,7 @@ fn spark_serving_probe_leg_eq(a: SparkServingProbeLeg, b: SparkServingProbeLeg) 
 // -- the blob-digest leg is literally one of them, its argv derived from an earlier capture -- would
 // be indistinguishable receipts. The argv is what makes the capture a receipt of a specific act
 // rather than an opaque string that arrived from somewhere.
-type SparkServingProbeCapture sole_constructor {
+type SparkServingProbeLegCapture sole_constructor {
   leg: SparkServingProbeLeg
   argv: List<String>
   result: SshSessionExecResult
@@ -104,13 +104,13 @@ type SparkServingObservationTransaction sole_constructor {
   host: HostIdentity
   attempt: NonEmptyStr
   locus: NonEmptyStr
-  captures: List<SparkServingProbeCapture>
+  captures: List<SparkServingProbeLegCapture>
 }
 
 fn spark_serving_transaction_capture(
   txn: SparkServingObservationTransaction,
   leg: SparkServingProbeLeg,
-) -> SparkServingProbeCapture? {
+) -> SparkServingProbeLegCapture? {
   filter(txn.captures, c => spark_serving_probe_leg_eq(a: c.leg, b: leg)) |> first
 }
 
@@ -143,12 +143,12 @@ type SparkServingTransactionAdmission
   = SparkServingTransactionAdmitted { txn: SparkServingObservationTransaction }
   | SparkServingTransactionRefused { cause: NonEmptyStr }
 
-fn spark_serving_probe_capture_of(
+fn spark_serving_probe_leg_capture_of(
   leg: SparkServingProbeLeg,
   argv: List<String>,
   result: SshSessionExecResult,
-) -> SparkServingProbeCapture {
-  SparkServingProbeCapture { leg: leg, argv: argv, result: result }
+) -> SparkServingProbeLegCapture {
+  SparkServingProbeLegCapture { leg: leg, argv: argv, result: result }
 }
 
 // THE MINT IS THE ADMISSION, SO A DUPLICATED TRANSACTION IS NOT A VALUE THAT EXISTS.
@@ -162,7 +162,7 @@ fn spark_serving_observation_transaction_of(
   host: HostIdentity,
   attempt: NonEmptyStr,
   locus: NonEmptyStr,
-  captures: List<SparkServingProbeCapture>,
+  captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingTransactionAdmission {
   spark_serving_admit_transaction(
     txn: SparkServingObservationTransaction {

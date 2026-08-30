@@ -18,7 +18,7 @@ import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonStrin
 import extdeps.ollama.model_store { ollama_blob_file_name }
 import gunbc.spark.serving_terminal_health {
   SparkServingTerminalHealth,
-  SparkServingProbeCapture,
+  SparkServingProbeLegCapture,
   ProbeNeverRan,
   ProbeFailed,
   ProbeAnswered,
@@ -122,12 +122,12 @@ import gunbc.spark.serving_converge_apply { spark_serving_run_operation }
 import gunbc.fleet_ssh_locus { fleet_locus_transport, fleet_locus_label }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationTransaction,
-  SparkServingProbeCapture,
+  SparkServingProbeLegCapture,
   SparkServingProbeLeg,
   SparkServingTransactionAdmission,
   SparkServingTransactionAdmitted,
   SparkServingTransactionRefused,
-  spark_serving_probe_capture_of,
+  spark_serving_probe_leg_capture_of,
   spark_serving_observation_transaction_of,
   spark_serving_transaction_result,
   ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
@@ -747,8 +747,8 @@ fn spark_serving_captured_leg(
   host: HostIdentity,
   leg: SparkServingProbeLeg,
   argv: List<String>,
-) -> SparkServingProbeCapture {
-  spark_serving_probe_capture_of(
+) -> SparkServingProbeLegCapture {
+  spark_serving_probe_leg_capture_of(
     leg: leg,
     argv: argv,
     result: match run_typed_argv_transport(
@@ -907,28 +907,6 @@ fn spark_serving_host_observation_from_transaction(
       result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
     ),
   )
-}
-
-fn spark_serving_probe_leg(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-  raw_words: List<String>,
-) -> SshSessionExecResult? {
-  match portable_remote_words(raws: raw_words) {
-    Absent => none
-    Present { value: words } => Present {
-      value: ssh_session_exec_portable_words(
-        client_args: shape_fleet_ssh_exec(
-          context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host as String) as NonEmptyStr,
-            principal: spark_serving_automation_principal_login(),
-          },
-          words: words,
-        ),
-      ),
-    }
-  }
 }
 
 fn spark_serving_unit_outcome_from_probe_results(
@@ -1164,57 +1142,20 @@ fn spark_serving_observation_line(observation: SparkServingObservation) -> Strin
 // that the declaration lied to every reader, and a checker that later takes these seriously would
 // have surfaced it as a mystery rather than a typo. Repaired in passing because this change adds a
 // field to exactly that record.
-fn spark_serving_observe_host(
-  context: FleetSshExecutionContext,
-  host: HostIdentity,
-) -> SparkServingHostObservation {
-  let load_state = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_load_state_probe_words())
-  let is_active = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_probe_words())
-  let version = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_version_probe_words)
-  let tags = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_tags_probe_words)
-  let nvidia_driver = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_nvidia_driver_probe_words)
-  let runtime_receipt = spark_serving_probe_leg(
-    context: context,
-    host: host,
-    raw_words: spark_serving_runtime_materialization_receipt_probe_argv(),
-  )
-  let active_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_active_enter_probe_argv())
-  let default_target_enter = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_default_target_enter_probe_argv())
-  let uptime = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_uptime_probe_argv())
-  let grants = spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_grant_probe_words)
-  let readback = spark_serving_readback_from_probe_results(
-    host: host,
-    load_state: load_state,
-    is_active: is_active,
-    version: version,
-    tags: tags,
-    nvidia_driver: nvidia_driver,
-    runtime_receipt: runtime_receipt,
-    active_enter: active_enter,
-    default_target_enter: default_target_enter,
-    uptime: uptime,
-    grants: grants,
-  )
-  spark_serving_host_observation(
-    readback: readback,
-    account: spark_serving_account_observation_from_probes(
-      passwd_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_account_probe_words()),
-      key_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
-    ),
-    runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
-    store: spark_serving_observe_model_store(context: context, host: host),
-    observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
-    linger: spark_serving_observed_linger_from_probe(
-      result: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_linger_probe_words()),
-    ),
-  )
-}
-
+// THE DIRECT-SSH OBSERVER IS DELETED, NOT KEPT BESIDE THE LOCUS ONE.
+//
+// spark_serving_observe_host ran the same twenty-odd legs as the locus observer through a different
+// adapter -- ssh_session_exec_portable_words against a target this module shaped itself, rather than
+// the transport the execution context carries. Two observers of one fact is the §3 violation, and it
+// had the concrete consequence the ruling names: which credential path produced an observation was
+// not a property of the observation, it was a property of which function the caller happened to
+// reach for. The observe CLI now travels the same locus as the converge slice, so there is one
+// answer to "how did we get in" and one place to change it.
 fn spark_serving_observations_from_hosts(
   context: FleetSshExecutionContext,
   hosts: List<HostIdentity>,
 ) -> List<SparkServingHostObservation> {
-  map(hosts, h => spark_serving_observe_host(context: context, host: h))
+  map(hosts, h => spark_serving_observe_host_via_locus(context: context, host: h))
 }
 
 // P0-C2: THE REPORT IS BUILT FROM AN IDENTITY JOIN, AND THE COUNT GUARD IS GONE RATHER THAN KEPT.
@@ -2459,7 +2400,7 @@ fn spark_serving_probe_capture(
   host: HostIdentity,
   raw_words: List<String>,
 ) -> SparkServingProbeCapture {
-  match spark_serving_probe_leg(context: context, host: host, raw_words: raw_words) {
+  match spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: raw_words) {
     Absent =>
       ProbeNeverRan {
         cause: "the probe leg did not execute: no transport result was produced" as NonEmptyStr,

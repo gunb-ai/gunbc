@@ -5,7 +5,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationTransaction,
-  SparkServingProbeCapture,
+  SparkServingProbeLegCapture,
   SparkServingTransactionAdmission,
   SparkServingProbeLeg,
   ProbeIsActive,
@@ -16,7 +16,7 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_transaction_capture,
   spark_serving_transaction_result,
   spark_serving_transaction_duplicated_legs,
-  spark_serving_probe_capture_of,
+  spark_serving_probe_leg_capture_of,
   spark_serving_observation_transaction_of,
   SparkServingTransactionAdmitted,
   SparkServingTransactionRefused,
@@ -31,15 +31,15 @@ fn ok(out: String) -> SshSessionExecResult {
   SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" }
 }
 
-fn capture(leg: SparkServingProbeLeg, out: String) -> SparkServingProbeCapture {
-  spark_serving_probe_capture_of(
+fn capture(leg: SparkServingProbeLeg, out: String) -> SparkServingProbeLegCapture {
+  spark_serving_probe_leg_capture_of(
     leg: leg,
     argv: ["systemctl", "is-active"],
     result: ok(out: out),
   )
 }
 
-fn admission(captures: List<SparkServingProbeCapture>) -> SparkServingTransactionAdmission {
+fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission {
   spark_serving_observation_transaction_of(
     host: subject_host,
     attempt: "witness-attempt" as NonEmptyStr,
@@ -50,7 +50,7 @@ fn admission(captures: List<SparkServingProbeCapture>) -> SparkServingTransactio
 
 // The witness reads through the admitted arm exactly as production must: there is no other way to
 // obtain a transaction, so a claim cannot test a shape the mint would have refused.
-fn txn_of(captures: List<SparkServingProbeCapture>) -> SparkServingObservationTransaction? {
+fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservationTransaction? {
   match admission(captures: captures) {
     SparkServingTransactionAdmitted { txn: t } => Present { value: t }
     SparkServingTransactionRefused { cause: _ } => none
