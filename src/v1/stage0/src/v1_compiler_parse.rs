@@ -28,6 +28,14 @@ pub use crate::std_occurrence_identity::{
     OccurrenceIndex, OccurrenceIndexEntry, OccurrenceProjection, OccurrenceTransport,
     ReferenceOccurrence,
 };
+use crate::std_source_declaration_constructor::SourceDeclarationConstructor::{
+    CoproductTypeDeclaration, DataDeclaration, FunctionDeclaration, InterfaceDeclaration,
+    NamespaceAlias, NominalTypeDeclaration, PatternDeclaration, ProductTypeDeclaration,
+    ResourceDeclaration, ServiceDeclaration, TransparentTypeAlias,
+};
+pub use crate::std_source_declaration_constructor::{
+    AuthoredTypeTarget, ParsedDeclarationConstructorRow, SourceDeclarationConstructor,
+};
 use crate::std_syntax::BinOp::Add;
 use crate::std_syntax::BinOp::{And, Div, Eq, Ge, Gt, Le, Lt, Mod, Mul, Ne, NullCoalesce, Or, Sub};
 use crate::std_syntax::BodyKind::{
@@ -43,6 +51,7 @@ pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_file_span;
+use crate::v1_std_core::CallTargetIdentity::CallableTargetUndetermined;
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
@@ -82,9 +91,9 @@ pub use crate::v1_std_core::{
     transport_url_key, variant_node_fields, variant_node_name_at, with_required_cardinality,
 };
 pub use crate::v1_std_core::{
-    Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, ExprErrorKind,
-    FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern, NewlineIndex, Node,
-    OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
+    CallTargetIdentity, Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData,
+    ExprErrorKind, FieldAccessSpine, InferredNode, InternResult, InternTable, MatchPattern,
+    NewlineIndex, Node, OperationModifier, StringPart, Token, TokenShape, UnaryOpKind,
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
@@ -146,6 +155,7 @@ pub struct ParseContext {
     pub occurrence_index: Option<Rc<OccurrenceIndex>>,
     pub declaration_occurrences: Option<Rc<Vec<Rc<DeclarationOccurrence>>>>,
     pub reference_occurrences: Option<Rc<Vec<Rc<ReferenceOccurrence>>>>,
+    pub declaration_constructors: Rc<Vec<Rc<ParsedDeclarationConstructorRow>>>,
     pub heads_only: bool,
 }
 
@@ -161,6 +171,7 @@ pub struct ParseWithTableResult {
     pub intern_table: Rc<InternTable>,
     pub occurrence_allocator: OccurrenceIdAllocator,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+    pub declaration_constructors: Rc<Vec<Rc<ParsedDeclarationConstructorRow>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -280,6 +291,7 @@ pub fn parse_context_with_occurrence_state(
         occurrence_index: occurrence_index.clone(),
         declaration_occurrences: declaration_occurrences.clone(),
         reference_occurrences: reference_occurrences.clone(),
+        declaration_constructors: ctx.declaration_constructors.clone(),
         heads_only: ctx.heads_only.clone(),
     })
 }
@@ -295,6 +307,7 @@ pub fn parse_context_with_intern_table(
         occurrence_index: ctx.occurrence_index.clone(),
         declaration_occurrences: ctx.declaration_occurrences.clone(),
         reference_occurrences: ctx.reference_occurrences.clone(),
+        declaration_constructors: ctx.declaration_constructors.clone(),
         heads_only: ctx.heads_only.clone(),
     })
 }
@@ -396,6 +409,37 @@ pub struct ItemResult {
     pub tokens: Rc<TokenStream>,
     pub ctx: Rc<ParseContext>,
     pub err: Option<Rc<ErrorNode>>,
+}
+
+pub fn item_result_with_declaration_constructor(
+    result: Rc<ItemResult>,
+    constructor: Rc<SourceDeclarationConstructor>,
+) -> Rc<ItemResult> {
+    if has_err(result.err.clone()) {
+        result.clone()
+    } else {
+        Rc::new(ItemResult {
+            item: result.item.clone(),
+            tokens: result.tokens.clone(),
+            ctx: Rc::new(ParseContext {
+                source_indices: result.ctx.clone().source_indices.clone(),
+                intern_table: result.ctx.clone().intern_table.clone(),
+                occurrence_allocator: result.ctx.clone().occurrence_allocator.clone(),
+                occurrence_index: result.ctx.clone().occurrence_index.clone(),
+                declaration_occurrences: result.ctx.clone().declaration_occurrences.clone(),
+                reference_occurrences: result.ctx.clone().reference_occurrences.clone(),
+                declaration_constructors: v1_rt::concat(
+                    result.ctx.clone().declaration_constructors.clone(),
+                    Rc::new(vec![Rc::new(ParsedDeclarationConstructorRow {
+                        declaration_occurrence: result.item.clone().occurrence_identity.clone(),
+                        constructor: constructor.clone(),
+                    })]),
+                ),
+                heads_only: result.ctx.clone().heads_only.clone(),
+            }),
+            err: result.err.clone(),
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -3344,6 +3388,7 @@ pub fn parse_with_table_at(
             })),
             declaration_occurrences: Some(Rc::new(vec![])),
             reference_occurrences: Some(Rc::new(vec![])),
+            declaration_constructors: Rc::new(vec![]),
             heads_only: heads_only.clone(),
         });
         let r = parse_module(token_stream_new(tokens.clone()), ctx.clone());
@@ -3367,6 +3412,7 @@ pub fn parse_with_table_at(
                     ),
                     occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
+                    declaration_constructors: r.ctx.clone().declaration_constructors.clone(),
                 })
             }
         } else {
@@ -3402,6 +3448,7 @@ pub fn parse_with_table_at(
                     ),
                     occurrence_allocator: occurrence_allocator.clone(),
                     occurrence_transport: occurrence_transport.clone(),
+                    declaration_constructors: stamped.ctx.clone().declaration_constructors.clone(),
                 })
             }
         }
@@ -4122,7 +4169,10 @@ pub fn parse_item_by_form(
                         err: prefix.err.clone(),
                     });
                 }
-                parse_fn_body_from_prefix(prefix.clone(), start_span.clone())
+                item_result_with_declaration_constructor(
+                    parse_fn_body_from_prefix(prefix.clone(), start_span.clone()),
+                    Rc::new(SourceDeclarationConstructor::FunctionDeclaration),
+                )
             }
             BodyKind::BlockBody => {
                 let prefix = parse_item_prefix(tokens.clone(), ctx.clone(), form.clone());
@@ -4134,17 +4184,38 @@ pub fn parse_item_by_form(
                         err: prefix.err.clone(),
                     });
                 }
-                parse_block_body_from_prefix(prefix.clone(), start_span.clone())
+                let parsed = parse_block_body_from_prefix(prefix.clone(), start_span.clone());
+                if (form.keyword.clone() == "pattern".to_string()) {
+                    item_result_with_declaration_constructor(
+                        parsed.clone(),
+                        Rc::new(SourceDeclarationConstructor::PatternDeclaration),
+                    )
+                } else {
+                    if (form.keyword.clone() == "interface".to_string()) {
+                        item_result_with_declaration_constructor(
+                            parsed.clone(),
+                            Rc::new(SourceDeclarationConstructor::InterfaceDeclaration),
+                        )
+                    } else {
+                        item_result_with_declaration_constructor(
+                            parsed.clone(),
+                            Rc::new(SourceDeclarationConstructor::FunctionDeclaration),
+                        )
+                    }
+                }
             }
-            BodyKind::ServiceBody => {
-                parse_service_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
-            }
-            BodyKind::ResourceBody => {
-                parse_resource_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
-            }
-            BodyKind::ValueBody => {
-                parse_data_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
-            }
+            BodyKind::ServiceBody => item_result_with_declaration_constructor(
+                parse_service_after_kw(tokens.clone(), ctx.clone(), start_span.clone()),
+                Rc::new(SourceDeclarationConstructor::ServiceDeclaration),
+            ),
+            BodyKind::ResourceBody => item_result_with_declaration_constructor(
+                parse_resource_after_kw(tokens.clone(), ctx.clone(), start_span.clone()),
+                Rc::new(SourceDeclarationConstructor::ResourceDeclaration),
+            ),
+            BodyKind::ValueBody => item_result_with_declaration_constructor(
+                parse_data_after_kw(tokens.clone(), ctx.clone(), start_span.clone()),
+                Rc::new(SourceDeclarationConstructor::DataDeclaration),
+            ),
             BodyKind::AliasBody => {
                 parse_alias_after_kw(tokens.clone(), ctx.clone(), start_span.clone())
             }
@@ -4548,12 +4619,15 @@ pub fn parse_type_after_kw(
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
-                Rc::new(ItemResult {
-                    item: item.clone(),
-                    tokens: skip_newlines(r2.tokens.clone()),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
+                item_result_with_declaration_constructor(
+                    Rc::new(ItemResult {
+                        item: item.clone(),
+                        tokens: skip_newlines(r2.tokens.clone()),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    }),
+                    Rc::new(SourceDeclarationConstructor::ProductTypeDeclaration),
+                )
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
@@ -4599,12 +4673,15 @@ pub fn parse_type_after_kw(
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
-                        Rc::new(ItemResult {
-                            item: item.clone(),
-                            tokens: __eu.clone(),
-                            ctx: item_mint.ctx.clone(),
-                            err: std::option::Option::None,
-                        })
+                        item_result_with_declaration_constructor(
+                            Rc::new(ItemResult {
+                                item: item.clone(),
+                                tokens: __eu.clone(),
+                                ctx: item_mint.ctx.clone(),
+                                err: std::option::Option::None,
+                            }),
+                            Rc::new(SourceDeclarationConstructor::NominalTypeDeclaration),
+                        )
                     }
                 }
             }
@@ -4704,12 +4781,15 @@ pub fn parse_type_body_from_prefix(
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
-                Rc::new(ItemResult {
-                    item: item.clone(),
-                    tokens: skip_newlines(r2.tokens.clone()),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
+                item_result_with_declaration_constructor(
+                    Rc::new(ItemResult {
+                        item: item.clone(),
+                        tokens: skip_newlines(r2.tokens.clone()),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    }),
+                    Rc::new(SourceDeclarationConstructor::ProductTypeDeclaration),
+                )
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 match (*eat(tokens.clone(), Rc::new(ExpectedToken::ExpectEq))).clone() {
@@ -4755,12 +4835,15 @@ pub fn parse_type_body_from_prefix(
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
-                        Rc::new(ItemResult {
-                            item: item.clone(),
-                            tokens: __eu.clone(),
-                            ctx: item_mint.ctx.clone(),
-                            err: std::option::Option::None,
-                        })
+                        item_result_with_declaration_constructor(
+                            Rc::new(ItemResult {
+                                item: item.clone(),
+                                tokens: __eu.clone(),
+                                ctx: item_mint.ctx.clone(),
+                                err: std::option::Option::None,
+                            }),
+                            Rc::new(SourceDeclarationConstructor::NominalTypeDeclaration),
+                        )
                     }
                 }
             }
@@ -4772,6 +4855,21 @@ pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
     (((te.connective.clone() == Connective::Conj)
         && (te.ident_span.clone() == std::option::Option::None))
         && (te.type_annotation.clone() == std::option::Option::None))
+}
+
+pub fn declaration_constructor_for_type_rhs(
+    te: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<SourceDeclarationConstructor> {
+    if alias_rhs_is_anonymous_record(te.clone()) {
+        Rc::new(SourceDeclarationConstructor::ProductTypeDeclaration)
+    } else {
+        Rc::new(SourceDeclarationConstructor::TransparentTypeAlias {
+            representation_target: Rc::new(AuthoredTypeTarget {
+                spelling: crate::v1_std_core::authored_name_at(source_indices.clone(), te.clone()),
+            }),
+        })
+    }
 }
 
 pub fn type_item_from_alias_rhs(
@@ -4932,12 +5030,15 @@ pub fn parse_type_body_after_eq(
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
-                Rc::new(ItemResult {
-                    item: item.clone(),
-                    tokens: skip_newlines(rest.tokens.clone()),
-                    ctx: minted.ctx.clone(),
-                    err: std::option::Option::None,
-                })
+                item_result_with_declaration_constructor(
+                    Rc::new(ItemResult {
+                        item: item.clone(),
+                        tokens: skip_newlines(rest.tokens.clone()),
+                        ctx: minted.ctx.clone(),
+                        err: std::option::Option::None,
+                    }),
+                    Rc::new(SourceDeclarationConstructor::CoproductTypeDeclaration),
+                )
             }
             EatResult::EatUnchanged { tokens: _, .. } => {
                 if tok_is_ident(token_stream_first(tokens.clone())) {
@@ -5020,12 +5121,15 @@ pub fn parse_type_body_after_eq(
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
-                                Rc::new(ItemResult {
-                                    item: item.clone(),
-                                    tokens: skip_newlines(rest.tokens.clone()),
-                                    ctx: minted.ctx.clone(),
-                                    err: std::option::Option::None,
-                                })
+                                item_result_with_declaration_constructor(
+                                    Rc::new(ItemResult {
+                                        item: item.clone(),
+                                        tokens: skip_newlines(rest.tokens.clone()),
+                                        ctx: minted.ctx.clone(),
+                                        err: std::option::Option::None,
+                                    }),
+                                    Rc::new(SourceDeclarationConstructor::CoproductTypeDeclaration),
+                                )
                             }
                         } else {
                             {
@@ -5072,12 +5176,18 @@ pub fn parse_type_body_after_eq(
                                     wr.type_expr.clone(),
                                     sole.properties.clone(),
                                 );
-                                Rc::new(ItemResult {
-                                    item: item.clone(),
-                                    tokens: skip_newlines(wr.tokens.clone()),
-                                    ctx: minted.ctx.clone(),
-                                    err: std::option::Option::None,
-                                })
+                                item_result_with_declaration_constructor(
+                                    Rc::new(ItemResult {
+                                        item: item.clone(),
+                                        tokens: skip_newlines(wr.tokens.clone()),
+                                        ctx: minted.ctx.clone(),
+                                        err: std::option::Option::None,
+                                    }),
+                                    declaration_constructor_for_type_rhs(
+                                        wr.type_expr.clone(),
+                                        wr.ctx.clone().source_indices.clone(),
+                                    ),
+                                )
                             }
                         }
                     }
@@ -5121,12 +5231,18 @@ pub fn parse_type_body_after_eq(
                             wr.type_expr.clone(),
                             sole.properties.clone(),
                         );
-                        Rc::new(ItemResult {
-                            item: item.clone(),
-                            tokens: skip_newlines(wr.tokens.clone()),
-                            ctx: minted.ctx.clone(),
-                            err: std::option::Option::None,
-                        })
+                        item_result_with_declaration_constructor(
+                            Rc::new(ItemResult {
+                                item: item.clone(),
+                                tokens: skip_newlines(wr.tokens.clone()),
+                                ctx: minted.ctx.clone(),
+                                err: std::option::Option::None,
+                            }),
+                            declaration_constructor_for_type_rhs(
+                                wr.type_expr.clone(),
+                                wr.ctx.clone().source_indices.clone(),
+                            ),
+                        )
                     }
                 }
             }
@@ -5549,6 +5665,9 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                         value_identity.clone(),
                                         Rc::new(ExprData::ExprRecordLit {
                                             parent_enum: std::option::Option::None,
+                                            target: Rc::new(
+                                                CallTargetIdentity::CallableTargetUndetermined,
+                                            ),
                                         }),
                                         v1_rt::concat(
                                             min.properties.clone(),
@@ -11384,12 +11503,17 @@ pub fn parse_alias_after_kw(
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
-        Rc::new(ItemResult {
-            item: item.clone(),
-            tokens: skip_newlines(r.tokens.clone()),
-            ctx: item_mint.ctx.clone(),
-            err: std::option::Option::None,
-        })
+        item_result_with_declaration_constructor(
+            Rc::new(ItemResult {
+                item: item.clone(),
+                tokens: skip_newlines(r.tokens.clone()),
+                ctx: item_mint.ctx.clone(),
+                err: std::option::Option::None,
+            }),
+            Rc::new(SourceDeclarationConstructor::NamespaceAlias {
+                referent_key: target_path.clone(),
+            }),
+        )
     }
 }
 
@@ -15536,6 +15660,7 @@ pub fn parse_record_literal_named(
                 name.clone(),
                 Rc::new(ExprData::ExprRecordLit {
                     parent_enum: std::option::Option::None,
+                    target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
                 }),
                 r.fields.clone(),
                 std::option::Option::None,
@@ -15870,6 +15995,7 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                         identity.clone(),
                         Rc::new(ExprData::ExprRecordLit {
                             parent_enum: std::option::Option::None,
+                            target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
                         }),
                         Rc::new(vec![]),
                         std::option::Option::None,
@@ -16379,6 +16505,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                         identity.clone(),
                         Rc::new(ExprData::ExprRecordLit {
                             parent_enum: std::option::Option::None,
+                            target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
                         }),
                         Rc::new(vec![]),
                         std::option::Option::None,
@@ -16473,15 +16600,10 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         r2.tokens.clone(),
                                         r.ctx.clone(),
                                         |identity| {
-                                            crate::v1_std_core::make_expr_node(
-                                                identity.clone(),
-                                                Rc::new(ExprData::ExprRecordLit {
-                                                    parent_enum: std::option::Option::None,
-                                                }),
-                                                r.fields.clone(),
-                                                std::option::Option::None,
-                                                span.clone(),
-                                            )
+                                            crate::v1_std_core::make_expr_node(identity.clone(), Rc::new(ExprData::ExprRecordLit {
+    parent_enum: std::option::Option::None,
+    target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+}), r.fields.clone(), std::option::Option::None, span.clone())
                                         },
                                     )
                                 }
@@ -16549,6 +16671,9 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         identity.clone(),
                                         Rc::new(ExprData::ExprRecordLit {
                                             parent_enum: std::option::Option::None,
+                                            target: Rc::new(
+                                                CallTargetIdentity::CallableTargetUndetermined,
+                                            ),
                                         }),
                                         r.fields.clone(),
                                         std::option::Option::None,
@@ -16587,15 +16712,10 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         r2.tokens.clone(),
                                         r.ctx.clone(),
                                         |identity| {
-                                            crate::v1_std_core::make_expr_node(
-                                                identity.clone(),
-                                                Rc::new(ExprData::ExprRecordLit {
-                                                    parent_enum: std::option::Option::None,
-                                                }),
-                                                r.fields.clone(),
-                                                std::option::Option::None,
-                                                span.clone(),
-                                            )
+                                            crate::v1_std_core::make_expr_node(identity.clone(), Rc::new(ExprData::ExprRecordLit {
+    parent_enum: std::option::Option::None,
+    target: Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+}), r.fields.clone(), std::option::Option::None, span.clone())
                                         },
                                     )
                                 }

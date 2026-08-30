@@ -7866,11 +7866,8 @@ fn bare_reference_pull_paths_for_source(
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path,
-                        binding,
-                    } => (
-                        if pullable(binding) {
+                    GlobalBareLookupState::GlobalBareUniqueBinding { module_path, entry } => (
+                        if pullable(&entry.binding) {
                             Some(module_path.clone())
                         } else {
                             None
@@ -7883,7 +7880,7 @@ fn bare_reference_pull_paths_for_source(
                             candidates.clone(),
                         )
                         .and_then(|c| {
-                            if pullable(&c.binding) {
+                            if pullable(&c.entry.binding) {
                                 Some(c.module_path.clone())
                             } else {
                                 None
@@ -10342,6 +10339,8 @@ fn next_index_generation() -> u64 {
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
+    declaration_constructors:
+        Vec<Rc<crate::std_source_declaration_constructor::ParsedDeclarationConstructorRow>>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -13703,7 +13702,18 @@ fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::So
 fn parse_module_heads_for_pool_census(
     index: &MultiEntryIndex,
     source: Rc<v1_compiler_compile::SourceFile>,
-) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+) -> Result<
+    (
+        Rc<Node>,
+        Rc<NewlineIndex>,
+        Rc<
+            im::Vector<
+                Rc<crate::std_source_declaration_constructor::ParsedDeclarationConstructorRow>,
+            >,
+        >,
+    ),
+    String,
+> {
     note_source_hash(index, &source);
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
     let tokens = pool_acquire::tokens_for(&source.path, &source.content);
@@ -13742,7 +13752,11 @@ fn parse_module_heads_for_pool_census(
         ));
     }
     match &parsed.result.module {
-        Some(module) => Ok((census_heads_module_node(module.clone()), nl_index)),
+        Some(module) => Ok((
+            census_heads_module_node(module.clone()),
+            nl_index,
+            parsed.declaration_constructors.clone(),
+        )),
         None => Err(format!(
             "symbol_index qualified-projection census refused: no module in {}",
             source.path
@@ -13777,19 +13791,22 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     let pool_started = std::time::Instant::now();
     let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
+    let mut declaration_constructors = Vec::new();
     for module_path in pool_paths {
         let source = index
             .source_files
             .get(&module_path)
             .cloned()
             .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_heads_for_pool_census(index, source)?;
+        let (module, nl_index, constructors) = parse_module_heads_for_pool_census(index, source)?;
         let file = nl_index.file.clone();
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
+        declaration_constructors.extend(constructors.iter().cloned());
     }
     let parsed = Rc::new(PoolParse {
         nodes_by_file,
+        declaration_constructors,
         combined_si: Rc::new(combined_si),
     });
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
@@ -13892,6 +13909,7 @@ fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, Strin
     let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
         Rc::new(nodes),
         pool.combined_si.clone(),
+        Rc::new(pool.declaration_constructors.iter().cloned().collect()),
     );
     *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
     Ok(fill)
@@ -13986,6 +14004,7 @@ fn tree_bare_census_for_root(
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
         Rc::new(nodes),
         pool.combined_si.clone(),
+        Rc::new(pool.declaration_constructors.iter().cloned().collect()),
     );
     index
         .tree_bare_census
@@ -14023,6 +14042,7 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
         Rc::new(nodes),
         pool.combined_si.clone(),
+        Rc::new(pool.declaration_constructors.iter().cloned().collect()),
     );
     *index.pool_bare_census.borrow_mut() = Some(census.clone());
     Ok(census)
@@ -17970,7 +17990,11 @@ fn resolved_initializer_decl_ref(
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
     let si = Rc::new(source_indices.clone());
-    if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
+    if let ExprData::ExprRecordLit {
+        parent_enum,
+        target: _,
+    } = &*body.expr_data
+    {
         if let Some(parent_name) = parent_enum.as_deref() {
             // A qualified constructor spelling (v2.std.verification.BoolWitnessClaim)
             // names the same arm as its bare last segment — the module prefix already

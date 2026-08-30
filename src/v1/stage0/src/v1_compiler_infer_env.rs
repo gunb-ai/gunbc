@@ -2,7 +2,12 @@
 // Source module: v1.compiler.infer_env
 
 use self::GlobalBareLookupState::*;
+use self::SymbolIndexEntryProvenance::*;
+use self::SymbolIndexInsertDisposition::*;
+use self::SymbolIndexInsertRefusal::*;
 pub use crate::std_algebra::FreeMonoid;
+pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_eq};
 use crate::std_induction::RecursionShape::{
     DirectRecursion, ListRecursion, MapValueRecursion, OptionalRecursion, SetRecursion,
 };
@@ -10,6 +15,8 @@ use crate::std_induction::SubValueRelation::{PreservedValue, SubValueUnknown};
 pub use crate::std_induction::{InductiveField, RecursionShape, SubValueRelation};
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+pub use crate::std_source_declaration_constructor::SourceDeclarationConstructor;
+use crate::std_source_declaration_constructor::SourceDeclarationConstructor::*;
 pub use crate::std_types::is_kernel_type;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_occurrence_binding::ModulePathBindingProjection;
@@ -23,6 +30,7 @@ pub use crate::v1_compiler_type_head_exposure::TypeHeadExposure;
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::*;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
+pub use crate::v1_std_core::qualified_last_segment;
 use crate::v1_std_core::Cardinality::*;
 use crate::v1_std_core::CompilerDiagnostic::{AmbiguousReference, UnresolvedType};
 use crate::v1_std_core::Connective::*;
@@ -65,6 +73,12 @@ pub struct TypeBinding {
     pub name: String,
     pub resolved: Rc<Node>,
     pub provenance: Rc<SubValueRelation>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DeclaredTypeBinding {
+    pub binding: Rc<TypeBinding>,
+    pub declaration: Rc<DeclarationRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -298,7 +312,7 @@ pub fn qualified_module_projection_invariant() -> String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GlobalBareCandidate {
     pub module_path: String,
-    pub binding: Rc<TypeBinding>,
+    pub entry: Rc<SymbolIndexEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -306,7 +320,7 @@ pub struct GlobalBareCandidate {
 pub enum GlobalBareLookupState {
     GlobalBareUniqueBinding {
         module_path: String,
-        binding: Rc<TypeBinding>,
+        entry: Rc<SymbolIndexEntry>,
     },
     GlobalBareAmbiguousBinding {
         candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
@@ -333,12 +347,113 @@ pub struct ServiceCensusEntry {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SymbolIndexEntryProvenance {
+    OwnSourceDeclaration {
+        declaration: Rc<DeclarationRef>,
+        constructor: Rc<SourceDeclarationConstructor>,
+    },
+    VariantDeclarationBinding {
+        declaration: Rc<DeclarationRef>,
+    },
+    ResolvedAliasBinding {
+        alias_declaration: Rc<DeclarationRef>,
+        referent_key: String,
+        declaring_declaration: Rc<DeclarationRef>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SymbolIndexEntry {
+    pub declaring_declaration: Rc<DeclarationRef>,
+    pub provenance: Rc<SymbolIndexEntryProvenance>,
+    pub binding: Rc<TypeBinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SymbolIndexInsertRefusal {
+    DeclarationConstructorUnavailable {
+        qualified_name: String,
+    },
+    NamespaceAliasReferentUnresolved {
+        alias_qualified_name: String,
+        referent_qualified_name: String,
+    },
+    NamespaceAliasReferentAmbiguous {
+        alias_qualified_name: String,
+        referent_name: String,
+    },
+    NamespaceAliasReferentCycle {
+        alias_qualified_name: String,
+        cycle_at: String,
+    },
+    TransparentTypeAliasTargetUnresolved {
+        alias_qualified_name: String,
+        target_name: String,
+    },
+    TransparentTypeAliasTargetAmbiguous {
+        alias_qualified_name: String,
+        target_name: String,
+    },
+    TransparentTypeAliasTargetCycle {
+        alias_qualified_name: String,
+        cycle_at: String,
+    },
+    ConflictingIndexedIdentity {
+        qualified_name: String,
+        existing: Rc<DeclarationRef>,
+        proposed: Rc<DeclarationRef>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum SymbolIndexInsertDisposition {
+    Inserted {
+        qualified_name: String,
+        declaration: Rc<DeclarationRef>,
+    },
+    AlreadyPresentSameIdentity {
+        qualified_name: String,
+        declaration: Rc<DeclarationRef>,
+    },
+}
+impl SymbolIndexInsertDisposition {
+    pub fn qualified_name(&self) -> String {
+        match self {
+            SymbolIndexInsertDisposition::Inserted {
+                qualified_name: __val,
+                ..
+            } => __val.clone(),
+            SymbolIndexInsertDisposition::AlreadyPresentSameIdentity {
+                qualified_name: __val,
+                ..
+            } => __val.clone(),
+        }
+    }
+    pub fn declaration(&self) -> Rc<DeclarationRef> {
+        match self {
+            SymbolIndexInsertDisposition::Inserted {
+                declaration: __val, ..
+            } => __val.clone(),
+            SymbolIndexInsertDisposition::AlreadyPresentSameIdentity {
+                declaration: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SymbolIndex {
-    pub entries: Rc<HashMap<String, Rc<Node>>>,
+    pub entries: Rc<HashMap<String, Rc<SymbolIndexEntry>>>,
     pub global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     pub services: Rc<HashMap<String, Rc<ServiceCensusEntry>>>,
     pub transparent_alias_rep: Rc<HashMap<String, String>>,
     pub type_head_exposures: Rc<HashMap<String, Rc<TypeHeadExposure>>>,
+    pub insert_refusals: Rc<Vec<Rc<SymbolIndexInsertRefusal>>>,
+    pub inserted_count: i64,
+    pub already_present_same_identity_count: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -348,11 +463,14 @@ pub struct Scope {
 
 pub fn empty_symbol_index() -> Rc<SymbolIndex> {
     Rc::new(SymbolIndex {
-        entries: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        entries: v1_rt::rc_empty_map::<String, Rc<SymbolIndexEntry>>(),
         global_bare: v1_rt::rc_empty_map::<String, Rc<GlobalBareLookupState>>(),
         services: v1_rt::rc_empty_map::<String, Rc<ServiceCensusEntry>>(),
         transparent_alias_rep: v1_rt::rc_empty_map::<String, String>(),
         type_head_exposures: v1_rt::rc_empty_map::<String, Rc<TypeHeadExposure>>(),
+        insert_refusals: Rc::new(vec![]),
+        inserted_count: 0,
+        already_present_same_identity_count: 0,
     })
 }
 
@@ -379,17 +497,30 @@ pub fn empty_type_env() -> Rc<TypeEnv> {
 }
 
 pub fn symbol_index_lookup(index: Rc<SymbolIndex>, qualified_name: String) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&index.entries.clone(), qualified_name.clone()) {
+        Some(entry) => Some(entry.binding.clone().resolved.clone()),
+        None => std::option::Option::None,
+    }
+}
+
+pub fn symbol_index_entry_lookup(
+    index: Rc<SymbolIndex>,
+    qualified_name: String,
+) -> Option<Rc<SymbolIndexEntry>> {
     v1_rt::map_get(&index.entries.clone(), qualified_name.clone())
 }
 
 pub fn global_bare_candidates_contain(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
-    resolved: Rc<Node>,
+    declaration: Rc<DeclarationRef>,
 ) -> bool {
     {
         let mut __found = false;
         for c in candidates.iter().cloned() {
-            if (c.binding.clone().resolved.clone() == resolved.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(
+                c.entry.clone().declaring_declaration.clone(),
+                declaration.clone(),
+            ) {
                 __found = true;
                 break;
             }
@@ -402,6 +533,7 @@ pub fn symbol_index_track_global_bare(
     global_bare: Rc<HashMap<String, Rc<GlobalBareLookupState>>>,
     module_path: String,
     binding: Rc<TypeBinding>,
+    entry: Rc<SymbolIndexEntry>,
 ) -> Rc<HashMap<String, Rc<GlobalBareLookupState>>> {
     match v1_rt::map_get(&global_bare, binding.name.clone())
         .as_deref()
@@ -410,7 +542,7 @@ pub fn symbol_index_track_global_bare(
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
-            if global_bare_candidates_contain(cands.clone(), binding.resolved.clone()) {
+            if global_bare_candidates_contain(cands.clone(), entry.declaring_declaration.clone()) {
                 global_bare.clone()
             } else {
                 v1_rt::rc_map_insert(
@@ -421,7 +553,7 @@ pub fn symbol_index_track_global_bare(
                             cands.clone(),
                             Rc::new(vec![Rc::new(GlobalBareCandidate {
                                 module_path: module_path.clone(),
-                                binding: binding.clone(),
+                                entry: entry.clone(),
                             })]),
                         ),
                     }),
@@ -430,10 +562,13 @@ pub fn symbol_index_track_global_bare(
         }
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             module_path: existing_path,
-            binding: existing,
+            entry: existing_entry,
             ..
         }) => {
-            if (existing.resolved.clone() == binding.resolved.clone()) {
+            if crate::std_decl_ref::declaration_ref_eq(
+                existing_entry.declaring_declaration.clone(),
+                entry.declaring_declaration.clone(),
+            ) {
                 global_bare.clone()
             } else {
                 v1_rt::rc_map_insert(
@@ -443,11 +578,11 @@ pub fn symbol_index_track_global_bare(
                         candidates: Rc::new(vec![
                             Rc::new(GlobalBareCandidate {
                                 module_path: existing_path.clone(),
-                                binding: existing.clone(),
+                                entry: existing_entry.clone(),
                             }),
                             Rc::new(GlobalBareCandidate {
                                 module_path: module_path.clone(),
-                                binding: binding.clone(),
+                                entry: entry.clone(),
                             }),
                         ]),
                     }),
@@ -459,9 +594,40 @@ pub fn symbol_index_track_global_bare(
             binding.name.clone(),
             Rc::new(GlobalBareLookupState::GlobalBareUniqueBinding {
                 module_path: module_path.clone(),
-                binding: binding.clone(),
+                entry: entry.clone(),
             }),
         ),
+    }
+}
+
+pub fn symbol_index_entry_for(
+    binding_name: String,
+    resolved: Rc<Node>,
+    provenance: Rc<SymbolIndexEntryProvenance>,
+) -> Rc<SymbolIndexEntry> {
+    {
+        let declaring = match (*provenance.clone()).clone() {
+            SymbolIndexEntryProvenance::OwnSourceDeclaration { declaration, .. } => {
+                declaration.clone()
+            }
+            SymbolIndexEntryProvenance::VariantDeclarationBinding {
+                declaration: declaration,
+                ..
+            } => declaration.clone(),
+            SymbolIndexEntryProvenance::ResolvedAliasBinding {
+                declaring_declaration,
+                ..
+            } => declaring_declaration.clone(),
+        };
+        Rc::new(SymbolIndexEntry {
+            declaring_declaration: declaring.clone(),
+            provenance: provenance.clone(),
+            binding: Rc::new(TypeBinding {
+                name: binding_name.clone(),
+                resolved: resolved.clone(),
+                provenance: Rc::new(SubValueRelation::SubValueUnknown),
+            }),
+        })
     }
 }
 
@@ -469,43 +635,116 @@ pub fn symbol_index_insert(
     index: Rc<SymbolIndex>,
     qualified_name: String,
     resolved: Rc<Node>,
+    provenance: Rc<SymbolIndexEntryProvenance>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
-            index.entries.clone(),
-            qualified_name.clone(),
+    {
+        let proposed = symbol_index_entry_for(
+            qualified_last_segment(qualified_name.clone()),
             resolved.clone(),
-        ),
-        global_bare: index.global_bare.clone(),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-    })
+            provenance.clone(),
+        );
+        match v1_rt::map_get(&index.entries.clone(), qualified_name.clone()) {
+            Some(existing) => {
+                if (crate::std_decl_ref::declaration_ref_eq(
+                    existing.declaring_declaration.clone(),
+                    proposed.declaring_declaration.clone(),
+                ) && (existing.provenance.clone() == proposed.provenance.clone()))
+                {
+                    Rc::new(SymbolIndex {
+                        entries: index.entries.clone(),
+                        global_bare: index.global_bare.clone(),
+                        services: index.services.clone(),
+                        transparent_alias_rep: index.transparent_alias_rep.clone(),
+                        type_head_exposures: index.type_head_exposures.clone(),
+                        insert_refusals: index.insert_refusals.clone(),
+                        inserted_count: index.inserted_count.clone(),
+                        already_present_same_identity_count: (index
+                            .already_present_same_identity_count
+                            .clone()
+                            + 1),
+                    })
+                } else {
+                    Rc::new(SymbolIndex {
+                        entries: index.entries.clone(),
+                        global_bare: index.global_bare.clone(),
+                        services: index.services.clone(),
+                        transparent_alias_rep: index.transparent_alias_rep.clone(),
+                        type_head_exposures: index.type_head_exposures.clone(),
+                        insert_refusals: v1_rt::concat(
+                            index.insert_refusals.clone(),
+                            Rc::new(vec![Rc::new(
+                                SymbolIndexInsertRefusal::ConflictingIndexedIdentity {
+                                    qualified_name: qualified_name.clone(),
+                                    existing: existing.declaring_declaration.clone(),
+                                    proposed: proposed.declaring_declaration.clone(),
+                                },
+                            )]),
+                        ),
+                        inserted_count: index.inserted_count.clone(),
+                        already_present_same_identity_count: index
+                            .already_present_same_identity_count
+                            .clone(),
+                    })
+                }
+            }
+            None => Rc::new(SymbolIndex {
+                entries: v1_rt::rc_map_insert(
+                    index.entries.clone(),
+                    qualified_name.clone(),
+                    proposed.clone(),
+                ),
+                global_bare: index.global_bare.clone(),
+                services: index.services.clone(),
+                transparent_alias_rep: index.transparent_alias_rep.clone(),
+                type_head_exposures: index.type_head_exposures.clone(),
+                insert_refusals: index.insert_refusals.clone(),
+                inserted_count: (index.inserted_count.clone() + 1),
+                already_present_same_identity_count: index
+                    .already_present_same_identity_count
+                    .clone(),
+            }),
+        }
+    }
 }
 
 pub fn symbol_index_insert_decl(
     index: Rc<SymbolIndex>,
     module_path: String,
     binding: Rc<TypeBinding>,
+    provenance: Rc<SymbolIndexEntryProvenance>,
 ) -> Rc<SymbolIndex> {
-    Rc::new(SymbolIndex {
-        entries: v1_rt::rc_map_insert(
-            index.entries.clone(),
-            v1_rt::concat(
-                v1_rt::concat(module_path.clone(), ".".to_string()),
-                binding.name.clone(),
-            ),
+    {
+        let qualified = v1_rt::concat(
+            v1_rt::concat(module_path.clone(), ".".to_string()),
+            binding.name.clone(),
+        );
+        let inserted = symbol_index_insert(
+            index.clone(),
+            qualified.clone(),
             binding.resolved.clone(),
-        ),
-        global_bare: symbol_index_track_global_bare(
-            index.global_bare.clone(),
-            module_path.clone(),
-            binding.clone(),
-        ),
-        services: index.services.clone(),
-        transparent_alias_rep: index.transparent_alias_rep.clone(),
-        type_head_exposures: index.type_head_exposures.clone(),
-    })
+            provenance.clone(),
+        );
+        match v1_rt::map_get(&inserted.entries.clone(), qualified.clone()) {
+            Some(entry) => Rc::new(SymbolIndex {
+                entries: inserted.entries.clone(),
+                global_bare: symbol_index_track_global_bare(
+                    inserted.global_bare.clone(),
+                    module_path.clone(),
+                    binding.clone(),
+                    entry.clone(),
+                ),
+                services: inserted.services.clone(),
+                transparent_alias_rep: inserted.transparent_alias_rep.clone(),
+                type_head_exposures: inserted.type_head_exposures.clone(),
+                insert_refusals: inserted.insert_refusals.clone(),
+                inserted_count: inserted.inserted_count.clone(),
+                already_present_same_identity_count: inserted
+                    .already_present_same_identity_count
+                    .clone(),
+            }),
+            None => inserted.clone(),
+        }
+    }
 }
 
 pub fn symbol_index_insert_service(
@@ -527,6 +766,28 @@ pub fn symbol_index_insert_service(
         ),
         transparent_alias_rep: index.transparent_alias_rep.clone(),
         type_head_exposures: index.type_head_exposures.clone(),
+        insert_refusals: index.insert_refusals.clone(),
+        inserted_count: index.inserted_count.clone(),
+        already_present_same_identity_count: index.already_present_same_identity_count.clone(),
+    })
+}
+
+pub fn symbol_index_with_insert_refusal(
+    index: Rc<SymbolIndex>,
+    refusal: Rc<SymbolIndexInsertRefusal>,
+) -> Rc<SymbolIndex> {
+    Rc::new(SymbolIndex {
+        entries: index.entries.clone(),
+        global_bare: index.global_bare.clone(),
+        services: index.services.clone(),
+        transparent_alias_rep: index.transparent_alias_rep.clone(),
+        type_head_exposures: index.type_head_exposures.clone(),
+        insert_refusals: v1_rt::concat(
+            index.insert_refusals.clone(),
+            Rc::new(vec![refusal.clone()]),
+        ),
+        inserted_count: index.inserted_count.clone(),
+        already_present_same_identity_count: index.already_present_same_identity_count.clone(),
     })
 }
 
@@ -1233,7 +1494,7 @@ pub fn global_bare_nearest_ancestor(
     candidates: Rc<Vec<Rc<GlobalBareCandidate>>>,
 ) -> Option<Rc<TypeBinding>> {
     match global_bare_nearest_ancestor_candidate(env_module_path.clone(), candidates.clone()) {
-        Some(cand) => Some(cand.binding.clone()),
+        Some(cand) => Some(cand.entry.clone().binding.clone()),
         None => None,
     }
 }
@@ -1377,9 +1638,13 @@ pub fn global_bare_owner_module(
     {
         Some(GlobalBareLookupState::GlobalBareUniqueBinding {
             module_path: mp,
-            binding: b,
+            entry,
             ..
-        }) => match binding_declares_name(b.clone(), name.clone(), env.source_indices.clone()) {
+        }) => match binding_declares_name(
+            entry.binding.clone(),
+            name.clone(),
+            env.source_indices.clone(),
+        ) {
             true => Some(mp.clone()),
             false => None,
         },
@@ -1387,7 +1652,7 @@ pub fn global_bare_owner_module(
             candidates: cands, ..
         }) => match global_bare_policy_candidate(owner_module_path.clone(), cands.clone()) {
             Some(cand) => match binding_declares_name(
-                cand.binding.clone(),
+                cand.entry.clone().binding.clone(),
                 name.clone(),
                 env.source_indices.clone(),
             ) {
@@ -1682,15 +1947,15 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
         .as_deref()
         .cloned()
     {
-        Some(GlobalBareLookupState::GlobalBareUniqueBinding { binding, .. }) => {
-            Some(binding.clone())
+        Some(GlobalBareLookupState::GlobalBareUniqueBinding { entry, .. }) => {
+            Some(entry.binding.clone())
         }
         Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
             candidates: cands, ..
         }) => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
                 match global_bare_unique_chain_candidate(env.module_path.clone(), cands.clone()) {
-                    Some(cand) => Some(cand.binding.clone()),
+                    Some(cand) => Some(cand.entry.clone().binding.clone()),
                     None => None,
                 }
             } else {
@@ -1709,6 +1974,50 @@ pub fn global_bare_lookup(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBindi
             }
         }
         None => None,
+    }
+}
+
+pub fn declared_type_binding_for_unlisted_reference(
+    env: Rc<TypeEnv>,
+    name: String,
+) -> Option<Rc<DeclaredTypeBinding>> {
+    if v1_rt::contains(name.clone(), ".".to_string()) {
+        match symbol_index_entry_lookup(env.symbol_index.clone(), name.clone()) {
+            Some(entry) => Some(Rc::new(DeclaredTypeBinding {
+                binding: Rc::new(TypeBinding {
+                    name: name.clone(),
+                    resolved: entry.binding.clone().resolved.clone(),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                }),
+                declaration: entry.declaring_declaration.clone(),
+            })),
+            None => std::option::Option::None,
+        }
+    } else {
+        match v1_rt::map_get(&env.symbol_index.clone().global_bare.clone(), name.clone())
+            .as_deref()
+            .cloned()
+        {
+            Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                module_path: mp,
+                entry,
+                ..
+            }) => Some(Rc::new(DeclaredTypeBinding {
+                binding: entry.binding.clone(),
+                declaration: entry.declaring_declaration.clone(),
+            })),
+            Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                candidates: candidates,
+                ..
+            }) => match global_bare_policy_candidate(env.module_path.clone(), candidates.clone()) {
+                Some(candidate) => Some(Rc::new(DeclaredTypeBinding {
+                    binding: candidate.entry.clone().binding.clone(),
+                    declaration: candidate.entry.clone().declaring_declaration.clone(),
+                })),
+                None => std::option::Option::None,
+            },
+            None => std::option::Option::None,
+        }
     }
 }
 

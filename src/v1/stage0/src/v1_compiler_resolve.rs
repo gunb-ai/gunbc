@@ -2,6 +2,7 @@
 // Source module: v1.compiler.resolve
 
 pub use crate::std_occurrence_identity::{OccurrenceIndex, OccurrenceTransport};
+pub use crate::std_source_declaration_constructor::ParsedDeclarationConstructorRow;
 pub use crate::std_types::kernel_type_set;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -30,15 +31,18 @@ pub struct ModuleGraph {
 pub struct ModuleOccurrenceInput {
     pub module: Rc<Node>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+    pub declaration_constructors: Rc<Vec<Rc<ParsedDeclarationConstructorRow>>>,
 }
 
 pub fn module_occurrence_input(
     module: Rc<Node>,
     occurrence_transport: Rc<OccurrenceTransport>,
+    declaration_constructors: Rc<Vec<Rc<ParsedDeclarationConstructorRow>>>,
 ) -> Rc<ModuleOccurrenceInput> {
     Rc::new(ModuleOccurrenceInput {
         module: module.clone(),
         occurrence_transport: occurrence_transport.clone(),
+        declaration_constructors: declaration_constructors.clone(),
     })
 }
 
@@ -58,6 +62,7 @@ pub struct ResolvedModule {
     pub resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     pub dep_order: i64,
     pub occurrence_transport: Rc<OccurrenceTransport>,
+    pub declaration_constructors: Rc<Vec<Rc<ParsedDeclarationConstructorRow>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -213,6 +218,9 @@ pub fn resolve_modules_with_occurrence_transport(
                                     occurrence_transport: module_occurrence_input_transport(
                                         input.clone(),
                                     ),
+                                    declaration_constructors: input
+                                        .declaration_constructors
+                                        .clone(),
                                 })]),
                                 None => Rc::new(vec![]),
                             },
@@ -265,6 +273,7 @@ pub fn resolve_modules(
                         declarations: Rc::new(vec![]),
                         references: Rc::new(vec![]),
                     }),
+                    Rc::new(vec![]),
                 ));
             }
             __result

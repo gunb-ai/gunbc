@@ -1,0 +1,25 @@
+module std.source_declaration_constructor
+
+import std.occurrence_identity { NodeOccurrenceIdentity }
+
+type AuthoredTypeTarget {
+  spelling: String
+}
+
+type SourceDeclarationConstructor
+  = FunctionDeclaration
+  | DataDeclaration
+  | ServiceDeclaration
+  | ResourceDeclaration
+  | PatternDeclaration
+  | InterfaceDeclaration
+  | NominalTypeDeclaration
+  | ProductTypeDeclaration
+  | CoproductTypeDeclaration
+  | TransparentTypeAlias { representation_target: AuthoredTypeTarget }
+  | NamespaceAlias { referent_key: String }
+
+type ParsedDeclarationConstructorRow {
+  declaration_occurrence: NodeOccurrenceIdentity
+  constructor: SourceDeclarationConstructor
+}

@@ -16,8 +16,10 @@ pub use crate::std_algebra::{
 pub use crate::std_algebra::{
     AlgebraFieldTemplate, AlgebraTypeTemplate, CollectionSizeEffect, ContainerSource, CostShape,
 };
-pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{
+    decl_ref, declaration_ref_member_name, declaration_ref_qualified_key,
+};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_primitive_projection::ProjectionFidelity::{
@@ -37,7 +39,7 @@ pub use crate::v1_compiler_infer_env::{
     authored_name, borrowed_generic_param_names, global_bare_policy_candidate, is_recursive_type,
     listed_import_required_bare_call_blocked, lookup_binding_by_name, lookup_binding_by_name_local,
     lookup_type, lookup_type_for, qualified_all_but_last, qualify_borrowed_type_names,
-    symbol_index_lookup,
+    symbol_index_entry_lookup, symbol_index_lookup,
 };
 pub use crate::v1_compiler_infer_env::{
     GlobalBareCandidate, GlobalBareLookupState, TypeBinding, TypeEnv,
@@ -197,10 +199,7 @@ pub fn resolved_declaration_call_target(
     declared: Rc<DeclaredCallableIdentity>,
 ) -> Rc<CallTargetIdentity> {
     match crate::std_primitive_projection::primitive_projection_row_for_declaration(
-        crate::std_decl_ref::decl_ref(
-            declared.owner_module_path.clone(),
-            declared.decl_name.clone(),
-        ),
+        declared.declaration.clone(),
     ) {
         Some(row) => match (*row.fidelity.clone()).clone() {
             ProjectionFidelity::HostRealizedSeam => {
@@ -223,14 +222,12 @@ pub fn resolved_declaration_call_target(
             }
             ProjectionFidelity::DivergentProjection { divergence: _, .. } => {
                 Rc::new(CallTargetIdentity::SourceDeclarationCall {
-                    owner_module_path: declared.owner_module_path.clone(),
-                    decl_name: declared.decl_name.clone(),
+                    declaration: declared.declaration.clone(),
                 })
             }
         },
         None => Rc::new(CallTargetIdentity::SourceDeclarationCall {
-            owner_module_path: declared.owner_module_path.clone(),
-            decl_name: declared.decl_name.clone(),
+            declaration: declared.declaration.clone(),
         }),
     }
 }
@@ -271,6 +268,10 @@ pub fn callable_lookup_over_candidates(
             declared: Rc::new(DeclaredCallableIdentity {
                 owner_module_path: func_env.name.clone(),
                 decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
+                declaration: crate::std_decl_ref::decl_ref(
+                    func_env.name.clone(),
+                    crate::v1_std_core::qualified_last_segment(name.clone()),
+                ),
             }),
         }),
         None => {
@@ -361,7 +362,7 @@ pub fn lookup_func_sig(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BorrowedCensusDecl {
-    pub owner_module_path: String,
+    pub declaring_declaration: Rc<DeclarationRef>,
     pub node: Rc<Node>,
 }
 
@@ -379,16 +380,14 @@ pub enum BorrowedCensusDeclLookup {
 
 pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedCensusDeclLookup> {
     if v1_rt::contains(name.clone(), ".".to_string()) {
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
+        match crate::v1_compiler_infer_env::symbol_index_entry_lookup(
             type_env.symbol_index.clone(),
             name.clone(),
         ) {
-            Some(node) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+            Some(entry) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                 declaration: Rc::new(BorrowedCensusDecl {
-                    owner_module_path: crate::v1_compiler_infer_env::qualified_all_but_last(
-                        name.clone(),
-                    ),
-                    node: node.clone(),
+                    declaring_declaration: entry.declaring_declaration.clone(),
+                    node: entry.binding.clone().resolved.clone(),
                 }),
             }),
             None => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclNotFound),
@@ -407,16 +406,14 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
             .as_deref()
             .cloned()
             {
-                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
-                    module_path: mp,
-                    binding: b,
-                    ..
-                }) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
-                    declaration: Rc::new(BorrowedCensusDecl {
-                        owner_module_path: mp.clone(),
-                        node: b.resolved.clone(),
-                    }),
-                }),
+                Some(GlobalBareLookupState::GlobalBareUniqueBinding { entry, .. }) => {
+                    Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
+                        declaration: Rc::new(BorrowedCensusDecl {
+                            declaring_declaration: entry.declaring_declaration.clone(),
+                            node: entry.binding.clone().resolved.clone(),
+                        }),
+                    })
+                }
                 Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
                     candidates: cands,
                     ..
@@ -426,8 +423,8 @@ pub fn borrowed_census_decl(type_env: Rc<TypeEnv>, name: String) -> Rc<BorrowedC
                 ) {
                     Some(cand) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                         declaration: Rc::new(BorrowedCensusDecl {
-                            owner_module_path: cand.module_path.clone(),
-                            node: cand.binding.clone().resolved.clone(),
+                            declaring_declaration: cand.entry.clone().declaring_declaration.clone(),
+                            node: cand.entry.clone().binding.clone().resolved.clone(),
                         }),
                     }),
                     None => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous {
@@ -463,12 +460,6 @@ pub fn func_decl_owner_module(func_env: Rc<ResolvedFuncEnv>, name: String) -> Op
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct ExactDeclarationIdentity {
-    pub owner_module_path: String,
-    pub decl_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DeclarationLookupFailure {
     DeclarationNotIndexedAtQualifiedName { qualified_name: String },
@@ -488,26 +479,27 @@ impl DeclarationLookupFailure {
 #[serde(tag = "_variant")]
 pub enum ConstructorDeclarationLookup {
     ExactConstructorDeclaration {
-        identity: Rc<ExactDeclarationIdentity>,
+        declaration_ref: Rc<DeclarationRef>,
         declaration: Rc<Node>,
     },
     NotAdmissionBearingReference,
     AdmissionBearingDeclarationUnavailable {
-        identity: Rc<ExactDeclarationIdentity>,
+        declaration_ref: Rc<DeclarationRef>,
         cause: Rc<DeclarationLookupFailure>,
     },
 }
 impl ConstructorDeclarationLookup {
-    pub fn identity(&self) -> Rc<ExactDeclarationIdentity> {
+    pub fn declaration_ref(&self) -> Rc<DeclarationRef> {
         match self {
             ConstructorDeclarationLookup::ExactConstructorDeclaration {
-                identity: __val, ..
+                declaration_ref: __val,
+                ..
             } => __val.clone(),
             ConstructorDeclarationLookup::NotAdmissionBearingReference => {
-                panic!("no identity on unit variant")
+                panic!("no declaration_ref on unit variant")
             }
             ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
-                identity: __val,
+                declaration_ref: __val,
                 ..
             } => __val.clone(),
         }
@@ -516,34 +508,21 @@ impl ConstructorDeclarationLookup {
 
 pub fn constructor_declaration_for_admission(
     type_env: Rc<TypeEnv>,
-    owner_module_path: String,
-    name: String,
+    declaration_ref: Rc<DeclarationRef>,
 ) -> Rc<ConstructorDeclarationLookup> {
     {
-        let decl_name = crate::v1_std_core::qualified_last_segment(name.clone());
-        let qualified = if v1_rt::contains(name.clone(), ".".to_string()) {
-            name.clone()
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(owner_module_path.clone(), ".".to_string()),
-                name.clone(),
-            )
-        };
-        let identity = Rc::new(ExactDeclarationIdentity {
-            owner_module_path: owner_module_path.clone(),
-            decl_name: decl_name.clone(),
-        });
-        match crate::v1_compiler_infer_env::symbol_index_lookup(
+        let qualified = crate::std_decl_ref::declaration_ref_qualified_key(declaration_ref.clone());
+        match crate::v1_compiler_infer_env::symbol_index_entry_lookup(
             type_env.symbol_index.clone(),
             qualified.clone(),
         ) {
-            Some(node) => Rc::new(ConstructorDeclarationLookup::ExactConstructorDeclaration {
-                identity: identity.clone(),
-                declaration: node.clone(),
+            Some(entry) => Rc::new(ConstructorDeclarationLookup::ExactConstructorDeclaration {
+                declaration_ref: entry.declaring_declaration.clone(),
+                declaration: entry.binding.clone().resolved.clone(),
             }),
             None => Rc::new(
                 ConstructorDeclarationLookup::AdmissionBearingDeclarationUnavailable {
-                    identity: identity.clone(),
+                    declaration_ref: declaration_ref.clone(),
                     cause: Rc::new(
                         DeclarationLookupFailure::DeclarationNotIndexedAtQualifiedName {
                             qualified_name: qualified.clone(),
@@ -561,16 +540,19 @@ pub fn func_decl_binding_for_call(
     name: String,
 ) -> Rc<ConstructorDeclarationLookup> {
     match func_decl_owner_module(func_env.clone(), name.clone()) {
-        Some(owner) => {
-            constructor_declaration_for_admission(type_env.clone(), owner.clone(), name.clone())
-        }
+        Some(owner) => constructor_declaration_for_admission(
+            type_env.clone(),
+            crate::std_decl_ref::decl_ref(
+                owner.clone(),
+                crate::v1_std_core::qualified_last_segment(name.clone()),
+            ),
+        ),
         None => match (*borrowed_census_decl(type_env.clone(), name.clone())).clone() {
             BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                 declaration: bd, ..
             } => constructor_declaration_for_admission(
                 type_env.clone(),
-                bd.owner_module_path.clone(),
-                name.clone(),
+                bd.declaring_declaration.clone(),
             ),
             BorrowedCensusDeclLookup::BorrowedCensusDeclAmbiguous { candidates: _, .. } => {
                 Rc::new(ConstructorDeclarationLookup::NotAdmissionBearingReference {})
@@ -597,7 +579,7 @@ pub fn borrowed_census_callable_candidate(
     candidate: Rc<GlobalBareCandidate>,
 ) -> Rc<CallableCandidate> {
     {
-        let node = candidate.binding.clone().resolved.clone();
+        let node = candidate.entry.clone().binding.clone().resolved.clone();
         let excluded = crate::v1_compiler_infer_env::borrowed_generic_param_names(
             node.params.clone(),
             type_env.source_indices.clone(),
@@ -618,8 +600,17 @@ pub fn borrowed_census_callable_candidate(
         Rc::new(CallableCandidate {
             identity: Rc::new(CallableIdentity::DeclaredCallable {
                 identity: Rc::new(DeclaredCallableIdentity {
-                    owner_module_path: candidate.module_path.clone(),
-                    decl_name: crate::v1_std_core::qualified_last_segment(name.clone()),
+                    owner_module_path: candidate
+                        .entry
+                        .clone()
+                        .declaring_declaration
+                        .clone()
+                        .module_path
+                        .clone(),
+                    decl_name: crate::std_decl_ref::declaration_ref_member_name(
+                        candidate.entry.clone().declaring_declaration.clone(),
+                    ),
+                    declaration: candidate.entry.clone().declaring_declaration.clone(),
                 }),
             }),
             sig: Rc::new(ResolvedFuncSig {
@@ -650,7 +641,10 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                 ) {
                     Some(binding) => Rc::new(BorrowedCensusDeclLookup::BorrowedCensusDeclFound {
                         declaration: Rc::new(BorrowedCensusDecl {
-                            owner_module_path: type_env.module_path.clone(),
+                            declaring_declaration: crate::std_decl_ref::decl_ref(
+                                type_env.module_path.clone(),
+                                binding.name.clone(),
+                            ),
                             node: binding.resolved.clone(),
                         }),
                     }),
@@ -681,7 +675,9 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                         None => error_type(),
                                     },
                                 };
-                                if (bd.owner_module_path.clone() == type_env.module_path.clone()) {
+                                if (bd.declaring_declaration.clone().module_path.clone()
+                                    == type_env.module_path.clone())
+                                {
                                     Rc::new(FuncSigLookup::FuncSigResolved {
                                         sig: Rc::new(ResolvedFuncSig {
                                             name: name.clone(),
@@ -701,15 +697,21 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                             ),
                                         }),
                                         declared: Rc::new(DeclaredCallableIdentity {
-                                            owner_module_path: bd.owner_module_path.clone(),
-                                            decl_name: crate::v1_std_core::qualified_last_segment(
-                                                name.clone(),
-                                            ),
+                                            owner_module_path: bd
+                                                .declaring_declaration
+                                                .clone()
+                                                .module_path
+                                                .clone(),
+                                            decl_name:
+                                                crate::std_decl_ref::declaration_ref_member_name(
+                                                    bd.declaring_declaration.clone(),
+                                                ),
+                                            declaration: bd.declaring_declaration.clone(),
                                         }),
                                     })
                                 } else {
                                     {
-                                        let qualified_return = crate::v1_compiler_infer_env::qualify_borrowed_type_names(raw_return.clone(), bd.owner_module_path.clone(), type_env.clone(), excluded.clone());
+                                        let qualified_return = crate::v1_compiler_infer_env::qualify_borrowed_type_names(raw_return.clone(), bd.declaring_declaration.clone().module_path.clone(), type_env.clone(), excluded.clone());
                                         Rc::new(FuncSigLookup::FuncSigResolved {
                                             sig: Rc::new(ResolvedFuncSig {
                                                 name: name.clone(),
@@ -734,11 +736,16 @@ pub fn func_sig_from_global_bare(type_env: Rc<TypeEnv>, name: String) -> Rc<Func
                                                 ),
                                             }),
                                             declared: Rc::new(DeclaredCallableIdentity {
-                                                owner_module_path: bd.owner_module_path.clone(),
+                                                owner_module_path: bd
+                                                    .declaring_declaration
+                                                    .clone()
+                                                    .module_path
+                                                    .clone(),
                                                 decl_name:
-                                                    crate::v1_std_core::qualified_last_segment(
-                                                        name.clone(),
+                                                    crate::std_decl_ref::declaration_ref_member_name(
+                                                        bd.declaring_declaration.clone(),
                                                     ),
+                                                declaration: bd.declaring_declaration.clone(),
                                             }),
                                         })
                                     }

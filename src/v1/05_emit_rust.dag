@@ -7,6 +7,7 @@ import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
 import std.repair_input_origin {
   RepairInputOriginCandidate,
   source_declaration_carrier,
+  source_origin_candidates,
   candidate_spelling_from_text,
   UnlistedTypeResolutionOrigin,
   ValueReferenceResolutionOrigin,
@@ -674,10 +675,10 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
     Absent => none
     Present { value: sp } =>
       match map_get(env.symbol_index.global_bare, decl_name) {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareUniqueBinding { module_path: mp, entry } } =>
+          if binding_declares_span(binding: entry.binding, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+          match cands |> filter(c => binding_declares_span(binding: c.entry.binding, sp: sp)) |> first {
             Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
             Absent => none
           }
@@ -3524,7 +3525,11 @@ fn collect_value_ref_candidates(n: Node, emitting_module: String, source_indices
     )
   )
   let pattern_names = match n.match_pattern {
-    Present { value: p } => collect_pattern_ref_names(pattern: p, type_summaries: type_summaries)
+    Present { value: p } => source_origin_candidates(
+      emitting_module: emitting_module,
+      names: collect_pattern_ref_names(pattern: p, type_summaries: type_summaries),
+      origin: ValueReferenceResolutionOrigin
+    )
     Absent => []
   }
   concat(self_name, concat(pattern_names, concat(list_fields, opt_fields)))

@@ -82,6 +82,38 @@ pub fn decl_field_ref(
     })
 }
 
+pub fn declaration_ref_member_name(reference: Rc<DeclarationRef>) -> String {
+    match (*reference.field.clone()).clone() {
+        DeclField::WholeDeclaration => reference.decl_name.clone(),
+        DeclField::NamedField {
+            field_name: field_name,
+            ..
+        } => field_name.clone(),
+    }
+}
+
+pub fn declaration_ref_qualified_key(reference: Rc<DeclarationRef>) -> String {
+    match (*reference.field.clone()).clone() {
+        DeclField::WholeDeclaration => v1_rt::concat(
+            v1_rt::concat(reference.module_path.clone(), ".".to_string()),
+            reference.decl_name.clone(),
+        ),
+        DeclField::NamedField {
+            field_name: field_name,
+            ..
+        } => v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(reference.module_path.clone(), ".".to_string()),
+                    reference.decl_name.clone(),
+                ),
+                ".".to_string(),
+            ),
+            field_name.clone(),
+        ),
+    }
+}
+
 pub fn decl_field_eq(a: Rc<DeclField>, b: Rc<DeclField>) -> bool {
     match (*a.clone()).clone() {
         DeclField::WholeDeclaration => match (*b.clone()).clone() {

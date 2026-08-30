@@ -2,8 +2,10 @@
 // Source module: std.repair_input_origin
 
 use self::CandidateSpelling::*;
+use self::NonSourceValueReason::*;
 use self::RepairInputOriginCandidate::*;
 use self::SourceCarrierOrigin::*;
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_types::List;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -39,10 +41,27 @@ pub enum SourceCarrierOrigin {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTypeSurfaceOrigin;
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum NonSourceValueReason {
+    RuntimePrimitiveValue,
+    ValueTargetUndetermined,
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceCarrierCandidateIdentity {
     pub emitting_module: String,
     pub candidate_spelling: Rc<CandidateSpelling>,
+    pub producer_origin: SourceCarrierOrigin,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SourceDeclarationCarrierIdentity {
+    pub emitting_module: String,
+    pub candidate_spelling: Rc<CandidateSpelling>,
+    pub declaring_declaration: Rc<DeclarationRef>,
     pub producer_origin: SourceCarrierOrigin,
 }
 
@@ -59,9 +78,47 @@ pub enum RepairInputOriginCandidate {
     SourceCarrierCandidate {
         identity: Rc<SourceCarrierCandidateIdentity>,
     },
+    SourceDeclarationCarrier {
+        identity: Rc<SourceDeclarationCarrierIdentity>,
+    },
+    NonSourceValueCompatibilityCandidate {
+        emitting_module: String,
+        candidate_spelling: Rc<CandidateSpelling>,
+        reason: NonSourceValueReason,
+    },
     RenderedTargetVocabularyCarrier {
         identity: Rc<RenderedTargetVocabularyIdentity>,
     },
+}
+
+pub fn source_declaration_carrier(
+    emitting_module: String,
+    candidate_spelling: Rc<CandidateSpelling>,
+    declaring_declaration: Rc<DeclarationRef>,
+    producer_origin: SourceCarrierOrigin,
+) -> Rc<RepairInputOriginCandidate> {
+    Rc::new(RepairInputOriginCandidate::SourceDeclarationCarrier {
+        identity: Rc::new(SourceDeclarationCarrierIdentity {
+            emitting_module: emitting_module.clone(),
+            candidate_spelling: candidate_spelling.clone(),
+            declaring_declaration: declaring_declaration.clone(),
+            producer_origin: producer_origin.clone(),
+        }),
+    })
+}
+
+pub fn non_source_value_compatibility_candidate(
+    emitting_module: String,
+    candidate_spelling: Rc<CandidateSpelling>,
+    reason: NonSourceValueReason,
+) -> Rc<RepairInputOriginCandidate> {
+    Rc::new(
+        RepairInputOriginCandidate::NonSourceValueCompatibilityCandidate {
+            emitting_module: emitting_module.clone(),
+            candidate_spelling: candidate_spelling.clone(),
+            reason: reason.clone(),
+        },
+    )
 }
 
 pub fn candidate_spelling_from_text(name: String) -> Rc<CandidateSpelling> {
@@ -139,25 +196,17 @@ pub fn rendered_origin_candidates(
 
 pub fn repair_input_origin_candidates(
     emitting_module: String,
-    unlisted_type_names: Rc<Vec<String>>,
-    value_reference_names: Rc<Vec<String>>,
+    unlisted_type_candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
+    value_reference_candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
     item_emit_surface_names: Rc<Vec<String>>,
     field_import_surface_names: Rc<Vec<String>>,
     variant_payload_surface_names: Rc<Vec<String>>,
     rendered_type_surface_names: Rc<Vec<String>>,
 ) -> Rc<Vec<Rc<RepairInputOriginCandidate>>> {
     v1_rt::concat(
-        source_origin_candidates(
-            emitting_module.clone(),
-            unlisted_type_names.clone(),
-            SourceCarrierOrigin::UnlistedTypeResolutionOrigin,
-        ),
+        unlisted_type_candidates.clone(),
         v1_rt::concat(
-            source_origin_candidates(
-                emitting_module.clone(),
-                value_reference_names.clone(),
-                SourceCarrierOrigin::ValueReferenceResolutionOrigin,
-            ),
+            value_reference_candidates.clone(),
             v1_rt::concat(
                 source_origin_candidates(
                     emitting_module.clone(),
@@ -192,6 +241,33 @@ pub fn repair_input_origin_candidate_name(candidate: Rc<RepairInputOriginCandida
         RepairInputOriginCandidate::SourceCarrierCandidate {
             identity: identity, ..
         } => match (*identity.candidate_spelling.clone()).clone() {
+            CandidateSpelling::BareCandidate { name: name, .. } => name.clone(),
+            CandidateSpelling::QualifiedCandidate {
+                authored_qualifier,
+                member,
+                ..
+            } => v1_rt::concat(
+                v1_rt::concat(authored_qualifier.clone(), ".".to_string()),
+                member.clone(),
+            ),
+        },
+        RepairInputOriginCandidate::SourceDeclarationCarrier {
+            identity: identity, ..
+        } => match (*identity.candidate_spelling.clone()).clone() {
+            CandidateSpelling::BareCandidate { name: name, .. } => name.clone(),
+            CandidateSpelling::QualifiedCandidate {
+                authored_qualifier,
+                member,
+                ..
+            } => v1_rt::concat(
+                v1_rt::concat(authored_qualifier.clone(), ".".to_string()),
+                member.clone(),
+            ),
+        },
+        RepairInputOriginCandidate::NonSourceValueCompatibilityCandidate {
+            candidate_spelling,
+            ..
+        } => match (*candidate_spelling.clone()).clone() {
             CandidateSpelling::BareCandidate { name: name, .. } => name.clone(),
             CandidateSpelling::QualifiedCandidate {
                 authored_qualifier,
@@ -250,6 +326,12 @@ pub fn qualified_item_emit_surface_compatibility_names(
                         SourceCarrierOrigin::FieldImportSurfaceOrigin => Rc::new(vec![]),
                         SourceCarrierOrigin::VariantPayloadSurfaceOrigin => Rc::new(vec![]),
                     },
+                    RepairInputOriginCandidate::SourceDeclarationCarrier {
+                        identity: _, ..
+                    } => Rc::new(vec![]),
+                    RepairInputOriginCandidate::NonSourceValueCompatibilityCandidate { .. } => {
+                        Rc::new(vec![])
+                    }
                     RepairInputOriginCandidate::RenderedTargetVocabularyCarrier {
                         identity: _,
                         ..
@@ -273,3 +355,7 @@ pub struct ItemEmitSurfaceOrigin;
 pub struct FieldImportSurfaceOrigin;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct VariantPayloadSurfaceOrigin;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RuntimePrimitiveValue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ValueTargetUndetermined;

@@ -1,6 +1,7 @@
 module v1.compiler.compile
 
 import std.syntax { LiteralValue, BinOp }
+import std.source_declaration_constructor { ParsedDeclarationConstructorRow }
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at, ErrorNode, CompilerDiagnostic,
   is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message,
@@ -1054,7 +1055,8 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
         Present { value: parsed_module } =>
           list_push(acc.module_inputs, module_occurrence_input(
             module: parsed_module,
-            occurrence_transport: parsed.occurrence_transport
+            occurrence_transport: parsed.occurrence_transport,
+            declaration_constructors: parsed.declaration_constructors
           ))
         Absent => acc.module_inputs
       },
@@ -1095,6 +1097,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
 
 type CensusFillParse {
   modules: List<Node>,
+  declaration_constructors: List<ParsedDeclarationConstructorRow>,
   newline_indices: List<NewlineIndex>,
   diagnostics: List<ErrorNode>
   occurrence_transport: OccurrenceTransport
@@ -1145,7 +1148,8 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
         Present { value: parsed_module } =>
           list_push(acc.module_inputs, module_occurrence_input(
             module: parsed_module,
-            occurrence_transport: parsed.occurrence_transport
+            occurrence_transport: parsed.occurrence_transport,
+            declaration_constructors: parsed.declaration_constructors
           ))
         Absent => acc.module_inputs
       },
@@ -1165,6 +1169,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     modules: module_inputs |> map(input =>
       module_occurrence_input_node(input: input)
     ),
+    declaration_constructors: module_inputs |> flat_map(input => input.declaration_constructors),
     newline_indices: parsed.newline_indices,
     diagnostics: concat(collect_diagnostics(parse_results: parse_results), parsed.annotation_diagnostics),
     occurrence_transport: merge_occurrence_transports(
@@ -1279,7 +1284,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let norm_diags = norm.diagnostics
       let fill = parse_census_fill_sources(sources: options.census_only_sources)
       let census_si = fold(fill.newline_indices, init: source_indices, f: (acc, index) => map_insert(acc, index.file, index))
-      let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_si: census_si)
+      let typed = reconcile_with_census_extra(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table, census_fill_modules: fill.modules, census_fill_constructor_rows: fill.declaration_constructors, census_si: census_si)
       let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {

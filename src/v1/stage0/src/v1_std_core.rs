@@ -27,6 +27,7 @@ use self::VarBindingKind::*;
 use crate::std_algebra::CollectionSizeEffect::*;
 use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
+pub use crate::std_decl_ref::DeclarationRef;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
@@ -212,27 +213,16 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
 #[serde(tag = "_variant")]
 pub enum VarBindingKind {
     LocalValueBinding,
-    FunctionValueBinding,
+    FunctionValueBinding { target: Rc<CallTargetIdentity> },
     VariantValueBinding { parent_enum: String },
     MatchBoundBinding,
-}
-impl VarBindingKind {
-    pub fn parent_enum(&self) -> String {
-        match self {
-            VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
-            VarBindingKind::VariantValueBinding {
-                parent_enum: __val, ..
-            } => __val.clone(),
-            VarBindingKind::MatchBoundBinding => panic!("no parent_enum on unit variant"),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredCallableIdentity {
     pub owner_module_path: String,
     pub decl_name: String,
+    pub declaration: Rc<DeclarationRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -243,8 +233,7 @@ pub enum CallTargetIdentity {
         projected_from: Option<Rc<DeclaredCallableIdentity>>,
     },
     SourceDeclarationCall {
-        owner_module_path: String,
-        decl_name: String,
+        declaration: Rc<DeclarationRef>,
     },
     CallableTargetUndetermined,
 }
@@ -323,6 +312,7 @@ pub enum ExprData {
     ExprLet,
     ExprRecordLit {
         parent_enum: Option<String>,
+        target: Rc<CallTargetIdentity>,
     },
     ExprListLit,
     ExprBinOp {
@@ -581,6 +571,7 @@ pub enum CompilerDiagnostic {
     },
     UnlistedImportUse {
         name: String,
+        declaration: Rc<DeclarationRef>,
         span: Rc<SourceSpan>,
     },
     ReferenceDerivedImportProviderUnknown {
@@ -2947,7 +2938,7 @@ pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
 
 pub fn record_lit_expr_optional(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { parent_enum: _, .. } => Some(expr.clone()),
+        ExprData::ExprRecordLit { .. } => Some(expr.clone()),
         _ => std::option::Option::None,
     }
 }

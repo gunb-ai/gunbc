@@ -435,7 +435,7 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
       Present { value: entry } =>
         BorrowedCensusDeclFound { declaration: BorrowedCensusDecl {
           declaring_declaration: entry.declaring_declaration,
-          node: entry.resolved
+          node: entry.binding.resolved
         } }
       Absent => BorrowedCensusDeclNotFound
     }
@@ -444,12 +444,12 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
       BorrowedCensusDeclNotFound
     } else {
       match map_get(type_env.symbol_index.global_bare, name) {
-        Present { value: GlobalBareUniqueBinding { module_path: _, binding: b, entry: entry } } =>
-          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: entry.declaring_declaration, node: b.resolved } }
+        Present { value: GlobalBareUniqueBinding { module_path: _, entry: entry } } =>
+          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: entry.declaring_declaration, node: entry.binding.resolved } }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
           match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
             Present { value: cand } =>
-              BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: cand.entry.declaring_declaration, node: cand.binding.resolved } }
+              BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: cand.entry.declaring_declaration, node: cand.entry.binding.resolved } }
             Absent => BorrowedCensusDeclAmbiguous { candidates: cands }
           }
         Absent => BorrowedCensusDeclNotFound
@@ -521,7 +521,7 @@ fn constructor_declaration_for_admission(
   let qualified = declaration_ref_qualified_key(reference: declaration_ref)
   match symbol_index_entry_lookup(index: type_env.symbol_index, qualified_name: qualified) {
     Present { value: entry } =>
-      ExactConstructorDeclaration { declaration_ref: entry.declaring_declaration, declaration: entry.resolved }
+      ExactConstructorDeclaration { declaration_ref: entry.declaring_declaration, declaration: entry.binding.resolved }
     Absent =>
       AdmissionBearingDeclarationUnavailable {
         declaration_ref: declaration_ref,
@@ -561,7 +561,7 @@ fn func_decl_binding_for_call(
 data census_reserved_method_name_note: String = "Census precedence law (main-parity): the whole-pool census never serves an algebra method-template name (filter/any/contains/…) as a bare fn sig or tail callable. Those names belong to the known-method bridge in the ExprCall arm — a census sig for the UNLOADED v2.std.algebra typed filter(xs, f) as a plain call and the runtime died NoSuchFunction where main rewrote to the builtin method. Loaded providers are unaffected: lookup_resolved_sig runs before the census fallback."
 
 fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate: GlobalBareCandidate) -> CallableCandidate {
-  let node = candidate.binding.resolved
+  let node = candidate.entry.binding.resolved
   let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
   let raw_return = match node.inferred {
     Present { value: Resolved { node: inferred } } => inferred

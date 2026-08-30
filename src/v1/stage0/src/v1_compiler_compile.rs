@@ -22,6 +22,7 @@ pub use crate::std_source_annotation::{
     source_annotation_graph_concat, source_annotation_graph_empty,
 };
 pub use crate::std_source_annotation::{SourceAnnotationGraph, UnboundAnnotationCapture};
+pub use crate::std_source_declaration_constructor::ParsedDeclarationConstructorRow;
 use crate::std_syntax::BinOp::*;
 use crate::std_syntax::LiteralValue::*;
 pub use crate::std_syntax::{BinOp, LiteralValue};
@@ -742,7 +743,9 @@ pub fn field_value_shape_name(value: FieldValueShape) -> String {
 pub fn var_binding_kind_name(value: Rc<VarBindingKind>) -> String {
     match (*value.clone()).clone() {
         VarBindingKind::LocalValueBinding => "LocalValueBinding".to_string(),
-        VarBindingKind::FunctionValueBinding => "FunctionValueBinding".to_string(),
+        VarBindingKind::FunctionValueBinding { target: _, .. } => {
+            "FunctionValueBinding".to_string()
+        }
         VarBindingKind::VariantValueBinding { parent_enum: _, .. } => {
             "VariantValueBinding".to_string()
         }
@@ -760,19 +763,20 @@ pub fn serialize_call_target_identity(value: Rc<CallTargetIdentity>) -> String {
             "}".to_string(),
         ),
         CallTargetIdentity::SourceDeclarationCall {
-            owner_module_path: owner,
-            decl_name: decl,
+            declaration: declaration,
             ..
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
                         "{\"kind\": \"SourceDeclarationCall\", \"owner_module_path\": ".to_string(),
-                        crate::v1_compiler_dag_collect_support::json_quote(owner.clone()),
+                        crate::v1_compiler_dag_collect_support::json_quote(
+                            declaration.module_path.clone(),
+                        ),
                     ),
                     ", \"decl_name\": ".to_string(),
                 ),
-                crate::v1_compiler_dag_collect_support::json_quote(decl.clone()),
+                crate::v1_compiler_dag_collect_support::json_quote(declaration.decl_name.clone()),
             ),
             "}".to_string(),
         ),
@@ -1687,10 +1691,7 @@ pub fn serialize_expr_data(
                 ),
                 "}".to_string(),
             ),
-            ExprData::ExprRecordLit {
-                parent_enum: parent_enum,
-                ..
-            } => {
+            ExprData::ExprRecordLit { parent_enum, .. } => {
                 let type_name = crate::v1_std_core::record_lit_type_name_at(
                     expr_node.clone(),
                     source_indices.clone(),
@@ -2545,6 +2546,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                             crate::v1_compiler_resolve::module_occurrence_input(
                                 parsed_module.clone(),
                                 parsed.occurrence_transport.clone(),
+                                parsed.declaration_constructors.clone(),
                             ),
                         ),
                         None => acc.module_inputs.clone(),
@@ -2616,6 +2618,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CensusFillParse {
     pub modules: Rc<Vec<Rc<Node>>>,
+    pub declaration_constructors: Rc<Vec<Rc<ParsedDeclarationConstructorRow>>>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub occurrence_transport: Rc<OccurrenceTransport>,
@@ -2697,6 +2700,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                             crate::v1_compiler_resolve::module_occurrence_input(
                                 parsed_module.clone(),
                                 parsed.occurrence_transport.clone(),
+                                parsed.declaration_constructors.clone(),
                             ),
                         ),
                         None => acc.module_inputs.clone(),
@@ -2736,6 +2740,13 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                     __result.push(crate::v1_compiler_resolve::module_occurrence_input_node(
                         input.clone(),
                     ));
+                }
+                __result
+            }),
+            declaration_constructors: Rc::new({
+                let mut __result = Vec::new();
+                for input in module_inputs.iter().cloned() {
+                    __result.extend((*input.declaration_constructors.clone()).iter().cloned());
                 }
                 __result
             }),
@@ -2934,6 +2945,7 @@ pub fn compile_to_resolved_with_options(
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                     fill.modules.clone(),
+                    fill.declaration_constructors.clone(),
                     census_si.clone(),
                 );
                 let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());

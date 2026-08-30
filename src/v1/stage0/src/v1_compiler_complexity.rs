@@ -1280,7 +1280,7 @@ pub fn parser_success_progress(
                 consumed_true_set.clone(),
                 "".to_string(),
             ),
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 match parser_record_field_value(expr.clone(), "err".to_string(), si.clone()) {
                     Some(err_expr) => {
                         if parser_expr_is_none(err_expr.clone()) {

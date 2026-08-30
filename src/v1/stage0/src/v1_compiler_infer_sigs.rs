@@ -5,6 +5,7 @@ use self::CallableIdentity::*;
 use self::DerivedCalleeSig::*;
 use self::FuncSigLookup::*;
 use self::NoDerivableSigReason::*;
+pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
 pub use crate::v1_compiler_infer_occurrence_binding::module_path_owner_binding_decide;
@@ -249,6 +250,10 @@ pub fn parent_closure_callable_candidates(
                         identity: Rc::new(DeclaredCallableIdentity {
                             owner_module_path: p.name.clone(),
                             decl_name: name.clone(),
+                            declaration: crate::std_decl_ref::decl_ref(
+                                p.name.clone(),
+                                name.clone(),
+                            ),
                         }),
                     }),
                     sig: sig.clone(),
@@ -366,6 +371,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
             declared: Rc::new(DeclaredCallableIdentity {
                 owner_module_path: env.name.clone(),
                 decl_name: name.clone(),
+                declaration: crate::std_decl_ref::decl_ref(env.name.clone(), name.clone()),
             }),
         }),
         None => {
@@ -398,6 +404,10 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                             declared: Rc::new(DeclaredCallableIdentity {
                                 owner_module_path: found.owner_module_path.clone(),
                                 decl_name: name.clone(),
+                                declaration: crate::std_decl_ref::decl_ref(
+                                    found.owner_module_path.clone(),
+                                    name.clone(),
+                                ),
                             }),
                         }),
                         None => Rc::new(FuncSigLookup::FuncSigUnresolved),

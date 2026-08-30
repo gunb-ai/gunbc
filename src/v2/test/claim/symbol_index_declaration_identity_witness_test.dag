@@ -3,16 +3,19 @@ module v2.test.claim.symbol_index_declaration_identity_witness_test
 import std.types { Bool, String }
 import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.induction { SubValueUnknown }
-import v1.std.core { error_type }
+import std.source_declaration_constructor { ParsedDeclarationConstructorRow, FunctionDeclaration, DataDeclaration, TransparentTypeAlias, NamespaceAlias, NominalTypeDeclaration }
+import v1.std.core { error_type, build_newline_index, empty_intern_table }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table }
 import v1.compiler.infer_env {
   SymbolIndex,
   SymbolIndexEntry,
   TypeBinding,
   GlobalBareUniqueBinding,
-  NominalDeclarationBinding,
+  OwnSourceDeclaration,
   ResolvedAliasBinding,
-  AliasReferentUnresolvedAfterIndexClosure,
-  AliasReferentCycle,
+  NamespaceAliasReferentUnresolved,
+  NamespaceAliasReferentCycle,
   ConflictingIndexedIdentity,
   empty_symbol_index,
   symbol_index_insert_decl,
@@ -23,6 +26,34 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
+fn parsed_constructor_rows(source: String) -> List<ParsedDeclarationConstructorRow> {
+  let file = "fixture.dag"
+  parse_with_table(
+    tokens: tokenize(source: source, file: file),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
+    intern_table: empty_intern_table()
+  ).declaration_constructors
+}
+
+test fn parser_distinguishes_string_function_data_and_transparent_type_alias() -> Bool {
+  let rows = parsed_constructor_rows(source: "module fixture\nfn f() -> String { \"x\" }\ndata x: String = \"x\"\ntype CommitSha = String\n")
+  (rows |> any(row => match row.constructor { FunctionDeclaration => true  _ => false }))
+    && (rows |> any(row => match row.constructor { DataDeclaration => true  _ => false }))
+    && (rows |> any(row => match row.constructor {
+      TransparentTypeAlias { representation_target } => representation_target.spelling == "String"
+      _ => false
+    }))
+    && (rows |> count) == 3
+}
+
+test fn parser_namespace_alias_is_a_distinct_constructor() -> Bool {
+  let rows = parsed_constructor_rows(source: "module fixture\nalias X = provider.Y\n")
+  (rows |> count) == 1 && (rows |> any(row => match row.constructor {
+    NamespaceAlias { referent_key } => referent_key == "provider.Y"
+    _ => false
+  }))
+}
+
 fn declaration(module_path: String, name: String) -> DeclarationRef {
   decl_ref(module_path: module_path, decl_name: name)
 }
@@ -32,7 +63,7 @@ fn nominal(index: SymbolIndex, module_path: String, name: String) -> SymbolIndex
     index: index,
     module_path: module_path,
     binding: TypeBinding { name: name, resolved: error_type, provenance: SubValueUnknown },
-    provenance: NominalDeclarationBinding { declaration: declaration(module_path: module_path, name: name) }
+    provenance: OwnSourceDeclaration { declaration: declaration(module_path: module_path, name: name), constructor: NominalTypeDeclaration }
   )
 }
 
@@ -70,7 +101,7 @@ fn alias_entry_has(
         declaration_ref_eq(a: alias_declaration, b: declaration(module_path: alias_module, name: alias_name))
           && observed_referent == referent_key
           && declaration_ref_eq(a: declaring_declaration, b: declaration(module_path: owner_module, name: owner_name))
-      NominalDeclarationBinding { declaration: _ } => false
+      OwnSourceDeclaration { declaration: _, constructor: _ } => false
       _ => false
     }
 }
@@ -83,7 +114,7 @@ test fn reexport_keeps_alias_edge_and_terminal_declaration() -> Bool {
     Present { value: entry } =>
       alias_entry_has(entry: entry, alias_module: "fixture.facade", alias_name: "Alias", referent_key: "fixture.owner.Thing", owner_module: "fixture.owner", owner_name: "Thing")
         && match map_get(finalized.global_bare, "Alias") {
-          Present { value: GlobalBareUniqueBinding { module_path: _, binding: _, entry: bare_entry } } =>
+          Present { value: GlobalBareUniqueBinding { module_path: _, entry: bare_entry } } =>
             declaration_ref_eq(a: bare_entry.declaring_declaration, b: entry.declaring_declaration)
           _ => false
         }
@@ -114,10 +145,10 @@ test fn alias_refusal_population_is_typed() -> Bool {
   let cycle_edges = map_insert(one_edge(alias_key: "fixture.a.A", referent_key: "fixture.b.B"), "fixture.b.B", "fixture.a.A")
   let cycle = resolved_alias(index: empty_symbol_index(), edges: cycle_edges, alias_module: "fixture.a", alias_name: "A", referent_key: "fixture.b.B")
   (missing.insert_refusals |> any(r => match r {
-    AliasReferentUnresolvedAfterIndexClosure { alias_qualified_name, referent_qualified_name } => alias_qualified_name == "fixture.facade.Missing" && referent_qualified_name == "fixture.absent.Thing"
+    NamespaceAliasReferentUnresolved { alias_qualified_name, referent_qualified_name } => alias_qualified_name == "fixture.facade.Missing" && referent_qualified_name == "fixture.absent.Thing"
     _ => false
   })) && (cycle.insert_refusals |> any(r => match r {
-    AliasReferentCycle { alias_qualified_name, cycle_at: _ } => alias_qualified_name == "fixture.a.A"
+    NamespaceAliasReferentCycle { alias_qualified_name, cycle_at: _ } => alias_qualified_name == "fixture.a.A"
     _ => false
   }))
 }
@@ -136,7 +167,7 @@ test fn conflicting_indexed_identity_is_never_overwritten() -> Bool {
     index: first,
     module_path: "fixture.owner",
     binding: TypeBinding { name: "Thing", resolved: error_type, provenance: SubValueUnknown },
-    provenance: NominalDeclarationBinding { declaration: declaration(module_path: "fixture.other", name: "Thing") }
+    provenance: OwnSourceDeclaration { declaration: declaration(module_path: "fixture.other", name: "Thing"), constructor: NominalTypeDeclaration }
   )
   (conflicting.insert_refusals |> any(r => match r {
     ConflictingIndexedIdentity { qualified_name, existing: _, proposed } =>

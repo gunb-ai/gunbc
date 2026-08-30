@@ -38,8 +38,8 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
 pub use crate::std_algebra::trim;
 pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_content_hash::Fnv1a64Structural;
-pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
+pub use crate::std_decl_ref::{decl_ref, declaration_ref_member_name};
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_induction::{InductiveField, SubValueRelation};
 pub use crate::std_measure::millisecond_count;
@@ -49,9 +49,20 @@ use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
 };
+use crate::std_repair_input_origin::NonSourceValueReason::{
+    RuntimePrimitiveValue, ValueTargetUndetermined,
+};
+use crate::std_repair_input_origin::RepairInputOriginCandidate::*;
+use crate::std_repair_input_origin::SourceCarrierOrigin::{
+    UnlistedTypeResolutionOrigin, ValueReferenceResolutionOrigin,
+};
 pub use crate::std_repair_input_origin::{
+    candidate_spelling_from_text, non_source_value_compatibility_candidate,
     qualified_item_emit_surface_compatibility_names, repair_input_origin_candidates,
-    repair_input_origin_compatibility_names,
+    repair_input_origin_compatibility_names, source_declaration_carrier, source_origin_candidates,
+};
+pub use crate::std_repair_input_origin::{
+    NonSourceValueReason, RepairInputOriginCandidate, SourceCarrierOrigin,
 };
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
@@ -1100,10 +1111,10 @@ pub fn type_reference_declaration_ref(
             {
                 Some(GlobalBareLookupState::GlobalBareUniqueBinding {
                     module_path: mp,
-                    binding: b,
+                    entry,
                     ..
                 }) => {
-                    if binding_declares_span(b.clone(), sp.clone()) {
+                    if binding_declares_span(entry.binding.clone(), sp.clone()) {
                         Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
                     } else {
                         std::option::Option::None
@@ -1115,7 +1126,7 @@ pub fn type_reference_declaration_ref(
                 }) => match Rc::new({
                     let mut __result = Vec::new();
                     for c in cands.iter().cloned() {
-                        if binding_declares_span(c.binding.clone(), sp.clone()) {
+                        if binding_declares_span(c.entry.clone().binding.clone(), sp.clone()) {
                             __result.push(c);
                         }
                     }
@@ -4224,7 +4235,7 @@ pub fn resolve_wire_serde_policy(
     match wire_item.body.clone() {
     Some(ve) => resolve_wire_serde_policy_from_encoding_node(ve.clone(), source_indices.clone()),
     None => match (*wire_item.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { parent_enum: _, .. } => resolve_wire_serde_policy_from_encoding_node(wire_item.clone(), source_indices.clone()),
+    ExprData::ExprRecordLit { .. } => resolve_wire_serde_policy_from_encoding_node(wire_item.clone(), source_indices.clone()),
     _ => rust_serde_error_policy("wire_contract: VariantEncoding could not be resolved (no initializer body and not a record literal)".to_string()),
 },
 }
@@ -4271,7 +4282,7 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
                         match wc.body.clone() {
     None => { break rust_serde_error_policy("wire_contract: data item has no initializer body".to_string()); },
     Some(init) => { match (*init.expr_data.clone()).clone() {
-    ExprData::ExprRecordLit { parent_enum: _, .. } => { break resolve_wire_serde_policy(init.clone(), source_indices.clone()); },
+    ExprData::ExprRecordLit { .. } => { break resolve_wire_serde_policy(init.clone(), source_indices.clone()); },
     ExprData::ExprVar { binding_kind: _, .. } => { let alias_name = crate::v1_std_core::expr_var_name_at(init.clone(), source_indices.clone());
 if (v1_rt::map_get(&seen_aliases, alias_name.clone()) != std::option::Option::None) {
                     break rust_serde_error_policy(v1_rt::concat("wire_contract: cyclic VariantEncoding alias: ".to_string(), alias_name.clone()));
@@ -5661,28 +5672,42 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
     }
 }
 
-pub fn group_unlisted_type_names(
+pub fn group_unlisted_type_candidates(
     diags: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<RepairInputOriginCandidate>>>>> {
     diags.iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
-        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
-            .diagnostic
-            .clone())
-        .clone()
-        {
-            CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
-                let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
-                    Some(v) => v.clone(),
-                    None => Rc::new(vec![]),
-                };
-                v1_rt::rc_map_insert(
-                    acc.clone(),
-                    en.module_name.clone(),
-                    v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
-                )
+        v1_rt::rc_empty_map::<String, Rc<Vec<Rc<RepairInputOriginCandidate>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<RepairInputOriginCandidate>>>>>, en: Rc<ErrorNode>| {
+            match (*en.diagnostic.clone()).clone() {
+                CompilerDiagnostic::UnlistedImportUse {
+                    name: nm,
+                    declaration,
+                    ..
+                } => {
+                    let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
+                        Some(v) => v.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    v1_rt::rc_map_insert(
+                        acc.clone(),
+                        en.module_name.clone(),
+                        v1_rt::concat(
+                            existing.clone(),
+                            Rc::new(vec![
+                                crate::std_repair_input_origin::source_declaration_carrier(
+                                    en.module_name.clone(),
+                                    crate::std_repair_input_origin::candidate_spelling_from_text(
+                                        nm.clone(),
+                                    ),
+                                    declaration.clone(),
+                                    SourceCarrierOrigin::UnlistedTypeResolutionOrigin,
+                                ),
+                            ]),
+                        ),
+                    )
+                }
+                _ => acc.clone(),
             }
-            _ => acc.clone(),
         },
     )
 }
@@ -5775,7 +5800,8 @@ pub struct EmitRustContext {
     pub test_projections: Rc<Vec<Rc<TestProjection>>>,
     pub export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub module_index: Rc<ModuleIndex>,
-    pub unlisted_type_names_by_module: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub unlisted_type_candidates_by_module:
+        Rc<HashMap<String, Rc<Vec<Rc<RepairInputOriginCandidate>>>>>,
 }
 
 pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> {
@@ -5904,7 +5930,8 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             crate::v1_compiler_emit_core_support::extract_test_projections(typed.clone());
         let export_sets = build_module_export_sets(typed.modules.clone());
         let module_index = build_module_index(typed.modules.clone());
-        let unlisted_type_names_by_module = group_unlisted_type_names(typed.diagnostics.clone());
+        let unlisted_type_candidates_by_module =
+            group_unlisted_type_candidates(typed.diagnostics.clone());
         Rc::new(EmitRustContext {
             emit_info: emit_info.clone(),
             registry: registry.clone(),
@@ -5916,7 +5943,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             test_projections: test_projections.clone(),
             export_sets: export_sets.clone(),
             module_index: module_index.clone(),
-            unlisted_type_names_by_module: unlisted_type_names_by_module.clone(),
+            unlisted_type_candidates_by_module: unlisted_type_candidates_by_module.clone(),
         })
     }
 }
@@ -5959,7 +5986,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let svc_module_map = ctx.svc_module_map.clone();
         let export_sets = ctx.export_sets.clone();
         let module_index = ctx.module_index.clone();
-        let unlisted_type_names_by_module = ctx.unlisted_type_names_by_module.clone();
+        let unlisted_type_candidates_by_module = ctx.unlisted_type_candidates_by_module.clone();
         let shared_types = emit_info.shared_types.clone();
         let workflow_funcs = ctx.workflow_funcs.clone();
         let workflow_default_diags = ctx.workflow_default_diags.clone();
@@ -6883,7 +6910,7 @@ pub fn collect_anonymous_record_lit_heads(
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_head = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 match crate::v1_std_core::record_lit_type_name_at(n.clone(), source_indices.clone())
                 {
                     Some(_) => Rc::new(vec![]),
@@ -7103,42 +7130,125 @@ pub fn collect_pattern_ref_names(
     })
 }
 
-pub fn collect_value_ref_names(
+pub fn value_reference_origin_candidate(
+    emitting_module: String,
+    name: String,
+    target: Rc<CallTargetIdentity>,
+) -> Rc<RepairInputOriginCandidate> {
+    {
+        let spelling = crate::std_repair_input_origin::candidate_spelling_from_text(name.clone());
+        match (*target.clone()).clone() {
+            CallTargetIdentity::SourceDeclarationCall {
+                declaration: declaration,
+                ..
+            } => crate::std_repair_input_origin::source_declaration_carrier(
+                emitting_module.clone(),
+                spelling.clone(),
+                declaration.clone(),
+                SourceCarrierOrigin::ValueReferenceResolutionOrigin,
+            ),
+            CallTargetIdentity::RuntimePrimitiveCall { projected_from, .. } => match projected_from
+                .clone()
+            {
+                Some(declared) => crate::std_repair_input_origin::source_declaration_carrier(
+                    emitting_module.clone(),
+                    spelling.clone(),
+                    declared.declaration.clone(),
+                    SourceCarrierOrigin::ValueReferenceResolutionOrigin,
+                ),
+                None => crate::std_repair_input_origin::non_source_value_compatibility_candidate(
+                    emitting_module.clone(),
+                    spelling.clone(),
+                    NonSourceValueReason::RuntimePrimitiveValue,
+                ),
+            },
+            CallTargetIdentity::CallableTargetUndetermined => {
+                crate::std_repair_input_origin::non_source_value_compatibility_candidate(
+                    emitting_module.clone(),
+                    spelling.clone(),
+                    NonSourceValueReason::ValueTargetUndetermined,
+                )
+            }
+        }
+    }
+}
+
+pub fn collect_value_ref_candidates(
     n: Rc<Node>,
+    emitting_module: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     variant_to_enum: Rc<HashMap<String, String>>,
-) -> Rc<Vec<String>> {
+) -> Rc<Vec<Rc<RepairInputOriginCandidate>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_name = match (*n.expr_data.clone()).clone() {
             ExprData::ExprVar {
                 binding_kind: bk, ..
             } => match bk.clone().as_deref().cloned() {
-                Some(VarBindingKind::FunctionValueBinding) => {
+                Some(VarBindingKind::FunctionValueBinding { target: target, .. }) => {
                     let nm =
                         crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
                     if (nm.clone() != "".to_string()) {
-                        Rc::new(vec![nm.clone()])
+                        Rc::new(vec![value_reference_origin_candidate(
+                            emitting_module.clone(),
+                            nm.clone(),
+                            target.clone(),
+                        )])
                     } else {
                         Rc::new(vec![])
                     }
                 }
                 _ => Rc::new(vec![]),
             },
-            ExprData::ExprCall { .. } => {
+            ExprData::ExprCall { call_semantics, .. } => {
                 let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
+                let target = match call_semantics.clone().as_deref().cloned() {
+                    Some(CallSemantics::PlainCallSemantics { target: target, .. }) => {
+                        target.clone()
+                    }
+                    Some(CallSemantics::LookupCallSemantics { target: target, .. }) => {
+                        target.clone()
+                    }
+                    Some(CallSemantics::FunctionValueCallSemantics) => {
+                        Rc::new(CallTargetIdentity::CallableTargetUndetermined)
+                    }
+                    None => Rc::new(CallTargetIdentity::CallableTargetUndetermined),
+                };
                 if (nm.clone() != "".to_string()) {
-                    Rc::new(vec![nm.clone()])
+                    Rc::new(vec![value_reference_origin_candidate(
+                        emitting_module.clone(),
+                        nm.clone(),
+                        target.clone(),
+                    )])
                 } else {
                     Rc::new(vec![])
                 }
             }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => record_lit_ref_names(
-                n.clone(),
-                source_indices.clone(),
-                type_summaries.clone(),
-                variant_to_enum.clone(),
-            ),
+            ExprData::ExprRecordLit { target, .. } => Rc::new({
+                let mut __result = Vec::new();
+                for name in Rc::new(
+                    record_lit_ref_names(
+                        n.clone(),
+                        source_indices.clone(),
+                        type_summaries.clone(),
+                        variant_to_enum.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                    .take(1 as usize)
+                    .collect::<Vec<_>>(),
+                )
+                .iter()
+                .cloned()
+                {
+                    __result.push(value_reference_origin_candidate(
+                        emitting_module.clone(),
+                        name.clone(),
+                        target.clone(),
+                    ));
+                }
+                __result
+            }),
             _ => Rc::new(vec![]),
         };
         let list_fields = v1_rt::concat(
@@ -7147,8 +7257,9 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(
+                            (*collect_value_ref_candidates(
                                 c.clone(),
+                                emitting_module.clone(),
                                 source_indices.clone(),
                                 type_summaries.clone(),
                                 variant_to_enum.clone(),
@@ -7163,8 +7274,9 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.params.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(
+                            (*collect_value_ref_candidates(
                                 c.clone(),
+                                emitting_module.clone(),
                                 source_indices.clone(),
                                 type_summaries.clone(),
                                 variant_to_enum.clone(),
@@ -7181,8 +7293,9 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.uses.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(
+                            (*collect_value_ref_candidates(
                                 c.clone(),
+                                emitting_module.clone(),
                                 source_indices.clone(),
                                 type_summaries.clone(),
                                 variant_to_enum.clone(),
@@ -7197,8 +7310,9 @@ pub fn collect_value_ref_names(
                     let mut __result = Vec::new();
                     for c in n.properties.clone().iter().cloned() {
                         __result.extend(
-                            (*collect_value_ref_names(
+                            (*collect_value_ref_candidates(
                                 c.clone(),
+                                emitting_module.clone(),
                                 source_indices.clone(),
                                 type_summaries.clone(),
                                 variant_to_enum.clone(),
@@ -7213,8 +7327,9 @@ pub fn collect_value_ref_names(
         );
         let opt_fields = v1_rt::concat(
             match n.body.clone() {
-                Some(b) => collect_value_ref_names(
+                Some(b) => collect_value_ref_candidates(
                     b.clone(),
+                    emitting_module.clone(),
                     source_indices.clone(),
                     type_summaries.clone(),
                     variant_to_enum.clone(),
@@ -7223,8 +7338,9 @@ pub fn collect_value_ref_names(
             },
             v1_rt::concat(
                 match n.transport.clone() {
-                    Some(t) => collect_value_ref_names(
+                    Some(t) => collect_value_ref_candidates(
                         t.clone(),
+                        emitting_module.clone(),
                         source_indices.clone(),
                         type_summaries.clone(),
                         variant_to_enum.clone(),
@@ -7232,8 +7348,9 @@ pub fn collect_value_ref_names(
                     None => Rc::new(vec![]),
                 },
                 match n.type_annotation.clone() {
-                    Some(t) => collect_value_ref_names(
+                    Some(t) => collect_value_ref_candidates(
                         t.clone(),
+                        emitting_module.clone(),
                         source_indices.clone(),
                         type_summaries.clone(),
                         variant_to_enum.clone(),
@@ -7243,7 +7360,11 @@ pub fn collect_value_ref_names(
             ),
         );
         let pattern_names = match n.match_pattern.clone() {
-            Some(p) => collect_pattern_ref_names(p.clone(), type_summaries.clone()),
+            Some(p) => crate::std_repair_input_origin::source_origin_candidates(
+                emitting_module.clone(),
+                collect_pattern_ref_names(p.clone(), type_summaries.clone()),
+                SourceCarrierOrigin::ValueReferenceResolutionOrigin,
+            ),
             None => Rc::new(vec![]),
         };
         v1_rt::concat(
@@ -7575,7 +7696,7 @@ pub fn collect_record_lit_field_struct_surfaces(
             {
                 let field_value = crate::v1_std_core::field_init_node_value(field_init.clone());
                 match (*field_value.expr_data.clone()).clone() {
-                    ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                    ExprData::ExprRecordLit { .. } => {
                         let summary_key = variant_record_lit_summary_key(
                             parent.clone(),
                             source_indices.clone(),
@@ -7626,7 +7747,7 @@ pub fn collect_value_emit_type_surface_names(
         let variant_to_enum = emit_info.variant_to_enum.clone();
         let type_summaries = emit_info.type_summaries.clone();
         let self_names = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => record_lit_ref_names(
+            ExprData::ExprRecordLit { .. } => record_lit_ref_names(
                 n.clone(),
                 source_indices.clone(),
                 type_summaries.clone(),
@@ -7672,7 +7793,7 @@ pub fn collect_value_emit_type_surface_names(
             }
         };
         let child_names = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => v1_rt::concat(
+            ExprData::ExprRecordLit { .. } => v1_rt::concat(
                 Rc::new({
                     let mut __result = Vec::new();
                     for c in n.children.clone().iter().cloned() {
@@ -8569,7 +8690,7 @@ pub struct ReferenceDerivedUseLinePlan {
 
 pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
-    unlisted_type_names: Rc<Vec<String>>,
+    unlisted_type_candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
     this_module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -8600,12 +8721,13 @@ pub fn reference_derived_use_line_plan(
             Some(tm) => module_authored_source_text(tm.module.clone(), source_indices.clone()),
             None => "".to_string(),
         };
-        let value_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+        let value_candidates = Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
                 __result.extend(
-                    (*collect_value_ref_names(
+                    (*collect_value_ref_candidates(
                         item.clone(),
+                        this_module_name.clone(),
                         source_indices.clone(),
                         emit_info.type_summaries.clone(),
                         emit_info.variant_to_enum.clone(),
@@ -8615,7 +8737,7 @@ pub fn reference_derived_use_line_plan(
                 );
             }
             __result
-        }));
+        });
         let item_emit_surface_names = Rc::new({
             let mut __result = Vec::new();
             for item in items.iter().cloned() {
@@ -8688,8 +8810,8 @@ pub fn reference_derived_use_line_plan(
         );
         let origin_candidates = crate::std_repair_input_origin::repair_input_origin_candidates(
             this_module_name.clone(),
-            unlisted_type_names.clone(),
-            value_names.clone(),
+            unlisted_type_candidates.clone(),
+            value_candidates.clone(),
             type_surface_names.clone(),
             field_surface_names.clone(),
             variant_payload_structs.clone(),
@@ -9096,7 +9218,7 @@ pub fn qualified_type_reference_use_lines(
 
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
-    unlisted_type_names: Rc<Vec<String>>,
+    unlisted_type_candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
     this_module_name: String,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -9112,7 +9234,7 @@ pub fn reference_derived_use_lines(
     {
         let plan = reference_derived_use_line_plan(
             items.clone(),
-            unlisted_type_names.clone(),
+            unlisted_type_candidates.clone(),
             this_module_name.clone(),
             registry.clone(),
             emit_info.clone(),
@@ -9152,7 +9274,7 @@ pub fn emit_module_full_with_dispositions(
         typed_modules.clone(),
         ctx.module_index.clone(),
         match v1_rt::map_get(
-            &ctx.unlisted_type_names_by_module.clone(),
+            &ctx.unlisted_type_candidates_by_module.clone(),
             crate::v1_std_core::authored_name_at(
                 typed_module.type_env.clone().source_indices.clone(),
                 typed_module.module.clone(),
@@ -9174,7 +9296,7 @@ pub fn emit_module_full(
     export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-    unlisted_type_names: Rc<Vec<String>>,
+    unlisted_type_candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
 ) -> Rc<ModuleEmission> {
     {
         let m = typed_module.module.clone();
@@ -9364,7 +9486,7 @@ pub fn emit_module_full(
         );
         let reference_plan = reference_derived_use_line_plan(
             typed_module.items.clone(),
-            unlisted_type_names.clone(),
+            unlisted_type_candidates.clone(),
             crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
             registry.clone(),
             emit_info.clone(),
@@ -17330,29 +17452,27 @@ pub fn emit_rust_unit_discarding_optional_typed(
                 RenderTarget::Rust,
             ),
         },
-        ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            match (texpr.children.clone().len() as i64) {
-                0 => "()".to_string(),
-                1 => match texpr.children.clone().first().cloned() {
-                    Some(f) => emit_rust_unit_discarding_stmt(
-                        crate::v1_std_core::field_init_node_value(f.clone()),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                    ),
-                    None => crate::v1_compiler_emit::emit_error_expr(
-                        "unit-discard: optional record literal missing payload field".to_string(),
-                        RenderTarget::Rust,
-                    ),
-                },
-                _ => crate::v1_compiler_emit::emit_error_expr(
-                    "unit-discard: optional record literal with unexpected field count".to_string(),
+        ExprData::ExprRecordLit { .. } => match (texpr.children.clone().len() as i64) {
+            0 => "()".to_string(),
+            1 => match texpr.children.clone().first().cloned() {
+                Some(f) => emit_rust_unit_discarding_stmt(
+                    crate::v1_std_core::field_init_node_value(f.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ),
+                None => crate::v1_compiler_emit::emit_error_expr(
+                    "unit-discard: optional record literal missing payload field".to_string(),
                     RenderTarget::Rust,
                 ),
-            }
-        }
+            },
+            _ => crate::v1_compiler_emit::emit_error_expr(
+                "unit-discard: optional record literal with unexpected field count".to_string(),
+                RenderTarget::Rust,
+            ),
+        },
         _ => crate::v1_compiler_emit::emit_error_expr(
             "unit-discard: unsupported optional expression form for Unit return".to_string(),
             RenderTarget::Rust,
@@ -17533,7 +17653,7 @@ pub fn emit_rust_unit_discarding_stmt(
                     ),
                 }
             }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 if inferred_expr_is_optional(texpr.clone()) {
                     emit_rust_unit_discarding_optional_typed(
                         texpr.clone(),
@@ -20496,7 +20616,10 @@ pub fn emit_var_ref(
                                                         .cloned()
                                                     {
                                                         Some(
-                                                            VarBindingKind::FunctionValueBinding,
+                                                            VarBindingKind::FunctionValueBinding {
+                                                                target: _,
+                                                                ..
+                                                            },
                                                         ) => true,
                                                         _ => false,
                                                     };
@@ -21545,7 +21668,9 @@ pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Opt
         CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
             Some(primitive_name.clone())
         }
-        CallTargetIdentity::SourceDeclarationCall { .. } => std::option::Option::None,
+        CallTargetIdentity::SourceDeclarationCall { declaration: _, .. } => {
+            std::option::Option::None
+        }
         CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
     }
 }
@@ -21559,7 +21684,9 @@ pub fn call_target_projected_declaration(
 ) -> Option<Rc<DeclaredCallableIdentity>> {
     match (*target.clone()).clone() {
         CallTargetIdentity::RuntimePrimitiveCall { projected_from, .. } => projected_from.clone(),
-        CallTargetIdentity::SourceDeclarationCall { .. } => std::option::Option::None,
+        CallTargetIdentity::SourceDeclarationCall { declaration: _, .. } => {
+            std::option::Option::None
+        }
         CallTargetIdentity::CallableTargetUndetermined => std::option::Option::None,
     }
 }
@@ -21759,10 +21886,7 @@ pub fn emit_rust_expr_record_lit(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit {
-            parent_enum: parent_enum,
-            ..
-        } => {
+        ExprData::ExprRecordLit { parent_enum, .. } => {
             let tn = crate::v1_std_core::record_lit_type_name_at(
                 expr.clone(),
                 scope.type_env.clone().source_indices.clone(),
@@ -22409,7 +22533,7 @@ pub fn discriminant_zero_field_variant_tag(
     emit_info: Rc<EmitGraphInfo>,
 ) -> Option<String> {
     match (*arg.expr_data.clone()).clone() {
-        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+        ExprData::ExprRecordLit { .. } => {
             if ((arg.children.clone().len() as i64) != 0) {
                 std::option::Option::None
             } else {
@@ -22949,7 +23073,7 @@ pub fn emit_typed_call(
                     "compile_error!(\"with call missing resolved record type\")".to_string()
                 };
                 let field_strs = match (*update_arg.expr_data.clone()).clone() {
-                    ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
+                    ExprData::ExprRecordLit { .. } => Rc::new({
                         let mut __result = Vec::new();
                         for f in update_arg.children.clone().iter().cloned() {
                             __result.push(v1_rt::concat(
@@ -23095,12 +23219,14 @@ pub fn emit_typed_call(
         );
         let callee = match (*call_target.clone()).clone() {
             CallTargetIdentity::SourceDeclarationCall {
-                owner_module_path: owner,
-                decl_name: decl,
+                declaration: declaration,
                 ..
             } => crate::v1_compiler_emit::lookup_item(
                 registry.clone(),
-                v1_rt::concat(v1_rt::concat(owner.clone(), ".".to_string()), decl.clone()),
+                v1_rt::concat(
+                    v1_rt::concat(declaration.module_path.clone(), ".".to_string()),
+                    crate::std_decl_ref::declaration_ref_member_name(declaration.clone()),
+                ),
             ),
             _ => std::option::Option::None,
         };
@@ -23255,12 +23381,14 @@ pub fn emit_typed_call(
         } else {
             match (*call_target.clone()).clone() {
                 CallTargetIdentity::SourceDeclarationCall {
-                    owner_module_path: owner,
-                    decl_name: decl,
+                    declaration: declaration,
                     ..
                 } => {
+                    let owner = declaration.module_path.clone();
+                    let member =
+                        crate::std_decl_ref::declaration_ref_member_name(declaration.clone());
                     if (owner.clone() == scope.module_name.clone()) {
-                        crate::v1_compiler_emit::emit_ident(decl.clone(), RenderTarget::Rust)
+                        crate::v1_compiler_emit::emit_ident(member.clone(), RenderTarget::Rust)
                     } else {
                         v1_rt::concat(
                             v1_rt::concat(
@@ -23272,7 +23400,7 @@ pub fn emit_typed_call(
                                 ),
                                 "::".to_string(),
                             ),
-                            crate::v1_compiler_emit::emit_ident(decl.clone(), RenderTarget::Rust),
+                            crate::v1_compiler_emit::emit_ident(member.clone(), RenderTarget::Rust),
                         )
                     }
                 }
@@ -23289,13 +23417,17 @@ pub fn emit_typed_call(
                 } => {
                     match projected_from.clone() {
                         Some(declared) => {
-                            if (declared.owner_module_path.clone() == scope.module_name.clone()) {
+                            let owner = declared.declaration.clone().module_path.clone();
+                            let member = crate::std_decl_ref::declaration_ref_member_name(
+                                declared.declaration.clone(),
+                            );
+                            if (owner.clone() == scope.module_name.clone()) {
                                 crate::v1_compiler_emit::emit_ident(
-                                    declared.decl_name.clone(),
+                                    member.clone(),
                                     RenderTarget::Rust,
                                 )
                             } else {
-                                v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::v1_compiler_emit_core_support::module_to_filename(declared.owner_module_path.clone())), "::".to_string()), crate::v1_compiler_emit::emit_ident(declared.decl_name.clone(), RenderTarget::Rust))
+                                v1_rt::concat(v1_rt::concat(v1_rt::concat("crate::".to_string(), crate::v1_compiler_emit_core_support::module_to_filename(owner.clone())), "::".to_string()), crate::v1_compiler_emit::emit_ident(member.clone(), RenderTarget::Rust))
                             }
                         }
                         None => crate::v1_compiler_emit::emit_error_expr(
@@ -25363,7 +25495,7 @@ pub fn emit_rust_with_method_call(
         let update_arg =
             crate::v1_std_core::arg_value(args.clone().first().cloned().clone().unwrap());
         let field_strs = match (*update_arg.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => Rc::new({
+            ExprData::ExprRecordLit { .. } => Rc::new({
                 let mut __result = Vec::new();
                 for f in update_arg.children.clone().iter().cloned() {
                     __result.push(v1_rt::concat(
@@ -28345,7 +28477,7 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let current = match (*n.expr_data.clone()).clone() {
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 match crate::v1_std_core::record_lit_type_name_at(n.clone(), source_indices.clone())
                 {
                     Some(_) => Rc::new(vec![]),
@@ -34067,7 +34199,7 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
                 }
                 __found
             }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 let mut __found = false;
                 for f in value.children.clone().iter().cloned() {
                     if data_value_has_cross_refs(crate::v1_std_core::field_init_node_value(
@@ -34309,7 +34441,7 @@ pub fn emit_data_def_body(
         );
         if (type_name.clone() == "BoundedLattice".to_string()) {
             match (*value.expr_data.clone()).clone() {
-                ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                ExprData::ExprRecordLit { .. } => {
                     let lattice_value = field_value_by_name(
                         value.clone(),
                         "lattice".to_string(),
@@ -34478,7 +34610,7 @@ pub fn emit_data_def_body(
                     );
                     if is_map.clone() {
                         match (*value.expr_data.clone()).clone() {
-                            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                            ExprData::ExprRecordLit { .. } => {
                                 let key_is_string = map_literal_key_is_string(
                                     type_node.clone(),
                                     scope.type_env.clone().source_indices.clone(),
@@ -34531,7 +34663,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(
                                 1024,
                             );
                             let is_already_wrapped = match (*value.expr_data.clone()).clone() {
-                                ExprData::ExprRecordLit { parent_enum: _, .. } => true,
+                                ExprData::ExprRecordLit { .. } => true,
                                 ExprData::ExprListLit => true,
                                 ExprData::ExprVar {
                                     binding_kind: bk, ..

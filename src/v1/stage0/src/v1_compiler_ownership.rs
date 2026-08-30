@@ -847,7 +847,7 @@ pub fn collect_callable_refs(
             ExprData::ExprVar {
                 binding_kind: bk, ..
             } => match bk.clone().as_deref().cloned() {
-                Some(VarBindingKind::FunctionValueBinding) => {
+                Some(VarBindingKind::FunctionValueBinding { target: _, .. }) => {
                     let n = crate::v1_std_core::expr_var_name_at(texpr.clone(), si.clone());
                     v1_rt::rc_set_insert(v1_rt::rc_empty_set::<_>(), n.clone())
                 }
@@ -1194,7 +1194,7 @@ pub fn fold_body_constructs_acc_struct(
             let body = crate::v1_std_core::lambda_body(lambda_node.clone());
             let terminal = fold_terminal_expr(body.clone());
             match (*terminal.expr_data.clone()).clone() {
-                ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                ExprData::ExprRecordLit { .. } => {
                     (crate::v1_std_core::authored_name_at(si.clone(), terminal.clone())
                         == acc_type_name.clone())
                 }

@@ -115,7 +115,7 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
         ExprData::ExprMatch => "ExprMatch".to_string(),
         ExprData::ExprIf => "ExprIf".to_string(),
         ExprData::ExprLet => "ExprLet".to_string(),
-        ExprData::ExprRecordLit { parent_enum: _, .. } => "ExprRecordLit".to_string(),
+        ExprData::ExprRecordLit { .. } => "ExprRecordLit".to_string(),
         ExprData::ExprListLit => "ExprListLit".to_string(),
         ExprData::ExprBinOp { .. } => "ExprBinOp".to_string(),
         ExprData::ExprUnaryOp { op: _, .. } => "ExprUnaryOp".to_string(),

@@ -414,7 +414,7 @@ pub fn emit_simple_expr(
                     )
                 }
             },
-            ExprData::ExprRecordLit { parent_enum: _, .. } => match target.clone() {
+            ExprData::ExprRecordLit { .. } => match target.clone() {
                 RenderTarget::Go => emit_error_expr(
                     "record literal in simple expr not yet supported for Go".to_string(),
                     target.clone(),
@@ -1008,7 +1008,7 @@ pub fn emit_data_value_json(
                     }
                 }
             }
-            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            ExprData::ExprRecordLit { .. } => {
                 let accum = value.children.clone().iter().cloned().fold(
                     Rc::new(JsonFragmentsAccum::FragmentsAccumulated {
                         pieces: Rc::new(vec![]),
@@ -2827,7 +2827,7 @@ pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
             method_semantics: _,
             ..
         } => ExprCategory::ExprCatCompound,
-        ExprData::ExprRecordLit { parent_enum: _, .. } => ExprCategory::ExprCatCompound,
+        ExprData::ExprRecordLit { .. } => ExprCategory::ExprCatCompound,
         ExprData::ExprListLit => ExprCategory::ExprCatCompound,
         ExprData::ExprBinOp { .. } => ExprCategory::ExprCatCompound,
         ExprData::ExprUnaryOp { op: _, .. } => ExprCategory::ExprCatCompound,
@@ -5416,7 +5416,7 @@ pub fn emit_shared_expr(
         ExprData::ExprMatch => emit_match(texpr.clone()),
         ExprData::ExprIf => emit_if(texpr.clone()),
         ExprData::ExprLet => emit_let(texpr.clone()),
-        ExprData::ExprRecordLit { parent_enum: _, .. } => emit_record_lit(texpr.clone()),
+        ExprData::ExprRecordLit { .. } => emit_record_lit(texpr.clone()),
         ExprData::ExprBinOp { .. } => emit_bin_op(texpr.clone()),
         ExprData::ExprUnaryOp { op: op, .. } => {
             let operand = crate::v1_std_core::unaryop_operand(texpr.clone());
