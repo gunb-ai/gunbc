@@ -32,6 +32,7 @@ import extdeps.bmc.virtual_media {
 }
 import extdeps.bmc.redfish_virtual_media {
   CollectionDiscovered,
+  ProbeUnreached,
   RedfishVirtualMediaLocator,
   RedfishVirtualMediaProbe,
   RedfishVirtualMediaProbeReceipt,
@@ -99,12 +100,22 @@ import gunbc.machine_intake_access {
   bind_bmc_access_context,
 }
 import gunbc.install_transport_qualification {
-  ReinstallPathEstablished,
-  ReinstallPathStanding,
-  ReinstallPathUnestablished,
-  bind_reinstall_path_to_target,
-  configfs_transport_requirements_all,
+  BootOverrideNamesGadgetDevice,
+  ConfigfsMounted,
+  ConfigfsTransportRequirement,
+  MassStorageFunctionAvailable,
+  NbdClientPresent,
+  NbdServerReachableFromBmc,
+  NoForeignGadgetOrNbdAttachment,
+  ProbeFoundPresent,
+  TargetBoundReinstallPathStanding,
+  TargetBoundTransportProbeObservation,
+  TransportProbeObservation,
+  UdcPresent,
+  UsbGadgetFrameworkPresent,
+  target_bound_reinstall_path,
 }
+import product.placement_supply { HostIdentity }
 import gunbc.network_boot_delivery {
   NetworkBootBootArtifacts,
   NetworkBootBootSourceOverride,
@@ -129,6 +140,7 @@ import gunbc.boot_artifact_delivery {
   BootDeliverySolution,
   BootFromRemovableMedia,
   BoundBootDeliveryEvidence,
+  CandidateConfigfsUnestablished,
   CandidateEvidenceForOtherTarget,
   CandidateLiveSurfaceAbsent,
   CandidateNetworkBootUnestablished,
@@ -137,12 +149,14 @@ import gunbc.boot_artifact_delivery {
   CandidatePxeChainBoot,
   CandidateRedfishProbeAbsent,
   CandidateRedfishProbeBelowPlanFloor,
+  CandidateRedfishProbeContradictory,
   CandidateRedfishProtocolNotAdmitted,
   CandidateRedfishVirtualMedia,
   CandidateMegaRacRestRemoteMedia,
   CandidateStagedArtifactMismatch,
   ConfigfsGadgetOffer,
   DeliveryAccessUnbound,
+  DeliveryBootControlSurfaceUnestablished,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
   DeliveryTargetControllerMismatch,
@@ -357,6 +371,22 @@ data probe_collection_only: RedfishVirtualMediaProbeReceipt = RedfishVirtualMedi
   raw_response: content_hash_of_value(value: "virtualmedia-collection-fixture"),
 }
 
+// CONTRADICTORY receipts: the arm says the floor was not reached while the
+// population lists a protocol.
+data probe_unreached_with_https: RedfishVirtualMediaProbeReceipt = RedfishVirtualMediaProbeReceipt {
+  locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
+  progress: ProbeUnreached,
+  admitted_protocols: [TransferHttps],
+  raw_response: content_hash_of_value(value: "virtualmedia-unreached-fixture"),
+}
+
+data probe_collection_with_https: RedfishVirtualMediaProbeReceipt = RedfishVirtualMediaProbeReceipt {
+  locator: RedfishVirtualMediaLocator { parent: UnderManager { manager_id: "1" }, media_id: "CD1" },
+  progress: CollectionDiscovered,
+  admitted_protocols: [TransferHttps],
+  raw_response: content_hash_of_value(value: "virtualmedia-collection-https-fixture"),
+}
+
 fn observation_of(identity: BmcObservedIdentity, surfaces: List<BmcAccessSurface>, probe: RedfishVirtualMediaProbeReceipt?) -> BmcAccessObservation {
   BmcAccessObservation {
     endpoint: megarac_endpoint,
@@ -377,7 +407,7 @@ fn manifest_of(digests: List<ContentHash>) -> List<EvidenceRef> {
   fold(digests, init: [], f: (acc, d) => concat(acc, [EvidenceRef { label: "bmc-discovery", digest: d }]))
 }
 
-data full_manifest: List<EvidenceRef> = manifest_of(digests: [discovery_digest, probe_https.raw_response, probe_nfs_only.raw_response, probe_collection_only.raw_response])
+data full_manifest: List<EvidenceRef> = manifest_of(digests: [discovery_digest, probe_https.raw_response, probe_nfs_only.raw_response, probe_collection_only.raw_response, probe_unreached_with_https.raw_response, probe_collection_with_https.raw_response])
 
 fn receipt_of(subject: MachineIntakeSubject, standing: BmcAccessObservationStanding, manifest: List<EvidenceRef>) -> AccessObservationReceipt {
   AccessObservationReceipt { subject: subject, standing: standing, evidence_manifest: manifest }
@@ -437,14 +467,45 @@ fn request_with(staging: BootArtifactStagingBinding) -> BootDeliveryRequest {
 
 data policy: BootDeliveryPolicy = BootDeliveryPolicy { preference: PreferStandardRedfishThenOemThenNetwork }
 
-data configfs_unestablished: ReinstallPathStanding = ReinstallPathUnestablished { missing_probes: configfs_transport_requirements_all }
+// Configfs qualification: observations bound to a target AT THE OBSERVATION;
+// the standing is derived by the producer, never authored.
+data fixture_host: HostIdentity = "fixture-host" as HostIdentity
+
+fn bound_probe(t: BootDeliveryTarget, requirement: ConfigfsTransportRequirement) -> TargetBoundTransportProbeObservation {
+  TargetBoundTransportProbeObservation {
+    target: t,
+    observation: TransportProbeObservation {
+      host: fixture_host,
+      requirement: requirement,
+      probe: "synthetic fixture probe",
+      result: "synthetic fixture result",
+      outcome: ProbeFoundPresent,
+      observed_at: 1788000000000,
+    },
+  }
+}
+
+fn every_configfs_probe_for(t: BootDeliveryTarget) -> List<TargetBoundTransportProbeObservation> {
+  [
+    bound_probe(t: t, requirement: ConfigfsMounted),
+    bound_probe(t: t, requirement: UsbGadgetFrameworkPresent),
+    bound_probe(t: t, requirement: MassStorageFunctionAvailable),
+    bound_probe(t: t, requirement: UdcPresent),
+    bound_probe(t: t, requirement: NbdClientPresent),
+    bound_probe(t: t, requirement: NbdServerReachableFromBmc),
+    bound_probe(t: t, requirement: BootOverrideNamesGadgetDevice),
+    bound_probe(t: t, requirement: NoForeignGadgetOrNbdAttachment),
+  ]
+}
+
+data configfs_unestablished: TargetBoundReinstallPathStanding = target_bound_reinstall_path(target: target, observations: [])
 
 data network_boot_unestablished: NetworkBootDeliveryStanding = NetworkBootDeliveryUnestablished { missing: network_boot_requirements_all }
 
-fn evidence_of(access: BoundBmcAccessContextStanding, configfs: ReinstallPathStanding, network_boot: NetworkBootDeliveryStanding) -> BoundBootDeliveryEvidence {
+fn evidence_of(access: BoundBmcAccessContextStanding, configfs: TargetBoundReinstallPathStanding, network_boot: NetworkBootDeliveryStanding) -> BoundBootDeliveryEvidence {
   BoundBootDeliveryEvidence {
     access: access,
-    configfs: bind_reinstall_path_to_target(target: target, standing: configfs),
+    configfs: configfs,
     uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
     network_boot: network_boot,
   }
@@ -478,7 +539,8 @@ test fn redfish_virtual_media_planned_from_bound_context_and_probe_receipt() -> 
             && p.artifact.build_identity == intake_artifact.build_identity
             && p.target.endpoint == megarac_endpoint
             && p.boot_control == BootFromRemovableMedia
-            && list_length(items: p.eligibility.evidence_manifest) == 4
+            && p.boot_control_route == redfish_route
+            && list_length(items: p.eligibility.evidence_manifest) == 6
             && p.eligibility.selected == SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia }
         _ => false
       }
@@ -697,6 +759,48 @@ test fn redfish_collection_discovery_alone_does_not_plan() -> Bool {
   }
 }
 
+// RED (2026-08-30 re-review §2) — a receipt whose arm says the floor was never
+// reached while its population lists HTTPS contradicts itself: refused as a
+// contradiction, never resolved by preferring the population.
+fn refuses_as_probe_contradiction(s: BootDeliverySolution, expected: RedfishVirtualMediaProbe) -> Bool {
+  match s {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
+            CandidateRedfishProbeContradictory { progress: p, admitted: a } => p == expected && list_length(items: a) == 1
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+test fn contradictory_probe_receipts_are_refused_not_resolved() -> Bool {
+  let unreached = solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_unreached_with_https }), staging: staging_all)
+  let collection = solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_collection_with_https }), staging: staging_all)
+  refuses_as_probe_contradiction(s: unreached, expected: ProbeUnreached) && refuses_as_probe_contradiction(s: collection, expected: CollectionDiscovered)
+}
+
+// RED (2026-08-30 re-review §3) — the catalog row names BootSourceOverride and
+// the media surface is live, but the controller was NOT observed serving boot
+// control: no plan, and the refusal names the control surface's standing.
+test fn live_boot_control_absent_refuses_despite_catalog_capability_and_live_media() -> Bool {
+  match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceRedfishVirtualMedia, SurfaceOemRestRemoteMedia], probe: Present { value: probe_https }), staging: staging_all) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryBootControlSurfaceUnestablished { standing: s } =>
+          match s {
+            CandidateLiveSurfaceAbsent { surface: sf } => sf == SurfaceBootControl
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
 // POSITIVE CONTROL — the observed Mt. Collins shape: no Redfish route at all,
 // the OEM REST surface live, the profile's MegaRAC route carrying
 // image_redirection Enabled. The plan's params carry the typed
@@ -709,6 +813,7 @@ test fn observed_mt_collins_build_plans_megarac_rest_remote_media_with_image_red
           params.image_name == "intake.iso"
             && megarac_image_redirection_wire(r: params.image_redirection) == "1"
             && p.boot_control == BootFromRemovableMedia
+            && p.boot_control_route == IpmiLanplusRoute
         _ => false
       }
     BootDeliveryRefused { cause: _ } => false
@@ -839,30 +944,58 @@ test fn boot_source_override_gates_every_arm() -> Bool {
   }
 }
 
-// THE srv4 GAP, CLOSED: an established configfs reinstall path with a staged
-// export naming the artifact selects the USB-gadget delivery.
+// THE srv4 GAP, CLOSED HONESTLY: all eight configfs probes observed present
+// and bound to THIS target, with a staged export naming the artifact, select
+// the USB-gadget delivery; the plan preserves the eight observations.
 test fn established_configfs_path_selects_usb_gadget_delivery() -> Bool {
   match solve_boot_artifact_delivery(
     request: request_with(staging: staging_all),
-    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: ReinstallPathEstablished { qualified_by: [] }, network_boot: network_boot_unestablished),
+    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: target_bound_reinstall_path(target: target, observations: every_configfs_probe_for(t: target)), network_boot: network_boot_unestablished),
     policy: policy,
   ) {
     BootDeliveryPlanned { plan: p } =>
       match p.delivery {
-        OpenBmcConfigfsUsbGadget { params: params } => params.udc == configfs_offer.udc && p.eligibility.selected == SelectedFromConfigfsQualification { qualified_by: [] }
+        OpenBmcConfigfsUsbGadget { params: params } =>
+          params.udc == configfs_offer.udc
+            && match p.eligibility.selected {
+                 SelectedFromConfigfsQualification { qualified_by: q } => list_length(items: q) == 8
+                 _ => false
+               }
         _ => false
       }
     BootDeliveryRefused { cause: _ } => false
   }
 }
 
-// RED (ruling 4 §1) — the same established configfs path bound to ANOTHER
-// target (another attempt on the same controller) is not evidence for this
-// request: the candidate is refused naming the target the evidence was for.
+// RED (2026-08-30 re-review §1) — an EMPTY observation population does not
+// establish the path: the producer derives Unestablished with all eight probes
+// missing, and no authored establishment can be handed in beside a target.
+test fn empty_configfs_observation_population_does_not_establish() -> Bool {
+  match solve_boot_artifact_delivery(
+    request: request_with(staging: staging_all),
+    ev: evidence_of(access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)), configfs: configfs_unestablished, network_boot: network_boot_unestablished),
+    policy: policy,
+  ) {
+    BootDeliveryRefused { cause: c } =>
+      match c {
+        DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcConfigfsUsbGadget) {
+            CandidateConfigfsUnestablished { missing: m } => list_length(items: m) == 8
+            _ => false
+          }
+        _ => false
+      }
+    BootDeliveryPlanned { plan: _ } => false
+  }
+}
+
+// RED (ruling 4 §1) — the same eight observations bound to ANOTHER target
+// (another attempt on the same controller) are not evidence for this request:
+// the producer refuses the binding and the candidate names the target found.
 test fn configfs_path_established_for_another_target_is_refused() -> Bool {
   let ev = BoundBootDeliveryEvidence {
     access: bind(profile: no_vm_profile, receipt: observed(surfaces: [SurfaceBootControl], probe: none)),
-    configfs: bind_reinstall_path_to_target(target: other_attempt_target, standing: ReinstallPathEstablished { qualified_by: [] }),
+    configfs: target_bound_reinstall_path(target: target, observations: every_configfs_probe_for(t: other_attempt_target)),
     uefi_http: UefiHttpDeliveryUnestablished { missing: uefi_http_requirements_all },
     network_boot: network_boot_unestablished,
   }

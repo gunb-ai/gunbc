@@ -93,7 +93,6 @@ import gunbc.machine_intake_disposition {
   MachineIntakeDisposition,
   derive_disposition,
   derive_fleet_admission,
-  disposition_is_admitted,
   phase_standing,
 }
 
@@ -467,11 +466,11 @@ test fn placement_pending_is_parts_hold_not_admitted() -> Bool {
   let receipts = fold(done, init: [], f: (acc, p) => concat(acc, [satisfied_receipt(phase: p, subject: subject_before, previous: none)]))
   match disposition_over(subject: subject_before, receipts: receipts, window: ReturnWindowOpen { deadline: 1790000000000 }) {
     Present { value: d } =>
-      disposition_is_admitted(disposition: d) == false
-        && match d {
-             PartsHold { reason: r, next_action: _ } => r == PlacementQualificationPending
-             _ => false
-           }
+      match d {
+        PartsHold { reason: r, next_action: _ } => r == PlacementQualificationPending
+        Admitted { admission_receipt: _ } => false
+        ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
+      }
     Absent => false
   }
 }

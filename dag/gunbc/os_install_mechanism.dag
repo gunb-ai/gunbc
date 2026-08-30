@@ -48,9 +48,12 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryCandidateVerdict,
   BootDeliveryPlan,
   BootDeliveryPlanned,
+  BootDeliveryRefusalCause,
   BootDeliveryRefused,
   BootDeliverySolution,
   DeliveryAccessUnbound,
+  DeliveryBootControlRouteAbsent,
+  DeliveryBootControlSurfaceUnestablished,
   DeliveryTargetControllerMismatch,
   DeliveryTargetSubjectMismatch,
   DeliveryNoBootSourceOverride,
@@ -84,6 +87,7 @@ type OsInstallMechanismRefusalCause
   | InstallAccessContextUnbound { standing: BoundBmcAccessContextStanding }
   | InstallTargetContextMismatch { requested: BootDeliveryTarget }
   | InstallNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
+  | InstallBootControlUnestablished { cause: BootDeliveryRefusalCause }
   | InstallNoEligibleTransport {
       firmware: BmcFirmwareReleaseIdentity,
       considered: List<BootDeliveryCandidateVerdict>,
@@ -132,6 +136,8 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
         DeliveryTargetSubjectMismatch { requested: r, bound_subject: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
         DeliveryTargetControllerMismatch { requested: r, bound_endpoint: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
         DeliveryNoBootSourceOverride { firmware: fw } => OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
+        DeliveryBootControlSurfaceUnestablished { standing: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
+        DeliveryBootControlRouteAbsent { firmware: _ } => OsInstallMechanismRefused { cause: InstallBootControlUnestablished { cause: c } }
         DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
           OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }
       }

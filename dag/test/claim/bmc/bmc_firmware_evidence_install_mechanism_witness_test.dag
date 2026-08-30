@@ -43,6 +43,7 @@ import gunbc.os_install_mechanism {
   InstallFirmwareEvidenceAbsent,
   InstallFirmwareVersionAmbiguous,
   InstallFirmwareVersionUncatalogued,
+  InstallBootControlUnestablished,
   InstallNoBootSourceOverride,
   InstallNoEligibleTransport,
   OsInstallMechanismRefused,
@@ -77,6 +78,7 @@ fn solution_refuses_at_profile_lookup_not_run(solution: OsInstallMechanismSoluti
         InstallAccessContextUnbound { standing: _ } => false
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
@@ -160,6 +162,7 @@ test fn unobserved_endpoint_refuses_with_absent_evidence_before_the_access_step(
         InstallAccessContextUnbound { standing: _ } => false
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
@@ -192,6 +195,7 @@ test fn uncatalogued_version_refuses_rather_than_matching_nearest() -> Bool {
         InstallAccessContextUnbound { standing: _ } => false
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }
@@ -290,6 +294,7 @@ test fn ambiguous_catalog_propagates_to_a_mechanism_refusal() -> Bool {
         InstallAccessContextUnbound { standing: _ } => false
         InstallTargetContextMismatch { requested: _ } => false
         InstallNoBootSourceOverride { firmware: _ } => false
+        InstallBootControlUnestablished { cause: _ } => false
         InstallNoEligibleTransport { firmware: _, considered: _ } => false
         InstallDeliveryOutsideLegacyMechanism { delivery: _ } => false
       }

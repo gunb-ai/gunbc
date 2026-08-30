@@ -282,10 +282,3 @@ fn derive_disposition(
   }
 }
 
-fn disposition_is_admitted(disposition: MachineIntakeDisposition) -> Bool {
-  match disposition {
-    Admitted { admission_receipt: _ } => true
-    ReturnWindow { defect: _, evidence: _, return_deadline: _ } => false
-    PartsHold { reason: _, next_action: _ } => false
-  }
-}

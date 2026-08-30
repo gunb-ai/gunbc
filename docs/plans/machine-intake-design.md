@@ -12,13 +12,12 @@ the merge gate: neither slice is recorded complete until they hold). Under rulin
 `BootDeliveryTarget` (subject × protocol-neutral `BmcControllerEndpoint`) is BOUND to the access
 context before any candidate is judged (`bind_boot_delivery_target`; subject and controller
 mismatches are separate refusals), every transport-local standing (configfs via
-`TargetBoundReinstallPath`, UEFI HTTP, network boot) carries the target it was established for
+`target_bound_reinstall_path`, whose observations are bound to a target at the observation and whose standing is derived by the producer — an empty population is Unestablished; UEFI HTTP; network boot) carries the target it was established for
 and is refused as `CandidateEvidenceForOtherTarget` otherwise; the profile's capability row is
 the exact-release `BmcFirmwareReleaseCapabilityRow` so raw "0.32" inhabits a valid profile (a
 positive control proves it); a promoted profile binds only beside `ProfilePromotionVerified`,
 which no producer can construct until INTAKE-AGENT-0A's evidence store — so every promoted
-profile refuses today; the Redfish probe receipt has one protocol authority (nonempty
-`admitted_protocols` is the plan floor; the ladder arm is payload-free) and the observation
+profile refuses today; the Redfish probe receipt is one coherent reading (payload-free ladder arm at the floor AND a nonempty `admitted_protocols`; a receipt saying one without the other is refused as a contradiction), boot CONTROL is established on its own evidence (`SurfaceBootControl` in the profile/observation intersection plus the profile's control route, carried on the plan as `boot_control_route`) and the observation
 receipt carries an evidence MANIFEST that must name both the discovery bytes and the nested
 probe's bytes; the plan's provenance preserves the selected candidate's own evidence. The
 changed-witness execution sublane #9717 requires is dispatched as its own CI PR (child work
@@ -372,6 +371,9 @@ evidence; automating media attachment while the verdict stays manual is not it.
 | Configfs path / network boot established for another target | `CandidateEvidenceForOtherTarget` | boot delivery witness |
 | Profile promoted from an observation, receipts unresolvable | `AccessContextPromotedProfileUnverified`, no plan | boot delivery witness |
 | Raw release "0.32" with an exact-release OEM row and matching observation | context binds, MegaRAC plan (positive) | boot delivery witness |
+| Probe arm below the floor while the population lists HTTPS | `CandidateRedfishProbeContradictory`, never resolved by preferring one side | boot delivery witness |
+| Live observation lacks `SurfaceBootControl` while catalog names override and media is live | `DeliveryBootControlSurfaceUnestablished`, no plan | boot delivery witness |
+| Empty configfs observation population | `CandidateConfigfsUnestablished` with all eight probes missing — no authored establishment | boot delivery witness |
 | Every current phase in the three rosters | exactly one rank, all distinct (positive) | disposition witness |
 | Catalog row whose capability firmware differs from its key | lookup refuses the catalog | boot delivery witness |
 | Probe admitted NFS only, staging offers HTTPS | `CandidateRedfishProtocolNotAdmitted` | boot delivery witness |

@@ -23,22 +23,29 @@ import extdeps.bmc.virtual_media {
 }
 import extdeps.bmc.megarac { MegaRacImageRedirectionEnabled, MegaRacImageRedirectionUnset, MegaRacImageRedirectionOn }
 import extdeps.bmc.redfish_virtual_media {
+  ProbeReceiptCoherent,
+  ProbeReceiptFloorWithoutProtocols,
+  ProbeReceiptProtocolsWithoutFloor,
   RedfishVirtualMediaProbe,
   RedfishVirtualMediaProbeReceipt,
   RedfishVirtualMediaTransferProtocol,
   redfish_probe_receipt_at_plan_floor,
+  redfish_probe_receipt_coherence,
   redfish_transfer_protocol_in,
 }
 import extdeps.bmc.access_profile {
   BmcAccessProfileProvenance,
+  BmcAccessRoute,
   BmcAccessSurface,
   SurfaceAbsentFromLiveObservation,
   SurfaceAbsentFromProfile,
+  SurfaceBootControl,
   SurfaceEligible,
   SurfaceOemNbdWebsocket,
   SurfaceOemRestRemoteMedia,
   SurfaceProfileObservationIdentityMismatch,
   SurfaceRedfishVirtualMedia,
+  bmc_profile_boot_control_route,
   bmc_profile_megarac_image_redirection,
   bmc_profile_nbd_websocket_path,
   bmc_surface_eligibility,
@@ -65,8 +72,10 @@ import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
   ReinstallPathRefused,
+  ReinstallPathObservationForOtherTarget,
   ReinstallPathUnestablished,
   TargetBoundReinstallPath,
+  TargetBoundReinstallPathStanding,
   TransportProbeObservation,
 }
 import gunbc.network_boot_delivery {
@@ -287,7 +296,7 @@ type BootDeliveryRequest {
 // establishment says so with the Unestablished arm.
 type BoundBootDeliveryEvidence {
   access: BoundBmcAccessContextStanding
-  configfs: TargetBoundReinstallPath
+  configfs: TargetBoundReinstallPathStanding
   uefi_http: UefiHttpDeliveryStanding
   network_boot: NetworkBootDeliveryStanding
 }
@@ -334,6 +343,7 @@ type BootDeliveryCandidateStanding
   | CandidateProfileObservationIdentityMismatch { surface: BmcAccessSurface }
   | CandidateRedfishProbeAbsent
   | CandidateRedfishProbeBelowPlanFloor { progress: RedfishVirtualMediaProbe }
+  | CandidateRedfishProbeContradictory { progress: RedfishVirtualMediaProbe, admitted: List<RedfishVirtualMediaTransferProtocol> }
   | CandidateRedfishProtocolNotAdmitted { offered: RedfishVirtualMediaTransferProtocol, admitted: List<RedfishVirtualMediaTransferProtocol> }
   | CandidateRouteAbsent { surface: BmcAccessSurface }
   | CandidateOemParameterUnset { surface: BmcAccessSurface }
@@ -376,11 +386,17 @@ type BootDeliveryEligibilityProvenance {
 // insert, host consumption, eject and detach are established only by execution
 // receipts (the boot-delivery and cleanup phases of gunbc.machine_intake_phase),
 // never by this solver.
+// boot_control_route is the CONTROL half's evidence: the route the bound
+// profile exposes for boot control, admitted only after SurfaceBootControl was
+// established in the profile/observation intersection (2026-08-30 re-review
+// §3). Control and delivery keep independent eligibility; the plan exists only
+// when both hold.
 type BootDeliveryPlan {
   target: BootDeliveryTarget
   artifact: BootArtifact
   delivery: BootArtifactDelivery
   boot_control: BootControlTarget
+  boot_control_route: BmcAccessRoute
   eligibility: BootDeliveryEligibilityProvenance
 }
 
@@ -389,6 +405,8 @@ type BootDeliveryRefusalCause
   | DeliveryTargetSubjectMismatch { requested: BootDeliveryTarget, bound_subject: MachineIntakeSubject }
   | DeliveryTargetControllerMismatch { requested: BootDeliveryTarget, bound_endpoint: BmcControllerEndpoint }
   | DeliveryNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
+  | DeliveryBootControlSurfaceUnestablished { standing: BootDeliveryCandidateStanding }
+  | DeliveryBootControlRouteAbsent { firmware: BmcFirmwareReleaseIdentity }
   | DeliveryNoEligibleTransport { firmware: BmcFirmwareReleaseIdentity, considered: List<BootDeliveryCandidateVerdict> }
 
 type BootDeliverySolution
@@ -440,7 +458,15 @@ fn staged_digest_standing(offered: ContentHash, requested: ContentHash) -> BootD
 // must be among them. The ladder arm is carried on the refusal for diagnosis;
 // it decides nothing.
 fn redfish_probe_standing(receipt: RedfishVirtualMediaProbeReceipt, offered: RedfishVirtualMediaTransferProtocol) -> BootDeliveryCandidateStanding {
-  if redfish_probe_receipt_at_plan_floor(receipt: receipt) == false {
+  let coherence = redfish_probe_receipt_coherence(receipt: receipt)
+  let contradictory = match coherence {
+    ProbeReceiptCoherent => false
+    ProbeReceiptProtocolsWithoutFloor { progress: _, admitted: _ } => true
+    ProbeReceiptFloorWithoutProtocols { progress: _ } => true
+  }
+  if contradictory {
+    CandidateRedfishProbeContradictory { progress: receipt.progress, admitted: receipt.admitted_protocols }
+  } else if redfish_probe_receipt_at_plan_floor(receipt: receipt) == false {
     CandidateRedfishProbeBelowPlanFloor { progress: receipt.progress }
   } else if redfish_transfer_protocol_in(protocols: receipt.admitted_protocols, protocol: offered) == false {
     CandidateRedfishProtocolNotAdmitted { offered: offered, admitted: receipt.admitted_protocols }
@@ -533,18 +559,22 @@ fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: Boot
 // requirement probes gunbc.install_transport_qualification names — bound to
 // THIS request's target, plus a staged export naming the requested digest.
 fn configfs_usb_gadget_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
-  if same_boot_delivery_target(left: ev.configfs.target, right: request.target) == false {
-    CandidateEvidenceForOtherTarget { evidence_target: ev.configfs.target }
-  } else {
-    match ev.configfs.standing {
-      ReinstallPathEstablished { qualified_by: _ } =>
-        match request.staging.configfs_gadget {
-          Absent => CandidateStagingAbsent
-          Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
+  match ev.configfs {
+    ReinstallPathObservationForOtherTarget { requested: _, found: f } => CandidateEvidenceForOtherTarget { evidence_target: f }
+    TargetBoundReinstallPath { target: t, standing: s, observations: _ } =>
+      if same_boot_delivery_target(left: t, right: request.target) == false {
+        CandidateEvidenceForOtherTarget { evidence_target: t }
+      } else {
+        match s {
+          ReinstallPathEstablished { qualified_by: _ } =>
+            match request.staging.configfs_gadget {
+              Absent => CandidateStagingAbsent
+              Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
+            }
+          ReinstallPathUnestablished { missing_probes: m } => CandidateConfigfsUnestablished { missing: m }
+          ReinstallPathRefused { observed_absent: a } => CandidateConfigfsRefused { observed_absent: a }
         }
-      ReinstallPathUnestablished { missing_probes: m } => CandidateConfigfsUnestablished { missing: m }
-      ReinstallPathRefused { observed_absent: a } => CandidateConfigfsRefused { observed_absent: a }
-    }
+      }
   }
 }
 
@@ -667,8 +697,11 @@ fn build_boot_artifact_delivery(
           }
       }
     CandidateOpenBmcConfigfsUsbGadget =>
-      match ev.configfs.standing {
-        ReinstallPathEstablished { qualified_by: q } =>
+      match ev.configfs {
+        ReinstallPathObservationForOtherTarget { requested: _, found: _ } => none
+        TargetBoundReinstallPath { target: _, standing: bound_standing, observations: _ } =>
+          match bound_standing {
+            ReinstallPathEstablished { qualified_by: q } =>
           match request.staging.configfs_gadget {
             Absent => none
             Present { value: offer } =>
@@ -687,8 +720,9 @@ fn build_boot_artifact_delivery(
                 },
               }
           }
-        ReinstallPathUnestablished { missing_probes: _ } => none
-        ReinstallPathRefused { observed_absent: _ } => none
+            ReinstallPathUnestablished { missing_probes: _ } => none
+            ReinstallPathRefused { observed_absent: _ } => none
+          }
       }
     CandidateUefiHttpBoot =>
       match ev.uefi_http {
@@ -733,6 +767,7 @@ fn select_boot_artifact_delivery(
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
   policy: BootDeliveryPolicy,
+  control_route: BmcAccessRoute,
   verdicts: List<BootDeliveryCandidateVerdict>,
 ) -> BootDeliverySolution {
   match first_eligible_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
@@ -743,6 +778,7 @@ fn select_boot_artifact_delivery(
           artifact: request.artifact,
           delivery: built.delivery,
           boot_control: boot_artifact_delivery_boot_control(delivery: built.delivery),
+          boot_control_route: control_route,
           eligibility: BootDeliveryEligibilityProvenance {
             profile_provenance: ctx.profile_provenance,
             evidence_manifest: ctx.evidence_manifest,
@@ -755,28 +791,40 @@ fn select_boot_artifact_delivery(
   }
 }
 
-// Solve from a target context the binder admitted: boot-source override gates
-// every arm (each drives the host through a BMC one-shot target); then the
-// candidates are judged in the policy's order and the first eligible one is
-// built. Every arm is reached from something the request or the evidence
-// NAMES, never from the absence of another arm: the else is a refusal carrying
-// every candidate's standing.
+// Solve from a target context the binder admitted. Boot CONTROL is established
+// first, on its own evidence: the capability row must name boot-source
+// override, the bound profile and the live observation must both admit
+// SurfaceBootControl, and the profile must expose a control route — a catalog
+// capability alone never establishes control on a controller that was not
+// observed serving it. Then the candidates are judged in the policy's order and
+// the first eligible one is built. Every arm is reached from something the
+// request or the evidence NAMES, never from the absence of another arm: the
+// else is a refusal carrying every candidate's standing.
 fn solve_bound_boot_artifact_delivery(
   ctx: BoundBmcAccessContext,
   request: BootDeliveryRequest,
   ev: BoundBootDeliveryEvidence,
   policy: BootDeliveryPolicy,
 ) -> BootDeliverySolution {
+  let control_surface = surface_candidate_standing(ctx: ctx, surface: SurfaceBootControl)
+  let control_ok = control_surface == CandidateEligible
   if release_row_has_capability(row: ctx.capability_row, cap: CapabilityBootSourceOverride) == false {
     BootDeliveryRefused { cause: DeliveryNoBootSourceOverride { firmware: ctx.capability_row.firmware } }
+  } else if control_ok == false {
+    BootDeliveryRefused { cause: DeliveryBootControlSurfaceUnestablished { standing: control_surface } }
   } else {
-    select_boot_artifact_delivery(
-      ctx: ctx,
-      ev: ev,
-      request: request,
-      policy: policy,
-      verdicts: boot_delivery_candidate_verdicts(ctx: ctx, ev: ev, request: request),
-    )
+    match bmc_profile_boot_control_route(profile: ctx.profile) {
+      Absent => BootDeliveryRefused { cause: DeliveryBootControlRouteAbsent { firmware: ctx.capability_row.firmware } }
+      Present { value: route } =>
+        select_boot_artifact_delivery(
+          ctx: ctx,
+          ev: ev,
+          request: request,
+          policy: policy,
+          control_route: route,
+          verdicts: boot_delivery_candidate_verdicts(ctx: ctx, ev: ev, request: request),
+        )
+    }
   }
 }
 

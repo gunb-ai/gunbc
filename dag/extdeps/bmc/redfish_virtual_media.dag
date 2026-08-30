@@ -178,8 +178,51 @@ type RedfishVirtualMediaProbeReceipt {
   raw_response: ContentHash
 }
 
+// The ladder arms at or above the admitted-protocol floor. Insert and eject
+// receipts are above it only because the receipt still carries the locator and
+// admitted population they were reached with.
+fn redfish_probe_progress_at_floor(progress: RedfishVirtualMediaProbe) -> Bool {
+  match progress {
+    ProbeUnreached => false
+    ObservedAbsent => false
+    CollectionDiscovered => false
+    ResourceReadable => false
+    InsertMediaActionAdvertised => false
+    TransferProtocolAdmitted => true
+    InsertSucceeded => true
+    EjectSucceededAndDetached => true
+    OperationRefused => false
+  }
+}
+
+// ONE COHERENT RECEIPT (2026-08-30 re-review §2). The ladder arm and the
+// admitted-protocol population are two statements about one reading; a
+// receipt whose arm says the floor was not reached while listing protocols, or
+// says it was reached while listing none, contradicts itself and is refused as
+// such — never resolved by preferring one side.
+type RedfishProbeReceiptCoherence
+  = ProbeReceiptCoherent
+  | ProbeReceiptProtocolsWithoutFloor { progress: RedfishVirtualMediaProbe, admitted: List<RedfishVirtualMediaTransferProtocol> }
+  | ProbeReceiptFloorWithoutProtocols { progress: RedfishVirtualMediaProbe }
+
+fn redfish_probe_receipt_coherence(receipt: RedfishVirtualMediaProbeReceipt) -> RedfishProbeReceiptCoherence {
+  let at_floor = redfish_probe_progress_at_floor(progress: receipt.progress)
+  let has_protocols = list_length(items: receipt.admitted_protocols) > 0
+  if at_floor && has_protocols {
+    ProbeReceiptCoherent
+  } else if has_protocols {
+    ProbeReceiptProtocolsWithoutFloor { progress: receipt.progress, admitted: receipt.admitted_protocols }
+  } else if at_floor {
+    ProbeReceiptFloorWithoutProtocols { progress: receipt.progress }
+  } else {
+    ProbeReceiptCoherent
+  }
+}
+
+// The plan floor: a coherent receipt whose arm reached the floor and whose
+// population is nonempty.
 fn redfish_probe_receipt_at_plan_floor(receipt: RedfishVirtualMediaProbeReceipt) -> Bool {
-  list_length(items: receipt.admitted_protocols) > 0
+  redfish_probe_progress_at_floor(progress: receipt.progress) && list_length(items: receipt.admitted_protocols) > 0
 }
 
 fn redfish_transfer_protocol_in(protocols: List<RedfishVirtualMediaTransferProtocol>, protocol: RedfishVirtualMediaTransferProtocol) -> Bool {

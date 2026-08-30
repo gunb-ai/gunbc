@@ -275,6 +275,38 @@ fn bmc_profile_megarac_image_redirection(profile: BmcAccessProfile) -> MegaRacIm
   )
 }
 
+// The route boot CONTROL rides on: Redfish where the profile exposes it, else
+// IPMI lanplus (the no-Redfish MegaRAC case). Absent when the profile names no
+// control-capable route at all.
+fn bmc_profile_boot_control_route(profile: BmcAccessProfile) -> BmcAccessRoute? {
+  let redfish = fold(
+    profile.routes,
+    init: none,
+    f: (acc, route) => match route {
+      RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => Present { value: route }
+      IpmiLanplusRoute => acc
+      MegaRacRestRoute { image_redirection: _ } => acc
+      OpenBmcShellRoute => acc
+      OpenBmcNbdWebsocketRoute { ws_path: _ } => acc
+    },
+  )
+  match redfish {
+    Present { value: _ } => redfish
+    Absent =>
+      fold(
+        profile.routes,
+        init: none,
+        f: (acc, route) => match route {
+          IpmiLanplusRoute => Present { value: route }
+          RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => acc
+          MegaRacRestRoute { image_redirection: _ } => acc
+          OpenBmcShellRoute => acc
+          OpenBmcNbdWebsocketRoute { ws_path: _ } => acc
+        },
+      )
+  }
+}
+
 fn bmc_profile_nbd_websocket_path(profile: BmcAccessProfile) -> NonEmptyStr? {
   fold(
     profile.routes,

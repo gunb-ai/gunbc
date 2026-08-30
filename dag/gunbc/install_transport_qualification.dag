@@ -2,7 +2,7 @@ module gunbc.install_transport_qualification
 
 import std.types { Bool, EpochMs, List, NonEmptyStr, list_length }
 import product.placement_supply { HostIdentity }
-import gunbc.machine_intake_access { BootDeliveryTarget }
+import gunbc.machine_intake_access { BootDeliveryTarget, same_boot_delivery_target }
 
 // WHY THIS MODULE EXISTS, in one sentence: an omitted capability was being read
 // as an observed absence, and the two are different facts with different
@@ -164,19 +164,53 @@ fn configfs_reinstall_path_standing(
   }
 }
 
-// THE STANDING, BOUND TO AN INTAKE TARGET (ruling 4 §1). A ReinstallPathStanding
-// is a fact about a HOST's transport (its observations carry a HostIdentity);
-// the delivery solver plans for an intake TARGET (subject and controller). The
-// join between them is made here, once, by bind_reinstall_path_to_target, and
-// the solver consumes only the bound record — so a qualification established on
-// srv3 cannot be handed beside a request for another unit.
-type TargetBoundReinstallPath {
+// THE STANDING, BOUND TO AN INTAKE TARGET (ruling 4 §1, refined by the
+// 2026-08-30 re-review). A TransportProbeObservation carries a HostIdentity,
+// which cannot be joined honestly to an intake subject and controller; so each
+// observation is bound to the target it was taken for AT THE OBSERVATION, and
+// the producer below derives the standing from that bound population itself.
+// A caller cannot hand an authored ReinstallPathEstablished beside a target:
+// the only constructor path to a bound standing runs through the probe fold,
+// an empty population is Unestablished with every probe missing, and an
+// observation bound to another target refuses the whole binding.
+type TargetBoundTransportProbeObservation {
   target: BootDeliveryTarget
-  standing: ReinstallPathStanding
+  observation: TransportProbeObservation
 }
 
-fn bind_reinstall_path_to_target(target: BootDeliveryTarget, standing: ReinstallPathStanding) -> TargetBoundReinstallPath {
-  TargetBoundReinstallPath { target: target, standing: standing }
+type TargetBoundReinstallPathStanding
+  = TargetBoundReinstallPath {
+      target: BootDeliveryTarget
+      standing: ReinstallPathStanding
+      observations: List<TransportProbeObservation>
+    }
+  | ReinstallPathObservationForOtherTarget { requested: BootDeliveryTarget, found: BootDeliveryTarget }
+
+fn first_observation_for_other_target(
+  target: BootDeliveryTarget,
+  observations: List<TargetBoundTransportProbeObservation>,
+) -> BootDeliveryTarget? {
+  fold(
+    observations,
+    init: none,
+    f: (acc, o) => match acc {
+      Present { value: _ } => acc
+      Absent => if same_boot_delivery_target(left: o.target, right: target) { none } else { Present { value: o.target } }
+    },
+  )
+}
+
+fn target_bound_reinstall_path(
+  target: BootDeliveryTarget,
+  observations: List<TargetBoundTransportProbeObservation>,
+) -> TargetBoundReinstallPathStanding {
+  match first_observation_for_other_target(target: target, observations: observations) {
+    Present { value: found } => ReinstallPathObservationForOtherTarget { requested: target, found: found }
+    Absent => {
+      let bare = fold(observations, init: [], f: (acc, o) => concat(acc, [o.observation]))
+      TargetBoundReinstallPath { target: target, standing: configfs_reinstall_path_standing(observations: bare), observations: bare }
+    }
+  }
 }
 
 // A HOST BEING INSTALLED AND A HOST BEING REINSTALLABLE ARE INDEPENDENT, and

@@ -296,14 +296,16 @@ test fn onboarding_and_intake_vocabularies_share_no_spelling() -> Bool {
   length(xs: live_wall.shared_spellings) == 0
 }
 
-// THE WALL, HALF ONE: consumers of the onboarding lifecycle in gunbc.machine_intake_* = [].
-test fn no_intake_declaration_consumes_the_onboarding_lifecycle() -> Bool {
+// THE WALL, HALF ONE, at its measured grain: parse-grain-observed consumers of the onboarding
+// lifecycle in gunbc.machine_intake_* = []. Nested body calls and parameter types are outside
+// the instrument (see the trigger below), so the claim is named by what it observes.
+test fn no_parse_grain_observed_intake_declaration_consumes_onboarding() -> Bool {
   length(xs: live_wall.intake_consumers_of_onboarding) == 0
 }
 
 // THE WALL, HALF TWO: declarations bridging the onboarding lifecycle to an intake name = [],
 // over every declaration in the live pool, gunbc.bmc_onboarding itself included.
-test fn no_declaration_bridges_onboarding_lifecycle_to_intake() -> Bool {
+test fn no_parse_grain_observed_declaration_bridges_onboarding_to_intake() -> Bool {
   length(xs: live_wall.bridging_declarations) == 0
 }
 
