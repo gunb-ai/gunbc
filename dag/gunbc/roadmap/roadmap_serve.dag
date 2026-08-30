@@ -62,7 +62,7 @@ import gunbc.roadmap_static_site {
 import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 import gunbc.roadmap_belt_actuate {
   BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
-  belt_spawn_outcome_json, belt_launch_host_standing,
+  belt_spawn_outcome_json, belt_launch_host_standing_for_page,
   belt_dispatch_node, belt_dispatch_node_for_instance,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
@@ -424,7 +424,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
-    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority_launch(launch: belt_launch_host_standing(instance: instance)))
+    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority_launch(launch: belt_launch_host_standing_for_page(instance: instance)))
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
@@ -525,7 +525,7 @@ data roadmap_serve_host_shell_bounded_drain_receipt_note: String = "HOST-BOUNDAR
 fn serve_daily_page_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
-  let launch = belt_launch_host_standing(instance: instance)
+  let launch = belt_launch_host_standing_for_page(instance: instance)
   let page = match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsObserved { attempts } =>
       roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, launch: launch)

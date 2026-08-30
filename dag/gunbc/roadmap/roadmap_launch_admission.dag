@@ -227,8 +227,11 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
 data launch_sessions_standing_note: String = "The observed live-session set, or the located reason it could not be observed. Unobservable is a REFUSAL at the no-live-attempt gate, never an empty set: an empty set would license a second attempt beside one the observer could not see."
 
 type LaunchSessionsStanding
-  = LaunchSessionsObserved { live: List<DispatchLiveSession> }
+  = LaunchSessionsPending
+  | LaunchSessionsObserved { live: List<DispatchLiveSession> }
   | LaunchSessionsUnobserved { reason: String }
+
+data launch_sessions_pending_note: String = "SESSION OBSERVATION IS THE LAST OBSERVATION, and it is lazy behind every model-only gate (review 5059681676 finding 2). The staged observer produces a standing whose sessions are PENDING; the decision is asked in two stages -- launch_admission_staged runs instance..dependencies and answers LaunchStageNeedsSessions only when a node has passed every pre-session gate -- and only then does the driver list tmux once (POST: for that node; page: one shared observation when at least one row reaches the live gate; timer: once, because its reap pass needs the set regardless) and completes the decision with launch_host_with_sessions. A pending standing that reaches the full decision refuses fail-closed at the live gate (GateNotReached -> LaunchGateNotEvaluated live); it is never read as an empty set."
 
 data launch_host_standing_note: String = "Everything the decision needs from the HOST, observed once per invocation and node-independent: the instance's actuation posture, the deployment-transition admission, the fleet revision standing, the live session set, the belt capacity and the spawn mode. A surface that has no instance to observe (a static artifact, a page rendered outside the served instance) passes LaunchHostUnobserved, which refuses at the FIRST gate as LaunchInstanceActuationRefused: there is no actuating instance behind that render, so no launch is available from it. Fabricating a permitted standing for such a render is exactly the fail-open the plan forbids."
 
@@ -293,6 +296,7 @@ fn launch_host_refusal(standing: LaunchHostStanding) -> LaunchRefusal? {
                   match sessions {
                     LaunchSessionsUnobserved { reason } => Present { value: LaunchSessionsUnobservable { reason: reason } }
                     LaunchSessionsObserved { live: _ } => none
+                    LaunchSessionsPending => none
                   }
               }
           }
@@ -520,6 +524,7 @@ fn launch_session_liveness(session_name: String, process: WorkerProcessEvidence)
 
 fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> LaunchGateVerdict {
   match sessions {
+    LaunchSessionsPending => GateNotReached
     LaunchSessionsUnobserved { reason } => GateRefused { refusal: LaunchSessionsUnobservable { reason: reason } }
     LaunchSessionsObserved { live } => {
       let matched = live |> filter(s => s.node_id == node_id)
@@ -552,6 +557,7 @@ fn launch_occupying_count(live: List<DispatchLiveSession>) -> Int {
 
 fn launch_running_count(sessions: LaunchSessionsStanding) -> Int {
   match sessions {
+    LaunchSessionsPending => 0
     LaunchSessionsUnobserved { reason: _ } => 0
     LaunchSessionsObserved { live } => launch_occupying_count(live: live)
   }
@@ -704,6 +710,59 @@ fn launch_admission(
   ))
 }
 
+fn launch_host_with_sessions(standing: LaunchHostStanding, sessions: LaunchSessionsStanding) -> LaunchHostStanding {
+  match standing {
+    LaunchHostObserved { instance_id, actuation, transition, revision, sessions: _, capacity, mode } =>
+      LaunchHostObserved {
+        instance_id: instance_id,
+        actuation: actuation,
+        transition: transition,
+        revision: revision,
+        sessions: sessions,
+        capacity: capacity,
+        mode: mode,
+      }
+    LaunchHostObserveOnly { instance_id } => LaunchHostObserveOnly { instance_id: instance_id }
+    LaunchHostHalted { instance_id, gate, refusal } => LaunchHostHalted { instance_id: instance_id, gate: gate, refusal: refusal }
+    LaunchHostUnobserved { reason } => LaunchHostUnobserved { reason: reason }
+  }
+}
+
+type LaunchStagedAdmission
+  = LaunchStageDecided { admission: LaunchAdmission }
+  | LaunchStageNeedsSessions
+
+fn launch_ledger_pre_session_rows(l: LaunchGateLedger) -> List<LaunchGateRow> {
+  launch_ledger_rows(l: l).take(n: 6)
+}
+
+fn launch_admission_staged(
+  cause: LaunchCause,
+  standing: LaunchHostStanding,
+  graph: LaunchGraphStanding,
+  merged: List<Int>,
+  node_id: String,
+  reserved: Int,
+) -> LaunchStagedAdmission {
+  let l = launch_gate_ledger(cause: cause, standing: standing, graph: graph, merged: merged, node_id: node_id, reserved: reserved)
+  let pre = fold(launch_ledger_pre_session_rows(l: l), init: FoldOpen, f: fn(acc, row) { launch_fold_step(acc: acc, row: row) })
+  match pre {
+    FoldRefused { refusal } => LaunchStageDecided { admission: LaunchRefused { refusal: refusal } }
+    FoldOpen =>
+      match standing {
+        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions, capacity: _, mode: _ } =>
+          match sessions {
+            LaunchSessionsPending => LaunchStageNeedsSessions
+            LaunchSessionsObserved { live: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+            LaunchSessionsUnobserved { reason: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+          }
+        LaunchHostObserveOnly { instance_id: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+        LaunchHostHalted { instance_id: _, gate: _, refusal: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+        LaunchHostUnobserved { reason: _ } => LaunchStageDecided { admission: launch_admission_of_ledger(l: l) }
+      }
+  }
+}
+
 fn launch_admission_label(a: LaunchAdmission) -> String {
   match a {
     LaunchAdmitted { identity: _ } => "admitted"
@@ -729,7 +788,7 @@ fn launch_admission_contract_text() -> String {
     ";causes=", join(map([Operator, Timer], c => launch_cause_label(c: c)), ","),
     ";identity=node_id,cause,mode,instance_id,revision",
     ";occupancy=running+unobserved",
-    ";host_stages=instance,transition,revision,sessions",
+    ";host_stages=instance,transition,revision,node,contract,dependencies,sessions",
   ], "")
 }
 
