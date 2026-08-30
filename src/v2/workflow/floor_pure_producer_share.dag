@@ -72,19 +72,21 @@ import v2.std.text { String }
 // run stores it clean (disposition=Stored, notportable=0, byte-budget refusals=0). The
 // portability trigger fired and is retired.
 //
-// They are out for a DIFFERENT reason, and the evidentiary status of each half is stated
-// exactly. MEASURED: with both rows enrolled, the v2.test.emit rows that touch a rust target
-// model got SLOWER than the same rows on main, while the median across the emit rows improved
-// — the corpus-wide win is real and specific to the OTHER rostered producers. MEASURED:
-// rust_target_model's own recompute, under claim_batch with GUNBC_RECOMPUTE_TRACE=1, is far
-// cheaper per call than the roster comment for it originally assumed. INFERRED, and this
-// roster edit is the experiment that tests it: a serve is not free — the tier reifies the
+// They are out for a DIFFERENT reason, and it is now MEASURED rather than inferred: SERVING
+// THESE VALUES COSTS MORE THAN RECOMPUTING THEM. A serve is not free — the tier reifies the
 // stored portable value into the consuming frame, re-interning every symbol and re-sorting
 // every record's fields, and a TargetModel is a large value (bundle node, lex rules, spelling
-// map, realization catalogs), so a serve that loses to its own recompute would produce exactly
-// this split. If the floor with these rows absent returns those emit rows to their main-side
-// cost, the inference is confirmed; if it does not, the cost is in the renderer and belongs
-// there instead.
+// map, realization catalogs).
+//
+// The discriminating experiment, run because the enrolled floor made the emit rows that touch
+// a rust target model SLOWER while the rest of the corpus got faster: hold the renderer fixed
+// and remove only these two rows. Renderer=rows/share=on, renderer=rows/share=off and main's
+// renderer=fn/share=off are three points over the same five identities in
+// required_floor_claim_cost.tsv, and they separate the two candidate causes cleanly. Every one
+// of the five got FASTER with the rows removed than it had ever been — below the enrolled run
+// and below main — which prices the serve above the recompute and simultaneously clears the
+// renderer, since the rows renderer beats the fn it replaced on the same share-off footing.
+// Re-derive with the instruments named below rather than trusting these sentences.
 //
 // THE ADMISSION CRITERION THIS DISCOVERED, now binding on every future row: measured
 // per-claim recompute is necessary but NOT sufficient. A row is admitted only when its SERVE
