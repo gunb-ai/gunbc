@@ -703,7 +703,11 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
   map_insert(m9, ^bash_binding_exit_code_0, "0")
 }
 
-data bash_single_quote_provenance_note: String = "Single-quote wrap-and-escape moved to extdeps.posix.shell_command_language posix_single_quote (operator finding, 2026-08-19): it is a POSIX shell command language fact, not a bash-specific one -- Bash and gunbc.remote_shell_command both cite IEEE 1003.1-2017 section 2.2.2 for the same encoding, so the rule has one home matching its one cited authority. bash_single_quote_spaced calls the imported posix_single_quote directly rather than through a bash-local re-export."
+// Single-quote wrap-and-escape moved to extdeps.posix.shell_command_language posix_single_quote
+// (operator finding, 2026-08-19): it is a POSIX shell command language fact, not a bash-specific
+// one -- Bash and gunbc.remote_shell_command both cite IEEE 1003.1-2017 section 2.2.2 for the same
+// encoding, so the rule has one home matching its one cited authority. bash_single_quote_spaced
+// calls the imported posix_single_quote directly rather than through a bash-local re-export.
 
 fn bash_single_quote_spaced(spelling: String) -> String {
   concat(" ", posix_single_quote(spelling: spelling))
@@ -1162,7 +1166,6 @@ fn retry_eagain_bash_lex() -> LexRules {
     span(text: retry_eagain_seg_h4(), class: ^bash_token_retry_seg_h4)
   ]))
 }
-
 
 fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
   [
@@ -2276,7 +2279,14 @@ fn bash_stmt_if_target_model(cond: String, body: String) -> Outcome<TargetModel>
   )
 }
 
-data bash_stmt_if_block_note: String = "Same If semantics as bash_stmt_if_tokens, spelled with real newlines around the then-body instead of the single-line \"; then \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when the then_ Pipeline carries more than one step: the single-line row is bash-valid even then (newline is an ordinary statement separator, verified — this is not a correctness fix), but a newline-joined multi-statement body glued into the single-line row byte-diverges from a human's block-formatted expectation. Reusing bash_stmt_if_cond/bash_stmt_if_body as binding keys — same fields, a formatting realization, not a second fact."
+// Same If semantics as bash_stmt_if_tokens, spelled with real newlines around the then-body instead
+// of the single-line "; then "/"; fi" join. Selected by orch_emit_if_step
+// (05_emit_orchestration.dag) when the then_ Pipeline carries more than one step: the single-line
+// row is bash-valid even then (newline is an ordinary statement separator, verified — this is not a
+// correctness fix), but a newline-joined multi-statement body glued into the single-line row
+// byte-diverges from a human's block-formatted expectation. Reusing
+// bash_stmt_if_cond/bash_stmt_if_body as binding keys — same fields, a formatting realization, not
+// a second fact.
 
 fn bash_stmt_if_block_tokens() -> List<ConcreteSyntaxToken> {
   [

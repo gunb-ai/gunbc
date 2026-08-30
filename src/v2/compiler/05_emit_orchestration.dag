@@ -1,6 +1,5 @@
 module v2.compiler.emit_orchestration
 
-
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -569,7 +568,17 @@ fn orch_emit_procedure(
   )
 }
 
-data orch_if_block_form_note: String = "bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row; a >1-step body glued into the single-line row is bash-valid (newline is an ordinary statement separator inside a then/else arm — verified, not a carriage bug) but byte-diverges from a block-formatted expectation. Multi-statement then_/else_ arms are legitimate orchestration intent (if-ladders), so the fix is a second, block-spelled row (bash_stmt_if_block_tokens / bash_stmt_if_else_block_tokens) selected when either arm needs it — never a refusal of the legitimate shape. Single- and zero-step arms keep the original inline row byte-for-byte (orch_pipeline_needs_block_body is false), so every existing consumer's emitted bytes are unchanged."
+// bash_stmt_if_(else_)_tokens (bash_orch_if.dag / bash.dag) spell their then/else bodies with no
+// newline tokens, so a body is inherently a single line. orch_emit_pipeline newline-joins every
+// step of a multi-step then_/else_ Pipeline (orch_seq2) before this fn binds .carried into the row;
+// a >1-step body glued into the single-line row is bash-valid (newline is an ordinary statement
+// separator inside a then/else arm — verified, not a carriage bug) but byte-diverges from a
+// block-formatted expectation. Multi-statement then_/else_ arms are legitimate orchestration intent
+// (if-ladders), so the fix is a second, block-spelled row (bash_stmt_if_block_tokens /
+// bash_stmt_if_else_block_tokens) selected when either arm needs it — never a refusal of the
+// legitimate shape. Single- and zero-step arms keep the original inline row byte-for-byte
+// (orch_pipeline_needs_block_body is false), so every existing consumer's emitted bytes are
+// unchanged.
 
 fn orch_pipeline_needs_block_body(then_: Pipeline, else_: Optional<Pipeline>) -> Bool {
   if length(xs: then_.steps) > 1 {
@@ -582,7 +591,12 @@ fn orch_pipeline_needs_block_body(then_: Pipeline, else_: Optional<Pipeline>) ->
   }
 }
 
-data orch_if_empty_arm_note: String = "A Pipeline arm with zero steps emits \"\" (orch_emit_pipeline's HeadAbsent case); threaded raw into the if-body token slot that produces invalid bash (\"if COND; then ; fi\" -- then requires >=1 command before the closing separator). orch_if_arm_body_or_noop substitutes the bash no-op \":\" for an empty arm's body, uniformly across the inline and block dispatch and regardless of whether the OTHER arm is also empty -- see pipeline_steps_empty_arm_note (v2.std.orchestration) for why both-empty is real intent, not refused."
+// A Pipeline arm with zero steps emits "" (orch_emit_pipeline's HeadAbsent case); threaded raw into
+// the if-body token slot that produces invalid bash ("if COND; then ; fi" -- then requires >=1
+// command before the closing separator). orch_if_arm_body_or_noop substitutes the bash no-op ":"
+// for an empty arm's body, uniformly across the inline and block dispatch and regardless of whether
+// the OTHER arm is also empty -- see pipeline_steps_empty_arm_note (v2.std.orchestration) for why
+// both-empty is real intent, not refused.
 
 fn orch_if_arm_body_or_noop(carried: String) -> String {
   if carried == "" {
@@ -764,7 +778,10 @@ data orch_retry_outer_log_var: String = "BUILD_LOG"
 
 data orch_retry_nested_log_var: String = "RETRY_LOG"
 
-data orch_retry_log_source_fidelity_note: String = "Retry bash templates hardcode tee/grep log vars (BUILD_LOG outer, RETRY_LOG nested). LogMatches.source is admitted only when it equals that template var — a changed source must refuse (^orch_emit_retry_log_source_mismatch), never silently emit the hardcoded name. 🟡 dissolve-on: thread source into the grammar rows so the declared name is the emitted name."
+// Retry bash templates hardcode tee/grep log vars (BUILD_LOG outer, RETRY_LOG nested).
+// LogMatches.source is admitted only when it equals that template var — a changed source must
+// refuse (^orch_emit_retry_log_source_mismatch), never silently emit the hardcoded name. 🟡
+// dissolve-on: thread source into the grammar rows so the declared name is the emitted name.
 
 fn orch_emit_retry_require_log_source(
   source: String,
@@ -799,7 +816,15 @@ fn orch_retry_step_run(s: PipelineStep) -> Outcome<Run> {
   }
 }
 
-data orch_retry_body_command_note: String = "orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can refuse Present redirect/capture (^orch_emit_retry_redirect_present / ^orch_emit_retry_capture_present) rather than silently dropping them. orch_emit_retry refuses nonempty body Run.env (^orch_emit_retry_body_env_present) — the retry bash templates hardcode the first occurrence without body env, so a nonempty env must refuse, never silently drop. Tee/redirect semantics for retry live in the bash retry templates, not on the body Run. Supersedes the Optional<String> Absent conflation interim from PR2a."
+// orch_retry_body_command returns Outcome<Run>: multi-step bodies refuse
+// (^orch_emit_retry_body_multi_step); empty/non-Do (incl. Comment/Exit) refuse
+// (^orch_emit_retry_body_not_run); a single Do returns the Run intact so orch_emit_retry_run can
+// refuse Present redirect/capture (^orch_emit_retry_redirect_present /
+// ^orch_emit_retry_capture_present) rather than silently dropping them. orch_emit_retry refuses
+// nonempty body Run.env (^orch_emit_retry_body_env_present) — the retry bash templates hardcode the
+// first occurrence without body env, so a nonempty env must refuse, never silently drop.
+// Tee/redirect semantics for retry live in the bash retry templates, not on the body Run.
+// Supersedes the Optional<String> Absent conflation interim from PR2a.
 
 fn orch_retry_body_command(body: Pipeline) -> Outcome<Run> {
   match list_head(xs: body.steps) {
@@ -958,7 +983,12 @@ fn orch_emit_retry_1level(
   }
 }
 
-data orch_emit_retry_multilevel_unsupported_note: String = "Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2 via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1) and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template + reclaim of escalation_step/final rows under a correct cross-level fold."
+// Three-or-more escalation levels previously reused realize_retry_1level and stuffed rest into occ2
+// via escalation_tail — silently dropping level1.env (3level golden had E2=1 after w1, never E1=1)
+// and the final level's LogMatches.pattern. Same DESIGN §5 class as the PR2b silent drops. Refuse
+// (^orch_emit_retry_multilevel_unsupported) until a faithful N-level template threads each level's
+// env with the next level's detect (as orch_emit_retry_2level does). 🟡 dissolve-on: that template +
+// reclaim of escalation_step/final rows under a correct cross-level fold.
 
 fn orch_emit_retry_multilevel(
   command: String,

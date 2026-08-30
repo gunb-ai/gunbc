@@ -59,7 +59,16 @@ import v2.workflow.bash_command_fold_serialize {
   bash_fold_serialize_node
 }
 
-data effect_plan_bash_materialize_authority_note: String = "Wave A realization edge: EffectPlan<BashBoundOperationInvocation> lowers to the existing Bash command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf's operation intent is the agnostic BoundOperationInvocation (operation ref + declaration bindings only); argv is derived from that declaration by shell_materialize_operation_argv. Bash-only executable_position on BashBoundOperationInvocation chooses how argv[0] RENDERS in this foreign-executor transport — DeclarationLiteral emits the declaration literal; HostEnvVar emits bash_build_word_var for pin-rustup prelude paths such as CARGO_BIN — without fusing transport policy into the generic invocation substrate (DESIGN §3). FailFast is the Bash grammar's && relation. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate step."
+// Wave A realization edge: EffectPlan<BashBoundOperationInvocation> lowers to the existing Bash
+// command/and-then grammar nodes, then emits through bash_command_fold_serialize. Each leaf's
+// operation intent is the agnostic BoundOperationInvocation (operation ref + declaration bindings
+// only); argv is derived from that declaration by shell_materialize_operation_argv. Bash-only
+// executable_position on BashBoundOperationInvocation chooses how argv[0] RENDERS in this
+// foreign-executor transport — DeclarationLiteral emits the declaration literal; HostEnvVar emits
+// bash_build_word_var for pin-rustup prelude paths such as CARGO_BIN — without fusing transport
+// policy into the generic invocation substrate (DESIGN §3). FailFast is the Bash grammar's &&
+// relation. Wave B (#7363) gave it its first production consumer — the CI merge-admission gate
+// step.
 
 type BashShellExecutablePosition
   = DeclarationLiteral
@@ -70,7 +79,10 @@ type BashBoundOperationInvocation {
   executable_position: BashShellExecutablePosition
 }
 
-data bash_bound_operation_invocation_authority_note: String = "Bash realization wrapper over the agnostic BoundOperationInvocation. executable_position is transport-only: it cannot change which operation row is named or which declared inputs bind; it only selects whether argv[0] emits as the declaration literal or as a grammar-owned host env var reference."
+// Bash realization wrapper over the agnostic BoundOperationInvocation. executable_position is
+// transport-only: it cannot change which operation row is named or which declared inputs bind; it
+// only selects whether argv[0] emits as the declaration literal or as a grammar-owned host env var
+// reference.
 
 fn bash_bind_operation_invocation(
   at: OperationRef,

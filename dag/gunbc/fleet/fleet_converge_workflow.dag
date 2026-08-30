@@ -52,6 +52,7 @@ import gunbc.fleet_workflow_steps {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
+  gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_serving_converge_slice_invoke,
@@ -67,13 +68,20 @@ import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int }
 
-data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
+// Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
+// workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
+// mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan
+// artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over
+// FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer
+// cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone
+// dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads
+// an artifact the current run did not produce.
 
 data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy"]
+data fleet_converge_mode_options: List<String> = ["plan", "allocation_store_plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -129,11 +137,12 @@ fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
 }
 
 data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
+data fleet_converge_allocation_store_plan_step_if: String = "github.event.inputs.mode == 'allocation_store_plan'"
+data fleet_converge_any_plan_step_if: String = "github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'allocation_store_plan'"
 data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
 data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
-
 
 data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
 
@@ -158,7 +167,7 @@ fn fleet_converge_plan_upload_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: fleet_converge_plan_step_if },
+    if_condition: Present { value: fleet_converge_any_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -193,6 +202,20 @@ fn fleet_converge_plan_step() -> Step {
     env: none,
     working_directory: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_allocation_store_plan_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet allocation-store substrate plan" },
+    id: Present { value: "allocation_store_plan" },
+    run: gunbc_ci_fleet_converge_allocation_store_plan_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_allocation_store_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -381,7 +404,6 @@ fn fleet_converge_spark_grants_step() -> Step {
   }
 }
 
-
 fn fleet_converge_spark_observe_step() -> Step {
   RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
@@ -396,7 +418,9 @@ fn fleet_converge_spark_observe_step() -> Step {
   }
 }
 
-data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
+// Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha
+// input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would
+// reference an undeclared input and emit a dormant preflight guard.
 
 fn fleet_converge_consumer_prelude_steps() -> List<Step> {
   [ci_checkout_step()]
@@ -419,6 +443,7 @@ fn fleet_converge_job() -> Job {
       ),
       [
         fleet_converge_plan_step(),
+        fleet_converge_allocation_store_plan_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),

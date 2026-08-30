@@ -12,22 +12,21 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// CONTROLS FOR THE PER-TARGET BUILD ENVIRONMENT (gunbc#9727 ruling). The emitted program's
-// build sees env_clear() plus exactly its target row, so the ruled controls read as:
-// (a)/(b) no shipped row carries a flag-bearing name, so an ambient RUSTFLAGS cannot enter
-// any emitted build nor the build-context identity (measured by execution on the required
-// floor, whose seed build exports RUSTFLAGS=-D warnings: the four emit_host rows build there
-// identically to the flagless remote frame); (d) the Rust row names no Python or Go state and
-// vice versa, so a PYTHONPATH change is outside a Rust realization's identity by
-// construction; (e) both transports receive transport.build_environment from the one
-// run_host_process_admitted site; (f) build_environment is a required field of
-// HostTransportDescriptor -- a descriptor without an environment decision is unconstructible.
-// (c) -- admitting RUSTFLAGS on the Rust row changes the identity and reproduces the
-// dead-code failure -- has no frame-independent oracle today. TRIGGER: EmitHostRunReceipt
-// carries the resolved build-context identity (or its admitted-environment segment); then an
-// enrolled pair proves that changing a PRESENT ADMITTED variable changes the identity while
-// changing an UNADMITTED ambient variable does not. Until then (c) is measured in this PR's
-// two frames, not enrolled.
+// CONTROLS FOR THE PER-TARGET BUILD ENVIRONMENT (gunbc#9727 ruling). The emitted program's build
+// sees env_clear() plus exactly its target row, so the ruled controls read as: (a)/(b) no shipped
+// row carries a flag-bearing name, so an ambient RUSTFLAGS cannot enter any emitted build nor the
+// build-context identity (measured by execution on the required floor, whose seed build exports
+// RUSTFLAGS=-D warnings: the four emit_host rows build there identically to the flagless remote
+// frame); (d) the Rust row names no Python or Go state and vice versa, so a PYTHONPATH change is
+// outside a Rust realization's identity by construction; (e) both transports receive
+// transport.build_environment from the one run_host_process_admitted site; (f) build_environment
+// is a required field of HostTransportDescriptor -- a descriptor without an environment decision
+// is unconstructible. (c) -- admitting RUSTFLAGS on the Rust row changes the identity and
+// reproduces the dead-code failure -- has no frame-independent oracle today. TRIGGER:
+// EmitHostRunReceipt carries the resolved build-context identity (or its admitted-environment
+// segment); then an enrolled pair proves that changing a PRESENT ADMITTED variable changes the
+// identity while changing an UNADMITTED ambient variable does not. Until then (c) is measured in
+// this PR's two frames, not enrolled.
 
 fn row_names(d: HostTransportDescriptor) -> List<String> {
   d.build_environment.ambient_names

@@ -2,7 +2,7 @@ module test.claim.witness_floor_workflow_consolidation_witness_test
 
 import std.types { Bool, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, witness_floor_workflow_job_id }
+import gunbc.witness_floor_workflow { expected_witness_floor_yml, WitnessFloorGenerated, WitnessFloorGenerationRefused, build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id, witness_floor_workflow_job_id }
 import gunbc.fabric_witness_run { required_ci_lane_build, required_ci_lane_witnesses }
 import gunbc.required_lanes_gate { required_lanes_gate_unrenderable_stmts }
 import gunbc.fleet_converge_workflow { fleet_converge_workflow }
@@ -36,7 +36,12 @@ import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopen
 //
 // Stated so a reader does not over-read the green: this is the CHEAP half of the pair.
 
-data consolidation_note: String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
+// The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was
+// its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's
+// `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the
+// regen process had written — a process boundary standing where a function call belonged, since
+// run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed
+// None.
 
 // NO RETIRED INVOCATION HAS GROWN BACK, and the required mode token is present. That is the
 // whole of what this row proves, and the heading is narrowed to say so: the two positive
@@ -227,9 +232,22 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
+      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, concat(", ", concat(fabric_evidence_job_id, "]")))))))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
+    WitnessFloorGenerationRefused { reason: _ } => false
+  }
+}
+
+// The parallel fabric calibration is gating, not merely executing: its result is both a needs
+// edge and an input to the same closed-vocabulary verdict fold. Deleting either half authors RED.
+test fn w_RED_fabric_evidence_failure_reaches_required_context() -> Bool {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: yml } =>
+      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, concat(", ", concat(fabric_evidence_job_id, "]")))))))
+        && string_contains(s: yml, pattern: "FABRIC_EVIDENCE: ${{ needs['fabric-evidence'].result }}")
+        && string_contains(s: yml, pattern: "\"$FABRIC_EVIDENCE\" '=' 'failure'")
+        && string_contains(s: yml, pattern: "fabric='\"$FABRIC_EVIDENCE\"")
     WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
@@ -297,7 +315,6 @@ test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> B
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-
 // THE UNRENDERABLE-GATE REFUSAL IS EXECUTED, NOT DESCRIBED.
 //
 // This arm exists because the receipt was once WRONG about it in a way nothing executed could
@@ -320,7 +337,6 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 // THE PULL-REQUEST ACTIVITY SET IS EXACTLY THE THREE THAT CAN CARRY A NEW SUBJECT.
 //

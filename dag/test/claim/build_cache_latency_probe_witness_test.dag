@@ -24,7 +24,18 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_subject_is_the_derivation_note: String = "THESE ROWS TEST THE DERIVATION, NOT THE FLEET, and the distinction is the 2026-08-01 test-oracle ruling applied to a probe. A witness asserting 'srv1 is currently slow' would compare a live population to a number read off that same population — a change detector whose entire content is whoever last updated the literal, and one that would go red the moment the defect is FIXED, which is the opposite of what a fix should do to a test.\n\nSo the fixtures below are CONTROLLED: populations authored here with known answers, exercising the median selection, the even/odd split, the empty refusal, and both sides of the policy ratio. The one row that touches recorded data asserts only INTERNAL CONSISTENCY of the 2026-08-05 receipt — that its stored verdict equals what the derivation produces from its stored samples — which stays true forever regardless of what the fleet does next, and would red only if someone edited the receipt's numbers without re-deriving its verdict."
+// THESE ROWS TEST THE DERIVATION, NOT THE FLEET, and the distinction is the 2026-08-01 test-oracle
+// ruling applied to a probe. A witness asserting 'srv1 is currently slow' would compare a live
+// population to a number read off that same population — a change detector whose entire content is
+// whoever last updated the literal, and one that would go red the moment the defect is FIXED, which
+// is the opposite of what a fix should do to a test.
+//
+// So the fixtures below are CONTROLLED: populations authored here with known answers, exercising
+// the median selection, the even/odd split, the empty refusal, and both sides of the policy ratio.
+// The one row that touches recorded data asserts only INTERNAL CONSISTENCY of the 2026-08-05
+// receipt — that its stored verdict equals what the derivation produces from its stored samples —
+// which stays true forever regardless of what the fleet does next, and would red only if someone
+// edited the receipt's numbers without re-deriving its verdict.
 
 data odd_population: BuildLatencyPopulation = BuildLatencyPopulation {
   host: operator_host_srv2,
@@ -91,7 +102,11 @@ test fn empty_population_refuses_rather_than_passing() -> Bool {
     && !build_latency_verdict_is_diverged(v: v)
 }
 
-data policy_boundary_note: String = "THE DISCRIMINATING PAIR for the ratio, straddling it by one millisecond on either side so the boundary is pinned rather than approximated. At exactly 2x the reference the verdict is CONVERGED — the policy reads 'more than 2x diverges', so equality passes — and one millisecond above it diverges. A witness that only tested a wildly-divergent population would pass against a policy of 10x, or 100x, or any ratio at all, which would make the declared budget decorative."
+// THE DISCRIMINATING PAIR for the ratio, straddling it by one millisecond on either side so the
+// boundary is pinned rather than approximated. At exactly 2x the reference the verdict is CONVERGED
+// — the policy reads 'more than 2x diverges', so equality passes — and one millisecond above it
+// diverges. A witness that only tested a wildly-divergent population would pass against a policy of
+// 10x, or 100x, or any ratio at all, which would make the declared budget decorative.
 
 data at_exactly_two_x: BuildLatencyPopulation = BuildLatencyPopulation {
   host: operator_host_srv2,
@@ -125,7 +140,12 @@ test fn RED_ratio_boundary_diverges_one_millisecond_over() -> Bool {
   )
 }
 
-data receipt_internal_consistency_note: String = "The recorded 2026-08-05 receipt is checked for INTERNAL CONSISTENCY only: its stored verdict must equal the verdict its stored samples derive. That claim is time-invariant — it is about the receipt, not about srv1 — so it does not go red when the fleet is repaired, and it is not a snapshot pin. What it catches is the failure mode a hand-collected receipt actually has: someone editing the durations, or the reference, or the policy, without re-deriving the verdict beside them, leaving a row whose conclusion no longer follows from its own evidence."
+// The recorded 2026-08-05 receipt is checked for INTERNAL CONSISTENCY only: its stored verdict must
+// equal the verdict its stored samples derive. That claim is time-invariant — it is about the
+// receipt, not about srv1 — so it does not go red when the fleet is repaired, and it is not a
+// snapshot pin. What it catches is the failure mode a hand-collected receipt actually has: someone
+// editing the durations, or the reference, or the policy, without re-deriving the verdict beside
+// them, leaving a row whose conclusion no longer follows from its own evidence.
 
 test fn recorded_receipt_verdict_follows_from_its_own_samples() -> Bool {
   let rederived = build_latency_verdict(

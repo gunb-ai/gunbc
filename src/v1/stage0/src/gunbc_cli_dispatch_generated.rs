@@ -139,7 +139,7 @@ pub trait CliDispatchHost {
     fn invoke_bound_target_producer(&self, target: String) -> !;
 }
 
-pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor: &H) -> ! {
+pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor_0: &H) -> ! {
     match command {
         Commands::Compile {
             source_roots,
@@ -148,7 +148,7 @@ pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor
             target,
             dependency_pool_index,
             entry,
-        } => __gunbc_dispatch_executor.retained_host_kernel(
+        } => __gunbc_dispatch_executor_0.retained_host_kernel(
             source_roots,
             source_dir,
             output_dir,
@@ -162,7 +162,7 @@ pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor
             entry,
             claim_run,
             args,
-        } => __gunbc_dispatch_executor.run_verb(source_roots, function, entry, claim_run, args),
+        } => __gunbc_dispatch_executor_0.run_verb(source_roots, function, entry, claim_run, args),
         Commands::Build { program } => crate::cli_run::run_bootstrap_dag_operation(
             &["dag".to_string(), "src/v2".to_string()],
             "dag/gunbc/devboot/build.dag",
@@ -185,7 +185,7 @@ pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor
             release_revision,
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
-        } => __gunbc_dispatch_executor.handle_serve(
+        } => __gunbc_dispatch_executor_0.handle_serve(
             source_roots,
             entry,
             function,
@@ -195,6 +195,8 @@ pub fn dispatch<H: CliDispatchHost>(command: Commands, __gunbc_dispatch_executor
             eval_budget_cpu_ms,
             eval_budget_wall_ms,
         ),
-        Commands::Test { target } => __gunbc_dispatch_executor.invoke_bound_target_producer(target),
+        Commands::Test { target } => {
+            __gunbc_dispatch_executor_0.invoke_bound_target_producer(target)
+        }
     }
 }

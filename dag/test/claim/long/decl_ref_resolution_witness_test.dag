@@ -17,7 +17,35 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data decl_ref_resolution_witness_note: String = "THE EXECUTING EVIDENCE FOR v2.std.decl_ref_resolution, REHOMED 2026-08-26 OFF A CARRIER THAT DIED UNDER IT.\n\nThese six rows lived in test.claim.long.cited_symbol_resolution_witness_test until v2.lens.cited_symbol_resolution was deleted. They were never the lens's: measured against the seven symbols that file imported FROM the lens, none of these six touches one. They call resolve_declaration_ref directly, and that function lives in v2.std.decl_ref_resolution, which SURVIVES with four other consumers — gunbc.doc_graph_roots, gunbc.dissolution_observation, test.claim.documentary_refs_witness_test and test.claim.long.v1_complexity_capability_census_resolution_test.\n\nSO DELETING THEM WITH THE LENS WOULD HAVE BEEN A DESIGN 4b(4) VIOLATION, not a tidy-up. That clause says a climb deletes the redundant lower-rung PRODUCTION machinery and that the class's discriminating RED and positive control REMAIN ENROLLED, because deleting the evidence recreates specification-without-execution one rung up. The corpus-wide citation census climbed into v1_compiler.declaration_index at ingestion; the resolver's own five-arm refusal did not climb anywhere, and these are the only rows in the tree that execute it.\n\nTHE PAIR IS THE POINT. Two positive controls establish that the resolver RESOLVES a real authority and a real constructor; four reds establish that each refusal arm fires for the reason its variant names. Either half alone is satisfiable by a resolver that answers one way for everything.\n\nWHAT THIS IS NOT: enforcement. Long lane, executes nowhere today — the cited-symbol CI job was removed 2026-08-23 and the required floor declines this home; each row pays a full witness-layer decl_facts scan (operator 5s fast-lane rule 2026-07-12). The evidence is PRESERVED AND UNRUN, and saying otherwise would be the rung inflation DESIGN 4b(1) calls worse than sitting low. What the rehome buys is that when a route returns, the controls are still here and still attached to their real subject."
+// THE EXECUTING EVIDENCE FOR v2.std.decl_ref_resolution, REHOMED 2026-08-26 OFF A CARRIER THAT DIED
+// UNDER IT.
+//
+// These six rows lived in test.claim.long.cited_symbol_resolution_witness_test until
+// v2.lens.cited_symbol_resolution was deleted. They were never the lens's: measured against the
+// seven symbols that file imported FROM the lens, none of these six touches one. They call
+// resolve_declaration_ref directly, and that function lives in v2.std.decl_ref_resolution, which
+// SURVIVES with four other consumers — gunbc.doc_graph_roots, gunbc.dissolution_observation,
+// test.claim.documentary_refs_witness_test and
+// test.claim.long.v1_complexity_capability_census_resolution_test.
+//
+// SO DELETING THEM WITH THE LENS WOULD HAVE BEEN A DESIGN 4b(4) VIOLATION, not a tidy-up. That
+// clause says a climb deletes the redundant lower-rung PRODUCTION machinery and that the class's
+// discriminating RED and positive control REMAIN ENROLLED, because deleting the evidence recreates
+// specification-without-execution one rung up. The corpus-wide citation census climbed into
+// v1_compiler.declaration_index at ingestion; the resolver's own five-arm refusal did not climb
+// anywhere, and these are the only rows in the tree that execute it.
+//
+// THE PAIR IS THE POINT. Two positive controls establish that the resolver RESOLVES a real
+// authority and a real constructor; four reds establish that each refusal arm fires for the reason
+// its variant names. Either half alone is satisfiable by a resolver that answers one way for
+// everything.
+//
+// WHAT THIS IS NOT: enforcement. Long lane, executes nowhere today — the cited-symbol CI job was
+// removed 2026-08-23 and the required floor declines this home; each row pays a full witness-layer
+// decl_facts scan (operator 5s fast-lane rule 2026-07-12). The evidence is PRESERVED AND UNRUN, and
+// saying otherwise would be the rung inflation DESIGN 4b(1) calls worse than sitting low. What the
+// rehome buys is that when a route returns, the controls are still here and still attached to their
+// real subject.
 
 data decl_ref_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
 

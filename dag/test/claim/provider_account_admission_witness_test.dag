@@ -53,7 +53,14 @@ import gunbc.roadmap_dashboard_instance {
 
 data witness_purpose_note: String = "THE ADMISSION USED TO HAVE NO CONSUMER, so every claim its note made about unwritability was unfalsifiable. admit_account_binding returned a value nothing received while instance construction wrote DashboardExistingProviderState directly, which meant the wall and the traffic were in different places. These claims exist to make both halves checkable: that the admission actually decides, and that a provider state cannot exist without one."
 
-data concurrency_carrier_note: String = "THE TWO VALUES THE OLD Int GUARD ADMITTED. concurrent_sessions was a bare Int and ExclusiveBinding refused only when it exceeded one, so zero and negative sailed through into BindingAdmitted — a successfully admitted binding of a deployment that cannot run. ConcurrentBindingSafe did not look at the number at all.\\n\\nThese are the discriminating inputs: both refuse at the decoder, and neither can reach an admission because the admission no longer accepts an Int. A model that kept the Int and added a check would still admit a hand-passed zero; a model that made the count a shape has nowhere to put one."
+// THE TWO VALUES THE OLD Int GUARD ADMITTED. concurrent_sessions was a bare Int and
+// ExclusiveBinding refused only above one, so zero and negative reached BindingAdmitted — an
+// admitted binding of a deployment that cannot run. ConcurrentBindingSafe never looked at the
+// number.
+//
+// The discriminating inputs: both refuse at the decoder, and neither can reach an admission
+// because the admission no longer accepts an Int. Keeping the Int plus a check would still admit a
+// hand-passed zero; making the count a shape leaves nowhere to put one.
 
 test fn zero_and_negative_session_counts_refuse() -> Bool {
   let zero = match session_concurrency_of_count(raw: 0) {
@@ -90,7 +97,16 @@ test fn many_decodes_and_keeps_its_total() -> Bool {
   }
 }
 
-data observation_does_not_promote_note: String = "THE PROMOTION THIS CLAIM EXISTS TO PREVENT. CodexPersistenceObservedLoginOnly used to map to ConcurrentBindingSafe, which admits any session count whatsoever, on the strength of seventeen sessions observed on one host for three days. The observation's own note in extdeps.llm.codex_auth says in the same paragraph that it establishes neither that a refresh exchange happens at all nor how simultaneous cold starts behave.\\n\\nSo the discriminating pair is: a binding AT the observed ceiling is admitted, and a binding ONE ABOVE it is refused with the ceiling named. Under the old mapping both were admitted and the second was the unearned one. The third conjunct pins that ConcurrentBindingSafe is not reachable from any codex persistence value, which is what keeps the proven-safe arm honest until the two-host experiment discharges it."
+// THE PROMOTION THIS CLAIM EXISTS TO PREVENT. CodexPersistenceObservedLoginOnly used to map to
+// ConcurrentBindingSafe, which admits any session count, on the strength of seventeen sessions
+// observed on one host for three days — while the observation's own note in
+// extdeps.llm.codex_auth says it establishes neither that a refresh exchange happens nor how
+// simultaneous cold starts behave.
+//
+// The discriminating pair: a binding AT the observed ceiling is admitted, one ABOVE it is refused
+// with the ceiling named. The old mapping admitted both; the second was unearned. The third
+// conjunct pins that ConcurrentBindingSafe is unreachable from any codex persistence value, keeping
+// the proven-safe arm honest until the two-host experiment discharges it.
 
 fn admission_for(count: Int) -> AccountBindingAdmission {
   match session_concurrency_of_count(raw: count) {
@@ -166,7 +182,10 @@ test fn exclusive_credential_admits_one_and_refuses_two() -> Bool {
   one && two
 }
 
-data evidence_row_tracks_the_observation_note: String = "codex_roadmap_account_evidence restates the observed ceiling, so it can drift from codex_observed_concurrent_sessions_per_root the moment either moves. This pins them together: a re-measurement that updates the observation without updating the evidence row reds here rather than leaving the fleet bound against a number nobody measured."
+// codex_roadmap_account_evidence restates the observed ceiling, so it can drift from
+// codex_observed_concurrent_sessions_per_root when either moves. This pins them: a re-measurement
+// updating the observation but not the evidence row reds here rather than binding the fleet
+// against a number nobody measured.
 
 test fn fleet_evidence_row_matches_the_observation() -> Bool {
   match codex_roadmap_account_evidence {
@@ -176,7 +195,14 @@ test fn fleet_evidence_row_matches_the_observation() -> Bool {
   }
 }
 
-// THE CLAIM THAT WOULD NOT COMPILE BEFORE, AND THE ONE THAT WOULD NOT COMPILE AFTER. Every instance's provider state now carries an admitted binding, so reading one back is possible at all — under the previous shape there was no field to read. And the wall works in the other direction too: a DashboardExistingProviderState written without a binding is a type error, which is the construction property stated as a compile fact rather than as a note.\n\nAll three live instances are checked rather than one, because the bypass was in the SHARED constructor and a claim against a single instance would pass while a second declaration wrote the field by hand.
+// THE CLAIM THAT WOULD NOT COMPILE BEFORE, AND THE ONE THAT WOULD NOT COMPILE AFTER. Every
+// instance's provider state now carries an admitted binding, so reading one back is possible —
+// the previous shape had no field to read. The wall holds the other way too: a
+// DashboardExistingProviderState written without a binding is a type error, the construction
+// property as a compile fact rather than a note.
+//
+// All three live instances are checked, not one: the bypass was in the SHARED constructor, and a
+// single-instance claim would pass while a second declaration wrote the field by hand.
 fn instance_binding_is_single_session(instance: HostDashboardInstance) -> Bool {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable: _, binding } =>

@@ -69,7 +69,6 @@ data extdeps_model_scope: ExternalModelScope = mt_collins_platform_model_scope
 // figure for the 1U chassis if one ever surfaces.
 // ---------------------------------------------------------------------------------------------
 
-
 type MtCollinsDimensionProvenance
   = CitedCollateral
   | OperatorMeasuredApproximate
@@ -88,11 +87,14 @@ data mt_collins_chassis_2u: MtCollinsChassisVariant = MtCollinsChassisVariant {
   depth_provenance: CitedCollateral,
 }
 
+// The 2U depth is the collateral's 33.36in converted (847mm). The 1U depth is ~33.75in (857mm) by
+// operator tape measure 2026-08-29 on the held unit - approximate, not a datasheet figure, and
+// within 10mm of the 2U depth: the 1U variant is the same very deep chassis, not a shortened one.
+// Mounting-ear positions and rail-member part numbers remain unmeasured.
+
 data mt_collins_chassis_1u: MtCollinsChassisVariant = MtCollinsChassisVariant {
   chassis_part_number: "1A624RA00-600-G",
   rack_units: rack_unit(count: 1),
   overall_depth: millimeter(count: 857),
   depth_provenance: OperatorMeasuredApproximate,
 }
-
-data chassis_depth_note: String = "The 2U depth is the collateral's 33.36in converted (847mm). The 1U depth is ~33.75in (857mm) by operator tape measure 2026-08-29 on the held unit - approximate, not a datasheet figure, and within 10mm of the 2U depth: the 1U variant is the same very deep chassis, not a shortened one. Mounting-ear positions and rail-member part numbers remain unmeasured."

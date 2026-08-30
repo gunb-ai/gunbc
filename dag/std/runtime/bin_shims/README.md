@@ -1,9 +1,8 @@
 # `dag/std/runtime/bin_shims/` — PB-owned `BinShim` instance declarations (framework)
 
-Framework directory for PB-owned per-shim `BinShim` instance declarations. **No instance
-`.dag` files are on main** — this directory holds the canonical home + naming convention
-only. The per-shim retirement program that would populate it is not carried in this public
-tree.
+Canonical home + naming convention for PB-owned per-shim `BinShim` instance declarations.
+**No instance `.dag` files are on main** — the per-shim retirement program that would populate
+it is not carried in this public tree.
 
 ## Live anchors
 

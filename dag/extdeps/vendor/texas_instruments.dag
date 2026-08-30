@@ -20,7 +20,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data texas_instruments_registrant_note: String = "extdeps.vendor.texas_instruments cites the vendor's own terms of use, whose scope clause reads 'Texas Instruments Incorporated, 12500 TI Boulevard, Dallas, Texas 75243, USA and its subsidiaries'. The stronger authority for a registrant's legal name is its own filing, and this repository already reaches EDGAR directly for the SCM issuer rows; both data.sec.gov and the EDGAR browse endpoint refused the fetch performed while authoring this module with HTTP 403, so the weaker-but-read authority is cited rather than a stronger one asserted unread."
+// extdeps.vendor.texas_instruments cites the vendor's own terms of use, whose scope clause reads
+// 'Texas Instruments Incorporated, 12500 TI Boulevard, Dallas, Texas 75243, USA and its
+// subsidiaries'. The stronger authority for a registrant's legal name is its own filing, and this
+// repository already reaches EDGAR directly for the SCM issuer rows; both data.sec.gov and the
+// EDGAR browse endpoint refused the fetch performed while authoring this module with HTTP 403, so
+// the weaker-but-read authority is cited rather than a stronger one asserted unread.
 
 data texas_instruments: Vendor<Hardware> = Vendor { legal_name: "Texas Instruments Incorporated" }
 

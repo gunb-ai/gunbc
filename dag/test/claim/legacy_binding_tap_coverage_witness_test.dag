@@ -18,7 +18,26 @@ import gunbc.legacy_binding_tap_coverage_census {
   tap_coverage_census, tap_coverage_standing, tap_coverage_sites, tap_coverage_refusals,
 }
 
-data legacy_binding_tap_coverage_witness_note: String = "THE DERIVATION AND THE MEASURED ROSTER. The mechanism half matters more than usual here because the standing's four counts are DERIVED from two axes rather than stored: tappable, the two REMEDY counts and answers-nothing are computed at read time from occurrence identity and target identity, so nothing can transcribe a verdict that disagrees with the facts beside it. A suite that only executed the production roster would leave that derivation untested in exactly the direction that matters -- a site becoming tappable, or ceasing to be, without the count moving.\n\nTHE FOUR-CORNER CONTROL IS THE LOAD-BEARING ONE. Tappable requires BOTH halves at the SAME site, and either half alone is worthless: an exact target with no occurrence identity cannot be attributed to the reference that asked for it, and an exact occurrence with an erased target records that something was selected without recording what. Three of the four corners must therefore be non-tappable, and a conjunction written as a disjunction passes every single-axis test.\n\nTHE REMEDY COUNTS ARE ASSERTED SEPARATELY AND THEY OVERLAP. This suite first asserted ONE not-tappable count of three over those same corners, which permanently ratified a conflation the census exists to refuse: an occurrence-exact site whose target was erased owes OUTCOME WIDENING, not occurrence threading. Two counts of two read the same corners correctly, and they deliberately do not sum to the non-tappable total -- a site deficient on both axes owes both repairs, so forcing a partition would be the same collapse in a tidier shape."
+// THE DERIVATION AND THE MEASURED ROSTER. The mechanism half matters more than usual here because
+// the standing's four counts are DERIVED from two axes rather than stored: tappable, the two REMEDY
+// counts and answers-nothing are computed at read time from occurrence identity and target
+// identity, so nothing can transcribe a verdict that disagrees with the facts beside it. A suite
+// that only executed the production roster would leave that derivation untested in exactly the
+// direction that matters -- a site becoming tappable, or ceasing to be, without the count moving.
+//
+// THE FOUR-CORNER CONTROL IS THE LOAD-BEARING ONE. Tappable requires BOTH halves at the SAME site,
+// and either half alone is worthless: an exact target with no occurrence identity cannot be
+// attributed to the reference that asked for it, and an exact occurrence with an erased target
+// records that something was selected without recording what. Three of the four corners must
+// therefore be non-tappable, and a conjunction written as a disjunction passes every single-axis
+// test.
+//
+// THE REMEDY COUNTS ARE ASSERTED SEPARATELY AND THEY OVERLAP. This suite first asserted ONE
+// not-tappable count of three over those same corners, which permanently ratified a conflation the
+// census exists to refuse: an occurrence-exact site whose target was erased owes OUTCOME WIDENING,
+// not occurrence threading. Two counts of two read the same corners correctly, and they
+// deliberately do not sum to the non-tappable total -- a site deficient on both axes owes both
+// repairs, so forcing a partition would be the same collapse in a tidier shape.
 
 fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
 

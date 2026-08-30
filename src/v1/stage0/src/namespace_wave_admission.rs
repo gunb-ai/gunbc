@@ -1,72 +1,62 @@
 //! THE WAVE-ADMISSION WALL: what a namespace change does to closure, subject membership
 //! and binding, adjudicated before it merges.
 //!
-//! WHY IT EXISTS. `gunbc.plans.import_namespace_program` §9 records, in its own words, that
-//! "no CI mechanism enforces any of this — no ratchet, no phase, no gate over the import
-//! population", and the 2026-08-26 operator ruling carried at
-//! `gunbc.compiler_frontend_program_interlock` converts that disclosure into a BLOCKER: no
-//! change that can alter which modules enter a subject, or what an occurrence denotes, may
-//! merge before this wall exists. `milestone_prerequisites` gates
-//! `NamespaceFirstSemanticWave` on `NamespaceWaveAdmissionEnrolled` by name. The plan's own
-//! sentence is the acceptance condition: a plan that reads as governed when it is not is
-//! worse than one that reads as unguarded.
+//! WHY IT EXISTS. `gunbc.plans.import_namespace_program` §9 records that "no CI mechanism
+//! enforces any of this — no ratchet, no phase, no gate over the import population", and the
+//! 2026-08-26 operator ruling at `gunbc.compiler_frontend_program_interlock` makes that a
+//! BLOCKER: no change that can alter which modules enter a subject, or what an occurrence
+//! denotes, may merge before this wall exists. `milestone_prerequisites` gates
+//! `NamespaceFirstSemanticWave` on `NamespaceWaveAdmissionEnrolled` by name. A plan that reads
+//! as governed when it is not is worse than one that reads as unguarded.
 //!
-//! THE ADMISSION PREDICATE, AND THE ONE WORD IT TURNS ON. The wall admits when the
-//! UNADJUDICATED delta is empty, never when the delta is empty. Expected cut motion may
-//! occur; unevaluated or unexplained motion may not. A wall demanding zero delta would
-//! refuse the cut it exists to govern, and would then be repaired by weakening it.
+//! THE ADMISSION PREDICATE, AND THE ONE WORD IT TURNS ON. The wall admits when the UNADJUDICATED
+//! delta is empty, never when the delta is empty: expected cut motion may occur, unevaluated or
+//! unexplained motion may not. A zero-delta wall would refuse the cut it governs and be
+//! weakened.
 //!
-//! WHY THE CHANGE CLASS IS DERIVED AND NEVER DECLARED. The ruling's
-//! `NamespaceChangeClass` splits preparatory work from work that alters membership or
-//! binding. This wall does not ask an author which one they wrote: it computes the delta and
-//! lets the answer fall out, so `PreparatoryNoSemanticMotion` is a MEASURED property of a
-//! diff rather than a claim in a PR body. Construction over validation (DESIGN §5).
+//! WHY THE CHANGE CLASS IS DERIVED AND NEVER DECLARED. The ruling's `NamespaceChangeClass`
+//! splits preparatory work from work altering membership or binding. The wall computes the
+//! delta rather than asking the author, so `PreparatoryNoSemanticMotion` is a MEASURED property
+//! of a diff, not a PR-body claim. Construction over validation (DESIGN §5).
 //!
 //! ── THE GRAIN, AND WHY IT IS NOT OCCURRENCE GRAIN ──
 //!
-//! An occurrence-grain delta between two arbitrary trees IS NOT COMPUTABLE, and that is a
-//! closed result rather than an unsolved problem. `v2.workflow.legacy_binding_delta` states
-//! it: `std.occurrence_identity`'s scope law forbids filename, span, authored name,
-//! structural equality and content hash as identity inputs, and an `OccurrenceId` is a
-//! monotone counter consumed in walk order, so it encodes POSITION and shifts under any edit
-//! above it. A cross-compile correspondence is therefore something a TRANSFORMATION EMITS,
-//! not something two finished trees can be joined on — and between a merge base and a pull
-//! request head there is no transformation to emit one. So this wall reads the grain at
-//! which a cross-tree key legitimately exists, and it is the same grain
-//! `legacy_binding_observation` `legacy_subject_identity` folds for its own subjects:
-//! authored containment identity — module path, enclosing declaration, and the LEAF SEGMENT of
-//! the reference. The leaf rather than the whole spelling, because the segments before it name
-//! the ROUTE and the leaf names the DECLARATION: keyed on the spelling, qualifying a reference
-//! would read as one name losing its declaration and another appearing, and requalification is
-//! the namespace program's own core motion. See `binding_rows`.
+//! An occurrence-grain delta between two arbitrary trees IS NOT COMPUTABLE — a closed result.
+//! `v2.workflow.legacy_binding_delta` states it: `std.occurrence_identity`'s scope law forbids
+//! filename, span, authored name, structural equality and content hash as identity inputs, and
+//! an `OccurrenceId` is a monotone counter in walk order, so it encodes POSITION and shifts under
+//! any edit above it. A cross-compile correspondence is something a TRANSFORMATION EMITS, and
+//! between a merge base and a PR head there is none. So this wall reads the grain
+//! `legacy_binding_observation` `legacy_subject_identity` folds for its own subjects: authored
+//! containment identity — module path, enclosing declaration, and the LEAF SEGMENT of the
+//! reference. The leaf, not the spelling: the segments before it name the ROUTE, the leaf the
+//! DECLARATION. Keyed on the spelling, qualifying a reference would read as one name losing its
+//! declaration and another appearing, and requalification is the namespace program's core
+//! motion. See `binding_rows`.
 //!
-//! WHAT THAT COSTS, NAMED RATHER THAN LEFT TO BE FOUND. Two occurrences of one spelling
-//! inside one declaration — a `let` binder shadowing an imported name, a match-arm binder —
-//! share a row. The repair is NOT to pick a winner between them, which is exactly the silent
-//! selection the namespace authority exists to delete: a row's value is the SET of declaring
-//! identities the spelling admits, and a delta is a set difference. Shadowing is therefore
-//! REPRESENTED (the set has two members) rather than collapsed. What remains beyond the
-//! ceiling is which occurrence took which member, and that is the next rung: it arrives with
-//! a projector-emitted correspondence (E.1, `ProjectionProvenanceEntry`), not with a finer
-//! key invented here.
+//! WHAT THAT COSTS, NAMED RATHER THAN LEFT TO BE FOUND. Two occurrences of one spelling inside
+//! one declaration — a `let` binder shadowing an imported name, a match-arm binder — share a
+//! row. The repair is NOT to pick a winner (the silent selection the namespace authority exists
+//! to delete): a row's value is the SET of declaring identities the spelling admits and a delta
+//! is a set difference, so shadowing is REPRESENTED, not collapsed. Which occurrence took which
+//! member is beyond the ceiling; the next rung is a projector-emitted correspondence (E.1,
+//! `ProjectionProvenanceEntry`), not a finer key invented here.
 //!
 //! ── WHY THE REFERENCE CHANNEL IS NOT THE IMPORT CHANNEL ──
 //!
-//! A wall that read bindings only through import members would observe the import-name
-//! universe being deleted and then see nothing at all — blind on precisely the change it
-//! gates. So the binding channel is every authored NAME OCCURRENCE in a module's own parsed
-//! tree (`ModuleDeclarationRecord::referenced`), resolved independently. It survives the cut
-//! because it never depended on the construct being cut.
+//! A wall reading bindings only through import members would see the import-name universe
+//! deleted and then nothing — blind on the change it gates. So the binding channel is every
+//! authored NAME OCCURRENCE in a module's own parsed tree (`ModuleDeclarationRecord::referenced`),
+//! resolved independently; it never depended on the construct being cut.
 //!
 //! ── WHAT THIS DOES WITH CLOSURE, AND THE ARM IT DELIBERATELY DOES NOT AUTHOR ──
 //!
-//! Closure is a pure function of membership, so "the closure moved and no membership moved"
-//! is not a state any fixture can author. An arm for it would be permanently green by
-//! construction — the decoration DESIGN §4b calls worse than absent. Closure is therefore
-//! MEASURED and ATTRIBUTED rather than separately adjudicated: every closure row is grouped
-//! under the membership delta that generates it, so a refusal names its blast radius. The
-//! adjudication happens at the generators, which is where the decision is; adjudicating the
-//! consequence too would be a second representation of one fact (DESIGN §2/§3).
+//! Closure is a pure function of membership, so "closure moved, no membership moved" is not a
+//! state any fixture can author; an arm for it would be permanently green — the decoration
+//! DESIGN §4b calls worse than absent. Closure is MEASURED and ATTRIBUTED: every closure row is
+//! grouped under the membership delta generating it, so a refusal names its blast radius.
+//! Adjudicating the consequence as well as the generator would be a second representation of
+//! one fact (DESIGN §2/§3).
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -78,11 +68,9 @@ use crate::v1_std_core::qualified_last_segment;
 /// The nine dispositions of `gunbc.compiler_frontend_program_interlock`
 /// `NamespaceDeltaDisposition`, realized for the host reader.
 ///
-/// THE VOCABULARY IS THE CARRIER'S, NOT THIS FILE'S. The `.dag` coproduct is the authority
-/// and this is one realization of it; the partition into auto-admitted and refusing is the
-/// operator's, recorded on that carrier, and is transcribed here only as the match below —
-/// which is exhaustive, so a variant added there and not here fails to compile rather than
-/// silently falling into a default arm.
+/// THE VOCABULARY IS THE CARRIER'S, NOT THIS FILE'S. The `.dag` coproduct is the authority; the
+/// auto-admitted/refusing partition is the operator's, recorded there and transcribed only as
+/// the exhaustive match below, so a variant added here and not there fails to compile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum NamespaceDeltaDisposition {
     SameDeclarationIdentityRebind,
@@ -97,11 +85,10 @@ pub enum NamespaceDeltaDisposition {
     NotEvaluated,
 }
 
-/// FREE FUNCTIONS RATHER THAN INHERENT METHODS, THROUGHOUT THIS MODULE, and it is not a style
-/// choice. `std.decl_ref` offers `WholeDeclaration` or `NamedField` and neither names a method on
-/// an `impl` block, so every method here would be an UNCITABLE seed-growth item — a declaration
-/// the obligation roster in `gunbc.namespace_wave_admission` structurally cannot enumerate.
-/// `gunbc.declaration_index_seed_growth` records the same decision and the same reason.
+/// FREE FUNCTIONS RATHER THAN INHERENT METHODS, THROUGHOUT THIS MODULE: `std.decl_ref` offers
+/// `WholeDeclaration` or `NamedField`, neither naming an `impl` method, so a method would be an
+/// UNCITABLE seed-growth item the roster in `gunbc.namespace_wave_admission` cannot enumerate.
+/// `gunbc.declaration_index_seed_growth` records the same decision.
 pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
     match d {
         NamespaceDeltaDisposition::SameDeclarationIdentityRebind => "SameDeclarationIdentityRebind",
@@ -124,9 +111,8 @@ pub fn disposition_label(d: NamespaceDeltaDisposition) -> &'static str {
 /// auto-admitted. Every other disposition — including `NotEvaluated` — refuses unless an exact
 /// transition admission names it.
 ///
-/// THE MATCH IS EXHAUSTIVE, which protects THIS FILE's consistency and nothing else: a variant
-/// added to the `.dag` authority and not here compiles perfectly. `vocabulary_findings` is the
-/// join that closes that.
+/// THE MATCH IS EXHAUSTIVE, which protects only THIS FILE's consistency: a variant added to the
+/// `.dag` authority and not here compiles. `vocabulary_findings` closes that.
 pub fn disposition_auto_admitted(d: NamespaceDeltaDisposition) -> bool {
     match d {
         NamespaceDeltaDisposition::SameDeclarationIdentityRebind
@@ -162,22 +148,18 @@ pub const DISPOSITION_LABELS: [&str; 10] = [
 
 /// Refuse if the host realization and the `.dag` authority disagree about the vocabulary.
 ///
-/// WHY THIS EXISTS AT ALL. The enum above is a SECOND REPRESENTATION of a coproduct the
-/// `.dag` carrier owns, and DESIGN §3 is unambiguous that two representations of one fact
-/// diverge on the first amendment. The exhaustive `match` in `auto_admitted` protects this
-/// file's INTERNAL consistency and says nothing about the carrier: a variant added there and
-/// not here compiles perfectly, and the wall then adjudicates against a vocabulary the
-/// operator has already superseded — silently, because nothing joins the two.
+/// WHY THIS EXISTS AT ALL. The enum above is a SECOND REPRESENTATION of a `.dag` coproduct, and
+/// DESIGN §3 says two representations diverge on the first amendment. The exhaustive `match` in
+/// `auto_admitted` protects only INTERNAL consistency: a variant added to the carrier and not
+/// here compiles, and the wall silently adjudicates against a superseded vocabulary.
 ///
-/// IT IS A JOIN AND NOT A COUNT. The check is set equality over variant names, in both
-/// directions, so `here and not there` and `there and not here` are separate, named findings.
-/// The index already carries the authority's variants from the authority's own parse, so this
-/// costs one keyed lookup and no walk.
+/// IT IS A JOIN AND NOT A COUNT: set equality over variant names in both directions, so `here
+/// and not there` and `there and not here` are separate findings. The index already carries the
+/// authority's variants, so this is one keyed lookup and no walk.
 ///
-/// AND ITS ABSENCE REFUSES. If the authority module is not in the index at all — renamed,
-/// deleted, or moved out of the swept roots — that is not permission to proceed on the host's
-/// own say-so; it is the state in which nothing is checking the vocabulary, which is exactly
-/// what this function exists to make impossible.
+/// AND ITS ABSENCE REFUSES. An authority module not in the index — renamed, deleted, or moved
+/// out of the swept roots — is the state in which nothing checks the vocabulary, not permission
+/// to proceed on the host's say-so.
 pub fn vocabulary_findings(index: &DeclarationIndex) -> Vec<String> {
     let Some(record) = index_get(index, DISPOSITION_AUTHORITY_MODULE) else {
         return vec![format!(
@@ -237,8 +219,8 @@ pub fn delta_subject_render(subject: &DeltaSubject) -> String {
 pub struct NamespaceDelta {
     pub subject: DeltaSubject,
     pub disposition: NamespaceDeltaDisposition,
-    /// The two sides, rendered. Never a summary: a refusal a reader cannot act on is a
-    /// stopped line with the analysis withheld.
+    /// The two sides, rendered. Never a summary: a refusal a reader cannot act on withholds the
+    /// analysis.
     pub detail: String,
     /// Modules whose transitive closure moves because of THIS delta. Measured, never
     /// separately adjudicated — see the module header.
@@ -250,8 +232,8 @@ pub struct NamespaceDelta {
 /// The authored pattern naming one exact runtime delta subject.
 ///
 /// Its borrowed fields keep the admission roster const: no initializer can compute permission
-/// from the observed delta set, a file, or process state. Runtime observations remain owned
-/// `DeltaSubject` values; an authored pattern and an observation are deliberately distinct types.
+/// from observed deltas, a file, or process state. Runtime observations remain owned
+/// `DeltaSubject` values — a distinct type from an authored pattern.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AdmissionSubject {
     Membership {
@@ -309,17 +291,15 @@ pub fn admission_subject_render(subject: &AdmissionSubject) -> String {
 
 /// An operator-authored admission for one exact subject under one exact disposition.
 ///
-/// THE GRAIN IS EXACT ON PURPOSE, AND THE COARSE FORM IS NOT BUILT HERE. The first semantic
-/// wave is expected to produce THOUSANDS of transitions (measured by the owning session
-/// against the import-strip receipts' class taxonomy — a population figure that is stale as
-/// a count and sound as an order of magnitude), so a wave will want a class admission
-/// bounded BY ENUMERATED IDENTITY — "these exact bindings, taken from the pre-deletion
-/// baseline observation, become unresolved" — never by a predicate such as "unresolvedness
-/// is expected during the wave", which admits everything and zeroes the wall's deficit
-/// frequency by construction (DESIGN §5, the absorbing fallback). That coarse carrier is NOT
-/// authored here because it would be a mechanism with no consumer until the first wave needs
-/// it (DESIGN §6, experimental residue); what is fixed now is that its population must be an
-/// enumeration and never a predicate.
+/// THE GRAIN IS EXACT ON PURPOSE, AND THE COARSE FORM IS NOT BUILT HERE. The first semantic wave
+/// is expected to produce THOUSANDS of transitions (measured by the owning session against the
+/// import-strip receipts' class taxonomy — stale as a count, sound as an order of magnitude), so
+/// a wave will want a class admission bounded BY ENUMERATED IDENTITY — "these exact bindings,
+/// from the pre-deletion baseline observation, become unresolved" — never by a predicate like
+/// "unresolvedness is expected during the wave", which admits everything and zeroes the wall's
+/// deficit frequency (DESIGN §5, the absorbing fallback). That carrier is NOT authored here: it
+/// would have no consumer until the first wave (DESIGN §6, experimental residue). What is fixed
+/// now is that its population must be an enumeration, never a predicate.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransitionAdmission {
     pub label: &'static str,
@@ -328,131 +308,109 @@ pub struct TransitionAdmission {
 }
 
 /// CONST-NESS IS SAFETY, NOT STORAGE STYLE. A const roster cannot be computed from observed
-/// deltas, a file, environment state, or any other runtime input: its permission set is exactly
-/// what an author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str`
-/// patterns distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject
-/// admitted only the all-empty shape in a const; it refused loudly as stale, but no const row
-/// could name a real module.
+/// deltas, a file, environment state, or any runtime input: its permission set is exactly what an
+/// author wrote and a reviewer read. `AdmissionSubject` therefore carries `&'static str` patterns
+/// distinct from runtime-owned `DeltaSubject` observations. The prior `String` subject admitted
+/// only the all-empty shape in a const: it refused loudly as stale, but no const row could name a
+/// real module.
 ///
-/// EMPTY IS THE RESTING STATE, and it is where this roster belongs between transitions.
+/// EMPTY IS THE RESTING STATE between transitions.
 ///
 /// It carried 53 exact admissions for the owner-qualified call-target cut, each measured by the
-/// required floor against the merge base after the namespace wall landed. That subject has
-/// landed (#9436, #9504); #9400 itself closed unmerged and no successor is open. Every one of
-/// the 53 therefore matched no delta, which is exactly the finding this roster's own rule
-/// predicts -- "a row that no longer matches is itself a finding (`stale_admissions`), so this
-/// temporary transition roster must shrink with its subject."
+/// required floor against the merge base after the namespace wall landed. That subject landed
+/// (#9436, #9504); #9400 closed unmerged with no successor. All 53 then matched no delta — the
+/// finding this roster's rule predicts: "a row that no longer matches is itself a finding
+/// (`stale_admissions`), so this temporary transition roster must shrink with its subject."
 ///
-/// WHY LEAVING THEM WAS NOT A QUIET COST. `stale_admissions` is computed per RUN: a row is
-/// stale unless some delta IN THAT RUN matches it. A pull_request build adjudicates the MERGE
-/// commit, so once the rows were on main every open PR inherited all 53 -- and a PR that
-/// touches no namespace at all is exactly the case that can never match them. The phase
-/// therefore refused every unrelated change in the repository, which is why this shrink is the
-/// fix rather than housekeeping.
+/// WHY LEAVING THEM WAS NOT A QUIET COST. `stale_admissions` is per RUN: a row is stale unless a
+/// delta IN THAT RUN matches it. A pull_request build adjudicates the MERGE commit, so once the
+/// rows were on main every open PR inherited all 53, and a PR touching no namespace can never
+/// match them. The phase refused every unrelated change, so the shrink is the fix, not housekeeping.
 ///
-/// EMPTY DOES NOT MEAN PERMISSIVE, which is the reason shrinking is safe. With no rows, a run
-/// carrying no delta reports nothing and passes; a run carrying a real delta reports it as
-/// UNADJUDICATED and refuses. The failure mode of having shrunk too early is therefore a loud
-/// refusal naming the delta, which its author closes by authoring a row -- never a silent
-/// admission. The next transition adds its rows here and removes them when its subject lands.
-/// SECOND SHRINK, SAME RULE. Two `gunbc.ci_render` `plain_span` rows dissolved on
-/// schedule: `ci_render` now imports `plain_span` from the `std.render` authority and declares
-/// none, so no run can produce the deltas those rows named and both were reported stale on
-/// every build. They are removed here by the trigger they were authored with, not by a
-/// reinterpretation of it.
-/// THIRD SHRINK, SAME RULE (2026-08-29). The 314 `std->extdeps consolidation 2026-08-28` rows
-/// were authored for #9641; it merged, so on every pull_request build the merge commit and
-/// its base both carry the consolidation, no run can produce the deltas those rows named, and
-/// all 314 were reported stale -- which refused every unrelated PR in the repository, exactly
-/// the shape the paragraph above records for the first 53. Removed by the trigger they were
-/// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
-/// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
+/// EMPTY DOES NOT MEAN PERMISSIVE, which is why shrinking is safe: with no rows, a run with no
+/// delta passes and a run with a real delta refuses it as UNADJUDICATED. Shrinking too early
+/// yields a loud refusal naming the delta, closed by authoring a row — never a silent admission.
+/// Each transition adds its rows here and removes them when its subject lands.
+/// SECOND SHRINK, SAME RULE. Two `gunbc.ci_render` `plain_span` rows dissolved on schedule:
+/// `ci_render` now imports `plain_span` from the `std.render` authority and declares none, so no
+/// run can produce those deltas and both reported stale on every build. Removed by the trigger
+/// they were authored with, not a reinterpretation of it.
+/// THIRD SHRINK, SAME RULE (2026-08-29). The 314 `std->extdeps consolidation 2026-08-28` rows,
+/// authored for #9641: it merged, so merge commit and base both carry the consolidation, and all
+/// 314 reported stale — refusing every unrelated PR, the shape recorded above for the first 53.
+/// Removed by their trigger. The roster is EMPTY and empty is not permissive.
 /// FOURTH TRANSITION (2026-08-29, gunbc#9665 / issue #9664). `DeclaredCallableIdentity` moved
 /// from `v1.compiler.infer_sigs` to `v1.std.core`, so every binding of that spelling inside
-/// `v1.compiler.infer_lookup` reports `TargetChanged`. The move is not cosmetic and not
-/// avoidable by re-spelling: `v1.std.core`'s own `CallTargetIdentity` now CARRIES a
-/// `DeclaredCallableIdentity` on its `RuntimePrimitiveCall` arm -- the declaration a runtime
-/// target was projected from, which is what lets Rust emission fall back to the declaration
-/// when its registry has no bridge for the primitive instead of inventing `v1_rt::length`.
-/// `v1.compiler.infer_sigs` imports `v1.std.core`, so the type could not stay where it was
-/// without a cycle, and re-declaring the pair in `v1.std.core` beside the original is the
-/// second-representation defect DESIGN §3 forbids -- the type's own note already says so, and
-/// that note travelled with the declaration.
+/// `v1.compiler.infer_lookup` reports `TargetChanged`. Not cosmetic and not avoidable by
+/// re-spelling: `v1.std.core`'s `CallTargetIdentity` now CARRIES a `DeclaredCallableIdentity` on
+/// its `RuntimePrimitiveCall` arm — the declaration a runtime target was projected from, which
+/// lets Rust emission fall back to the declaration when its registry has no bridge for the
+/// primitive instead of inventing `v1_rt::length`. `v1.compiler.infer_sigs` imports `v1.std.core`,
+/// so the type could not stay without a cycle, and re-declaring the pair in `v1.std.core` is the
+/// second-representation defect DESIGN §3 forbids — the type's own note says so and travelled
+/// with the declaration.
 ///
-/// FOUR ROWS, ONE PER BINDING SITE, and they are enumerated rather than matched by a module
-/// pattern because the roster's own rule is that its population is an enumeration and never a
-/// predicate. The two `membership` deltas this change also produces
-/// (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`) are
-/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
+/// FOUR ROWS, ONE PER BINDING SITE, enumerated rather than matched by module pattern because the
+/// roster's population is an enumeration, never a predicate. The two `membership` deltas this
+/// change also produces (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`)
+/// are `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent.
 ///
-/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is declared in `v1.std.core`
-/// on main, the merge base and head both carry it, no run can produce these deltas, and all
-/// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
-/// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
+/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is in `v1.std.core` on main,
+/// base and head both carry it, all four report stale and refuse every unrelated PR, as the three
+/// shrinks above record. Remove them by that trigger, not by reinterpreting it.
 /// FOURTH SHRINK, SAME RULE (2026-08-30). The six `DeclaredCallableIdentity hoist to
-/// v1.std.core 2026-08-29` rows dissolved on the trigger written above: #9665 merged as
-/// ecdeb492, so on every pull_request build the merge commit and its base both carry the
-/// hoist, no run can produce the deltas those rows named, and all six were reported stale
-/// (measured on #9689 @ bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) --
-/// refusing every unrelated PR in the repository, the fourth time this roster has reproduced
-/// that shape. Main's own push build at ecdeb492 stayed green, because its base is pre-#9665
-/// and the deltas exist there: the block is PR-only but universal, which is the reason the
-/// shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger they were authored with. The roster is EMPTY and empty
-/// is not permissive: a run carrying a real namespace delta still refuses it as UNADJUDICATED
-/// until its author adds a row here.
+/// v1.std.core 2026-08-29` rows dissolved on that trigger: #9665 merged as ecdeb492, so merge
+/// commit and base both carry the hoist and all six reported stale (measured on #9689 @
+/// bfd9524881: `0 unadjudicated delta(s), 6 stale admission(s)`) — refusing every unrelated PR,
+/// the fourth time this roster reproduced that shape. Main's own push build at ecdeb492 stayed
+/// green because its base is pre-#9665 and the deltas exist there: the block is PR-only but
+/// universal, so the shrink cannot wait for a PR that would otherwise touch this file. Removed
+/// by their trigger. The roster is EMPTY and empty is not permissive.
 /// FIFTH TRANSITION (2026-08-29, gunbc#9675). The four `rust_source_prefix_*` constants moved
-/// from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation` --
-/// the namespace table there needs the tooling prefix, and importing it the other way closes
-/// the cycle scaffold -> seed_growth_admission -> host_observation. Every spelling that bound to
-/// the old declarer now binds to the new one: six `TargetChanged` rows, each naming the exact
-/// module, enclosing declaration and leaf, blast radius 0 on every one. DISSOLVE-ON: #9675
-/// merging -- base and head then both carry the relocation, the rows report stale, and they are
-/// removed by that trigger exactly as the four shrinks above were.
-/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so on every pull_request
-/// build from here the merge base and head both carry the relocation, no run can produce the
-/// deltas the six rows above named, and they report stale -- refusing every PR. Removed by
-/// the trigger they were authored with, in the first merge of main that carried the
-/// relocation on both sides.
+/// from `gunbc.stage0_rust_source_lifecycle_scaffold` to `gunbc.rust_item_host_observation` —
+/// the namespace table there needs the tooling prefix, and importing the other way closes the
+/// cycle scaffold -> seed_growth_admission -> host_observation. Every spelling bound to the old
+/// declarer now binds to the new one: six `TargetChanged` rows, each naming exact module,
+/// enclosing declaration and leaf, blast radius 0. DISSOLVE-ON: #9675 merging — base and head
+/// then both carry the relocation, the rows report stale, and they are removed by that trigger
+/// as the four shrinks above were.
+/// FIFTH SHRINK, SAME RULE (2026-08-30). #9675 merged (e1905850789), so base and head of every
+/// pull_request build carry the relocation, the six rows report stale and refuse every PR.
+/// Removed by their trigger, in the first merge of main carrying the relocation on both sides.
 /// SIXTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
 /// `BuildLane` and `WitnessesLane` moved (not duplicated) from
-/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
-/// which the census itself named as its next rung -- so the census's
-/// `required_ci_host_verdict_rows` now binds those spellings through the roster.
-/// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
-/// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
-/// merges and MUST be removed then, exactly as the shrinks above were.
-/// SIXTH SHRINK, SAME RULE (2026-08-30). #9698 merged, so the merge base and head of every
-/// run from here both carry the lane move, no run can produce the two deltas those rows
-/// named, and both report stale -- refusing every PR. Removed by the trigger they were
-/// authored with, in the first PR cut from the main that carries the move. The roster is
-/// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
-/// refuses it as UNADJUDICATED until its author adds a row here.
+/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` — the
+/// census's own named next rung — so its `required_ci_host_verdict_rows` now binds those
+/// spellings through the roster. `TargetChanged` on a deliberate move is the wall working; the
+/// rows adjudicate exactly those two subjects. They go STALE when #9698 merges and MUST be
+/// removed then.
+/// SIXTH SHRINK, SAME RULE (2026-08-30). #9698 merged, so base and head of every run carry the
+/// lane move, both rows report stale and refuse every PR. Removed by their trigger, in the first
+/// PR cut from the main carrying the move. The roster is EMPTY again and empty is not
+/// permissive.
 /// THIRD TRANSITION: `admission_from_module_root` moved home. #9710 relocated
-/// `admission_from_module_root` (with `import_rows_from_parsed_module`, `collect_import_decl_nodes`
-/// and `ImportRowsState`) from `v2.compiler.name_resolve` to `v2.lens.reference_deps`, the layer
-/// of its only two consumers, so that the compiler entry's emitted closure no longer carries the
-/// reference_deps subtree for a function no compile path reaches. The two consumers repoint their
-/// import; the spelling denotes a different declaration home, so each is a `TargetChanged`
-/// binding delta, admitted here by exact subject. Both rows dissolve when the relocation is on
-/// main: they then match no delta and report stale, refusing the first unrelated PR -- which is
-/// the trigger to delete them.
-/// FOURTH TRANSITION: three host seams segregated out of the modules the compile closure
-/// carries (A1-R). Emission decides membership at MODULE grain, so an unrealized host seam was
-/// emitted into the v2 compiler's own Rust crate whenever any NEIGHBOUR in its file was needed --
-/// measured before this change as five `panic!` sites in the emitted closure, none of them
-/// reachable from a compile. Three modules now separate the seam from the vocabulary that was
-/// actually wanted: `resolve_type_node` / `coproduct_arm_keys` / `coproduct_nullary_inhabitants`
-/// to `v2.std.node_reflection`, `layer_import_facts_live` to `v2.std.layer_import_scan`, and the
-/// `Filesystem.Read` read-through with `SourceRootIngestBuild` to
-/// `v2.compiler.source_authority_read`. Every consumer repoints its import, so each moved
-/// spelling denotes a different declaration home and arrives here as a `TargetChanged` binding
-/// delta -- the wall working on a deliberate relocation, exactly as the transitions above.
+/// `admission_from_module_root` (with `import_rows_from_parsed_module`,
+/// `collect_import_decl_nodes` and `ImportRowsState`) from `v2.compiler.name_resolve` to
+/// `v2.lens.reference_deps`, the layer of its only two consumers, so the compiler entry's
+/// emitted closure no longer carries the reference_deps subtree for a function no compile path
+/// reaches. The two consumers repoint their import; each is a `TargetChanged` binding delta
+/// admitted by exact subject. Both rows dissolve when the relocation is on main: they report
+/// stale and refuse the first unrelated PR — the trigger to delete them.
+/// FOURTH TRANSITION: three host seams segregated out of the modules the compile closure carries
+/// (A1-R). Emission decides membership at MODULE grain, so an unrealized host seam was emitted
+/// into the v2 compiler's own Rust crate whenever any NEIGHBOUR in its file was needed — measured
+/// before this change as five `panic!` sites in the emitted closure, none reachable from a
+/// compile. Three modules now separate seam from wanted vocabulary: `resolve_type_node` /
+/// `coproduct_arm_keys` / `coproduct_nullary_inhabitants` to `v2.std.node_reflection`,
+/// `layer_import_facts_live` to `v2.std.layer_import_scan`, and the `Filesystem.Read`
+/// read-through with `SourceRootIngestBuild` to `v2.compiler.source_authority_read`. Every
+/// consumer repoints its import, so each moved spelling arrives as a `TargetChanged` binding
+/// delta — the wall working on a deliberate relocation.
 ///
-/// EVERY ROW BELOW HAS BLAST RADIUS 0 AND NAMES ONE EXACT SUBJECT. That is the whole content of
-/// the adjudication: no row admits a module, a prefix or a spelling in general, so a binding this
-/// change did not intend still refuses. The count is 56 because the read-through moved a type,
-/// two variants and a function that eight consumers each reference from several declarations --
-/// one row per (module, declaration, spelling) triple, never one row per module.
+/// EVERY ROW BELOW HAS BLAST RADIUS 0 AND NAMES ONE EXACT SUBJECT: no row admits a module, prefix
+/// or spelling in general, so an unintended binding still refuses. The count is 56 because the
+/// read-through moved a type, two variants and a function that eight consumers reference from
+/// several declarations — one row per (module, declaration, spelling) triple, never per module.
 ///
 /// DISSOLVE-ON: this stack merging. Base and head then both carry the relocations, no run can
 /// produce these deltas, all 56 report stale, and they are removed by that trigger exactly as
@@ -466,10 +424,17 @@ pub struct TransitionAdmission {
 /// the shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger
 /// they were authored with. The roster is EMPTY and empty is not permissive: a run carrying a
 /// real namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
+/// A SHRINK IN PARALLEL, SAME RULE (2026-08-30, gunbc#9690). Thirty-one `TargetChanged` rows
+/// were authored for the first cut of the network-boot and firmware-transition standings out of
+/// `gunbc.os_install_mechanism` into `gunbc.boot_artifact_delivery`. Ruling 3 made the FINAL cut
+/// instead — the standings now live in `gunbc.network_boot_delivery` and
+/// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
+/// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
+/// Removed by the roster's own rule before the PR merged, so the rows never reached main.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
-/// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
-/// an instrument failure wearing coverage's clothes.
+/// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
+/// instrument failure wearing coverage's clothes.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WaveAdmissionPopulation {
     /// Modules present on BOTH sides — the only ones a delta can be about.
@@ -506,10 +471,9 @@ pub fn report_unadjudicated(report: &WaveAdmissionReport) -> Vec<&NamespaceDelta
 /// The modules one module reaches directly: its import targets, plus every dotted spelling
 /// in its own tree whose prefix IS a module.
 ///
-/// BOTH CHANNELS, ON BOTH SIDES, is what makes the derivation survive the cut. Before Step 1
-/// the import claims carry most of it; after Step 1 they carry none of it and the reference
-/// channel carries all of it. The FUNCTION does not change, so a base measured before the cut
-/// and a head measured after it are measured by one instrument.
+/// BOTH CHANNELS, ON BOTH SIDES, is what survives the cut: before Step 1 the import claims carry
+/// most of it, after Step 1 the reference channel carries all of it. The FUNCTION does not
+/// change, so base and head are measured by one instrument.
 fn direct_membership(
     index: &DeclarationIndex,
     record: &ModuleDeclarationRecord,
@@ -520,10 +484,10 @@ fn direct_membership(
             out.insert(claim.target.clone());
         }
     }
-    // Both authored-reference channels, the same union `membership_bound_through` takes and
-    // for the same measured reason: a declared type is parked in `inferred`, which the walk
-    // behind `referenced` never visits, so a module whose only reach into another is a
-    // declared type contributed no edge here -- the closure and blast radius under-reported.
+    // Both authored-reference channels, the union `membership_bound_through` takes, for the same
+    // measured reason: a declared type is parked in `inferred`, unvisited by the walk behind
+    // `referenced`, so a module reaching another only via a declared type contributed no edge
+    // -- closure and blast radius under-reported.
     for (_, spelling) in record
         .referenced
         .iter()
@@ -597,11 +561,10 @@ fn declaring_candidates(
     out
 }
 
-/// Where a name reached through `module` is actually DECLARED. An import member may be a
-/// re-export, and a citation naming a re-export names the wrong authority (DESIGN §3 — a
-/// fact's home is the module that declares it), so the chain is followed to the declarer.
-/// Bounded by a visited set, so a re-export cycle terminates at the last module reached
-/// rather than spinning.
+/// Where a name reached through `module` is actually DECLARED. A re-export names the wrong
+/// authority (DESIGN §3 — a fact's home is its declaring module), so the chain is followed to
+/// the declarer, bounded by a visited set so a re-export cycle terminates at the last module
+/// reached.
 fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
     let mut current = module.to_string();
     let mut seen: BTreeSet<String> = BTreeSet::new();
@@ -639,42 +602,36 @@ fn declarer_of(index: &DeclarationIndex, module: &str, name: &str) -> String {
 /// that leaf admits`, unioned over every spelling in that declaration whose last segment is
 /// the leaf.
 ///
-/// WHY THE KEY IS THE LEAF AND NOT THE SPELLING, and this is a measured correction rather than
-/// a preference. Keyed on the spelling, `widget` and `probe.home.widget` are two rows, so
-/// QUALIFYING A REFERENCE reads as one row losing its declaration and an unrelated row
-/// appearing — `NewUnresolvedness`, refused. Requalification is the namespace program's own
-/// core motion (its projection P(B) inserts qualifier segments), so a wall keyed on spellings
-/// would refuse the program in its entirety and be repaired by weakening it, which is the
-/// failure mode the ruling's `SameDeclarationIdentityRebind` auto-admission exists to prevent.
-/// The fixture that found this is
+/// WHY THE KEY IS THE LEAF AND NOT THE SPELLING — a measured correction. Keyed on the spelling,
+/// `widget` and `probe.home.widget` are two rows, so QUALIFYING A REFERENCE reads as one row
+/// losing its declaration and an unrelated row appearing — `NewUnresolvedness`, refused.
+/// Requalification is the namespace program's core motion (its projection P(B) inserts qualifier
+/// segments), so a spelling-keyed wall would refuse the whole program and be weakened — the
+/// failure the ruling's `SameDeclarationIdentityRebind` auto-admission exists to prevent. Found by
 /// `dropping_an_import_for_a_qualified_spelling_keeps_the_declarer_and_is_admitted`.
 ///
-/// THE LEAF IS THE PART THAT NAMES THE DECLARATION; the segments before it name the ROUTE. So
-/// keying on the leaf and valuing on the declaring set is exactly the ruling's distinction
-/// between a rebind (route moved, identity held) and a target change (identity moved), read
-/// off the structure rather than asserted by an author.
+/// THE LEAF NAMES THE DECLARATION; the segments before it name the ROUTE. Keying on the leaf and
+/// valuing on the declaring set is the ruling's rebind (route moved, identity held) vs target
+/// change (identity moved), read off the structure rather than asserted.
 ///
-/// AND IT IS AN INVARIANT OF THE OPERATION THE CUT PERFORMS, not merely a key that happens to
-/// survive it. A requalification wave prepends the declarer's path and leaves the declarer
-/// fixed, so it changes the spelling and leaves the last segment unchanged BY CONSTRUCTION.
-/// The reduction is not coined here: `v1.05_emit_rust` `rust_fn_sig_leaf_name_dotted_note`
-/// names `qualified_last_segment` as the single authority for taking an authored spelling to
-/// its last segment. The converse is the wall working and is not to be softened: if a cut
-/// repoints a reference to a DIFFERENT declaration whose leaf differs, the key moves and the
-/// wall refuses.
+/// AND IT IS AN INVARIANT OF THE OPERATION THE CUT PERFORMS: a requalification wave prepends the
+/// declarer's path and leaves the last segment unchanged BY CONSTRUCTION. The reduction is not
+/// coined here: `v1.05_emit_rust` `rust_fn_sig_leaf_name_dotted_note` names
+/// `qualified_last_segment` as the single authority for an authored spelling's last segment. The
+/// converse is the wall working, not to be softened: a cut repointing a reference to a DIFFERENT
+/// declaration with a different leaf moves the key and refuses.
 ///
 /// THE UNION IS THE CEILING, STATED WHERE IT IS TAKEN: two references to one leaf inside one
-/// declaration share a row, so one of them being requalified while the other is not is not
-/// observable here. That is the same ceiling the module header names, arriving through the key
-/// instead of through the shadowing case, and it has the same next rung.
+/// declaration share a row, so one requalified and the other not is unobservable here — the
+/// module header's ceiling arriving through the key instead of shadowing, with the same next rung.
 fn binding_rows(
     index: &DeclarationIndex,
     record: &ModuleDeclarationRecord,
 ) -> BTreeMap<(String, String), BTreeSet<String>> {
     let mut out: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
-    // Both authored-reference channels, as in `direct_membership` and
-    // `membership_bound_through`: a cut that repoints a DECLARED type -- visible only through
-    // the parser's stamped channel -- must produce a row on both sides of the wall.
+    // Both authored-reference channels, as in `direct_membership` and `membership_bound_through`:
+    // a cut repointing a DECLARED type (visible only via the parser's stamped channel) must
+    // produce a row on both sides.
     for (in_declaration, spelling) in record
         .referenced
         .iter()
@@ -727,10 +684,9 @@ fn membership_map(index: &DeclarationIndex) -> BTreeMap<String, BTreeSet<String>
 
 /// Compare two indexes and adjudicate every delta.
 ///
-/// TAKES TWO INDEXES AND NO GIT. The production caller reconstructs the base index from the
-/// diff; a fixture authors both sides directly. That boundary is what makes this wall's RED
-/// authorable — DESIGN §4b judges reachability against what a FIXTURE may author, and a
-/// wall reachable only through a repository history has no fixture at all.
+/// TAKES TWO INDEXES AND NO GIT. Production reconstructs the base index from the diff; a fixture
+/// authors both sides. That boundary makes the RED authorable — DESIGN §4b judges reachability
+/// against what a FIXTURE may author, and a wall reachable only through history has no fixture.
 pub fn adjudicate(
     base: &DeclarationIndex,
     head: &DeclarationIndex,
@@ -756,10 +712,9 @@ pub fn adjudicate(
         }
     }
 
-    // CLOSURE MOTION, MEASURED FIRST AND ATTRIBUTED BELOW. A module whose own membership did
-    // not move can still have its subject moved by a dependency's membership; that is the
-    // blast radius a refusal must name, and it is why closure is computed over the whole
-    // graph rather than per changed file.
+    // CLOSURE MOTION, MEASURED FIRST AND ATTRIBUTED BELOW. A dependency's membership can move a
+    // module's subject without its own moving — the blast radius a refusal must name, hence
+    // closure over the whole graph rather than per changed file.
     let mut closure_moved_for: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (module, head_reach) in &head_closure {
         let Some(base_reach) = base_closure.get(module) else {
@@ -787,11 +742,10 @@ pub fn adjudicate(
 
         // ── BINDING DELTAS ──
         //
-        // ONLY ROWS PRESENT ON BOTH SIDES. A name authored by this change has no prior
-        // denotation, so it cannot have changed one; a name this change deleted has no present
-        // denotation to protect. The wall's subject is what an EXISTING reference denotes, and
-        // widening it to new authorship would make every ordinary pull request an
-        // adjudication — the tax that gets a wall weakened rather than obeyed.
+        // ONLY ROWS PRESENT ON BOTH SIDES. A newly authored name has no prior denotation to
+        // change; a deleted name has none to protect. The subject is what an EXISTING reference
+        // denotes; widening to new authorship would make every PR an adjudication — the tax that
+        // gets a wall weakened.
         let base_bindings = binding_rows(base, base_record);
         let head_bindings = binding_rows(head, head_record);
         for (key, head_set) in &head_bindings {
@@ -835,9 +789,8 @@ pub fn adjudicate(
                     module: module.clone(),
                     target: target.clone(),
                 },
-                // An edge every one of whose names still denotes what it denoted is motion
-                // that has been evaluated and found to change no meaning. An edge nothing in
-                // the module reaches is motion nobody has accounted for.
+                // An edge whose names all still denote the same is evaluated motion changing no
+                // meaning; an edge nothing in the module reaches is unaccounted motion.
                 disposition: if supported {
                     NamespaceDeltaDisposition::ExplicitlyEvaluatedZeroDelta
                 } else {
@@ -859,11 +812,10 @@ pub fn adjudicate(
                     module: module.clone(),
                     target: target.clone(),
                 },
-                // A removed edge nothing bound through is unused membership going away. A
-                // removed edge whose names all still denote the same declarations is a route
-                // change with the identity intact — which is exactly the rebind the ruling
-                // auto-admits. Anything else is refused HERE only when the binding channel
-                // did not already refuse it, so one motion is never charged twice.
+                // A removed edge nothing bound through is unused membership going away; one
+                // whose names still denote the same declarations is the rebind the ruling
+                // auto-admits. Anything else is refused HERE only if the binding channel did not
+                // already refuse it, so one motion is never charged twice.
                 disposition: if !was_used {
                     NamespaceDeltaDisposition::UnusedSubjectMembershipRemoved
                 } else {
@@ -925,24 +877,21 @@ pub fn adjudicate(
 
 /// Which disposition a changed candidate SET carries.
 ///
-/// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` is a name that stopped denoting anything;
-/// `1 -> 2` is a name that now admits two declarations, which the namespace authority refuses
-/// at the reference rather than resolving by nearness. Anything else with a non-empty pair is
-/// a changed target.
+/// EVERY ARM IS OVER SETS, NOT WINNERS. `1 -> 0` stopped denoting anything; `1 -> 2` now admits
+/// two declarations, which the namespace authority refuses at the reference rather than
+/// resolving by nearness. Any other non-empty pair is a changed target.
 ///
-/// `0 -> 1` IS TWO STATES, NOT ONE, AND THE SET PAIR CANNOT TELL THEM APART. An earlier
-/// revision read every `0 -> 1` as resolution arriving from a pool — a name that began
-/// denoting something WITHOUT ANYONE AUTHORING A REFERENCE, which is the coincidence the
-/// containment rule exists to remove. That is one of the two, and it is the one whose cause
-/// lives in ANOTHER module: the target grew a name this module was already reaching for. The
-/// other is this module's own author writing the import that resolves a name the module was
-/// already spelling — the exact repair the wall was built to want, and the state the wall
-/// refused. Opposite owners, opposite repairs, one symbol: DESIGN's state-space conflation.
+/// `0 -> 1` IS TWO STATES, NOT ONE, AND THE SET PAIR CANNOT TELL THEM APART. An earlier revision
+/// read every `0 -> 1` as resolution from a pool — a name denoting something WITHOUT ANYONE
+/// AUTHORING A REFERENCE, the coincidence the containment rule removes, caused in ANOTHER module.
+/// The other is this module's author writing the import that resolves a name already spelled —
+/// the repair the wall wants, and the state it refused. Opposite owners, opposite repairs, one
+/// symbol: DESIGN's state-space conflation.
 ///
-/// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, and it is available for free — the
-/// membership arm one function over already consults authorship (`membership_supported`),
-/// which is what admitted the membership edge of the very change this arm was refusing. So
-/// `authored_here` is passed in rather than re-derived: see `locally_authored_claim_added`.
+/// THE DISCRIMINATOR IS THE MODULE'S OWN SOURCE, available for free — the membership arm already
+/// consults authorship (`membership_supported`), which admitted the membership edge of the very
+/// change this arm refused. So `authored_here` is passed in, not re-derived: see
+/// `locally_authored_claim_added`.
 fn binding_disposition(
     base: &BTreeSet<String>,
     head: &BTreeSet<String>,
@@ -967,25 +916,22 @@ fn binding_disposition(
 /// Whether `module` DECLARES a dependency on `target` -- the ADD direction's question.
 ///
 /// AN AUTHORED IMPORT CLAIM IS THE ANSWER, NOT EVIDENCE TOWARD IT. On the add side
-/// `DeltaSubject::Membership` asks whether `module` gained `target` as a DIRECT DEPENDENCY,
-/// and `import <target> { .. }` is exactly that dependency stated in authored syntax. The
-/// reference set is a DOWNSTREAM PROXY for the same fact and a measurably lossy one: a name
-/// used ONLY as a match-arm pattern head is unreachable from `for_each_node` IN PRINCIPLE,
-/// because `MatchPattern::VariantPattern.name` is a `String` and never a `Node`. So a module
-/// importing a coproduct purely to name its variants in patterns declared the dependency and
-/// had it refused as `UnexplainedSubjectMotion`. Reading the weaker of two representations of
-/// one fact is DESIGN 3, not a leniency question.
+/// `DeltaSubject::Membership` asks whether `module` gained `target` as a DIRECT DEPENDENCY, and
+/// `import <target> { .. }` is that dependency in authored syntax. The reference set is a lossy
+/// DOWNSTREAM PROXY: a name used ONLY as a match-arm pattern head is unreachable from
+/// `for_each_node` IN PRINCIPLE, because `MatchPattern::VariantPattern.name` is a `String`, never
+/// a `Node`. So a module importing a coproduct purely for pattern variants had its declared
+/// dependency refused as `UnexplainedSubjectMotion`. Reading the weaker of two representations of
+/// one fact is DESIGN 3, not leniency.
 ///
-/// THE SPLIT FROM `membership_bound_through` IS THE FINDING, NOT A TIDY-UP. One predicate
-/// served both directions until an executed RED showed the two ask OPPOSITE questions of the
-/// same data. Add asks *does this module depend on target*, which an import claim answers
-/// outright. Removal asks *was anything actually bound through it*, which an import claim
-/// CANNOT answer -- an unused import is precisely one that is declared and bound through by
-/// nothing. Widening the SHARED predicate therefore made every unused-import removal report
-/// `SameDeclarationIdentityRebind` instead of `UnusedSubjectMembershipRemoved`; that is the
-/// state-space conflation DESIGN names, one symbol answering two questions whose arms have
-/// opposite owners and opposite repairs. It was caught by the sibling test going red, not by
-/// review, which is why the fixture below is enrolled rather than described.
+/// THE SPLIT FROM `membership_bound_through` IS THE FINDING, NOT A TIDY-UP. One predicate served
+/// both directions until an executed RED showed they ask OPPOSITE questions. Add asks *does this
+/// module depend on target* — an import claim answers outright. Removal asks *was anything bound
+/// through it* — an import claim CANNOT answer, since an unused import is declared and bound
+/// through by nothing. Widening the SHARED predicate made every unused-import removal report
+/// `SameDeclarationIdentityRebind` instead of `UnusedSubjectMembershipRemoved`: state-space
+/// conflation, one symbol answering two questions with opposite owners and repairs. Caught by
+/// the sibling test going red, not review, which is why the fixture below is enrolled.
 fn membership_declared(
     index: &DeclarationIndex,
     record: &ModuleDeclarationRecord,
@@ -998,23 +944,20 @@ fn membership_declared(
 /// Did THIS module's own source gain a claim on `leaf` between the two sides?
 ///
 /// EVERY ARM IS SCOPED TO `leaf`, AND THE BLANKET ARM IS WHERE THAT IS EASY TO GET WRONG. A
-/// member-list import and a self-declaration name the leaf in the source, so they answer from
-/// the two `ModuleDeclarationRecord`s alone. A blanket `import m` names no leaf at all, so a
-/// first revision of this function admitted authorship whenever ANY blanket target was new —
-/// which meant an unrelated new blanket import elsewhere in the same module auto-admitted a
-/// genuine pool coincidence, a fail-open widening in the one direction this function must
-/// never move (review 56882, on gunbc#9495, before it merged).
+/// member-list import and a self-declaration name the leaf, so they answer from the two
+/// `ModuleDeclarationRecord`s alone. A blanket `import m` names no leaf, and a first revision
+/// admitted authorship whenever ANY blanket target was new — so an unrelated new blanket import
+/// auto-admitted a genuine pool coincidence, a fail-open widening in the one direction this
+/// function must never move (review 56882, on gunbc#9495, before it merged).
 ///
-/// SO THE BLANKET ARM IS A CONJUNCTION, AND THE ORDER OF ITS TWO HALVES IS THE WHOLE POINT.
-/// The claim must be NEW IN THIS MODULE'S SOURCE **and** the head target must actually supply
-/// the leaf. Asking the second question alone is exactly the conflation this function exists
-/// to discriminate — an unchanged blanket import whose target grew `leaf` would read as
-/// authorship, which is the pool coincidence. Gating it behind the first question makes the
-/// index consultation safe rather than forbidden: a claim the author did not write cannot
-/// reach the surface check at all, whatever the target did.
+/// SO THE BLANKET ARM IS A CONJUNCTION, AND THE ORDER OF ITS TWO HALVES IS THE WHOLE POINT. The
+/// claim must be NEW IN THIS MODULE'S SOURCE **and** the head target must supply the leaf. The
+/// second alone is the conflation: an unchanged blanket import whose target grew `leaf` would
+/// read as authorship. Gating on the first makes the index consultation safe: a claim the author
+/// did not write never reaches the surface check.
 ///
-/// FALSE IS THE FAIL-CLOSED ANSWER: it leaves the delta on the refusing arm, where a human
-/// adjudicates. A target absent from the index answers false for the same reason.
+/// FALSE IS THE FAIL-CLOSED ANSWER: the delta stays on the refusing arm for a human. A target
+/// absent from the index answers false for the same reason.
 fn locally_authored_claim_added(
     head_index: &DeclarationIndex,
     base_record: &ModuleDeclarationRecord,
@@ -1057,14 +1000,11 @@ fn membership_bound_through(
     record: &ModuleDeclarationRecord,
     target: &str,
 ) -> bool {
-    // THE UNION OF BOTH AUTHORED-REFERENCE CHANNELS, and the two are peers rather than one
-    // widened set for the reason `authored_type_references` states: they have different
-    // authorities. `referenced` is the index's own walk over the final tree; the other is the
-    // parser's stamped answer, which reaches a declared type parked in `inferred` that no walk
-    // over the tree can see. A consumer asking "is anything here bound through that import"
-    // wants every authored reference regardless of which channel could observe it, so it takes
-    // both -- and asking only the walk is what let this predicate report a live import as
-    // unused.
+    // THE UNION OF BOTH AUTHORED-REFERENCE CHANNELS, peers with different authorities (see
+    // `authored_type_references`): `referenced` is the index's walk over the final tree; the
+    // other is the parser's stamped answer, reaching a declared type parked in `inferred` that no
+    // tree walk sees. "Is anything bound through that import" wants both -- asking only the walk
+    // let this predicate report a live import as unused.
     record
         .referenced
         .iter()
@@ -1109,16 +1049,15 @@ use crate::cli_run::{workspace_root, DAG_PARSE_SWEEP_ROOTS};
 
 /// What one required run of the wall answers.
 ///
-/// `NotEvaluated` IS A REFUSAL AND NOT A SKIP, and the distinction is the whole reason it is a
-/// variant rather than an `Err` folded in with a spawn failure. "I could not see what changed"
-/// and "nothing changed" are different states with different remedies (DESIGN §5, the
-/// empty-observation narrow), and the ruling puts `NotEvaluated` on the refusing side of the
-/// admission partition explicitly.
+/// `NotEvaluated` IS A REFUSAL AND NOT A SKIP, which is why it is a variant rather than an `Err`
+/// folded in with a spawn failure: "could not see what changed" and "nothing changed" have
+/// different remedies (DESIGN §5, the empty-observation narrow), and the ruling puts
+/// `NotEvaluated` on the refusing side explicitly.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WaveAdmissionOutcome {
-    /// The baseline resolves to the head, so this run has no diff to adjudicate. A push to
-    /// `main` after a squash merge is the whole population of this state. It is NOT an
-    /// admission: nothing was compared, and the phase reports it under its own name.
+    /// The baseline resolves to the head, so there is no diff. A push to `main` after a squash
+    /// merge is the whole population. NOT an admission: nothing was compared, and the phase
+    /// reports it under its own name.
     NoSubject { head: String },
     /// The baseline could not be observed. Refuses.
     NotEvaluated { reason: String },
@@ -1132,20 +1071,17 @@ pub enum WaveAdmissionOutcome {
 /// Run git in the workspace and return stdout with TRAILING whitespace removed, or a refusal
 /// naming the command.
 ///
-/// `trim_end`, not `trim`, and the asymmetry is load-bearing rather than incidental: one caller
-/// asks for the CONTENT OF A FILE at a ref (`git show <ref>:<path>`), and a `.dag` module whose
-/// first line is indented would arrive with that indentation eaten -- a different file from the
-/// one committed, compared against a head side read from disk intact. Every other caller here
-/// (`rev-parse`, `merge-base`, `diff --name-only`, `status --porcelain`) produces output that
-/// either carries no leading whitespace or is re-trimmed by the caller, so nothing pays for the
-/// asymmetry. `status --porcelain` is the one to notice: its lines BEGIN with the two-column XY
-/// code, so a leading `trim` would have corrupted a status read rather than tidied it.
+/// `trim_end`, not `trim`, and the asymmetry is load-bearing: one caller reads FILE CONTENT at a
+/// ref (`git show <ref>:<path>`), and a `.dag` module with an indented first line would lose that
+/// indentation -- a different file from the committed one, compared against an intact head read.
+/// Every other caller (`rev-parse`, `merge-base`, `diff --name-only`, `status --porcelain`) has no
+/// leading whitespace or re-trims. `status --porcelain` lines BEGIN with the two-column XY code,
+/// so a leading `trim` would corrupt a status read.
 ///
-/// THE ONE COPY. `claim_executor` carried a byte-identical private copy, and this module's first
-/// draft carried a second — three spellings of one concept would have been the §3 fork this wall
-/// exists to refuse elsewhere. It is `pub` here rather than private there because the wall is a
-/// library fold and the bin is one of its callers; the bin's copy is deleted and its five call
-/// sites read this one.
+/// THE ONE COPY. `claim_executor` carried a byte-identical private copy and this module's first
+/// draft a second — the §3 fork this wall refuses elsewhere. `pub` here because the wall is a
+/// library fold and the bin one of its callers; the bin's copy is deleted and its five call sites
+/// read this one.
 pub fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
     let out = Command::new("git")
         .args(args)
@@ -1163,10 +1099,10 @@ pub fn git_stdout(workspace: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&out.stdout).trim_end().to_string())
 }
 
-/// Whether a repository path is one the head sweep would have parsed. The two exclusions
-/// mirror `run_dag_parse_sweep`'s own: build output, and the parser's deliberately malformed
-/// fixtures. A base-side file the head sweep would not have read must not enter the base
-/// index, or the two sides are measured by different instruments.
+/// Whether a repository path is one the head sweep would have parsed. The two exclusions mirror
+/// `run_dag_parse_sweep`'s: build output, and the parser's deliberately malformed fixtures. A
+/// base file the head sweep would not read must not enter the base index, or the two sides are
+/// measured by different instruments.
 fn in_sweep_scope(rel: &str) -> bool {
     rel.ends_with(".dag")
         && DAG_PARSE_SWEEP_ROOTS
@@ -1180,18 +1116,16 @@ fn in_sweep_scope(rel: &str) -> bool {
 /// paths must be re-read to reconstruct the baseline.
 ///
 /// THEY ARE NOT THE SAME SET, AND A RENAME IS WHERE THEY COME APART. `git diff --name-only`
-/// reports a detected rename as ONE path -- the destination -- because rename detection is on by
-/// default. An earlier revision read that single list as both sides at once, so a renamed module
-/// lost its base side entirely: the source path was never re-read (it is not in the list) and the
-/// destination path is absent from the base tree, so every declaration in the module read as
-/// newly added and the wall could refuse an ordinary `.dag` rename over a delta it had invented.
-/// Review 56471 was right to reject it.
+/// reports a detected rename as ONE path -- the destination (rename detection is on by default).
+/// An earlier revision read that list as both sides, so a renamed module lost its base side: the
+/// source was never re-read and the destination is absent from the base tree, so every
+/// declaration read as newly added and the wall could refuse an ordinary `.dag` rename over an
+/// invented delta. Review 56471 was right to reject it.
 ///
-/// So the diff is read rename-aware, `--name-status -z -M`, and each entry contributes to the two
-/// sides SEPARATELY: a rename contributes its destination to the head side and its source to the
-/// base side, an addition contributes only a head path, a deletion only a base path, and an
-/// ordinary modification the same path to both. Scope is applied per side, because a rename may
-/// cross the sweep boundary in either direction.
+/// So the diff is read rename-aware, `--name-status -z -M`, each entry contributing to the sides
+/// SEPARATELY: a rename gives its destination to head and its source to base, an addition only a
+/// head path, a deletion only a base path, a modification the same path to both. Scope is applied
+/// per side, because a rename may cross the sweep boundary either way.
 pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
     let mut head_touched = Vec::new();
     let mut base_side = Vec::new();
@@ -1221,18 +1155,16 @@ pub fn diff_sides(name_status_z: &str) -> (Vec<String>, Vec<String>) {
 /// One base-side source parsed into records, or a refusal naming what could not be read.
 ///
 /// A BASE FILE THAT DOES NOT PARSE IS AN UNOBSERVABLE BASELINE, NOT AN EMPTY ONE, and the
-/// difference decides the verdict. An earlier revision returned an empty vec here and argued
-/// that this was "the conservative direction" because it could only make the wall quieter.
-/// That argument is exactly backwards, and review 56449 was right to reject it: rows with no
-/// base side are not deltas, so every binding and membership row that file would have carried
-/// silently STOPS BEING COMPARED while the run still answers `Adjudicated`. Quieter is not
-/// safer here — it is the empty-observation narrow DESIGN names, ⊥-as-answer conflated with
-/// ⊥-as-ignorance, and it is strictly worse than the widen §5 already forbids: a widen is
-/// merely expensive, a narrow is silently uncovered.
+/// difference decides the verdict. An earlier revision returned an empty vec as "the conservative
+/// direction" because it only made the wall quieter. Backwards, and review 56449 was right to
+/// reject it: rows with no base side are not deltas, so every row that file carried silently
+/// STOPS BEING COMPARED while the run answers `Adjudicated` — the empty-observation narrow,
+/// ⊥-as-answer conflated with ⊥-as-ignorance, strictly worse than the widen §5 forbids: a widen
+/// is expensive, a narrow is silently uncovered.
 ///
-/// The head side is measured by a sweep that refuses on diagnostics, so refusing here is also
-/// what keeps both sides measured by ONE instrument. History is still not this pull request's
-/// to repair — but "I cannot see the baseline" is a refusal to state, not a fact to assume.
+/// The head sweep refuses on diagnostics, so refusing here keeps both sides on ONE instrument.
+/// History is not this PR's to repair — but "I cannot see the baseline" is a refusal to state,
+/// not a fact to assume.
 pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRecord>, String> {
     let fill = crate::v1_compiler_compile::parse_census_fill_sources(std::rc::Rc::new(
         vec![std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -1266,13 +1198,11 @@ pub fn base_records(rel: &str, content: &str) -> Result<Vec<ModuleDeclarationRec
 
 /// Run the wall for one required CI invocation.
 ///
-/// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain, and that
-/// is the construction rather than an optimisation. A file the diff did not touch has the same
-/// text on both sides, so its record is the same record — deriving it twice would produce the
-/// same answer at twice the cost, and a second corpus walk is the cost shape DESIGN §6 names.
-/// So only the changed files are parsed again, from their base blobs, and substituted. The
-/// closure and the bindings are then recomputed over BOTH whole graphs, because a module whose
-/// own text did not move can still have its subject or its bindings moved by one that did.
+/// THE BASE INDEX IS THE HEAD INDEX WITH THE DIFF APPLIED IN REVERSE, at file grain — the
+/// construction, not an optimisation. An untouched file has the same record on both sides;
+/// deriving it twice is the second corpus walk DESIGN §6 names. Only changed files are re-parsed
+/// from their base blobs and substituted; closure and bindings are then recomputed over BOTH
+/// whole graphs, since an unmoved module's subject or bindings can be moved by one that did.
 pub fn run_required_wave_admission(
     head_index: &DeclarationIndex,
 ) -> Result<WaveAdmissionOutcome, String> {
@@ -1308,15 +1238,13 @@ pub fn run_required_wave_admission(
         }
     }
     // ABSENCE AT THE BASE IS ESTABLISHED FROM AN AUTHORITATIVE LISTING, NEVER INFERRED FROM A
-    // FAILURE. An earlier revision read `git show <base>:<path>` and treated ANY error as proof
-    // the change had ADDED that path — so a read fault, a corrupt object or a permission problem
-    // all rendered as "new file", and the module's entire base side vanished from the comparison
-    // while the run still answered `Adjudicated`. Review 56449 was right to reject it: only ONE
-    // cause means added, and the rest are ignorance wearing its clothes.
+    // FAILURE. An earlier revision treated ANY `git show <base>:<path>` error as proof the path
+    // was ADDED — a read fault, corrupt object or permission problem all read as "new file", and
+    // the module's base side vanished while the run answered `Adjudicated`. Review 56449 was
+    // right to reject it: only ONE cause means added; the rest are ignorance wearing its clothes.
     //
-    // `ls-tree` separates the two: it answers what the base tree CONTAINS, so a path missing from
-    // its output is genuinely absent, and a failure to obtain the listing at all is a refusal
-    // rather than an empty answer.
+    // `ls-tree` answers what the base tree CONTAINS: a path missing from its output is absent,
+    // and a failure to obtain the listing is a refusal, not an empty answer.
     let base_paths = git_stdout(&workspace, &["ls-tree", "-r", "--name-only", &base])?;
     let base_paths: std::collections::BTreeSet<String> =
         base_paths.lines().map(|l| l.trim().to_string()).collect();

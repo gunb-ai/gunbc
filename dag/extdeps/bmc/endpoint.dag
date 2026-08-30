@@ -14,13 +14,45 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // Formerly std.bmc; consolidated into the extdeps BMC home 2026-08-28. A leaf
 // beneath extdeps.bmc.capability so every sibling can import it acyclically.
 // The protocols are cited in their own modules (extdeps.bmc.redfish,
-// extdeps.bmc.ipmi); OpenBmc as an enum arm is the pre-existing nickname debt
-// extdeps.firmware.openbmc.subject already records — not deepened here.
+// extdeps.bmc.ipmi).
 type BmcProtocol = Redfish | Ipmi
 
-type BmcFirmwareFamily = | OpenBmc | AmiMegaRac
+// The BMC firmware IMPLEMENTATION identity — which independently governed
+// firmware stack answers on the endpoint. Each inhabitant has its own module
+// authority (extdeps.bmc.openbmc, extdeps.bmc.megarac) carrying that stack's
+// cited facts; this coproduct is the agnostic shape they inhabit and carries
+// no per-product facts itself. Per DESIGN §3 the dispatch that selects among
+// the inhabitants is realization and lives peripherally in
+// gunbc.bmc_implementation_dispatch, so a Chrome change never edits Safari's
+// module: the 2026-08-29 machine-intake ruling required an AMI MegaRAC identity
+// for Mt. Collins, and the three family-keyed dispatchers that used to live
+// INSIDE extdeps.bmc.openbmc would have forced that OpenBMC module to change
+// for a MegaRAC addition — which is exactly the violation the rule names.
+// AmiMegaRac is one arm because build-scoped facts (firmware revision, Redfish
+// presence, service roster) live with the build binding
+// (extdeps.ampere.mt_collins_product_brief.bmc), not as a second axis here;
+// OpenBmc as an enum arm remains the nickname debt
+// extdeps.firmware.openbmc.subject records.
+type BmcFirmwareFamily
+  = OpenBmc
+  | AmiMegaRac
 
 type BmcEndpoint {
   host: NonEmptyStr
   protocol: BmcProtocol
+}
+
+// THE CONTROLLER, protocol-neutral (machine-intake ruling 4 §3). One Mt.
+// Collins boot drives one controller over at least two routes — MegaRAC REST
+// for artifact delivery, IPMI lanplus for boot control — so an identity that
+// carries a protocol has already selected a route. Intake targets, access
+// observations and bound access contexts name the controller with this shape;
+// HOW it is reached is the profile's BmcAccessRoute population
+// (extdeps.bmc.access_profile). BmcEndpoint stays for its legacy consumers.
+type BmcControllerEndpoint {
+  host: NonEmptyStr
+}
+
+fn bmc_controller_of_endpoint(endpoint: BmcEndpoint) -> BmcControllerEndpoint {
+  BmcControllerEndpoint { host: endpoint.host }
 }

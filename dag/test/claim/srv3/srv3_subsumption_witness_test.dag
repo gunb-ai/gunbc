@@ -1,11 +1,26 @@
 module test.claim.srv3_subsumption
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data srv3_subsumption_witness_home_note: String = "Consolidated green-by-execution proofs for the gunbc-layer srv3 subsumption facts — the reach row, the authorized-keys reconcile, and the toolchain target/access pairing. These three were separate witness files (fleet_reach / host_authorized_keys_reconcile / host_toolchain_reach_pairing) until 2026-07-25; each paid a full whole-tree closure resolve in the floor as its own entry, and three gunbc-closure resolves pushed batch 3 over its wall budget. They share one closure, so they are one floor entry here — a §6 cost-shape fix (fewer entry resolves, zero coverage lost), not a merge of unrelated concerns: all three are the srv3 subsumption lane. The three original witness notes are preserved verbatim below."
+// Consolidated green-by-execution proofs for the gunbc-layer srv3 subsumption facts — the reach
+// row, the authorized-keys reconcile, and the toolchain target/access pairing. These three were
+// separate witness files (fleet_reach / host_authorized_keys_reconcile /
+// host_toolchain_reach_pairing) until 2026-07-25; each paid a full whole-tree closure resolve in
+// the floor as its own entry, and three gunbc-closure resolves pushed batch 3 over its wall budget.
+// They share one closure, so they are one floor entry here — a §6 cost-shape fix (fewer entry
+// resolves, zero coverage lost), not a merge of unrelated concerns: all three are the srv3
+// subsumption lane. The three original witness notes are preserved verbatim below.
 
-data fleet_reach_witness_note: String = "Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet_reach.srv3_reach), distinct from the extdeps model mechanics that test.claim.network_grounding already proves. These pin the FLEET fact: srv3_reach is the ProxyJump-through-srv2 interim (exactly one hop), its network reach is realizable (grounded live 2026-07-25 — a Permission-denied handshake from srv2 proves packets reach srv3), and its target renders to srv3's grounded address 192.168.1.221 (consuming extdeps.network.ipv4, one of the sites the fleet_intent_network bare-string residual dissolves onto). The load-bearing §5 control is srv3_fabric_intended_refuses: the dissolution TARGET (srv3_reach_fabric_intended, the FabricTunnel srv3_reach retires to when the fabric works) is a real value that HONESTLY refuses realization today, so the dissolution trigger is not just prose — a model that let the intended fabric reach fall through as realizable would red this."
+// Green-by-execution proof for the CONCRETE gunbc srv3 reach row (gunbc.fleet_reach.srv3_reach),
+// distinct from the extdeps model mechanics that test.claim.network_grounding already proves. These
+// pin the FLEET fact: srv3_reach is the ProxyJump-through-srv2 interim (exactly one hop), its
+// network reach is realizable (grounded live 2026-07-25 — a Permission-denied handshake from srv2
+// proves packets reach srv3), and its target renders to srv3's grounded address 192.168.1.221
+// (consuming extdeps.network.ipv4, one of the sites the fleet_intent_network bare-string residual
+// dissolves onto). The load-bearing §5 control is srv3_fabric_intended_refuses: the dissolution
+// TARGET (srv3_reach_fabric_intended, the FabricTunnel srv3_reach retires to when the fabric works)
+// is a real value that HONESTLY refuses realization today, so the dissolution trigger is not just
+// prose — a model that let the intended fabric reach fall through as realizable would red this.
 
 test fn srv3_reach_is_single_hop_proxy_jump() -> Bool {
   match srv3_reach {
@@ -47,7 +62,16 @@ test fn srv3_fabric_intended_refuses_realization() -> Bool {
   }
 }
 
-data host_authorized_keys_reconcile_witness_note: String = "Green-by-execution proof of the SSH-authorized-keys reconcile on REAL observed data (operator macbook reads of srv3/srv4, 2026-07-24). The load-bearing discriminations: srv3 (installed pre-#7027, missing the fleet key) yields exactly ONE upsert — the fleet-automation key, named specifically, not just a count — and TWO refusals, both the out-of-band keys the fleet does not own, REFUSED (not torn down). srv4 (installed with the fleet key in the seed) yields the empty converged plan — the negative control that proves the reconcile does not fabricate work. The R5-wall RED control (reconcile_would_teardown_only_if_ownership_claimed_it) reconstructs the wall's hinge: feed a ownership fn that lies 'Owned' about the foreign keys and the SAME spine WOULD emit teardowns — so the refusal is caused by ownership_of returning Absent, not by the spine being unable to teardown. That makes the wall discriminating rather than asserted."
+// Green-by-execution proof of the SSH-authorized-keys reconcile on REAL observed data (operator
+// macbook reads of srv3/srv4, 2026-07-24). The load-bearing discriminations: srv3 (installed
+// pre-#7027, missing the fleet key) yields exactly ONE upsert — the fleet-automation key, named
+// specifically, not just a count — and TWO refusals, both the out-of-band keys the fleet does not
+// own, REFUSED (not torn down). srv4 (installed with the fleet key in the seed) yields the empty
+// converged plan — the negative control that proves the reconcile does not fabricate work. The
+// R5-wall RED control (reconcile_would_teardown_only_if_ownership_claimed_it) reconstructs the
+// wall's hinge: feed a ownership fn that lies 'Owned' about the foreign keys and the SAME spine
+// WOULD emit teardowns — so the refusal is caused by ownership_of returning Absent, not by the
+// spine being unable to teardown. That makes the wall discriminating rather than asserted.
 
 fn srv3_plan() -> MembershipPlan<SshPublicKey, HostAuthorizedKeysMemberAt> {
   host_authorized_keys_reconcile(observed: srv3_observed_authorized_keys)
@@ -131,7 +155,15 @@ test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
   tally.changes == 1 && tally.adds == 0 && tally.removals == 0 && tally.refusals == 0
 }
 
-data host_toolchain_reach_pairing_witness_note: String = "Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host_toolchain_ensure. The defect being walled: access used to be looked up from the REQUESTED host while the target was resolved kind-aware, so a BuildCache request for srv3 targeted srv3 and authenticated to srv1 — the effect lands on the wrong machine and reports success. A test that merely asserts the reach resolves would pass under the old code too, so the load-bearing row here is reach_access_host_is_the_target_host, which compares the two sides of the pair and is red exactly when they disagree. Its negative control is reach_wrong_machine_pairing_is_unwritable: the old behaviour is reconstructed by hand and shown to violate the same predicate, so the predicate is proven to discriminate rather than assumed to."
+// Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host_toolchain_ensure.
+// The defect being walled: access used to be looked up from the REQUESTED host while the target was
+// resolved kind-aware, so a BuildCache request for srv3 targeted srv3 and authenticated to srv1 —
+// the effect lands on the wrong machine and reports success. A test that merely asserts the reach
+// resolves would pass under the old code too, so the load-bearing row here is
+// reach_access_host_is_the_target_host, which compares the two sides of the pair and is red exactly
+// when they disagree. Its negative control is reach_wrong_machine_pairing_is_unwritable: the old
+// behaviour is reconstructed by hand and shown to violate the same predicate, so the predicate is
+// proven to discriminate rather than assumed to.
 
 fn reach_or_absent(kind: HostToolchainKind, host: HostIdentity) -> HostToolchainReach? {
   match host_toolchain_ensure_reach(kind: kind, host: host) {

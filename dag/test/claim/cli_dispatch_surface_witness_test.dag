@@ -120,6 +120,15 @@ test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_
     && fresh_cli_dispatch_executor_name(blocked: [next, base]) == Present { value: third }
 }
 
+// The bootstrap execution class is not an author-selectable tag over an arbitrary
+// DeclarationRef. Its sole admitted identity projects to the whole product-build declaration;
+// ordinary target producers have no constructor in this closed population.
+test fn bootstrap_successor_admission_is_closed_over_the_product_build_operation() -> Bool {
+  let operation = admitted_bootstrap_operation_declaration(identity: GunbcProductBuildBootstrapOperation {})
+  operation == gunbc_build_operation_ref()
+    && operation.field == WholeDeclaration
+}
+
 fn occurrences(names: List<String>, needle: String) -> Int {
   fold(names, init: 0, f: fn(acc, n) { if n == needle { acc + 1 } else { acc } })
 }

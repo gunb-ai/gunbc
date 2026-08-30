@@ -89,7 +89,20 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data emit_on_demand_match_loop_fold_note: String = "Witness-realization fan-out lane 3, migrated to FAMILY-CRATE grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): match + loop + fold are three members of ONE native crate (emit_family concatenation under the derived argv-dispatched main rust_match_loop_fold_family_target_model_staging; the fold member's helper fn rides the family prelude). The single native receipt is emit_on_demand_match_loop_fold_family_one_build_holds: ONE root, both family keys evicted up front; the primary family builds once (match cold, loop/fold/match-again compile_skipped), the eval-anchored member agreements (interpreted == native via run_test_claim_from_source_emit_vs_eval_cached — the agreement oracle stays eval, never the native path itself) and the unknown-member refusal run WARM on the same build; the ALL-ALT family (swapped match, wrong-value loop, wrong-arrow fold) is the content-change RED: new family key -> ONE cold rebuild carrying every wrong-fixture octet flip (match 1->2, loop 1->2, fold 7->-1) plus the eval-anchored loop mismatch. Under the prior per-witness grain this suite paid ~20 crate builds per corpus pass; now 2. Shared pure receipts unchanged: store Share/Recompute, realize_pack refusal, interpreter roles bounded, grain key split."
+// Witness-realization fan-out lane 3, migrated to FAMILY-CRATE grain (std.emit_on_demand
+// witness_family_build_grain_ruling, merry-pike-487 fan-out): match + loop + fold are three members
+// of ONE native crate (emit_family concatenation under the derived argv-dispatched main
+// rust_match_loop_fold_family_target_model_staging; the fold member's helper fn rides the family
+// prelude). The single native receipt is emit_on_demand_match_loop_fold_family_one_build_holds: ONE
+// root, both family keys evicted up front; the primary family builds once (match cold,
+// loop/fold/match-again compile_skipped), the eval-anchored member agreements (interpreted ==
+// native via run_test_claim_from_source_emit_vs_eval_cached — the agreement oracle stays eval,
+// never the native path itself) and the unknown-member refusal run WARM on the same build; the
+// ALL-ALT family (swapped match, wrong-value loop, wrong-arrow fold) is the content-change RED: new
+// family key -> ONE cold rebuild carrying every wrong-fixture octet flip (match 1->2, loop 1->2,
+// fold 7->-1) plus the eval-anchored loop mismatch. Under the prior per-witness grain this suite
+// paid ~20 crate builds per corpus pass; now 2. Shared pure receipts unchanged: store
+// Share/Recompute, realize_pack refusal, interpreter roles bounded, grain key split.
 
 data family_cache_root: String = emit_on_demand_family_cache_root(family: "match_loop_fold_family")
 data family_emitter: String = "v2.compiler.emit"
@@ -121,25 +134,22 @@ fn family_cache_root_for(test_id: String) -> String {
   concat(family_cache_root, "/", test_id)
 }
 
-// WHY List<Int> AND NOT List<Byte>, AND WHAT WOULD REPLACE IT. These rows are octet
-// values compared against emitted bytes. They were declared List<Byte> while holding
-// integers, which the list-element inhabitance obligation refused: std.bit's Byte is
-// `type Byte { bits: List<Bit> }`, a bit-record, so an Int literal never inhabited it.
-// The consumer's signature already carried the right type -- v2.compiler.emit_host
-// `emit_host_octets_byte_string(octets: List<Int>)` -- so this is the declaration
-// agreeing with its single authority, not a carrier weakened to satisfy a wall.
+// WHY List<Int> AND NOT List<Byte>, AND WHAT WOULD REPLACE IT. These rows are octet values
+// compared against emitted bytes. Declared List<Byte> while holding integers, the list-element
+// inhabitance obligation refused: std.bit's Byte is `type Byte { bits: List<Bit> }`, a bit-record,
+// so an Int literal never inhabited it. The consumer's signature already carried the right type --
+// v2.compiler.emit_host `emit_host_octets_byte_string(octets: List<Int>)` -- so this is the
+// declaration agreeing with its single authority, not a carrier weakened to satisfy a wall.
 //
-// Int is nonetheless weaker than the values deserve: an octet is 0..255 and nothing
-// here says so. The correctly shaped type already exists and is grounded --
-// extdeps.network.ipv4 `Octet`, declared as Int refined by range(min: 0, max: 255) --
-// but it is homed in the IPv4 domain, and reaching into a network module for a
-// compiler-emission byte would be the layer inversion DESIGN 3 warns about rather
-// than a reuse. What is missing is a domain-agnostic octet carrier, not a new
-// spelling of one that exists.
+// Int is still weaker than the values deserve: an octet is 0..255 and nothing here says so. The
+// correctly shaped, grounded type exists -- extdeps.network.ipv4 `Octet`, Int refined by
+// range(min: 0, max: 255) -- but it is homed in the IPv4 domain, and reaching into a network
+// module for a compiler-emission byte would be the layer inversion DESIGN 3 warns about, not a
+// reuse. What is missing is a domain-agnostic octet carrier, not a new spelling of one that exists.
 //
-// So the pointer, deliberately stated as rationale rather than a machine claim: when
-// such a carrier lands, these rows and emit_host_octets_byte_string's parameter move
-// to it together -- the parameter first, since the declaration follows its consumer.
+// The pointer, stated as rationale rather than a machine claim: when such a carrier lands, these
+// rows and emit_host_octets_byte_string's parameter move to it together -- the parameter first,
+// since the declaration follows its consumer.
 data match_expected_octets: List<Int> = [0, 1, 0, 0, 0]
 data match_alt_expected_octets: List<Int> = [0, 2, 0, 0, 0]
 data loop_expected_octets: List<Int> = [0, 1, 0, 0, 0]

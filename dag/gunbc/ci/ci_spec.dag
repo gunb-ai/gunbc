@@ -83,9 +83,23 @@ type FloorBatchStopPolicy = StopBeforeDependents | FullLedger
 
 type RuntimeUnitCount = RuntimeUnitCountObserved { units: Nat } | RuntimeUnitCountUnavailable { cause: String }
 
-data gunbc_ci_floor_batch_runtime_unit_count_note: String = "RUNTIME UNIT COUNT for the derived batch clamp (gunbc_ci_floor_batch_clamp_note): claim_executor alone knows the affected-set-selected unit count at enforcement time. RuntimeUnitCountObserved carries the count used in clamp_ms = overhead_seconds*1000 + units * per_unit_ms. RuntimeUnitCountUnavailable means the count was lost — typically a hard discovery error discarded DiscoverySummary at the Result boundary so corpus_witnesses reads 0 while the batch is a discovery aggregate, not a single-claim gate row. When unavailable the clamp comparison is REFUSED (verdict ClampRefused): a third state, not WithinBudget and not OverBudget — never map zero to one and render a corpus failure as FLOOR-BATCH-OVER-BUDGET. Authority type here; observation and enforcement live in claim_executor.rs (see gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note)."
+// RUNTIME UNIT COUNT for the derived batch clamp (gunbc_ci_floor_batch_clamp_note): only
+// claim_executor knows the affected-set-selected unit count at enforcement time.
+// RuntimeUnitCountObserved carries the count used in clamp_ms = overhead_seconds*1000 + units *
+// per_unit_ms. RuntimeUnitCountUnavailable means the count was lost — typically a hard discovery
+// error discarded DiscoverySummary at the Result boundary, so corpus_witnesses reads 0 while the
+// batch is a discovery aggregate, not a single-claim gate row. When unavailable the clamp
+// comparison is REFUSED (verdict ClampRefused): a third state, neither WithinBudget nor OverBudget
+// — never map zero to one and render a corpus failure as FLOOR-BATCH-OVER-BUDGET. Authority type
+// here; observation and enforcement live in claim_executor.rs (see
+// gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note).
 
-data gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note: String = "§7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs): FloorRuntimeUnitCount enum mirrors RuntimeUnitCount; each ClaimResult carries the observation; batch aggregation refuses the clamp when any row is Unavailable. Reason: unit-count availability is executor realization over batch results, not yet expressible as substrate behavior inside claim_executor. Dissolve-on: v2 self-emitted claim_executor when the executor bin crosses the self-host frontier."
+// §7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs):
+// FloorRuntimeUnitCount enum mirrors RuntimeUnitCount; each ClaimResult carries the observation;
+// batch aggregation refuses the clamp when any row is Unavailable. Reason: unit-count availability
+// is executor realization over batch results, not yet expressible as substrate behavior inside
+// claim_executor. Dissolve-on: v2 self-emitted claim_executor when the executor bin crosses the
+// self-host frontier.
 
 data gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -106,11 +120,65 @@ fn gunbc_ci_workflow_wrapper_budget_minutes() -> Minute {
   minute(count: minute_count(m: gunbc_ci_ordinary_floor_budget_minutes) + minute_count(m: gunbc_ci_admission_postcondition_budget_minutes) + minute_count(m: gunbc_ci_walk_overhead_allowance_minutes))
 }
 
-data gunbc_ci_two_population_budget_note: String = "The CI walk owns two disjoint wall allowances: 55 minutes for ordinary batches and 5 minutes for green-only admission postconditions. WalkPlan carries both so claim_executor, not the outer runner, prevents ordinary work from consuming the admission allowance. The wall spent OUTSIDE both populations — the pre-walk capture subprocess, plan resolve, finalization and receipt writes, phase-journal flushes — is neither ordinary nor postcondition work, so the GitHub step wrapper reserves the named gunbc_ci_walk_overhead_allowance_minutes term for it rather than silently letting a slow pre-walk eat the ordinary allowance from the outside (review 47517; the two watchdogs bound their own populations, and the wrapper is strictly the three-term sum, 75 minutes today). A budget refusal is located to its population inside the executor; a wrapper kill with both populations under budget is located to the overhead term. The overhead term was raised 5→15 minutes (2026-08-05): measured CI floor pre-walk plus eager compile-clean install routinely exceeds 10 minutes before the ordinary population clock starts, so a 5-minute allowance let the GitHub step wrapper kill the job while ordinary budget remained — silent wrapper kill, not ordinary exhaustion. OPERATOR-SIGNED RAISE (briansrls, 2026-08-11): ordinary floor 55 -> 80 minutes, +45.5 percent; the wrapper sum follows derivedly, 75 -> 100. RUN ID: 31467399193 job 93706807817 @ cdabd41 on PR #8091, ORDINARY-FLOOR-OVER-BUDGET at population_index=4 (discovery batch), elapsed_ms=3300000 == budget_ms=3300000. THE ENROLLMENT THAT GREW THE BATCH: none, and as with all three batch-3 raises before it that mismatch with the template IS the receipt - the ordinary floor is affected-set-denominated, and this diff touches std.measure and std.induction and adds a std module beneath both, so the import closure selected 892 of 1074 entry groups (0.83) and discovered 8681 witnesses. SIZING, and its honesty class: 55 minutes is a CENSORED LOWER BOUND, not a measurement - the walk was refused while still running, so the true demand was never observed and cannot be quoted. The number is therefore an EXTRAPOLATION: 3300s at 892/1074 groups extrapolates linearly to ~3973s (66.2min) for the full selection, times the 1.2 measured fleet spread this family already funds elsewhere (the batch-4 raise cites 7.5-20 percent across srv2-02/srv3-01 on identical content) = ~4768s, rounded to 80 at whole-minute grain. THE ASSUMPTION THAT COULD BE WRONG: per-group cost is taken as uniform across the 182 unexecuted groups; if the tail is dearer than the head, 80 still reds and the remedy stays diagnose-or-signed-raise. WHAT THE RUN ACTUALLY SPENT IT ON, because the raise should not be mistaken for the fix: eval - running witnesses - was 122s, 3.7 percent of the budget. resolve was 2070s, and inside the assembly split rewire_import_str ALONE was 1189s, 36 percent of the entire ordinary allowance, with services 212s, symbol_index 192s and emit_info 181s behind it. This raise buys time for a cost shape that belongs to the per-entry assembly decomposition lane (#7597) and the five-minute-CI-gate program; it does not improve it, and it should TIGHTEN by ordinary receipt note when that lane lands. A SECOND FINDING, independent of this PR and larger than it: gunbc_ci_floor_batch_clamp_note sizes the discovery clamp against \"a full corpus of ~2316 witnesses clamps at ~44min\". This run discovered 8681. The clamp's stated sizing basis is ~3.7x stale against the corpus it governs, so a deep-std diff is simply the first shape to walk into a wall every broad diff now approaches; re-denominating that basis is owed and is not done here."
+// The CI walk owns two disjoint wall allowances: 55 minutes for ordinary batches, 5 for green-only
+// admission postconditions. WalkPlan carries both so claim_executor, not the outer runner, keeps
+// ordinary work from consuming the admission allowance. Wall spent OUTSIDE both populations —
+// pre-walk capture subprocess, plan resolve, finalization and receipt writes, phase-journal flushes
+// — is neither ordinary nor postcondition work, so the GitHub step wrapper reserves the named
+// gunbc_ci_walk_overhead_allowance_minutes term for it rather than letting a slow pre-walk silently
+// eat the ordinary allowance (review 47517; the two watchdogs bound their own populations, and the
+// wrapper is strictly the three-term sum, 75 minutes today). A budget refusal is located to its
+// population inside the executor; a wrapper kill with both populations under budget is located to
+// the overhead term. The overhead term was raised 5→15 minutes (2026-08-05): measured CI floor
+// pre-walk plus eager compile-clean install routinely exceeds 10 minutes before the ordinary clock
+// starts, so 5 minutes let the wrapper kill the job with ordinary budget remaining — silent wrapper
+// kill, not ordinary exhaustion.
+//
+// OPERATOR-SIGNED RAISE (briansrls, 2026-08-11): ordinary floor 55 -> 80 minutes, +45.5 percent;
+// the wrapper sum follows derivedly, 75 -> 100. RUN ID: 31467399193 job 93706807817 @ cdabd41 on PR
+// #8091, ORDINARY-FLOOR-OVER-BUDGET at population_index=4 (discovery batch), elapsed_ms=3300000 ==
+// budget_ms=3300000. THE ENROLLMENT THAT GREW THE BATCH: none — as with all three batch-3 raises
+// before it, that mismatch with the template IS the receipt: the ordinary floor is
+// affected-set-denominated, and this diff touches std.measure and std.induction and adds a std
+// module beneath both, so the import closure selected 892 of 1074 entry groups (0.83) and
+// discovered 8681 witnesses. SIZING and its honesty class: 55 minutes is a CENSORED LOWER BOUND,
+// not a measurement — the walk was refused while running, so true demand was never observed. The
+// number is an EXTRAPOLATION: 3300s at 892/1074 groups extrapolates linearly to ~3973s (66.2min)
+// for the full selection, times the 1.2 measured fleet spread this family already funds elsewhere
+// (the batch-4 raise cites 7.5-20 percent across srv2-02/srv3-01 on identical content) = ~4768s,
+// rounded to 80 at whole-minute grain. THE ASSUMPTION THAT COULD BE WRONG: per-group cost is taken
+// as uniform across the 182 unexecuted groups; if the tail is dearer, 80 still reds and the remedy
+// stays diagnose-or-signed-raise. WHAT THE RUN SPENT IT ON, so the raise is not mistaken for the
+// fix: eval (running witnesses) was 122s, 3.7 percent of budget. resolve was 2070s, and inside the
+// assembly split rewire_import_str ALONE was 1189s, 36 percent of the entire ordinary allowance,
+// with services 212s, symbol_index 192s and emit_info 181s behind it. This raise buys time for a
+// cost shape belonging to the per-entry assembly decomposition lane (#7597) and the
+// five-minute-CI-gate program; it does not improve it, and should TIGHTEN by ordinary receipt note
+// when that lane lands. A SECOND FINDING, independent of this PR and larger:
+// gunbc_ci_floor_batch_clamp_note sizes the discovery clamp against "a full corpus of ~2316
+// witnesses clamps at ~44min". This run discovered 8681, so the clamp's stated basis is ~3.7x stale
+// against the corpus it governs; a deep-std diff is simply the first shape to hit a wall every
+// broad diff now approaches. Re-denominating that basis is owed and not done here.
 
-data gunbc_ci_floor_batch_stop_policy_note: String = "Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request → StopBeforeDependents (fail-fast: a cheap-gate red stops before compile/corpus). push (main) and schedule (falsifier) → FullLedger (record batch failure and continue; exit non-zero at end). Unknown/unrecognized events default to FullLedger — never silently stop-early and lose ledger (the absorbing fallback). Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan; consumer: claim_executor.rs run_walk (see gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note)."
+// Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt
+// is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request →
+// StopBeforeDependents (a cheap-gate red stops before compile/corpus). push (main) and schedule
+// (falsifier) → FullLedger (record batch failure, continue, exit non-zero at end). Unknown events
+// default to FullLedger — never silently stop early and lose ledger (the absorbing fallback).
+// Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan;
+// consumer: claim_executor.rs run_walk (see
+// gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note).
 
-data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note: String = "§7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs): FloorBatchStopPolicy enum mirrors this type; run_walk halts or continues based on the variant returned by gunbc_ci_floor_batch_stop_policy_for_github_event after gunbc_ci_floor_plan_uses_batch_stop_policy gates enrollment. Reason: batch-walk halt is executor realization — host-process control flow over an already-evaluated .dag policy, not yet expressible as substrate behavior inside claim_executor. Checkable receipts: witness_floor_stop_policy_* + witness_floor_batch_stop_policy_plan_roster_enrolled in ci_floor_plan_witness_test; acceptance measurement (PR fail-fast ~2min; main push prints complete gate+corpus ledger under FullLedger). Dissolve-on: v2 self-emitted claim_executor run_walk when the executor bin crosses the self-host frontier (DESIGN §7 terminal collapse of stage0 host bins)."
+// §7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs): FloorBatchStopPolicy
+// enum mirrors this type; run_walk halts or continues on the variant returned by
+// gunbc_ci_floor_batch_stop_policy_for_github_event after
+// gunbc_ci_floor_plan_uses_batch_stop_policy gates enrollment. Reason: batch-walk halt is executor
+// realization — host-process control flow over an already-evaluated .dag policy, not yet
+// expressible inside claim_executor. Checkable receipts: witness_floor_stop_policy_* +
+// witness_floor_batch_stop_policy_plan_roster_enrolled in ci_floor_plan_witness_test; acceptance
+// measurement (PR fail-fast ~2min; main push prints the complete gate+corpus ledger under
+// FullLedger). Dissolve-on: v2 self-emitted claim_executor run_walk when the executor bin crosses
+// the self-host frontier (DESIGN §7 terminal collapse of stage0 host bins).
 
 data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -137,7 +205,19 @@ type DeployStage {
   runner: RunnerSpec
 }
 
-data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in gunbc.commit_workflow), projected as explicit entries. Since the discovery flip (see ci_spec_discovery_flip_note) the roster is no longer the only witness source: discovery_scan_dirs re-admits the tree-wide corpus, WHOLE — the three ordinary corpus batches carry SelectionOff as of 2026-08-13 — that authority note lived at v2.workflow.ci_floor_plan corpus_selection_off_note and was DELETED with the floor cut (2026-08-15), so the citation is retained as history rather than as a live pointer; the property it recorded now holds BY CONSTRUCTION in the replacement, which has no selection flag to set (gunbc.witness_floor_workflow, and the CI rung drop in DESIGN). The roster remains the home for rows that must run as declared explicit entries (execution-kind rows with their own resource profile). Empty witness_entries AND empty discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's shape)."
+// witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared
+// CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in
+// gunbc.commit_workflow), projected as explicit entries. Since the discovery flip
+// (ci_spec_discovery_flip_note) the roster is no longer the only witness source:
+// discovery_scan_dirs re-admits the tree-wide corpus, WHOLE — the three ordinary corpus batches
+// carry SelectionOff as of 2026-08-13. That authority note lived at v2.workflow.ci_floor_plan
+// corpus_selection_off_note and was DELETED with the floor cut (2026-08-15); the citation is
+// retained as history, and the property it recorded now holds BY CONSTRUCTION in the replacement,
+// which has no selection flag to set (gunbc.witness_floor_workflow, and the CI rung drop in
+// DESIGN). The roster remains the home for rows that must run as declared explicit entries
+// (execution-kind rows with their own resource profile). Empty witness_entries AND empty
+// discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's
+// shape).
 
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
@@ -151,15 +231,23 @@ type CiSpec {
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
-
-data gunbc_ci_falsifier_gates_note: String = "The THIRD executing gate surface, projected here beside the floor and regen lists so the coproduct-totality witness can see it. It is not decoration: v2.test.claim.ci_spec_witness witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and every arm of the Gate coproduct, which is the construction-shaped form of 'no gate is unenrolled' — strictly stronger than the per-row detection wall in gunbc.commit_workflow, because it reds when a gate is enrolled NOWHERE even if no roster row was edited (a newly added Gate arm, for instance). When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right reason: its universe of executing surfaces was two, and there were now three. Adding this projection to the bag EXTENDS the totality check to the new surface — it does not relax it. The distinction matters because the tempting alternative, dropping the two flipped arms from the comparison or slackening bag-equality to subset, would have silenced the wall in the same motion that made it informative, which is the absorbing-fallback shape DESIGN §5 forbids."
+// The THIRD executing gate surface, projected beside the floor and regen lists so the
+// coproduct-totality witness can see it. v2.test.claim.ci_spec_witness
+// witness_gate_roster_matches_coproduct_arms asserts BAG-EQUALITY between the enrolled gates and
+// every arm of the Gate coproduct — the construction-shaped form of 'no gate is unenrolled',
+// strictly stronger than the per-row detection wall in gunbc.commit_workflow because it reds when a
+// gate is enrolled NOWHERE even if no roster row was edited (a newly added Gate arm, for instance).
+// When the cadence lane gained gates on 2026-07-26 that witness went red for exactly the right
+// reason: its universe of executing surfaces was two and there were now three. Adding this
+// projection to the bag EXTENDS the totality check to the new surface; the tempting alternative —
+// dropping the two flipped arms or slackening bag-equality to subset — would have silenced the wall
+// in the same motion that made it informative, the absorbing-fallback shape DESIGN §5 forbids.
 
 data gunbc_ci_falsifier_gates: List<Gate> = project_falsifier_gates(roster: commit_gate_roster)
 
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_gates: List<Gate> = gunbc_ci_floor_gates
-
 
 data gunbc_ci_deploy_srv1_stage: DeployStage = {
   id: "deploy_dashboard_srv1",
@@ -210,14 +298,164 @@ fn ci_spec_with_discovery_scan_dirs(spec: CiSpec, dirs: List<String>) -> CiSpec 
 
 data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived clamp gunbc_ci_floor_batch_clamp_note (Piece 3, 2026-07-24): the hand-set gunbc_ci_floor_batch_wall_budget_seconds list this note governed is deleted, replaced by overhead + units*rate computed at run time; this note is kept for the operator-signed static-era history (including the two 1320->1440->1680 raises below) and the raise discipline, which carries forward to the clamp constants. THE COST WALL (CI floor endgame D5, operator brief 2026-07-23 — the resolve-regression journey's section-3 finding made mechanism: nothing redded a merge that added floor minutes, so every recovered minute was re-spent by the next lane's enrollment, and the step timeout's own bounce history 30 -> 60 -> 90 -> 120 -> 180 -> 270 -> 55 is the record of the budget being raised to fit). Per-BATCH wall budgets for gunbc_ci_floor_plan (named gunbc_ci_floor_batches through the static era this note records), enforced by claim_executor at walk time: each batch's measured wall is recorded as a typed receipt row (target/floor-batch-wall-receipt.txt), and a batch over its budget is a typed, located refusal — FLOOR-BATCH-OVER-BUDGET naming the batch index, measured wall, budget row, and this carrier — that reds the walk. A failure arm refuses, never widens: over-budget never triggers a rerun, a wider scope, or a silent cap raise. Denominated PER-BATCH, never per-run, because plumbing PRs have a structurally different cost profile (attribution doc section 9.2: a PR touching host_prelude/cli_run legitimately runs 46 of 55 wet rows — a per-run wall would red every such PR spuriously; per-batch budgets absorb the profile where it lands). RULING RECONCILIATION (the operator dispatching the 2026-07-23 endgame brief is the sign-off on this reading): the standing rule 'no wall-clock term in any verdict' (ci_floor_materialization_receipt_note, operator ruling 2026-07-10) governs WITNESS VERDICTS — a witness's pass/fail must never depend on how long it took. Batch budgets do not touch witness verdicts: they are admission/scheduling facts at the walk grain, the same split the 5-second fast-lane eval law already uses (gunbc_ci_fast_lane_rule_note: the deadline is lane admission, not a verdict term), so a batch refusal names the BATCH, and every witness verdict inside it stands as evaluated. RAISE DISCIPLINE: raising any budget requires appending a dated receipt note here naming the run id and the enrollment that grew the batch — the same discipline as the timeout-note bounce history — never a silent number edit. Budget basis (run 30009199696, post-#7122, with the endgame fixes priced in): batch 1 cheap gates 185s measured -> 125s post-pool, budget 240; batch 2 receipt consume ~0s, budget 60; batch 3 discovery 1024s measured (corpus-denominated resolve wall, lever-1 re-diagnosis pending), budget 1320; batch 4 wet corpora 649s plumbing-profile measured -> ~175s post-re-home, budget 420; batch 5 emit-host 7s, budget 120; batch 6 ingest 414s measured (4 composed overlay children — the genuine mktemp constraint), budget 600; batch 7 reads-real-bytes 206s, budget 420. Sum 3180s = 53min under the 55min step cap. OPERATOR SIGNATURE (briansrls, 2026-07-23): the admission/verdict reading above is affirmed — per-batch wall budgets are scheduling-admission facts, not wall-clock terms in witness verdicts; this line is the declared human-signed exemption row the 2026-07-10 ruling requires. Raise discipline amended: RAISING any budget row requires a new dated operator-signed line here naming the run id and the enrollment that grew the batch; TIGHTENING may land by ordinary receipt note. The on-call remedy for FLOOR-BATCH-OVER-BUDGET is diagnose-or-signed-raise, never rerun. FOLLOW-UP ROWS (operator rework push, 2026-07-23): (a) PRELUDE COVERAGE HOLE — the ~5min before batch-1 arms (naming-hygiene walk, policy install, plan resolve/eval, governor arm, eager compile-clean install) sits OUTSIDE every batch budget and can only red at the 55min step cap; a prelude budget row lands when the phase_mark walls get their own receipt keys. (b) IDENTITY-KEYED BUDGETS — rows are keyed by batch INDEX today (the coverage witness pins length, so a schedule change reds loudly rather than misassigning); keying by batch content-identity dissolves the index coupling and rides the ComputationIdentity lane. (c) K-CAP UNION-RSS RECEIPT — cheap_gate_pool_max_claims_per_child=16 is provisional until the pooled child's union RSS is receipted (claim_batch already prints per-shard-peak-rss; the first CI runs' logs back or re-size the cap; local proxy receipt: the 4-gate outer child peaked 1.82GB with the 12-claim pool nested). OPERATOR-SIGNED RAISE (briansrls, 2026-07-24): batch 3 (row index [2]) 1320 -> 1440 seconds, +9.1 percent (operator: 'lets raise the budget slightly more to give it some room over main' / 'like 10%'; 24min keeps the row's whole-minute grain). RUN IDS: 30063268739 @ e7a9006f wall_ms=1629287, 30058048605 wall_ms=1344115, 30055079462 wall_ms=1380561 — all batch=3 against budget_ms=1320000 on PR #7137. THE ENROLLMENT THAT GREW THE BATCH: none, and that mismatch with this discipline's template IS the receipt. Batch 3 is the affected-set-selected discovery corpus, so its wall is denominated in the DIFF's affected entry count, not in a roster edit: #7137 touches gunbc.ci_layer_roots (broadly imported) and src/v1/stage0/src/cli_run.rs, selecting 839-841 entries where a typical main push selects 600-601. Per-entry cost is at PARITY with green controls, so nothing regressed — #7137 1.602/1.609/1.646 s-per-entry vs main 1.574, clever-ram-110 1.756, clever-pike-49 1.504. The retired 1320 divided by 841 entries = 1.570 s-per-entry, BELOW main's own 1.574 measured rate: the row had zero headroom for any broad-touch diff and would red a no-op PR that merely touched a widely-imported carrier. 1440/841 = 1.712 s-per-entry, ~8.8 percent over main's rate — that is the 'room over main'. HONEST RESIDUAL: 1440 covers three of the four observed runs; the 1629287 outlier (run 30063268739, host peaked 9GB vs 16GB on the other three, 1.937 s-per-entry) still reds, and that is the wall working as designed — the remedy stays diagnose-or-signed-raise, never rerun. SUM ACCOUNTING (the one invariant this raise spends): the ceiling sum moves 3180 -> 3300 seconds = exactly 55min, so this note's original 'Sum 3180s = 53min under the 55min step cap' margin is now CONSUMED. Ceilings are per-batch maxima rather than a predicted run wall, but the sum was this note's stated safety argument and it no longer holds with margin, so it is recorded here rather than dropped. FOLLOW-UP (not landed here): restore margin by TIGHTENING the rows with the largest declared-vs-measured gap once post-merge receipts exist — batch 4 (budget 420, ~175s measured post-re-home) and batch 6 (budget 600, 414s measured) — which lands by ordinary receipt note under this same discipline. OPERATOR-SIGNED RAISE (briansrls, 2026-07-24, second): batch 3 (row index [2]) 1440 -> 1680 seconds, +16.7 percent (28min, whole-minute grain). Operator's word this raise: 'you may bump the budget to 1680 - we're redoing it completely anyway' — so 1680 is a STOPGAP to green this PR while the batch-budget mechanism itself is reworked (the FOLLOW-UP ROWS above: prelude coverage, identity-keyed budgets, k-cap union-RSS), not a claim that 1680 is the settled ceiling. WHY 1440 WAS UNDER-SIZED: the first raise sized off three observations (1344/1381/1629) where one landed on a fast host; five batch-3 walls are now observed on #7137 — 1344115, 1380561, 1558226 (run 30081341899 @ 06a1f2c, host srv4-03), 1581666 (run 30067149030 @ 93642bc, host srv4-03), 1629287 (run 30063268739) — and THREE of five exceed 1440, so 1440 reds the majority, not a lone outlier. This is host variance on the ~840-entry affected set, not a per-entry regression (per-entry stays at parity with green controls, ~1.6-1.9 s-per-entry across hosts). THE ENROLLMENT THAT GREW THE BATCH: still none — batch 3 is affected-set-denominated and #7137 touches broadly-imported carriers (gunbc.ci_layer_roots, cli_run.rs), the same profile the FLOOR-BATCH-OVER-BUDGET template's 'enrollment' field does not capture. SIZING: 1680 clears all five observed walls (max 1629287) with ~3 percent margin. SUM ACCOUNTING CORRECTED: the prior line's 'sum = 55min, margin consumed' was over-conservative — per-batch maxima never co-occur, and run 30081341899's ACTUAL floor step wall was ~44min (b1 185s + b2 ~0s + b3 1558s + b4 175s + b5 7s + b6 414s + b7 206s), well under the 55min step timeout that is the real constraint; the ceiling-sum (now 3540s) is a paper figure nothing hits. The remedy stays diagnose-or-signed-raise, never rerun."
 
-data gunbc_ci_floor_batch_clamp_note: String = "DERIVED per-batch wall clamp (Piece 3, ci-two-tier-placement-redesign.md §9.8, operator 2026-07-24). Supersedes the hand-set gunbc_ci_floor_batch_wall_budget_seconds list (deleted; its two operator-signed raises 1320->1440->1680 are the static-era history kept in gunbc_ci_floor_batch_wall_budget_note): a scalar wall budget conflated workload size (affected-set selection is diff-proportional BY DESIGN, ~5x swing), host speed (±20% fleet envelope), and the quantity actually worth bounding (per-unit cost creep). The clamp re-denominates — per batch, clamp_ms = overhead_seconds*1000 + runtime_unit_count * per_unit_ms — computed by claim_executor from THIS authority plus the affected-set-selected unit count it alone knows (the schedule holds one opaque discovery runnable; the witness count is runtime, not schedule data). Rows are index-aligned to the batch list gunbc_ci_floor_ordinary_batches, minus the trailing scoped-witness batch which owns its own clamp (the length-match witness witness_scoped_batch_is_singleton_and_outside_positional_clamps pins the alignment, mirroring the deleted list's discipline). The load-bearing row is the discovery witness batch (index 2): overhead 300s + 1000ms/witness, so a full corpus of ~2316 witnesses clamps at ~44min (under the 55-min step cap, ~1.6x the ~25-min healthy wall) while every legitimate observed full-corpus wall (1344-1629s) passes, and a runaway reds proportionally instead of at the fixed 1680s that the two hand-raises had to keep chasing. Fixed-count gate batches carry per_unit_ms 0 (their count does not vary, so overhead IS the clamp) at their measured basis. Index 3 (wet corpora) stays a fixed overhead pending a wet-per-witness rate from the D2 probe — a declared calibration gap, not a hidden default. SIGNED CONSTANTS (operator, 2026-07-24): the witness aggregate coefficient 1000ms and the discovery overhead 300s; the per-WITNESS hard max is NOT redefined here — it stays the single fast-lane authority gunbc_ci_fast_lane_eval_budget_ms (5s). BASIS OF THE 1000ms COEFFICIENT (operator, 2026-07-24): the aggregate coefficient is denominated against the observed 0.58-0.70 s/witness (the 1344-1629s full-corpus fleet envelope over ~2316 witnesses) on the srv fleet host class (arm64 self-hosted, capped runners) at the adaptive governor's realized worker width. Naming host-class-x-worker-width as the basis makes a future width or fleet change a DELIBERATE re-sign of this constant (s/witness re-denominates when the fleet or width moves), never a rediscovered fleet-wide red; the ~1.4-1.7x headroom the 1000ms average carries over the observed top rate IS the >=~1.6x runaway the clamp is sized to catch, and sub-threshold creep below that ratio is owned by the gauntlet's per-cadence s/unit receipt (not this clamp). RAISE DISCIPLINE (carried from gunbc_ci_floor_batch_wall_budget_note): raising any overhead or rate requires an appended dated operator-signed line naming the run id and the enrollment that grew the batch; tightening may land by ordinary receipt note; unit counts need no signature (the schedule computes them). The clamp is interim mechanics — the structural wall is the complexity lens (§8, cost <= a + b*n asserted at compile time), and the clamp demotes to host-pathology backstop when that lens goes Blocking. The 55-min step cap stays the absolute backstop for the total floor wall; GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS lowers the COMPUTED clamp (min), never raises — the RED-control hook, never an escape hatch.OPERATOR-SIGNED RAISE (briansrls, 2026-07-25): batch 4 (row index [3]) 420 -> 540 seconds, +28.6 percent. THE MARGIN RULING THIS INSTANTIATES, signed once for the budget FAMILY rather than re-litigated per incident: a clamp was doing double duty as merge-refusal threshold ('this must not merge') and growth detector ('something got slower - look'). Tight margins serve the second job and demonstrably worked - the perturb row's 53 -> 141s growth was caught precisely because the clamp was tight - but they make the FIRST job fire on host roulette, and a breach that means 'you landed on srv2-02' trains the on-call to rerun, which is the crying-wolf failure mode wearing budget clothes. POLICY: clamps are sized to cover MEASURED fleet spread, so a breach means content grew, never which host answered. The growth-detector job moves to per-row trend receipts on the falsifier cadence (row grew >2x against its dated basis = a counted drift receipt), which is what makes a larger clamp margin safe - sensitivity is preserved at row grain while merge-refusal stops firing on variance. BASIS OF 540: post-re-home projection 377s (the worst of the two observed walls, 613864ms on srv2-02, minus the ~237s of eval the six re-homed rows carried) x 1.2 worst observed fleet spread = ~452s, + ~20 percent policy margin = 540 (whole-minute grain, 9min). RUN IDS: 30148859947 @ 619bba5 wall_ms=613864 units=74 host srv2-02; 30163496549 @ 9f87967 wall_ms=571556 units=74 host srv3-01 - identical content, 7.5 percent apart, which IS the spread this raise funds. THE ENROLLMENT THAT GREW THE BATCH: none - and as with the batch-3 raises, that mismatch with this discipline's template IS the receipt. Batch 4 SHRANK this cycle (six rows re-homed to FalsifierCadenceJob, units 74 -> 68); the raise buys spread coverage on a batch that got smaller, not headroom for growth. WHY THIS IS NOT THE FORBIDDEN WIDEN: batch 4's per_unit_ms is 0, which this note ALREADY declares 'a fixed overhead pending a wet-per-witness rate from the D2 probe - a declared calibration gap, not a hidden default'; 540 funds that gap with an honest, dated, dissolving interim instead of leaving the flat rate to fire on host variance. It refuses exactly as before - only the threshold moved, and it moved on a stated measurement, not to make a red go away. HOST SPREAD IS NOT WEATHER and has a named owner: srv1/srv2 still run the pre-#7213 sccache units and are typed expected-latent-defective until re-provisioned (the A1/reach gap), so part of the 7.5-20 percent collapses when the fleet lane re-converges them; this margin covers the genuine hardware-heterogeneity residue, eventually the machine-shape lane's. DISSOLVE-ON: the dag_compile_clean_perturb_receipts_holds diagnosis lands (141s, 38 percent of the remaining batch; if the growth is the cold-spawn / per-entry-reconcile class the wasted_ms=166525 reading supports, returning it toward its 53s basis puts worst case near 350s - under even the retired 420) AND the per-unit rate replaces the flat clamp from the D2 probe; then this row recalibrates by ordinary receipt note under the tightening rule. SAME DISEASE, NOT YET DOSED: gunbc_falsifier_self_host_wet_receipt_wall_budget (600s, the 707s falsifier red) rests on a ten-day-stale basis with zero spread allowance. The margin POLICY above governs it too, but the NUMBER is deliberately not moved here - it is gated on its own sccache-vs-growth attribution, so that dosing lands with that measurement rather than by analogy. WORKER COUNTER-SIGNATURE (claude, 2026-07-25, per this discipline's dated-line requirement): I ran the dissolve-on diagnosis and it REFUTES the mechanism this note hypothesised. The growth is NOT the cold-spawn / per-entry-reconcile class the wasted_ms=166525 reading suggested. Measured by execution on the perturb spawn shape (trivial 1-module compile, 4 source roots) there are TWO independent corpus-denominated costs, in different places. (A) THE CENSUS, inside reconcile: main.rs:491-514 reads every indexed module outside the closure off disk into census_only_sources, and v1_compiler_compile.rs:2580 parse_census_fill_sources parses all ~2543 of them BETWEEN compile.normalize.done and compile.reconcile.done - so it books to the reconcile bin and reads as 'reconcile is slow' when it is a whole-tree parse wearing reconcile's label. ~23s local, ~12-13s on fleet. (B) THE POLICY TAIL, after the compile: cli_run.rs:2105 compile_clean_unlisted_import_use_blocks_from_policy calls default_source_roots() (WHOLE TREE) + resolve_entry_graph_shared to evaluate ONE nullary Bool fn. ~34-42s, once per process, and INDEPENDENT of what was compiled - proven by running the same module with only its own source root: zero pool, all phases 0ms, still 42.4s wall. THE ASYMMETRY that closes the arithmetic: main.rs:566/598 exit(1) on hard diagnostics, so a RED compile never reaches the gate (measured 27.4s total, ~2s tail) while a GREEN compile pays it in full (57.8s total, ~34s tail). The perturb row makes 4 spawns, 2 red and 2 green: ~2x14.5s + ~2x60s = ~149s against the measured 148495.7ms. Pre-#7179 that same row is 4 spawns x census-only = ~52s, which IS the 53s basis. So cost B is the ENTIRE 53->148s regression (~94s of the 148s) and cost A was always present. CONSEQUENCE FOR THIS ROW: the note's projected 'near 350s' still holds directionally but by a different mechanism - fixing B alone returns the row to ~55s, so worst case lands well under even the retired 420 and the 540 becomes pure spread coverage, which is what this note already says it is for. NO BISECT WAS RUN AND NONE IS NEEDED: the three-run measurement attributes the split directly, so the bisect across #7178/#7179 named in the probe plan is superseded work (DESIGN 2 - redundant work is not free just because it would confirm). DISSOLVE-ON, unchanged in shape but now half-discharged: the diagnosis half is DONE (this line); recalibration still waits on the cost-B fix landing (scope the policy resolve to the policy module's own import closure) plus the D2 wet-per-witness rate replacing per_unit_ms 0 on this row. COST-B FIX LANDED (claude, 2026-08-23, lively-bat-222): the repair this line names is done, and the dissolve-on is discharged to its remaining half -- only the D2 wet-per-witness rate is still outstanding. compile_clean_unlisted_import_use_blocks_from_policy no longer resolves default_source_roots(); it assembles the policy entry's OWN import closure (three imports) and resolves that explicit source set, with every unresolvable-import and unreadable-file arm REFUSING by name rather than widening back to the whole tree -- the absorbing fallback is what would have restored the cost while zeroing its frequency. HOW IT RESURFACED, which is the part worth carrying: the cost was re-found from the other end as a floor line reading COMPLETED-OVER-COST-REQUIREMENT qualified_spelling_takes_the_shared_layer wall_ms=57337, against the 57.8s this note measured for exactly this tail. It presented as a qualified-name RESOLUTION defect because only a qualified spelling triggers it -- a qualified type annotation's authored name misses env.source_visible_names, which carries the BARE imported names, so the masked type-ref arm emits an advisory UnlistedImportUse and classifying that one diagnostic is what reaches this policy read; a bare annotation emits nothing and skips it. Qualified resolution itself is a map_get and costs nothing, and a qualified PATTERN HEAD never enters that arm at all. MEASURED, post-fix, same probe and process, only the caller roots varied: the cold arm 44886ms to 109ms, and the qualified/bare asymmetry is gone rather than reduced. NOT CLAIMED: that the floor's 1.22GB RSS is entirely this term -- the wall figures agree three ways but the memory line was never attributed by execution, and if it survives the fix that is a second defect to find rather than one to absorb into this row. Full method and the four orderings: authored in #9044 and NEVER LANDED -- that PR squashed to an empty commit because the code had already landed via #9025 -- so the figures above are the surviving in-tree record and the document is at refs/pull/9044/head. Not restored: docs/probes was bankrupted 2026-08-24.ROW REMOVAL (claude, 2026-07-26, D3b gate flips): two rows DELETED from the tail, 7 -> 5, because their batches no longer exist — SourceRootIngestGate and SelfHostReadsRealBytesGate moved to the falsifier cadence (gunbc.commit_workflow gate_gauntlet_flip_basis_note), and each occupied a batch of its own. This is not a budget change: no surviving row's numbers moved, so no re-signature is owed under the raise discipline above. WHICH TWO, and why the obvious answer was wrong: the removed rows are the LAST two (600s and 420s), NOT the 120s/600s pair a reading of the schedule order suggests. Verified by execution rather than inferred — emit_host_gate_passes sits at batch index 4 BOTH before and after the flip, which is only possible if the two vanished batches were at indices 5 and 6, after it. The 120s row at index 4 is emit_host's and survives. RECORDED BECAUSE THE ALIGNMENT IS POSITIONAL AND HAND-MAINTAINED: an index-aligned list carries no evidence of which row belongs to which batch, so a plausible-but-wrong deletion here is silent — it mis-clamps a surviving batch and reads as a passing length check. The length witness (witness_floor_batch_clamp_params_cover_schedule) proves the COUNT and cannot prove the MAPPING; that gap is the standing argument for deriving these rows from the schedule rather than pairing them by position."
+// DERIVED per-batch wall clamp (Piece 3, ci-two-tier-placement-redesign.md §9.8, operator
+// 2026-07-24). Supersedes the hand-set gunbc_ci_floor_batch_wall_budget_seconds list (deleted; its
+// two operator-signed raises 1320->1440->1680 are the static-era history kept in
+// gunbc_ci_floor_batch_wall_budget_note): a scalar wall budget conflated workload size
+// (affected-set selection is diff-proportional BY DESIGN, ~5x swing), host speed (±20% fleet
+// envelope), and the quantity worth bounding (per-unit cost creep). The clamp re-denominates — per
+// batch, clamp_ms = overhead_seconds*1000 + runtime_unit_count * per_unit_ms — computed by
+// claim_executor from THIS authority plus the affected-set-selected unit count it alone knows (the
+// schedule holds one opaque discovery runnable; the witness count is runtime, not schedule data).
+// Rows are index-aligned to gunbc_ci_floor_ordinary_batches, minus the trailing scoped-witness
+// batch which owns its own clamp (witness_scoped_batch_is_singleton_and_outside_positional_clamps
+// pins the alignment, mirroring the deleted list's discipline). The load-bearing row is the
+// discovery witness batch (index 2): overhead 300s + 1000ms/witness, so a full corpus of ~2316
+// witnesses clamps at ~44min (under the 55-min step cap, ~1.6x the ~25-min healthy wall) while
+// every legitimate observed full-corpus wall (1344-1629s) passes, and a runaway reds proportionally
+// instead of at the fixed 1680s the two hand-raises kept chasing. Fixed-count gate batches carry
+// per_unit_ms 0 (overhead IS the clamp) at their measured basis. Index 3 (wet corpora) stays a
+// fixed overhead pending a wet-per-witness rate from the D2 probe — a declared calibration gap, not
+// a hidden default. SIGNED CONSTANTS (operator, 2026-07-24): witness aggregate coefficient 1000ms
+// and discovery overhead 300s; the per-WITNESS hard max is NOT redefined here — it stays the single
+// fast-lane authority gunbc_ci_fast_lane_eval_budget_ms (5s). BASIS OF THE 1000ms COEFFICIENT
+// (operator, 2026-07-24): denominated against the observed 0.58-0.70 s/witness (the 1344-1629s
+// full-corpus fleet envelope over ~2316 witnesses) on the srv fleet host class (arm64 self-hosted,
+// capped runners) at the adaptive governor's realized worker width. Naming
+// host-class-x-worker-width as the basis makes a future width or fleet change a DELIBERATE re-sign
+// of this constant, never a rediscovered fleet-wide red; the ~1.4-1.7x headroom over the observed
+// top rate IS the >=~1.6x runaway the clamp is sized to catch, and sub-threshold creep is owned by
+// the gauntlet's per-cadence s/unit receipt, not this clamp. RAISE DISCIPLINE (carried from
+// gunbc_ci_floor_batch_wall_budget_note): raising any overhead or rate requires an appended dated
+// operator-signed line naming the run id and the enrollment that grew the batch; tightening may
+// land by ordinary receipt note; unit counts need no signature (the schedule computes them). The
+// clamp is interim mechanics — the structural wall is the complexity lens (§8, cost <= a + b*n
+// asserted at compile time), and the clamp demotes to host-pathology backstop when that lens goes
+// Blocking. The 55-min step cap stays the absolute backstop for the total floor wall;
+// GUNBC_FLOOR_BATCH_BUDGET_TIGHTEN_MS lowers the COMPUTED clamp (min), never raises — the
+// RED-control hook, never an escape hatch.
+//
+// OPERATOR-SIGNED RAISE (briansrls, 2026-07-25): batch 4 (row index [3]) 420 -> 540 seconds, +28.6
+// percent. THE MARGIN RULING THIS INSTANTIATES, signed once for the budget FAMILY: a clamp was
+// doing double duty as merge-refusal threshold ('this must not merge') and growth detector
+// ('something got slower - look'). Tight margins serve the second job and worked — the perturb
+// row's 53 -> 141s growth was caught because the clamp was tight — but they make the FIRST job fire
+// on host roulette, and a breach meaning 'you landed on srv2-02' trains the on-call to rerun:
+// crying wolf in budget clothes. POLICY: clamps are sized to cover MEASURED fleet spread, so a
+// breach means content grew, never which host answered. The growth-detector job moves to per-row
+// trend receipts on the falsifier cadence (row grew >2x against its dated basis = a counted drift
+// receipt), which is what makes a larger clamp margin safe — sensitivity is preserved at row grain
+// while merge-refusal stops firing on variance. BASIS OF 540: post-re-home projection 377s (the
+// worse of two observed walls, 613864ms on srv2-02, minus ~237s of eval the six re-homed rows
+// carried) x 1.2 worst observed fleet spread = ~452s, + ~20 percent policy margin = 540
+// (whole-minute grain, 9min). RUN IDS: 30148859947 @ 619bba5 wall_ms=613864 units=74 host srv2-02;
+// 30163496549 @ 9f87967 wall_ms=571556 units=74 host srv3-01 — identical content, 7.5 percent
+// apart, which IS the spread this raise funds. THE ENROLLMENT THAT GREW THE BATCH: none — as with
+// the batch-3 raises, that mismatch with the template IS the receipt. Batch 4 SHRANK this cycle
+// (six rows re-homed to FalsifierCadenceJob, units 74 -> 68); the raise buys spread coverage on a
+// smaller batch, not growth headroom. WHY THIS IS NOT THE FORBIDDEN WIDEN: batch 4's per_unit_ms is
+// 0, which this note ALREADY declares 'a fixed overhead pending a wet-per-witness rate from the D2
+// probe - a declared calibration gap, not a hidden default'; 540 funds that gap with an honest,
+// dated, dissolving interim instead of leaving the flat rate to fire on host variance. It refuses
+// exactly as before — only the threshold moved, on a stated measurement, not to make a red go away.
+// HOST SPREAD IS NOT WEATHER and has a named owner: srv1/srv2 still run the pre-#7213 sccache units
+// and are typed expected-latent-defective until re-provisioned (the A1/reach gap), so part of the
+// 7.5-20 percent collapses when the fleet lane re-converges them; this margin covers the genuine
+// hardware-heterogeneity residue, eventually the machine-shape lane's. DISSOLVE-ON: the
+// dag_compile_clean_perturb_receipts_holds diagnosis lands (141s, 38 percent of the remaining
+// batch; if the growth is the cold-spawn / per-entry-reconcile class the wasted_ms=166525 reading
+// supports, returning it toward its 53s basis puts worst case near 350s — under even the retired
+// 420) AND the per-unit rate replaces the flat clamp from the D2 probe; then this row recalibrates
+// by ordinary receipt note under the tightening rule. SAME DISEASE, NOT YET DOSED:
+// gunbc_falsifier_self_host_wet_receipt_wall_budget (600s, the 707s falsifier red) rests on a
+// ten-day-stale basis with zero spread allowance. The margin POLICY governs it too, but the NUMBER
+// is deliberately not moved here — it is gated on its own sccache-vs-growth attribution, so that
+// dosing lands with that measurement rather than by analogy.
+//
+// WORKER COUNTER-SIGNATURE (claude, 2026-07-25, per the dated-line requirement): I ran the
+// dissolve-on diagnosis and it REFUTES the hypothesised mechanism. The growth is NOT the cold-spawn
+// / per-entry-reconcile class the wasted_ms=166525 reading suggested. Measured by execution on the
+// perturb spawn shape (trivial 1-module compile, 4 source roots) there are TWO independent
+// corpus-denominated costs in different places. (A) THE CENSUS, inside reconcile: main.rs:491-514
+// reads every indexed module outside the closure off disk into census_only_sources, and
+// v1_compiler_compile.rs:2580 parse_census_fill_sources parses all ~2543 of them BETWEEN
+// compile.normalize.done and compile.reconcile.done — so it books to the reconcile bin and reads as
+// 'reconcile is slow' when it is a whole-tree parse wearing reconcile's label. ~23s local, ~12-13s
+// on fleet. (B) THE POLICY TAIL, after the compile: cli_run.rs:2105
+// compile_clean_unlisted_import_use_blocks_from_policy calls default_source_roots() (WHOLE TREE) +
+// resolve_entry_graph_shared to evaluate ONE nullary Bool fn. ~34-42s, once per process,
+// INDEPENDENT of what was compiled — proven by running the same module with only its own source
+// root: zero pool, all phases 0ms, still 42.4s wall. THE ASYMMETRY that closes the arithmetic:
+// main.rs:566/598 exit(1) on hard diagnostics, so a RED compile never reaches the gate (measured
+// 27.4s total, ~2s tail) while a GREEN compile pays it in full (57.8s total, ~34s tail). The
+// perturb row makes 4 spawns, 2 red and 2 green: ~2x14.5s + ~2x60s = ~149s against the measured
+// 148495.7ms. Pre-#7179 the same row is 4 spawns x census-only = ~52s, which IS the 53s basis. So
+// cost B is the ENTIRE 53->148s regression (~94s of 148s) and cost A was always present.
+// CONSEQUENCE FOR THIS ROW: the projected 'near 350s' still holds directionally but by a different
+// mechanism — fixing B alone returns the row to ~55s, so worst case lands well under even the
+// retired 420 and the 540 becomes pure spread coverage, which is what this note already says it is
+// for. NO BISECT WAS RUN AND NONE IS NEEDED: the three-run measurement attributes the split
+// directly, so the bisect across #7178/#7179 named in the probe plan is superseded work (DESIGN 2 —
+// redundant work is not free just because it would confirm). DISSOLVE-ON, unchanged in shape but
+// half-discharged: the diagnosis half is DONE (this line); recalibration still waits on the cost-B
+// fix landing (scope the policy resolve to the policy module's own import closure) plus the D2
+// wet-per-witness rate replacing per_unit_ms 0 on this row.
+//
+// COST-B FIX LANDED (claude, 2026-08-23, lively-bat-222): the repair above is done and the
+// dissolve-on is discharged to its remaining half — only the D2 wet-per-witness rate is
+// outstanding. compile_clean_unlisted_import_use_blocks_from_policy no longer resolves
+// default_source_roots(); it assembles the policy entry's OWN import closure (three imports) and
+// resolves that explicit source set, with every unresolvable-import and unreadable-file arm
+// REFUSING by name rather than widening back to the whole tree — the absorbing fallback that would
+// have restored the cost while zeroing its frequency. HOW IT RESURFACED: the cost was re-found from
+// the other end as a floor line reading COMPLETED-OVER-COST-REQUIREMENT
+// qualified_spelling_takes_the_shared_layer wall_ms=57337, against the 57.8s this note measured for
+// exactly this tail. It presented as a qualified-name RESOLUTION defect because only a qualified
+// spelling triggers it — a qualified type annotation's authored name misses
+// env.source_visible_names, which carries the BARE imported names, so the masked type-ref arm emits
+// an advisory UnlistedImportUse and classifying that one diagnostic is what reaches this policy
+// read; a bare annotation emits nothing and skips it. Qualified resolution itself is a map_get and
+// costs nothing, and a qualified PATTERN HEAD never enters that arm. MEASURED, post-fix, same probe
+// and process, only the caller roots varied: the cold arm 44886ms to 109ms, and the qualified/bare
+// asymmetry is gone rather than reduced. NOT CLAIMED: that the floor's 1.22GB RSS is entirely this
+// term — the wall figures agree three ways but the memory line was never attributed by execution;
+// if it survives the fix that is a second defect to find, not one to absorb into this row. Full
+// method and the four orderings: authored in #9044 and NEVER LANDED — that PR squashed to an empty
+// commit because the code had already landed via #9025 — so the figures above are the surviving
+// in-tree record and the document is at refs/pull/9044/head. Not restored: docs/probes was
+// bankrupted 2026-08-24.
+//
+// ROW REMOVAL (claude, 2026-07-26, D3b gate flips): two rows DELETED from the tail, 7 -> 5, because
+// their batches no longer exist — SourceRootIngestGate and SelfHostReadsRealBytesGate moved to the
+// falsifier cadence (gunbc.commit_workflow gate_gauntlet_flip_basis_note), each having occupied a
+// batch of its own. Not a budget change: no surviving row's numbers moved, so no re-signature is
+// owed. WHICH TWO, and why the obvious answer was wrong: the removed rows are the LAST two (600s
+// and 420s), NOT the 120s/600s pair the schedule order suggests. Verified by execution —
+// emit_host_gate_passes sits at batch index 4 BOTH before and after the flip, only possible if the
+// two vanished batches were at indices 5 and 6, after it. The 120s row at index 4 is emit_host's
+// and survives. RECORDED BECAUSE THE ALIGNMENT IS POSITIONAL AND HAND-MAINTAINED: an index-aligned
+// list carries no evidence of which row belongs to which batch, so a plausible-but-wrong deletion
+// here is silent — it mis-clamps a surviving batch and passes the length check. The length witness
+// (witness_floor_batch_clamp_params_cover_schedule) proves the COUNT and cannot prove the MAPPING;
+// that gap is the standing argument for deriving these rows from the schedule rather than pairing
+// them by position.
 
-data gunbc_ci_native_bundle_batch_clamp_basis_note: String = "NATIVE BUNDLE ROW (index 5, operator ruling via Dispatch A->C, 2026-08-02): the production selector enrollment adds one isolated fixed-count batch, so the positional clamp table must add exactly one companion row; co-locating it with an unrelated batch is rejected because that would obscure co-residency and the transition memory receipt. Measured acceptance basis: batch wall 77.020s for three selected members; cold compile 367209379ns, warm artifact lookup 8040ns, native execution 39332338ns, and interpreter oracle 17407839ns. The fixed 125s overhead is the observed whole-batch wall times the family's 1.6x fleet-spread factor, rounded up to a whole five seconds (1.62x measured), and per_unit_ms stays 0 because slice 1 has a fixed three-member population with an explicit next-tranche scaling trigger. Memory basis: RSS peak 4801241088 bytes and cgroup peak 11940978688 bytes. The Runnable remains Substantial and isolated, preserving the measured 7.14GB gap between process RSS and cgroup peak rather than disguising that footprint through co-residence. The clamp bounds wall admission; the memory governor remains the fail-closed capacity authority."
+// NATIVE BUNDLE ROW (index 5, operator ruling via Dispatch A->C, 2026-08-02): the production
+// selector enrollment adds one isolated fixed-count batch, so the positional clamp table adds
+// exactly one companion row; co-locating it with an unrelated batch is rejected because that would
+// obscure co-residency and the transition memory receipt. Measured acceptance basis: batch wall
+// 77.020s for three selected members; cold compile 367209379ns, warm artifact lookup 8040ns, native
+// execution 39332338ns, interpreter oracle 17407839ns. The fixed 125s overhead is the observed
+// whole-batch wall times the family's 1.6x fleet-spread factor, rounded up to a whole five seconds
+// (1.62x measured); per_unit_ms stays 0 because slice 1 has a fixed three-member population with an
+// explicit next-tranche scaling trigger. Memory basis: RSS peak 4801241088 bytes, cgroup peak
+// 11940978688 bytes. The Runnable remains Substantial and isolated, preserving the measured 7.14GB
+// gap between process RSS and cgroup peak rather than disguising it through co-residence. The clamp
+// bounds wall admission; the memory governor remains the fail-closed capacity authority.
 
-// The authority is filled ONCE here rather than repeated per row: every row in this list is
-// declared by this list, so restating it six times would be six chances for one of them to name
-// something else. The reader supplies the index — an offset is the one part of the citation no
-// symbol can carry.
+// The authority is filled ONCE here rather than per row: every row in this list is declared by this
+// list, and restating it six times would be six chances for one to name something else. The reader
+// supplies the index — an offset is the one part of the citation no symbol can carry.
 fn gunbc_ci_floor_positional_clamp(overhead_seconds: Int, per_unit_ms: Int) -> RunnableBatchClamp {
   RunnableBatchClamp {
     overhead: second(count: overhead_seconds),
@@ -311,7 +549,15 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
   }
 }
 
-data ci_floor_required_artifact_names_note: String = "DERIVED pack membership — authority is gunbc.ci_release_bins (ci_floor_invoked_bins ∪ witness_declared_release_bins). The hand List that lived here was deleted 2026-07-26: fan-out (build --bin flags / pack / verify) still folds ci_floor_required_artifact_names(), but MEMBERSHIP is no longer a free-floating hand list in this module. See gunbc.ci_release_bins.ci_release_bins_authority_note for the construction wall (WitnessBinNotEnrolled) and the dissolve-on for witness_declared_release_bins. Operator job-split ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of scope: a same-run artifact is fresh by construction."
+// DERIVED pack membership — authority is gunbc.ci_release_bins (ci_floor_invoked_bins ∪
+// witness_declared_release_bins). The hand List that lived here was deleted 2026-07-26: fan-out
+// (build --bin flags / pack / verify) still folds ci_floor_required_artifact_names(), but
+// MEMBERSHIP is no longer a free-floating hand list here. See
+// gunbc.ci_release_bins.ci_release_bins_authority_note for the construction wall
+// (WitnessBinNotEnrolled) and the dissolve-on for witness_declared_release_bins. Operator job-split
+// ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control
+// (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of
+// scope: a same-run artifact is fresh by construction.
 
 fn artifact_shell_path(name: String) -> String {
   concat(concat("\"$ROOT/target/release/", name), "\"")
@@ -396,65 +642,57 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
   }
 }
 
-// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045;
-// manager approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective
-// TasksMax, pids.max, pids.current, ancestor limit, observer slot membership) via the
-// typed read seams only. workflow_dispatch-gated at the job, so it never rides PR or
-// push events; the printed return value IS the typed receipt.
+// Read-only srv1 tasks pre-apply observation (operator ruling 2026-08-09 on PR 8045; manager
+// approval msg_03ec1f78): produces the ONE exact pre-apply receipt (effective TasksMax, pids.max,
+// pids.current, ancestor limit, observer slot membership) via the typed read seams only.
+// workflow_dispatch-gated at the job, so it never rides PR or push events; the printed return value
+// IS the typed receipt.
 
-// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09):
-// on a floor-green main push (needs: [ci] IS the floor-green admission — this job exists
-// only downstream of the required check succeeding in the same run), advance
-// refs/fleet/desired to the merged revision by CAS: --force-with-lease names the exact
-// observed prior (gunbc.fleet_main_revision decide_fleet_desired_advance's from side), so
-// a race with a concurrent advance refuses rather than overwriting; ref creation is the
-// from=none arm. Hosts follow the ref; no host is contacted here.
-
+// Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09): on a
+// floor-green main push (needs: [ci] IS the floor-green admission — this job exists only downstream
+// of the required check succeeding in the same run), advance refs/fleet/desired to the merged
+// revision by CAS: --force-with-lease names the exact observed prior (gunbc.fleet_main_revision
+// decide_fleet_desired_advance's from side), so a race with a concurrent advance refuses rather
+// than overwriting; ref creation is the from=none arm. Hosts follow the ref; no host is contacted
+// here.
 
 // EVERY `gunbc run` STEP THIS SPEC EMITS NAMES ITS TARGET HERE, AND NOWHERE ELSE.
 //
-// The pair was previously two string literals at each call site, and that shape cost a real
-// defect: a merge conflict resolution in gunbc#8377 re-authored two of them by hand, guessing
-// the paths from the module names, and produced `dag/gunbc/spark/grant_install.dag` (a file that
-// has never existed at any commit) and `dag/gunbc/spark/serving_durability.dag` (a file that
-// exists but does not define the named function, and does not import the module that does).
-// Nothing refused, because a path in a string is not a symbol -- the DESIGN section 3 stale-citation
-// class, landing in an emitted argv rather than in prose. Both steps were unrunnable on main from
-// the day they landed.
+// The pair was previously two string literals at each call site, and that cost a real defect: a
+// merge conflict resolution in gunbc#8377 re-authored two of them by hand, guessing paths from
+// module names, and produced `dag/gunbc/spark/grant_install.dag` (never existed at any commit) and
+// `dag/gunbc/spark/serving_durability.dag` (exists but does not define the named function, nor
+// import the module that does). Nothing refused, because a path in a string is not a symbol — the
+// DESIGN section 3 stale-citation class, landing in an emitted argv rather than prose. Both steps
+// were unrunnable on main from the day they landed. One roster gives one population to join
+// against, instead of pairs scattered across call sites where two strings could disagree unnoticed.
 //
-// Hoisting the pairs into one roster is what makes the class checkable at all: one population to
-// join against, instead of pairs scattered across call sites where two strings could disagree with
-// nothing in a position to notice.
+// NO CHECK ENFORCES THIS ROSTER TODAY, stated plainly because an earlier revision named one: it
+// promised `test.claim.ci_run_step_target_resolution` joined every row against decl_facts — a
+// witness written, measured, then REMOVED from this PR along with a second attempt at an emit-time
+// wall. Leaving that sentence would have been the DESIGN section 3 stale-citation defect in the
+// very comment diagnosing it, and it had already misled one reviewer into reading coverage that
+// does not exist. The roster buys single authority, not enforcement.
 //
-// NO CHECK ENFORCES THIS ROSTER TODAY, and that is stated plainly because an earlier revision of
-// this comment named one. It promised that `test.claim.ci_run_step_target_resolution` joined every
-// row against decl_facts -- a witness that was written, measured, and then REMOVED from this PR
-// along with a second attempt at an emit-time wall. Leaving that sentence would have been the
-// DESIGN section 3 stale-citation defect committed in the very comment that diagnoses it two
-// paragraphs above, and it had already misled one reviewer into reading coverage that does not
-// exist. What the roster buys today is single authority, not enforcement.
+// WHY BOTH ATTEMPTS WERE WITHDRAWN, so nobody rebuilds them: "does file F declare symbol G" is
+// answered by decl_facts, which walks POOL ROOTS — directories, recursively, ~3833 modules, ~8s. By
+// controlled A/B, an emit-time wall cost 180s across 22 call sites and took SEVEN pre-existing
+// witness claims below verdict, because two witness modules render workflow steps and inherited the
+// walk. The fast-lane ceiling is 5000ms, so the binding constraint is that NO CORPUS WALK MAY BE
+// REACHABLE FROM A FAST-LANE CLAIM AT ALL — one walk breaches it.
 //
-// WHY BOTH ATTEMPTS WERE WITHDRAWN, so the next person does not rebuild them: the question "does
-// file F declare symbol G" is answered by decl_facts, which walks POOL ROOTS -- directories,
-// recursively, ~3833 modules, ~8s. Measured by controlled A/B, an emit-time wall cost 180s across
-// 22 call sites and took SEVEN pre-existing witness claims below verdict, because two witness
-// modules render workflow steps and inherited the walk. The fast-lane ceiling is 5000ms, so the
-// binding constraint is not how many walks happen but that NO CORPUS WALK MAY BE REACHABLE FROM A
-// FAST-LANE CLAIM AT ALL -- one walk breaches it.
-//
-// THE WALL IS OWED, at the generated-artifact gate rather than at the argv crossing. That is a
-// re-scoping of the hazard, not a weaker wall: a bad argv built in memory by a witness harms
-// nothing, while a bad argv reaching a COMMITTED workflow is what CI then runs, and it is the route
-// both defects above actually took. The gate sits upstream of every emitter that produces a
-// committed artifact and already returns ArtifactGenerationRefused { reason }.
+// THE WALL IS OWED at the generated-artifact gate rather than the argv crossing — a re-scoping of
+// the hazard, not a weaker wall: a bad argv built in memory by a witness harms nothing, while a bad
+// argv reaching a COMMITTED workflow is what CI runs, and is the route both defects above took. The
+// gate sits upstream of every emitter producing a committed artifact and already returns
+// ArtifactGenerationRefused { reason }.
 //
 // SO THE RUNG THIS ROSTER REACHES IS MITIGATABLE, NOT MECHANICALLY PREVENTABLE. An earlier revision
-// claimed the higher rung on the strength of the witness that is no longer here; with nothing
-// enforcing it, the honest rung is one step lower and the consolidation is a cost-of-error
-// reduction rather than a wall. NEXT-RUNG TRIGGER: the artifact-gate refusal above. The rung ABOVE
-// that -- structural -- is a resolved symbol reference (a DeclarationRef the substrate resolves)
-// with the entry path derived from the module index rather than authored beside it, at which point
-// a wrong target cannot be written at all.
+// claimed the higher rung on the strength of the witness no longer here; with nothing enforcing it,
+// the consolidation is a cost-of-error reduction, not a wall. NEXT-RUNG TRIGGER: the artifact-gate
+// refusal above. The rung ABOVE that — structural — is a resolved symbol reference (a
+// DeclarationRef the substrate resolves) with the entry path derived from the module index rather
+// than authored beside it, at which point a wrong target cannot be written.
 type GunbcRunStepTarget {
   entry: String
   function: String
@@ -473,6 +711,11 @@ data gunbc_ci_multi_principal_probe_target: GunbcRunStepTarget = GunbcRunStepTar
 data gunbc_ci_fleet_converge_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
   function: "fleet_converge_plan_wet",
+}
+
+data gunbc_ci_fleet_converge_allocation_store_plan_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/fleet_converge_plan_cli.dag",
+  function: "fleet_converge_allocation_store_plan_wet",
 }
 
 data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarget {
@@ -556,31 +799,31 @@ data gunbc_ci_heal_dispatch_target: GunbcRunStepTarget = GunbcRunStepTarget {
 }
 
 // The roster the witness folds. A step whose target is not in this list is not covered, which is
-// why the targets are declared here rather than inline: a new call site that re-inlines a literal
-// pair is outside the join and the wall would not see it.
+// why targets are declared here rather than inline: a new call site that re-inlines a literal pair
+// is outside the join.
 //
 // THIS LIST IS ITSELF A HAND-MAINTAINED PARALLEL ENUMERATION, and naming only the inline hole
-// above understated the denominator problem. There are TWO ways a target escapes this roster,
-// and they need different mechanisms:
+// understated the denominator problem. A target escapes this roster TWO ways, needing different
+// mechanisms:
 //
 //   1. a `gunbc run` step spelling a literal entry/function pair inline, never declared as a
-//      target at all -- invisible to any enumeration of declarations, because the pair is not a
+//      target -- invisible to any enumeration of declarations, because the pair is not a
 //      declaration. Only a check over the emitted steps can see it.
 //   2. a twentieth `data ..._target: GunbcRunStepTarget` declared correctly and simply NOT ADDED
-//      HERE. It looks completely correct at its declaration site and silently under-reports on
-//      anything that folds this list.
+//      HERE. It looks correct at its declaration site and silently under-reports on anything
+//      that folds this list.
 //
-// The second is the open-denominator class this repository has already named and priced:
-// `std.primitives` `primitive_contract_roster_note` records the identical shape over
-// *_contract rows, its silent under-reporting, and its dissolution -- derive the roster by
-// enumerating the declarations once declaration introspection lands.
+// The second is the open-denominator class already named and priced: `std.primitives`
+// `primitive_contract_roster_note` records the identical shape over *_contract rows, its silent
+// under-reporting, and its dissolution — derive the roster by enumerating the declarations once
+// declaration introspection lands.
 //
 // That dissolution condition is SATISFIED for this roster: `decl_facts` is a registered builtin
-// callable from ordinary `.dag`, so the nineteen can be derived by enumerating every
-// module-scope `data` of type `GunbcRunStepTarget` in this module instead of being retyped
-// here. Doing so costs nothing extra to any consumer that already walks decl_facts, and it
-// turns a fold over "the rows someone remembered to list" into a fold over "the rows that
-// exist". Until that lands, hole 2 is open and this list is diligence, not a denominator.
+// callable from ordinary `.dag`, so the nineteen can be derived by enumerating every module-scope
+// `data` of type `GunbcRunStepTarget` in this module instead of being retyped here — at no extra
+// cost to any consumer that already walks decl_facts, turning a fold over "the rows someone
+// remembered to list" into a fold over "the rows that exist". Until that lands, hole 2 is open and
+// this list is diligence, not a denominator.
 //
 // Counted at authoring: 19 declarations, 19 entries. That equality is the thing nothing checks.
 fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
@@ -588,6 +831,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_reach_probe_target,
     gunbc_ci_multi_principal_probe_target,
     gunbc_ci_fleet_converge_plan_target,
+    gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
@@ -610,8 +854,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
 // The dashboard deploy, invoked as a fleet-converge mode rather than from a workflow of its own.
 // The operation is unchanged and already correct: live_deploy_apply_srv1_wet observes the candidate
 // release BEFORE any mutation and refuses when it cannot name the release it would install, so a
-// deploy that cannot identify itself stops the line with nothing touched. What was missing was only
-// a caller -- gunbc#8676 deleted the invocation, never the operation.
+// deploy that cannot identify itself stops the line with nothing touched. Only a caller was missing
+// — gunbc#8676 deleted the invocation, never the operation.
 fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -632,12 +876,12 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
   )
 }
 
-// Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the
-// in-run fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu,
-// briansrls, ghrunner, root) — hostname + sudo -n -l, no writes. Rides the same probe
-// job so it reuses the one WIF/agent materialization (gunbc_ci_fleet_key_agent_script);
-// fleet_multi_principal_probe_wet uses typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not
-// a second Secret Manager fetch from gunbc run. Its receipt is a separate file.
+// Read-only multi-principal fleet-key probe (parent msg_e767a783): measures whether the in-run
+// fleet key authenticates as any PRE-EXISTING account on srv3/srv4 (ubuntu, briansrls, ghrunner,
+// root) — hostname + sudo -n -l, no writes. Rides the same probe job to reuse the one WIF/agent
+// materialization (gunbc_ci_fleet_key_agent_script); fleet_multi_principal_probe_wet uses
+// typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not a second Secret Manager fetch from gunbc run.
+// Its receipt is a separate file.
 
 fn gunbc_ci_multi_principal_probe_invoke() -> String {
   gunbc_run_step_script(
@@ -649,114 +893,106 @@ fn gunbc_ci_multi_principal_probe_invoke() -> String {
   )
 }
 
-// A2 in-run key materialization (parent msg_72e2dcee): foreign-executor shell that
-// exchanges nothing itself — the WIF access token arrives from the google_auth_action
-// step via env — and turns Secret Manager versions/1 (PINNED, never `latest`) into a
-// loaded ssh-agent identity. SECRET HYGIENE, load-bearing: the payload flows
-// curl -> python3 decode -> file mode 0600 -> ssh-add -> rm; it is never echoed, never
-// written under a durable HOME, and no digest of it is printed. The only stdout is the
-// identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh
-// children inherit them; the job's always() cleanup step kills the agent.
-// THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, AND THIS ROW RECORDS WHY BEFORE
-// DELETING IT (parent-session finding, 2026-08-21). It read "DISSOLVES WHEN the typed
-// secret-materialization effect... lands on host_effect_apply" — but host_effect_apply's
-// HostEffectIntent.target is a NodeControlPlane. Fleet effects use arms carrying ComputeHost;
-// explicitly runner-local effects use RunnerLocalHost without fabricating a fleet identity.
-// An ephemeral GitHub Actions runner is not a ComputeHost the fleet models; there was no
-// host_effect_apply arm this step could ever land on, so the condition named could never
-// occur. That is the same defect class as the trigger corrected alongside it this session
-// (gunbc_ci_spark_admin_credential_shell_emit_scaffold, PR #8777) — a marker naming a
-// condition that sounds like progress but is not reachable from where the code actually
-// runs.
+// A2 in-run key materialization (parent msg_72e2dcee): foreign-executor shell that exchanges
+// nothing itself — the WIF access token arrives from the google_auth_action step via env — and
+// turns Secret Manager versions/1 (PINNED, never `latest`) into a loaded ssh-agent identity. SECRET
+// HYGIENE, load-bearing: the payload flows curl -> python3 decode -> file mode 0600 -> ssh-add ->
+// rm; never echoed, never written under a durable HOME, no digest printed. The only stdout is the
+// identity NAME line. The agent socket/pid go to GITHUB_ENV so the probe step's ssh children
+// inherit them; the job's always() cleanup step kills the agent.
 //
-// THE ACTUAL DEBT WAS NEVER ABOUT host_effect_apply: it was a hand-concatenated String
-// where typed orchestration emit belongs (DESIGN section 4c: prose the substrate can see,
-// not program data hidden in a joined literal), the same debt PR #8777 discharged for the
-// spark credential. Repairs #3 and #4 below (operator scan of #8083, 2026-08-09) are
-// preserved verbatim in the Do/Run steps that replace the join:
-// #3 FAILURE-SAFE CLEANUP — a `trap cleanup EXIT` is armed BEFORE the key touches disk,
-//    so any failure in curl/base64/chmod/keygen/agent/add removes the key file and kills
-//    the agent regardless of where set -e aborts. The outer always() step stays as
-//    defense in depth. The old ordering (rm only on the happy path, PID exported last)
-//    could leave the key on disk with no exported PID for the outer cleanup to find.
-// #4 SECRET-IDENTITY VERIFICATION — before ssh-add, derive the public key from the fetched
-//    private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to
-//    the modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a
-//    located ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream
-//    host-auth failure. The comparison is against the repo's single fingerprint authority.
+// THE MARKER'S ORIGINAL TRIGGER WAS UNFALSIFIABLE, RECORDED BEFORE DELETING IT (parent-session
+// finding, 2026-08-21). It read "DISSOLVES WHEN the typed secret-materialization effect... lands on
+// host_effect_apply" — but host_effect_apply's HostEffectIntent.target is a NodeControlPlane. Fleet
+// effects use arms carrying ComputeHost; explicitly runner-local effects use RunnerLocalHost
+// without fabricating a fleet identity. An ephemeral GitHub Actions runner is not a ComputeHost the
+// fleet models, so no host_effect_apply arm could ever land this step and the named condition could
+// never occur — the same defect class as the trigger corrected alongside it
+// (gunbc_ci_spark_admin_credential_shell_emit_scaffold, PR #8777): a marker naming a condition that
+// sounds like progress but is unreachable from where the code runs.
 //
-// UNLIKE THE SPARK CREDENTIAL, THIS STEP DOES NOT COLLAPSE INTO A SINGLE CONSUMER. The
-// agent this step starts is read by five mutually-exclusive mode-gated steps
-// (spark_grants/observe/linger/reboot/durability, all via fleet_multi_principal_probe),
-// selected only at workflow-dispatch runtime by github.event.inputs.mode; plan/apply touch
-// no SSH at all. Folding this script into all five would author the same script five times
-// (DESIGN section 2). What genuinely crosses the step boundary is the AGENT — a background
-// daemon plus its socket path and pid, neither of which is secret material — via
-// SSH_AUTH_SOCK/SSH_AGENT_PID over GITHUB_ENV, exactly as before. The private key file
-// itself already never crossed a step boundary (ssh-add then rm, in that order, before the
-// trap disarms): that was measured directly against this function's body and found
-// correct, not a defect this change is fixing.
+// THE ACTUAL DEBT WAS NEVER ABOUT host_effect_apply: it was a hand-concatenated String where typed
+// orchestration emit belongs (DESIGN section 4c: prose the substrate can see, not program data
+// hidden in a joined literal), the same debt PR #8777 discharged for the spark credential. Repairs
+// #3 and #4 (operator scan of #8083, 2026-08-09) are preserved verbatim in the Do/Run steps that
+// replace the join:
 //
-// The Scaffold and DissolutionCondition rows that stood here are deleted rather than
-// corrected-in-place: the typed-orchestration-emit condition they should have named is
-// fulfilled by this same change (gunbc_ci_fleet_key_agent_prelude below, emitted through
-// v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row
-// would be created and discharged in the same diff — ceremony, not a standing obligation.
-// THE TOKEN IS WRITTEN BY A SHELL BUILTIN, AND THAT IS THE WHOLE MECHANISM. Both preludes below used
-// `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"`, and the shell expands that BEFORE exec, so the
-// GCP access token became a word in curl's argv -- readable by any unprivileged `ps` for the life of
-// the request. On these runners that is not a hypothetical audience: /proc carries no hidepid,
-// /proc/PID/cmdline is mode 0444, and the runner slots are ordinary host systemd services in the host
-// pid namespace, so a job payload sees every process on the machine.
+//   #3 FAILURE-SAFE CLEANUP -- a `trap cleanup EXIT` is armed BEFORE the key touches disk, so any
+//      failure in curl/base64/chmod/keygen/agent/add removes the key file and kills the agent
+//      regardless of where set -e aborts. The outer always() step stays as defense in depth. The
+//      old ordering (rm only on the happy path, PID exported last) could leave the key on disk
+//      with no exported PID for the outer cleanup to find.
+//   #4 SECRET-IDENTITY VERIFICATION -- before ssh-add, derive the public key from the fetched
+//      private material (ssh-keygen -y) and its fingerprint (ssh-keygen -lf) and compare to the
+//      modeled fleet_automation_ssh_key_fingerprint. A wrong secret VERSION is then a located
+//      ProbeCredentialIdentityMismatch that CONTACTS NO HOST, never a downstream host-auth
+//      failure. The comparison is against the repo's single fingerprint authority.
 //
-// curl reads a header from a file with `-H @FILE` (>=7.55; the runners carry 7.88), which moves the
-// value out of curl's argv. That alone would not be enough: writing the file with any EXTERNAL
-// command would simply relocate the token from curl's argv into that command's argv. `printf` is a
-// bash BUILTIN, so it forks no process and creates no command line -- the token exists in the shell's
-// own memory and in the file, and never in any process table.
+// UNLIKE THE SPARK CREDENTIAL, THIS STEP DOES NOT COLLAPSE INTO A SINGLE CONSUMER. The agent is
+// read by five mutually-exclusive mode-gated steps (spark_grants/observe/linger/reboot/durability,
+// all via fleet_multi_principal_probe), selected at workflow-dispatch runtime by
+// github.event.inputs.mode; plan/apply touch no SSH. Folding this script into all five would author
+// it five times (DESIGN section 2). What crosses the step boundary is the AGENT — a background
+// daemon plus socket path and pid, neither secret — via SSH_AUTH_SOCK/SSH_AGENT_PID over
+// GITHUB_ENV, as before. The private key file never crossed a step boundary (ssh-add then rm,
+// before the trap disarms): measured against this function's body and found correct, not a defect
+// this change fixes.
 //
-// The mode is set BEFORE the content exists. Both preludes already run `umask 077`, so the redirect
-// creates the file 0600 at creation rather than writing world-readable bytes and narrowing them
-// afterwards; there is no window where the token sits at a wider mode.
+// The Scaffold and DissolutionCondition rows that stood here are deleted rather than corrected in
+// place: the typed-orchestration-emit condition they should have named is fulfilled by this same
+// change (gunbc_ci_fleet_key_agent_prelude below, emitted through
+// v2.workflow.gunbc_invoke_step_emit gunbc_invoke_step_emit_pipeline), so a corrected row would be
+// created and discharged in one diff — ceremony, not a standing obligation.
 //
-// THE TRAP IS NOT WHAT RETIRES THE TOKEN IN THE FLEET PRELUDE, and an earlier revision of this
-// annotation said it was: "Each prelude's existing trap removes HDR_FILE on exit alongside the
-// other credential material it already cleans up." That holds for the spark prelude, whose trap
-// stays armed through step exit. It is FALSE for the fleet prelude, which DISARMS its trap
-// (`trap - EXIT`) so the ssh-agent survives into later steps -- and disarms it after removing only
-// KEY_FILE, so the bearer token was left sitting in RUNNER_TEMP for the remainder of the job.
-// Moving the token out of argv and then leaving it on disk is not a repair, it is the same
-// exposure at a different address; found in review of gunbc#9230 (review 56110).
+// THE TOKEN IS WRITTEN BY A SHELL BUILTIN, AND THAT IS THE WHOLE MECHANISM. Both preludes below
+// used `curl -H "Authorization: Bearer $WIF_ACCESS_TOKEN"`, which the shell expands BEFORE exec, so
+// the GCP access token became a word in curl's argv — readable by any unprivileged `ps` for the
+// life of the request. On these runners that audience is real: /proc carries no hidepid,
+// /proc/PID/cmdline is mode 0444, and runner slots are ordinary host systemd services in the host
+// pid namespace, so a job payload sees every process on the machine. curl reads a header from a
+// file with `-H @FILE` (>=7.55; the runners carry 7.88), moving the value out of curl's argv.
+// Writing the file with any EXTERNAL command would merely relocate the token into that command's
+// argv; `printf` is a bash BUILTIN, forks nothing and creates no command line, so the token exists
+// only in the shell's own memory and the file, never in any process table. The mode is set BEFORE
+// the content exists: both preludes run `umask 077`, so the redirect creates the file 0600 at
+// creation, with no window at a wider mode.
+//
+// THE TRAP IS NOT WHAT RETIRES THE TOKEN IN THE FLEET PRELUDE, and an earlier revision said it was
+// ("Each prelude's existing trap removes HDR_FILE on exit alongside the other credential material
+// it already cleans up"). That holds for the spark prelude, whose trap stays armed through step
+// exit. It is FALSE for the fleet prelude, which DISARMS its trap (`trap - EXIT`) so the ssh-agent
+// survives into later steps — after removing only KEY_FILE, so the bearer token was left in
+// RUNNER_TEMP for the rest of the job. Moving the token out of argv and leaving it on disk is the
+// same exposure at a different address; found in review of gunbc#9230 (review 56110).
 //
 // THE FIX IS LIFETIME, NOT CLEANUP. HDR_FILE is consumed by exactly one curl, so it is removed on
-// the line after that curl rather than added to a later rm -- the credential ceases to exist at
-// the moment its only consumer is done with it, which is a shorter window than any exit path can
-// offer and does not depend on which trap is armed when the step ends. The trap still covers the
-// failure arm between creation and that removal, where the file genuinely can outlive the shell.
+// the line after that curl rather than added to a later rm — the credential ceases to exist the
+// moment its only consumer is done, a shorter window than any exit path offers and independent of
+// which trap is armed at step end. The trap still covers the failure arm between creation and that
+// removal, where the file can outlive the shell.
 //
 // WHAT IS NOT CLAIMED: this is a repair at two call sites, not a wall. Nothing refuses the next
-// prelude that interpolates a credential into a command string -- these bodies are hand-authored
-// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them
-// at all. The class stays mitigatable here and the trigger is the same one extdeps.bmc.http names:
-// credentials modeled as declared inputs whose type the binder can refuse.
+// prelude that interpolates a credential into a command string — these bodies are hand-authored
+// shell text, not declared operation argv, so v2.std.operation_argv's binding wall cannot see them.
+// The class stays mitigatable here; the trigger is the one extdeps.bmc.http names: credentials
+// modeled as declared inputs whose type the binder can refuse.
+//
 // WHY THIS PAYLOAD IS SHELL TEXT AND WHAT WOULD CHANGE THAT (review 55857 asked for a bash-emit
 // scaffold marker here; recorded rather than marked, because the marker would assert the wrong
-// thing). This prelude is NOT the unmigrated medium-as-string form that the two scaffolds in this
-// module carry a dissolution trigger for -- those mark *_script functions that concat-build a whole
-// script, and their trigger text says so. gunbc_ci_fleet_key_agent_script builds a typed Pipeline of
+// thing). This prelude is NOT the unmigrated medium-as-string form the two scaffolds in this module
+// carry a dissolution trigger for — those mark *_script functions that concat-build a whole script,
+// and their trigger text says so. gunbc_ci_fleet_key_agent_script builds a typed Pipeline of
 // PipelineStep and emits it through v2.workflow.gunbc_invoke_step_emit, which IS the orchestration
 // emit those triggers name as their terminal state; gunbc.fleet_ssh_credential_verify
 // fleet_ssh_credential_shell_verification_supersession_note records that migration. Marking one
 // command payload as a scaffold while its twenty peers in the same function carry none would claim
-// this line is unmigrated debt when it sits in the migrated construction.
-//
-// The residue the review is right about: a Run's `command` is still shell text, corpus-wide, tracked
-// by bash-emit rather than per line. And the reason no modeled actuator was available HERE is a
-// boundary rather than a preference -- this prelude executes as raw shell in a FOREIGN EXECUTOR
-// (GitHub Actions `run:`) before gunbc runs at all, so Filesystem.WriteOwnerOnly, which this same
-// change uses for the netrc on the BMC path, is unreachable at this point in a job. Choosing printf
-// is not declining a modeled route; there is no modeled route on that side of the boundary yet,
-// which is exactly what bash-emit would change.
+// this line is unmigrated debt when it sits in the migrated construction. The residue the review is
+// right about: a Run's `command` is still shell text, corpus-wide, tracked by bash-emit rather than
+// per line. No modeled actuator was available HERE because of a boundary, not a preference — this
+// prelude executes as raw shell in a FOREIGN EXECUTOR (GitHub Actions `run:`) before gunbc runs at
+// all, so Filesystem.WriteOwnerOnly, which this same change uses for the netrc on the BMC path, is
+// unreachable at this point in a job. Choosing printf is not declining a modeled route; there is
+// none on that side of the boundary yet, which is exactly what bash-emit would change.
 fn gunbc_ci_auth_header_file_write_command() -> String {
   "printf 'Authorization: Bearer %s\\n' \"$WIF_ACCESS_TOKEN\" > \"$HDR_FILE\""
 }
@@ -831,39 +1067,39 @@ fn gunbc_ci_fleet_key_agent_script() -> String {
 // one PINNED secret version, a 0600 file under RUNNER_TEMP, and a trap armed BEFORE the credential
 // touches disk so any failure removes it regardless of where set -e aborts.
 //
-// WHAT GOES TO GITHUB_ENV IS THE PATH, NEVER THE CREDENTIAL. An environment variable holding the
-// password would be readable by every child process the job spawns and printed by any diagnostic
-// that dumps the environment — and this repository's own receipts print argv. A path discloses
-// nothing to anyone who cannot already read the file.
+// WHAT GOES TO GITHUB_ENV IS THE PATH, NEVER THE CREDENTIAL. An env var holding the password would
+// be readable by every child process and printed by any diagnostic that dumps the environment — and
+// this repository's own receipts print argv. A path discloses nothing to anyone who cannot already
+// read the file.
 //
-// The URL is derived from the modeled SecretRef rather than spelled, so this step and the lease that
-// authorizes it cannot name different versions. There is no fingerprint check as there is for the
-// key: a password has no derivable public half to compare against, so the identity evidence is
-// sudo's own accept-or-reject, which the privileged step classifies as its own outcome.
+// The URL is derived from the modeled SecretRef rather than spelled, so this step and the lease
+// that authorizes it cannot name different versions. There is no fingerprint check as for the key:
+// a password has no derivable public half, so the identity evidence is sudo's own accept-or-reject,
+// which the privileged step classifies as its own outcome.
 //
-// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED, and the first cut of this step got that wrong in a
-// way that cost a run to discover. It piped `curl -sSf` straight into a decoder and checked the file
-// size afterwards, so a 403 surfaced as a JSON decode traceback followed by "produced no payload" --
-// a sentence true of the file and false about the world. Unreadable and enrolled-but-blank have
-// different remedies, and neither is discoverable from an empty file.
+// THE HTTP STATUS IS CLASSIFIED, NOT COLLAPSED; the first cut got that wrong at the cost of a run.
+// It piped `curl -sSf` straight into a decoder and checked the file size afterwards, so a 403
+// surfaced as a JSON decode traceback followed by "produced no payload" — true of the file, false
+// about the world. Unreadable and enrolled-but-blank have different remedies, and neither is
+// discoverable from an empty file.
 //
-// A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut of this step claimed it did:
-// "an access grant and not a missing secret". Secret Manager answers 403 both for a version that
-// exists and is not readable and for one that does not exist -- it hides existence from principals
-// who may not read it. gunbc.spark.bootstrap_provision already records exactly this ambiguity about
-// exactly this API, having been burned by reading an empty testIamPermissions response as proof of
-// denial rather than of nothing. So the refusal states the ambiguity and gives the remedy that
-// covers both arms, rather than picking the arm that happens to fit the current guess.
-// THE SPARK ADMINISTRATOR CREDENTIAL PRELUDE, folded into the ONE step that consumes it. The
-// former two-step shape (a separate "materialize" step exporting a path via GITHUB_ENV, plus an
-// always()-gated cleanup step) is gone: the five steps that once sat between them all carry
-// mutually exclusive mode == '...' guards against this step's own mode == 'spark_grants' guard,
-// so on the only path this credential is ever fetched, nothing genuinely ran between fetch and
-// consumption -- the two-step shape was YAML-adjacent, not runtime-adjacent. One shell script now
-// fetches, decodes, and hands the credential to the grant-install invocation entirely within its
-// own process tree: one trap (armed for the whole script, never disarmed, because nothing needs
-// the file to survive past this script's own exit), one CRED_FILE, a shell-local export instead
-// of GITHUB_ENV so the path never crosses a step boundary.
+// A 403 DOES NOT ESTABLISH THAT THE SECRET EXISTS, and the second cut claimed it did ("an access
+// grant and not a missing secret"). Secret Manager answers 403 both for a version that exists and
+// is unreadable and for one that does not exist — it hides existence from principals who may not
+// read it. gunbc.spark.bootstrap_provision records exactly this ambiguity about exactly this API,
+// having read an empty testIamPermissions response as proof of denial rather than of nothing. So
+// the refusal states the ambiguity and gives the remedy covering both arms, rather than picking the
+// arm that fits the current guess.
+//
+// THE SPARK ADMINISTRATOR CREDENTIAL PRELUDE, folded into the ONE step that consumes it. The former
+// two-step shape (a separate "materialize" step exporting a path via GITHUB_ENV, plus an
+// always()-gated cleanup step) is gone: the five steps between them all carry mutually exclusive
+// mode == '...' guards against this step's own mode == 'spark_grants' guard, so on the only path
+// this credential is fetched nothing ran between fetch and consumption — the two-step shape was
+// YAML-adjacent, not runtime-adjacent. One shell script now fetches, decodes, and hands the
+// credential to the grant-install invocation within its own process tree: one trap (armed for the
+// whole script, never disarmed, since nothing needs the file past this script's exit), one
+// CRED_FILE, a shell-local export instead of GITHUB_ENV so the path never crosses a step boundary.
 fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   [
     Do { run: ci_retry_body_run(command: "set -euo pipefail") },
@@ -939,32 +1175,28 @@ fn gunbc_ci_spark_grant_install_credential_prelude() -> List<PipelineStep> {
   ]
 }
 
-// The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and
-// must kill its own agent; nothing is memoizable across jobs), named so both the workflow
-// step and the materialization gate's fresh-effect list reference ONE authority (§3),
-// rather than an inline literal duplicated per job that the ladder would read as authored
-// cross-job duplication.
+// The in-run ssh-agent teardown — a FRESH per-job effect (each isolated job starts and must kill
+// its own agent; nothing is memoizable across jobs), named so the workflow step and the
+// materialization gate's fresh-effect list reference ONE authority (§3), rather than an inline
+// literal per job that the ladder would read as authored cross-job duplication.
 fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
   "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
 }
 
-// THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions
-// `run:` step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`,
-// and its own comment recorded that the step existed because the self-install route
-// otherwise "had zero callers, a disconnected mechanism". That step lived in `ci.yml`,
-// which #8283 deleted, so the wire returned to being exactly the disconnected mechanism it
-// was added to prevent: measured at deletion, `gunbc_ci_fleet_timer_install_invoke` had no
-// consumer but the `DeclarationRef` inside its own `Scaffold` row, and
-// `fleet_timer_self_install` appears in neither surviving workflow.
+// THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions `run:`
+// step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`, and its own
+// comment recorded that the step existed because the self-install route otherwise "had zero
+// callers, a disconnected mechanism". That step lived in `ci.yml`, which #8283 deleted, so the wire
+// returned to being exactly the disconnected mechanism it was added to prevent: at deletion,
+// `gunbc_ci_fleet_timer_install_invoke` had no consumer but the `DeclarationRef` inside its own
+// `Scaffold` row, and `fleet_timer_self_install` appears in neither surviving workflow.
 //
 // Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
-// concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges
-// the obligation instead of carrying it, and an unbound condition whose subject no longer
-// exists can never report itself fired.
+// concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
+// obligation instead of carrying it, and an unbound condition whose subject no longer exists can
+// never report itself fired.
 
 data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
-
-
 
 fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   gunbc_run_step_script(
@@ -976,11 +1208,34 @@ fn gunbc_ci_fleet_converge_plan_invoke() -> String {
   )
 }
 
+fn gunbc_ci_fleet_converge_allocation_store_plan_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_fleet_converge_allocation_store_plan_target.entry,
+    function: gunbc_ci_fleet_converge_allocation_store_plan_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
 data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HASH"
 
-
-
-data gunbc_ci_fleet_converge_apply_plan_hash_predicate_note: String = "THE PLAN-HASH GUARD IS NOT TYPED, AND THIS ROW SAYS WHY RATHER THAN LETTING THE Do LINES READ AS AN OVERSIGHT. The guard is now three orchestration steps inside the same Pipeline as the invocation (it was a join of raw string literals beside it), so it is emitted rather than concatenated -- but its condition is still an opaque Run leaf rather than v2.std.orchestration Or/Not/StrEmpty/StrEq. THE BLOCKER, measured against the emitter rather than assumed: orch_emit_predicate refuses any test operand outside orch_shell_test_operand_alphabet (v2.compiler.emit_orchestration), whose members are the alphanumerics plus underscore, dot, slash, hyphen, at-sign, dollar, double-quote and the two brace characters. The operand this guard needs is the POSIX default-substitution form of EXPECTED_HASH -- which is exactly how the guard tolerates the variable being unset under set -u instead of aborting -- and the colon that form requires is not in that alphabet. Spelling the operand as a bare EXPECTED_HASH reference instead would make an unset EXPECTED_HASH abort under set -u BEFORE the guard could report PlanArtifactHashMismatch, which is a different failure with a different diagnostic, so that is a semantic loss and not a respelling. Widening the alphabet by one character was declined: the alphabet is the fail-closed wall against metacharacter injection in test operands, and a per-site widening to admit one construct is the workaround class DESIGN section 5 names -- the substrate answer is a typed parameter-expansion carrier, default-substitution as a variant rather than a character in a string, which makes the whole construct emittable without loosening the wall for anything else. Dissolve-on below."
+// THE PLAN-HASH GUARD IS NOT TYPED, AND THIS ROW SAYS WHY so the Do lines do not read as an
+// oversight. The guard is now three orchestration steps inside the same Pipeline as the invocation
+// (it was a join of raw string literals beside it), so it is emitted rather than concatenated — but
+// its condition is still an opaque Run leaf rather than v2.std.orchestration Or/Not/StrEmpty/StrEq.
+// THE BLOCKER, measured against the emitter: orch_emit_predicate refuses any test operand outside
+// orch_shell_test_operand_alphabet (v2.compiler.emit_orchestration) — alphanumerics plus
+// underscore, dot, slash, hyphen, at-sign, dollar, double-quote and the two braces. The operand
+// this guard needs is the POSIX default-substitution form of EXPECTED_HASH — exactly how the guard
+// tolerates the variable being unset under set -u — and the colon that form requires is not in the
+// alphabet. A bare EXPECTED_HASH reference would make an unset EXPECTED_HASH abort under set -u
+// BEFORE the guard could report PlanArtifactHashMismatch — a different failure with a different
+// diagnostic, so a semantic loss, not a respelling. Widening the alphabet by one character was
+// declined: the alphabet is the fail-closed wall against metacharacter injection in test operands,
+// and a per-site widening is the workaround class DESIGN section 5 names — the substrate answer is
+// a typed parameter-expansion carrier, default-substitution as a variant rather than a character in
+// a string, making the construct emittable without loosening the wall. Dissolve-on below.
 
 data gunbc_ci_fleet_converge_apply_plan_hash_predicate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_plan_hash_prelude — RUNG: mitigatable, and stated rather than left to be read off the Pipeline it now sits inside. The guard executes and its refusal is typed and located at RUNTIME (PlanArtifactHashMismatch naming both hashes, exit 1 before any actuation), but the condition itself is an opaque Run leaf, so nothing at emit time can tell a correct comparison from a lying one — a mistyped operand emits happily and fails open on the runner. CEILING: structurally guaranteed. The property is decidable and the emitter already refuses malformed operands for every predicate it can carry; this one is outside what the carrier can express, not outside what is decidable. NEXT-RUNG TRIGGER, the one named thing that moves it: v2.std.orchestration Predicate operands take a typed shell-word carrier with a default-substitution variant, so the POSIX default-substitution form this guard needs becomes a constructor rather than a character sequence that v2.compiler.emit_orchestration orch_shell_test_operand_alphabet must be widened to admit. At that point the guard becomes Or/Not/StrEmpty/StrEq and Exit, the alphabet check on this construct is unwritable-by-construction, and this row and the three Do lines delete together. NOT BLOCKED ON ANYTHING ELSE: this is can-climb-after-one-grounding, not cannot-climb.")
 
@@ -1006,8 +1261,6 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
     receipt_rel: none
   )
 }
-
-
 
 fn gunbc_ci_spark_serving_reboot_invoke() -> String {
   gunbc_run_step_script(
@@ -1040,7 +1293,6 @@ fn gunbc_ci_spark_grant_install_invoke() -> String {
   )
 }
 
-
 fn gunbc_ci_spark_serving_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1061,42 +1313,37 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
   )
 }
 
-// Fleet convergence collection (operator verdict join 5, parent verification
-// msg_8d84ae4f). THIS WIRE IS DEAD AND THE SENTENCE THAT STOOD HERE SAID IT WAS LIVE.
-// It read, present tense, that this is the LIVE invocation wire for
-// collect_fleet_convergence_wet, that it runs on main pushes downstream of the required
-// ci check from srv1 over the typed SSH probe seam, and that the collector-to-fold
-// composition therefore executes on a real cadence. Every clause of that was true when
-// written and none of it is true now: the step it builds was a step of ci.yml, and the
-// floor cut deleted that workflow. Measured 2026-08-22 — this function has ZERO
-// consumers, and no file under .github/workflows names collect_fleet_convergence_wet.
-// The three surviving workflows are witnesses.yml, fleet-converge.yml and
-// fleet-desired.yml, and none of them reaches it.
+// Fleet convergence collection (operator verdict join 5, parent verification msg_8d84ae4f). THIS
+// WIRE IS DEAD AND THE SENTENCE THAT STOOD HERE SAID IT WAS LIVE. It read, present tense, that this
+// is the LIVE invocation wire for collect_fleet_convergence_wet, running on main pushes downstream
+// of the required ci check from srv1 over the typed SSH probe seam, so the collector-to-fold
+// composition executes on a real cadence. Every clause was true when written and none is now: the
+// step it builds was a step of ci.yml, which the floor cut deleted. Measured 2026-08-22 — this
+// function has ZERO consumers, and no file under .github/workflows names
+// collect_fleet_convergence_wet. The three surviving workflows are witnesses.yml,
+// fleet-converge.yml and fleet-desired.yml; none reaches it.
 //
-// WHY THE FALSE SENTENCE SURVIVED THE CUT, which is the part worth keeping. Nothing
-// refused when ci.yml was deleted, because no carrier ever had a dependency EDGE to a
-// workflow — they had prose naming it. DESIGN's delete-first doctrine rests on the
-// deletion BEING the census, every real dependent refusing loudly; a prose dependent
-// cannot refuse at all, so this class is exactly the doctrine's blind spot. See
-// docs/plans/replacement-migration-doctrine.md, which now names referents-named-rather-
-// than-imported alongside the other things a deletion cannot discover -- and records that
-// the path this comment spells is ALREADY a symbol: gunbc.generated_artifact
-// WitnessFloorYamlArtifact. A carrier pointing at the variant instead of the filename
-// gets its census from coproduct exhaustiveness for free.
+// WHY THE FALSE SENTENCE SURVIVED THE CUT: nothing refused when ci.yml was deleted, because no
+// carrier had a dependency EDGE to a workflow — they had prose naming it. DESIGN's delete-first
+// doctrine rests on the deletion BEING the census, every real dependent refusing loudly; a prose
+// dependent cannot refuse, so this class is exactly the doctrine's blind spot. See
+// docs/plans/replacement-migration-doctrine.md, which now names
+// referents-named-rather-than-imported alongside the other things a deletion cannot discover — and
+// records that the path this comment spells is ALREADY a symbol: gunbc.generated_artifact
+// WitnessFloorYamlArtifact. A carrier pointing at the variant instead of the filename gets its
+// census from coproduct exhaustiveness for free.
 //
-// THIS CORRECTION IS ONE SENTENCE AND NOT A SWEEP (operator ruling, 2026-08-22).
-// ci.yml is still named 99 times across 39 .dag files, and correcting all of them would
-// fix those sentences and leave the class as open as it was — the next workflow deleted
-// decays the same way. The count is recorded rather than swept; the durable fix is the
-// next-rung trigger in that document, not prose hygiene here. This one is corrected
-// because it had already cost a session real time: read first, it agreed with what the
-// code looked like, and it nearly produced a report of a live actuation defect against
-// two hosts that do not exist.
+// THIS CORRECTION IS ONE SENTENCE AND NOT A SWEEP (operator ruling, 2026-08-22). ci.yml is still
+// named 99 times across 39 .dag files; correcting all of them would fix those sentences and leave
+// the class as open as it was — the next deleted workflow decays the same way. The count is
+// recorded rather than swept; the durable fix is the next-rung trigger in that document, not prose
+// hygiene here. This one is corrected because it already cost a session real time: read first, it
+// agreed with what the code looked like, and nearly produced a report of a live actuation defect
+// against two hosts that do not exist.
 //
-// WHAT THE FUNCTION STILL IS: an emitter for a step script, retained because the
-// collector it names is not itself dead — collect_fleet_convergence_wet is intact and
-// hand-callable. What ended is this wire's enrolment, not the capability.
-
+// WHAT THE FUNCTION STILL IS: an emitter for a step script, retained because
+// collect_fleet_convergence_wet is intact and hand-callable. What ended is this wire's enrolment,
+// not the capability.
 
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
   gunbc_run_step_script(
@@ -1111,7 +1358,6 @@ fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
 // Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
 // enroll applies the committed registry; both srv1-dispatched, receipts catted.
 
-
 fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1121,8 +1367,6 @@ fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
     receipt_rel: "target/fleet-host-key-scan-receipt.txt"
   )
 }
-
-
 
 fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
   gunbc_run_step_script(
@@ -1134,8 +1378,6 @@ fn gunbc_ci_fleet_host_key_enroll_invoke() -> String {
   )
 }
 
-
-
 fn gunbc_ci_probe_identity_observe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1145,8 +1387,6 @@ fn gunbc_ci_probe_identity_observe_invoke() -> String {
     receipt_rel: "target/fleet-probe-identity-observe-receipt.txt"
   )
 }
-
-
 
 fn gunbc_ci_authorized_key_enroll_invoke() -> String {
   gunbc_run_step_script(
@@ -1158,41 +1398,38 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
   )
 }
 
-// THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point rather than a
-// tidy-up. What stood here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step
-// that pushed $GITHUB_SHA onto refs/fleet/desired -- with a compare-and-swap on the observed prior
-// on the advance branch, and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"`
-// carrying no lease at all, which is the branch that runs when the ref does not yet exist.
+// THE UNGATED FLEET-DESIRED ADVANCE WAS DELETED HERE, and the deletion is the point. What stood
+// here was gunbc_ci_advance_fleet_desired_script, a concat-built shell step that pushed $GITHUB_SHA
+// onto refs/fleet/desired — with a compare-and-swap on the observed prior on the advance branch,
+// and on the CREATE branch a bare `git push origin "$GITHUB_SHA:$DESIRED_REF"` carrying no lease at
+// all, the branch that runs when the ref does not yet exist.
 //
-// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires the
-// desired revision to derive from merged, FLOOR-GREEN main and models that gate as
-// decide_fleet_desired_advance, and this script never called it -- so the gate's only caller was its
+// The CAS half was correct. The ADMISSION half did not exist: gunbc.fleet_main_revision requires
+// the desired revision to derive from merged, FLOOR-GREEN main and models that gate as
+// decide_fleet_desired_advance, and this script never called it — so the gate's only caller was its
 // own witness test while the unproven path ran on every push to main. That is exactly the raw-HEAD
 // advance the authority names as its prevented class, and it reached further than the ref:
 // gunbc.roadmap_belt_actuate gates worker dispatch on revision standing, so a desired ref equal to
-// whatever last landed made that gate agree unconditionally and pass in silence.
+// whatever last landed made that gate agree unconditionally, in silence.
 //
 // The replacement is gunbc.fleet_desired_admission, whose decision consults the modeled gate with a
-// floor conclusion observed from the floor run's own workflow_run payload, and which renders the
-// authorized push itself so the surrounding shell carries no ref, revision or prior of its own. It
-// is cut at the root rather than kept beside the replacement: two answers to how the fleet's
-// admitted revision advances is the fork DESIGN section 3 forbids, and the weaker one was the live
-// one. Keeping a function that can still render the raw form would leave the unsafe spelling one
-// call site from returning. The script's only other consumers were gunbc.live_deploy_workflow and
-// its witness file, both deleted with the deploy workflow authority.
+// floor conclusion observed from the floor run's own workflow_run payload, and renders the
+// authorized push itself so the surrounding shell carries no ref, revision or prior. It is cut at
+// the root rather than kept beside the replacement: two answers to how the fleet's admitted
+// revision advances is the fork DESIGN section 3 forbids, and the weaker one was live. A function
+// that can still render the raw form leaves the unsafe spelling one call site from returning. The
+// script's only other consumers were gunbc.live_deploy_workflow and its witness file, both deleted
+// with the deploy workflow authority.
 //
-// The Scaffold disposition and dissolution trigger that tracked this script's medium-as-string debt
-// went with it -- the replacement's actuation is a model-rendered script, so that debt is re-declared
-// where the remaining shell actually lives, not inherited here.
+// The Scaffold disposition and dissolution trigger tracking this script's medium-as-string debt
+// went with it — the replacement's actuation is a model-rendered script, so that debt is
+// re-declared where the remaining shell lives, not inherited here.
 //
 // This annotation was itself a merge conflict: the root cut and the admission change each deleted
-// this script and each wrote their own account of why. Two annotations for one deletion is the
-// duplication section 3 forbids, so they are merged here rather than stacked, and the accompanying
-// `data ..._deleted_note: String` row is dropped -- a String declaration whose sole purpose is
-// commentary is the misplaced data section 4c names, and the annotation above already carries it.
-
-
-
+// this script and each wrote its own account. Two annotations for one deletion is the duplication
+// section 3 forbids, so they are merged here, and the accompanying `data ..._deleted_note: String`
+// row is dropped — a String declaration whose sole purpose is commentary is the misplaced data
+// section 4c names.
 
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   gunbc_run_step_script(
@@ -1214,8 +1451,6 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   )
 }
 
-
-
 data ci_heal_regen_note: String = "The heal REGEN invoke: gunbc run on the generated-artifact drift gate's main_wet, which writes each committed_generated_artifacts() projection to its path (fail-closed fold — a write error stops the line, never a partial commit). Runs on the same witness_layer_roots and released gunbc binary the deploy job consumes. Idempotent by construction: on a tree already at the fixed point the writes are byte-identical, so the downstream commit-push step sees no git diff and pushes nothing — the loop terminates in one heal. That fixed point is the enforced contract of generated_artifact_drift_fixed_point_witness_test.witness_committed_is_fixed_point (committed bytes == artifact_generate), so a non-terminating heal loop is unwritable while that witness stays green."
 
 fn gunbc_ci_heal_regen_invoke() -> String {
@@ -1228,10 +1463,15 @@ fn gunbc_ci_heal_regen_invoke() -> String {
   )
 }
 
-
-data ci_heal_repo_local_git_config_note: String = "Immediately after the release gunbc binary is unpacked, converge repository-local Git integration bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact rows govern the remedy merge rather than dying as unresolved conflicts. Ordering is after unpack (converge is gunbc run) and before ci_heal_binary_source_skew_guard_step (that step's git merge is the first merge on this checkout). Heal push uses git -c core.hooksPath= so the post-converge hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent: already-converged checkouts are a no-op."
-
-
+// Immediately after the release gunbc binary is unpacked, converge repository-local Git integration
+// bindings (merge.generated-artifact.driver and core.hooksPath) via the modeled
+// repo_local_git_config actuator — BEFORE the skew-guard git merge, so merge=generated-artifact
+// rows govern the remedy merge rather than dying as unresolved conflicts. Ordering: after unpack
+// (converge is gunbc run) and before ci_heal_binary_source_skew_guard_step (whose git merge is the
+// first merge on this checkout). Heal push uses git -c core.hooksPath= so the post-converge
+// hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the
+// hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent:
+// already-converged checkouts are a no-op.
 
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   gunbc_run_step_script(
@@ -1242,7 +1482,6 @@ fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
     receipt_rel: none
   )
 }
-
 
 fn gunbc_ci_heal_dispatch_invoke() -> String {
   gunbc_run_invocation_script_with_env(
@@ -1257,13 +1496,85 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
   )
 }
 
-data ci_heal_dispatch_invoke_note: String = "After a successful push the heal invokes tools.ci_heal_dispatch, which binds the modeled github.Workflows.CreateDispatch operation. The moving branch ref and immutable HEALED_HEAD are distinct inputs. The dispatched run binds the branch resolution recorded in github.sha and its checkout head to that immutable input before any witness can count. The workflow RunStep projects github.token into its GITHUB_TOKEN environment because GitHub Actions does not inject the installation token as a process variable by default; CreateDispatch auth_source reads that env var. A transport refusal makes the gunbc invocation nonzero; the surrounding heal script classifies HealDispatchRefused, keeps revalidation required, and fails loudly. There is deliberately no fallback to the ordinary push event and no silent retry."
+// After a successful push the heal invokes tools.ci_heal_dispatch, which binds the modeled
+// github.Workflows.CreateDispatch operation. The moving branch ref and immutable HEALED_HEAD are
+// distinct inputs. The dispatched run binds the branch resolution recorded in github.sha and its
+// checkout head to that immutable input before any witness can count. The workflow RunStep projects
+// github.token into its GITHUB_TOKEN environment because GitHub Actions does not inject the
+// installation token as a process variable by default; CreateDispatch auth_source reads that env
+// var. A transport refusal makes the gunbc invocation nonzero; the heal script classifies
+// HealDispatchRefused, keeps revalidation required, and fails loudly. Deliberately no fallback to
+// the ordinary push event and no silent retry.
 
-data ci_heal_binary_source_skew_note: String = "RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no function implements it. Everything below is the incident record that produced it, kept because the receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED (incident 2026-07-29). A generated artifact's identity is (authority source x compiler), and this job silently pairs TWO DIFFERENT REVISIONS of that product: the release binary comes from `build`, which uses the default pull_request checkout — the MERGE ref (main + PR) — while this job checks out `github.head_ref`, the BRANCH HEAD, because it pushes the regeneration back (ci_heal_branch_checkout_note reasons carefully about the push semantics and never about the binary's provenance; it calls build's output 'the release gunbc binary', treating a projection of one revision as a context-free tool). The skew is latent until a seed change adds a Rust->.dag call: then the merge-ref binary invokes a `.dag` function the branch-head tree does not contain, `lookup_fn` misses, and the run dies mid-regen. Live receipt: #7348 landed the scoped-run observation seed, whose Rust calls gunbc.observation_seed_render.scoped_run_begin_write_measured; every open PR whose branch head predated it went red at once (#7392, #7394, #7395 — identical failure, none of them at fault), while main stayed green because ci_regen_heal_if skips this job on push. Reproduced by execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI failure; run against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard below refuses the unsound pairing instead of discovering it as a mid-regen crash."
+// RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no
+// function implements it. What follows is the incident record that produced it, kept because the
+// receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED
+// (incident 2026-07-29). A generated artifact's identity is (authority source x compiler), and this
+// job silently paired TWO DIFFERENT REVISIONS of that product: the release binary came from
+// `build`, which uses the default pull_request checkout — the MERGE ref (main + PR) — while this
+// job checked out `github.head_ref`, the BRANCH HEAD, because it pushes the regeneration back
+// (ci_heal_branch_checkout_note reasons about push semantics and never about the binary's
+// provenance; it calls build's output 'the release gunbc binary', treating a projection of one
+// revision as a context-free tool). The skew is latent until a seed change adds a Rust->.dag call:
+// then the merge-ref binary invokes a `.dag` function the branch-head tree lacks, `lookup_fn`
+// misses, and the run dies mid-regen. Live receipt: #7348 landed the scoped-run observation seed,
+// whose Rust calls gunbc.observation_seed_render.scoped_run_begin_write_measured; every open PR
+// whose branch head predated it went red at once (#7392, #7394, #7395 — identical failure, none at
+// fault), while main stayed green because ci_regen_heal_if skips this job on push. Reproduced by
+// execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI
+// failure; against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard
+// refused the unsound pairing instead of discovering it as a mid-regen crash.
 
-data ci_heal_binary_source_skew_guard_note: String = "RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard is DELETED. The operator ruling of 2026-07-29 recorded below is kept as the ruling it was, not as a description of live behaviour. THE COMPARAND IS THE BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut of this guard compared against `origin/main`, and that was wrong on the operator's own objection: `origin/main` names several different things — the one on this runner, the one on a developer's machine, and the actual source of truth — so a guard keyed on it asserts a relationship between the tree and WHICHEVER main this box last fetched, and can even race an advance mid-run. There is no ambiguity to resolve because the question was never about main: it is 'was this binary compiled from a revision this tree can satisfy'. `github.sha` answers it exactly — on a pull_request it IS the merge commit the build job checked out, so the guard compares the tree against the binary's own provenance, in the same workflow run, with no floating ref anywhere. The guard fails closed if that revision cannot be resolved: an unverifiable provenance is a refusal, never an assumed-fine.\n\nPRECISION IS ALSO THE POINT (DESIGN §5 — refuse, never widen; and never manufacture friction the defect does not warrant). A blanket 'tree must equal the built-from revision' would red nearly every PR to catch a rare pairing — a wall priced in other people's time. The DECIDABLE condition that actually matters is narrower: the binary is unsound against this tree exactly when the built-from revision carries SEED commits (src/v1 — the Rust the binary is compiled from) this tree lacks, because only those can introduce a Rust->.dag expectation the tree cannot satisfy. `git rev-list HEAD..$BUILT_FROM -- src/v1` is exactly that set: empty on the overwhelming majority of PRs (a .dag-only advance cannot skew a compiled binary), non-empty precisely in the #7348 shape. VERIFIED BY EXECUTION on the incident itself: at the pre-#7348 branch point the set is two commits and one of them IS 445bac31c (#7348), so the guard names the responsible commit in its own refusal; at current main and at the same branch after the advance was merged in, the set is empty and the guard is silent — the heal that went green on #7395 is the live receipt for the passing arm. On non-empty the step REFUSES rather than regenerating with a compiler that disagrees with the tree, which is the fabricated-plausible-output arm §5 forbids: main_wet would write whatever artifacts that mismatched pair produces and the commit-push step would push them to the branch. NOT IN SCOPE: preventing a stale branch from MERGING at all. That is merge-admission policy, it needs a source-of-truth model this repo does not have yet (operator: the SCM lane after v1 deletion), and this guard deliberately does not pretend to supply one — it protects the one pairing this job has agency over."
+// RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard is DELETED. The operator ruling of
+// 2026-07-29 below is kept as the ruling it was, not as live behaviour. THE COMPARAND IS THE
+// BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut compared
+// against `origin/main`, wrong on the operator's own objection: `origin/main` names several things
+// — the one on this runner, the one on a developer's machine, the actual source of truth — so a
+// guard keyed on it asserts a relationship between the tree and WHICHEVER main this box last
+// fetched, and can race an advance mid-run. The question was never about main: it is 'was this
+// binary compiled from a revision this tree can satisfy'. `github.sha` answers it exactly — on a
+// pull_request it IS the merge commit the build job checked out, so the guard compares the tree
+// against the binary's own provenance, in the same run, with no floating ref. The guard fails
+// closed if that revision cannot be resolved: unverifiable provenance is a refusal, never assumed
+// fine.
+//
+// PRECISION IS ALSO THE POINT (DESIGN §5 — refuse, never widen; never manufacture friction the
+// defect does not warrant). A blanket 'tree must equal the built-from revision' would red nearly
+// every PR to catch a rare pairing — a wall priced in other people's time. The DECIDABLE condition
+// that matters is narrower: the binary is unsound against this tree exactly when the built-from
+// revision carries SEED commits (src/v1 — the Rust the binary is compiled from) this tree lacks,
+// since only those can introduce a Rust->.dag expectation the tree cannot satisfy. `git rev-list
+// HEAD..$BUILT_FROM -- src/v1` is exactly that set: empty on the overwhelming majority of PRs (a
+// .dag-only advance cannot skew a compiled binary), non-empty precisely in the #7348 shape.
+// VERIFIED BY EXECUTION on the incident: at the pre-#7348 branch point the set is two commits and
+// one IS 445bac31c (#7348), so the guard names the responsible commit in its own refusal; at
+// current main and at the same branch after the advance was merged in, the set is empty and the
+// guard is silent — the heal that went green on #7395 is the live receipt for the passing arm. On
+// non-empty the step REFUSES rather than regenerating with a compiler that disagrees with the tree
+// — the fabricated-plausible-output arm §5 forbids: main_wet would write whatever the mismatched
+// pair produces and the commit-push step would push it. NOT IN SCOPE: preventing a stale branch
+// from MERGING at all. That is merge-admission policy, needs a source-of-truth model this repo does
+// not have yet (operator: the SCM lane after v1 deletion), and this guard does not pretend to
+// supply one — it protects the one pairing this job has agency over.
 
-data ci_heal_skew_auto_remedy_note: String = "RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard and its remedy are DELETED. The operator ruling of 2026-07-29 recorded below is kept as the ruling it was, not as a description of live behaviour. THE GUARD APPLIES ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically'). The first cut printed 'merge the base branch, then re-run' and exited 1, which is a correct refusal and a wasted round trip: the job holds contents:write, already pushes commits to this branch, and the fix is a merge it is fully authorized to perform. Making a human perform a mechanical repair the machine can do is the kind of toil this pipeline exists to remove.\n\nThis is a REPAIR, not a widen, and the distinction is the whole reason it is admissible under DESIGN §5. The refused arm does not proceed despite the skew — it REMOVES the skew by bringing the tree up to the revision the binary was built from, then re-checks the same condition it just failed. Regeneration runs only if that second check passes, so the artifacts are still projected by a compiler the tree agrees with. Nothing is assumed; the invariant is re-established and re-verified.\n\nBoth failure arms stay closed. A merge that CONFLICTS aborts and refuses with the original diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once."
+// RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard and its remedy are DELETED. The operator
+// ruling of 2026-07-29 below is kept as the ruling it was, not as live behaviour. THE GUARD APPLIES
+// ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically').
+// The first cut printed 'merge the base branch, then re-run' and exited 1 — a correct refusal and a
+// wasted round trip: the job holds contents:write, already pushes commits to this branch, and the
+// fix is a merge it is authorized to perform. Making a human do a mechanical repair the machine can
+// do is the toil this pipeline exists to remove.
+//
+// This is a REPAIR, not a widen, which is why it is admissible under DESIGN §5. The refused arm
+// does not proceed despite the skew — it REMOVES the skew by bringing the tree up to the revision
+// the binary was built from, then re-checks the same condition. Regeneration runs only if that
+// second check passes, so the artifacts are still projected by a compiler the tree agrees with; the
+// invariant is re-established and re-verified.
+//
+// Both failure arms stay closed. A merge that CONFLICTS aborts and refuses with the original
+// diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an
+// author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base
+// moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once.
 
 data ci_heal_author_commit_artifact_dir: String = "heal-author-commit-required"
 

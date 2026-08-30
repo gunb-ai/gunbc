@@ -1,6 +1,5 @@
 module v2.test.long.variant_visibility
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data variant_vis_artifact: Artifact = Artifact {
@@ -39,7 +38,11 @@ fn variant_vis_accepts(src: String) -> Bool {
   }
 }
 
-data variant_vis_doc: String = "End-to-end wire proof: resolution ACCEPTS when SymbolIndex fill-time unique-variant aliases make bare match-arm variants resolvable (Classical-only Yes/No), REJECTS when aliases are withheld (Mood+Classical both declare Yes). SymbolIndex-path-alone equivalence is in symbol_index/containment_test.dag (symbol_index_variant_visibility_equivalence_holds + without_alias RED control)."
+// End-to-end wire proof: resolution ACCEPTS when SymbolIndex fill-time unique-variant aliases make
+// bare match-arm variants resolvable (Classical-only Yes/No), REJECTS when aliases are withheld
+// (Mood+Classical both declare Yes). SymbolIndex-path-alone equivalence is in
+// symbol_index/containment_test.dag (symbol_index_variant_visibility_equivalence_holds +
+// without_alias RED control).
 
 data src_unique_variants: String = "module variant_vis_pilot\n\ntype Classical = Yes | No\n\nfn flip(a: Classical) -> Classical { match a { Yes => No, No => Yes } }\n"
 

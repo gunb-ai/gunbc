@@ -51,7 +51,9 @@ type StateFamily {
   members: List<StateFamilyMember>
 }
 
-data member_subject_note: String = "RestBinding realizes on the component's own class selector — the rest state IS the unqualified component, which is why the base rule owns the rest paint. A class-bound member composes component class + state class, the same compound the client program flips."
+// RestBinding realizes on the component's own class selector — the rest state IS the unqualified
+// component, which is why the base rule owns the rest paint. A class-bound member composes
+// component class + state class, the same compound the client program flips.
 
 fn member_selector_text(f: StateFamily, m: StateFamilyMember) -> String {
   match m.binding {
@@ -83,7 +85,10 @@ fn member_channel_decl(f: StateFamily, m: StateFamilyMember, prop: CssPropertyNa
   decl(prop: prop, value: state_var_ref(prefix: f.var_prefix, key: m.key, role: role))
 }
 
-data state_rest_decl_note: String = "The rest member's channel decls, for splicing into the component's base rule at the positions its authoring order demands. Returns a LIST so an absent rest member yields an absent decl rather than a fabricated one — the absence then surfaces through the byte oracle and the census, loudly, instead of a placeholder value surviving review."
+// The rest member's channel decls, for splicing into the component's base rule at the positions its
+// authoring order demands. Returns a LIST so an absent rest member yields an absent decl rather
+// than a fabricated one — the absence then surfaces through the byte oracle and the census, loudly,
+// instead of a placeholder value surviving review.
 
 fn state_rest_decl(f: StateFamily, prop: CssPropertyName, role: StateVarRole) -> List<CssDecl> {
   match rest_member(f: f) {
@@ -102,7 +107,11 @@ fn scope_rest_decls(f: StateFamily, m: StateFamilyMember, channels: List<Channel
   })
 }
 
-data state_paint_rules_note: String = "The rest-channel realize fold: one StaticRule per class-bound member, carrying every RestChannel of the table in table order, in roster order. This is what replaces the hand-multiplied per-state paint rules — a member added to the roster gets its paint block emitted by this fold with no further authoring, and a member skipped is not writable because there is no per-member call site left to forget."
+// The rest-channel realize fold: one StaticRule per class-bound member, carrying every RestChannel
+// of the table in table order, in roster order. This is what replaces the hand-multiplied per-state
+// paint rules — a member added to the roster gets its paint block emitted by this fold with no
+// further authoring, and a member skipped is not writable because there is no per-member call site
+// left to forget.
 
 fn state_paint_rules(f: StateFamily, channels: List<ChannelScope>) -> List<BuildRule> {
   fold(f.members, init: [], f: (acc, m) => match m.binding {
@@ -112,7 +121,13 @@ fn state_paint_rules(f: StateFamily, channels: List<ChannelScope>) -> List<Build
   })
 }
 
-data family_response_rules_note: String = "The response-channel realize fold — the press-fill law authored once as a function of state and multiplied across the family: every member (rest included — the base selector's own response) gets a ResponseRule whose response decl draws the channel's var role from the member's OWN key. Totality is the construction: the fold visits the roster, so the fault class 'one pressed var presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow that causes the response, exactly as detent realization takes its clock from the row rather than the table."
+// The response-channel realize fold — the press-fill law authored once as a function of state and
+// multiplied across the family: every member (rest included — the base selector's own response)
+// gets a ResponseRule whose response decl draws the channel's var role from the member's OWN key.
+// Totality is the construction: the fold visits the roster, so the fault class 'one pressed var
+// presenting as total' has no author-side spelling anymore. Timing flows in from the BehaviorRow
+// that causes the response, exactly as detent realization takes its clock from the row rather than
+// the table.
 
 fn channel_response_rules(f: StateFamily, trigger: MotionTrigger, prop: CssPropertyName, role: StateVarRole, transition_props: String, timing: TimingToken) -> List<BuildRule> {
   map(f.members, m =>
@@ -171,7 +186,12 @@ fn foreign_cell_decl(f: StateFamily, foreign_key: String, c: StateChannel) -> St
   join([channel_prop_wire(c: c), ": ", state_var_ref(prefix: f.var_prefix, key: foreign_key, role: channel_role(c: c))], "")
 }
 
-data census_block_probe_note: String = "A class-bound member's cell is probed as selector-adjacent text: the member's selector followed by a block containing the expected decl would be exact, but blocks interleave channels, so the probe pairs (selector present) with (expected decl present) and, on a miss, substitutes every other member's key into the same decl to name the foreign family it found instead. The rest member's decls live inside the component's base rule among geometry decls, so its probe is the decl alone and cross-family detection is declared out of its reach (state_response_census_note)."
+// A class-bound member's cell is probed as selector-adjacent text: the member's selector followed
+// by a block containing the expected decl would be exact, but blocks interleave channels, so the
+// probe pairs (selector present) with (expected decl present) and, on a miss, substitutes every
+// other member's key into the same decl to name the foreign family it found instead. The rest
+// member's decls live inside the component's base rule among geometry decls, so its probe is the
+// decl alone and cross-family detection is declared out of its reach (state_response_census_note).
 
 fn member_block_contains(css: String, f: StateFamily, m: StateFamilyMember, expected: String) -> Bool {
   string_contains(s: css, pattern: member_selector_text(f: f, m: m)) && string_contains(s: css, pattern: expected)

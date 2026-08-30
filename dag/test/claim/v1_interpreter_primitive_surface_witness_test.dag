@@ -152,6 +152,17 @@ test fn an_unrecognised_form_label_refuses_rather_than_defaulting() -> Bool {
   form_is_unknown(form: decode_dispatch_form(label: "NotAFormLabel")) && !form_is_unknown(form: decode_dispatch_form(label: "FreeCall"))
 }
 
+// THE CONTROLS ARE PAIRS AND NEITHER HALF IS OPTIONAL. Each detector has a discriminating RED and a
+// positive control: an always-clean detector would pass every live-corpus witness and establish
+// nothing, and one refusing legitimate structure would refuse the language, not the defect.
+// shadow_detector_catches_a_planted_duplicate pairs with shadow_detector_admits_a_real_alias_pair
+// -- two spellings under ONE arm identity is a legitimate alias, exactly why length, count and
+// size cannot disagree. duplicate_detector_catches_a_row_repeated_under_one_identity pairs with
+// duplicate_detector_admits_one_spelling_at_two_distinct_sites -- one spelling reached at two
+// dispatch symbols is the real structure of map_insert and lookup, not a defect.
+// an_unrecognised_form_label_refuses_rather_than_defaulting asserts BOTH directions so a decode
+// answering UnknownForm for everything fails. The live witnesses execute against DERIVED rows
+// projected from the interpreter's own dispatch tokens, reading the tree, not a transcript of it.
 
 test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
   let expected = ["eval_method_call", "eval_service_call"]
@@ -159,5 +170,3 @@ test fn the_declared_residue_is_exactly_the_two_non_match_arm_sites() -> Bool {
   count(actual |> filter(s => !expected |> any(e => e == s))) == 0
     && count(expected |> filter(e => !actual |> any(s => s == e))) == 0
 }
-
-data witness_control_pairing_note: String = "THE CONTROLS ARE PAIRS AND NEITHER HALF IS OPTIONAL. Each detector here has a discriminating RED and a positive control, because a detector that always answered clean would pass every live-corpus witness and establish nothing, and a detector that refused legitimate structure would be refusing the language rather than the defect. shadow_detector_catches_a_planted_duplicate is paired with shadow_detector_admits_a_real_alias_pair -- two spellings under ONE arm identity is a legitimate alias, which is exactly why length, count and size cannot disagree. duplicate_detector_catches_a_row_repeated_under_one_identity is paired with duplicate_detector_admits_one_spelling_at_two_distinct_sites -- one spelling reached at two different dispatch symbols is the real structure of map_insert and lookup, not a defect. an_unrecognised_form_label_refuses_rather_than_defaulting asserts BOTH directions so that a decode which answered UnknownForm for everything would fail. The live witnesses execute against DERIVED rows projected from the interpreter's own dispatch tokens, so they read the tree rather than a transcript of it."

@@ -359,7 +359,7 @@ fn scoped_declaration_identity_follows_the_selected_function_node() {
     .expect("write left fixture");
     std::fs::write(
         &right,
-        "module test.scoped_identity.right\n\nfn same_claim() -> Bool { true }\n",
+        "module test.scoped_identity.right\n\nfn same_claim() -> Bool { false }\n",
     )
     .expect("write right fixture");
     std::fs::write(
@@ -385,6 +385,51 @@ fn scoped_declaration_identity_follows_the_selected_function_node() {
     assert!(
         !String::from_utf8_lossy(&ambiguous_output.stderr).contains("started decl="),
         "an ambiguous function must not mint an observation identity: {ambiguous_output:?}"
+    );
+
+    // The bootstrap launcher uses this same qualified interpreter seam after admission. Two
+    // same-named declarations deliberately return opposite verdicts: changing only the module
+    // identity must change the executed declaration, while the bare spelling remains ambiguous.
+    let qualified_left = Command::new(env!("CARGO_BIN_EXE_gunbc"))
+        .current_dir(repo_root())
+        .args([
+            "run",
+            "--source-root",
+            fixture_root.to_str().expect("fixture root utf8"),
+            "--entry",
+            ambiguous.to_str().expect("ambiguous entry utf8"),
+            "--function",
+            "test.scoped_identity.left.same_claim",
+            "--claim-run",
+        ])
+        .output()
+        .expect("run qualified left declaration");
+    assert!(qualified_left.status.success(), "{qualified_left:?}");
+    assert!(
+        String::from_utf8_lossy(&qualified_left.stderr)
+            .contains("decl=test.scoped_identity.left::same_claim#whole"),
+        "qualified left identity must select the left declaration: {qualified_left:?}"
+    );
+
+    let qualified_right = Command::new(env!("CARGO_BIN_EXE_gunbc"))
+        .current_dir(repo_root())
+        .args([
+            "run",
+            "--source-root",
+            fixture_root.to_str().expect("fixture root utf8"),
+            "--entry",
+            ambiguous.to_str().expect("ambiguous entry utf8"),
+            "--function",
+            "test.scoped_identity.right.same_claim",
+            "--claim-run",
+        ])
+        .output()
+        .expect("run qualified right declaration");
+    assert!(!qualified_right.status.success(), "{qualified_right:?}");
+    assert!(
+        String::from_utf8_lossy(&qualified_right.stderr)
+            .contains("decl=test.scoped_identity.right::same_claim#whole"),
+        "qualified right identity must select the right declaration: {qualified_right:?}"
     );
     let _ = std::fs::remove_dir_all(&fixture_root);
 }

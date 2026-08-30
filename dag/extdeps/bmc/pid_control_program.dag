@@ -303,7 +303,11 @@ type BmcFanControlProgram {
 // the root once, rather than main hosting a dual-authority interval with a half-migrated writer.
 // Until then that type is FROZEN: no new fields, no new coefficients, no new callers. A change
 // that would widen it is a change that belongs here instead.
-data partial_prior_authority_note: String = "extdeps.bmc.openbmc_fan_control OpenBmcStepwiseController and OpenBmcFanController are a lossy subset of this model, retained because extdeps.bmc.openbmc_operation actuates through them and actuation is a separately-decided lane. Frozen: no new rows on their growth surfaces. Dissolve-on: the actuation cutover, which replaces the desired-config argument bundle with a projection of BmcFanControlProgram and deletes both types with openbmc_fan_config_desired_json."
+// extdeps.bmc.openbmc_fan_control OpenBmcStepwiseController and OpenBmcFanController are a lossy
+// subset of this model, retained because extdeps.bmc.openbmc_operation actuates through them and
+// actuation is a separately-decided lane. Frozen: no new rows on their growth surfaces.
+// Dissolve-on: the actuation cutover, which replaces the desired-config argument bundle with a
+// projection of BmcFanControlProgram and deletes both types with openbmc_fan_config_desired_json.
 
 fn program_sensor_named(program: BmcFanControlProgram, name: NonEmptyStr) -> List<ProgramSensor> {
   filter(program.sensors, sensor => sensor.name == name)

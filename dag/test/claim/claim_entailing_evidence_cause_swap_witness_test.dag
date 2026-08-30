@@ -8,9 +8,33 @@ import tools.self_host_curated_seed_linked_harness {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
-data cause_swap_witness_doc: String = "THE CAUSE-SWAP CONTROL for tools.self_host_curated_seed_linked_harness cssl_fault_run_detected_the_planted_fault. It is an unusual control and the shape is the point: it is a probe the OLD mechanism PASSES and the NEW one must REFUSE. A conventional discriminating red cannot detect this class at all, because the subject is fine -- the EVIDENCE ABOUT the subject is what was invalid, so the control has to test the carrier rather than the subject. The rule it enforces: an evidence standing may establish a proposition only when EVERY execution path that constructs it proves the subject reached the relevant phase and entails the proposition. The old predicate fault_run.success == false was true when the planted fault was detected AND when the binary never existed, so its truth set was strictly wider than the proposition it was cited for. Both arms below hold the OLD predicate constant at true and vary only the CAUSE; the new carrier must admit the first and refuse the second."
+// THE CAUSE-SWAP CONTROL for tools.self_host_curated_seed_linked_harness
+// cssl_fault_run_detected_the_planted_fault. It is an unusual control and the shape is the point:
+// it is a probe the OLD mechanism PASSES and the NEW one must REFUSE. A conventional discriminating
+// red cannot detect this class at all, because the subject is fine -- the EVIDENCE ABOUT the
+// subject is what was invalid, so the control has to test the carrier rather than the subject. The
+// rule it enforces: an evidence standing may establish a proposition only when EVERY execution path
+// that constructs it proves the subject reached the relevant phase and entails the proposition. The
+// old predicate fault_run.success == false was true when the planted fault was detected AND when
+// the binary never existed, so its truth set was strictly wider than the proposition it was cited
+// for. Both arms below hold the OLD predicate constant at true and vary only the CAUSE; the new
+// carrier must admit the first and refuse the second.
 
-data cause_swap_discriminating_subset_note: String = "FOUR OF THESE EIGHT ARMS DISCRIMINATE FOR THE REPAIR, NOT EIGHT, and the difference matters to anyone counting green arms as coverage. Measured by mutation 2026-08-26 -- collapsing cssl_fault_run_detected_the_planted_fault back to the old single conjunct reds exactly absent_binary_is_refused_not_treated_as_detection, killed_before_comparison_is_refused, fault_run_that_agreed_is_refused and malformed_pass_marker_establishes_nothing. Every one of those is a run that never reached its comparison being cited as a comparison that disagreed, which is the class the repair closes.\n\nThe other four stay green under that mutation and are not thereby idle. old_predicate_cannot_tell_the_two_causes_apart is the control that proves the two arms were genuinely indistinguishable to the mechanism being replaced; detected_fault_is_admitted pins that the repair did not narrow past the case it must admit; stem_is_derived_from_the_pass_marker pins the derivation; and zero_exit_is_still_refused guards a DIFFERENT hole -- both predicates refuse it, so it is a real arm and not a discriminating one here. Recording which arms flip is what stops eight greens being read as eight walls."
+// FOUR OF THESE EIGHT ARMS DISCRIMINATE FOR THE REPAIR, NOT EIGHT, and the difference matters to
+// anyone counting green arms as coverage. Measured by mutation 2026-08-26 -- collapsing
+// cssl_fault_run_detected_the_planted_fault back to the old single conjunct reds exactly
+// absent_binary_is_refused_not_treated_as_detection, killed_before_comparison_is_refused,
+// fault_run_that_agreed_is_refused and malformed_pass_marker_establishes_nothing. Every one of
+// those is a run that never reached its comparison being cited as a comparison that disagreed,
+// which is the class the repair closes.
+//
+// The other four stay green under that mutation and are not thereby idle.
+// old_predicate_cannot_tell_the_two_causes_apart is the control that proves the two arms were
+// genuinely indistinguishable to the mechanism being replaced; detected_fault_is_admitted pins that
+// the repair did not narrow past the case it must admit; stem_is_derived_from_the_pass_marker pins
+// the derivation; and zero_exit_is_still_refused guards a DIFFERENT hole -- both predicates refuse
+// it, so it is a real arm and not a discriminating one here. Recording which arms flip is what
+// stops eight greens being read as eight walls.
 
 data cause_swap_pass_marker: String = "SELF_HOST_00_COMPILE_BEHAVIORAL_RECEIPT: PASS"
 
