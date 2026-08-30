@@ -11,9 +11,17 @@ data spark_serving_observation_scope_note: NonEmptyStr = "SPARK-PAIR-0 P0-C. WHI
 // The defect this replaces: the observer walked the DESIRED serving roster. Retirement is planned from
 // members that are observed and NOT desired, so scoping observation by desired makes the retirement
 // population unobservable by construction -- observed minus desired is empty for every host, always.
-// srv6 ran a live, enabled serving unit and the plan minted zero typed actions and called the fleet
-// clean. Measured, not reasoned: fleet-converge run 33296910990 reported observed_hosts=1, and run
-// 33297525985 wrote spark_serving_typed_actions.wire at 0 bytes.
+// srv6 ran a live, enabled serving unit and the observer never probed it. Measured, not reasoned:
+// fleet-converge run 33296910990 reported observed_hosts=1.
+//
+// THE ZERO-BYTE PLAN WIRE IN RUN 33297525985 IS A DIFFERENT DEFECT AND IS NOT EVIDENCE FOR THIS ONE.
+// It was tempting to chain them -- narrowed observation, therefore no removals, therefore an empty
+// plan -- and that chain is false in the live dataflow: fleet_converge_plan_cli passes
+// observed_spark: [] and fleet_converge_plan_artifact sets spark_serving_typed_actions to
+// scheduled_rows_empty() unconditionally, so the live planner reads NO Spark observer and would have
+// emitted an empty wire whatever this module answered. The two defects are independent, they are
+// repaired separately, and welding them into one story would have made a fix here look like a fix
+// there.
 //
 // The obvious repair -- union the two ROLE rosters -- is rejected here, and rejecting it is the reason
 // this module exists rather than a one-line edit. Both role projections answer through
