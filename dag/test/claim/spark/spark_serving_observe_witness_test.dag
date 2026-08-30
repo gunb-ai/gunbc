@@ -46,6 +46,7 @@ import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
   SparkServingObservedUnit,
   spark_serving_host_observation,
+  SparkServingObservationProvenance,
   SparkServingCurrentBootDurabilityStanding,
   CurrentBootDurabilityExhibitedFleetWide,
   CurrentBootDurabilityNotExhibited,
@@ -590,6 +591,11 @@ fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
+    provenance: SparkServingObservationProvenance {
+      host: readback.host,
+      attempt: "fixture-attempt" as NonEmptyStr,
+      locus: "fixture-locus" as NonEmptyStr,
+    },
   )
 }
 

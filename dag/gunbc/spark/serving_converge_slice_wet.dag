@@ -486,8 +486,8 @@ fn spark_serving_converge_slice_wet_host_report(
 ) -> SparkServingSliceHostReport {
   let endpoint = fleet_probe_endpoint_for(host: host as String)
   let transport = fleet_locus_transport(context: context, host: host)
-  match spark_serving_probe_linger(transport: transport) {
-    TypedArgvExecRefused { reason: probe_refusal } =>
+  match spark_serving_observed_facts_via_locus(context: context, host: host) {
+    SparkServingObservedFactsRefused { cause: why } =>
       spark_serving_converge_slice_host_line(
         host: host,
         endpoint: endpoint,
@@ -495,48 +495,56 @@ fn spark_serving_converge_slice_wet_host_report(
         typed_row_count: 0,
         apply_effect_count: 0,
         apply_command_count: 0,
-        verdict: join(["observation-refused ", probe_refusal], ""),
+        verdict: join(["observation-refused ", why as String], ""),
       )
-    TypedArgvExecConverged { result: probe } =>
-      if probe.success == false {
-        spark_serving_converge_slice_host_line(
-          host: host,
-          endpoint: endpoint,
-          observed_linger: LingerUnobserved,
-          typed_row_count: 0,
-          apply_effect_count: 0,
-          apply_command_count: 0,
-          verdict: join([
-            "observation-refused exit=", to_string(probe.exit_code),
-            " stderr=", probe.stderr,
-          ], ""),
+    SparkServingObservedFactsReady {
+      runtime: rt,
+      store: st,
+      observed_unit: ou,
+      linger: observed_linger,
+      provenance: _,
+    } =>
+      match observed_linger {
+        LingerUnobservedState =>
+          spark_serving_converge_slice_host_line(
+            host: host,
+            endpoint: endpoint,
+            observed_linger: LingerUnobserved,
+            typed_row_count: 0,
+            apply_effect_count: 0,
+            apply_command_count: 0,
+            verdict: "observation-refused: the linger leg produced no readable state",
+          )
+        LingerObservedEnabled => spark_serving_slice_report_for(
+          context: context, host: host, endpoint: endpoint, execute_apply: execute_apply,
+          transport: transport, runtime: rt, store: st, observed_unit: ou, linger_enabled: true,
         )
-      } else {
-        match spark_serving_linger_enabled_from_stdout(stdout: probe.stdout) {
-          Absent =>
-            spark_serving_converge_slice_host_line(
-              host: host,
-              endpoint: endpoint,
-              observed_linger: LingerUnobserved,
-              typed_row_count: 0,
-              apply_effect_count: 0,
-              apply_command_count: 0,
-              verdict: join(["observation-refused stdout=", trim(s: probe.stdout)], ""),
-            )
-          Present { value: linger_enabled } =>
-            match spark_serving_observed_facts_via_locus(context: context, host: host) {
-              SparkServingObservedFactsRefused { cause: why } =>
-                spark_serving_converge_slice_host_line(
-                  host: host,
-                  endpoint: endpoint,
-                  observed_linger: LingerObserved { enabled: linger_enabled },
-                  typed_row_count: 0,
-                  apply_effect_count: 0,
-                  apply_command_count: 0,
-                  verdict: join(["observation-refused ", why as String], ""),
-                )
-              SparkServingObservedFactsReady { runtime: rt, store: st, observed_unit: ou } =>
-            match spark_serving_fleet_converge_plan_artifact(
+        LingerObservedDisabled => spark_serving_slice_report_for(
+          context: context, host: host, endpoint: endpoint, execute_apply: execute_apply,
+          transport: transport, runtime: rt, store: st, observed_unit: ou, linger_enabled: false,
+        )
+      }
+  }
+}
+
+// LINGER IS READ FROM THE TRANSACTION'S CAPTURE, NOT PROBED AGAIN HERE.
+//
+// This body used to open the report with its own loginctl leg and then acquire a transaction that
+// captured ProbeLinger as well: two readings, two instants, and a report whose printed
+// observed_linger could disagree with the linger the projection planned against. Same class as the
+// is_active double read, arriving from the caller's side while the carrier was being built.
+fn spark_serving_slice_report_for(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  endpoint: String,
+  execute_apply: Bool,
+  transport: HostEffectTransport,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  observed_unit: SparkServingObservedUnit,
+  linger_enabled: Bool,
+) -> SparkServingSliceHostReport {
+  match spark_serving_fleet_converge_plan_artifact(
               host: host as NonEmptyStr,
               prior_generation: 0,
               observed_timers: [],
@@ -617,10 +625,6 @@ fn spark_serving_converge_slice_wet_host_report(
                 }
             }
             }
-        }
-      }
-  }
-}
 
 func spark_serving_converge_slice_wet() -> ProcessExit
   uses net: Network

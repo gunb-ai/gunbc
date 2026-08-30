@@ -523,11 +523,26 @@ fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountOb
 // below DERIVES the observation from the readback rather than accepting it. The disagreeing state
 // now has no constructor, which is why the coverage join can read readback.host and be reading the
 // only host there is.
+// PROVENANCE SURVIVES THE PROJECTION, OR THE CARRIER BOUGHT NOTHING.
+//
+// A transaction that pins one host, one attempt and one locus during acquisition, and then hands
+// back a value that has forgotten all three, has moved the problem rather than solved it: two
+// observations of one host from two attempts are again indistinguishable downstream, and "which
+// credential path produced this" is again unanswerable from the value. So the derived observation
+// carries the identity of the transaction it came from, and consumers that join facts across
+// attempts can be caught doing it.
+type SparkServingObservationProvenance sole_constructor {
+  host: HostIdentity
+  attempt: NonEmptyStr
+  locus: NonEmptyStr
+}
+
 type SparkServingHostObservation sole_constructor {
   readback: SparkServingReadback
   observation: SparkServingObservation
   account: SparkManagedAccountObservation
   projection: SparkServingObservedMemberProjection
+  provenance: SparkServingObservationProvenance
 }
 
 // P0-C3: THE PLANNING PROJECTION IS CARRIED BY THE OBSERVATION THAT PRODUCED IT.
@@ -573,6 +588,7 @@ fn spark_serving_host_observation(
   store: ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
+  provenance: SparkServingObservationProvenance,
 ) -> SparkServingHostObservation {
   SparkServingHostObservation {
     readback: readback,
@@ -585,6 +601,17 @@ fn spark_serving_host_observation(
       observed_unit: observed_unit,
       linger: linger,
     ),
+    provenance: provenance,
+  }
+}
+
+fn spark_serving_transaction_provenance(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingObservationProvenance {
+  SparkServingObservationProvenance {
+    host: txn.host,
+    attempt: txn.attempt,
+    locus: txn.locus,
   }
 }
 
@@ -698,8 +725,7 @@ fn spark_serving_acquire_observation_transaction(
   attempt: NonEmptyStr,
 ) -> SparkServingTransactionAdmission {
   let manifest = spark_serving_captured_leg(
-    context: context, host: host, leg: ProbeModelManifest,
-    argv: spark_serving_model_manifest_probe_argv(),
+    context: context, host: host, leg: ProbeModelManifest, manifest_body: "",
   )
   spark_serving_observation_transaction_of(
     host: host,
@@ -707,47 +733,88 @@ fn spark_serving_acquire_observation_transaction(
     locus: fleet_locus_label(context: context) as NonEmptyStr,
     captures: concat(
       [
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeLoadState, argv: spark_serving_load_state_probe_words()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeIsActive, argv: spark_serving_active_probe_words()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeVersion, argv: spark_serving_version_probe_words),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeTags, argv: spark_serving_tags_probe_words),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeNvidiaDriver, argv: spark_serving_nvidia_driver_probe_words),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeReceipt, argv: spark_serving_runtime_materialization_receipt_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeActiveEnter, argv: spark_serving_active_enter_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeDefaultTargetEnter, argv: spark_serving_default_target_enter_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeUptime, argv: spark_serving_uptime_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeGrants, argv: spark_serving_grant_probe_words),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbePasswd, argv: spark_serving_account_probe_words()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeAuthorizedKeys, argv: spark_serving_authorized_keys_probe_words()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeLinger, argv: spark_serving_linger_probe_words()),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeLoadState, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeIsActive, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeVersion, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeTags, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeNvidiaDriver, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeReceipt, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeActiveEnter, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeDefaultTargetEnter, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeUptime, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeGrants, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbePasswd, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeAuthorizedKeys, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeLinger, manifest_body: ""),
         manifest,
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeModelBlobsListing, argv: spark_serving_model_blobs_listing_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeModelManifestDigest, argv: spark_serving_model_manifest_digest_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeUserUnitRead, argv: spark_serving_user_unit_read_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeUserUnitIsEnabled, argv: spark_serving_user_unit_is_enabled_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeRoot, argv: spark_serving_runtime_root_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeExecutable, argv: spark_serving_runtime_executable_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeExecutableBit, argv: spark_serving_runtime_executable_bit_probe_argv()),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeRootListing, argv: spark_serving_runtime_root_listing_argv()),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeModelBlobsListing, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeModelManifestDigest, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeUserUnitRead, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeUserUnitIsEnabled, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeRoot, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeExecutable, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeExecutableBit, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeRootListing, manifest_body: ""),
       ],
       [
         spark_serving_captured_leg(
           context: context, host: host, leg: ProbeModelBlobDigests,
-          argv: spark_serving_model_blob_digest_argv(
-            digest_hexes: spark_serving_manifest_required_digests(manifest_body: manifest.result.stdout),
-          ),
+          manifest_body: manifest.result.stdout,
         ),
       ],
     ),
   )
 }
 
+// THE ARGV IS DERIVED FROM THE LEG, NOT SUPPLIED BESIDE IT.
+//
+// While the mint took (leg, argv) as independent arguments, a capture could be MISLABELLED: running
+// the linger argv and filing it under ProbeIsActive produced a perfectly well-formed capture that
+// every downstream reader would trust, and no check anywhere could notice, because the label was the
+// only claim about what ran. One authority maps leg to argv, and the capture mint reads it, so the
+// label and the command are one fact rather than two that happen to agree.
+//
+// The blob-digest leg is the single leg whose argv depends on an earlier capture, so the mapping
+// takes the manifest body it needs. That is a parameter of the ARGV, not a second naming scheme:
+// every other leg ignores it.
+fn spark_serving_leg_argv(leg: SparkServingProbeLeg, manifest_body: String) -> List<String> {
+  match leg {
+    ProbeLoadState => spark_serving_load_state_probe_words()
+    ProbeIsActive => spark_serving_active_probe_words()
+    ProbeVersion => spark_serving_version_probe_words
+    ProbeTags => spark_serving_tags_probe_words
+    ProbeNvidiaDriver => spark_serving_nvidia_driver_probe_words
+    ProbeRuntimeReceipt => spark_serving_runtime_materialization_receipt_probe_argv()
+    ProbeActiveEnter => spark_serving_active_enter_probe_argv()
+    ProbeDefaultTargetEnter => spark_serving_default_target_enter_probe_argv()
+    ProbeUptime => spark_serving_uptime_probe_argv()
+    ProbeGrants => spark_serving_grant_probe_words
+    ProbePasswd => spark_serving_account_probe_words()
+    ProbeAuthorizedKeys => spark_serving_authorized_keys_probe_words()
+    ProbeLinger => spark_serving_linger_probe_words()
+    ProbeModelManifest => spark_serving_model_manifest_probe_argv()
+    ProbeModelBlobsListing => spark_serving_model_blobs_listing_argv()
+    ProbeModelManifestDigest => spark_serving_model_manifest_digest_argv()
+    ProbeModelBlobDigests =>
+      spark_serving_model_blob_digest_argv(
+        digest_hexes: spark_serving_manifest_required_digests(manifest_body: manifest_body),
+      )
+    ProbeUserUnitRead => spark_serving_user_unit_read_argv()
+    ProbeUserUnitIsEnabled => spark_serving_user_unit_is_enabled_argv()
+    ProbeRuntimeRoot => spark_serving_runtime_root_probe_argv()
+    ProbeRuntimeExecutable => spark_serving_runtime_executable_probe_argv()
+    ProbeRuntimeExecutableBit => spark_serving_runtime_executable_bit_probe_argv()
+    ProbeRuntimeRootListing => spark_serving_runtime_root_listing_argv()
+  }
+}
+
 fn spark_serving_captured_leg(
   context: FleetSshExecutionContext,
   host: HostIdentity,
   leg: SparkServingProbeLeg,
-  argv: List<String>,
+  manifest_body: String,
 ) -> SparkServingProbeLegCapture {
+  let argv = spark_serving_leg_argv(leg: leg, manifest_body: manifest_body)
   spark_serving_probe_leg_capture_of(
     leg: leg,
     argv: argv,
@@ -817,14 +884,21 @@ fn spark_serving_observe_host_via_locus(
 // The converge slice called the runtime, store and unit observers as three separate expressions, so
 // planning a host opened three independent sets of SSH legs whose only relationship was the shared
 // `host` argument -- and the unit observer among them re-ran is_active a fourth time. This is the
-// one entry point for that trio: one transaction, three pure reads, and the refusal arm cannot be
-// mistaken for three empty observations.
+// one entry point for that trio: one transaction, four pure reads, and the refusal arm cannot be
+// mistaken for empty observations.
+//
+// LINGER TRAVELS WITH THEM FOR THE SAME REASON. The slice ran its own loginctl leg through
+// spark_serving_probe_linger and then acquired a transaction that captured ProbeLinger as well, so
+// linger was read twice per host from two instants -- the same class as the is_active double read,
+// reintroduced from the caller's side while the carrier was being built. One capture, one reader.
 type SparkServingObservedFacts
   = SparkServingObservedFactsRefused { cause: NonEmptyStr }
   | SparkServingObservedFactsReady {
       runtime: RuntimeMaterializationObservation
       store: ModelStoreObservation
       observed_unit: SparkServingObservedUnit
+      linger: SparkServingObservedLingerState
+      provenance: SparkServingObservationProvenance
     }
 
 fn spark_serving_observed_facts_via_locus(
@@ -843,6 +917,10 @@ fn spark_serving_observed_facts_via_locus(
         runtime: spark_serving_runtime_materialization_from_transaction(txn: txn),
         store: spark_serving_model_store_from_transaction(txn: txn),
         observed_unit: spark_serving_user_unit_from_transaction(txn: txn),
+        linger: spark_serving_observed_linger_from_probe(
+          result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
+        ),
+        provenance: spark_serving_transaction_provenance(txn: txn),
       }
   }
 }
@@ -876,6 +954,11 @@ fn spark_serving_host_observation_from_refused_transaction(
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
+    provenance: SparkServingObservationProvenance {
+      host: host,
+      attempt: spark_serving_observe_attempt_identity(),
+      locus: "unreached: the transaction was refused before any leg was captured" as NonEmptyStr,
+    },
   )
 }
 
@@ -906,6 +989,7 @@ fn spark_serving_host_observation_from_transaction(
     linger: spark_serving_observed_linger_from_probe(
       result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
     ),
+    provenance: spark_serving_transaction_provenance(txn: txn),
   )
 }
 
