@@ -22,13 +22,13 @@ import extdeps.dotenv { dotenv_footprint }
 
 // THE JOIN OF THIS REPOSITORY'S WORKSPACE FOOTPRINTS. Replaced gunbc.gitignore_model +
 // gunbc.gitignore_authority (one nullary variant per path, patterns restated in a central
-// emit match — the shape that let seven dead allowlist rows emit for weeks, because no
-// producer owned them). Here every entry is either an extdeps product's own declaration —
-// onboarding a tool includes declaring what files it introduces, what they mean, and why
-// they are untracked — with repo-chosen LOCATIONS passed as parameters (policy stays a
-// workflow fact, §3), or a repo tool's declaration carrying its owner module by name.
-// The .gitignore byte projection is derived in gunbc.gitignore_emit; the generated-artifact
-// rows are a separate arm derived from gunbc.generated_artifact commit policy.
+// emit match — the shape that let seven dead allowlist rows emit for weeks, since no producer
+// owned them). Every entry is either an extdeps product's own declaration — onboarding a tool
+// includes declaring what files it introduces, what they mean, and why they are untracked —
+// with repo-chosen LOCATIONS passed as parameters (policy stays a workflow fact, §3), or a repo
+// tool's declaration carrying its owner module by name. The .gitignore byte projection is
+// derived in gunbc.gitignore_emit; the generated-artifact rows are a separate arm derived from
+// gunbc.generated_artifact commit policy.
 
 fn own_tool_footprints() -> List<WorkspaceFootprint> {
   [

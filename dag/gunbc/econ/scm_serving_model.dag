@@ -21,7 +21,14 @@ import std.measure {
 import std.nat { Nat, nat_max, nat_min }
 import std.types { Bool, List, NonEmptyStr, list_length }
 
-data scm_serving_model_note: String = "How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly number. Four axes, each derived from the profile and each priced by its own cited vendor row (extdeps.pricing.object_storage): CAPACITY held (stored bytes after dedup, times a billing month), NETWORK moved (egress bytes -- clones and fetches leaving the network), OPERATIONS counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes. Storing a second compute model here would be the dual representation DESIGN section 3 forbids."
+// How to compute an SCM's serving bill from workload primitives instead of guessing at a monthly
+// number. Four axes, each derived from the profile and each priced by its own cited vendor row
+// (extdeps.pricing.object_storage): CAPACITY held (stored bytes after dedup, times a billing
+// month), NETWORK moved (egress bytes -- clones and fetches leaving the network), OPERATIONS
+// counted (object reads and writes, the axis most models forget entirely), and COMPUTE, which is
+// deliberately NOT modeled here because it already has carriers: gunbc.econ.knowable_wedge prices
+// CI minutes against cited runner rows and gunbc.econ.free_tier_serving prices self-managed boxes.
+// Storing a second compute model here would be the dual representation DESIGN section 3 forbids.
 
 // The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability.
 type ScmWorkloadProfile {
@@ -101,7 +108,11 @@ fn assumed_basis(assumption: ByteBasisAssumption) -> ByteBasis? {
   }
 }
 
-data basis_reconciliation_note: String = "A cited row that DOES state its byte basis (Google's replication row states GiB) outranks the caller's assumption: if they disagree the derivation refuses with BasisContradictsCitedRow rather than silently preferring either. A row whose basis is ByteBasisUnstated -- every storage row in the catalogue today -- accepts the declared assumption, because that is exactly the knowable-wedge shape: proceed on a declared assumption, refuse on an absent one."
+// A cited row that DOES state its byte basis (Google's replication row states GiB) outranks the
+// caller's assumption: if they disagree the derivation refuses with BasisContradictsCitedRow rather
+// than silently preferring either. A row whose basis is ByteBasisUnstated -- every storage row in
+// the catalogue today -- accepts the declared assumption, because that is exactly the
+// knowable-wedge shape: proceed on a declared assumption, refuse on an absent one.
 
 fn basis_compatible_with_row(row_basis: ByteBasis, assumed: ByteBasis) -> Bool {
   match row_basis {
@@ -223,9 +234,22 @@ fn cited_egress_basis(row: ObjectStorageEgressRow) -> ByteBasis {
   }
 }
 
-data egress_dominance_note: String = "The reason this model separates network from capacity rather than quoting one blended number: for an SCM they diverge by more than an order of magnitude. A git host's read traffic is clones and fetches -- bytes LEAVING the network -- so egress scales with developer activity while stored bytes scale only with distinct content, and content-addressed dedup deliberately flattens the second. On a metered-egress vendor the network term therefore dominates the bill; on a zero-egress vendor it vanishes and capacity dominates. The witness sizes both against the SAME profile, so the spread is a derived fact rather than a claim."
+// The reason this model separates network from capacity rather than quoting one blended number: for
+// an SCM they diverge by more than an order of magnitude. A git host's read traffic is clones and
+// fetches -- bytes LEAVING the network -- so egress scales with developer activity while stored
+// bytes scale only with distinct content, and content-addressed dedup deliberately flattens the
+// second. On a metered-egress vendor the network term therefore dominates the bill; on a
+// zero-egress vendor it vanishes and capacity dominates. The witness sizes both against the SAME
+// profile, so the spread is a derived fact rather than a claim.
 
-data progressive_tier_note: String = "Flat-rate multiplication is correct only below the first tier boundary, and an SCM crosses those boundaries exactly when it starts to matter: at a million users on this profile the workload holds 100 TB and moves 500 TB a month, which is past AWS's 50 TB storage step and past all three of its egress steps. Vendor tiers are PROGRESSIVE (each rate applies only to the slice inside its own band, like tax brackets), so pricing the whole volume at the top band's rate under-states the bill and pricing it at the first band's rate over-states it. This fold applies each band to its own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the workload's actual volume."
+// Flat-rate multiplication is correct only below the first tier boundary, and an SCM crosses those
+// boundaries exactly when it starts to matter: at a million users on this profile the workload
+// holds 100 TB and moves 500 TB a month, which is past AWS's 50 TB storage step and past all three
+// of its egress steps. Vendor tiers are PROGRESSIVE (each rate applies only to the slice inside its
+// own band, like tax brackets), so pricing the whole volume at the top band's rate under-states the
+// bill and pricing it at the first band's rate over-states it. This fold applies each band to its
+// own slice; a ladder is a list of rows ascending by lower bound, and the last band runs to the
+// workload's actual volume.
 
 // Nat subtraction below zero is not representable, and a tier slice legitimately goes negative when the workload never reaches that band -- so the clamp is explicit rather than an if-branch returning a bare literal (which types as Int and would fork the carrier).
 fn saturating_sub(a: Nat, b: Nat) -> Nat {
@@ -296,7 +320,10 @@ fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
   if acc.ok && (list_length(items: acc.tiers) > 0) { Present { value: acc.tiers } } else { none }
 }
 
-data request_pricing_note: String = "Two vendors here state that requests are not billed at all (Wasabi: 'No fees for egress or API requests'; Storj: 'No API fees'). That is a DIFFERENT fact from a zero rate and from an unknown rate, so it gets its own arm -- a model that encoded it as rate zero could not tell 'the vendor says free' apart from 'nobody filled this in yet'."
+// Two vendors here state that requests are not billed at all (Wasabi: 'No fees for egress or API
+// requests'; Storj: 'No API fees'). That is a DIFFERENT fact from a zero rate and from an unknown
+// rate, so it gets its own arm -- a model that encoded it as rate zero could not tell 'the vendor
+// says free' apart from 'nobody filled this in yet'.
 
 type RequestPricing
   = RequestsBilled { read_row: ObjectStorageRequestRow, write_row: ObjectStorageRequestRow }
@@ -391,7 +418,15 @@ fn quote_total_micros(result: ProviderMonthlyQuoteResult) -> Nat? {
   }
 }
 
-data agentic_request_amplification_note: String = "The read/write counts in a human-authored profile are the wrong order of magnitude for agent-driven development, and the axis they load is the one that looks negligible at human rates: operations. A human developer reads a few hundred objects a month; an agent working continuously reads thousands an HOUR, and it writes far more often because it commits intermediate states a human would never bother to save. Multiply that by the node grain a .dag-native SCM actually wants -- where a read is a NODE, not a file -- and the object count amplifies again. Operations are ~0.4 percent of a request-metered bill at human rates and can exceed 99 percent at agent rates, which means the vendor ranking computed on a human profile does not survive contact with the workload this SCM is being built for."
+// The read/write counts in a human-authored profile are the wrong order of magnitude for
+// agent-driven development, and the axis they load is the one that looks negligible at human rates:
+// operations. A human developer reads a few hundred objects a month; an agent working continuously
+// reads thousands an HOUR, and it writes far more often because it commits intermediate states a
+// human would never bother to save. Multiply that by the node grain a .dag-native SCM actually
+// wants -- where a read is a NODE, not a file -- and the object count amplifies again. Operations
+// are ~0.4 percent of a request-metered bill at human rates and can exceed 99 percent at agent
+// rates, which means the vendor ranking computed on a human profile does not survive contact with
+// the workload this SCM is being built for.
 
 // The mitigation, and the load-bearing design decision it exposes: per-request billing punishes fine granularity, so a node-grain store that maps one node to one object pays a request fee per node. Packing many nodes into one stored object (git's own packfile move, and the reason git does not store one file per blob on the wire) divides the operation count by the packing factor while leaving the byte count alone. The policy is modeled rather than assumed because it is a real architectural choice with a real cost consequence, and because UnpackedNodeGrain is the shape a naive content-addressed store falls into by default -- the expensive default is exactly the one worth making visible.
 type PackingPolicy

@@ -33,7 +33,10 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-data marker_strip_note: String = "Discriminating witness (operator ruling msg_0f14dee1): stripping ^dag_surface_module provenance shell must not change symbol_index fill semantics — position/extent/QN live only on the Named containment spine. Resolve comparison lands after resolve dissolve (commits 4-5); this witness pins fill/census path first."
+// Discriminating witness (operator ruling msg_0f14dee1): stripping ^dag_surface_module provenance
+// shell must not change symbol_index fill semantics — position/extent/QN live only on the Named
+// containment spine. Resolve comparison lands after resolve dissolve (commits 4-5); this witness
+// pins fill/census path first.
 
 fn ms_sym_node(sym: Symbol) -> Node {
   Node {

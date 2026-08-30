@@ -6,6 +6,9 @@ import v2.workflow.floor_changed_witness {
   RoutedWithCandidateExactReceipt, Declined, MissingDisposition,
   ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
   ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
+  ChangedWitnessCostObservation, changed_witness_gated_clock_measurement,
+  ChangedWitnessCostReading, CostObserved, CostUnobserved,
+  PlannedAndPassedWithCostDebtObserved, CostObservationMissingUnderVerdictOnly,
   ChangedWitnessRow,
   changed_witness_execution_standing,
   changed_witness_standing_blocks,
@@ -17,17 +20,31 @@ import v2.workflow.required_floor {
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   DeclinedCostDebt, DeclinedRoutedToWetLane,
   required_floor_disposition_with_changed_selection,
+  ChangedWitnessCostPolicy, OrdinaryChangedWitnessCostPolicy, ChangedCostDebtVerdictOnly,
+  changed_witness_cost_policy,
+  ClaimCpuDeadline, CpuDeadlineArmed, CpuDeadlineObservedOnly,
+  changed_witness_cpu_deadline,
+  required_floor_claim_cpu_safety_limit_ms,
+  CostDebtRosterStanding,
+  CostDebtWithheld, CostDebtWithholdOverriddenForChangedVerdict,
+  CostDebtOutsideThisRunsUniverse, CostDebtUndeclared, CostDebtDeclaredButNotWithheld,
+  CostDebtDispositionReading, CostDebtDispositionRow, CostDebtNoDispositionRow,
+  cost_debt_roster_standing, cost_debt_roster_standing_refuses,
 }
 import v2.workflow.floor_wet_route {
   WetLaneReceiptStanding, ReceiptFreshExactSubject, ReceiptMissing, ReceiptSubjectMismatch,
 }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition, Passed, Failed, KnownRedHeld, RouteGapBeforeVerdict,
+  PassedOverBudget, BudgetRefusedBeforeVerdict,
 }
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import std.nat { Nat }
+import std.measure { CpuClock, WallClock, millisecond, millisecond_count, nanosecond, nanosecond_count }
+import std.observation { MeasuredValue, MeasuredUnavailable, TimedMeasurement, observation_durations_cpu_and_wall, observation_duration_of }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 // Every fixture below is authored in this source; the module reaches nothing outside the
@@ -49,12 +66,64 @@ fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitn
   changed_witness_execution_standing(reading: reading, wet_standing: ReceiptMissing {})
 }
 
+// EVERY READING IN THIS MODULE IS BUILT THROUGH ONE OF THE TWO CONSTRUCTORS BELOW, so a new
+// field on `ChangedWitnessDispositionReading` cannot be defaulted differently by fifteen call
+// sites. `ordinary_changed_reading` is the pre-FLOOR-CHANGED-COST-0 shape: the ordinary cost
+// policy with nothing published, which is what every changed witness outside the cost-debt
+// roster reads as.
+fn ordinary_changed_reading(
+  disposition: RequiredFloorDisposition,
+  terminal: ChangedWitnessTerminalReading,
+) -> ChangedWitnessDispositionReading {
+  DispositionRow {
+    disposition: disposition,
+    terminal: terminal,
+    cost_policy: OrdinaryChangedWitnessCostPolicy {},
+    cost: CostUnobserved {}
+  }
+}
+
+fn verdict_only_changed_reading(
+  terminal: ChangedWitnessTerminalReading,
+  cost: ChangedWitnessCostReading,
+) -> ChangedWitnessDispositionReading {
+  DispositionRow {
+    disposition: PlannedAsChangedWitness {},
+    terminal: terminal,
+    cost_policy: ChangedCostDebtVerdictOnly {},
+    cost: cost
+  }
+}
+
+// The measured shape of the specimen the ruling names: a semantic pass whose marginal CPU landed
+// ABOVE the ordinary 500ms line, which is the state the four `bootstrap_footprint_anchor` rows
+// oscillate through run to run.
+fn cost_observation(cpu_ms: Nat, wall_ms: Nat) -> ChangedWitnessCostReading {
+  CostObserved {
+    observation: ChangedWitnessCostObservation {
+      measured: observation_durations_cpu_and_wall(
+        cpu: nanosecond(count: cpu_ms * 1000000),
+        wall: nanosecond(count: wall_ms * 1000000)
+      ),
+      observed_against_basis: CpuClock {},
+      observed_against: millisecond(count: 500)
+    }
+  }
+}
+
+fn over_line_observation() -> ChangedWitnessCostReading {
+  cost_observation(cpu_ms: 505, wall_ms: 520)
+}
+
 // One exhaustive observation surface for the standing shape. Tests compare its answer instead
 // of each growing a Boolean predicate that recursively restates the coproduct.
 fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
   match s {
     PlannedAndPassed => "planned-and-passed"
     PlannedAndKnownRedHeld => "planned-and-known-red-held"
+    PlannedAndPassedWithCostDebtObserved { observation: _ } =>
+      "planned-and-passed-with-cost-debt-observed"
+    CostObservationMissingUnderVerdictOnly => "cost-observation-missing-under-verdict-only"
     PlannedWithoutTerminalVerdict => "planned-without-terminal-verdict"
     RoutedWithCandidateExactReceipt => "routed-with-candidate-exact-receipt"
     Declined { disposition: _ } => "declined"
@@ -66,10 +135,10 @@ fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
 test fn planned_with_passed_verdict_stands_green() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: Passed {} }
-      }
+      )
     )
   ) == "planned-and-passed"
 }
@@ -79,10 +148,10 @@ test fn planned_with_passed_verdict_stands_green() -> Bool {
 test fn changed_sublane_with_passed_verdict_stands_green() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: PlannedAsChangedWitness {},
         terminal: TerminalOutcome { outcome: Passed {} }
-      }
+      )
     )
   ) == "planned-and-passed"
 }
@@ -145,10 +214,10 @@ test fn changed_selection_preserves_the_wet_route_decline() -> Bool {
 test fn planned_but_not_executed_is_nonterminal() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: Planned {},
         terminal: NotExecuted {}
-      }
+      )
     )
   ) == "planned-without-terminal-verdict"
 }
@@ -158,10 +227,10 @@ test fn planned_but_not_executed_is_nonterminal() -> Bool {
 test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: KnownRedHeld {} }
-      }
+      )
     )
   ) == "planned-and-known-red-held"
 }
@@ -171,10 +240,10 @@ test fn planned_with_known_red_held_verdict_stands_green() -> Bool {
 test fn planned_with_failed_verdict_is_nonterminal() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: Failed {} }
-      }
+      )
     )
   ) == "planned-without-terminal-verdict"
 }
@@ -182,10 +251,10 @@ test fn planned_with_failed_verdict_is_nonterminal() -> Bool {
 test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: Planned {},
         terminal: TerminalOutcome { outcome: RouteGapBeforeVerdict {} }
-      }
+      )
     )
   ) == "planned-without-terminal-verdict"
 }
@@ -195,10 +264,10 @@ test fn planned_with_route_gap_verdict_is_nonterminal() -> Bool {
 test fn declined_outside_gate_closure_is_declined() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: DeclinedOutsideGateClosure {},
         terminal: NotExecuted {}
-      }
+      )
     )
   ) == "declined"
 }
@@ -206,10 +275,10 @@ test fn declined_outside_gate_closure_is_declined() -> Bool {
 test fn declined_long_module_is_declined() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: DeclinedLongModule { matched_prefix: "test.claim.long." },
         terminal: NotExecuted {}
-      }
+      )
     )
   ) == "declined"
 }
@@ -217,10 +286,10 @@ test fn declined_long_module_is_declined() -> Bool {
 test fn declined_cost_debt_is_declined() -> Bool {
   standing_kind(
     s: changed_standing_of(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: DeclinedCostDebt {},
         terminal: NotExecuted {}
-      }
+      )
     )
   ) == "declined"
 }
@@ -230,16 +299,18 @@ test fn declined_cost_debt_is_declined() -> Bool {
 // green — the lane executed exactly this candidate's wet subject.
 test fn routed_with_candidate_exact_receipt_stands_green() -> Bool {
   let s = changed_witness_execution_standing(
-    reading: DispositionRow {
+    reading: ordinary_changed_reading(
       disposition: DeclinedRoutedToWetLane {},
       terminal: NotExecuted {}
-    },
+    ),
     wet_standing: ReceiptFreshExactSubject { age_secs: 1 }
   )
   match s {
     RoutedWithCandidateExactReceipt => !changed_witness_standing_blocks(standing: s)
     PlannedAndPassed => false
     PlannedAndKnownRedHeld => false
+    PlannedAndPassedWithCostDebtObserved { observation: _ } => false
+    CostObservationMissingUnderVerdictOnly => false
     PlannedWithoutTerminalVerdict => false
     Declined { disposition: _ } => false
     MissingDisposition => false
@@ -251,10 +322,10 @@ test fn routed_with_candidate_exact_receipt_stands_green() -> Bool {
 test fn routed_with_ancestor_subject_receipt_is_declined() -> Bool {
   standing_kind(
     s: changed_witness_execution_standing(
-      reading: DispositionRow {
+      reading: ordinary_changed_reading(
         disposition: DeclinedRoutedToWetLane {},
         terminal: NotExecuted {}
-      },
+      ),
       wet_standing: ReceiptSubjectMismatch { axis: "semantic-subject", receipt_digest: "ancestor", computed_digest: "candidate" }
     )
   ) == "declined"
@@ -310,4 +381,278 @@ test fn empty_changed_set_blocks_nothing() -> Bool {
     Empty {} => true
     Cons { head: _, tail: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------------------------
+// FLOOR-CHANGED-COST-0: the typed join of changed selection and cost-debt enrollment.
+//
+// These witnesses are the DETERMINISTIC half of the ruling's acceptance matrix. The real
+// specimen (`v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates`)
+// measures 474-505ms against a 500ms line, so a run of it decides which side of the line it
+// happens to land on and nothing else; a fixture that constructed the `PassedOverBudget`
+// terminal only by running that claim would be green on a lucky slot and silent on the arm it
+// exists to test. The terminal outcome is therefore CONSTRUCTED here.
+
+fn cost_policy_kind(policy: ChangedWitnessCostPolicy) -> String {
+  match policy {
+    OrdinaryChangedWitnessCostPolicy => "ordinary"
+    ChangedCostDebtVerdictOnly => "verdict-only"
+  }
+}
+
+fn cost_debt_standing_kind(standing: CostDebtRosterStanding) -> String {
+  match standing {
+    CostDebtWithheld => "withheld"
+    CostDebtWithholdOverriddenForChangedVerdict => "withhold-overridden-for-changed-verdict"
+    CostDebtOutsideThisRunsUniverse => "outside-this-runs-universe"
+    CostDebtUndeclared => "undeclared"
+    CostDebtDeclaredButNotWithheld => "declared-not-withheld"
+  }
+}
+
+fn cost_debt_standing_of(disposition: RequiredFloorDisposition) -> String {
+  cost_debt_standing_kind(
+    standing: cost_debt_roster_standing(
+      reading: CostDebtDispositionRow { disposition: disposition }
+    )
+  )
+}
+
+// THE INTERSECTION IS BOTH CONDITIONS. A rostered identity that this change did not touch takes
+// the ordinary policy and never reaches the override; it is declined at build by
+// `required_floor_site_disposition` instead.
+test fn unchanged_cost_debt_identity_takes_no_verdict_only_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: false,
+      identity: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
+    )
+  ) == "ordinary"
+}
+
+// A CHANGED identity enrolled in the cost-debt roster takes the override. The identity is read
+// from the roster authority itself, so this witness reds if the specimen leaves the roster
+// through the explicit debt-removal transaction and the join is not re-pointed with it.
+test fn changed_cost_debt_identity_takes_the_verdict_only_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: true,
+      identity: "v2.test.manual.bootstrap_footprint_anchor.bootstrap_footprint_bad_runtime_same_identity_violates",
+    )
+  ) == "verdict-only"
+}
+
+// THE DISCRIMINATING CONTROL FOR "not a general widening": a changed identity that is NOT
+// enrolled keeps the ordinary policy, so the CPU line still gates it.
+test fn changed_ordinary_identity_keeps_the_ordinary_policy() -> Bool {
+  cost_policy_kind(
+    policy: changed_witness_cost_policy(
+      selected_as_changed_witness: true,
+      identity: "v2.test.floor_changed_witness.changed_ordinary_identity_keeps_the_ordinary_policy",
+    )
+  ) == "ordinary"
+}
+
+// ONE FIGURE, TWO ARMINGS. The override selects which clock is armed and never a different
+// number: the CPU line stays whatever `required_floor_claim_cpu_safety_limit_ms` says, and this
+// witness asserts the ARMING flips while that authority is untouched.
+test fn the_override_disarms_the_line_it_does_not_raise_it() -> Bool {
+  match changed_witness_cpu_deadline(policy: OrdinaryChangedWitnessCostPolicy {}) {
+    CpuDeadlineArmed =>
+      match changed_witness_cpu_deadline(policy: ChangedCostDebtVerdictOnly {}) {
+        CpuDeadlineObservedOnly => required_floor_claim_cpu_safety_limit_ms() == 500
+        CpuDeadlineArmed => false
+      }
+    CpuDeadlineObservedOnly => false
+  }
+}
+
+// ACCEPTANCE ROW: changed cost-debt identity, semantic pass, observed CPU above the line. Green,
+// and the standing CARRIES the observation rather than laundering it into an ordinary pass.
+test fn verdict_only_pass_over_the_line_is_green_with_the_cost_observed() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: PassedOverBudget {} },
+        cost: over_line_observation()
+      )
+    )
+  ) == "planned-and-passed-with-cost-debt-observed"
+}
+
+// The same row's published observation is the measurement, not a re-derivation: the standing
+// hands back the marginal CPU, the wall figure and the line the run compared against.
+test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
+  match changed_standing_of(
+    reading: verdict_only_changed_reading(
+      terminal: TerminalOutcome { outcome: PassedOverBudget {} },
+      cost: over_line_observation()
+    )
+  ) {
+    PlannedAndPassedWithCostDebtObserved { observation: o } =>
+      match changed_witness_gated_clock_measurement(observation: o) {
+        MeasuredValue { value: cpu } =>
+          nanosecond_count(n: cpu) == 505000000
+            && millisecond_count(m: o.observed_against) == 500
+            && match observation_duration_of(durations: o.measured, basis: WallClock {}) {
+              MeasuredValue { value: wall } => nanosecond_count(n: wall) == 520000000
+              MeasuredUnavailable { cause: _ } => false
+            }
+        MeasuredUnavailable { cause: _ } => false
+      }
+    PlannedAndPassed => false
+    PlannedAndKnownRedHeld => false
+    CostObservationMissingUnderVerdictOnly => false
+    PlannedWithoutTerminalVerdict => false
+    RoutedWithCandidateExactReceipt => false
+    Declined { disposition: _ } => false
+    MissingDisposition => false
+  }
+}
+
+// An ordinary pass under the override is green too, and still carries its observation — the
+// specimen lands under the line on roughly half its runs and must not report a different
+// standing for the same policy.
+test fn verdict_only_ordinary_pass_still_publishes_its_cost() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: Passed {} },
+        cost: cost_observation(cpu_ms: 474, wall_ms: 480)
+      )
+    )
+  ) == "planned-and-passed-with-cost-debt-observed"
+}
+
+// THE DISCRIMINATING RED FOR A STOOD-DOWN GATE WITH NOTHING IN ITS PLACE.
+test fn verdict_only_pass_without_a_published_cost_reds() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: Passed {} },
+        cost: CostUnobserved {}
+      )
+    )
+  ) == "cost-observation-missing-under-verdict-only"
+}
+
+// ACCEPTANCE ROW: the override moves the COST arm and nothing else. A semantic failure under the
+// override is red.
+test fn verdict_only_semantic_failure_reds() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: Failed {} },
+        cost: over_line_observation()
+      )
+    )
+  ) == "planned-without-terminal-verdict"
+}
+
+// ACCEPTANCE ROW: no verdict before the still-armed wall safety deadline is red under the
+// override, which is the arm that keeps this from being an escape hatch.
+test fn verdict_only_without_a_verdict_reds() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: BudgetRefusedBeforeVerdict {} },
+        cost: over_line_observation()
+      )
+    )
+  ) == "planned-without-terminal-verdict"
+}
+
+// ACCEPTANCE ROW, AND THE CONTROL THAT KEEPS THE OVERRIDE NARROW: the identical terminal outcome
+// under the ORDINARY policy stays red. One field separates these two witnesses, so a repair that
+// greened `PassedOverBudget` generally would red this one.
+test fn ordinary_changed_witness_over_budget_still_reds() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: ordinary_changed_reading(
+        disposition: PlannedAsChangedWitness {},
+        terminal: TerminalOutcome { outcome: PassedOverBudget {} }
+      )
+    )
+  ) == "planned-without-terminal-verdict"
+}
+
+// The green arm is green in the blocking fold too, and the missing-observation arm blocks.
+test fn cost_debt_observed_arm_is_green_and_missing_observation_blocks() -> Bool {
+  match over_line_observation() {
+    CostObserved { observation: o } =>
+      !changed_witness_standing_blocks(
+        standing: PlannedAndPassedWithCostDebtObserved { observation: o }
+      )
+        && changed_witness_standing_blocks(standing: CostObservationMissingUnderVerdictOnly {})
+    CostUnobserved => false
+  }
+}
+
+// ACCEPTANCE ROW: an unchanged rostered identity is withheld and its standing says so.
+test fn withheld_row_stands_as_debt() -> Bool {
+  cost_debt_standing_of(disposition: DeclinedCostDebt {}) == "withheld"
+}
+
+// ACCEPTANCE ROW: a cost-debt row planned by the changed override is NOT stale. It is still
+// valid debt; changed selection temporarily required its correctness verdict.
+test fn overridden_row_is_not_reported_stale() -> Bool {
+  cost_debt_standing_of(disposition: PlannedAsChangedWitness {})
+    == "withhold-overridden-for-changed-verdict"
+    && !cost_debt_roster_standing_refuses(
+      standing: CostDebtWithholdOverriddenForChangedVerdict {}
+    )
+}
+
+// THE DISCRIMINATING CONTROL BESIDE IT: an ordinary planned row over an enrolled identity is
+// still stale, so the new arm did not silence the whole refusal.
+test fn ordinarily_planned_rostered_row_is_still_stale() -> Bool {
+  cost_debt_standing_of(disposition: Planned {}) == "declared-not-withheld"
+    && cost_debt_roster_standing_refuses(standing: CostDebtDeclaredButNotWithheld {})
+}
+
+// ACCEPTANCE ROW: a deleted or renamed debt identity still refuses, and an identity the gate
+// never offered is still kept as record rather than counted as debt.
+test fn undeclared_refuses_and_outside_the_universe_does_not() -> Bool {
+  cost_debt_standing_kind(
+    standing: cost_debt_roster_standing(reading: CostDebtNoDispositionRow {})
+  ) == "undeclared"
+    && cost_debt_roster_standing_refuses(standing: CostDebtUndeclared {})
+    && cost_debt_standing_of(disposition: DeclinedOutsideGateClosure {})
+      == "outside-this-runs-universe"
+    && !cost_debt_roster_standing_refuses(standing: CostDebtOutsideThisRunsUniverse {})
+}
+
+// A home decline outranks cost debt in `required_floor_site_disposition`, so a rostered identity
+// carrying one never entered the withhold and its roster line is stale.
+test fn home_declined_rostered_row_is_stale() -> Bool {
+  cost_debt_standing_of(
+    disposition: DeclinedLongModule { matched_prefix: "test.claim.long." }
+  ) == "declared-not-withheld"
+    && cost_debt_standing_of(
+      disposition: DeclinedDiscoveryExcluded { matched_substring: "sandbox" }
+    ) == "outside-this-runs-universe"
+}
+
+// THE SAME ABSENCE ONE LEVEL IN: an observation that carries only the clock that was NOT stood
+// down publishes nothing about the line it replaced, so it reds exactly as a missing one does.
+test fn an_observation_missing_its_gated_clock_reds() -> Bool {
+  standing_kind(
+    s: changed_standing_of(
+      reading: verdict_only_changed_reading(
+        terminal: TerminalOutcome { outcome: PassedOverBudget {} },
+        cost: CostObserved {
+          observation: ChangedWitnessCostObservation {
+            measured: [
+              TimedMeasurement {
+                basis: WallClock {},
+                elapsed: MeasuredValue { value: nanosecond(count: 520000000) }
+              }
+            ],
+            observed_against_basis: CpuClock {},
+            observed_against: millisecond(count: 500)
+          }
+        }
+      )
+    )
+  ) == "cost-observation-missing-under-verdict-only"
 }

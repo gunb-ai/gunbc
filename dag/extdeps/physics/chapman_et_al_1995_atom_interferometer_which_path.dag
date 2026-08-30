@@ -29,9 +29,17 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data chapman_et_al_1995_citation_note: String = "Cited upstream: Chapman, M. S., Hammond, T. D., Lenef, A., Schmiedmayer, J. and Pritchard, D. E., 'Photon Scattering from Atoms in an Atom Interferometer: Recoil Patterns', Physical Review Letters volume 75, pages 3783-3787, 1995 (doi 10.1103/PhysRevLett.75.3783). WHAT THIS MODULE OWNS: Chapman et al. 1995 atom-interferometer vocabulary and source-grounded categorical which-path distinguishability observations. Path ontology is underdetermined — no asserted which-path labels."
+// Cited upstream: Chapman, M. S., Hammond, T. D., Lenef, A., Schmiedmayer, J. and Pritchard, D. E.,
+// 'Photon Scattering from Atoms in an Atom Interferometer: Recoil Patterns', Physical Review
+// Letters volume 75, pages 3783-3787, 1995 (doi 10.1103/PhysRevLett.75.3783). WHAT THIS MODULE
+// OWNS: Chapman et al. 1995 atom-interferometer vocabulary and source-grounded categorical
+// which-path distinguishability observations. Path ontology is underdetermined — no asserted
+// which-path labels.
 
-data distinguishable_record_axis_note: String = "Which-path axis is modeled as DistinguishableWhichPathRecordProduced | DistinguishableWhichPathRecordNotProduced — the physical distinguishability record, not an apparatus switch such as photon source on/off. A source on with no distinguishable record does not destroy coherence."
+// Which-path axis is modeled as DistinguishableWhichPathRecordProduced |
+// DistinguishableWhichPathRecordNotProduced — the physical distinguishability record, not an
+// apparatus switch such as photon source on/off. A source on with no distinguishable record does
+// not destroy coherence.
 
 data trial_versus_ensemble_grain_note: String = "Trial grain: one atom detection or one scattering event. Ensemble grain: interference fringe visibility over the accumulated pattern. Visibility observations in this module are ensemble grain only."
 

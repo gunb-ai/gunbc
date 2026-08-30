@@ -115,6 +115,49 @@ data azifa072_drawing: CustomerDrawing = CustomerDrawing {
 
 data azifa072_socket_body_vendor: Vendor<Hardware> = lotes
 
+// A HELD COPY IS A CONVENIENCE BESIDE THE CITATION, NEVER THE CITATION (DESIGN section 3: a
+// position carried beside a symbol is a convenience, not the naming scheme). The authority above
+// is the route to the publisher; these rows record where the operator holds the bytes that route
+// delivered on 2026-08-22, so a later reader can resolve the drawing without repeating the vendor
+// correspondence. They do not change carriage: the content stays uncommitted here for the reason
+// azifa072_drawing_carriage and the README state, and the copies are governed by the operator's
+// own sharing setting rather than by this repository.
+type HeldDocumentCopy {
+  subject: NonEmptyStr
+  file_name: NonEmptyStr
+  received_from: NonEmptyStr
+  received_on: NonEmptyStr
+  locator: ExternalAuthority
+}
+
+data azifa072_drawing_held_copy: HeldDocumentCopy = HeldDocumentCopy {
+  subject: "GAP-AZIFA072 revision 2 customer drawing, 5 sheets, PDF",
+  file_name: "GAP-AZIFA072",
+  received_from: "Lotes Guangzhou Co., Ltd., by email in reply to the AZIF0222 inquiry",
+  received_on: "2026-08-22",
+  locator: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "drive.google.com/file/d/1mkd55fl4SB59QAmuxMjwVgPUSws3jQ_F/view"
+    }
+  },
+}
+
+data azifa072_step_held_copy: HeldDocumentCopy = HeldDocumentCopy {
+  subject: "AZIFA072_B_20220208 (LGA4926 Socket) STEP AP214 solid, socket body plus protective cap",
+  file_name: "AZIFA072_B_20220208 (LGA4926 Socket).STEP",
+  received_from: "Lotes Guangzhou Co., Ltd., by email in reply to the AZIF0222 inquiry",
+  received_on: "2026-08-22",
+  locator: ExternalAuthority {
+    uri: Uri {
+      scheme: Https
+      locator: "drive.google.com/file/d/1OPe-EweEN6tPA-DQDcmCZGTDCPvn4akG/view"
+    }
+  },
+}
+
+data azifa072_held_copies: List<HeldDocumentCopy> = [azifa072_drawing_held_copy, azifa072_step_held_copy]
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {

@@ -28,7 +28,25 @@ import extdeps.languages.json.parse {
   JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
 }
 
-data launch_admission_note: String = "RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): THE ONE ANSWER to `may THIS cause start THIS node NOW?`. Before this module the daily-workspace action derivation, POST /dispatch/<node_id> and the periodic belt tick each derived launch eligibility on their own -- the page and the belt read the Ready frontier, the manual route ignored dependencies entirely (the AvailableAsOverride path) and checked capacity never, and an ExecutionContractUnspecified node was Ready to the spawner while gunbc.roadmap_dispatch_environment refused it later (RLM-0 finding). Three authorities, one question (DESIGN 3). Now every surface projects launch_admission: the page renders its availability, the route returns it, the tick folds over it. The decision is PURE over observed facts -- the caller observes the host once (LaunchHostStanding) and the graph once (RoadmapAuthorityProjection) -- so every gate is witnessable with synthetic inputs and the effectful surfaces are thin projections. Gate ORDER is the plan's and is the safety property: instance actuatable, transition clear, desired==deployed, node exists and is not superseded/accepted/review-only, size and contract complete, dependencies closed, no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the arms the actuator, environment and belt already modeled (the labels below are the existing wire words wherever one existed) and adds only what the plan's sketch left implicit: a superseded node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm. `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS an unsized one, so it is one fact (LaunchSizeMissing) with SchedulingUnplanned as its presentation."
+// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): THE ONE ANSWER to `may THIS cause start
+// THIS node NOW?`. Before this module the daily-workspace action derivation, POST
+// /dispatch/<node_id> and the periodic belt tick each derived launch eligibility on their own --
+// the page and the belt read the Ready frontier, the manual route ignored dependencies entirely
+// (the AvailableAsOverride path) and checked capacity never, and an ExecutionContractUnspecified
+// node was Ready to the spawner while gunbc.roadmap_dispatch_environment refused it later (RLM-0
+// finding). Three authorities, one question (DESIGN 3). Now every surface projects
+// launch_admission: the page renders its availability, the route returns it, the tick folds over
+// it. The decision is PURE over observed facts -- the caller observes the host once
+// (LaunchHostStanding) and the graph once (RoadmapAuthorityProjection) -- so every gate is
+// witnessable with synthetic inputs and the effectful surfaces are thin projections. Gate ORDER is
+// the plan's and is the safety property: instance actuatable, transition clear, desired==deployed,
+// node exists and is not superseded/accepted/review-only, size and contract complete, dependencies
+// closed, no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the
+// arms the actuator, environment and belt already modeled (the labels below are the existing wire
+// words wherever one existed) and adds only what the plan's sketch left implicit: a superseded
+// node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm.
+// `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS an unsized one, so it is
+// one fact (LaunchSizeMissing) with SchedulingUnplanned as its presentation.
 
 type LaunchCause
   = Operator
@@ -49,7 +67,13 @@ fn launch_cause_of_label(label: String) -> LaunchCause? {
   }
 }
 
-data launch_identity_note: String = "THE ADMITTED DECISION, carried whole. Every surface that acts on LaunchAdmitted binds this exact record to what it does next -- the page's decided action, the route's response, the timer's spawn attempt and the durable tick receipt -- so a successor gate (RLM-4) joins an attempt to the admission that decided it by these five facts and nothing else. The identity is EVIDENCE, never AUTHORIZATION: a client that renders one must not present it to the route as permission; the route re-observes the host and re-admits, and the only thing the two identities may be compared for is parity (same node, mode, instance, revision; the cause differs by construction)."
+// THE ADMITTED DECISION, carried whole. Every surface that acts on LaunchAdmitted binds this exact
+// record to what it does next -- the page's decided action, the route's response, the timer's spawn
+// attempt and the durable tick receipt -- so a successor gate (RLM-4) joins an attempt to the
+// admission that decided it by these five facts and nothing else. The identity is EVIDENCE, never
+// AUTHORIZATION: a client that renders one must not present it to the route as permission; the
+// route re-observes the host and re-admits, and the only thing the two identities may be compared
+// for is parity (same node, mode, instance, revision; the cause differs by construction).
 
 type LaunchIdentity {
   node_id: RoadmapNodeId
@@ -59,7 +83,12 @@ type LaunchIdentity {
   revision: GitObjectId
 }
 
-data launch_identity_grain_note: String = "The five facts keep the types their authorities gave them (DESIGN 2: consume, never unwind at a boundary): node_id is the RoadmapNodeId of the node the node gate FOUND in the projected authority, never the request's spelling; instance_id is the dashboard instance's NonEmptyStr; revision is the GitObjectId the revision gate observed converged. The three text projections below are the ONLY place an identity becomes a string, so the wire, the page attributes and the reason line spell each fact one way."
+// The five facts keep the types their authorities gave them (DESIGN 2: consume, never unwind at a
+// boundary): node_id is the RoadmapNodeId of the node the node gate FOUND in the projected
+// authority, never the request's spelling; instance_id is the dashboard instance's NonEmptyStr;
+// revision is the GitObjectId the revision gate observed converged. The three text projections
+// below are the ONLY place an identity becomes a string, so the wire, the page attributes and the
+// reason line spell each fact one way.
 
 fn launch_identity_node_id_text(id: LaunchIdentity) -> String { id.node_id as String }
 fn launch_identity_instance_text(id: LaunchIdentity) -> String { id.instance_id as String }
@@ -83,7 +112,10 @@ type LaunchIdentityMemberRead
   = LaunchIdentityMemberString { value: String }
   | LaunchIdentityMemberRefused { reason: String }
 
-data launch_identity_member_note: String = "Each way a member can fail to be a string is its own located reason (DESIGN 5: a failure arm refuses, never widens): absent, duplicated N times, not a string, or the document not an object at all. Collapsing them to one Absent re-reported a duplicated member as a missing one (review 57561 on #9696)."
+// Each way a member can fail to be a string is its own located reason (DESIGN 5: a failure arm
+// refuses, never widens): absent, duplicated N times, not a string, or the document not an object
+// at all. Collapsing them to one Absent re-reported a duplicated member as a missing one (review
+// 57561 on #9696).
 
 fn launch_identity_member_string(doc: JsonValue, key: String) -> LaunchIdentityMemberRead {
   match json_object_unique_member(v: doc, key: key) {
@@ -153,7 +185,9 @@ fn launch_identity_of_json(doc: JsonValue) -> LaunchIdentityDecode {
   }
 }
 
-data launch_identity_null_revision_note: String = "git's null object id (every octet zero) is the one revision value git itself defines as naming no object; it is the exemplar's and the UI fixtures' revision so a synthetic identity can never collide with an observed one."
+// git's null object id (every octet zero) is the one revision value git itself defines as naming no
+// object; it is the exemplar's and the UI fixtures' revision so a synthetic identity can never
+// collide with an observed one.
 
 fn launch_identity_null_revision() -> GitObjectId {
   GitSha1ObjectId { digest: Sha1Digest { hex: "0000000000000000000000000000000000000000" as Sha1DigestHex } }
@@ -196,7 +230,10 @@ type LaunchAdmission
   = LaunchAdmitted { identity: LaunchIdentity }
   | LaunchRefused { refusal: LaunchRefusal }
 
-data launch_refusal_label_note: String = "The ONE wire vocabulary for a launch refusal. Where a BeltDispatchResult arm carried the same fact before this module, its wire word is kept verbatim so the client ok-set, the served JSON and the operator's reading do not change under the migration; the arms the plan added carry new words in the same shape."
+// The ONE wire vocabulary for a launch refusal. Where a BeltDispatchResult arm carried the same
+// fact before this module, its wire word is kept verbatim so the client ok-set, the served JSON and
+// the operator's reading do not change under the migration; the arms the plan added carry new words
+// in the same shape.
 
 fn launch_refusal_label(r: LaunchRefusal) -> String {
   match r {
@@ -276,16 +313,32 @@ fn launch_refusal_exemplars() -> List<LaunchRefusal> {
   ]
 }
 
-data launch_sessions_standing_note: String = "The observed live-session set, or the located reason it could not be observed. Unobservable is a REFUSAL at the no-live-attempt gate, never an empty set: an empty set would license a second attempt beside one the observer could not see."
+// The observed live-session set, or the located reason it could not be observed. Unobservable is a
+// REFUSAL at the no-live-attempt gate, never an empty set: an empty set would license a second
+// attempt beside one the observer could not see.
 
 type LaunchSessionsStanding
   = LaunchSessionsPending
   | LaunchSessionsObserved { live: List<DispatchLiveSession> }
   | LaunchSessionsUnobserved { reason: String }
 
-data launch_sessions_pending_note: String = "SESSION OBSERVATION IS THE LAST OBSERVATION, and it is lazy behind every model-only gate (review 5059681676 finding 2). The staged observer produces a standing whose sessions are PENDING; the decision is asked in two stages -- launch_admission_staged runs instance..dependencies and answers LaunchStageNeedsSessions only when a node has passed every pre-session gate -- and only then does the driver list tmux once (POST: for that node; page: one shared observation when at least one row reaches the live gate; timer: once, because its reap pass needs the set regardless) and completes the decision with launch_host_with_sessions. A pending standing that reaches the full decision refuses fail-closed at the live gate (GateNotReached -> LaunchGateNotEvaluated live); it is never read as an empty set."
+// SESSION OBSERVATION IS THE LAST OBSERVATION, and it is lazy behind every model-only gate (review
+// 5059681676 finding 2). The staged observer produces a standing whose sessions are PENDING; the
+// decision is asked in two stages -- launch_admission_staged runs instance..dependencies and
+// answers LaunchStageNeedsSessions only when a node has passed every pre-session gate -- and only
+// then does the driver list tmux once (POST: for that node; page: one shared observation when at
+// least one row reaches the live gate; timer: once, because its reap pass needs the set regardless)
+// and completes the decision with launch_host_with_sessions. A pending standing that reaches the
+// full decision refuses fail-closed at the live gate (GateNotReached -> LaunchGateNotEvaluated
+// live); it is never read as an empty set.
 
-data launch_host_standing_note: String = "Everything the decision needs from the HOST, observed once per invocation and node-independent: the instance's actuation posture, the deployment-transition admission, the fleet revision standing, the live session set, the belt capacity and the spawn mode. A surface that has no instance to observe (a static artifact, a page rendered outside the served instance) passes LaunchHostUnobserved, which refuses at the FIRST gate as LaunchInstanceActuationRefused: there is no actuating instance behind that render, so no launch is available from it. Fabricating a permitted standing for such a render is exactly the fail-open the plan forbids."
+// Everything the decision needs from the HOST, observed once per invocation and node-independent:
+// the instance's actuation posture, the deployment-transition admission, the fleet revision
+// standing, the live session set, the belt capacity and the spawn mode. A surface that has no
+// instance to observe (a static artifact, a page rendered outside the served instance) passes
+// LaunchHostUnobserved, which refuses at the FIRST gate as LaunchInstanceActuationRefused: there is
+// no actuating instance behind that render, so no launch is available from it. Fabricating a
+// permitted standing for such a render is exactly the fail-open the plan forbids.
 
 type LaunchHostStanding
   = LaunchHostObserved {
@@ -301,7 +354,18 @@ type LaunchHostStanding
   | LaunchHostHalted { instance_id: String, gate: LaunchHostGate, refusal: LaunchRefusal }
   | LaunchHostUnobserved { reason: String }
 
-data launch_host_halted_note: String = "OBSERVATION IS STAGED IN THE GATE ORDER, and this arm is where it stopped. The observer that builds a standing for a real driver (gunbc.roadmap_belt_actuate belt_launch_host_standing_for_instance -- the ONE observer behind the page, POST /dispatch and the timer) reads the transition file only for an actuating instance, reads the fleet revision only under an admitted transition, and lists tmux only under a converged revision. When an earlier gate refuses, the standing is LaunchHostHalted at that gate and the later host facts are NOT fields of it: there is no constructor for `transition inhibited AND sessions observed`, so the effect order the route promises (`refused before observation`) is structural, not a discipline. The ledger reads a halted standing as: every gate before `gate` passed, `gate` refused with exactly this refusal, every later gate not reached. The producers below are the only spellings; they derive the refusal from the same per-gate functions the ledger runs on a fully observed standing."
+// OBSERVATION IS STAGED IN THE GATE ORDER, and this arm is where it stopped. The observer that
+// builds a standing for a real driver (gunbc.roadmap_belt_actuate
+// belt_launch_host_standing_for_instance -- the ONE observer behind the page, POST /dispatch and
+// the timer) reads the transition file only for an actuating instance, reads the fleet revision
+// only under an admitted transition, and lists tmux only under a converged revision. When an
+// earlier gate refuses, the standing is LaunchHostHalted at that gate and the later host facts are
+// NOT fields of it: there is no constructor for `transition inhibited AND sessions observed`, so
+// the effect order the route promises (`refused before observation`) is structural, not a
+// discipline. The ledger reads a halted standing as: every gate before `gate` passed, `gate`
+// refused with exactly this refusal, every later gate not reached. The producers below are the only
+// spellings; they derive the refusal from the same per-gate functions the ledger runs on a fully
+// observed standing.
 
 type LaunchHostGate
   = HostTransitionGate
@@ -325,7 +389,11 @@ fn launch_host_stage_revision(instance_id: String, revision: FleetRevisionStandi
   }
 }
 
-data launch_host_refusal_note: String = "The node-independent part of the decision: the first HOST gate that refuses (instance, transition, revision, or the session set being unobservable), or none when the host would let a node reach its own gates. The timer's receipt reports it as the tick-level launch refusal; it is derived from the same per-gate functions the ledger runs, so the tick summary and every per-node SpawnNotAdmitted name one refusal, never two spellings."
+// The node-independent part of the decision: the first HOST gate that refuses (instance,
+// transition, revision, or the session set being unobservable), or none when the host would let a
+// node reach its own gates. The timer's receipt reports it as the tick-level launch refusal; it is
+// derived from the same per-gate functions the ledger runs, so the tick summary and every per-node
+// SpawnNotAdmitted name one refusal, never two spellings.
 
 fn launch_host_refusal(standing: LaunchHostStanding) -> LaunchRefusal? {
   match standing {
@@ -356,7 +424,12 @@ fn launch_host_refusal(standing: LaunchHostStanding) -> LaunchRefusal? {
   }
 }
 
-data launch_host_observe_only_note: String = "An observe-only instance refuses BEFORE OBSERVATION (the route's standing promise: `dispatch refused before observation, provider preflight, or worktree creation`). The observer therefore reads the posture first and, for an observe-only instance, produces this arm without touching the transition file, the fleet revision, or tmux -- so the first gate is decided from the instance model alone, and the hermetic preview witness never reaches a filesystem effect. It is not a fabricated permitted standing: it carries exactly the fact the observer established."
+// An observe-only instance refuses BEFORE OBSERVATION (the route's standing promise: `dispatch
+// refused before observation, provider preflight, or worktree creation`). The observer therefore
+// reads the posture first and, for an observe-only instance, produces this arm without touching the
+// transition file, the fleet revision, or tmux -- so the first gate is decided from the instance
+// model alone, and the hermetic preview witness never reaches a filesystem effect. It is not a
+// fabricated permitted standing: it carries exactly the fact the observer established.
 
 data launch_observe_only_reason: String = "dashboard instance is observe-only; launch refused before observation, provider preflight, or worktree creation"
 
@@ -364,13 +437,21 @@ fn launch_host_unobserved_static_render() -> LaunchHostStanding {
   LaunchHostUnobserved { reason: "no dashboard instance is observed behind this render; launch is available only from the served instance" }
 }
 
-data launch_graph_standing_note: String = "The GRAPH the decision reads: the projected roadmap document, or the located reason the authority projection refused. A page that already holds a projected document passes LaunchGraphProjected; the route and the tick derive it from the live projection through launch_graph_of_projection. Unobserved refuses at the node gate (LaunchAuthorityUnobserved), AFTER the host gates, which is the plan's order."
+// The GRAPH the decision reads: the projected roadmap document, or the located reason the authority
+// projection refused. A page that already holds a projected document passes LaunchGraphProjected;
+// the route and the tick derive it from the live projection through launch_graph_of_projection.
+// Unobserved refuses at the node gate (LaunchAuthorityUnobserved), AFTER the host gates, which is
+// the plan's order.
 
 type LaunchGraphStanding
   = LaunchGraphProjected { nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
   | LaunchGraphUnobserved { detail: String }
 
-data launch_graph_resolved_note: String = "The graph is FLATTENED ONCE per standing (launch_graph_of_document), not once per row: a page render asks the decision for every row, and re-walking the document's sections for each would be a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). The per-row node find and the dependency scan over these lists remain linear scans -- the substrate carries no keyed index here yet -- and that residual is named rather than hidden."
+// The graph is FLATTENED ONCE per standing (launch_graph_of_document), not once per row: a page
+// render asks the decision for every row, and re-walking the document's sections for each would be
+// a quadratic re-derivation of one fact (DESIGN 6 bare-minimum cost, review 57491). The per-row
+// node find and the dependency scan over these lists remain linear scans -- the substrate carries
+// no keyed index here yet -- and that residual is named rather than hidden.
 
 fn launch_graph_of_document(doc: RoadmapDocument) -> LaunchGraphStanding {
   LaunchGraphProjected { nodes: doc_all_nodes(doc: doc), edges: doc_all_edges(doc: doc) }
@@ -388,7 +469,15 @@ type LaunchGateVerdict
   | GateRefused { refusal: LaunchRefusal }
   | GateNotReached
 
-data launch_gate_ledger_note: String = "The decision is a LEDGER of per-gate verdicts folded in the plan's order, not one nested conditional, for one reason: the mutation control. The plan's falsifier (c) says `removing the dependency check admits the blocked child`; a nested conditional can only be mutated by editing production, while a ledger can be mutated as DATA -- the witness takes the real ledger, replaces the dependencies verdict with GatePassed, and asserts the fold admits. That proves the dependency gate is the load-bearing one over otherwise-admissible facts, with no production escape hatch. GateNotReached marks a gate that could not be evaluated because an earlier one refused (a later gate reads the node the lookup did not find); the fold refuses fail-closed if it ever meets one with no refusal before it."
+// The decision is a LEDGER of per-gate verdicts folded in the plan's order, not one nested
+// conditional, for one reason: the mutation control. The plan's falsifier (c) says `removing the
+// dependency check admits the blocked child`; a nested conditional can only be mutated by editing
+// production, while a ledger can be mutated as DATA -- the witness takes the real ledger, replaces
+// the dependencies verdict with GatePassed, and asserts the fold admits. That proves the dependency
+// gate is the load-bearing one over otherwise-admissible facts, with no production escape hatch.
+// GateNotReached marks a gate that could not be evaluated because an earlier one refused (a later
+// gate reads the node the lookup did not find); the fold refuses fail-closed if it ever meets one
+// with no refusal before it.
 
 type LaunchGateLedger {
   instance: LaunchGateVerdict
@@ -406,14 +495,25 @@ type LaunchIdentityStanding
   = LaunchIdentityBound { identity: LaunchIdentity }
   | LaunchIdentityWithheld { refusal: LaunchRefusal }
 
-data launch_identity_standing_note: String = "The identity is a CONSEQUENCE of the first four gates, not a tenth gate: it is bound exactly when the host is actuating and transition-clear, the revision observed converged (that GitObjectId) and the node found (that RoadmapNodeId). When it is withheld, the standing carries the refusal of the gate that withheld it -- the same verdict that gate's ledger row holds -- so the admission never manufactures an `identity` gate and no ledger state says `every gate passed and no identity exists` (review 57561 on #9696: the former Optional field's Absent arm under an all-passed ledger had no authorable RED)."
+// The identity is a CONSEQUENCE of the first four gates, not a tenth gate: it is bound exactly when
+// the host is actuating and transition-clear, the revision observed converged (that GitObjectId)
+// and the node found (that RoadmapNodeId). When it is withheld, the standing carries the refusal of
+// the gate that withheld it -- the same verdict that gate's ledger row holds -- so the admission
+// never manufactures an `identity` gate and no ledger state says `every gate passed and no identity
+// exists` (review 57561 on #9696: the former Optional field's Absent arm under an all-passed ledger
+// had no authorable RED).
 
 type LaunchDecisionFacts {
   ledger: LaunchGateLedger
   identity: LaunchIdentityStanding
 }
 
-data launch_gate_template_note: String = "THE CANONICAL ROW ROSTER, read once from the one place rows are authored (launch_ledger_rows) over a ledger in which no gate has been evaluated. Every roster the contract serializes -- the gate order and the session-observation boundary -- is a projection of these rows and their typed LaunchGateRow.stage marks; nothing about the order or the partition is spelled a second time (review 5060354380: an authored `host_stages=` literal beside the typed marks left the frozen digest silent under a reclassification)."
+// THE CANONICAL ROW ROSTER, read once from the one place rows are authored (launch_ledger_rows)
+// over a ledger in which no gate has been evaluated. Every roster the contract serializes -- the
+// gate order and the session-observation boundary -- is a projection of these rows and their typed
+// LaunchGateRow.stage marks; nothing about the order or the partition is spelled a second time
+// (review 5060354380: an authored `host_stages=` literal beside the typed marks left the frozen
+// digest silent under a reclassification).
 
 fn launch_gate_template() -> List<LaunchGateRow> {
   launch_ledger_rows(l: LaunchGateLedger {
@@ -458,7 +558,11 @@ type LaunchGateStage
   = PreSessionGate
   | SessionGate
 
-data launch_gate_stage_note: String = "Each ledger row declares its STAGE beside its verdict, at the one place the rows are authored (launch_ledger_rows): the pre-session gates are decidable from the model and the host's earlier observations; the session gates (live, capacity, cause) need the observed session set. launch_admission_staged partitions by this mark, never by position, so reordering the ledger cannot silently move a gate across the observation boundary (review 57491)."
+// Each ledger row declares its STAGE beside its verdict, at the one place the rows are authored
+// (launch_ledger_rows): the pre-session gates are decidable from the model and the host's earlier
+// observations; the session gates (live, capacity, cause) need the observed session set.
+// launch_admission_staged partitions by this mark, never by position, so reordering the ledger
+// cannot silently move a gate across the observation boundary (review 57491).
 
 type LaunchGateRow {
   gate: String
@@ -508,7 +612,11 @@ fn launch_admission_of_facts(f: LaunchDecisionFacts) -> LaunchAdmission {
   }
 }
 
-data launch_gate_outcome_note: String = "Each of the four gates the identity depends on has a TWO-arm outcome (passed-with-its-evidence | refused-with-its-refusal) from which its ledger verdict is projected. The identity binding consumes those outcomes in gate order, so it cannot say Bound beside a row that refused (review 5060505186 on #9696): the first refusing outcome is the withholding refusal, and it is the same value the row holds because both are projected from the one outcome."
+// Each of the four gates the identity depends on has a TWO-arm outcome (passed-with-its-evidence |
+// refused-with-its-refusal) from which its ledger verdict is projected. The identity binding
+// consumes those outcomes in gate order, so it cannot say Bound beside a row that refused (review
+// 5060505186 on #9696): the first refusing outcome is the withholding refusal, and it is the same
+// value the row holds because both are projected from the one outcome.
 
 type LaunchInstanceOutcome
   = LaunchInstanceActuating
@@ -638,7 +746,13 @@ fn launch_gate_dependencies(node: RoadmapNode, nodes: List<RoadmapNode>, edges: 
   }
 }
 
-data launch_liveness_note: String = "A TMUX CONTAINER IS NOT A LIVE AGENT (the belt's liveness ruling, re-homed here because the no-live-attempt gate is where the belt and the route both consumed it). Running -> AlreadyLive (the click is idempotent: the operator gets the attempt that exists). StaleTerminal -> refuse with the retained pane named (the remedy is cleanup, not a second attempt beside a corpse). LivenessUnobserved -> refuse (cannot prove absence). Two or more sessions claiming one node -> refuse (the observation is ambiguous; `first()` would have answered by tmux list order). Only an ABSENT session admits."
+// A TMUX CONTAINER IS NOT A LIVE AGENT (the belt's liveness ruling, re-homed here because the
+// no-live-attempt gate is where the belt and the route both consumed it). Running -> AlreadyLive
+// (the click is idempotent: the operator gets the attempt that exists). StaleTerminal -> refuse
+// with the retained pane named (the remedy is cleanup, not a second attempt beside a corpse).
+// LivenessUnobserved -> refuse (cannot prove absence). Two or more sessions claiming one node ->
+// refuse (the observation is ambiguous; `first()` would have answered by tmux list order). Only an
+// ABSENT session admits.
 
 fn launch_session_liveness(session_name: String, process: WorkerProcessEvidence) -> LaunchGateVerdict {
   match process {
@@ -681,7 +795,16 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
   }
 }
 
-data launch_occupancy_note: String = "OCCUPANCY IS A CONSERVATIVE COUNT: a present session whose process could not be observed is counted as OCCUPYING its slot. Unobserved does not mean absent -- the provider may be running behind a pane the observer could not read -- and counting it as free would admit a launch under unknown occupancy, the fail-open review 5059520727 found. Only a PROVEN non-process (exited with a status, or a container with no provider attached) frees the slot. This is a structural over-approximation computed as the answer, not a fallback: the refusal it produces is LaunchNoCapacity with the conservative count, and the remedy is the cleanup of the unreadable session, which the tick's stale/refused partition already surfaces. An unobservable SESSION SET (LaunchSessionsUnobserved) never reaches this count: the live gate refuses SessionsUnobservable first."
+// OCCUPANCY IS A CONSERVATIVE COUNT: a present session whose process could not be observed is
+// counted as OCCUPYING its slot. Unobserved does not mean absent -- the provider may be running
+// behind a pane the observer could not read -- and counting it as free would admit a launch under
+// unknown occupancy, the fail-open review 5059520727 found. Only a PROVEN non-process (exited with
+// a status, or a container with no provider attached) frees the slot. This is a structural
+// over-approximation computed as the answer, not a fallback: the refusal it produces is
+// LaunchNoCapacity with the conservative count, and the remedy is the cleanup of the unreadable
+// session, which the tick's stale/refused partition already surfaces. An unobservable SESSION SET
+// (LaunchSessionsUnobserved) never reaches this count: the live gate refuses SessionsUnobservable
+// first.
 
 fn launch_occupying_count(live: List<DispatchLiveSession>) -> Int {
   count(filter(live, s => match s.worker.process {
@@ -700,7 +823,13 @@ fn launch_running_count(sessions: LaunchSessionsStanding) -> Int {
   }
 }
 
-data launch_capacity_note: String = "Capacity is ONE arithmetic, gunbc.roadmap_belt belt_free_slots_int over the belt's BeltCapacity, read here for both causes: the timer's reconcile plan reports the same arithmetic as its backlog, and the operator's click now respects it too (before this module the manual route checked capacity never). `occupied` is the count of OCCUPYING sessions (launch_occupying_count: running, plus present-but-unobserved -- see launch_occupancy_note) plus `reserved` -- the launches this same invocation has already admitted, so a tick folding over several candidates cannot admit more than the free slots."
+// Capacity is ONE arithmetic, gunbc.roadmap_belt belt_free_slots_int over the belt's BeltCapacity,
+// read here for both causes: the timer's reconcile plan reports the same arithmetic as its backlog,
+// and the operator's click now respects it too (before this module the manual route checked
+// capacity never). `occupied` is the count of OCCUPYING sessions (launch_occupying_count: running,
+// plus present-but-unobserved -- see launch_occupancy_note) plus `reserved` -- the launches this
+// same invocation has already admitted, so a tick folding over several candidates cannot admit more
+// than the free slots.
 
 fn launch_gate_capacity(sessions: LaunchSessionsStanding, capacity: BeltCapacity, reserved: Int) -> LaunchGateVerdict {
   let occupied = launch_running_count(sessions: sessions) + reserved
@@ -711,7 +840,12 @@ fn launch_gate_capacity(sessions: LaunchSessionsStanding, capacity: BeltCapacity
   }
 }
 
-data launch_cause_mode_note: String = "The production posture (plan section 3, RLM-1): ManualReady -- the operator may start a Ready node, the timer may not start new work; the timer's reconciliation, verification, publication and cleanup are NOT launches and never pass through this gate. AutomaticReady admits both causes; Paused admits neither. The gate is LAST in the order on purpose: a refusal names the most specific fact first, so a timer looking at a blocked node reports DependenciesBlocked, and only a node the timer could otherwise start reports CauseNotPermitted."
+// The production posture (plan section 3, RLM-1): ManualReady -- the operator may start a Ready
+// node, the timer may not start new work; the timer's reconciliation, verification, publication and
+// cleanup are NOT launches and never pass through this gate. AutomaticReady admits both causes;
+// Paused admits neither. The gate is LAST in the order on purpose: a refusal names the most
+// specific fact first, so a timer looking at a blocked node reports DependenciesBlocked, and only a
+// node the timer could otherwise start reports CauseNotPermitted.
 
 fn launch_gate_cause(cause: LaunchCause, mode: SpawnMode) -> LaunchGateVerdict {
   match mode {
@@ -955,7 +1089,14 @@ fn launch_admission_reason(a: LaunchAdmission) -> String {
   }
 }
 
-data launch_admission_contract_note: String = "THE FROZEN JOIN (plan section 3, RLM-1 exit): `admission contract digest + deployed revision containing it`. The contract is the gate order and the closed refusal vocabulary -- exactly the two facts a successor gate binds when it says `the admission that decided this attempt was THIS one`. It is derived from the same rosters the fold and the label authority read (launch_gate_names, launch_refusal_exemplars through launch_refusal_label), so a gate added, reordered, or a refusal renamed changes the digest; prose cannot. Producer: `gunbc run --entry dag/gunbc/roadmap/roadmap_launch_admission.dag --function launch_admission_contract_digest_hex` (it refuses a String return and prints it, which is the read-out)."
+// THE FROZEN JOIN (plan section 3, RLM-1 exit): `admission contract digest + deployed revision
+// containing it`. The contract is the gate order and the closed refusal vocabulary -- exactly the
+// two facts a successor gate binds when it says `the admission that decided this attempt was THIS
+// one`. It is derived from the same rosters the fold and the label authority read
+// (launch_gate_names, launch_refusal_exemplars through launch_refusal_label), so a gate added,
+// reordered, or a refusal renamed changes the digest; prose cannot. Producer: `gunbc run --entry
+// dag/gunbc/roadmap/roadmap_launch_admission.dag --function launch_admission_contract_digest_hex`
+// (it refuses a String return and prints it, which is the read-out).
 
 fn launch_admission_contract_text() -> String {
   launch_contract_text_of_rows(rows: launch_gate_template())

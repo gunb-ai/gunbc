@@ -39,17 +39,49 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data facts_subject_edge_note: String = "Subject and source are ORTHOGONAL axes and a filename encodes neither (operator ruling 2026-07-25): the folder says which upstream AUTHORITY produced the facts (extdeps/sec = EDGAR, per this module's ExternalAuthority anchor), while a typed edge says which ENTITY the facts are about. Before this row the only thing correlating this module's facts with extdeps.pricing.gitlab_subscription was the shared filename prefix -- a prose coincidence invisible to the graph. The subject row below is that edge, and it re-grounds the CIK too: the identity now arrives as the typed IssuerCatalogRow, so the CIK inside this module's anchor URL is a locator string, never the identity carrier."
+// Subject and source are ORTHOGONAL axes and a filename encodes neither (operator ruling
+// 2026-07-25): the folder says which upstream AUTHORITY produced the facts (extdeps/sec = EDGAR,
+// per this module's ExternalAuthority anchor), while a typed edge says which ENTITY the facts are
+// about. Before this row the only thing correlating this module's facts with
+// extdeps.pricing.gitlab_subscription was the shared filename prefix -- a prose coincidence
+// invisible to the graph. The subject row below is that edge, and it re-grounds the CIK too: the
+// identity now arrives as the typed IssuerCatalogRow, so the CIK inside this module's anchor URL is
+// a locator string, never the identity carrier.
 
 data gitlab_facts_subject: IssuerCatalogRow = gitlab_issuer_catalog
 
-data gitlab_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session gitlab-10k-scm-costs-baz90x). CIK 0001653482 verified on the EDGAR submissions API (ticker GTLB, Nasdaq, SIC 7372 Services-Prepackaged Software). All five GitLab 10-Ks are modeled -- FY2022 (first post-IPO annual report, accession 0001628280-22-008836, filed 2022-04-08) through FY2026 (accession 0001628280-26-018731, filed 2026-03-17); GitLab fiscal years end January 31. Each fact row cites the fiscal year's OWN 10-K (the earliest filing reporting that period). The face income statement cross-foots exactly in every modeled period: GrossProfit = Revenue - CostOfRevenue; SellingAndMarketing + ResearchAndDevelopment + GeneralAndAdministrative = OperatingExpenses (exactly three operating-expense lines in all seven periods); GrossProfit - OperatingExpenses = OperatingIncomeLoss."
+// Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session
+// gitlab-10k-scm-costs-baz90x). CIK 0001653482 verified on the EDGAR submissions API (ticker GTLB,
+// Nasdaq, SIC 7372 Services-Prepackaged Software). All five GitLab 10-Ks are modeled -- FY2022
+// (first post-IPO annual report, accession 0001628280-22-008836, filed 2022-04-08) through FY2026
+// (accession 0001628280-26-018731, filed 2026-03-17); GitLab fiscal years end January 31. Each fact
+// row cites the fiscal year's OWN 10-K (the earliest filing reporting that period). The face income
+// statement cross-foots exactly in every modeled period: GrossProfit = Revenue - CostOfRevenue;
+// SellingAndMarketing + ResearchAndDevelopment + GeneralAndAdministrative = OperatingExpenses
+// (exactly three operating-expense lines in all seven periods); GrossProfit - OperatingExpenses =
+// OperatingIncomeLoss.
 
-data gitlab_comparative_period_note: String = "FY2020 and FY2021 rows are the comparative periods presented in the FY2022 10-K -- GitLab IPO'd 2021-10-14, so no earlier 10-K exists and that filing is the earliest annual-report authority for those periods. EDGAR labels every row of a filing with the FILING's fiscal-year focus, so those citations carry fiscal_year 2022 while the FiledDuration period bounds the fact's own earlier fiscal year."
+// FY2020 and FY2021 rows are the comparative periods presented in the FY2022 10-K -- GitLab IPO'd
+// 2021-10-14, so no earlier 10-K exists and that filing is the earliest annual-report authority for
+// those periods. EDGAR labels every row of a filing with the FILING's fiscal-year focus, so those
+// citations carry fiscal_year 2022 while the FiledDuration period bounds the fact's own earlier
+// fiscal year.
 
-data gitlab_revenue_disaggregation_gap_note: String = "GitLab's statements disaggregate revenue (subscription self-managed and SaaS vs license self-managed and other), but the split is tagged on dimensional axes only -- companyfacts returns us-gaap/dei/ecd taxonomies with no gtlb custom elements, and dimensional facts are stripped from the companyfacts/companyconcept APIs (same API-boundary case as chemed_segment_gap_note). No estimated split is stored. Dissolve-on: ingesting the SEC Financial Statement Data Sets or the filing R-file tables, which carry the dimension members."
+// GitLab's statements disaggregate revenue (subscription self-managed and SaaS vs license
+// self-managed and other), but the split is tagged on dimensional axes only -- companyfacts returns
+// us-gaap/dei/ecd taxonomies with no gtlb custom elements, and dimensional facts are stripped from
+// the companyfacts/companyconcept APIs (same API-boundary case as chemed_segment_gap_note). No
+// estimated split is stored. Dissolve-on: ingesting the SEC Financial Statement Data Sets or the
+// filing R-file tables, which carry the dimension members.
 
-data gitlab_hosting_commitment_note: String = "What serving costs, forward-committed: the FY2022 10-K commitments note discloses that in September 2020 GitLab entered non-cancelable capacity commitments with a hosting infrastructure vendor for a total minimum service commitment of 97.0 million USD (LongTermPurchaseCommitmentAmount row below, instant 2020-09-30). The FY2026 10-K commitments note discloses 228.056 million USD of total non-cancelable purchase commitments as of 2026-01-31 (98.885 million USD due within a year) and states the table 'includes 131 million USD of remaining non-cancelable contractual commitments as of January 31, 2026 related to two of the Company's hosting infrastructure vendors' -- versus 120.7 million USD FY2026 cost of revenue."
+// What serving costs, forward-committed: the FY2022 10-K commitments note discloses that in
+// September 2020 GitLab entered non-cancelable capacity commitments with a hosting infrastructure
+// vendor for a total minimum service commitment of 97.0 million USD
+// (LongTermPurchaseCommitmentAmount row below, instant 2020-09-30). The FY2026 10-K commitments
+// note discloses 228.056 million USD of total non-cancelable purchase commitments as of 2026-01-31
+// (98.885 million USD due within a year) and states the table 'includes 131 million USD of
+// remaining non-cancelable contractual commitments as of January 31, 2026 related to two of the
+// Company's hosting infrastructure vendors' -- versus 120.7 million USD FY2026 cost of revenue.
 
 data gitlab_fy2020_comparative_citation: FiledFactCitation = FiledFactCitation {
   accession: "0001628280-22-008836",
@@ -456,7 +488,10 @@ data gitlab_fy2024_net_income_loss: FiledSignedMonetaryFact = FiledSignedMonetar
   citation: gitlab_fy2024_citation,
 }
 
-data gitlab_fy2024_net_vs_operating_divergence_note: String = "FY2024 is the outlier year: net loss 424.174 million USD against an operating loss of 187.440 million USD. The gap is non-operating (income-tax and JiHu joint-venture related charges below the operating line), not a change in the cost of running the platform -- the trend witness therefore tracks OPERATING loss, and the net-income rows stay faithful to the filed totals."
+// FY2024 is the outlier year: net loss 424.174 million USD against an operating loss of 187.440
+// million USD. The gap is non-operating (income-tax and JiHu joint-venture related charges below
+// the operating line), not a change in the cost of running the platform -- the trend witness
+// therefore tracks OPERATING loss, and the net-income rows stay faithful to the filed totals.
 
 data gitlab_fy2025_revenue: FiledMonetaryFact = FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,

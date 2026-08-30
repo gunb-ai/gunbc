@@ -38,11 +38,10 @@ fn loginctl_binary_path() -> NonEmptyStr {
 }
 
 // enable-linger TAKES ITS SUBJECT, and the argument is not optional in any use this repository has.
-// Upstream defaults the subject to the calling user when it is omitted, which is exactly why the
-// omission is dangerous here rather than convenient: a sudoers grant written without the subject
-// authorizes `loginctl enable-linger` for the grantee to run as root, and root's own linger is not
-// what the grant was for. The parameter is required so that the subject cannot be dropped by
-// forgetting it.
+// Upstream defaults the subject to the calling user when omitted, which is exactly why omission is
+// dangerous here: a sudoers grant written without the subject authorizes `loginctl enable-linger`
+// for the grantee to run as root, and root's own linger is not what the grant was for. The
+// parameter is required so the subject cannot be dropped by forgetting it.
 data loginctl_enable_linger_verb: NonEmptyStr = "enable-linger" as NonEmptyStr
 
 fn loginctl_enable_linger_argv(subject: NonEmptyStr) -> List<String> {

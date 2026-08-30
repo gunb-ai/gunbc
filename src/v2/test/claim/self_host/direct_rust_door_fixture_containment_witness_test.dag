@@ -19,7 +19,9 @@ import v2.std.logic { Bool }
 import v2.std.optional { Absent, Present }
 import v2.std.text { String }
 
-data direct_rust_door_fixture_containment_witness_note: String = "wise-ram-22 PR1 containment: fixture synthetic mint returns SyntheticEmittedArtifact with FixtureEmissionQualification only — no ProducerEmissionReceipt constructor and no production qualification ladder on this path."
+// wise-ram-22 PR1 containment: fixture synthetic mint returns SyntheticEmittedArtifact with
+// FixtureEmissionQualification only — no ProducerEmissionReceipt constructor and no production
+// qualification ladder on this path.
 
 data direct_rust_door_fixture_containment_lane_tag: String = "direct_rust_door_fixture_containment_hermetic"
 

@@ -63,7 +63,10 @@ data live_deploy_unit_diagnosis_capture_exit_note: String = "DECLARED SCAFFOLD â
 
 data live_deploy_unit_diagnosis_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolves-on: unit-diagnosis modeled as a typed systemd.Systemctl.Status observation (exit code recorded as data in UnitStatusCapture, never masked by '| tail' or trailing 'exit 0'); delete live_deploy_unit_status_tail_command concat.")
 
-data live_deploy_unit_status_emit_scaffold_note: String = "Emit-only residue: tree_sync_restart_step_with_diagnosis (gunbc.live_deploy.emit) still shells live_deploy_unit_status_tail_command into foreign-executor bash. Readiness unit_diagnosis now routes through systemd.Systemctl.Status (gunbc.systemctl_status_read); dissolve this concat when tree-sync restart migrates to typed host_effect_apply."
+// Emit-only residue: tree_sync_restart_step_with_diagnosis (gunbc.live_deploy.emit) still shells
+// live_deploy_unit_status_tail_command into foreign-executor bash. Readiness unit_diagnosis now
+// routes through systemd.Systemctl.Status (gunbc.systemctl_status_read); dissolve this concat when
+// tree-sync restart migrates to typed host_effect_apply.
 
 data live_deploy_unit_status_tail_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

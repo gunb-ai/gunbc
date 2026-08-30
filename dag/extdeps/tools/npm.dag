@@ -20,7 +20,8 @@ data npm_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_npm }],
 }
 
-data npm_cli_version_observation_note: String = "min_version = none is NOT a materialization receipt. Observed npm --version is recorded on CodexRuntimeBundleReceipt so the toolchain that performed offline ci is attributable."
+// min_version = none is NOT a materialization receipt. Observed npm --version is recorded on
+// CodexRuntimeBundleReceipt so the toolchain that performed offline ci is attributable.
 
 service npm.Cli {
   operation Version {
@@ -51,9 +52,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data npm_ci_ignore_scripts_note: String = "npm ci --ignore-scripts is the FIRST Codex materialization realization: exact lock install with lifecycle scripts forbidden. workdir via env -C (cargo.BuildInheritEnv precedent). gunbc.package_delivery owns product policy (when to call); this module owns the npm CLI shape."
+// npm ci --ignore-scripts is the FIRST Codex materialization realization: exact lock install with
+// lifecycle scripts forbidden. workdir via env -C (cargo.BuildInheritEnv precedent).
+// gunbc.package_delivery owns product policy (when to call); this module owns the npm CLI shape.
 
-data npm_offline_cache_note: String = "Controlled cache realization: npm.Cache.Add seeds an isolated --cache from gunbc-admitted local tarball bytes; npm.Ci.IgnoreScriptsOffline then runs with --offline so no network package acquisition remains after admission. gunbc.package_delivery owns which archives populate the cache."
+// Controlled cache realization: npm.Cache.Add seeds an isolated --cache from gunbc-admitted local
+// tarball bytes; npm.Ci.IgnoreScriptsOffline then runs with --offline so no network package
+// acquisition remains after admission. gunbc.package_delivery owns which archives populate the
+// cache.
 
 service npm.Cache {
   operation Add {

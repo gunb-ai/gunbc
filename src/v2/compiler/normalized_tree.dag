@@ -18,15 +18,18 @@ import std.algebra { Empty, FreeMonoid }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.node { Node }
 
-// A NormalizedTree is the ADMITTED product of normalize: a root whose own
-// lowering left no wrapper behind. It was an alias for Node until BL-1; the
-// alias is why retention evidence reached resolve as a bare Node and was
-// dropped there. Sealing the carrier is what makes the drop unwritable.
+// A NormalizedTree is the ADMITTED product of normalize: a root whose own lowering left no wrapper
+// behind. It was an alias for Node until BL-1, which is why retention evidence reached resolve as a
+// bare Node and was dropped there. Sealing the carrier makes the drop unwritable.
 type NormalizedTree sole_constructor {
   root: Node,
 }
 
-data normalized_tree_admission_rung_note: String = "Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state -- a root carrying wrapper-retention diagnostics presented as normalized -- remains describable; what changed is that admit_normalized_tree is the sole constructor, so no Accepted program reaches the carrier while holding retention evidence. Next-rung trigger: the retention disposition riding in the carrier's own type rather than being decided at the door."
+// Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state
+// — a root carrying wrapper-retention diagnostics presented as normalized — remains describable;
+// admit_normalized_tree is now the sole constructor, so no Accepted program reaches the carrier
+// while holding retention evidence. Next-rung trigger: the retention disposition riding in the
+// carrier's own type rather than decided at the door.
 
 fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
   Diagnostic {
@@ -49,10 +52,9 @@ fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<Normal
   }
 }
 
-// Projection out of the sealed carrier for consumers that are genuinely about
-// Node structure and not about admission -- the symbol-index fill, for one.
-// Order-preserving: a symbol index built from a reordered root list is a
-// different index.
+// Projection out of the sealed carrier for consumers genuinely about Node structure, not admission
+// — the symbol-index fill, for one. Order-preserving: a symbol index built from a reordered root
+// list is a different index.
 fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMonoid<Node> {
   fold_list(
     xs: roots,
@@ -61,17 +63,14 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
   )
 }
 
-// The plural door. Admitting a list of roots is not a new decision -- it is the
-// same one per element, refusing as a whole so a partially admitted list has no
-// representation.
+// The plural door: the same decision per element, refusing as a whole so a partially admitted list
+// has no representation.
 //
-// The threading is explicit rather than bind_outcome because bind_outcome MERGES
-// the accumulated diagnostics with each step's, and every step here carries the
-// same shared diagnostics -- so threading them would accumulate N+1 copies of one
-// set. The decision is still made per element (it is the same verdict each time,
-// since it reads only the shared diagnostics), the refusal carries its pending
-// set exactly once via admit_normalized_tree, and the accepted diagnostics are
-// attached once at the end.
+// Threading is explicit rather than bind_outcome because bind_outcome MERGES the accumulated
+// diagnostics with each step's, and every step here carries the same shared diagnostics — threading
+// would accumulate N+1 copies of one set. The decision is still per element (the same verdict each
+// time, reading only the shared diagnostics), the refusal carries its pending set exactly once via
+// admit_normalized_tree, and the accepted diagnostics attach once at the end.
 fn admit_normalized_roots(
   roots: FreeMonoid<Node>,
   diagnostics: Diagnostics

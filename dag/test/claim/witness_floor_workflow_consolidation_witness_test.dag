@@ -36,7 +36,12 @@ import extdeps.github.actions { PullRequestActivity, Opened, Synchronize, Reopen
 //
 // Stated so a reader does not over-read the green: this is the CHEAP half of the pair.
 
-data consolidation_note: String = "The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the regen process had written — a process boundary standing where a function call belonged, since run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed None."
+// The step ladder these replace was four steps: parse, regen, regen-fixed-point, floor. Each was
+// its own process, the ORDER was a YAML list, each precondition was an `if:` naming another step's
+// `outcome`, and the fixed-point step received pass 1's digest by re-reading the receipt FILE the
+// regen process had written — a process boundary standing where a function call belonged, since
+// run_required_regen_fixed_point has taken pass1_digest: Option<String> all along and CI passed
+// None.
 
 // NO RETIRED INVOCATION HAS GROWN BACK, and the required mode token is present. That is the
 // whole of what this row proves, and the heading is narrowed to say so: the two positive
@@ -319,7 +324,6 @@ test fn w_RED_aggregate_runs_on_a_cancelled_lane_and_refuses_a_failed_one() -> B
 
 data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-
 // THE UNRENDERABLE-GATE REFUSAL IS EXECUTED, NOT DESCRIBED.
 //
 // This arm exists because the receipt was once WRONG about it in a way nothing executed could
@@ -342,7 +346,6 @@ test fn the_unrenderable_gate_refusal_serializes_and_stops_the_line() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 // THE PULL-REQUEST ACTIVITY SET IS EXACTLY THE THREE THAT CAN CARRY A NEW SUBJECT.
 //

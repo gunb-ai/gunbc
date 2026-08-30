@@ -1,17 +1,16 @@
 # Lotes AZIFA072-P001CCS — LGA4926 socket body
 
-The socket-body part for the LGA4926 designation, and the customer drawing that carries its
-board land pattern. This closes the constituent that `extdeps.cpu_attachment.ilm4926` had left
-unresolved since the module was written: Lotes AZIF0222 is the ILM + backplate assembly, and
-this is the *different* orderable item that receives the processor and solders to the board.
+The socket-body part for the LGA4926 designation and the customer drawing carrying its board
+land pattern. Closes the constituent `extdeps.cpu_attachment.ilm4926` left unresolved: Lotes
+AZIF0222 is the ILM + backplate assembly; this is the *different* orderable item that receives
+the processor and solders to the board.
 
 ## Provenance
 
 Supplied by Lotes in direct response to the request recorded in
 `lga4926_land_pattern_public_route` ("the socket-body part number that mates with AZIF0222, then
-its customer drawing or recommended PCB layout"). Not access-gated; no confidentiality marking
-appears in the document. This is the public-route resolution, not the NDA route — the geometry
-below is carriable.
+its customer drawing or recommended PCB layout"). Not access-gated; no confidentiality marking in
+the document. Public-route resolution, not the NDA route — the geometry below is carriable.
 
 | | |
 |---|---|
@@ -29,19 +28,23 @@ below is carriable.
 - `lga4926_pcb_pads.csv` — 4,926 PCB pad centres in mm, extracted from sheet 3 (below)
 - `lga4926_pad_array.svg` — the same array rendered, for eyeball verification
 
-**Neither the drawing nor the STEP solid is committed, and the drawing's absence is a policy
-decision rather than a size one.** `product.altra_motherboard.attachment_stack` states it on
-`RepositoryCarriageStanding`, whose deliberately absent fourth arm is `SourceExpressionMayBeCarried`:
-copying a vendor's PDF, figure, prose or table layout is refused for **every** subject, not chosen
-per subject. The operator's clearance covered confidentiality — there is no NDA on this part —
-which is a different question from whether this repository carries a vendor's expression of its
-own facts. An earlier revision of this directory committed the PDF; both conditions had to hold
-and only the first had been checked.
+**Neither the drawing nor the STEP solid is committed, and the drawing's absence is policy, not
+size.** `product.altra_motherboard.attachment_stack` states it on `RepositoryCarriageStanding`,
+whose deliberately absent fourth arm is `SourceExpressionMayBeCarried`: copying a vendor's PDF,
+figure, prose or table layout is refused for **every** subject, not chosen per subject. The
+operator's clearance covered confidentiality (no NDA on this part), a different question from
+whether this repository carries a vendor's expression of its own facts. An earlier revision of
+this directory committed the PDF; both conditions had to hold and only the first was checked.
 
-What is carried here is what `NormalizedFactsMayBeCarried` admits: the normalized numerical facts,
-extracted and cross-checked. To obtain the source documents, ask Lotes for **GAP-AZIFA072
-revision 2** (the STEP is `AZIFA072_B_20220208 (LGA4926 Socket)` = socket body
-`AZIFA072_B_220208(LGA4926 SKT)-1` + protective cap `SKT4926 CAP_A_20220107`).
+Carried here is what `NormalizedFactsMayBeCarried` admits: normalized numerical facts, extracted
+and cross-checked. For the source documents, ask Lotes for **GAP-AZIFA072 revision 2** (the STEP
+is `AZIFA072_B_20220208 (LGA4926 Socket)` = socket body `AZIFA072_B_220208(LGA4926 SKT)-1` +
+protective cap `SKT4926 CAP_A_20220107`).
+
+The operator holds the copies Lotes delivered on 2026-08-22; their locators live in one place,
+`extdeps.cpu_attachment.lotes_azifa072` `azifa072_held_copies` (one row for the drawing PDF, one
+for the STEP), and are not repeated here. Access is governed by the holder's sharing setting, not
+by this repository.
 
 ## The land pattern
 
@@ -73,16 +76,15 @@ in the STEP part frame (verified — see cross-check).
 
 ## Cross-check — two independent sources agree
 
-The drawing's vector pad array and the STEP solid's solder-ball centres were extracted by
-separate paths and compared. They are the same array:
+The drawing's vector pad array and the STEP solid's solder-ball centres, extracted by separate
+paths, are the same array:
 
 - array extent from the PDF: 63.449 × 75.470 mm; from the STEP: 63.44 × 75.47 mm
 - of the 650 ball positions the STEP models, **642 land within 0.25 mm** of an extracted pad
 - median deviation **0.019 mm**, p95 0.051 mm, max 0.49 mm
 
-This is a real cross-validation, not a restatement: nothing in the PDF extraction consulted the
-STEP, or the reverse. The eight outliers sit at the array's chamfered corners, where the
-per-row index fit accumulates the most rounding.
+A real cross-validation: neither extraction consulted the other. The eight outliers sit at the
+array's chamfered corners, where the per-row index fit accumulates the most rounding.
 
 ## Socket outline and stack-up
 
@@ -95,10 +97,10 @@ All Z given relative to the PCB pad plane (= the solder-ball tangent before SMT)
 | Widest plane | 77.418 × 82.300 mm, at +2.38 mm |
 | Overall height above PCB, before SMT | **4.68 mm** |
 
-The housing is symmetric about the pad-array centre in both X and Y. The widest plane is **not**
-symmetric: it reaches 41.268 mm on +X against 36.150 mm on −X, a 5.118 mm protrusion on one side
-only. That is the actuation side, and it is the drawing's `2X FINGER ACCESS`. A board keepout
-taken from the symmetric outline will be 5.1 mm short on that edge.
+The housing is symmetric about the pad-array centre in X and Y. The widest plane is **not**:
+41.268 mm on +X against 36.150 mm on −X, a 5.118 mm one-sided protrusion — the actuation side,
+the drawing's `2X FINGER ACCESS`. A keepout taken from the symmetric outline is 5.1 mm short on
+that edge.
 
 ## What is on each sheet
 
@@ -112,29 +114,27 @@ taken from the symmetric outline will be 5.1 mm short on that edge.
 
 ## Known gaps — read these before releasing a footprint
 
-1. **Stencil aperture dimension not extracted.** Sheet 4 carries it, but its dimension values are
-   drawn as vector outlines rather than text, and the only closed shape recoverable at 80:1 is the
-   Ø0.46 pad itself. Read the aperture off the PDF by eye before releasing paste.
+1. **Stencil aperture dimension not extracted.** Sheet 4 carries it as vector outlines rather
+   than text; the only closed shape recoverable at 80:1 is the Ø0.46 pad. Read the aperture off
+   the PDF by eye before releasing paste.
 2. **Pin A1 not located.** Sheet 2 carries `MARKING FOR Pin1`; its position was not extracted.
-   The array is not symmetric — the two banks have visibly different depopulation patterns — so
-   orientation is recoverable from the pad map, but the A1 corner has not been *established*
-   against the drawing and must not be guessed.
+   The array is asymmetric (the two banks have visibly different depopulation patterns), so
+   orientation is recoverable from the pad map, but the A1 corner is not *established* against
+   the drawing and must not be guessed.
 3. **Solder-mask openings unconfirmed.** Sheet 3's second view draws the same 4,926-position
-   lattice with a larger circle measuring ≈0.73–0.77 mm. That is most likely the mask opening or
-   the contact-tip footprint, but no callout was recovered attaching a name to it, so it is
-   recorded as unidentified rather than assumed.
-4. **A few rows near the bank boundary.** Row clustering merged a handful of rows whose drawn
-   Y positions sit closer than the 0.87 mm pitch. The total is exactly 4,926 and no position is
-   duplicated or dropped, so this affects which row a pad is *labelled* with, not where it is.
-5. **The interior is not derivable from the STEP alone.** The solid models only the perimeter of
-   the ball field — 650 of 4,926. A naive lattice fill of its outline gives 5,285, over by 359.
-   The interior voids come from the drawing and only from the drawing.
+   lattice with a larger circle ≈0.73–0.77 mm — most likely the mask opening or contact-tip
+   footprint, but no callout naming it was recovered, so it is recorded as unidentified.
+4. **A few rows near the bank boundary.** Row clustering merged a handful of rows whose drawn Y
+   positions sit closer than the 0.87 mm pitch. The total is exactly 4,926 with nothing
+   duplicated or dropped, so this affects a pad's row *label*, not its position.
+5. **The interior is not derivable from the STEP alone.** The solid models only the ball field's
+   perimeter — 650 of 4,926. A naive lattice fill of its outline gives 5,285, over by 359. The
+   interior voids come from the drawing only.
 
 ## Method
 
-Both extractions are reproducible from the drawing named above, which is not committed here (see
-**Files**). The PDF's page content was decompressed,
-its object streams expanded, per-font `ToUnicode` CMaps applied for text, and path operators
-replayed under a tracked CTM for geometry; pads are the 9-vertex closed subpaths of the sheet-3
-upper view, and scale was fixed by fitting the within-row column pitch to 1.000 mm and confirmed
-independently against the 80:1 detail circle.
+Both extractions are reproducible from the drawing named above (not committed; see **Files**).
+The PDF's page content was decompressed, object streams expanded, per-font `ToUnicode` CMaps
+applied for text, and path operators replayed under a tracked CTM for geometry; pads are the
+9-vertex closed subpaths of the sheet-3 upper view; scale was fixed by fitting the within-row
+column pitch to 1.000 mm and confirmed independently against the 80:1 detail circle.

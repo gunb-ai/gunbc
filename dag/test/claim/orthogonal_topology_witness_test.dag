@@ -255,11 +255,11 @@ test fn stacked_floors_touch_without_interpenetrating() -> Bool {
   overlaps(ca: l_space(), cb: space_ctor(vertices: l_shape(), low: 2400, high: 4800)) == 0
 }
 
-// TWO SPACES AT THE SAME PLACE. This is the case the first version of the overlap predicate got
-// wrong: with coincident boundaries no vertex of either is STRICTLY inside the other and no pair of
-// edges crosses transversally, so a vertex-and-crossing test answers "disjoint" for two rooms
-// occupying one volume. It reached review-quality green because nothing exercised it; the mutation
-// that should have flipped stacked_floors did not, which is what exposed it.
+// TWO SPACES AT THE SAME PLACE. The case the first overlap predicate got wrong: with coincident
+// boundaries no vertex of either is STRICTLY inside the other and no pair of edges crosses
+// transversally, so a vertex-and-crossing test answers "disjoint" for two rooms occupying one
+// volume. It reached review-quality green because nothing exercised it; the mutation that should
+// have flipped stacked_floors did not, which exposed it.
 test fn identical_spaces_interpenetrate() -> Bool {
   overlaps(ca: l_space(), cb: l_space()) == 1
     && match sequence_spaces(cs: [l_space(), l_space()]) {
@@ -363,13 +363,13 @@ fn micro_registry() -> SpatialFrameRegistry {
   }
 }
 
-// THE VOLUME PATH REFUSES TOO - and it reaches that refusal through the AREA guard, not
-// through the height projection. The first version of this comment claimed the second, and
-// mutating both height arms to fabricate a zero left this witness green, which is how the
-// claim was caught: space_volume consults the area fold first and it refuses on exactly the
-// frames that would break the height projection. So what this establishes is that a volume
-// over an unlabelable frame refuses rather than returning zero. It does NOT establish that
-// the height projection refuses, and the module records that those arms are defensive.
+// THE VOLUME PATH REFUSES TOO - and it reaches that refusal through the AREA guard, not the height
+// projection. The first version of this comment claimed the second, and mutating both height arms
+// to fabricate a zero left this witness green, which caught the claim: space_volume consults the
+// area fold first and it refuses on exactly the frames that would break the height projection. So
+// this establishes that a volume over an unlabelable frame refuses rather than returning zero. It
+// does NOT establish that the height projection refuses; the module records those arms as
+// defensive.
 test fn w_metric_folds_refuse_a_frame_they_cannot_label() -> Bool {
   match l_space() {
     OrthogonalRefused { cause: _ } => false

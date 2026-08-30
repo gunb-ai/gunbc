@@ -23,7 +23,16 @@ data ci_heal_run_subject_head_expr: String = "\"${{ github.sha }}\""
 
 data ci_heal_revalidation_preflight_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ heal revalidation exact-head preflight emission was rejected; this marker is not valid workflow shell, so generated CI drift refuses rather than widening\n"
 
-data ci_heal_revalidation_preflight_note: String = "The workflow_dispatch ref is necessarily a moving branch/tag pointer, while expected_healed_sha is the immutable subject. GitHub resolves that ref into github.sha, the workflow run/check subject. Every ordinary checkout selects expected_healed_sha when present, then this preflight requires BOTH github.sha and the observed git.Core.HeadCommit to equal expected_healed_sha byte-for-byte before any witness can count. An absent input is an ordinary manual dispatch and does not claim heal revalidation. If the branch advances before GitHub resolves the dispatch, the run-subject comparison refuses; if checkout diverges afterward, the checkout comparison refuses. Neither race can let witnesses executed on one tree authorize the check subject of another. Control flow is v2.std.orchestration intent and bash is only the GitHub Actions foreign-executor realization."
+// The workflow_dispatch ref is necessarily a moving branch/tag pointer, while expected_healed_sha
+// is the immutable subject. GitHub resolves that ref into github.sha, the workflow run/check
+// subject. Every ordinary checkout selects expected_healed_sha when present, then this preflight
+// requires BOTH github.sha and the observed git.Core.HeadCommit to equal expected_healed_sha
+// byte-for-byte before any witness can count. An absent input is an ordinary manual dispatch and
+// does not claim heal revalidation. If the branch advances before GitHub resolves the dispatch, the
+// run-subject comparison refuses; if checkout diverges afterward, the checkout comparison refuses.
+// Neither race can let witnesses executed on one tree authorize the check subject of another.
+// Control flow is v2.std.orchestration intent and bash is only the GitHub Actions foreign-executor
+// realization.
 
 fn ci_heal_revalidation_diag(text: String) -> PipelineStep {
   Do {

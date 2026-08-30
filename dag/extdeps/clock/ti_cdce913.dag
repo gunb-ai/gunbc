@@ -24,7 +24,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data ti_cdce913_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. MECHANICAL FACTS ONLY, FROM ONE DOCUMENT. The CDCE913 is a programmable clock generator and none of that is modelled here — no output count, no frequency range, no PLL fact. The package body dimensions and the vendor's recommended land pattern are what the drawing states and what were read. The document also carries the sibling part CDCEL913 on the same pages; the ordering part number recorded here is the one whose package this drawing describes, and a reader wanting the low-voltage sibling adds a row rather than editing this one, because they are separately ordered parts even where they share a drawing."
+// THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits
+// any board role; a selection is a functional-compatibility join done at the product layer, and
+// this row supplies only the package authority that join consumes. MECHANICAL FACTS ONLY, FROM ONE
+// DOCUMENT. The CDCE913 is a programmable clock generator and none of that is modelled here — no
+// output count, no frequency range, no PLL fact. The package body dimensions and the vendor's
+// recommended land pattern are what the drawing states and what were read. The document also
+// carries the sibling part CDCEL913 on the same pages; the ordering part number recorded here is
+// the one whose package this drawing describes, and a reader wanting the low-voltage sibling adds a
+// row rather than editing this one, because they are separately ordered parts even where they share
+// a drawing.
 
 data cdce913_pw0014a_drawing: PackageDrawingRef = PackageDrawingRef {
   drawing_number: "4220202/B",

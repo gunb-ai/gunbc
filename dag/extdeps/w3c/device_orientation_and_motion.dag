@@ -24,7 +24,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data device_orientation_and_motion_note: String = "Cited upstream: W3C Device Orientation and Motion, Candidate Recommendation Draft, 12 February 2025 (Devices and Sensors WG + Web Applications WG). This models the BOUNDED grain a motion consumer needs — the event type strings, the interface names, the nullability the WebIDL actually declares, the dispatch precondition, the permission surface, and the units — keeping the upstream spellings so a consumer projects a modeled fact rather than a hand-spelled string (DESIGN §3). It contains NO browser and NO platform behavior: what Chrome or Safari or macOS does with this contract is a separate execution subject and belongs downstream, never here (DESIGN §3 external upstream decomposition — a Chrome change must not require editing this file)."
+// Cited upstream: W3C Device Orientation and Motion, Candidate Recommendation Draft, 12 February
+// 2025 (Devices and Sensors WG + Web Applications WG). This models the BOUNDED grain a motion
+// consumer needs — the event type strings, the interface names, the nullability the WebIDL actually
+// declares, the dispatch precondition, the permission surface, and the units — keeping the upstream
+// spellings so a consumer projects a modeled fact rather than a hand-spelled string (DESIGN §3). It
+// contains NO browser and NO platform behavior: what Chrome or Safari or macOS does with this
+// contract is a separate execution subject and belongs downstream, never here (DESIGN §3 external
+// upstream decomposition — a Chrome change must not require editing this file).
 
 data spec_edition: String = "Candidate Recommendation Draft, 12 February 2025"
 
@@ -39,7 +46,13 @@ data device_motion_event_rotation_rate_interface: String = "DeviceMotionEventRot
 
 data device_motion_acceleration_property: String = "acceleration"
 data device_motion_acceleration_including_gravity_property: String = "accelerationIncludingGravity"
-data acceleration_axis_property_note: String = "The three axis attribute names DeviceMotionEventAcceleration declares, carried as data because a consumer reading these fields off a live event needs the names and would otherwise hard-code them at the reading site. They are cited from this specification's own WebIDL, quoted in nullable_motion_fields_note above; the identically spelled attributes on the Accelerometer extension's interfaces are that specification's facts and live in extdeps.w3c.accelerometer, because two independently versioned upstreams that happen to agree on a letter are not one authority."
+// The three axis attribute names DeviceMotionEventAcceleration declares, carried as data because a
+// consumer reading these fields off a live event needs the names and would otherwise hard-code them
+// at the reading site. They are cited from this specification's own WebIDL, quoted in
+// nullable_motion_fields_note above; the identically spelled attributes on the Accelerometer
+// extension's interfaces are that specification's facts and live in extdeps.w3c.accelerometer,
+// because two independently versioned upstreams that happen to agree on a letter are not one
+// authority.
 
 data device_motion_axis_x_property: String = "x"
 data device_motion_axis_y_property: String = "y"
@@ -49,17 +62,33 @@ data device_motion_rotation_rate_property: String = "rotationRate"
 data device_motion_interval_property: String = "interval"
 data request_permission_method: String = "requestPermission"
 
-data secure_context_only_note: String = "The spec marks the interfaces [SecureContext]: DeviceMotionEvent, DeviceMotionEventAcceleration and DeviceMotionEventRotationRate, and the Window event handlers, are available only in a secure context. So an insecure origin is a distinct reason for absence from an unsupported engine, and a consumer that does not record which one it was has not observed the difference."
+// The spec marks the interfaces [SecureContext]: DeviceMotionEvent, DeviceMotionEventAcceleration
+// and DeviceMotionEventRotationRate, and the Window event handlers, are available only in a secure
+// context. So an insecure origin is a distinct reason for absence from an unsupported engine, and a
+// consumer that does not record which one it was has not observed the difference.
 
 data interfaces_are_secure_context_only: Bool = true
 
-data nullable_motion_fields_note: String = "THE NULLABILITY IS THE SPEC'S, NOT OUR MODELING CHOICE, AND IT IS WHY A FIRED EVENT PROVES NOTHING ON ITS OWN. The WebIDL declares DeviceMotionEventAcceleration as `readonly attribute double? x` (likewise y, z) and DeviceMotionEventRotationRate as `double? alpha, beta, gamma`; DeviceMotionEvent itself declares `DeviceMotionEventAcceleration? acceleration` — nullable at BOTH grains, the struct and each axis. Only `double interval` is non-nullable. A consumer that counts events therefore counts something weaker than readings: an arriving event may carry no value at all, so events-seen and values-seen are two different observations and collapsing them loses the distinction the IDL went to the trouble of expressing."
+// THE NULLABILITY IS THE SPEC'S, NOT OUR MODELING CHOICE, AND IT IS WHY A FIRED EVENT PROVES
+// NOTHING ON ITS OWN. The WebIDL declares DeviceMotionEventAcceleration as `readonly attribute
+// double? x` (likewise y, z) and DeviceMotionEventRotationRate as `double? alpha, beta, gamma`;
+// DeviceMotionEvent itself declares `DeviceMotionEventAcceleration? acceleration` — nullable at
+// BOTH grains, the struct and each axis. Only `double interval` is non-nullable. A consumer that
+// counts events therefore counts something weaker than readings: an arriving event may carry no
+// value at all, so events-seen and values-seen are two different observations and collapsing them
+// loses the distinction the IDL went to the trouble of expressing.
 
 type MotionAxisReading
   = AxisNull
   | AxisValue { milli_units: Int }
 
-data axis_reading_carrier_note: String = "The spec's double is carried as integral milli-units because the substrate's arithmetic here is integral and a fractional literal would be a second representation of one magnitude — the extdeps.web_audio micros precedent. The unit is the spec's own per field (m/s^2 for acceleration axes, deg/s for rotation-rate axes), named by the reading's position rather than restated per value. AxisNull is the IDL's null and is NOT zero: a null axis means no value was supplied, a zero axis means the device measured zero, and a carrier that rendered both as 0 would erase exactly the distinction this module exists to preserve."
+// The spec's double is carried as integral milli-units because the substrate's arithmetic here is
+// integral and a fractional literal would be a second representation of one magnitude — the
+// extdeps.web_audio micros precedent. The unit is the spec's own per field (m/s^2 for acceleration
+// axes, deg/s for rotation-rate axes), named by the reading's position rather than restated per
+// value. AxisNull is the IDL's null and is NOT zero: a null axis means no value was supplied, a
+// zero axis means the device measured zero, and a carrier that rendered both as 0 would erase
+// exactly the distinction this module exists to preserve.
 
 fn axis_has_value(r: MotionAxisReading) -> Bool {
   match r {
@@ -78,11 +107,28 @@ fn acceleration_carries_any_value(a: DeviceMotionAcceleration) -> Bool {
   axis_has_value(r: a.x) || axis_has_value(r: a.y) || axis_has_value(r: a.z)
 }
 
-data hollow_event_emission_is_advisory_note: String = "SHOULD, NOT MUST — AND THIS IS THE SENTENCE A CAPABILITY PROBE MOST EASILY MISREADS. The spec says: 'If an implementation can never provide motion information, the event should be fired with the acceleration, accelerationIncludingGravity and rotationRate attributes set to null.' That is advisory. An implementation that can never provide motion information is NOT required to fire hollow events, and nothing in the spec requires it to keep firing them. Therefore observing ZERO events does not establish that hardware is absent, and observing zero events does not distinguish among: the frame was blocked by Permissions Policy, permission was denied, the document was not eligible for readings, the engine's backend was unavailable, the hardware was unavailable, the implementation simply declined to emit hollow events, or the observation window was too short. A consumer that derives 'no sensor' from 'no events' has converted could-not-observe into nothing-is-there — the empty-observation narrow — and this module refuses to supply that inference."
+// SHOULD, NOT MUST — AND THIS IS THE SENTENCE A CAPABILITY PROBE MOST EASILY MISREADS. The spec
+// says: 'If an implementation can never provide motion information, the event should be fired with
+// the acceleration, accelerationIncludingGravity and rotationRate attributes set to null.' That is
+// advisory. An implementation that can never provide motion information is NOT required to fire
+// hollow events, and nothing in the spec requires it to keep firing them. Therefore observing ZERO
+// events does not establish that hardware is absent, and observing zero events does not distinguish
+// among: the frame was blocked by Permissions Policy, permission was denied, the document was not
+// eligible for readings, the engine's backend was unavailable, the hardware was unavailable, the
+// implementation simply declined to emit hollow events, or the observation window was too short. A
+// consumer that derives 'no sensor' from 'no events' has converted could-not-observe into
+// nothing-is-there — the empty-observation narrow — and this module refuses to supply that
+// inference.
 
 data hollow_event_emission_is_required: Bool = false
 
-data dispatch_precondition_note: String = "The precondition that makes silence ambiguous by construction. The spec states: 'The devicemotion event is only dispatched if the accelerometer and gyroscope permissions are granted.' BOTH are required, so a granted accelerometer alone dispatches nothing, and the absence of events is jointly explained by two independent permission facts before hardware is even reached. These two token names are cited HERE, from this specification's own text, rather than from the Generic Sensor base spec — which defines no feature tokens of its own (see extdeps.w3c.generic_sensor policy_tokens_are_extension_defined_note)."
+// The precondition that makes silence ambiguous by construction. The spec states: 'The devicemotion
+// event is only dispatched if the accelerometer and gyroscope permissions are granted.' BOTH are
+// required, so a granted accelerometer alone dispatches nothing, and the absence of events is
+// jointly explained by two independent permission facts before hardware is even reached. These two
+// token names are cited HERE, from this specification's own text, rather than from the Generic
+// Sensor base spec — which defines no feature tokens of its own (see extdeps.w3c.generic_sensor
+// policy_tokens_are_extension_defined_note).
 
 type DeviceMotionDispatchPrecondition {
   accelerometer_permission_granted: Bool
@@ -96,7 +142,12 @@ fn devicemotion_may_be_dispatched(p: DeviceMotionDispatchPrecondition) -> Bool {
 data device_motion_accelerometer_permission_name: String = "accelerometer"
 data gyroscope_permission_name: String = "gyroscope"
 
-data permission_state_note: String = "The spec's own PermissionState enum, returned by the static requestPermission() declared on BOTH DeviceOrientationEvent and DeviceMotionEvent as `static Promise<PermissionState> requestPermission()`. Recorded because a consumer must distinguish a denied answer from an unasked question, and because an engine that does not expose the method has not thereby made permission unnecessary — it has only made the spec's asking route unavailable, which is a fact about that engine and belongs in its own module."
+// The spec's own PermissionState enum, returned by the static requestPermission() declared on BOTH
+// DeviceOrientationEvent and DeviceMotionEvent as `static Promise<PermissionState>
+// requestPermission()`. Recorded because a consumer must distinguish a denied answer from an
+// unasked question, and because an engine that does not expose the method has not thereby made
+// permission unnecessary — it has only made the spec's asking route unavailable, which is a fact
+// about that engine and belongs in its own module.
 
 type PermissionState
   = PermissionGranted

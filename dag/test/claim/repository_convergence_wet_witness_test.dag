@@ -10,22 +10,24 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-// FIRST REAL EXECUTION EVIDENCE FOR repository_converge_wet. The fixture is rebuilt for each row
-// from ordinary git commands in a fresh mktemp directory. The function under test then performs its
-// own ForEachRef/WorktreeList/rev-parse/reflog/write-tree/diff/fetch/update-ref/reset/readback chain;
+// FIRST REAL EXECUTION EVIDENCE FOR repository_converge_wet. The fixture is rebuilt per row from
+// ordinary git commands in a fresh mktemp directory; the function under test then performs its own
+// ForEachRef/WorktreeList/rev-parse/reflog/write-tree/diff/fetch/update-ref/reset/readback chain —
 // none of those answers is authored by this witness. Hermetic execution must refuse this file.
 // Local recipe: claim_batch --wet --source-root dag --source-root src/v2 --entry
-// dag/test/claim/repository_convergence_wet_witness_test.dag --functions
-// detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree,already_at_candidate_repairs_a_stale_index,cas_race_is_observed_after_fetch,reset_refusal_after_successful_cas_is_nonzero
-data repository_convergence_wet_witness_note: String = "Scratch-repository WET matrix over the real git transport."
+// dag/test/claim/repository_convergence_wet_witness_test.dag --functions <comma-joined>:
+//   detached_primary_transition_executes_and_preserves_packed_loose_refs_and_linked_worktree,
+//   already_at_candidate_repairs_a_stale_index, cas_race_is_observed_after_fetch,
+//   reset_refusal_after_successful_cas_is_nonzero
+// Scratch-repository WET matrix over the real git transport.
 
-// Record/replay receipt recipe (the setup invocation is stable and its recorded stdout carries the
-// original mktemp path into every subsequent operation key): run the function roster above with
-// `--wet --record --fixture-store target/repository-convergence-fixtures`; replay the same roster
-// with `--hermetic`; then replay against an EMPTY store. The populated replay must pass all rows and
-// the empty-store control must refuse every row with `missing recorded fixture`. That asymmetry is
-// the proof that replay consumed the recorded observations instead of silently reaching live git.
-data repository_convergence_record_replay_control_note: String = "Populated replay passes; empty-store replay refuses every effectful row."
+// Record/replay receipt recipe (the setup invocation is stable; its recorded stdout carries the
+// original mktemp path into every subsequent operation key): run the roster above with `--wet
+// --record --fixture-store target/repository-convergence-fixtures`; replay the same roster with
+// `--hermetic`; then replay against an EMPTY store. The populated replay must pass all rows and the
+// empty-store control must refuse every row with `missing recorded fixture` — the asymmetry proving
+// replay consumed the recorded observations instead of silently reaching live git.
+// Populated replay passes; empty-store replay refuses every effectful row.
 
 type ScratchRepository {
   root: String
@@ -92,13 +94,14 @@ fn run_scratch(s: ScratchRepository) -> ProcessExit {
   repository_converge_wet(repo: s.repo, remote: "origin", base_ref: "refs/remotes/origin/main", candidate: s.candidate)
 }
 
-// THE WET BOUNDARY RETURNS ProcessExit, NOT RepositoryConvergenceOutcome. These witnesses therefore
-// discriminate refusal ownership through repository_convergence_detail's rendered cause. That
+// THE WET BOUNDARY RETURNS ProcessExit, NOT RepositoryConvergenceOutcome, so these witnesses
+// discriminate refusal ownership through repository_convergence_detail's rendered cause. The
 // coupling is deliberate: repository_converge_wet consumes the typed outcome internally and exposes
-// only the process contract production receives. Pure witnesses separately match the coproduct arms;
-// changing human-facing text can red these integration witnesses even when adjudication is intact,
-// because the exposed process diagnostic is part of the end-to-end contract being executed here.
-data wet_process_exit_discrimination_note: String = "WET assertions inspect the only refusal carrier repository_converge_wet exposes: ProcessExit.reason."
+// only the process contract production receives. Pure witnesses separately match the coproduct
+// arms; changing human-facing text can red these integration witnesses even with adjudication
+// intact, because the exposed process diagnostic is part of the end-to-end contract executed here.
+// WET assertions inspect the only refusal carrier repository_converge_wet exposes:
+// ProcessExit.reason.
 
 fn mutate_scratch(s: ScratchRepository, body: String) -> Bool {
   shell.Exec.Run(

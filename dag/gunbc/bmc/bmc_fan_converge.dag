@@ -1780,6 +1780,16 @@ func srv4_bmc_fan_converge() -> ProcessExit
   )
 }
 
+// The BMC fan entrypoint performs exact-target identity observation, typed policy/config
+// observation with a live digest, policy classification, and live thermal/tach safety readback. A
+// Noop is accepted only when the live canonical digest equals the admitted digest and every safety
+// observation holds. Apply and rollback remain phase-partial refusals: the rejected two-file
+// backup/mutation realizer is deleted, and no effect can run until one content-addressed manifest
+// binds the exact target, stable BMC identity, firmware, config path, before/backup digests and
+// generation, followed by exact readback and a bounded monitoring receipt. GCP credential access
+// remains demand-derived, and password SSH pins the target-specific known-hosts file with the
+// password on inherited fd 0.
+
 func srv4_bmc_fan_rollback_previous() -> ProcessExit
   uses net: Network
 {
@@ -1788,5 +1798,3 @@ func srv4_bmc_fan_rollback_previous() -> ProcessExit
     action: BmcFanRollbackPrevious,
   )
 }
-
-data bmc_fan_converge_subsumption_note: String = "The BMC fan entrypoint performs exact-target identity observation, typed policy/config observation with a live digest, policy classification, and live thermal/tach safety readback. A Noop is accepted only when the live canonical digest equals the admitted digest and every safety observation holds. Apply and rollback remain phase-partial refusals: the rejected two-file backup/mutation realizer is deleted, and no effect can run until one content-addressed manifest binds the exact target, stable BMC identity, firmware, config path, before/backup digests and generation, followed by exact readback and a bounded monitoring receipt. GCP credential access remains demand-derived, and password SSH pins the target-specific known-hosts file with the password on inherited fd 0."

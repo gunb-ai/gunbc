@@ -69,7 +69,13 @@ test fn witness_all_claims_backed_holds() -> Bool {
   coverage_frontier_all_native_claims_backed()
 }
 
-data emit_coverage_red_probe_note: String = "Discriminating RED control (parent-preferred idiom, quarantined-known-red): a synthetic row falsely claims SelfEmittedNative with a backing citation that is NOT enrolled in falsifier_self_host_wet_template_entries. If coverage_row_backing_is_enrolled ever returned true for this row, the backing check would be a rubber stamp (a validation that can be satisfied by editing the claim, not the realization — DESIGN section 5's named tell). witness_synthetic_unbacked_claim_reds asserts the check catches it; this row is never added to emit_coverage_frontier_roster itself, so it never inflates the real count."
+// Discriminating RED control (parent-preferred idiom, quarantined-known-red): a synthetic row
+// falsely claims SelfEmittedNative with a backing citation that is NOT enrolled in
+// falsifier_self_host_wet_template_entries. If coverage_row_backing_is_enrolled ever returned true
+// for this row, the backing check would be a rubber stamp (a validation that can be satisfied by
+// editing the claim, not the realization — DESIGN section 5's named tell).
+// witness_synthetic_unbacked_claim_reds asserts the check catches it; this row is never added to
+// emit_coverage_frontier_roster itself, so it never inflates the real count.
 
 fn synthetic_unbacked_native_row() -> EmitCoverageFrontierRow {
   EmitCoverageFrontierRow {

@@ -27,7 +27,9 @@ import v2.std.qualified_name { qualified_name_to_dotted_string }
 
 import v2.compiler.ingested_fixture_arrows { ingested_add_module_source }
 
-data normalize_graft_witness_helpers_note: String = "§10 normalize-as-ingest execution helpers: tokenize→parse_module→normalize paths exceed per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Enrolled in long/namespace_graft_normalize_witness_test.dag."
+// §10 normalize-as-ingest execution helpers: tokenize→parse_module→normalize paths exceed per-PR 5s
+// fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Enrolled in
+// long/namespace_graft_normalize_witness_test.dag.
 
 data ng_norm_module_source: String = ingested_add_module_source
 

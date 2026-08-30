@@ -22,7 +22,11 @@ import gunbc.publication_decision {
   publication_decision_authorizes_newly_public,
 }
 
-data publication_publisher_note: String = "Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write capability in this slice; credentials and push machinery are unchanged."
+// Slice-1 sole modeled publisher (model + shadow only). Ordinary ModeledSessionId values are
+// OrdinarySession and carry no PublicationAuthority. Exactly one sole_modeled_publisher_session may
+// consume a change-locally admitted PublicProjectionPlan derived from PublicationPolicy — never a
+// pathname census or placement-gate roster. Ordinary sessions do NOT yet lose live public-write
+// capability in this slice; credentials and push machinery are unchanged.
 
 type ModeledSessionId = NonEmptyStr where brand("ModeledSessionId")
 
