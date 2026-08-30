@@ -16,7 +16,7 @@ import gunbc.roadmap_spawner {
   node_is_spawnable, node_is_upcoming, node_is_frontier_done, node_closes_dependency,
 }
 import gunbc.roadmap_launch_admission {
-  LaunchCause, Operator,
+  LaunchCause, Operator, LaunchIdentity, launch_cause_label,
   LaunchHostStanding, LaunchGraphStanding,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
   launch_admission, launch_admission_label, launch_admission_reason,
@@ -119,12 +119,15 @@ type WorkActionKind
   = DispatchAction
   | ClearSessionAction
 
+data work_action_launch_note: String = "An available dispatch action carries the LaunchIdentity the admission produced for this render (node, cause=operator, mode, instance, revision), so the page projects the same decision record the route and the timer bind to their attempts. The identity is rendered as evidence (data-launch-* attributes) and is NOT authorization: the button posts only the node id, and the route re-observes the host and re-admits. Absent on every unavailable action."
+
 type WorkAction {
   kind: WorkActionKind
   availability: ActionAvailability
   priority: ActionPriority
   label: String
   detail: String
+  launch: LaunchIdentity?
 }
 
 type ActionView {
@@ -422,13 +425,14 @@ fn dispatch_action(lifecycle: WorkLifecycle, admission: LaunchAdmission) -> List
 
 fn dispatch_action_of_admission(admission: LaunchAdmission) -> WorkAction {
   match admission {
-    LaunchAdmitted { identity: _ } =>
+    LaunchAdmitted { identity } =>
       WorkAction {
         kind: DispatchAction,
         availability: ActionAvailable,
         priority: PrimaryAction,
         label: launch_admission_label(a: admission),
         detail: launch_admission_reason(a: admission),
+        launch: Present { value: identity },
       }
     LaunchRefused { refusal: _ } =>
       WorkAction {
@@ -437,6 +441,7 @@ fn dispatch_action_of_admission(admission: LaunchAdmission) -> WorkAction {
         priority: SecondaryAction,
         label: launch_admission_label(a: admission),
         detail: launch_admission_reason(a: admission),
+        launch: none,
       }
   }
 }

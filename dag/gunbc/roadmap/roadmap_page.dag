@@ -37,9 +37,10 @@ import gunbc.roadmap_component {
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
 }
+import gunbc.roadmap_belt { spawn_mode_label }
 import gunbc.roadmap_launch_admission {
   LaunchHostStanding, LaunchGraphStanding, LaunchGraphProjected,
-  launch_host_unobserved_static_render,
+  launch_host_unobserved_static_render, launch_cause_label,
 }
 import gunbc.roadmap_presentation {
   WorkRowView, work_row_view, row_headline, LaunchRowContext,
@@ -353,9 +354,18 @@ fn dispatch_button_attributes(view: WorkRowView, a: WorkAction) -> List<Attribut
     attr(name: "data-launch", value: a.label ),
     attr(name: "title", value: a.detail ),
   ]
+  let with_identity = match a.launch {
+    Absent => base
+    Present { value: id } => concat(base, [
+      attr(name: "data-launch-cause", value: launch_cause_label(c: id.cause) ),
+      attr(name: "data-launch-mode", value: spawn_mode_label(m: id.mode) ),
+      attr(name: "data-launch-instance", value: id.instance_id ),
+      attr(name: "data-launch-revision", value: id.revision ),
+    ])
+  }
   match a.availability {
-    ActionAvailable => base
-    ActionUnavailable => concat(base, [ attr(name: "disabled", value: "" ) ])
+    ActionAvailable => with_identity
+    ActionUnavailable => concat(with_identity, [ attr(name: "disabled", value: "" ) ])
   }
 }
 

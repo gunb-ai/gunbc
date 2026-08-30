@@ -21,6 +21,7 @@ import gunbc.roadmap_belt {
   roadmap_belt_default_capacity,
   roadmap_belt_production_spawn_mode,
   DispatchMember, DesiredMember, ObservedMember, dispatch_member_key,
+  belt_reconcile_upsert_count,
 }
 import gunbc.roadmap_launch_admission {
   LaunchCause, Operator, Timer,
@@ -31,15 +32,20 @@ import gunbc.roadmap_launch_admission {
   LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
   LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
   LaunchAdmission, LaunchAdmitted, LaunchRefused,
-  LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly,
+  LaunchHostStanding, LaunchHostObserved, LaunchHostObserveOnly, LaunchHostHalted, LaunchHostUnobserved,
+  launch_host_halt_transition, launch_host_stage_revision, LaunchHostRevisionStage, HostRevisionConverged, HostRevisionHalted,
+  launch_host_refusal,
   LaunchSessionsStanding, LaunchSessionsObserved, LaunchSessionsUnobserved,
   LaunchGraphStanding, launch_graph_of_projection,
+  LaunchIdentity, launch_identity_json, launch_identity_of_json, LaunchIdentityDecode, LaunchIdentityDecoded, LaunchIdentityUnreadable,
+  launch_identity_exemplar,
   launch_admission, launch_refusal_label, launch_refusal_reason, launch_refusal_exemplars,
 }
 import extdeps.languages.json.emit {
   JsonValue,
   JsonNull,
   JsonString,
+  JsonArray,
   serialize_json,
   json_string,
   json_int,
@@ -72,6 +78,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_attempt_key,
   dispatch_attempt_key_path_for_instance,
   dispatch_attempt_admission_path_for_instance,
+  dispatch_attempt_launch_path_for_instance,
   dispatch_attempt_events_path_for_instance,
   dispatch_attempt_spawn_failure_path_for_instance,
   dispatch_attempt_oracle_identity_path_for_instance,
@@ -514,6 +521,7 @@ fn belt_attempt_state_initialize_for_instance(
   node: RoadmapNode,
   attempt_key: String,
   admission_receipt: String,
+  launch: LaunchIdentity,
 ) -> AttemptStateInitialization {
   let key_write = Filesystem.Write(
     path: dispatch_attempt_key_path_for_instance(
@@ -541,6 +549,20 @@ fn belt_attempt_state_initialize_for_instance(
       AttemptStateInitializationFailed {
         step: "attempt-admission-write",
         detail: admission_write.error,
+      }
+    } else {
+    let launch_write = Filesystem.Write(
+      path: dispatch_attempt_launch_path_for_instance(
+        instance: instance,
+        node_id: node.node,
+        attempt_key: attempt_key,
+      ),
+      content: serialize_json(v: launch_identity_json(id: launch)),
+    )
+    if !launch_write.success {
+      AttemptStateInitializationFailed {
+        step: "attempt-launch-write",
+        detail: launch_write.error,
       }
     } else {
       let events_write = Filesystem.Write(
@@ -601,6 +623,7 @@ fn belt_attempt_state_initialize_for_instance(
       }
     }
   }
+    }
 }
 
 data belt_oracle_pin_capture_note: String = "The pin is captured from the FRESHLY CREATED WORKTREE, before the provider is spawned, because that is the only moment the oracle is known to be the base revision's oracle and not the attempt's. Reading it from the controller repo instead would be a different tree that nothing ties to this attempt; reading it after the agent runs is the fail-open this whole lane closes. Ordering is therefore load-bearing and it is already the ordering the staged spawn establishes: worktree-add and attempt-state-prepare run first, this capture runs inside state initialization, and tmux-session-create runs only after. A capture failure does NOT fail the spawn — the agent's work is still worth doing and a dispatch that refuses on a verification-side deficit would trade a whole attempt for a receipt — but it is never silent either: the reason is persisted to its own file, so verification reports a located cause instead of an absent pin, and the deficit stays countable at the Verify lamp rather than having its frequency zeroed."
@@ -935,9 +958,11 @@ fn belt_persist_spawn_failure_for_instance(
 
 data belt_spawn_not_admitted_note: String = "RLM-1: the THIRD outcome, and the one the shared launch admission produces. Spawned and SpawnFailed are what actuation returns once a launch is admitted; SpawnNotAdmitted is the admission's own refusal, carried as the typed LaunchRefusal (never flattened into a SpawnFailed step string) so the manual route, the tick receipt and the page all project the same identity and reason. It is not a failure: a tick in ManualReady reports one per Ready node it would have started, and the pass outcome stays Recorded."
 
+data belt_spawn_outcome_launch_note: String = "Spawned and SpawnFailed carry the exact LaunchIdentity that admitted the attempt (review 5059520727 finding 4: every surface matched `LaunchAdmitted { identity: _ }` and threw the decision away). The identity is threaded from the admission site through every actuation step -- the route's response, the tick's outcome list, the durable tick receipt (BeltTickReceipt.launches) and the attempt's own state directory (launch-identity.json, beside environment-admission.json) all project the same record, so RLM-4 joins an attempt to the admission that decided it by construction. SpawnNotAdmitted has no identity because no admission produced one."
+
 type BeltSpawnOutcome
-  = Spawned { node_id: String, session_name: String, provider: String }
-  | SpawnFailed { node_id: String, step: String, detail: String, provider: String }
+  = Spawned { node_id: String, session_name: String, provider: String, launch: LaunchIdentity }
+  | SpawnFailed { node_id: String, step: String, detail: String, provider: String, launch: LaunchIdentity }
   | SpawnNotAdmitted { node_id: String, refusal: LaunchRefusal }
 
 fn belt_dispatch_spawn_unselected_provider_wire_label() -> String {
@@ -1319,6 +1344,7 @@ fn belt_actuate_spawn_for_instance(
   instance: HostDashboardInstance,
   node: RoadmapNode,
   probed_at: String,
+  launch: LaunchIdentity,
 ) -> BeltSpawnOutcome {
   match belt_footprint_admission_for_instance(instance: instance) {
     FootprintRefused { step: fst, detail: fd } =>
@@ -1327,6 +1353,7 @@ fn belt_actuate_spawn_for_instance(
         step: fst,
         detail: fd,
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+        launch: launch,
       }
     FootprintAdmitted =>
   match dispatch_environment_admit(
@@ -1345,6 +1372,7 @@ fn belt_actuate_spawn_for_instance(
           },
         ),
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+        launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
       match dispatch_actuator_selection(node_sizing: node.sizing) {
@@ -1354,6 +1382,7 @@ fn belt_actuate_spawn_for_instance(
             step: "dispatch-selection",
             detail: reason as String,
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
+            launch: launch,
           }
         DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
           match belt_provider_preflight_for_instance(
@@ -1366,6 +1395,7 @@ fn belt_actuate_spawn_for_instance(
                 step: st,
                 detail: d,
                 provider: belt_dispatch_spawn_provider_wire_label(provider: provider),
+                launch: launch,
               }
             ProviderPreflightOk =>
               belt_actuate_spawn_exec_for_instance(
@@ -1379,6 +1409,7 @@ fn belt_actuate_spawn_for_instance(
                   },
                 ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
+                launch: launch,
               )
           }
       }
@@ -1392,6 +1423,7 @@ fn belt_actuate_spawn_exec_for_instance(
   probed_at: String,
   admission_receipt: String,
   provider_wire_label: String,
+  launch: LaunchIdentity,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     instance: instance,
@@ -1400,6 +1432,7 @@ fn belt_actuate_spawn_exec_for_instance(
     workdir: instance.repo_root as String,
     admission_receipt: admission_receipt,
     provider_wire_label: provider_wire_label,
+    launch: launch,
   )
 }
 
@@ -1412,6 +1445,7 @@ fn belt_actuate_spawn_exec_modeled(
   workdir: String,
   admission_receipt: String,
   provider_wire_label: String,
+  launch: LaunchIdentity,
 ) -> BeltSpawnOutcome {
   let attempt_key = dispatch_attempt_key(
     node_id: node.node,
@@ -1431,6 +1465,7 @@ fn belt_actuate_spawn_exec_modeled(
         step: step as String,
         detail: detail,
         provider: provider_wire_label,
+        launch: launch,
       }
     DispatchSpawnReady { commands: cmds } =>
   match belt_exec_steps(
@@ -1449,6 +1484,7 @@ fn belt_actuate_spawn_exec_modeled(
         step: step,
         detail: detail,
         provider: provider_wire_label,
+        launch: launch,
       }
     ExecStepsOk =>
       match belt_attempt_state_initialize_for_instance(
@@ -1456,6 +1492,7 @@ fn belt_actuate_spawn_exec_modeled(
         node: node,
         attempt_key: attempt_key,
         admission_receipt: admission_receipt,
+        launch: launch,
       ) {
         AttemptStateInitializationFailed { step, detail } =>
           SpawnFailed {
@@ -1463,6 +1500,7 @@ fn belt_actuate_spawn_exec_modeled(
             step: step,
             detail: detail,
             provider: provider_wire_label,
+            launch: launch,
           }
         AttemptStateInitialized =>
           match belt_exec_steps(
@@ -1480,6 +1518,7 @@ fn belt_actuate_spawn_exec_modeled(
                 step: step,
                 detail: detail,
                 provider: provider_wire_label,
+                launch: launch,
               }
             ExecStepsOk =>
               match belt_exec_steps(
@@ -1503,6 +1542,7 @@ fn belt_actuate_spawn_exec_modeled(
                       detail: detail,
                     ),
                     provider: provider_wire_label,
+                    launch: launch,
                   }
                 ExecStepsOk =>
                   match belt_exec_steps(
@@ -1531,6 +1571,7 @@ fn belt_actuate_spawn_exec_modeled(
                         node_id: node.node as String,
                         session_name: session_name,
                         provider: provider_wire_label,
+                        launch: launch,
                       }
                     ExecStepFailed { step, detail } => {
                       let cleanup = belt_created_session_cleanup_detail(
@@ -1553,6 +1594,7 @@ fn belt_actuate_spawn_exec_modeled(
                           detail: full_detail,
                         ),
                         provider: provider_wire_label,
+                        launch: launch,
                       }
                     }
                   }
@@ -1563,7 +1605,7 @@ fn belt_actuate_spawn_exec_modeled(
 }
 }
 
-fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> BeltSpawnOutcome {
+fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
   let instance = srv1_live_dashboard_instance()
   match dispatch_environment_admit(
     contract: node.execution,
@@ -1581,6 +1623,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
           },
         ),
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+        launch: launch,
       }
     EnvironmentAdmitted { receipts, validation_summary } =>
       match dispatch_actuator_selection(node_sizing: node.sizing) {
@@ -1590,6 +1633,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
             step: "dispatch-selection",
             detail: reason as String,
             provider: belt_dispatch_spawn_selection_refused_provider_wire_label(reason: reason),
+            launch: launch,
           }
         DispatchActuatorSelectionOk { provider, effort: _, process_fingerprint: _ } =>
           match belt_provider_preflight(provider: provider) {
@@ -1599,6 +1643,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
                 step: st,
                 detail: d,
                 provider: belt_dispatch_spawn_provider_wire_label(provider: provider),
+                launch: launch,
               }
             ProviderPreflightOk =>
               belt_actuate_spawn_exec(
@@ -1612,6 +1657,7 @@ fn belt_actuate_spawn(node: RoadmapNode, probed_at: String, workdir: String) -> 
                   },
                 ),
                 provider_wire_label: belt_dispatch_spawn_provider_wire_label(provider: provider),
+                launch: launch,
               )
           }
       }
@@ -1624,6 +1670,7 @@ fn belt_actuate_spawn_exec(
   workdir: String,
   admission_receipt: String,
   provider_wire_label: String,
+  launch: LaunchIdentity,
 ) -> BeltSpawnOutcome {
   belt_actuate_spawn_exec_modeled(
     instance: srv1_live_dashboard_instance(),
@@ -1632,6 +1679,7 @@ fn belt_actuate_spawn_exec(
     workdir: workdir,
     admission_receipt: admission_receipt,
     provider_wire_label: provider_wire_label,
+    launch: launch,
   )
 }
 
@@ -1709,18 +1757,19 @@ fn belt_spawn_session_uuid(node_id: String, probed_at: String) -> String {
   belt_uuid_dash(v: belt_uuid_rfc4122(hex: belt_uuid_hex32(node_id: node_id, probed_at: probed_at)))
 }
 
-fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOutcome {
+fn belt_actuate_spawn_member(m: DispatchMember, workdir: String, launch: LaunchIdentity) -> BeltSpawnOutcome {
   match m {
     DesiredMember { node_id: nid, node: node } =>
       match clock_now_probed_at() {
         Present { value: probed_at } =>
-          belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: workdir)
+          belt_actuate_spawn(node: node, probed_at: probed_at as String, workdir: workdir, launch: launch)
         Absent =>
           SpawnFailed {
             node_id: nid,
             step: "attempt-clock",
             detail: "clock observation refused; an attempt without a stamp would collide with a later one — fail-closed, no unknown-stamped attempts",
             provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: launch,
           }
       }
     ObservedMember { node_id: nid, session: _ } =>
@@ -1729,6 +1778,7 @@ fn belt_actuate_spawn_member(m: DispatchMember, workdir: String) -> BeltSpawnOut
         step: "member-shape",
         detail: "belt spawn expected DesiredMember (carries node for brief); got ObservedMember — fail-closed, no spawn without a node model",
         provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+        launch: launch,
       }
   }
 }
@@ -1807,6 +1857,7 @@ type BeltPassOutcome
 
 type BeltTickReceipt {
   observed_at: String,
+  launches: List<LaunchIdentity>,
   spawn_pass: BeltPassOutcome,
   teardown_pass: BeltPassOutcome,
   verify_pass: BeltPassOutcome,
@@ -1820,7 +1871,7 @@ type BeltTickReceiptRead
 
 data belt_tick_receipt_note: String = "THE PERSISTED TICK RECEIPT IS WHAT THE WORKFLOW UI READS to answer whether a belt tick ran, deferred, refused, or failed — today it exists only in journald stdout and the row cannot say 'Verification queued - next belt tick' or 'blocked - belt session observation refused'. Each pass is typed independently (BeltPassOutcome): spawn/teardown depend on tmux session observation; verify depends only on the attempt ledger plus terminal provider/process evidence; publish depends on exact verified head plus repository observation. A tmux-list refusal may block spawn/reap while verify still examines its own attempt evidence (DESIGN section 5: a failure arm must refuse narrowly, never widen to zeroing sibling passes). Written to the instance's own receipts directory (gunbc.host_layout instance_receipts_dir) so /workflow.json can read it without re-running the belt. CORRECTED 2026-08-19: this sentence read 'beside the instance's attempt-state root', which was wrong in two ways at once and is recorded rather than quietly reworded. The code never wrote there — it wrote <instance_root>/belt-last-tick.json, a root-owned directory, so the receipt was EACCES and absent on every instance. And the attempt-state root is not a per-instance home at all: the srv1 pair is DispatchStateHostShared, so blue and green resolve it to ONE path and a receipt written there would be a single file answering for two instances. A note describing a home the implementation did not use, and could not have used safely, is the stale-authority class DESIGN section 3 names."
 
-data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v2"
+data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v3"
 
 // THE RECEIPT HAD NO WRITABLE HOME AND THEREFORE HAS NEVER BEEN WRITTEN ON ANY INSTANCE.
 // This path was <instance_root>/belt-last-tick.json, and every instance_root on srv1 is
@@ -1950,14 +2001,20 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
                               BeltPassOutcomeUnreadable { reason: r } =>
                                 BeltTickReceiptUnreadable { reason: r }
                               BeltPassOutcomeDecoded { outcome: publish_pass } =>
-                                BeltTickReceiptPresent {
-                                  receipt: BeltTickReceipt {
-                                    observed_at: observed_at,
-                                    spawn_pass: spawn_pass,
-                                    teardown_pass: teardown_pass,
-                                    verify_pass: verify_pass,
-                                    publish_pass: publish_pass,
-                                  },
+                                match belt_tick_launches_from_member(doc: doc) {
+                                  BeltTickLaunchesUnreadable { reason: r } =>
+                                    BeltTickReceiptUnreadable { reason: r }
+                                  BeltTickLaunchesDecoded { launches } =>
+                                    BeltTickReceiptPresent {
+                                      receipt: BeltTickReceipt {
+                                        observed_at: observed_at,
+                                        launches: launches,
+                                        spawn_pass: spawn_pass,
+                                        teardown_pass: teardown_pass,
+                                        verify_pass: verify_pass,
+                                        publish_pass: publish_pass,
+                                      },
+                                    }
                                 }
                             }
                         }
@@ -1970,6 +2027,28 @@ fn belt_tick_receipt_decode(raw: String) -> BeltTickReceiptRead {
         _ =>
           BeltTickReceiptUnreadable { reason: "belt tick receipt schema is missing" }
       }
+  }
+}
+
+type BeltTickLaunchesDecode
+  = BeltTickLaunchesDecoded { launches: List<LaunchIdentity> }
+  | BeltTickLaunchesUnreadable { reason: String }
+
+fn belt_tick_launches_from_member(doc: JsonValue) -> BeltTickLaunchesDecode {
+  match json_object_unique_member(v: doc, key: "launches") {
+    JsonMemberFound { value: JsonArray { elements } } =>
+      fold(elements, init: BeltTickLaunchesDecoded { launches: [] }, f: (acc, e) => match acc {
+        BeltTickLaunchesUnreadable { reason } => BeltTickLaunchesUnreadable { reason: reason }
+        BeltTickLaunchesDecoded { launches } =>
+          match launch_identity_of_json(doc: e) {
+            LaunchIdentityUnreadable { reason } => BeltTickLaunchesUnreadable { reason: join(["belt tick receipt launches: ", reason], "") }
+            LaunchIdentityDecoded { identity } => BeltTickLaunchesDecoded { launches: concat(launches, [identity]) }
+          }
+      })
+    JsonMemberFound { value: _ } => BeltTickLaunchesUnreadable { reason: "belt tick receipt launches is not an array" }
+    JsonMemberAbsent => BeltTickLaunchesUnreadable { reason: "belt tick receipt launches is missing" }
+    JsonMemberDuplicated { count: _ } => BeltTickLaunchesUnreadable { reason: "belt tick receipt launches is duplicated" }
+    JsonMemberNotAnObject => BeltTickLaunchesUnreadable { reason: "belt tick receipt is not an object" }
   }
 }
 
@@ -2021,6 +2100,7 @@ fn belt_tick_receipt_json_value(receipt: BeltTickReceipt) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: belt_tick_receipt_schema)),
     json_kv(key: "observed_at", value: json_string(s: receipt.observed_at)),
+    json_kv(key: "launches", value: json_array(elements: receipt.launches |> map(l => launch_identity_json(id: l)))),
     json_kv(key: "spawn_pass", value: belt_pass_outcome_json(o: receipt.spawn_pass)),
     json_kv(key: "teardown_pass", value: belt_pass_outcome_json(o: receipt.teardown_pass)),
     json_kv(key: "verify_pass", value: belt_pass_outcome_json(o: receipt.verify_pass)),
@@ -2058,9 +2138,9 @@ fn belt_spawn_failure_reason(spawn_outcomes: List<BeltSpawnOutcome>) -> String {
     "one or more spawn outcomes failed: ",
     join(
       fold(spawn_outcomes, init: [], f: (acc, o) => match o {
-        SpawnFailed { node_id: n, step: st, detail: d, provider: pv } =>
+        SpawnFailed { node_id: n, step: st, detail: d, provider: pv, launch: _ } =>
           concat(acc, [join([n, " [", pv, "] ", st, ": ", d], "")])
-        Spawned { node_id: _, session_name: _, provider: _ } => acc
+        Spawned { node_id: _, session_name: _, provider: _, launch: _ } => acc
         SpawnNotAdmitted { node_id: _, refusal: _ } => acc
       }),
       "; ",
@@ -2069,16 +2149,15 @@ fn belt_spawn_failure_reason(spawn_outcomes: List<BeltSpawnOutcome>) -> String {
 }
 
 fn belt_spawn_pass_outcome_from(
-  observe_refused: Bool,
-  observe_reason: String,
+  host_refusal: LaunchRefusal?,
   spawn_outcomes: List<BeltSpawnOutcome>,
 ) -> BeltPassOutcome {
-  if observe_refused {
-    BeltPassRefused { reason: observe_reason }
-  } else {
+  match host_refusal {
+    Present { value: r } => BeltPassRefused { reason: launch_refusal_reason(r: r) }
+    Absent =>
     if count(spawn_outcomes |> filter(o => match o {
-      SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
-      Spawned { node_id: _, session_name: _, provider: _ } => false
+      SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => true
+      Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
       SpawnNotAdmitted { node_id: _, refusal: _ } => false
     })) > 0 {
       BeltPassFailed { reason: belt_spawn_failure_reason(spawn_outcomes: spawn_outcomes) }
@@ -2089,13 +2168,12 @@ fn belt_spawn_pass_outcome_from(
 }
 
 fn belt_teardown_pass_outcome_from(
-  observe_refused: Bool,
-  observe_reason: String,
+  host_refusal: LaunchRefusal?,
   teardown_outcomes: List<BeltTeardownOutcome>,
 ) -> BeltPassOutcome {
-  if observe_refused {
-    BeltPassRefused { reason: observe_reason }
-  } else {
+  match host_refusal {
+    Present { value: r } => BeltPassRefused { reason: launch_refusal_reason(r: r) }
+    Absent =>
     if count(teardown_outcomes |> filter(o => !belt_teardown_ok(o: o))) > 0 {
       BeltPassFailed { reason: "one or more teardown outcomes failed" }
     } else {
@@ -2133,9 +2211,10 @@ fn belt_tick_receipt_write_for_instance(
 
 data belt_tick_verify_pass_note: String = "Verification runs on the SAME tick that spawns and reaps, because it is the same kind of fact: a desired obligation reconciled against an observed one. Putting it here rather than behind its own trigger is what makes the mechanism the thing the operator was doing by hand — the belt already runs, so an attempt whose turn completed gets its receipts run on the next tick without anyone noticing it finished. It runs AFTER the reconcile's actuations and reads its own evidence, so a session spawned by this same tick has no completed turn to verify and is simply deferred. VERIFY NO LONGER SHORT-CIRCUITS ON SESSION OBSERVE REFUSAL: a tmux-list refusal blocks spawn/reap only; verify reads the attempt ledger and terminal provider/process evidence on its own authority (operator P1, 2026-08-02)."
 
+data belt_tick_host_refusal_note: String = "The tick's node-independent launch refusal, when the host refused before any node could reach its own gates: the same LaunchRefusal (gunbc.roadmap_launch_admission launch_host_refusal over the staged standing) that every per-node SpawnNotAdmitted in spawn_outcomes carries, so the receipt's spawn_pass reason and the per-row refusals are one spelling. Absent when the host admitted observation through to the session set; a per-node refusal may of course still stand in spawn_outcomes then. It replaces the tick-local `observe_refused: Bool + reason: String` pair review 5059520727 found standing beside the shared vocabulary."
+
 type BeltTickResult {
-  observe_refused: Bool,
-  observe_refusal_reason: String,
+  host_refusal: LaunchRefusal?,
   reconcile: BeltReconcile,
   spawn_outcomes: List<BeltSpawnOutcome>,
   teardown_outcomes: List<BeltTeardownOutcome>,
@@ -2147,9 +2226,7 @@ fn belt_tick_empty_reconcile(state: SpawnMode) -> BeltReconcile {
   BeltReconcile {
     mode: state,
     occupied: 0,
-    free: 0,
-    spawns: [],
-    deferred: 0,
+    upserts: [],
     teardowns: [],
     refusals: [],
   }
@@ -2227,10 +2304,7 @@ fn belt_tick_classify_sessions(live: List<DispatchLiveSession>) -> BeltTickSessi
 
 data belt_publish_transition_inhibited_reason: String = "publication deferred: a deployment transition is in force or unresolved on this host, so the attempt evidence this publication would read is being rewritten or was left half-rewritten --"
 
-data belt_tick_transition_inhibited_reason: String = "belt tick refused: a deployment transition is in force or unresolved on this host --"
 
-data belt_tick_revision_drift_reason: String = "belt tick refused: deployed tree is not the admitted fleet revision; spawn and reap withheld"
-data belt_tick_revision_unobserved_reason: String = "belt tick refused: deployed revision could not be observed; spawn and reap withheld"
 
 // A TRANSITION REFUSAL WITHHOLDS PUBLICATION AND VERIFICATION AS WELL AS SPAWN AND REAP, and that is
 // the one place it departs from the revision refusal below. The revision gate's ruling is that a
@@ -2241,34 +2315,72 @@ data belt_tick_revision_unobserved_reason: String = "belt tick refused: deployed
 // passes is consuming a release that is not coherent. Publishing a pull request off a receipt read
 // from a half-converged tree is not a smaller mistake than spawning into it -- it is the one that
 // leaves the house.
-fn belt_tick_transition_refused(
-  state: SpawnMode,
-  reason: String,
-) -> BeltTickResult {
-  BeltTickResult {
-    observe_refused: true,
-    observe_refusal_reason: reason,
-    reconcile: belt_tick_empty_reconcile(state: state),
-    spawn_outcomes: [],
-    teardown_outcomes: [],
-    verify_outcomes: [],
-    publish_outcomes: [],
-  }
+
+
+data belt_tick_driver_note: String = "THE REAL TIMER DRIVER IS observer -> launch pass -> actuation. belt_launch_host_standing_for_instance is the ONE staged observer (shared with the page and POST /dispatch); belt_tick_launch_pass is the timer's whole launch decision over that standing and is pure -- it performs no effect, so a witness runs the real driver's decision on a fabricated staged standing and the only thing it cannot exercise is the observer's filesystem/tmux reads, whose ORDER is structural (LaunchHostHalted has no later fields). When the host halts, every desired node (frontier.ready, in frontier order) is still folded through the admission and receives the halt refusal as SpawnNotAdmitted: the receipt names what the timer would have started and the one reason it did not. Reaping needs an observed session set and so happens only when the standing reached it. Verification and publication are not launches and run on every arm EXCEPT a deployment transition halt, which is the deploy's atomic wholesale refusal (gunbc.deploy_transition): under a transition nothing on the host actuates, verify and publish included."
+
+type BeltLaunchPass {
+  reconcile: BeltReconcile,
+  host_refusal: LaunchRefusal?,
+  decisions: List<BeltLaunchDecision>,
+  teardowns: List<DispatchMember>,
 }
 
-fn belt_tick_actuation_refused(
-  instance: HostDashboardInstance,
+fn belt_tick_desired_candidates(frontier: SpawnFrontier) -> List<DispatchMember> {
+  frontier.ready |> map(n => DesiredMember { node_id: n.node as String, node: n })
+}
+
+fn belt_tick_launch_pass(
+  standing: LaunchHostStanding,
   state: SpawnMode,
-  reason: String,
-) -> BeltTickResult {
-  BeltTickResult {
-    observe_refused: true,
-    observe_refusal_reason: reason,
-    reconcile: belt_tick_empty_reconcile(state: state),
-    spawn_outcomes: [],
-    teardown_outcomes: [],
-    verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
-    publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+  frontier: SpawnFrontier,
+  graph: LaunchGraphStanding,
+  merged: List<Int>,
+) -> BeltLaunchPass {
+  let host_refusal = launch_host_refusal(standing: standing)
+  match host_refusal {
+    Present { value: _ } =>
+      BeltLaunchPass {
+        reconcile: belt_tick_empty_reconcile(state: state),
+        host_refusal: host_refusal,
+        decisions: belt_tick_admit(
+          candidates: belt_tick_desired_candidates(frontier: frontier),
+          standing: standing,
+          graph: graph,
+          merged: merged,
+        ),
+        teardowns: [],
+      }
+    Absent =>
+      match standing {
+        LaunchHostObserved { instance_id: _, actuation: _, transition: _, revision: _, sessions: LaunchSessionsObserved { live }, capacity: _, mode: _ } => {
+          let classified = belt_tick_classify_sessions(live: live)
+          let r = belt_reconcile(
+            state: state,
+            frontier: frontier,
+            live: classified.running,
+            cap: roadmap_belt_default_capacity,
+          )
+          BeltLaunchPass {
+            reconcile: r,
+            host_refusal: none,
+            decisions: belt_tick_admit(candidates: r.upserts, standing: standing, graph: graph, merged: merged),
+            teardowns: concat(r.teardowns, map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })),
+          }
+        }
+        _ =>
+          BeltLaunchPass {
+            reconcile: belt_tick_empty_reconcile(state: state),
+            host_refusal: Present { value: LaunchGateNotEvaluated { gate: "sessions" } },
+            decisions: belt_tick_admit(
+              candidates: belt_tick_desired_candidates(frontier: frontier),
+              standing: standing,
+              graph: graph,
+              merged: merged,
+            ),
+            teardowns: [],
+          }
+      }
   }
 }
 
@@ -2279,95 +2391,59 @@ fn belt_tick_for_instance(
   cap: BeltCapacity,
   spawn_workdir: String,
 ) -> BeltTickResult {
-  match belt_transition_admission_for_instance(instance: instance) {
-    ActuationRefused { reason: tr } =>
-      belt_tick_transition_refused(
-        state: state,
-        reason: join([belt_tick_transition_inhibited_reason, " ", tr], ""),
-      )
-    ActuationAdmitted =>
-  match belt_sessions_observe_for_instance(instance: instance) {
-    ObserveRefused { reason: r } =>
+  let standing = belt_launch_host_standing_for_instance_with_capacity(instance: instance, mode: state, capacity: cap)
+  let pass = belt_tick_launch_pass(
+    standing: standing,
+    state: state,
+    frontier: frontier,
+    graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
+    merged: authored_merged_prs(),
+  )
+  let spawn_outcomes = belt_tick_spawn_decided(decisions: pass.decisions, workdir: spawn_workdir)
+  let teardown_outcomes = pass.teardowns |> map(m => belt_actuate_teardown_member(m: m))
+  match standing {
+    LaunchHostHalted { instance_id: _, gate: HostTransitionGate, refusal: _ } =>
       BeltTickResult {
-        observe_refused: true,
-        observe_refusal_reason: r,
-        reconcile: belt_tick_empty_reconcile(state: state),
-        spawn_outcomes: [],
-        teardown_outcomes: [],
-        verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
-        publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
+        host_refusal: pass.host_refusal,
+        reconcile: pass.reconcile,
+        spawn_outcomes: spawn_outcomes,
+        teardown_outcomes: teardown_outcomes,
+        verify_outcomes: [],
+        publish_outcomes: [],
       }
-    Observed { live: live } =>
-      match fleet_revision_standing(repo: instance.repo_root) {
-        RevisionDrifted { desired: d, local: l } =>
-          belt_tick_actuation_refused(
-            instance: instance,
-            state: state,
-            reason: join([belt_tick_revision_drift_reason, " desired=", git_object_id_wire_hex(oid: d) as String, " local=", git_object_id_wire_hex(oid: l) as String], ""),
-          )
-        RevisionUnobserved { cause: c } =>
-          belt_tick_actuation_refused(
-            instance: instance,
-            state: state,
-            reason: join([belt_tick_revision_unobserved_reason, " cause=", c], ""),
-          )
-        RevisionConverged { revision: rev } => {
-      let classified = belt_tick_classify_sessions(live: live)
-      let r = belt_reconcile(
-        state: state,
-        frontier: frontier,
-        live: classified.running,
-        cap: cap,
-      )
-      let standing = LaunchHostObserved {
-        instance_id: instance.instance_id as String,
-        actuation: instance.actuation,
-        transition: ActuationAdmitted,
-        revision: RevisionConverged { revision: rev },
-        sessions: LaunchSessionsObserved { live: live },
-        capacity: cap,
-        mode: state,
-      }
-      let spawn_outcomes = belt_tick_admit_and_spawn(
-        candidates: r.spawns,
-        standing: standing,
-        graph: launch_graph_of_projection(proj: roadmap_authority_projection()),
-        merged: authored_merged_prs(),
-        workdir: spawn_workdir,
-      )
-      let stale_teardowns = map(classified.stale, s => ObservedMember { node_id: s.node_id, session: s })
-      let teardown_outcomes =
-        concat(r.teardowns, stale_teardowns) |> map(m => belt_actuate_teardown_member(m: m))
+    _ =>
       BeltTickResult {
-        observe_refused: false,
-        observe_refusal_reason: "",
-        reconcile: r,
+        host_refusal: pass.host_refusal,
+        reconcile: pass.reconcile,
         spawn_outcomes: spawn_outcomes,
         teardown_outcomes: teardown_outcomes,
         verify_outcomes: belt_verify_attempts_for_instance(instance: instance),
         publish_outcomes: belt_publish_attempts_for_instance(instance: instance),
       }
-        }
-      }
-  }
   }
 }
 
 data belt_tick_admission_fold_note: String = "THE TIMER CONSUMES THE SAME ADMISSION AS THE CLICK (RLM-1). Every upsert the reconcile plans is folded through gunbc.roadmap_launch_admission with cause Timer, in order, with `reserved` = the launches this tick has already admitted, so capacity is decided once by the admission and a tick cannot overshoot it. A refusal is carried whole as SpawnNotAdmitted; only an admitted candidate reaches belt_actuate_spawn_member. The stale / liveness-unobserved / multiplicity partition the tick used to filter by hand is now the admission's no-live-attempt gate over the FULL observed session list -- the same gate the route reads -- so the tick has no private notion of `deferred`. The transition gate is already closed above (belt_transition_admission_for_instance refuses the whole tick before observation) and the revision gate too, so the standing handed to the admission carries those as admitted facts of THIS tick rather than a second read."
 
+
+data belt_launch_decision_note: String = "The timer's per-candidate verdict from the ONE admission, before any actuation: a decided launch carries the admitted LaunchIdentity, a withheld one the refusal. belt_tick_admit is the pure fold every candidate passes through in deterministic (plan) order, `reserved` counting the launches already decided in this fold so capacity is admitted as a prefix and the remainder receives LaunchNoCapacity; belt_tick_spawn_decided then actuates exactly the decided ones. Splitting the fold from the actuation is what lets the multi-candidate control assert the fold on three Ready rows against one slot without entering the actuator."
+
+type BeltLaunchDecision
+  = BeltLaunchDecided { member: DispatchMember, launch: LaunchIdentity }
+  | BeltLaunchWithheld { node_id: String, refusal: LaunchRefusal }
+
 type BeltTickAdmitFold {
   reserved: Int
-  outcomes: List<BeltSpawnOutcome>
+  decisions: List<BeltLaunchDecision>
 }
 
-fn belt_tick_admit_and_spawn(
+fn belt_tick_admit(
   candidates: List<DispatchMember>,
   standing: LaunchHostStanding,
   graph: LaunchGraphStanding,
   merged: List<Int>,
-  workdir: String,
-) -> List<BeltSpawnOutcome> {
-  let folded = fold(candidates, init: BeltTickAdmitFold { reserved: 0, outcomes: [] }, f: fn(acc, m) {
+) -> List<BeltLaunchDecision> {
+  let folded = fold(candidates, init: BeltTickAdmitFold { reserved: 0, decisions: [] }, f: fn(acc, m) {
     let node_id = dispatch_member_key(m: m)
     match launch_admission(
       cause: Timer,
@@ -2380,16 +2456,53 @@ fn belt_tick_admit_and_spawn(
       LaunchRefused { refusal } =>
         BeltTickAdmitFold {
           reserved: acc.reserved,
-          outcomes: concat(acc.outcomes, [ SpawnNotAdmitted { node_id: node_id, refusal: refusal } ]),
+          decisions: concat(acc.decisions, [ BeltLaunchWithheld { node_id: node_id, refusal: refusal } ]),
         }
-      LaunchAdmitted { identity: _ } =>
+      LaunchAdmitted { identity } =>
         BeltTickAdmitFold {
           reserved: acc.reserved + 1,
-          outcomes: concat(acc.outcomes, [ belt_actuate_spawn_member(m: m, workdir: workdir) ]),
+          decisions: concat(acc.decisions, [ BeltLaunchDecided { member: m, launch: identity } ]),
         }
     }
   })
-  folded.outcomes
+  folded.decisions
+}
+
+fn belt_tick_spawn_decided(decisions: List<BeltLaunchDecision>, workdir: String) -> List<BeltSpawnOutcome> {
+  decisions |> map(d => match d {
+    BeltLaunchWithheld { node_id, refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
+    BeltLaunchDecided { member, launch } => belt_actuate_spawn_member(m: member, workdir: workdir, launch: launch)
+  })
+}
+
+fn belt_tick_admit_and_spawn(
+  candidates: List<DispatchMember>,
+  standing: LaunchHostStanding,
+  graph: LaunchGraphStanding,
+  merged: List<Int>,
+  workdir: String,
+) -> List<BeltSpawnOutcome> {
+  belt_tick_spawn_decided(
+    decisions: belt_tick_admit(candidates: candidates, standing: standing, graph: graph, merged: merged),
+    workdir: workdir,
+  )
+}
+
+fn belt_tick_deferred_count(outcomes: List<BeltSpawnOutcome>) -> Int {
+  count(outcomes |> filter(o => match o {
+    SpawnNotAdmitted { node_id: _, refusal: LaunchNoCapacity { occupied: _, max_concurrent: _ } } => true
+    SpawnNotAdmitted { node_id: _, refusal: _ } => false
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
+  }))
+}
+
+fn belt_tick_launch_identities(outcomes: List<BeltSpawnOutcome>) -> List<LaunchIdentity> {
+  fold(outcomes, init: [], f: (acc, o) => match o {
+    Spawned { node_id: _, session_name: _, provider: _, launch } => concat(acc, [launch])
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch } => concat(acc, [launch])
+    SpawnNotAdmitted { node_id: _, refusal: _ } => acc
+  })
 }
 
 fn belt_tick(
@@ -2417,24 +2530,24 @@ fn belt_tick_default_workdir(
 
 fn belt_spawn_ok(o: BeltSpawnOutcome) -> Bool {
   match o {
-    Spawned { node_id: _, session_name: _, provider: _ } => true
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => false
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => true
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
   }
 }
 
 fn belt_spawn_failed(o: BeltSpawnOutcome) -> Bool {
   match o {
-    Spawned { node_id: _, session_name: _, provider: _ } => false
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => true
     SpawnNotAdmitted { node_id: _, refusal: _ } => false
   }
 }
 
 fn belt_spawn_not_admitted(o: BeltSpawnOutcome) -> Bool {
   match o {
-    Spawned { node_id: _, session_name: _, provider: _ } => false
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => false
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => false
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => false
     SpawnNotAdmitted { node_id: _, refusal: _ } => true
   }
 }
@@ -2464,8 +2577,7 @@ fn belt_run_once_in(
   match roadmap_authority_projection() {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       BeltTickResult {
-        observe_refused: true,
-        observe_refusal_reason: concat("roadmap authority projection refused: ", detail),
+        host_refusal: Present { value: LaunchAuthorityUnobserved { detail: detail } },
         reconcile: belt_tick_empty_reconcile(state: roadmap_belt_production_spawn_mode),
         spawn_outcomes: [],
         teardown_outcomes: [],
@@ -2492,20 +2604,22 @@ fn belt_run_once() -> BeltTickResult {
 
 fn belt_spawn_outcome_json(o: BeltSpawnOutcome) -> JsonValue {
   match o {
-    Spawned { node_id: nid, session_name: sn, provider: p } =>
+    Spawned { node_id: nid, session_name: sn, provider: p, launch: l } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "spawned")),
         json_kv(key: "provider", value: json_string(s: p)),
         json_kv(key: "session_name", value: json_string(s: sn)),
+        json_kv(key: "launch", value: launch_identity_json(id: l)),
       ])
-    SpawnFailed { node_id: nid, step: st, detail: d, provider: p } =>
+    SpawnFailed { node_id: nid, step: st, detail: d, provider: p, launch: l } =>
       json_object(members: [
         json_kv(key: "node_id", value: json_string(s: nid)),
         json_kv(key: "status", value: json_string(s: "spawn_failed")),
         json_kv(key: "provider", value: json_string(s: p)),
         json_kv(key: "step", value: json_string(s: st)),
         json_kv(key: "detail", value: json_string(s: d)),
+        json_kv(key: "launch", value: launch_identity_json(id: l)),
       ])
     SpawnNotAdmitted { node_id: nid, refusal: r } =>
       json_object(members: [
@@ -2535,12 +2649,13 @@ fn belt_teardown_outcome_json(o: BeltTeardownOutcome) -> JsonValue {
 fn belt_tick_result_json_value(t: BeltTickResult) -> JsonValue {
   json_object(members: [
     json_kv(key: "schema", value: json_string(s: "roadmap-belt-tick/v1")),
-    json_kv(key: "observe_refused", value: json_bool(b: t.observe_refused)),
-    json_kv(key: "observe_refusal_reason", value: json_string(s: t.observe_refusal_reason)),
+    json_kv(key: "observe_refused", value: json_bool(b: match t.host_refusal { Present { value: _ } => true Absent => false })),
+    json_kv(key: "observe_refusal_reason", value: json_string(s: match t.host_refusal { Present { value: r } => launch_refusal_reason(r: r) Absent => "" })),
+    json_kv(key: "launch_refusal", value: json_string(s: match t.host_refusal { Present { value: r } => launch_refusal_label(r: r) Absent => "" })),
     json_kv(key: "spawn_mode", value: json_string(s: spawn_mode_label(m: t.reconcile.mode))),
     json_kv(key: "occupied", value: json_int(n: t.reconcile.occupied)),
-    json_kv(key: "free", value: json_int(n: t.reconcile.free)),
-    json_kv(key: "deferred", value: json_int(n: t.reconcile.deferred)),
+    json_kv(key: "upserts", value: json_int(n: belt_reconcile_upsert_count(r: t.reconcile))),
+    json_kv(key: "deferred", value: json_int(n: belt_tick_deferred_count(outcomes: t.spawn_outcomes))),
     json_kv(key: "refusal_count", value: json_int(n: belt_reconcile_refusal_count(r: t.reconcile))),
     json_kv(key: "spawned", value: json_int(n: belt_tick_spawn_ok_count(t: t))),
     json_kv(key: "spawn_failed", value: json_int(n: belt_tick_spawn_failed_count(t: t))),
@@ -4834,23 +4949,42 @@ fn belt_transition_admission_for_instance(instance: HostDashboardInstance) -> Ac
 
 data belt_launch_host_standing_note: String = "THE ONE HOST OBSERVATION the launch admission consumes, produced here because this module owns the observers: posture from the instance, the transition admission, the fleet revision standing, the tmux session set, the capacity and the spawn mode. The served daily page, POST /dispatch and (in its own inline form, after the tick-wide transition and revision refusals) the belt tick all hand this to gunbc.roadmap_launch_admission, so `drift refuses UI availability and backend actuation with the same reason` is true by construction: both read one standing through one decision."
 
-fn belt_launch_host_standing_for_instance(instance: HostDashboardInstance, mode: SpawnMode) -> LaunchHostStanding {
+data belt_launch_host_observer_note: String = "THE ONE STAGED OBSERVER behind the page, POST /dispatch and the timer. It reads in the gate order and stops at the first refusal: the instance posture is a model fact (no effect); the transition file is read only for an actuating instance; the fleet revision only under an admitted transition; tmux only under a converged revision. Each halt is a LaunchHostHalted whose later fields do not exist, so `tmux listed under an inhibited transition` is not a state this observer can produce (DESIGN 4b: no constructor). The refusal in a halt is derived by the admission's own gate functions (launch_host_halt_transition, launch_host_stage_revision), never spelled here."
+
+fn belt_launch_host_standing_for_instance_with_capacity(
+  instance: HostDashboardInstance,
+  mode: SpawnMode,
+  capacity: BeltCapacity,
+) -> LaunchHostStanding {
+  let instance_id = instance.instance_id as String
   match instance.actuation {
-    DashboardObserveOnly => LaunchHostObserveOnly { instance_id: instance.instance_id as String }
+    DashboardObserveOnly => LaunchHostObserveOnly { instance_id: instance_id }
     DashboardActuating =>
-      LaunchHostObserved {
-        instance_id: instance.instance_id as String,
-        actuation: instance.actuation,
-        transition: belt_transition_admission_for_instance(instance: instance),
-        revision: fleet_revision_standing(repo: instance.repo_root),
-        sessions: (match belt_sessions_observe_for_instance(instance: instance) {
-          Observed { live } => LaunchSessionsObserved { live: live }
-          ObserveRefused { reason } => LaunchSessionsUnobserved { reason: reason }
-        }),
-        capacity: roadmap_belt_default_capacity,
-        mode: mode,
+      match belt_transition_admission_for_instance(instance: instance) {
+        ActuationRefused { reason } => launch_host_halt_transition(instance_id: instance_id, reason: reason)
+        ActuationAdmitted =>
+          match launch_host_stage_revision(instance_id: instance_id, revision: fleet_revision_standing(repo: instance.repo_root)) {
+            HostRevisionHalted { standing } => standing
+            HostRevisionConverged { revision } =>
+              LaunchHostObserved {
+                instance_id: instance_id,
+                actuation: DashboardActuating,
+                transition: ActuationAdmitted,
+                revision: revision,
+                sessions: (match belt_sessions_observe_for_instance(instance: instance) {
+                  Observed { live } => LaunchSessionsObserved { live: live }
+                  ObserveRefused { reason } => LaunchSessionsUnobserved { reason: reason }
+                }),
+                capacity: capacity,
+                mode: mode,
+              }
+          }
       }
   }
+}
+
+fn belt_launch_host_standing_for_instance(instance: HostDashboardInstance, mode: SpawnMode) -> LaunchHostStanding {
+  belt_launch_host_standing_for_instance_with_capacity(instance: instance, mode: mode, capacity: roadmap_belt_default_capacity)
 }
 
 fn belt_launch_host_standing(instance: HostDashboardInstance) -> LaunchHostStanding {
@@ -4873,7 +5007,7 @@ fn belt_dispatch_node_for_instance(
     reserved: 0,
   ) {
     LaunchRefused { refusal } => SpawnNotAdmitted { node_id: node_id, refusal: refusal }
-    LaunchAdmitted { identity: _ } =>
+    LaunchAdmitted { identity } =>
       match (match proj {
         RoadmapAuthorityProjectionRefused { detail } => AuthorityProjectionRefused { detail: detail }
         RoadmapAuthorityProjected { doc, accepted: _ } =>
@@ -4885,6 +5019,7 @@ fn belt_dispatch_node_for_instance(
             step: "node-model",
             detail: join(["admitted node's authority projection refused before spawn: ", detail], ""),
             provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: identity,
           }
         NodeMissing =>
           SpawnFailed {
@@ -4892,6 +5027,7 @@ fn belt_dispatch_node_for_instance(
             step: "node-model",
             detail: "admitted node is absent from the projection it was admitted against; fail-closed",
             provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+            launch: identity,
           }
         NodeFound { node } =>
           match clock_now_probed_at() {
@@ -4900,6 +5036,7 @@ fn belt_dispatch_node_for_instance(
                 instance: instance,
                 node: node,
                 probed_at: probed_at as String,
+                launch: identity,
               )
             Absent =>
               SpawnFailed {
@@ -4907,6 +5044,7 @@ fn belt_dispatch_node_for_instance(
                 step: "attempt-clock",
                 detail: "clock observation refused; an attempt without a stamp would collide with a later one — fail-closed, no unknown-stamped attempts",
                 provider: belt_dispatch_spawn_unselected_provider_wire_label(),
+                launch: identity,
               }
           }
       }
@@ -4928,8 +5066,8 @@ data belt_dispatch_status_label_note: String = "The ONE wire vocabulary for a di
 
 fn belt_dispatch_status_label(r: BeltSpawnOutcome) -> String {
   match r {
-    Spawned { node_id: _, session_name: _, provider: _ } => "spawned"
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => "spawn_failed"
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => "spawned"
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => "spawn_failed"
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_label(r: refusal)
   }
 }
@@ -4973,8 +5111,8 @@ fn launch_refusal_band(r: LaunchRefusal) -> DispatchBand {
 
 fn belt_dispatch_result_band(r: BeltSpawnOutcome) -> DispatchBand {
   match r {
-    Spawned { node_id: _, session_name: _, provider: _ } => BandOk
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => BandLoud
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => BandOk
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => BandLoud
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_band(r: refusal)
   }
 }
@@ -5031,8 +5169,8 @@ data belt_dispatch_all_status_labels_note: String = "The full wire-label set, GR
 fn belt_dispatch_result_exemplars() -> List<BeltSpawnOutcome> {
   concat(
     [
-      Spawned { node_id: "x", session_name: "s", provider: belt_dispatch_wire_contract_exemplar_provider },
-      SpawnFailed { node_id: "x", step: "s", detail: "d", provider: belt_dispatch_wire_contract_exemplar_provider },
+      Spawned { node_id: "x", session_name: "s", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
+      SpawnFailed { node_id: "x", step: "s", detail: "d", provider: belt_dispatch_wire_contract_exemplar_provider, launch: launch_identity_exemplar() },
     ],
     map(launch_refusal_exemplars(), r => SpawnNotAdmitted { node_id: "x", refusal: r }),
   )
@@ -5406,14 +5544,13 @@ fn belt_tick_receipt_from_result(
 ) -> BeltTickReceipt {
   BeltTickReceipt {
     observed_at: observed_at,
+    launches: belt_tick_launch_identities(outcomes: result.spawn_outcomes),
     spawn_pass: belt_spawn_pass_outcome_from(
-      observe_refused: result.observe_refused,
-      observe_reason: result.observe_refusal_reason,
+      host_refusal: result.host_refusal,
       spawn_outcomes: result.spawn_outcomes,
     ),
     teardown_pass: belt_teardown_pass_outcome_from(
-      observe_refused: result.observe_refused,
-      observe_reason: result.observe_refusal_reason,
+      host_refusal: result.host_refusal,
       teardown_outcomes: result.teardown_outcomes,
     ),
     verify_pass: belt_verify_pass_outcome_from(outcomes: result.verify_outcomes),

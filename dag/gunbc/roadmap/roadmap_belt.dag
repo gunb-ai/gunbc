@@ -43,11 +43,12 @@ fn spawn_mode_label(m: SpawnMode) -> String {
   }
 }
 
-fn spawn_mode_reconciles(m: SpawnMode) -> Bool {
-  match m {
-    Paused => false
-    ManualReady => true
-    AutomaticReady => true
+fn spawn_mode_of_label(label: String) -> SpawnMode? {
+  match label {
+    "paused" => Present { value: Paused }
+    "manual_ready" => Present { value: ManualReady }
+    "automatic_ready" => Present { value: AutomaticReady }
+    _ => none
   }
 }
 
@@ -166,14 +167,12 @@ fn belt_plan_refusals(plan: MembershipPlan<DispatchMember, DispatchMemberAt>) ->
 type BeltReconcile {
   mode: SpawnMode,
   occupied: Int,
-  free: Int,
-  spawns: List<DispatchMember>,
-  deferred: Int,
+  upserts: List<DispatchMember>,
   teardowns: List<DispatchMember>,
   refusals: List<MemberAction<DispatchMember, DispatchMemberAt>>,
 }
 
-data belt_deferred_note: String = "deferred = upserts beyond this tick's free capacity. NOT dropped-and-forgotten (absorbing): the deferred nodes stay desired-not-observed, so the next reconcile tick produces their upserts again (idempotent). The count is SURFACED (belt status at_capacity_backlog / would_defer), so a growing backlog is an observable signal, never silent."
+data belt_upserts_note: String = "EVERY upsert the membership plan produces is returned, in plan order; the reconcile does NOT truncate to free capacity. Capacity is the launch admission's gate (gunbc.roadmap_launch_admission launch_gate_capacity, with `reserved` counting the launches already admitted in the same fold), so the timer's excess rows receive a typed LaunchNoCapacity from the one decision instead of vanishing into a count here -- review 5059520727 found `spawns = ups.take(n: free)` standing as a second capacity authority in front of the admission. Any deferred summary is DERIVED from those per-row outcomes (gunbc.roadmap_belt_actuate belt_tick_deferred_count), never computed beside them. The idempotence argument is unchanged: a refused node stays desired-not-observed and is planned again next tick."
 
 fn belt_reconcile(
   state: SpawnMode,
@@ -185,14 +184,12 @@ fn belt_reconcile(
     Paused => BeltReconcile {
       mode: Paused,
       occupied: count(live),
-      free: 0,
-      spawns: [],
-      deferred: 0,
+      upserts: [],
       teardowns: [],
       refusals: [],
     }
-    ManualReady => belt_reconcile_members(mode: state, frontier: frontier, live: live, cap: cap)
-    AutomaticReady => belt_reconcile_members(mode: state, frontier: frontier, live: live, cap: cap)
+    ManualReady => belt_reconcile_members(mode: state, frontier: frontier, live: live)
+    AutomaticReady => belt_reconcile_members(mode: state, frontier: frontier, live: live)
   }
 }
 
@@ -202,25 +199,18 @@ fn belt_reconcile_members(
   mode: SpawnMode,
   frontier: SpawnFrontier,
   live: List<DispatchLiveSession>,
-  cap: BeltCapacity,
 ) -> BeltReconcile {
       let plan = belt_membership_plan(frontier: frontier, live: live)
-      let ups = belt_plan_upserts(plan: plan)
-      let free = belt_free_slots_int(cap: cap, occupied_count: count(live))
-      let spawns = ups.take(n: free)
-      let deferred = count(ups) - count(spawns)
       BeltReconcile {
         mode: mode,
         occupied: count(live),
-        free: free,
-        spawns: spawns,
-        deferred: deferred,
+        upserts: belt_plan_upserts(plan: plan),
         teardowns: belt_plan_teardowns(plan: plan),
         refusals: belt_plan_refusals(plan: plan),
       }
 }
 
-fn belt_reconcile_spawn_count(r: BeltReconcile) -> Int { count(r.spawns) }
+fn belt_reconcile_upsert_count(r: BeltReconcile) -> Int { count(r.upserts) }
 fn belt_reconcile_teardown_count(r: BeltReconcile) -> Int { count(r.teardowns) }
 fn belt_reconcile_refusal_count(r: BeltReconcile) -> Int { count(r.refusals) }
 
@@ -256,12 +246,10 @@ fn belt_reconcile_json_value(
     json_kv(key: "spawn_mode", value: json_string(s: spawn_mode_label(m: r.mode))),
     json_kv(key: "max_concurrent", value: json_int(n: cap.max_concurrent)),
     json_kv(key: "occupied", value: json_int(n: r.occupied)),
-    json_kv(key: "free", value: json_int(n: r.free)),
-    json_kv(key: "would_spawn", value: json_array(elements: belt_member_ids(ms: r.spawns) |> map(id => json_string(s: id)))),
+    json_kv(key: "upserts", value: json_array(elements: belt_member_ids(ms: r.upserts) |> map(id => json_string(s: id)))),
     json_kv(key: "would_teardown", value: json_array(elements: belt_member_ids(ms: r.teardowns) |> map(id => json_string(s: id)))),
     json_kv(key: "refusal_count", value: json_int(n: belt_reconcile_refusal_count(r: r))),
     json_kv(key: "refused", value: json_array(elements: belt_refusal_ids(as: r.refusals) |> map(id => json_string(s: id)))),
-    json_kv(key: "deferred", value: json_int(n: r.deferred)),
   ])
 }
 

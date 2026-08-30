@@ -21,7 +21,12 @@ import gunbc.roadmap_dispatch_actuator { DispatchLiveSession }
 import gunbc.worker_lifecycle {
   WorkerProcessEvidence, WorkerProcessRunning, WorkerProcessExited, WorkerProcessAbsent, WorkerProcessUnobserved,
 }
-import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, BeltCapacity, belt_free_slots_int }
+import gunbc.roadmap_belt { SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label, spawn_mode_of_label, BeltCapacity, belt_free_slots_int }
+import extdeps.languages.json.emit { JsonValue, JsonString, json_string, json_object, json_kv }
+import extdeps.languages.json.parse {
+  json_object_unique_member,
+  JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated, JsonMemberNotAnObject,
+}
 
 data launch_admission_note: String = "RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): THE ONE ANSWER to `may THIS cause start THIS node NOW?`. Before this module the daily-workspace action derivation, POST /dispatch/<node_id> and the periodic belt tick each derived launch eligibility on their own -- the page and the belt read the Ready frontier, the manual route ignored dependencies entirely (the AvailableAsOverride path) and checked capacity never, and an ExecutionContractUnspecified node was Ready to the spawner while gunbc.roadmap_dispatch_environment refused it later (RLM-0 finding). Three authorities, one question (DESIGN 3). Now every surface projects launch_admission: the page renders its availability, the route returns it, the tick folds over it. The decision is PURE over observed facts -- the caller observes the host once (LaunchHostStanding) and the graph once (RoadmapAuthorityProjection) -- so every gate is witnessable with synthetic inputs and the effectful surfaces are thin projections. Gate ORDER is the plan's and is the safety property: instance actuatable, transition clear, desired==deployed, node exists and is not superseded/accepted/review-only, size and contract complete, dependencies closed, no live attempt, capacity, cause permitted by mode. The refusal vocabulary REUSES the arms the actuator, environment and belt already modeled (the labels below are the existing wire words wherever one existed) and adds only what the plan's sketch left implicit: a superseded node, an unobservable session set, the three non-running liveness arms, and the cause/mode arm. `Unplanned` is not minted: in gunbc.roadmap_spawner an unplanned node IS an unsized one, so it is one fact (LaunchSizeMissing) with SchedulingUnplanned as its presentation."
 
@@ -36,12 +41,84 @@ fn launch_cause_label(c: LaunchCause) -> String {
   }
 }
 
+fn launch_cause_of_label(label: String) -> LaunchCause? {
+  match label {
+    "operator" => Present { value: Operator }
+    "timer" => Present { value: Timer }
+    _ => none
+  }
+}
+
+data launch_identity_note: String = "THE ADMITTED DECISION, carried whole. Every surface that acts on LaunchAdmitted binds this exact record to what it does next -- the page's decided action, the route's response, the timer's spawn attempt and the durable tick receipt -- so a successor gate (RLM-4) joins an attempt to the admission that decided it by these five facts and nothing else. The identity is EVIDENCE, never AUTHORIZATION: a client that renders one must not present it to the route as permission; the route re-observes the host and re-admits, and the only thing the two identities may be compared for is parity (same node, mode, instance, revision; the cause differs by construction)."
+
 type LaunchIdentity {
   node_id: String
   cause: LaunchCause
   mode: SpawnMode
   instance_id: String
   revision: String
+}
+
+fn launch_identity_json(id: LaunchIdentity) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: id.node_id)),
+    json_kv(key: "cause", value: json_string(s: launch_cause_label(c: id.cause))),
+    json_kv(key: "mode", value: json_string(s: spawn_mode_label(m: id.mode))),
+    json_kv(key: "instance_id", value: json_string(s: id.instance_id)),
+    json_kv(key: "revision", value: json_string(s: id.revision)),
+  ])
+}
+
+type LaunchIdentityDecode
+  = LaunchIdentityDecoded { identity: LaunchIdentity }
+  | LaunchIdentityUnreadable { reason: String }
+
+fn launch_identity_member_string(doc: JsonValue, key: String) -> String? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: JsonString { value: v } } => Present { value: v }
+    JsonMemberFound { value: _ } => none
+    JsonMemberAbsent => none
+    JsonMemberDuplicated { count: _ } => none
+    JsonMemberNotAnObject => none
+  }
+}
+
+fn launch_identity_of_json(doc: JsonValue) -> LaunchIdentityDecode {
+  match launch_identity_member_string(doc: doc, key: "node_id") {
+    Absent => LaunchIdentityUnreadable { reason: "launch identity node_id is missing or not a string" }
+    Present { value: node_id } =>
+      match launch_identity_member_string(doc: doc, key: "cause") {
+        Absent => LaunchIdentityUnreadable { reason: "launch identity cause is missing or not a string" }
+        Present { value: cause_label } =>
+          match launch_cause_of_label(label: cause_label) {
+            Absent => LaunchIdentityUnreadable { reason: join(["launch identity cause is not in the closed vocabulary: ", cause_label], "") }
+            Present { value: cause } =>
+              match launch_identity_member_string(doc: doc, key: "mode") {
+                Absent => LaunchIdentityUnreadable { reason: "launch identity mode is missing or not a string" }
+                Present { value: mode_label } =>
+                  match spawn_mode_of_label(label: mode_label) {
+                    Absent => LaunchIdentityUnreadable { reason: join(["launch identity mode is not in the closed vocabulary: ", mode_label], "") }
+                    Present { value: mode } =>
+                      match launch_identity_member_string(doc: doc, key: "instance_id") {
+                        Absent => LaunchIdentityUnreadable { reason: "launch identity instance_id is missing or not a string" }
+                        Present { value: instance_id } =>
+                          match launch_identity_member_string(doc: doc, key: "revision") {
+                            Absent => LaunchIdentityUnreadable { reason: "launch identity revision is missing or not a string" }
+                            Present { value: revision } =>
+                              LaunchIdentityDecoded { identity: LaunchIdentity {
+                                node_id: node_id, cause: cause, mode: mode, instance_id: instance_id, revision: revision,
+                              } }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn launch_identity_exemplar() -> LaunchIdentity {
+  LaunchIdentity { node_id: "x", cause: Operator, mode: ManualReady, instance_id: "exemplar-instance", revision: "0000000000000000000000000000000000000000" }
 }
 
 type LaunchRefusal
@@ -166,9 +243,66 @@ type LaunchHostStanding
       mode: SpawnMode,
     }
   | LaunchHostObserveOnly { instance_id: String }
+  | LaunchHostHalted { instance_id: String, gate: LaunchHostGate, refusal: LaunchRefusal }
   | LaunchHostUnobserved { reason: String }
 
+data launch_host_halted_note: String = "OBSERVATION IS STAGED IN THE GATE ORDER, and this arm is where it stopped. The observer that builds a standing for a real driver (gunbc.roadmap_belt_actuate belt_launch_host_standing_for_instance -- the ONE observer behind the page, POST /dispatch and the timer) reads the transition file only for an actuating instance, reads the fleet revision only under an admitted transition, and lists tmux only under a converged revision. When an earlier gate refuses, the standing is LaunchHostHalted at that gate and the later host facts are NOT fields of it: there is no constructor for `transition inhibited AND sessions observed`, so the effect order the route promises (`refused before observation`) is structural, not a discipline. The ledger reads a halted standing as: every gate before `gate` passed, `gate` refused with exactly this refusal, every later gate not reached. The producers below are the only spellings; they derive the refusal from the same per-gate functions the ledger runs on a fully observed standing."
+
+type LaunchHostGate
+  = HostTransitionGate
+  | HostRevisionGate
+
+fn launch_host_halt_transition(instance_id: String, reason: String) -> LaunchHostStanding {
+  LaunchHostHalted { instance_id: instance_id, gate: HostTransitionGate, refusal: LaunchTransitionInhibited { reason: reason } }
+}
+
+type LaunchHostRevisionStage
+  = HostRevisionConverged { revision: FleetRevisionStanding }
+  | HostRevisionHalted { standing: LaunchHostStanding }
+
+fn launch_host_stage_revision(instance_id: String, revision: FleetRevisionStanding) -> LaunchHostRevisionStage {
+  match launch_gate_revision(revision: revision) {
+    GatePassed => HostRevisionConverged { revision: revision }
+    GateRefused { refusal } =>
+      HostRevisionHalted { standing: LaunchHostHalted { instance_id: instance_id, gate: HostRevisionGate, refusal: refusal } }
+    GateNotReached =>
+      HostRevisionHalted { standing: LaunchHostUnobserved { reason: "revision gate answered not-reached for an observed revision; refused fail-closed" } }
+  }
+}
+
+data launch_host_refusal_note: String = "The node-independent part of the decision: the first HOST gate that refuses (instance, transition, revision, or the session set being unobservable), or none when the host would let a node reach its own gates. The timer's receipt reports it as the tick-level launch refusal; it is derived from the same per-gate functions the ledger runs, so the tick summary and every per-node SpawnNotAdmitted name one refusal, never two spellings."
+
+fn launch_host_refusal(standing: LaunchHostStanding) -> LaunchRefusal? {
+  match standing {
+    LaunchHostUnobserved { reason } => Present { value: LaunchInstanceActuationRefused { instance_id: "", reason: reason } }
+    LaunchHostObserveOnly { instance_id } => Present { value: LaunchInstanceActuationRefused { instance_id: instance_id, reason: launch_observe_only_reason } }
+    LaunchHostHalted { instance_id: _, gate: _, refusal } => Present { value: refusal }
+    LaunchHostObserved { instance_id, actuation, transition, revision, sessions, capacity: _, mode: _ } =>
+      match launch_gate_instance(instance_id: instance_id, actuation: actuation) {
+        GateRefused { refusal } => Present { value: refusal }
+        GateNotReached => Present { value: LaunchGateNotEvaluated { gate: "instance" } }
+        GatePassed =>
+          match launch_gate_transition(transition: transition) {
+            GateRefused { refusal } => Present { value: refusal }
+            GateNotReached => Present { value: LaunchGateNotEvaluated { gate: "transition" } }
+            GatePassed =>
+              match launch_gate_revision(revision: revision) {
+                GateRefused { refusal } => Present { value: refusal }
+                GateNotReached => Present { value: LaunchGateNotEvaluated { gate: "revision" } }
+                GatePassed =>
+                  match sessions {
+                    LaunchSessionsUnobserved { reason } => Present { value: LaunchSessionsUnobservable { reason: reason } }
+                    LaunchSessionsObserved { live: _ } => none
+                  }
+              }
+          }
+      }
+  }
+}
+
 data launch_host_observe_only_note: String = "An observe-only instance refuses BEFORE OBSERVATION (the route's standing promise: `dispatch refused before observation, provider preflight, or worktree creation`). The observer therefore reads the posture first and, for an observe-only instance, produces this arm without touching the transition file, the fleet revision, or tmux -- so the first gate is decided from the instance model alone, and the hermetic preview witness never reaches a filesystem effect. It is not a fabricated permitted standing: it carries exactly the fact the observer established."
+
+data launch_observe_only_reason: String = "dashboard instance is observe-only; launch refused before observation, provider preflight, or worktree creation"
 
 fn launch_host_unobserved_static_render() -> LaunchHostStanding {
   LaunchHostUnobserved { reason: "no dashboard instance is observed behind this render; launch is available only from the served instance" }
@@ -405,20 +539,25 @@ fn launch_gate_live(sessions: LaunchSessionsStanding, node_id: String) -> Launch
   }
 }
 
+data launch_occupancy_note: String = "OCCUPANCY IS A CONSERVATIVE COUNT: a present session whose process could not be observed is counted as OCCUPYING its slot. Unobserved does not mean absent -- the provider may be running behind a pane the observer could not read -- and counting it as free would admit a launch under unknown occupancy, the fail-open review 5059520727 found. Only a PROVEN non-process (exited with a status, or a container with no provider attached) frees the slot. This is a structural over-approximation computed as the answer, not a fallback: the refusal it produces is LaunchNoCapacity with the conservative count, and the remedy is the cleanup of the unreadable session, which the tick's stale/refused partition already surfaces. An unobservable SESSION SET (LaunchSessionsUnobserved) never reaches this count: the live gate refuses SessionsUnobservable first."
+
+fn launch_occupying_count(live: List<DispatchLiveSession>) -> Int {
+  count(filter(live, s => match s.worker.process {
+    WorkerProcessRunning { command: _ } => true
+    WorkerProcessUnobserved { reason: _ } => true
+    WorkerProcessExited { exit_code: _, last_command: _ } => false
+    WorkerProcessAbsent => false
+  }))
+}
+
 fn launch_running_count(sessions: LaunchSessionsStanding) -> Int {
   match sessions {
     LaunchSessionsUnobserved { reason: _ } => 0
-    LaunchSessionsObserved { live } =>
-      count(filter(live, s => match s.worker.process {
-        WorkerProcessRunning { command: _ } => true
-        WorkerProcessExited { exit_code: _, last_command: _ } => false
-        WorkerProcessAbsent => false
-        WorkerProcessUnobserved { reason: _ } => false
-      }))
+    LaunchSessionsObserved { live } => launch_occupying_count(live: live)
   }
 }
 
-data launch_capacity_note: String = "Capacity is ONE arithmetic, gunbc.roadmap_belt belt_free_slots_int over the belt's BeltCapacity, read here for both causes: the timer's reconcile plan reports the same arithmetic as its backlog, and the operator's click now respects it too (before this module the manual route checked capacity never). `occupied` is the count of RUNNING sessions plus `reserved` -- the launches this same invocation has already admitted, so a tick folding over several candidates cannot admit more than the free slots."
+data launch_capacity_note: String = "Capacity is ONE arithmetic, gunbc.roadmap_belt belt_free_slots_int over the belt's BeltCapacity, read here for both causes: the timer's reconcile plan reports the same arithmetic as its backlog, and the operator's click now respects it too (before this module the manual route checked capacity never). `occupied` is the count of OCCUPYING sessions (launch_occupying_count: running, plus present-but-unobserved -- see launch_occupancy_note) plus `reserved` -- the launches this same invocation has already admitted, so a tick folding over several candidates cannot admit more than the free slots."
 
 fn launch_gate_capacity(sessions: LaunchSessionsStanding, capacity: BeltCapacity, reserved: Int) -> LaunchGateVerdict {
   let occupied = launch_running_count(sessions: sessions) + reserved
@@ -472,11 +611,37 @@ fn launch_gate_ledger(
       )
     LaunchHostObserveOnly { instance_id } =>
       launch_ledger_unreached_after_instance(
-        refusal: LaunchInstanceActuationRefused {
-          instance_id: instance_id,
-          reason: "dashboard instance is observe-only; launch refused before observation, provider preflight, or worktree creation",
-        },
+        refusal: LaunchInstanceActuationRefused { instance_id: instance_id, reason: launch_observe_only_reason },
       )
+    LaunchHostHalted { instance_id: _, gate, refusal } =>
+      match gate {
+        HostTransitionGate =>
+          LaunchGateLedger {
+            instance: GatePassed,
+            transition: GateRefused { refusal: refusal },
+            revision: GateNotReached,
+            node: GateNotReached,
+            contract: GateNotReached,
+            dependencies: GateNotReached,
+            live: GateNotReached,
+            capacity: GateNotReached,
+            cause: GateNotReached,
+            identity: none,
+          }
+        HostRevisionGate =>
+          LaunchGateLedger {
+            instance: GatePassed,
+            transition: GatePassed,
+            revision: GateRefused { refusal: refusal },
+            node: GateNotReached,
+            contract: GateNotReached,
+            dependencies: GateNotReached,
+            live: GateNotReached,
+            capacity: GateNotReached,
+            cause: GateNotReached,
+            identity: none,
+          }
+      }
     LaunchHostObserved { instance_id, actuation, transition, revision, sessions, capacity, mode } => {
       let identity = match launch_revision_hex(revision: revision) {
         Absent => none
@@ -562,6 +727,9 @@ fn launch_admission_contract_text() -> String {
     ";refusals=", join(map(launch_refusal_exemplars(), r => launch_refusal_label(r: r)), ","),
     ";modes=", join(map([Paused, ManualReady, AutomaticReady], m => spawn_mode_label(m: m)), ","),
     ";causes=", join(map([Operator, Timer], c => launch_cause_label(c: c)), ","),
+    ";identity=node_id,cause,mode,instance_id,revision",
+    ";occupancy=running+unobserved",
+    ";host_stages=instance,transition,revision,sessions",
   ], "")
 }
 

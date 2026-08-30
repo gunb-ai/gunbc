@@ -287,8 +287,8 @@ fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
 
 fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
   match r {
-    Spawned { node_id: _, session_name: _, provider: _ } => 200
-    SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
     SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
   }
 }
