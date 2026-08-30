@@ -8,7 +8,8 @@ import v2.compiler.effect_demand { SeamStanding, effect_demand_seam_roster }
 import v2.lens.module_graph {
   ModuleDeclarationFact,
   ModuleDependencyEdge,
-  dependency_closure,
+  build_dependency_adjacency,
+  dependency_closure_over_adjacency,
   dependency_resolution_facts_live,
   map_lookup_where_rejected_unreachable,
   module_declaration_facts_live,
@@ -116,12 +117,11 @@ fn floor_join_path_to_module(nodes: List<ModuleDeclarationFact>) -> Map<String, 
 
 fn floor_join_entry_reaches_seam(
   entry_path: String,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
+  adjacency: Map<String, List<String>>,
   seam_paths: List<String>
 ) -> Bool {
   any(
-    xs: dependency_closure(entry_path: entry_path, edges: edges, nodes: nodes),
+    xs: dependency_closure_over_adjacency(entry_path: entry_path, adjacency: adjacency),
     predicate: fn(path) { contains(xs: seam_paths, item: strip_leading_dot_slash(s: path), eq: floor_join_string_eq) }
   )
 }
@@ -209,13 +209,12 @@ data effect_demand_floor_join_memo_note: String = "ONE CLOSURE WALK PER ENTRY, N
 fn floor_join_reach_memoized(
   memo: Map<String, Bool>,
   entry: String,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
+  adjacency: Map<String, List<String>>,
   seam_paths: List<String>
 ) -> Bool {
   match map_lookup_where_rejected_unreachable(m: memo, key: entry) {
     Present { value: cached } => cached,
-    Absent => floor_join_entry_reaches_seam(entry_path: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
+    Absent => floor_join_entry_reaches_seam(entry_path: entry, adjacency: adjacency, seam_paths: seam_paths)
   }
 }
 
@@ -223,15 +222,14 @@ fn floor_join_fold_row(
   state: FloorJoinFoldState,
   row: FloorDiscoveryRow,
   path_to_module: Map<String, String>,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>,
+  adjacency: Map<String, List<String>>,
   seam_paths: List<String>
 ) -> FloorJoinFoldState {
   let entry = strip_leading_dot_slash(s: row.entry)
   match map_lookup_where_rejected_unreachable(m: path_to_module, key: entry) {
     Absent => floor_join_refuse(state: state, cause: EntryPathUndeclared { entry_path: row.entry, function: row.function }),
     Present { value: owning_module } => {
-      let reaches = floor_join_reach_memoized(memo: state.reach_memo, entry: entry, edges: edges, nodes: nodes, seam_paths: seam_paths)
+      let reaches = floor_join_reach_memoized(memo: state.reach_memo, entry: entry, adjacency: adjacency, seam_paths: seam_paths)
       let memo = map_insert(state.reach_memo, entry, reaches)
       if !reaches {
         FloorJoinFoldState { rows_reversed: state.rows_reversed, seen: state.seen, reach_memo: memo, refusal: state.refusal }
@@ -270,10 +268,11 @@ fn effect_demand_floor_join(
 ) -> FloorStandingJoin {
   let path_to_module = floor_join_path_to_module(nodes: nodes)
   let seam_paths = floor_join_seam_paths(nodes: nodes, seam_modules: seam_modules)
+  let adjacency = build_dependency_adjacency(edges: edges, nodes: nodes)
   let folded = fold_list(
     xs: discovered,
     empty: floor_join_fold_zero(),
-    cons: fn(acc, row) { floor_join_fold_row(state: acc, row: row, path_to_module: path_to_module, edges: edges, nodes: nodes, seam_paths: seam_paths) }
+    cons: fn(acc, row) { floor_join_fold_row(state: acc, row: row, path_to_module: path_to_module, adjacency: adjacency, seam_paths: seam_paths) }
   )
   match folded.refusal {
     Present { value: cause } => FloorStandingJoinRefused { cause: cause },

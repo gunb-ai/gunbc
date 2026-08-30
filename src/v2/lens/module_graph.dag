@@ -312,18 +312,27 @@ fn import_closure_bfs_walk(
   }
 }
 
-fn dependency_closure(
+fn dependency_closure_over_adjacency(
   entry_path: String,
-  edges: List<ModuleDependencyEdge>,
-  nodes: List<ModuleDeclarationFact>
+  adjacency: Map<String, List<String>>
 ) -> FreeMonoid<String> {
-  let adjacency = build_dependency_adjacency(edges: edges, nodes: nodes)
   import_closure_bfs_walk(
     state: ImportClosureBfsState {
       reached: list_snoc_item(xs: no_paths, item: entry_path),
       queue: list_snoc_item(xs: no_paths, item: entry_path)
     },
     adjacency: adjacency
+  )
+}
+
+fn dependency_closure(
+  entry_path: String,
+  edges: List<ModuleDependencyEdge>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  dependency_closure_over_adjacency(
+    entry_path: entry_path,
+    adjacency: build_dependency_adjacency(edges: edges, nodes: nodes)
   )
 }
 
