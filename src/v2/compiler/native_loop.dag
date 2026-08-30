@@ -6,6 +6,7 @@ import v2.std.collection { List }
 import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
 import v2.std.optional { Optional }
+import v2.std.diagnostic { NonEmptyDiagnostics }
 import gunbc.repository_census_observation { SourceRootIdentity }
 
 // XL-2 schema only: the typed request, response, and decode boundary of the
@@ -27,9 +28,15 @@ type NativeRequestDecode
   | NativeRequestDecodeRefusedUnknownAction { action: String }
   | NativeRequestDecodeRefusedMalformedJson
 
-type CompileResponse = CompileAccepted { output_directory: OutputDirectory } | CompileRefused
-type TestResponse = TestAccepted { roster_identity: TestRosterIdentity } | TestRefused
-type ExecuteResponse = ExecuteAccepted { value: Node } | ExecuteRefused
+type CompileResponse
+  = CompileAccepted { output_directory: OutputDirectory }
+  | CompileRefused { diagnostics: NonEmptyDiagnostics }
+type TestResponse
+  = TestAccepted { roster_identity: TestRosterIdentity }
+  | TestRefused { diagnostics: NonEmptyDiagnostics }
+type ExecuteResponse
+  = ExecuteAccepted { value: Node }
+  | ExecuteRefused { diagnostics: NonEmptyDiagnostics }
 
 type NativeResponse
   = NativeCompileResponse { response: CompileResponse }
