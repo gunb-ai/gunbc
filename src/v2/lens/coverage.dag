@@ -1,5 +1,7 @@
 module v2.lens.coverage
 
+import v2.std.algebra { contains }
+
 
 type Coverage<C> {
   concern: C

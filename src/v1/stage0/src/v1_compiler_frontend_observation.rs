@@ -55,7 +55,7 @@ pub fn frontend_phase_receipt(frontend: Rc<FrontendResult>) -> FrontendPhaseRece
             .references
             .clone()
             .len() as i64),
-        graph_present: (frontend.graph.clone() != None),
+        graph_present: (frontend.graph.clone() != std::option::Option::None),
     }
 }
 

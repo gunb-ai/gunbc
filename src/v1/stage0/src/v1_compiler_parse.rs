@@ -555,7 +555,7 @@ pub fn parsed_expr_result(
             expr: build(minted.identity.clone()),
             tokens: tokens.clone(),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -579,7 +579,7 @@ pub fn parsed_sole_constructor_properties(
                             value: Rc::new(LiteralValue::LitBool { value: true }),
                         }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     ),
                     span.clone(),
@@ -614,7 +614,7 @@ pub fn mint_parsed_bool_property(
                         value: Rc::new(LiteralValue::LitBool { value: true }),
                     }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     span.clone(),
                 ),
                 span.clone(),
@@ -645,7 +645,7 @@ pub fn mint_parsed_optional_int_property(
                             value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
                         }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     ),
                     span.clone(),
@@ -720,7 +720,7 @@ pub fn parsed_predicate_result(
             predicate: build(value_mint.identity.clone(), predicate_mint.identity.clone()),
             tokens: tokens.clone(),
             ctx: predicate_mint.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -1216,7 +1216,7 @@ pub fn parse_string_literal_value(tokens: Rc<TokenStream>) -> Rc<StringLitResult
                 TokenShape::ShLitStr => Rc::new(StringLitResult {
                     value: t.text.clone(),
                     tokens: token_stream_advance(tokens.clone(), 1),
-                    err: None,
+                    err: std::option::Option::None,
                 }),
                 _ => Rc::new(StringLitResult {
                     value: "".to_string(),
@@ -1250,7 +1250,7 @@ pub fn parse_int_literal_value(tokens: Rc<TokenStream>) -> Rc<IntLitResult> {
                         Some(n) => Rc::new(IntLitResult {
                             value: n.clone(),
                             tokens: token_stream_advance(tokens.clone(), 1),
-                            err: None,
+                            err: std::option::Option::None,
                         }),
                         None => Rc::new(IntLitResult {
                             value: 0,
@@ -1804,10 +1804,10 @@ pub fn tok_keyword_to_name(tok: Option<Rc<Token>>) -> Option<String> {
             if is_name_keyword(t.clone()) {
                 Some(t.text.clone())
             } else {
-                None
+                std::option::Option::None
             }
         }
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -1937,7 +1937,7 @@ pub fn expect(tokens: Rc<TokenStream>, expected: Rc<ExpectedToken>) -> Rc<TokenR
             Rc::new(TokenResult {
                 token: tok.clone().unwrap(),
                 tokens: token_stream_advance(tokens.clone(), 1),
-                err: None,
+                err: std::option::Option::None,
             })
         } else {
             {
@@ -1968,7 +1968,7 @@ pub fn expect_ident(tokens: Rc<TokenStream>) -> Rc<NameResult> {
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShIdent) => {
@@ -1978,7 +1978,7 @@ pub fn expect_ident(tokens: Rc<TokenStream>) -> Rc<NameResult> {
                     name: n.clone(),
                     span: span.clone(),
                     tokens: token_stream_advance(tokens.clone(), 1),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             _ => {
@@ -2005,7 +2005,7 @@ pub fn expect_name(tokens: Rc<TokenStream>) -> Rc<NameResult> {
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShIdent) => {
@@ -2015,7 +2015,7 @@ pub fn expect_name(tokens: Rc<TokenStream>) -> Rc<NameResult> {
                     name: n.clone(),
                     span: span.clone(),
                     tokens: token_stream_advance(tokens.clone(), 1),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             _ => {
@@ -2027,7 +2027,7 @@ pub fn expect_name(tokens: Rc<TokenStream>) -> Rc<NameResult> {
                             name: n.clone(),
                             span: span.clone(),
                             tokens: token_stream_advance(tokens.clone(), 1),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                     None => {
@@ -2103,7 +2103,7 @@ pub fn find_operator_bp(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Optio
                 })
             }
         } else {
-            None
+            std::option::Option::None
         }
     }
 }
@@ -2129,7 +2129,7 @@ pub fn find_operator_binop(ops: Rc<Vec<Rc<OperatorSpec>>>, symbol: String) -> Op
                 .binop
                 .clone()
         } else {
-            None
+            std::option::Option::None
         }
     }
 }
@@ -2236,11 +2236,11 @@ pub fn parser_result_base_var(
                     base.clone(),
                     source_indices.clone(),
                 )),
-                _ => None,
+                _ => std::option::Option::None,
             },
-            None => None,
+            None => std::option::Option::None,
         },
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2260,30 +2260,34 @@ pub fn parser_helper_state_arg_expr(
     )
     .iter()
     .cloned()
-    .fold(None, |acc: _, pair: (i64, Rc<Node>)| {
-        if (acc.clone() != None) {
-            acc.clone()
-        } else {
-            {
-                let idx = pair.0.clone();
-                let arg_node = pair.1.clone();
-                let matches_state =
-                    match crate::v1_std_core::arg_name_at(arg_node.clone(), source_indices.clone())
-                    {
+    .fold(
+        std::option::Option::None,
+        |acc: _, pair: (i64, Rc<Node>)| {
+            if (acc.clone() != std::option::Option::None) {
+                acc.clone()
+            } else {
+                {
+                    let idx = pair.0.clone();
+                    let arg_node = pair.1.clone();
+                    let matches_state = match crate::v1_std_core::arg_name_at(
+                        arg_node.clone(),
+                        source_indices.clone(),
+                    ) {
                         Some(name) => {
                             ((name.clone() == "state".to_string())
                                 || (name.clone() == "tokens".to_string()))
                         }
                         None => (idx.clone() == 0),
                     };
-                if matches_state.clone() {
-                    Some(crate::v1_std_core::arg_value(arg_node.clone()))
-                } else {
-                    None
+                    if matches_state.clone() {
+                        Some(crate::v1_std_core::arg_value(arg_node.clone()))
+                    } else {
+                        std::option::Option::None
+                    }
                 }
             }
-        }
-    })
+        },
+    )
 }
 
 pub fn parser_progress_flag_var(
@@ -2299,10 +2303,10 @@ pub fn parser_progress_flag_var(
             {
                 parser_result_base_var(expr.clone(), source_indices.clone())
             } else {
-                None
+                std::option::Option::None
             }
         }
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2316,7 +2320,7 @@ pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
             if (callee.clone() == "with".to_string()) {
                 Some(ParserHelperIdentity::ParserHelperWith)
             } else {
-                None
+                std::option::Option::None
             }
         }
     }
@@ -2339,12 +2343,12 @@ pub fn parser_passthrough_state_expr(
             Some(ParserHelperIdentity::ParserHelperWith) => {
                 match expr.children.clone().first().cloned() {
                     Some(base_arg) => Some(crate::v1_std_core::arg_value(base_arg.clone())),
-                    None => None,
+                    None => std::option::Option::None,
                 }
             }
-            None => None,
+            None => std::option::Option::None,
         },
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -2386,23 +2390,23 @@ pub fn leaf_type_node(
         name: name.clone(),
         span: span.clone(),
         ident_span: if (name.clone() == "".to_string()) {
-            None
+            std::option::Option::None
         } else {
             Some(span.clone())
         },
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -2417,20 +2421,20 @@ pub fn literal_width_nat_type_node(
         occurrence_identity: occurrence_identity.clone(),
         name: "".to_string(),
         span: span.clone(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::ExprLiteral {
             value: Rc::new(LiteralValue::LitInt {
                 value: value.clone(),
@@ -2446,7 +2450,7 @@ pub fn parse_type_angle_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -2474,7 +2478,7 @@ pub fn parse_type_angle_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                             ),
                             tokens: r.tokens.clone(),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -2544,7 +2548,7 @@ pub fn node_inferred_to_outputs(
             "value".to_string(),
             rt.clone(),
             Cardinality::Required,
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             rt.span.clone(),
             crate::v1_std_core::no_span(),
@@ -2595,7 +2599,7 @@ pub fn parse_dotted_ident_rest(
                     name: acc.clone(),
                     span: span.clone(),
                     tokens: __eu.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -2803,7 +2807,7 @@ pub fn stamp_parsed_node_list(
         Rc::new(ParsedNodeListStampResult {
             nodes: Rc::new(vec![]),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
         |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
             if has_err(acc.err.clone()) {
@@ -2844,9 +2848,9 @@ pub fn stamp_parsed_optional_node(
             })
         }
         None => Rc::new(ParsedOptionalNodeStampResult {
-            node: None,
+            node: std::option::Option::None,
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -2906,17 +2910,17 @@ pub fn stamp_parsed_pattern(
                 value: value.clone(),
             })),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
         Some(MatchPattern::Wildcard) => Rc::new(ParsedPatternStampResult {
             pattern: Some(Rc::new(MatchPattern::Wildcard)),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
         None => Rc::new(ParsedPatternStampResult {
-            pattern: None,
+            pattern: std::option::Option::None,
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -2943,9 +2947,9 @@ pub fn stamp_parsed_inferred(
             })
         }
         _ => Rc::new(ParsedOptionalNodeStampResult {
-            node: None,
+            node: std::option::Option::None,
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -3091,7 +3095,7 @@ pub fn stamp_parsed_node_list_with_head_role(
         None => Rc::new(ParsedNodeListStampResult {
             nodes: Rc::new(vec![]),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -3159,7 +3163,7 @@ pub fn stamp_parsed_node(
     {
         let occurrence = match (*node.occurrence_identity.clone()).clone() {
             NodeOccurrenceIdentity::OccurrenceMinted { id: id, .. } => Some(id.clone()),
-            NodeOccurrenceIdentity::OccurrenceSynthetic => None,
+            NodeOccurrenceIdentity::OccurrenceSynthetic => std::option::Option::None,
             NodeOccurrenceIdentity::OccurrenceProjected { .. } => {
                 return Rc::new(ParsedNodeStampResult {
                     node: node.clone(),
@@ -3352,7 +3356,7 @@ pub fn parse_with_table_at(
                 );
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
-                        module: None,
+                        module: std::option::Option::None,
                         error: r.err.clone(),
                     }),
                     intern_table: crate::v1_std_core::intern_table_with_authored_token_ordinals(
@@ -3384,7 +3388,7 @@ pub fn parse_with_table_at(
                 Rc::new(ParseWithTableResult {
                     result: Rc::new(ParseResult {
                         module: if has_err(stamped.err.clone()) {
-                            None
+                            std::option::Option::None
                         } else {
                             Some(stamped.node.clone())
                         },
@@ -3460,10 +3464,10 @@ pub fn parse_with_table_ready_module_path_note() -> String {
 
 pub fn parse_with_table_ready_module_path(parsed: Rc<ParseWithTableResult>) -> Option<String> {
     match parsed.result.clone().error.clone() {
-        Some(_) => None,
+        Some(_) => std::option::Option::None,
         None => match parsed.result.clone().module.clone() {
             Some(module_node) => Some(module_node.name.clone()),
-            None => None,
+            None => std::option::Option::None,
         },
     }
 }
@@ -3571,16 +3575,16 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             children: items.clone(),
             connective: Connective::NoConnective,
             params: imports.clone(),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -3589,7 +3593,7 @@ pub fn parse_module(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Module
             module: mod_.clone(),
             tokens: tokens.clone(),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -3629,7 +3633,7 @@ pub fn parse_imports_acc(
                 imports: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         }
     }
@@ -3651,7 +3655,7 @@ pub fn parse_items_acc(
                 items: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_item(tokens.clone(), ctx.clone());
@@ -3762,7 +3766,7 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     import: imp.clone(),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -3783,7 +3787,7 @@ pub fn parse_import(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Import
                     import: imp.clone(),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -3814,7 +3818,7 @@ pub fn parse_import_names_acc(
                 names: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_dotted_ident(tokens.clone());
@@ -3858,7 +3862,7 @@ pub fn find_item_form(forms: Rc<Vec<Rc<ItemForm>>>, keyword: String) -> Option<R
             __result
         });
         match (matches.clone().len() as i64) {
-            0 => None,
+            0 => std::option::Option::None,
             _ => Some(matches.clone().first().cloned().clone().unwrap()),
         }
     }
@@ -3882,17 +3886,17 @@ pub fn parse_item(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemResu
     ident_span: Some(span.clone()),
     children: Rc::new(vec![]),
     params: Rc::new(vec![]),
-    inferred: None,
+    inferred: std::option::Option::None,
     return_cardinality: Cardinality::Required,
     uses: Rc::new(vec![]),
-    body: None,
+    body: std::option::Option::None,
     connective: Connective::NoConnective,
-    transport: None,
+    transport: std::option::Option::None,
     properties: Rc::new(vec![]),
-    type_annotation: None,
+    type_annotation: std::option::Option::None,
     is_self_recursive: false,
     has_non_tail_self_call: false,
-    match_pattern: None,
+    match_pattern: std::option::Option::None,
     expr_data: Rc::new(ExprData::NoExprData),
     ident: None,
 }),
@@ -3917,7 +3921,7 @@ pub fn parse_item_prefix(
                 name_span: r.span.clone(),
                 type_params: Rc::new(vec![]),
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 uses: Rc::new(vec![]),
                 tokens: r.tokens.clone(),
                 ctx: ctx.clone(),
@@ -3945,7 +3949,7 @@ pub fn parse_item_prefix(
                 params: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         };
         if has_err(params_result.err.clone()) {
@@ -3954,7 +3958,7 @@ pub fn parse_item_prefix(
                 name_span: name_span.clone(),
                 type_params: tp_result.params.clone(),
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 uses: Rc::new(vec![]),
                 tokens: params_result.tokens.clone(),
                 ctx: params_result.ctx.clone(),
@@ -3967,10 +3971,10 @@ pub fn parse_item_prefix(
             parse_optional_inferred(tokens.clone(), ctx.clone())
         } else {
             Rc::new(OptRetResult {
-                inferred: None,
+                inferred: std::option::Option::None,
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         };
         if has_err(ret_result.err.clone()) {
@@ -3979,7 +3983,7 @@ pub fn parse_item_prefix(
                 name_span: name_span.clone(),
                 type_params: tp_result.params.clone(),
                 params: params_result.params.clone(),
-                inferred: None,
+                inferred: std::option::Option::None,
                 uses: Rc::new(vec![]),
                 tokens: ret_result.tokens.clone(),
                 ctx: ret_result.ctx.clone(),
@@ -3999,7 +4003,7 @@ pub fn parse_item_prefix(
                 name_span: name_span.clone(),
                 type_params: tp_result.params.clone(),
                 params: params_result.params.clone(),
-                inferred: None,
+                inferred: std::option::Option::None,
                 uses: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
@@ -4022,7 +4026,7 @@ pub fn parse_item_prefix(
                 uses: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         };
         if has_err(uses_result.err.clone()) {
@@ -4047,7 +4051,7 @@ pub fn parse_item_prefix(
             uses: uses_result.uses.clone(),
             tokens: uses_result.tokens.clone(),
             ctx: uses_result.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -4063,20 +4067,20 @@ pub fn parse_item_by_form(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4180,12 +4184,12 @@ pub fn field_to_child_node(
             return_cardinality: crate::v1_std_core::field_node_cardinality(field.clone()),
             uses: Rc::new(vec![]),
             body: crate::v1_std_core::field_node_default_value(field.clone()),
-            transport: None,
+            transport: std::option::Option::None,
             properties: field.properties.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4217,16 +4221,16 @@ pub fn variant_to_child_node(
                 Connective::NoConnective
             },
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4244,7 +4248,7 @@ pub fn outputs_to_inferred(
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                 name: "".to_string(),
                 span: span.clone(),
-                ident_span: None,
+                ident_span: std::option::Option::None,
                 children: Rc::new({
                     let mut __result = Vec::new();
                     for f in outputs.iter().cloned() {
@@ -4254,22 +4258,22 @@ pub fn outputs_to_inferred(
                 }),
                 connective: Connective::Conj,
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
         }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -4318,14 +4322,14 @@ pub fn make_operation_node(
             inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
             transport: transport.clone(),
             properties: all_props.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4364,14 +4368,14 @@ pub fn make_capability_node(
         inferred: outputs_to_inferred(outputs.clone(), span.clone(), source_indices.clone()),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
+        body: std::option::Option::None,
         connective: Connective::NoConnective,
-        transport: None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -4384,20 +4388,20 @@ pub fn parse_type_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4429,20 +4433,20 @@ pub fn parse_type_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4477,17 +4481,17 @@ pub fn parse_type_after_kw(
                     ident_span: Some(name_span.clone()),
                     children: Rc::new(vec![]),
                     params: type_params.clone(),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
+                    body: std::option::Option::None,
                     connective: Connective::NoConnective,
-                    transport: None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4531,16 +4535,16 @@ pub fn parse_type_after_kw(
                     children: type_children.clone(),
                     connective: Connective::Conj,
                     params: type_params.clone(),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: sole.properties.clone(),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4548,7 +4552,7 @@ pub fn parse_type_after_kw(
                     item: item.clone(),
                     tokens: skip_newlines(r2.tokens.clone()),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4585,13 +4589,13 @@ pub fn parse_type_after_kw(
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
+                            body: std::option::Option::None,
+                            transport: std::option::Option::None,
                             properties: Rc::new(vec![]),
-                            type_annotation: None,
+                            type_annotation: std::option::Option::None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
-                            match_pattern: None,
+                            match_pattern: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -4599,7 +4603,7 @@ pub fn parse_type_after_kw(
                             item: item.clone(),
                             tokens: __eu.clone(),
                             ctx: item_mint.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -4624,17 +4628,17 @@ pub fn parse_type_body_from_prefix(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: type_params.clone(),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4687,16 +4691,16 @@ pub fn parse_type_body_from_prefix(
                     children: type_children.clone(),
                     connective: Connective::Conj,
                     params: type_params.clone(),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: sole.properties.clone(),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4704,7 +4708,7 @@ pub fn parse_type_body_from_prefix(
                     item: item.clone(),
                     tokens: skip_newlines(r2.tokens.clone()),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -4741,13 +4745,13 @@ pub fn parse_type_body_from_prefix(
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
+                            body: std::option::Option::None,
+                            transport: std::option::Option::None,
                             properties: Rc::new(vec![]),
-                            type_annotation: None,
+                            type_annotation: std::option::Option::None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
-                            match_pattern: None,
+                            match_pattern: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         });
@@ -4755,7 +4759,7 @@ pub fn parse_type_body_from_prefix(
                             item: item.clone(),
                             tokens: __eu.clone(),
                             ctx: item_mint.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -4765,8 +4769,9 @@ pub fn parse_type_body_from_prefix(
 }
 
 pub fn alias_rhs_is_anonymous_record(te: Rc<Node>) -> bool {
-    (((te.connective.clone() == Connective::Conj) && (te.ident_span.clone() == None))
-        && (te.type_annotation.clone() == None))
+    (((te.connective.clone() == Connective::Conj)
+        && (te.ident_span.clone() == std::option::Option::None))
+        && (te.type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn type_item_from_alias_rhs(
@@ -4787,16 +4792,16 @@ pub fn type_item_from_alias_rhs(
             children: te.children.clone(),
             connective: Connective::Conj,
             params: type_params.clone(),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: sole_constructor_properties.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4812,13 +4817,13 @@ pub fn type_item_from_alias_rhs(
             inferred: Some(Rc::new(InferredNode::Resolved { node: te.clone() })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: sole_constructor_properties.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -4842,17 +4847,17 @@ pub fn parse_type_body_after_eq(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: type_params.clone(),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -4914,16 +4919,16 @@ pub fn parse_type_body_after_eq(
                     children: type_children.clone(),
                     connective: Connective::Disj,
                     params: type_params.clone(),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -4931,7 +4936,7 @@ pub fn parse_type_body_after_eq(
                     item: item.clone(),
                     tokens: skip_newlines(rest.tokens.clone()),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: _, .. } => {
@@ -5002,16 +5007,16 @@ pub fn parse_type_body_after_eq(
                                     children: type_children.clone(),
                                     connective: Connective::Disj,
                                     params: type_params.clone(),
-                                    inferred: None,
+                                    inferred: std::option::Option::None,
                                     return_cardinality: Cardinality::Required,
                                     uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
+                                    body: std::option::Option::None,
+                                    transport: std::option::Option::None,
                                     properties: Rc::new(vec![]),
-                                    type_annotation: None,
+                                    type_annotation: std::option::Option::None,
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
-                                    match_pattern: None,
+                                    match_pattern: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 });
@@ -5019,7 +5024,7 @@ pub fn parse_type_body_after_eq(
                                     item: item.clone(),
                                     tokens: skip_newlines(rest.tokens.clone()),
                                     ctx: minted.ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 })
                             }
                         } else {
@@ -5071,7 +5076,7 @@ pub fn parse_type_body_after_eq(
                                     item: item.clone(),
                                     tokens: skip_newlines(wr.tokens.clone()),
                                     ctx: minted.ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 })
                             }
                         }
@@ -5120,7 +5125,7 @@ pub fn parse_type_body_after_eq(
                             item: item.clone(),
                             tokens: skip_newlines(wr.tokens.clone()),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -5153,20 +5158,20 @@ pub fn try_where_clause(
                     occurrence_identity: predicate_mint.identity.clone(),
                     name: "".to_string(),
                     span: start_span.clone(),
-                    ident_span: None,
+                    ident_span: std::option::Option::None,
                     children: r.predicates.clone(),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5174,20 +5179,20 @@ pub fn try_where_clause(
                     occurrence_identity: refined_mint.identity.clone(),
                     name: "".to_string(),
                     span: start_span.clone(),
-                    ident_span: None,
+                    ident_span: std::option::Option::None,
                     children: Rc::new(vec![base_te.clone()]),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
                     type_annotation: Some(predicate_node.clone()),
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -5195,14 +5200,14 @@ pub fn try_where_clause(
                     type_expr: refined.clone(),
                     tokens: r.tokens.clone(),
                     ctx: refined_mint.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             AdvanceResult::AdvanceEof => Rc::new(TypeResult {
                 type_expr: base_te.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             }),
         }
     } else {
@@ -5210,7 +5215,7 @@ pub fn try_where_clause(
             type_expr: base_te.clone(),
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -5247,7 +5252,7 @@ pub fn parse_predicates_acc(
                     predicates: acc.clone(),
                     tokens: r.tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -5266,7 +5271,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                     value: Rc::new(LiteralValue::LitBool { value: false }),
                 }),
                 Rc::new(vec![]),
-                None,
+                std::option::Option::None,
                 zero_span.clone(),
             ),
             zero_span.clone(),
@@ -5321,7 +5326,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
@@ -5364,7 +5369,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
@@ -5407,7 +5412,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
@@ -5450,7 +5455,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
@@ -5493,7 +5498,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
@@ -5542,12 +5547,14 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                     "range".to_string(),
                                     crate::v1_std_core::make_expr_node(
                                         value_identity.clone(),
-                                        Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                                        Rc::new(ExprData::ExprRecordLit {
+                                            parent_enum: std::option::Option::None,
+                                        }),
                                         v1_rt::concat(
                                             min.properties.clone(),
                                             max.properties.clone(),
                                         ),
-                                        None,
+                                        std::option::Option::None,
                                         zero_span.clone(),
                                     ),
                                     zero_span.clone(),
@@ -5587,7 +5594,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                     value: Rc::new(LiteralValue::LitBool { value: true }),
                                 }),
                                 Rc::new(vec![]),
-                                None,
+                                std::option::Option::None,
                                 zero_span.clone(),
                             ),
                             zero_span.clone(),
@@ -5608,7 +5615,7 @@ pub fn parse_single_predicate(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
                                     value: Rc::new(LiteralValue::LitBool { value: true }),
                                 }),
                                 Rc::new(vec![]),
-                                None,
+                                std::option::Option::None,
                                 zero_span.clone(),
                             ),
                             zero_span.clone(),
@@ -5626,8 +5633,8 @@ pub fn parse_named_int_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
         let r = parse_single_named_int(tokens.clone(), ctx.clone());
         if has_err(r.err.clone()) {
             return Rc::new(RangeArgsResult {
-                min_val: None,
-                max_val: None,
+                min_val: std::option::Option::None,
+                max_val: std::option::Option::None,
                 tokens: r.tokens.clone(),
                 ctx: r.ctx.clone(),
                 err: r.err.clone(),
@@ -5638,8 +5645,8 @@ pub fn parse_named_int_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                 let r2 = parse_single_named_int(skip_newlines(__ec.clone()), r.ctx.clone());
                 if has_err(r2.err.clone()) {
                     return Rc::new(RangeArgsResult {
-                        min_val: None,
-                        max_val: None,
+                        min_val: std::option::Option::None,
+                        max_val: std::option::Option::None,
                         tokens: r2.tokens.clone(),
                         ctx: r2.ctx.clone(),
                         err: r2.err.clone(),
@@ -5651,7 +5658,7 @@ pub fn parse_named_int_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                     if (r2.arg_name.clone() == "min".to_string()) {
                         Some(r2.arg_value.clone())
                     } else {
-                        None
+                        std::option::Option::None
                     }
                 };
                 let max_val = if (r.arg_name.clone() == "max".to_string()) {
@@ -5660,7 +5667,7 @@ pub fn parse_named_int_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                     if (r2.arg_name.clone() == "max".to_string()) {
                         Some(r2.arg_value.clone())
                     } else {
-                        None
+                        std::option::Option::None
                     }
                 };
                 Rc::new(RangeArgsResult {
@@ -5668,26 +5675,26 @@ pub fn parse_named_int_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                     max_val: max_val.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: r2.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
                 let min_val = if (r.arg_name.clone() == "min".to_string()) {
                     Some(r.arg_value.clone())
                 } else {
-                    None
+                    std::option::Option::None
                 };
                 let max_val = if (r.arg_name.clone() == "max".to_string()) {
                     Some(r.arg_value.clone())
                 } else {
-                    None
+                    std::option::Option::None
                 };
                 Rc::new(RangeArgsResult {
                     min_val: min_val.clone(),
                     max_val: max_val.clone(),
                     tokens: r.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -5735,7 +5742,7 @@ pub fn parse_single_named_int(
             arg_value: r3.value.clone(),
             tokens: r3.tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -5764,12 +5771,12 @@ pub fn parse_positional_variant_type_fields(
 }),
     EatResult::EatUnchanged { tokens: __eu, .. } => {
             let minted = mint_parsed_node_identity(r.ctx.clone());
-let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, None, Rc::new(vec![]), r.type_expr.clone().span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
+let field = crate::v1_std_core::make_field_node(minted.identity.clone(), "0".to_string(), r.type_expr.clone(), Cardinality::Required, std::option::Option::None, Rc::new(vec![]), r.type_expr.clone().span.clone(), crate::v1_std_core::kernel_span("0".to_string()));
 Rc::new(FieldsResult {
     fields: Rc::new(vec![field.clone()]),
     tokens: r.tokens.clone(),
     ctx: minted.ctx.clone(),
-    err: None,
+    err: std::option::Option::None,
 })
 },
 }
@@ -5829,7 +5836,7 @@ pub fn parse_variant_fields(
                     variant: v.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -5877,7 +5884,7 @@ pub fn parse_variant_fields(
                             variant: v.clone(),
                             tokens: r2.tokens.clone(),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                     EatResult::EatUnchanged { tokens: __eu2, .. } => {
@@ -5893,7 +5900,7 @@ pub fn parse_variant_fields(
                             variant: v.clone(),
                             tokens: tokens.clone(),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -5954,7 +5961,7 @@ pub fn parse_more_variants_acc(
                     variants: acc.clone(),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -5967,7 +5974,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -6007,7 +6014,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     occurrence_identity: minted.identity.clone(),
                     name: "".to_string(),
                     span: span.clone(),
-                    ident_span: None,
+                    ident_span: std::option::Option::None,
                     children: Rc::new({
                         let mut __result = Vec::new();
                         for f in r.fields.clone().iter().cloned() {
@@ -6018,16 +6025,16 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     }),
                     connective: Connective::Conj,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6035,7 +6042,7 @@ pub fn parse_type_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Typ
                     type_expr: te.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             Some(TokenShape::ShKeyword) => {
@@ -6125,7 +6132,7 @@ pub fn parse_callable_type_expr(
                 params: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         } else {
             parse_callable_param_types(tokens.clone(), ctx.clone(), Rc::new(vec![]))
@@ -6180,13 +6187,13 @@ pub fn parse_callable_type_expr(
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6219,7 +6226,7 @@ pub fn parse_callable_param_types(
             minted.identity.clone(),
             "".to_string(),
             r.type_expr.clone(),
-            None,
+            std::option::Option::None,
             r.type_expr.clone().span.clone(),
             r.type_expr.clone().span.clone(),
         );
@@ -6232,7 +6239,7 @@ pub fn parse_callable_param_types(
                         params: acc.clone(),
                         tokens: tokens.clone(),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 } else {
                     {
@@ -6247,7 +6254,7 @@ pub fn parse_callable_param_types(
                     params: acc.clone(),
                     tokens: r.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -6304,16 +6311,16 @@ pub fn finish_type_expr_from_name(
                     children: type_args.args.clone(),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 });
@@ -6392,7 +6399,7 @@ pub fn collect_type_param_names(
                 param_mint.identity.clone(),
                 r.name.clone(),
                 type_expr.clone(),
-                None,
+                std::option::Option::None,
                 span.clone(),
                 span.clone(),
             );
@@ -6465,7 +6472,7 @@ pub fn collect_type_args(
                     args: args.clone(),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -6505,14 +6512,14 @@ pub fn maybe_optional(
                 type_expr: ote.clone(),
                 tokens: __ec.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
         EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(TypeResult {
             type_expr: te.clone(),
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -6534,7 +6541,7 @@ pub fn parse_field_list_acc(
                 fields: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             if (tok_is_ident(tok.clone()) || tok_is_keyword_name(tok.clone())) {
@@ -6565,7 +6572,7 @@ pub fn parse_field_list_acc(
                     fields: acc.clone(),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -6584,7 +6591,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                 start_span.clone(),
             ),
             Cardinality::Required,
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             start_span.clone(),
             start_span.clone(),
@@ -6666,7 +6673,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     field: f.clone(),
                     tokens: r4.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -6676,7 +6683,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     name.clone(),
                     te.clone(),
                     te.return_cardinality.clone(),
-                    None,
+                    std::option::Option::None,
                     from_key_properties.clone(),
                     start_span.clone(),
                     name_span.clone(),
@@ -6685,7 +6692,7 @@ pub fn parse_field(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<FieldRe
                     field: f.clone(),
                     tokens: tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -6700,7 +6707,7 @@ pub fn parse_optional_from_key(
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShIdent) => {
@@ -6709,7 +6716,7 @@ pub fn parse_optional_from_key(
                         let tok2 = token_stream_first(token_stream_advance(tokens.clone(), 1));
                         let sh2 = match tok2.clone() {
                             Some(t) => Some(t.shape.clone()),
-                            None => None,
+                            None => std::option::Option::None,
                         };
                         match sh2.clone() {
                             Some(TokenShape::ShLitStr) => {
@@ -6724,7 +6731,7 @@ pub fn parse_optional_from_key(
                                         value: Rc::new(LiteralValue::LitStr { value: key.clone() }),
                                     }),
                                     Rc::new(vec![]),
-                                    None,
+                                    std::option::Option::None,
                                     token_span(tok2.clone()),
                                     token_span(tok2.clone()),
                                 );
@@ -6739,14 +6746,14 @@ pub fn parse_optional_from_key(
                                     properties: Rc::new(vec![property.clone()]),
                                     tokens: token_stream_advance(tokens.clone(), 2),
                                     ctx: property_mint.ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 })
                             }
                             _ => Rc::new(FromKeyResult {
                                 properties: Rc::new(vec![]),
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             }),
                         }
                     }
@@ -6755,7 +6762,7 @@ pub fn parse_optional_from_key(
                         properties: Rc::new(vec![]),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             }
@@ -6763,7 +6770,7 @@ pub fn parse_optional_from_key(
                 properties: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             }),
         }
     }
@@ -6776,20 +6783,20 @@ pub fn parse_fn_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ItemRe
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6821,20 +6828,20 @@ pub fn parse_fn_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6857,17 +6864,17 @@ pub fn parse_fn_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6918,12 +6925,12 @@ pub fn parse_fn_after_kw(
             uses: Rc::new(vec![]),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -6931,7 +6938,7 @@ pub fn parse_fn_after_kw(
             item: item.clone(),
             tokens: skip_newlines(r.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -6983,7 +6990,7 @@ pub fn parse_optional_admit_callers(
                         props: Rc::new(vec![r.field.clone()]),
                         tokens: skip_newlines(r.tokens.clone()),
                         ctx: r.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             }
@@ -6992,7 +6999,7 @@ pub fn parse_optional_admit_callers(
                 props: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
     }
@@ -7023,17 +7030,17 @@ pub fn parse_fn_body_from_prefix(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: all_params.clone(),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7107,12 +7114,12 @@ pub fn parse_fn_body_from_prefix(
             uses: Rc::new(vec![]),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: admit_props.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7120,7 +7127,7 @@ pub fn parse_fn_body_from_prefix(
             item: item.clone(),
             tokens: skip_newlines(body_result.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -7132,20 +7139,20 @@ pub fn parse_func_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7226,20 +7233,20 @@ pub fn parse_block_item_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7262,17 +7269,17 @@ pub fn parse_block_item_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7307,7 +7314,7 @@ pub fn parse_block_item_after_kw(
                 uses: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         };
         if has_err(uses_r.err.clone()) {
@@ -7344,12 +7351,12 @@ pub fn parse_block_item_after_kw(
             uses: uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7357,7 +7364,7 @@ pub fn parse_block_item_after_kw(
             item: item.clone(),
             tokens: skip_newlines(r.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -7380,17 +7387,17 @@ pub fn parse_block_body_from_prefix(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7417,12 +7424,12 @@ pub fn parse_block_body_from_prefix(
             uses: uses.clone(),
             body: Some(body.clone()),
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7430,7 +7437,7 @@ pub fn parse_block_body_from_prefix(
             item: item.clone(),
             tokens: skip_newlines(r.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -7451,14 +7458,14 @@ pub fn parse_no_body_from_prefix(
             inferred: prefix.inferred.clone(),
             return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7466,7 +7473,7 @@ pub fn parse_no_body_from_prefix(
             item: item.clone(),
             tokens: prefix.tokens.clone(),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -7489,7 +7496,7 @@ pub fn parse_uses_clause(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<U
                     uses: r.uses.clone(),
                     tokens: r.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         } else {
@@ -7497,7 +7504,7 @@ pub fn parse_uses_clause(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<U
                 uses: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
     }
@@ -7535,7 +7542,7 @@ pub fn parse_uses_list_acc(
                     uses: acc.clone(),
                     tokens: r.tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -7638,7 +7645,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     resource_use: ru.clone(),
                     tokens: r4.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -7654,7 +7661,7 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     resource_use: ru.clone(),
                     tokens: r3.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -7687,7 +7694,7 @@ pub fn parse_resource_config_acc(
                 fields: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         }
         let zero_span = crate::v1_std_core::no_span();
@@ -7741,7 +7748,7 @@ pub fn parse_resource_config_acc(
                     fields: acc.clone(),
                     tokens: r3.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -7754,7 +7761,7 @@ pub fn parse_optional_inferred(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
             let r = parse_type_expr(__ec.clone(), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(OptRetResult {
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     tokens: r.tokens.clone(),
                     ctx: r.ctx.clone(),
                     err: r.err.clone(),
@@ -7766,14 +7773,14 @@ pub fn parse_optional_inferred(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -
                 })),
                 tokens: r.tokens.clone(),
                 ctx: r.ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
         EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(OptRetResult {
-            inferred: None,
+            inferred: std::option::Option::None,
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -7785,20 +7792,20 @@ pub fn parse_service_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<I
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7830,20 +7837,20 @@ pub fn parse_service_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7871,17 +7878,17 @@ pub fn parse_service_after_kw(
             ident_span: Some(svc_name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7928,7 +7935,7 @@ pub fn parse_service_after_kw(
                     }),
                 }),
                 Rc::new(vec![]),
-                None,
+                std::option::Option::None,
                 start_span.clone(),
             ),
             start_span.clone(),
@@ -7951,17 +7958,17 @@ pub fn parse_service_after_kw(
             ident_span: Some(svc_name_span.clone()),
             children: r.operations.clone(),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
             transport: Some(r.transport.clone()),
             properties: v1_rt::concat(Rc::new(vec![ns_prop.clone()]), svc_props.clone()),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -7969,7 +7976,7 @@ pub fn parse_service_after_kw(
             item: item.clone(),
             tokens: skip_newlines(r2.tokens.clone()),
             ctx: item_mint.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -7978,7 +7985,7 @@ pub fn parse_service_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
     parse_service_entries(
         tokens.clone(),
         ctx.clone(),
-        None,
+        std::option::Option::None,
         crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             token_span(token_stream_first(tokens.clone())),
@@ -8004,12 +8011,12 @@ pub fn parse_service_entries(
                 operations: operations.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let sh = match tok.clone() {
                 Some(t) => Some(t.shape.clone()),
-                None => None,
+                None => std::option::Option::None,
             };
             let span = token_span(tok.clone());
             match sh.clone() {
@@ -8167,7 +8174,15 @@ pub fn parse_service_config_block(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<ConfigResult> {
-    parse_config_fields(tokens.clone(), ctx.clone(), None, None, None, None, None)
+    parse_config_fields(
+        tokens.clone(),
+        ctx.clone(),
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+    )
 }
 
 pub fn parse_config_fields(
@@ -8195,7 +8210,7 @@ pub fn parse_config_fields(
                             }),
                         }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         crate::v1_std_core::no_span(),
                     ),
                 },
@@ -8208,7 +8223,7 @@ pub fn parse_config_fields(
                 config: cfg.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let dummy_cfg = Rc::new(ServiceConfig {
@@ -8220,13 +8235,13 @@ pub fn parse_config_fields(
                         }),
                     }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     crate::v1_std_core::no_span(),
                 ),
-                auth: None,
-                auth_input: None,
-                auth_source: None,
-                rate_limit: None,
+                auth: std::option::Option::None,
+                auth_input: std::option::Option::None,
+                auth_source: std::option::Option::None,
+                rate_limit: std::option::Option::None,
             });
             let r = expect_ident(tokens.clone());
             if has_err(r.err.clone()) {
@@ -8319,7 +8334,7 @@ pub fn parse_transport_binding(
         };
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShIdent) => {
@@ -8363,7 +8378,7 @@ pub fn parse_transport_binding(
                             transport: r2.transport.clone(),
                             tokens: r3.tokens.clone(),
                             ctx: r2.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 } else {
@@ -8409,7 +8424,7 @@ pub fn parse_transport_binding(
                                 transport: r2.transport.clone(),
                                 tokens: r3.tokens.clone(),
                                 ctx: r2.ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     } else {
@@ -8455,7 +8470,7 @@ pub fn parse_transport_binding(
                                     transport: r2.transport.clone(),
                                     tokens: r3.tokens.clone(),
                                     ctx: r2.ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 })
                             }
                         } else {
@@ -8463,7 +8478,7 @@ pub fn parse_transport_binding(
                                 transport: dummy.clone(),
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -8473,7 +8488,7 @@ pub fn parse_transport_binding(
                 transport: dummy.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             }),
         }
     }
@@ -8486,12 +8501,12 @@ pub fn parse_rest_binding_body(
     parse_rest_fields(
         tokens.clone(),
         ctx.clone(),
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
         Rc::new(vec![]),
     )
 }
@@ -8527,7 +8542,7 @@ pub fn parse_rest_fields(
                         }),
                     }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     crate::v1_std_core::no_span(),
                 ),
             };
@@ -8547,7 +8562,7 @@ pub fn parse_rest_fields(
                 ),
                 tokens: tokens.clone(),
                 ctx: minted.ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = expect_ident(tokens.clone());
@@ -8689,7 +8704,12 @@ pub fn parse_shell_binding_body(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<TransportResult> {
-    parse_shell_fields(tokens.clone(), ctx.clone(), Rc::new(vec![]), None)
+    parse_shell_fields(
+        tokens.clone(),
+        ctx.clone(),
+        Rc::new(vec![]),
+        std::option::Option::None,
+    )
 }
 
 pub fn parse_shell_fields(
@@ -8719,7 +8739,7 @@ pub fn parse_shell_fields(
                 ),
                 tokens: tokens.clone(),
                 ctx: minted.ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = expect_ident(tokens.clone());
@@ -8834,7 +8854,12 @@ pub fn parse_file_binding_body(
     tokens: Rc<TokenStream>,
     ctx: Rc<ParseContext>,
 ) -> Rc<TransportResult> {
-    parse_file_fields(tokens.clone(), ctx.clone(), None, None)
+    parse_file_fields(
+        tokens.clone(),
+        ctx.clone(),
+        std::option::Option::None,
+        std::option::Option::None,
+    )
 }
 
 pub fn parse_file_fields(
@@ -8865,7 +8890,7 @@ pub fn parse_file_fields(
                         ),
                         tokens: tokens.clone(),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 }
                 None => {
@@ -8956,14 +8981,14 @@ pub fn parse_operation_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
         let dummy_op = make_operation_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
-            None,
+            std::option::Option::None,
             start_span.clone(),
             ctx.source_indices.clone(),
         );
@@ -9024,14 +9049,14 @@ pub fn parse_operation_v2_inline(
         let dummy_op = make_operation_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
-            None,
+            std::option::Option::None,
             start_span.clone(),
             ctx.source_indices.clone(),
         );
@@ -9123,7 +9148,7 @@ pub fn parse_operation_v2_inline(
             mock_r.mocks.clone(),
             Rc::new(vec![]),
             mod_props.clone(),
-            None,
+            std::option::Option::None,
             start_span.clone(),
             ctx.source_indices.clone(),
         );
@@ -9131,7 +9156,7 @@ pub fn parse_operation_v2_inline(
             operation: op.clone(),
             tokens: tokens.clone(),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -9147,14 +9172,14 @@ pub fn parse_operation_v1_body(
         let dummy_op = make_operation_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
-            None,
+            std::option::Option::None,
             start_span.clone(),
             ctx.source_indices.clone(),
         );
@@ -9174,7 +9199,7 @@ pub fn parse_operation_v1_body(
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             Rc::new(vec![]),
             Rc::new(vec![]),
@@ -9218,7 +9243,7 @@ pub fn parse_operation_v1_body(
             operation: op.clone(),
             tokens: skip_newlines(r3.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -9248,14 +9273,14 @@ pub fn parse_op_body_entries(
             mock_props: mock_props.clone(),
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         });
         if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
             break mk_result;
         } else {
             let sh = match tok.clone() {
                 Some(t) => Some(t.shape.clone()),
-                None => None,
+                None => std::option::Option::None,
             };
             match sh.clone() {
                 Some(TokenShape::ShKeyword) => {
@@ -9830,7 +9855,7 @@ pub fn node_to_name_str(
                 None => v1_rt::concat(opt_prefix.clone(), effective_name.clone()),
             }
         } else {
-            if (effective_n.type_annotation.clone() != None) {
+            if (effective_n.type_annotation.clone() != std::option::Option::None) {
                 match effective_n.children.clone().first().cloned() {
                     Some(ch) => v1_rt::concat(
                         opt_prefix.clone(),
@@ -9848,7 +9873,7 @@ pub fn node_to_name_str(
                         None => v1_rt::concat(opt_prefix.clone(), effective_name.clone()),
                     }
                 } else {
-                    if (effective_n.ident_span.clone() == None) {
+                    if (effective_n.ident_span.clone() == std::option::Option::None) {
                         {
                             let is_conj = (effective_n.connective.clone() == Connective::Conj);
                             let is_disj = (effective_n.connective.clone() == Connective::Disj);
@@ -9889,7 +9914,7 @@ pub fn parse_exit_entries_acc(
                 entries: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_status_pattern(tokens.clone(), ctx.clone());
@@ -9923,7 +9948,7 @@ pub fn parse_exit_entries_acc(
             let desc_tok = token_stream_first(r3.tokens.clone());
             let desc_sh = match desc_tok.clone() {
                 Some(t) => Some(t.shape.clone()),
-                None => None,
+                None => std::option::Option::None,
             };
             let desc_tokens = match desc_sh.clone() {
                 Some(TokenShape::ShLitStr) => token_stream_advance(r3.tokens.clone(), 1),
@@ -9939,9 +9964,11 @@ pub fn parse_exit_entries_acc(
                 crate::v1_std_core::make_named_expr_node(
                     r3.type_expr.clone().occurrence_identity.clone(),
                     type_name.clone(),
-                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: std::option::Option::None,
+                    }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     r3.type_expr.clone().span.clone(),
                     r3.type_expr.clone().span.clone(),
                 ),
@@ -10027,7 +10054,7 @@ pub fn parse_operation_modifiers_acc(
                         properties: acc.clone(),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 }
             }
@@ -10040,7 +10067,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -10065,7 +10092,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                             ),
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 };
@@ -10086,7 +10113,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         span.clone(),
                                     )
                                 },
@@ -10104,7 +10131,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                                             }),
                                         }),
                                         Rc::new(vec![]),
-                                        None,
+                                        std::option::Option::None,
                                         span.clone(),
                                     )
                                 },
@@ -10121,7 +10148,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                                     value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
                                 }),
                                 Rc::new(vec![]),
-                                None,
+                                std::option::Option::None,
                                 span.clone(),
                             )
                         },
@@ -10140,7 +10167,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                                 value: Rc::new(LiteralValue::LitStr { value: id.clone() }),
                             }),
                             Rc::new(vec![]),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     },
@@ -10158,7 +10185,7 @@ pub fn parse_status_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                             }),
                         }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 },
@@ -10218,7 +10245,7 @@ pub fn parse_optional_response_block(
                     responses: r2.entries.clone(),
                     tokens: r3.tokens.clone(),
                     ctx: r2.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         } else {
@@ -10226,7 +10253,7 @@ pub fn parse_optional_response_block(
                 responses: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
     }
@@ -10253,7 +10280,7 @@ pub fn parse_response_entries_acc(
                 entries: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_status_pattern(tokens.clone(), ctx.clone());
@@ -10294,9 +10321,11 @@ pub fn parse_response_entries_acc(
                 crate::v1_std_core::make_named_expr_node(
                     r3.type_expr.clone().occurrence_identity.clone(),
                     type_name.clone(),
-                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: std::option::Option::None,
+                    }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     r3.type_expr.clone().span.clone(),
                     r3.type_expr.clone().span.clone(),
                 ),
@@ -10370,7 +10399,7 @@ pub fn parse_optional_mock_response_block(
                     mocks: r2.entries.clone(),
                     tokens: r3.tokens.clone(),
                     ctx: r2.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         } else {
@@ -10378,7 +10407,7 @@ pub fn parse_optional_mock_response_block(
                 mocks: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
     }
@@ -10405,7 +10434,7 @@ pub fn parse_mock_response_entries_acc(
                 entries: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_status_pattern(tokens.clone(), ctx.clone());
@@ -10440,7 +10469,7 @@ pub fn parse_mock_response_entries_acc(
             let desc_tok = token_stream_first(r3.tokens.clone());
             let desc_sh = match desc_tok.clone() {
                 Some(t) => Some(t.shape.clone()),
-                None => None,
+                None => std::option::Option::None,
             };
             let desc_tokens = match desc_sh.clone() {
                 Some(TokenShape::ShLitStr) => token_stream_advance(r3.tokens.clone(), 1),
@@ -10479,20 +10508,20 @@ pub fn parse_resource_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10524,20 +10553,20 @@ pub fn parse_resource_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10559,17 +10588,17 @@ pub fn parse_resource_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10616,17 +10645,17 @@ pub fn parse_resource_after_kw(
             ident_span: Some(name_span.clone()),
             children: r.capabilities.clone(),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: r.properties.clone(),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -10634,7 +10663,7 @@ pub fn parse_resource_after_kw(
             item: item.clone(),
             tokens: skip_newlines(r2.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -10655,12 +10684,12 @@ pub fn parse_resource_entries(
                 capabilities: capabilities.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let sh = match tok.clone() {
                 Some(t) => Some(t.shape.clone()),
-                None => None,
+                None => std::option::Option::None,
             };
             match sh.clone() {
                 Some(TokenShape::ShKeyword) => {
@@ -10853,13 +10882,13 @@ pub fn skip_until_rbrace(tokens: Rc<TokenStream>) -> Rc<UnitResult> {
         if (tok_is_rbrace(tok.clone()) || tok_is_eof(tok.clone())) {
             Rc::new(UnitResult {
                 tokens: tokens.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         } else {
             {
                 let sh = match tok.clone() {
                     Some(t) => Some(t.shape.clone()),
-                    None => None,
+                    None => std::option::Option::None,
                 };
                 match sh.clone() {
                     Some(TokenShape::ShLBrace) => {
@@ -10886,7 +10915,7 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
         let dummy_cap = make_capability_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             "".to_string(),
-            None,
+            std::option::Option::None,
             Rc::new(vec![]),
             Rc::new(vec![]),
             start_span.clone(),
@@ -10964,7 +10993,7 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                     capability: cap.clone(),
                     tokens: skip_newlines(r3.tokens.clone()),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         } else {
@@ -11031,7 +11060,7 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                         capability: cap.clone(),
                         tokens: skip_newlines(ret.tokens.clone()),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             } else {
@@ -11050,7 +11079,7 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                         capability: cap.clone(),
                         tokens: skip_newlines(tokens.clone()),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             }
@@ -11083,7 +11112,7 @@ pub fn parse_io_blocks_acc(
                 outputs: outputs.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let kw = tok_keyword_text(token_stream_first(tokens.clone()));
@@ -11186,7 +11215,7 @@ pub fn parse_io_blocks_acc(
                         outputs: outputs.clone(),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 }
             }
@@ -11201,20 +11230,20 @@ pub fn parse_data_def(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Item
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11246,20 +11275,20 @@ pub fn parse_alias_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11281,17 +11310,17 @@ pub fn parse_alias_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11328,7 +11357,7 @@ pub fn parse_alias_after_kw(
                     }),
                 }),
                 Rc::new(vec![]),
-                None,
+                std::option::Option::None,
                 r.span.clone(),
             ),
             start_span.clone(),
@@ -11341,17 +11370,17 @@ pub fn parse_alias_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![target_prop.clone()]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11359,7 +11388,7 @@ pub fn parse_alias_after_kw(
             item: item.clone(),
             tokens: skip_newlines(r.tokens.clone()),
             ctx: item_mint.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -11374,20 +11403,20 @@ pub fn parse_data_after_kw(
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: start_span.clone(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11409,17 +11438,17 @@ pub fn parse_data_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
+            body: std::option::Option::None,
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11469,17 +11498,17 @@ pub fn parse_data_after_kw(
             ident_span: Some(name_span.clone()),
             children: Rc::new(vec![]),
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: Some(r.expr.clone()),
             connective: Connective::NoConnective,
-            transport: None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
             type_annotation: Some(te.clone()),
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -11487,7 +11516,7 @@ pub fn parse_data_after_kw(
             item: item.clone(),
             tokens: skip_newlines(r.tokens.clone()),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -11509,7 +11538,7 @@ pub fn parse_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Params
                 params: Rc::new(vec![]),
                 tokens: token_stream_advance(tokens.clone(), 1),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         } else {
             {
@@ -11531,7 +11560,7 @@ pub fn parse_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Params
                     params: r.params.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -11567,7 +11596,7 @@ pub fn parse_param_list_acc(
                         params: acc.clone(),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 } else {
                     {
@@ -11580,7 +11609,7 @@ pub fn parse_param_list_acc(
                     params: acc.clone(),
                     tokens: r.tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -11598,7 +11627,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                 "".to_string(),
                 start_span.clone(),
             ),
-            None,
+            std::option::Option::None,
             start_span.clone(),
             start_span.clone(),
         );
@@ -11672,7 +11701,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                     param: p.clone(),
                     tokens: r4.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -11681,7 +11710,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                     minted.identity.clone(),
                     name.clone(),
                     type_expr.clone(),
-                    None,
+                    std::option::Option::None,
                     start_span.clone(),
                     name_span.clone(),
                 );
@@ -11689,7 +11718,7 @@ pub fn parse_param(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ParamRe
                     param: p.clone(),
                     tokens: tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -11710,7 +11739,7 @@ pub fn heads_skip_block_tokens(
         if (depth.clone() == 0) {
             return Rc::new(HeadsBlockSkipResult {
                 tokens: tokens.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         }
         let tok = token_stream_first(tokens.clone());
@@ -11808,7 +11837,7 @@ pub fn parse_block_heads_only(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) ->
             expr: census_heads_body_stand_in(),
             tokens: skipped.tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -11861,7 +11890,7 @@ pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
                 expr: stmts.clone().first().cloned().clone().unwrap(),
                 tokens: r.tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         } else {
             parsed_expr_result(r.tokens.clone(), ctx.clone(), |identity| {
@@ -11869,7 +11898,7 @@ pub fn parse_block(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
                     identity.clone(),
                     Rc::new(ExprData::ExprBlock),
                     stmts.clone(),
-                    None,
+                    std::option::Option::None,
                     block_span.clone(),
                 )
             })
@@ -11895,7 +11924,7 @@ pub fn parse_stmts_acc(
                 stmts: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_stmt(tokens.clone(), ctx.clone());
@@ -11925,7 +11954,7 @@ pub fn parse_stmt(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResu
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShKeyword) => {
@@ -12050,17 +12079,17 @@ pub fn parse_constrained_assignment(
                 ident_span: Some(name_span.clone()),
                 children: Rc::new(vec![r3.expr.clone()]),
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
+                body: std::option::Option::None,
                 connective: Connective::NoConnective,
-                transport: None,
+                transport: std::option::Option::None,
                 properties: cr.constraints.clone(),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12141,13 +12170,13 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                 inferred: ret.inferred.clone(),
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: cr.constraints.clone(),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12200,17 +12229,17 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                 ident_span: Some(name_span.clone()),
                 children: Rc::new(vec![r3.expr.clone()]),
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
+                body: std::option::Option::None,
                 connective: Connective::NoConnective,
-                transport: None,
+                transport: std::option::Option::None,
                 properties: cr.constraints.clone(),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::ExprLet),
                 ident: None,
             })
@@ -12250,7 +12279,7 @@ pub fn parse_expr_loop(
                 expr: lhs.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let loop_span = token_span(token_stream_first(tokens.clone()));
@@ -12283,7 +12312,7 @@ pub fn parse_expr_loop(
                                     expr: lhs.clone(),
                                     tokens: tokens.clone(),
                                     ctx: ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 });
                             } else {
                                 match (*advance(tokens.clone())).clone() {
@@ -12308,10 +12337,10 @@ pub fn parse_expr_loop(
                                                 minted.identity.clone(),
                                                 r.name.clone(),
                                                 Rc::new(ExprData::ExprFieldAccess {
-                                                    summary: None,
+                                                    summary: std::option::Option::None,
                                                 }),
                                                 Rc::new(vec![lhs.clone()]),
-                                                None,
+                                                std::option::Option::None,
                                                 loop_span.clone(),
                                                 r.span.clone(),
                                             );
@@ -12378,13 +12407,14 @@ pub fn parse_expr_loop(
                                                                 minted.identity.clone(),
                                                                 Rc::new(ExprData::ExprBinOp {
                                                                     op: binop.clone(),
-                                                                    algebra_field: None,
+                                                                    algebra_field:
+                                                                        std::option::Option::None,
                                                                 }),
                                                                 Rc::new(vec![
                                                                     lhs.clone(),
                                                                     r.expr.clone(),
                                                                 ]),
-                                                                None,
+                                                                std::option::Option::None,
                                                                 loop_span.clone(),
                                                             );
                                                         {
@@ -12421,7 +12451,7 @@ pub fn parse_expr_loop(
                                             expr: lhs.clone(),
                                             tokens: tokens.clone(),
                                             ctx: ctx.clone(),
-                                            err: None,
+                                            err: std::option::Option::None,
                                         });
                                     }
                                 }
@@ -12432,7 +12462,7 @@ pub fn parse_expr_loop(
                                 expr: lhs.clone(),
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             });
                         }
                     }
@@ -12445,7 +12475,7 @@ pub fn parse_expr_loop(
 pub fn infix_bp(tokens: Rc<TokenStream>) -> Option<BindingPower> {
     match token_stream_first(tokens.clone()) {
         Some(t) => find_operator_bp(dag_syntax_spec().operators.clone(), t.text.clone()),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -12481,18 +12511,22 @@ pub fn parse_pipe_callee_rest(
                 None => crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
                     name.clone(),
-                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: std::option::Option::None,
+                    }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     name_span.clone(),
                     name_span.clone(),
                 ),
                 Some(base) => crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
                     name.clone(),
-                    Rc::new(ExprData::ExprFieldAccess { summary: None }),
+                    Rc::new(ExprData::ExprFieldAccess {
+                        summary: std::option::Option::None,
+                    }),
                     Rc::new(vec![base.clone()]),
-                    None,
+                    std::option::Option::None,
                     name_span.clone(),
                     name_span.clone(),
                 ),
@@ -12517,7 +12551,7 @@ pub fn parse_pipe_callee_rest(
                 method_span: name_span.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         }
     }
@@ -12543,7 +12577,7 @@ pub fn parse_pipe_rhs(
         let dotted = parse_pipe_callee_rest(
             r.tokens.clone(),
             ctx.clone(),
-            None,
+            std::option::Option::None,
             r.name.clone(),
             r.span.clone(),
         );
@@ -12559,12 +12593,12 @@ pub fn parse_pipe_rhs(
             dotted.clone()
         } else {
             Rc::new(PipeCalleeResult {
-                spine: None,
+                spine: std::option::Option::None,
                 method: r.name.clone(),
                 method_span: r.span.clone(),
                 tokens: r.tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         };
         let method = callee.method.clone();
@@ -12580,7 +12614,7 @@ pub fn parse_pipe_rhs(
                         qualifier.clone(),
                         crate::v1_std_core::make_arg_node(
                             wrapper_mint.identity.clone(),
-                            None,
+                            std::option::Option::None,
                             receiver.clone(),
                             receiver.span.clone(),
                             receiver.span.clone(),
@@ -12607,7 +12641,7 @@ pub fn parse_pipe_rhs(
                         identity.clone(),
                         method.clone(),
                         Rc::new(ExprData::ExprMethodCall {
-                            method_semantics: None,
+                            method_semantics: std::option::Option::None,
                         }),
                         v1_rt::concat(
                             leading_result.nodes.clone(),
@@ -12628,7 +12662,7 @@ pub fn parse_pipe_rhs(
                                 __result
                             }),
                         ),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                         callee.method_span.clone(),
                     )
@@ -12640,10 +12674,10 @@ pub fn parse_pipe_rhs(
                     identity.clone(),
                     method.clone(),
                     Rc::new(ExprData::ExprMethodCall {
-                        method_semantics: None,
+                        method_semantics: std::option::Option::None,
                     }),
                     leading_result.nodes.clone(),
-                    None,
+                    std::option::Option::None,
                     span.clone(),
                     callee.method_span.clone(),
                 )
@@ -12657,7 +12691,7 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -12678,7 +12712,7 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                             op: UnaryOpKind::Not,
                         }),
                         Rc::new(vec![r.expr.clone()]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 })
@@ -12700,7 +12734,7 @@ pub fn parse_prefix(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                             op: UnaryOpKind::Neg,
                         }),
                         Rc::new(vec![r.expr.clone()]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 })
@@ -12718,7 +12752,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
         let next = token_stream_first(after_caret.clone());
         let next_shape = match next.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match next_shape.clone() {
             Some(TokenShape::ShIdent) => {
@@ -12738,7 +12772,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                 }),
                             }),
                             Rc::new(vec![]),
-                            None,
+                            std::option::Option::None,
                             lit_span.clone(),
                         )
                     },
@@ -12773,9 +12807,11 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 let callee = crate::v1_std_core::make_named_expr_node(
                     callee_mint.identity.clone(),
                     "discriminant".to_string(),
-                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: std::option::Option::None,
+                    }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     call_span.clone(),
                     crate::v1_std_core::kernel_span("discriminant".to_string()),
                 );
@@ -12791,7 +12827,7 @@ pub fn parse_caret_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                     expr: call.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: call_mint.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             _ => {
@@ -12827,7 +12863,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -12844,7 +12880,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                                 identity.clone(),
                                 Rc::new(ExprData::ExprLiteral { value: lv.clone() }),
                                 Rc::new(vec![]),
-                                None,
+                                std::option::Option::None,
                                 span.clone(),
                             )
                         },
@@ -12910,7 +12946,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                             ),
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 };
@@ -12924,7 +12960,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                                 value: Rc::new(LiteralValue::LitInt { value: n.clone() }),
                             }),
                             Rc::new(vec![]),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     },
@@ -12942,7 +12978,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                                 value: Rc::new(LiteralValue::LitFloat { value: f.clone() }),
                             }),
                             Rc::new(vec![]),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     },
@@ -12960,7 +12996,7 @@ pub fn parse_primary(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprR
                                 value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
                             }),
                             Rc::new(vec![]),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     },
@@ -13020,7 +13056,7 @@ pub fn parse_lambda_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<E
                         expr: r.stmts.clone().first().cloned().clone().unwrap(),
                         tokens: r.tokens.clone(),
                         ctx: r.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 } else {
                     parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
@@ -13028,7 +13064,7 @@ pub fn parse_lambda_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<E
                             identity.clone(),
                             Rc::new(ExprData::ExprBlock),
                             r.stmts.clone(),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     })
@@ -13053,7 +13089,7 @@ pub fn parse_lambda_stmts(
                 stmts: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_stmt(tokens.clone(), ctx.clone());
@@ -13105,7 +13141,7 @@ pub fn parse_ident_expr(
                                 span.clone(),
                             )]),
                         ),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 })
@@ -13120,9 +13156,11 @@ pub fn parse_ident_expr(
                     crate::v1_std_core::make_named_expr_node(
                         identity.clone(),
                         name.clone(),
-                        Rc::new(ExprData::ExprVar { binding_kind: None }),
+                        Rc::new(ExprData::ExprVar {
+                            binding_kind: std::option::Option::None,
+                        }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                         span.clone(),
                     )
@@ -13157,7 +13195,7 @@ pub fn try_postfix(
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -13168,7 +13206,7 @@ pub fn try_postfix(
                         changed: false,
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 } else {
                     {
@@ -13195,7 +13233,7 @@ pub fn try_postfix(
                             changed: true,
                             tokens: r.tokens.clone(),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -13208,7 +13246,7 @@ pub fn try_postfix(
                             changed: false,
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     } else {
                         {
@@ -13231,13 +13269,13 @@ pub fn try_postfix(
                                     minted.identity.clone(),
                                     Rc::new(ExprData::ExprCast),
                                     Rc::new(vec![lhs.clone(), r.type_expr.clone()]),
-                                    None,
+                                    std::option::Option::None,
                                     span.clone(),
                                 ),
                                 changed: true,
                                 tokens: r.tokens.clone(),
                                 ctx: minted.ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -13247,7 +13285,7 @@ pub fn try_postfix(
                         changed: false,
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             }
@@ -13258,7 +13296,7 @@ pub fn try_postfix(
                         changed: false,
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 } else {
                     if is_constraint_bracket(tokens.clone()) {
@@ -13267,7 +13305,7 @@ pub fn try_postfix(
                             changed: false,
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     } else {
                         {
@@ -13291,7 +13329,7 @@ pub fn try_postfix(
                                 changed: true,
                                 tokens: r.tokens.clone(),
                                 ctx: r.ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -13311,7 +13349,7 @@ pub fn try_postfix(
                             changed: false,
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     } else {
                         if is_uppercase_start(n.clone()) {
@@ -13336,7 +13374,7 @@ pub fn try_postfix(
                                     changed: true,
                                     tokens: r.tokens.clone(),
                                     ctx: r.ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 })
                             }
                         } else {
@@ -13345,7 +13383,7 @@ pub fn try_postfix(
                                 changed: false,
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -13361,7 +13399,7 @@ pub fn try_postfix(
                             changed: false,
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     } else {
                         if is_uppercase_start(last_seg.clone()) {
@@ -13391,7 +13429,7 @@ pub fn try_postfix(
                                         changed: true,
                                         tokens: r.tokens.clone(),
                                         ctx: r.ctx.clone(),
-                                        err: None,
+                                        err: std::option::Option::None,
                                     })
                                 }
                                 None => Rc::new(PostfixResult {
@@ -13399,7 +13437,7 @@ pub fn try_postfix(
                                     changed: false,
                                     tokens: tokens.clone(),
                                     ctx: ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 }),
                             }
                         } else {
@@ -13408,7 +13446,7 @@ pub fn try_postfix(
                                 changed: false,
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -13418,7 +13456,7 @@ pub fn try_postfix(
                     changed: false,
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 }),
             },
             _ => Rc::new(PostfixResult {
@@ -13426,7 +13464,7 @@ pub fn try_postfix(
                 changed: false,
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             }),
         }
     }
@@ -13476,14 +13514,14 @@ pub fn parse_constraint_annotations(
                 constraints: r.constraints.clone(),
                 tokens: r2.tokens.clone(),
                 ctx: r.ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
         EatResult::EatUnchanged { tokens: __eu, .. } => Rc::new(ConstraintsResult {
             constraints: Rc::new(vec![]),
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         }),
     }
 }
@@ -13509,7 +13547,7 @@ pub fn parse_constraint_list(
                 constraints: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         }
         let kw_name = tok.clone().unwrap().text.clone();
@@ -13544,7 +13582,7 @@ pub fn parse_constraint_list(
                     constraints: acc.clone(),
                     tokens: r.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -13562,7 +13600,7 @@ pub fn try_constraint_annotations(
             constraints: Rc::new(vec![]),
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -13581,11 +13619,11 @@ pub fn make_call_expr(
             occurrence_identity.clone(),
             crate::v1_std_core::expr_var_name_at(lhs.clone(), source_indices.clone()),
             Rc::new(ExprData::ExprCall {
-                call_semantics: None,
-                descent_evidence: None,
+                call_semantics: std::option::Option::None,
+                descent_evidence: std::option::Option::None,
             }),
             args.clone(),
-            None,
+            std::option::Option::None,
             lhs.span.clone(),
             crate::v1_std_core::node_name_span(lhs.clone()),
         ),
@@ -13593,13 +13631,13 @@ pub fn make_call_expr(
             occurrence_identity.clone(),
             crate::v1_std_core::field_access_field_at(lhs.clone(), source_indices.clone()),
             Rc::new(ExprData::ExprMethodCall {
-                method_semantics: None,
+                method_semantics: std::option::Option::None,
             }),
             v1_rt::concat(
                 Rc::new(vec![lhs.children.clone().first().cloned().clone().unwrap()]),
                 args.clone(),
             ),
-            None,
+            std::option::Option::None,
             lhs.span.clone(),
             crate::v1_std_core::node_name_span(lhs.clone()),
         ),
@@ -13607,11 +13645,11 @@ pub fn make_call_expr(
             occurrence_identity.clone(),
             "<expr>".to_string(),
             Rc::new(ExprData::ExprCall {
-                call_semantics: None,
-                descent_evidence: None,
+                call_semantics: std::option::Option::None,
+                descent_evidence: std::option::Option::None,
             }),
             args.clone(),
-            None,
+            std::option::Option::None,
             lhs.span.clone(),
             crate::v1_std_core::no_span(),
         ),
@@ -13674,7 +13712,7 @@ pub fn parse_index_or_slice(
                         identity.clone(),
                         Rc::new(ExprData::ExprSlice),
                         Rc::new(vec![base.clone(), first_expr.clone(), end_expr.clone()]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 })
@@ -13695,7 +13733,7 @@ pub fn parse_index_or_slice(
                         identity.clone(),
                         Rc::new(ExprData::ExprIndex),
                         Rc::new(vec![base.clone(), first_expr.clone()]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 })
@@ -13721,7 +13759,7 @@ pub fn parse_call_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arg
                 args: Rc::new(vec![]),
                 tokens: token_stream_advance(tokens.clone(), 1),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         } else {
             {
@@ -13743,7 +13781,7 @@ pub fn parse_call_args(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arg
                     args: r.args.clone(),
                     tokens: r2.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -13780,7 +13818,7 @@ pub fn parse_arg_list_acc(
                         args: acc.clone(),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 } else {
                     {
@@ -13793,7 +13831,7 @@ pub fn parse_arg_list_acc(
                     args: acc.clone(),
                     tokens: r.tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             }
         }
@@ -13805,7 +13843,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
         let span = token_span(token_stream_first(tokens.clone()));
         let dummy_arg = crate::v1_std_core::make_arg_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-            None,
+            std::option::Option::None,
             parse_recovery_placeholder(),
             span.clone(),
             span.clone(),
@@ -13829,7 +13867,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                         let minted = mint_parsed_node_identity(r.ctx.clone());
                         let arg = crate::v1_std_core::make_arg_node(
                             minted.identity.clone(),
-                            None,
+                            std::option::Option::None,
                             r.expr.clone(),
                             span.clone(),
                             span.clone(),
@@ -13838,7 +13876,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                             arg: arg.clone(),
                             tokens: r.tokens.clone(),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 } else {
@@ -13868,7 +13906,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 arg: arg.clone(),
                                 tokens: r.tokens.clone(),
                                 ctx: minted.ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     } else {
@@ -13885,7 +13923,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                             let minted = mint_parsed_node_identity(r.ctx.clone());
                             let arg = crate::v1_std_core::make_arg_node(
                                 minted.identity.clone(),
-                                None,
+                                std::option::Option::None,
                                 r.expr.clone(),
                                 span.clone(),
                                 span.clone(),
@@ -13894,7 +13932,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                                 arg: arg.clone(),
                                 tokens: r.tokens.clone(),
                                 ctx: minted.ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -13914,7 +13952,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                 let minted = mint_parsed_node_identity(r.ctx.clone());
                 let arg = crate::v1_std_core::make_arg_node(
                     minted.identity.clone(),
-                    None,
+                    std::option::Option::None,
                     r.expr.clone(),
                     span.clone(),
                     span.clone(),
@@ -13923,7 +13961,7 @@ pub fn parse_single_arg(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ar
                     arg: arg.clone(),
                     tokens: r.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -13994,7 +14032,7 @@ pub fn parse_match(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRes
                 identity.clone(),
                 Rc::new(ExprData::ExprMatch),
                 v1_rt::concat(Rc::new(vec![scrutinee.clone()]), arms.clone()),
-                None,
+                std::option::Option::None,
                 span.clone(),
             )
         })
@@ -14041,9 +14079,11 @@ pub fn parse_expr_bp_no_brace(
                 let lhs = crate::v1_std_core::make_named_expr_node(
                     minted.identity.clone(),
                     tok.clone().unwrap().text.clone(),
-                    Rc::new(ExprData::ExprVar { binding_kind: None }),
+                    Rc::new(ExprData::ExprVar {
+                        binding_kind: std::option::Option::None,
+                    }),
                     Rc::new(vec![]),
-                    None,
+                    std::option::Option::None,
                     span.clone(),
                     span.clone(),
                 );
@@ -14074,7 +14114,7 @@ pub fn parse_expr_loop_no_brace(
                 expr: lhs.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let loop_span = token_span(tok.clone());
@@ -14142,7 +14182,7 @@ pub fn parse_expr_loop_no_brace(
                                     expr: lhs.clone(),
                                     tokens: tokens.clone(),
                                     ctx: ctx.clone(),
-                                    err: None,
+                                    err: std::option::Option::None,
                                 });
                             } else {
                                 match (*advance(tokens.clone())).clone() {
@@ -14167,10 +14207,10 @@ pub fn parse_expr_loop_no_brace(
                                                 minted.identity.clone(),
                                                 r.name.clone(),
                                                 Rc::new(ExprData::ExprFieldAccess {
-                                                    summary: None,
+                                                    summary: std::option::Option::None,
                                                 }),
                                                 Rc::new(vec![lhs.clone()]),
-                                                None,
+                                                std::option::Option::None,
                                                 loop_span.clone(),
                                                 r.span.clone(),
                                             );
@@ -14237,13 +14277,14 @@ pub fn parse_expr_loop_no_brace(
                                                                 minted.identity.clone(),
                                                                 Rc::new(ExprData::ExprBinOp {
                                                                     op: binop.clone(),
-                                                                    algebra_field: None,
+                                                                    algebra_field:
+                                                                        std::option::Option::None,
                                                                 }),
                                                                 Rc::new(vec![
                                                                     lhs.clone(),
                                                                     r.expr.clone(),
                                                                 ]),
-                                                                None,
+                                                                std::option::Option::None,
                                                                 loop_span.clone(),
                                                             );
                                                         {
@@ -14280,7 +14321,7 @@ pub fn parse_expr_loop_no_brace(
                                             expr: lhs.clone(),
                                             tokens: tokens.clone(),
                                             ctx: ctx.clone(),
-                                            err: None,
+                                            err: std::option::Option::None,
                                         });
                                     }
                                 }
@@ -14291,7 +14332,7 @@ pub fn parse_expr_loop_no_brace(
                                 expr: lhs.clone(),
                                 tokens: tokens.clone(),
                                 ctx: ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             });
                         }
                     }
@@ -14319,7 +14360,7 @@ pub fn parse_match_arms_acc(
                 arms: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_match_arm(tokens.clone(), ctx.clone());
@@ -14353,7 +14394,7 @@ pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arm
         let dummy_arm = crate::v1_std_core::make_arm_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             Rc::new(MatchPattern::Wildcard),
-            None,
+            std::option::Option::None,
             parse_recovery_placeholder(),
             crate::v1_std_core::no_span(),
         );
@@ -14416,7 +14457,7 @@ pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arm
             arm: arm.clone(),
             tokens: r.tokens.clone(),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -14443,7 +14484,7 @@ pub fn parse_match_arm_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                         expr: r.stmts.clone().first().cloned().clone().unwrap(),
                         tokens: r.tokens.clone(),
                         ctx: r.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 } else {
                     parsed_expr_result(r.tokens.clone(), r.ctx.clone(), |identity| {
@@ -14451,7 +14492,7 @@ pub fn parse_match_arm_body(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                             identity.clone(),
                             Rc::new(ExprData::ExprBlock),
                             r.stmts.clone(),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     })
@@ -14477,7 +14518,7 @@ pub fn parse_match_arm_stmts(
                 stmts: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             if looks_like_arm_start(tokens.clone()) {
@@ -14485,7 +14526,7 @@ pub fn parse_match_arm_stmts(
                     stmts: acc.clone(),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 });
             } else {
                 let r = parse_stmt(tokens.clone(), ctx.clone());
@@ -14577,7 +14618,7 @@ pub fn looks_like_arm_start(tokens: Rc<TokenStream>) -> bool {
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShIdent) => {
@@ -14684,7 +14725,7 @@ pub fn parse_optional_guard(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
             let r = parse_expr(token_stream_advance(tokens.clone(), 1), ctx.clone());
             if has_err(r.err.clone()) {
                 return Rc::new(GuardResult {
-                    guard: None,
+                    guard: std::option::Option::None,
                     tokens: r.tokens.clone(),
                     ctx: r.ctx.clone(),
                     err: r.err.clone(),
@@ -14694,15 +14735,15 @@ pub fn parse_optional_guard(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> R
                 guard: Some(r.expr.clone()),
                 tokens: r.tokens.clone(),
                 ctx: r.ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
     } else {
         Rc::new(GuardResult {
-            guard: None,
+            guard: std::option::Option::None,
             tokens: tokens.clone(),
             ctx: ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -14712,7 +14753,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
         let tok = token_stream_first(tokens.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         let span = token_span(tok.clone());
         match sh.clone() {
@@ -14732,7 +14773,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: r.tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 } else {
                     if is_variant_pattern_start(n.clone()) {
@@ -14751,7 +14792,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                                 }),
                                 tokens: r.tokens.clone(),
                                 ctx: minted.ctx.clone(),
-                                err: None,
+                                err: std::option::Option::None,
                             })
                         }
                     }
@@ -14766,13 +14807,13 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                         pattern: Rc::new(MatchPattern::LitPattern { value: lv.clone() }),
                         tokens: token_stream_advance(tokens.clone(), 1),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     }),
                     None => Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::Wildcard),
                         tokens: tokens.clone(),
                         ctx: ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     }),
                 }
             }
@@ -14805,7 +14846,7 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                     }),
                     tokens: token_stream_advance(tokens.clone(), 1),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             Some(TokenShape::ShLitStr) => {
@@ -14816,14 +14857,14 @@ pub fn parse_pattern(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Patte
                     }),
                     tokens: token_stream_advance(tokens.clone(), 1),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             _ => Rc::new(PatternResult {
                 pattern: Rc::new(MatchPattern::Wildcard),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             }),
         }
     }
@@ -14865,12 +14906,12 @@ pub fn parse_variant_pattern(
                 Rc::new(PatternResult {
                     pattern: Rc::new(MatchPattern::VariantPattern {
                         name: name.clone(),
-                        parent_enum: None,
+                        parent_enum: std::option::Option::None,
                         field_bindings: r.field_bindings.clone(),
                     }),
                     tokens: r2.tokens.clone(),
                     ctx: r.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         } else {
@@ -14905,24 +14946,24 @@ pub fn parse_variant_pattern(
                     Rc::new(PatternResult {
                         pattern: Rc::new(MatchPattern::VariantPattern {
                             name: name.clone(),
-                            parent_enum: None,
+                            parent_enum: std::option::Option::None,
                             field_bindings: Rc::new(vec![fb.clone()]),
                         }),
                         tokens: r2.tokens.clone(),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             } else {
                 Rc::new(PatternResult {
                     pattern: Rc::new(MatchPattern::VariantPattern {
                         name: name.clone(),
-                        parent_enum: None,
+                        parent_enum: std::option::Option::None,
                         field_bindings: Rc::new(vec![]),
                     }),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         }
@@ -14950,7 +14991,7 @@ pub fn parse_variant_bindings_brace_acc(
                 field_bindings: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let bind_span = token_span(token_stream_first(tokens.clone()));
@@ -15111,7 +15152,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                                         then_branch.clone(),
                                         r2.expr.clone(),
                                     ]),
-                                    None,
+                                    std::option::Option::None,
                                     span.clone(),
                                 )
                             },
@@ -15140,7 +15181,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                                         then_branch.clone(),
                                         r2.expr.clone(),
                                     ]),
-                                    None,
+                                    std::option::Option::None,
                                     span.clone(),
                                 )
                             },
@@ -15154,7 +15195,7 @@ pub fn parse_if(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResult
                         identity.clone(),
                         Rc::new(ExprData::ExprIf),
                         Rc::new(vec![condition.clone(), then_branch.clone()]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 })
@@ -15249,16 +15290,16 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     children: Rc::new(vec![r3.expr.clone()]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
                     type_annotation: Some(tr.type_expr.clone()),
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::ExprLet),
                     ident: None,
                 });
@@ -15266,7 +15307,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                     expr: node.clone(),
                     tokens: r3.tokens.clone(),
                     ctx: minted.ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
             EatResult::EatUnchanged { tokens: __eu, .. } => {
@@ -15289,7 +15330,7 @@ pub fn parse_let(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
                         name.clone(),
                         Rc::new(ExprData::ExprLet),
                         Rc::new(vec![r3.expr.clone()]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                         name_span.clone(),
                     )
@@ -15326,7 +15367,7 @@ pub fn parse_return(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprRe
                 identity.clone(),
                 Rc::new(ExprData::ExprReturn),
                 Rc::new(vec![r.expr.clone()]),
-                None,
+                std::option::Option::None,
                 span.clone(),
             )
         })
@@ -15402,7 +15443,7 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
             var_name.clone(),
             Rc::new(ExprData::ExprForEach),
             Rc::new(vec![collection.clone(), body.clone()]),
-            None,
+            std::option::Option::None,
             span.clone(),
             var_name_span.clone(),
         );
@@ -15410,7 +15451,7 @@ pub fn parse_for(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<ExprResul
             expr: for_expr.clone(),
             tokens: r.tokens.clone(),
             ctx: minted.ctx.clone(),
-            err: None,
+            err: std::option::Option::None,
         })
     }
 }
@@ -15493,9 +15534,11 @@ pub fn parse_record_literal_named(
             crate::v1_std_core::make_named_expr_node(
                 identity.clone(),
                 name.clone(),
-                Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                Rc::new(ExprData::ExprRecordLit {
+                    parent_enum: std::option::Option::None,
+                }),
                 r.fields.clone(),
-                None,
+                std::option::Option::None,
                 span.clone(),
                 name_span.clone(),
             )
@@ -15524,7 +15567,7 @@ pub fn parse_field_init_list_acc(
                 fields: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_field_init(tokens.clone(), ctx.clone());
@@ -15600,7 +15643,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             field: fi.clone(),
                             tokens: r.tokens.clone(),
                             ctx: minted.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 } else {
@@ -15609,9 +15652,11 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         let value = crate::v1_std_core::make_named_expr_node(
                             value_mint.identity.clone(),
                             n.clone(),
-                            Rc::new(ExprData::ExprVar { binding_kind: None }),
+                            Rc::new(ExprData::ExprVar {
+                                binding_kind: std::option::Option::None,
+                            }),
                             Rc::new(vec![]),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                             name_r.span.clone(),
                         );
@@ -15627,7 +15672,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                             field: fi.clone(),
                             tokens: name_r.tokens.clone(),
                             ctx: field_mint.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -15660,7 +15705,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         field: fi.clone(),
                         tokens: r.tokens.clone(),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             } else {
@@ -15686,7 +15731,7 @@ pub fn parse_field_init(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Fi
                         field: fi.clone(),
                         tokens: r.tokens.clone(),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     })
                 }
             }
@@ -15737,7 +15782,7 @@ pub fn parse_list_literal(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<
                 identity.clone(),
                 Rc::new(ExprData::ExprListLit),
                 r.exprs.clone(),
-                None,
+                std::option::Option::None,
                 span.clone(),
             )
         })
@@ -15774,7 +15819,7 @@ pub fn parse_expr_list_until_acc(
                 exprs: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let r = parse_expr(tokens.clone(), ctx.clone());
@@ -15823,9 +15868,11 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 |identity| {
                     crate::v1_std_core::make_expr_node(
                         identity.clone(),
-                        Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                        Rc::new(ExprData::ExprRecordLit {
+                            parent_enum: std::option::Option::None,
+                        }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 },
@@ -15862,7 +15909,7 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         __result
                                     }),
                                 ),
-                                None,
+                                std::option::Option::None,
                                 span.clone(),
                             )
                         })
@@ -15892,7 +15939,7 @@ pub fn parse_paren_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                             expr: r.expr.clone(),
                             tokens: r2.tokens.clone(),
                             ctx: r.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -15964,7 +16011,7 @@ pub fn parse_fn_lambda(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
                         __result
                     }),
                 ),
-                None,
+                std::option::Option::None,
                 span.clone(),
             )
         })
@@ -15984,7 +16031,7 @@ pub fn collect_fn_lambda_params(
                 params: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         } else {
             let name_r = expect_ident(tokens.clone());
@@ -16030,7 +16077,7 @@ pub fn collect_fn_lambda_params(
                         ),
                         tokens: tokens.clone(),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 }
             }
@@ -16051,7 +16098,7 @@ pub fn try_lambda_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<L
                             params: r.params.clone(),
                             tokens: token_stream_advance(after_rparen.clone(), 1),
                             ctx: r.ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     } else {
                         Rc::new(LambdaCheckResult {
@@ -16059,7 +16106,7 @@ pub fn try_lambda_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<L
                             params: Rc::new(vec![]),
                             tokens: tokens.clone(),
                             ctx: ctx.clone(),
-                            err: None,
+                            err: std::option::Option::None,
                         })
                     }
                 }
@@ -16069,7 +16116,7 @@ pub fn try_lambda_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<L
                     params: Rc::new(vec![]),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: None,
+                    err: std::option::Option::None,
                 })
             }
         } else {
@@ -16078,7 +16125,7 @@ pub fn try_lambda_params(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<L
                 params: Rc::new(vec![]),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             })
         }
     }
@@ -16120,7 +16167,7 @@ pub fn collect_lambda_idents(
                         params: new_acc.clone(),
                         tokens: token_stream_advance(tokens.clone(), 1),
                         ctx: minted.ctx.clone(),
-                        err: None,
+                        err: std::option::Option::None,
                     });
                 }
             }
@@ -16130,7 +16177,7 @@ pub fn collect_lambda_idents(
                 params: acc.clone(),
                 tokens: tokens.clone(),
                 ctx: ctx.clone(),
-                err: None,
+                err: std::option::Option::None,
             });
         }
     }
@@ -16157,7 +16204,7 @@ pub fn parse_string_interp(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc
         let span = token_span(tok.clone());
         let sh = match tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match sh.clone() {
             Some(TokenShape::ShStrBegin) => {
@@ -16222,7 +16269,7 @@ pub fn parse_interp_parts(
         let interp_tok = token_stream_first(tokens.clone());
         let interp_sh = match interp_tok.clone() {
             Some(t) => Some(t.shape.clone()),
-            None => None,
+            None => std::option::Option::None,
         };
         match interp_sh.clone() {
             Some(TokenShape::ShStrMid) => {
@@ -16269,7 +16316,7 @@ pub fn parse_interp_parts(
                             identity.clone(),
                             Rc::new(ExprData::ExprStringInterp),
                             children.nodes.clone(),
-                            None,
+                            std::option::Option::None,
                             span.clone(),
                         )
                     },
@@ -16302,12 +16349,15 @@ pub fn parse_interp_parts(
                             }
                             __result
                         }),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     ),
                     tokens: tokens.clone(),
                     ctx: ctx.clone(),
-                    err: Some(parse_error(interp_body_error_message(None), span.clone())),
+                    err: Some(parse_error(
+                        interp_body_error_message(std::option::Option::None),
+                        span.clone(),
+                    )),
                 });
             }
         }
@@ -16327,9 +16377,11 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                 |identity| {
                     crate::v1_std_core::make_expr_node(
                         identity.clone(),
-                        Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                        Rc::new(ExprData::ExprRecordLit {
+                            parent_enum: std::option::Option::None,
+                        }),
                         Rc::new(vec![]),
-                        None,
+                        std::option::Option::None,
                         span.clone(),
                     )
                 },
@@ -16338,7 +16390,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
             {
                 let sh = match tok.clone() {
                     Some(t) => Some(t.shape.clone()),
-                    None => None,
+                    None => std::option::Option::None,
                 };
                 match sh.clone() {
                     Some(TokenShape::ShKeyword) => {
@@ -16372,7 +16424,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         expr: r.stmts.clone().first().cloned().clone().unwrap(),
                                         tokens: r2.tokens.clone(),
                                         ctx: r.ctx.clone(),
-                                        err: None,
+                                        err: std::option::Option::None,
                                     })
                                 } else {
                                     parsed_expr_result(
@@ -16383,7 +16435,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                                 identity.clone(),
                                                 Rc::new(ExprData::ExprBlock),
                                                 r.stmts.clone(),
-                                                None,
+                                                std::option::Option::None,
                                                 span.clone(),
                                             )
                                         },
@@ -16424,10 +16476,10 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                             crate::v1_std_core::make_expr_node(
                                                 identity.clone(),
                                                 Rc::new(ExprData::ExprRecordLit {
-                                                    parent_enum: None,
+                                                    parent_enum: std::option::Option::None,
                                                 }),
                                                 r.fields.clone(),
-                                                None,
+                                                std::option::Option::None,
                                                 span.clone(),
                                             )
                                         },
@@ -16461,7 +16513,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                         expr: r.expr.clone(),
                                         tokens: r2.tokens.clone(),
                                         ctx: r.ctx.clone(),
-                                        err: None,
+                                        err: std::option::Option::None,
                                     })
                                 }
                             }
@@ -16495,9 +16547,11 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                 parsed_expr_result(r2.tokens.clone(), r.ctx.clone(), |identity| {
                                     crate::v1_std_core::make_expr_node(
                                         identity.clone(),
-                                        Rc::new(ExprData::ExprRecordLit { parent_enum: None }),
+                                        Rc::new(ExprData::ExprRecordLit {
+                                            parent_enum: std::option::Option::None,
+                                        }),
                                         r.fields.clone(),
-                                        None,
+                                        std::option::Option::None,
                                         span.clone(),
                                     )
                                 })
@@ -16536,10 +16590,10 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                             crate::v1_std_core::make_expr_node(
                                                 identity.clone(),
                                                 Rc::new(ExprData::ExprRecordLit {
-                                                    parent_enum: None,
+                                                    parent_enum: std::option::Option::None,
                                                 }),
                                                 r.fields.clone(),
-                                                None,
+                                                std::option::Option::None,
                                                 span.clone(),
                                             )
                                         },
@@ -16574,7 +16628,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                             expr: r.stmts.clone().first().cloned().clone().unwrap(),
                                             tokens: r2.tokens.clone(),
                                             ctx: r.ctx.clone(),
-                                            err: None,
+                                            err: std::option::Option::None,
                                         })
                                     } else {
                                         parsed_expr_result(
@@ -16585,7 +16639,7 @@ pub fn parse_brace_expr(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ex
                                                     identity.clone(),
                                                     Rc::new(ExprData::ExprBlock),
                                                     r.stmts.clone(),
-                                                    None,
+                                                    std::option::Option::None,
                                                     span.clone(),
                                                 )
                                             },

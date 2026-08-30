@@ -11,7 +11,8 @@ fn converge_cli_drift_fixture_oid(hex: String) -> GitObjectId {
 
 // THE OPERATOR-FACING REMEDY MUST NAME AN OPERATION THE REPOSITORY WOULD ACTUALLY PERFORM. This arm
 // told a human "tree-sync is the catch-up realization" while gunbc.live_deploy.deployed_tree_report
-// BLOCKS exactly that: a tree-only publication flips belt_revision_admission to admitting while the
+// BLOCKS exactly that: a tree-only publication flips the launch admission's revision gate
+// (gunbc.roadmap_launch_admission launch_gate_revision) to admitting while the
 // installed binary is still old, so the next tick dispatches a mixed realization never admitted as a
 // release. The typed verdict was correct throughout, which is why nothing caught it -- no consumer of
 // the VERDICT was wrong, only the sentence a human acts on, and this fn had no witness at all.

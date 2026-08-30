@@ -286,6 +286,7 @@ pub fn run_required_regen(
     let sources = super::regen_input_sources(&workspace)?;
     v1_rt::trace_mark("regen.corpus_load.done".to_string());
     let authority_digest = authority_digest_from_sources(&sources)?;
+    let formatter = formatter.with_normalize_cache(&workspace)?;
 
     // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
     //
@@ -310,7 +311,7 @@ pub fn run_required_regen(
     // refusal, because it is emit's output and not a reward for agreeing with the committed tree.
     // Authority for the ordering: `v2.workflow.required_regen` `required_regen_run`, whose verdict
     // arms cannot be spelled without the tree they judged.
-    let (emitted, emitted_basenames) = match emit_generated_surface(&workspace)? {
+    let (emitted, emitted_basenames) = match emit_generated_surface(&sources)? {
         // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. Writing a receipt here would name a
         // `candidate_artifact` no pass had written, which is the impersonation the receipt split
         // above exists to end, one field over. `CandidateTreeUnproduced` in
@@ -519,10 +520,10 @@ pub fn run_required_regen_fixed_point(
     }
 
     let pass1 = reconcile_pass1_digest(pass1_digest, &prior.candidate_generated_digest)?;
-    let formatter = ResolvedFormatter::admit()?;
+    let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
-    let emitted = compile_stage0(&workspace)?;
+    let emitted = compile_stage0(&sources)?;
     let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
     if emitted.is_empty() {
         return Err("refusal: fixed-point emit produced zero files".to_string());
@@ -635,8 +636,8 @@ enum GeneratedSurfaceAdjudicated {
     Refused { reason: String },
 }
 
-fn emit_generated_surface(workspace: &Path) -> Result<GeneratedSurfaceEmit, String> {
-    let emitted = compile_stage0(workspace)?;
+fn emit_generated_surface(sources: &[(String, String)]) -> Result<GeneratedSurfaceEmit, String> {
+    let emitted = compile_stage0(sources)?;
     if emitted.is_empty() {
         return Ok(GeneratedSurfaceEmit::EmitRefused {
             reason: "refusal: emit produced zero files".to_string(),
@@ -674,10 +675,10 @@ fn adjudicate_generated_surface(
 /// write the candidate BETWEEN them, reaches for the halves.
 fn measure_generated_surface(
     formatter: &ResolvedFormatter,
-    workspace: &Path,
+    sources: &[(String, String)],
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
-    let (emitted, emitted_basenames) = match emit_generated_surface(workspace)? {
+    let (emitted, emitted_basenames) = match emit_generated_surface(sources)? {
         GeneratedSurfaceEmit::EmitRefused { reason } => {
             return Ok(GeneratedSurfaceMeasured::Refused { reason })
         }
@@ -715,8 +716,9 @@ pub fn emitted_generated_sources() -> Result<HashMap<String, String>, String> {
     // rustfmt" would not have named it -- it is three calls above the spawn. Threading the
     // resolved formatter as an argument made the omission a compile error instead of a fourth
     // way to discover an absent formatter fifty minutes in.
-    let formatter = ResolvedFormatter::admit()?;
-    let emitted = match measure_generated_surface(&formatter, &workspace, &stage0_src)? {
+    let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
+    let sources = super::regen_input_sources(&workspace)?;
+    let emitted = match measure_generated_surface(&formatter, &sources, &stage0_src)? {
         GeneratedSurfaceMeasured::Refused { reason } => return Err(reason),
         GeneratedSurfaceMeasured::Measured { emitted, .. } => emitted,
     };
@@ -781,16 +783,20 @@ fn is_declared_divergent(file_name: &str) -> bool {
     EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES.contains(&file_name)
 }
 
-fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    // A SECOND READ OF THE SAME CLOSURE. `run_required_regen` already read these sources for
-    // the authority digest; this is the same walk again, and it is stamped under its own label
-    // so the receipt prices the duplication instead of folding it into the frontend.
-    v1_rt::trace_mark("regen.corpus_reload.begin".to_string());
-    let sources = super::regen_input_sources(workspace)?;
-    v1_rt::trace_mark("regen.corpus_reload.done".to_string());
+/// ONE READ OF THE CLOSURE, SUPPLIED BY THE CALLER. This used to call `regen_input_sources`
+/// itself, so every regen walked and read the corpus twice -- once for the authority digest
+/// and once here -- and the receipt priced the second walk at a quarter of the first phase
+/// (`regen.corpus_reload`, measured 2026-08-30: 24 s on srv1, 17 s on BuildBuddy). The
+/// sources are one fact; the caller reads them once and both consumers take that one value.
+fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
-        .into_iter()
-        .map(|(path, content)| Rc::new(SourceFile { path, content }))
+        .iter()
+        .map(|(path, content)| {
+            Rc::new(SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            })
+        })
         .collect();
     let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
     if let Some(message) =
@@ -1373,6 +1379,69 @@ fn normalize_generated_source(
     formatter: &ResolvedFormatter,
     content: &str,
 ) -> Result<String, String> {
+    if let Some(hit) = formatter.memo.borrow().get(content) {
+        return Ok(hit.clone());
+    }
+    if let Some(hit) = normalize_cache_read(formatter, content) {
+        formatter
+            .memo
+            .borrow_mut()
+            .insert(content.to_string(), hit.clone());
+        return Ok(hit);
+    }
+    let normalized = normalize_generated_source_uncached(formatter, content)?;
+    formatter
+        .memo
+        .borrow_mut()
+        .insert(content.to_string(), normalized.clone());
+    normalize_cache_write(formatter, content, &normalized)?;
+    Ok(normalized)
+}
+
+/// The cache file layout: `<raw byte length>\n<raw bytes><normalized bytes>`. The raw bytes
+/// are stored whole and compared whole on read, so the file name (a digest) only locates the
+/// entry and never stands in for its identity.
+fn normalize_cache_path(formatter: &ResolvedFormatter, content: &str) -> Option<PathBuf> {
+    formatter
+        .disk_cache
+        .as_ref()
+        .map(|dir| dir.join(v1_rt::bytes_identity_hash(content.as_bytes())))
+}
+
+fn normalize_cache_read(formatter: &ResolvedFormatter, content: &str) -> Option<String> {
+    let path = normalize_cache_path(formatter, content)?;
+    let bytes = fs::read(&path).ok()?;
+    let newline = bytes.iter().position(|b| *b == b'\n')?;
+    let raw_len: usize = std::str::from_utf8(&bytes[..newline]).ok()?.parse().ok()?;
+    let raw_start = newline + 1;
+    let raw_end = raw_start.checked_add(raw_len)?;
+    if raw_end > bytes.len() || &bytes[raw_start..raw_end] != content.as_bytes() {
+        return None;
+    }
+    String::from_utf8(bytes[raw_end..].to_vec()).ok()
+}
+
+fn normalize_cache_write(
+    formatter: &ResolvedFormatter,
+    content: &str,
+    normalized: &str,
+) -> Result<(), String> {
+    let Some(path) = normalize_cache_path(formatter, content) else {
+        return Ok(());
+    };
+    let mut bytes = format!("{}\n", content.len()).into_bytes();
+    bytes.extend_from_slice(content.as_bytes());
+    bytes.extend_from_slice(normalized.as_bytes());
+    // Write-then-rename, so a reader never sees a half-written entry as a miss-with-garbage.
+    let tmp = path.with_extension(format!("tmp{}", std::process::id()));
+    fs::write(&tmp, &bytes).map_err(|e| format!("write {}: {e}", tmp.display()))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("rename {}: {e}", path.display()))
+}
+
+fn normalize_generated_source_uncached(
+    formatter: &ResolvedFormatter,
+    content: &str,
+) -> Result<String, String> {
     let mut current = normalize_generated_source_attempt(formatter, content)?;
     for _ in 1..NORMALIZE_FIXED_POINT_MAX_PASSES {
         let next = normalize_generated_source_attempt(formatter, &current)?;
@@ -1429,7 +1498,34 @@ pub struct ResolvedFormatter {
     /// The PATH the program was found on, kept so a later failure can say what was searched
     /// rather than making the reader reconstruct it from the environment they are not in.
     searched: String,
+    /// NORMALIZE ONCE PER DISTINCT INPUT. Every regen pass normalized the whole emitted
+    /// population THREE times -- `write_emitted_tree`, `compare_generated_surfaces`,
+    /// `tree_digest_from_map` each called `normalize_generated_source` on the same bytes --
+    /// and each normalize is at least two rustfmt spawns (the fixed-point seek). Measured
+    /// 2026-08-30 by `--regen-round-cost`: mirror_write + adjudicate + digest = 67 s on the
+    /// BuildBuddy runner, 97 s on srv1, for one population. The memo is keyed by the RAW
+    /// input bytes, so a hit is exact by construction; clones share it so the three
+    /// consumers see one table.
+    memo: Rc<std::cell::RefCell<HashMap<String, String>>>,
+    /// The on-disk half, keyed by rustfmt's own version string, so a fixed-point run on a tree
+    /// whose emit did not change pays ZERO rustfmt spawns. Each entry stores the raw input
+    /// beside the normalized output and is honoured only when the stored raw is byte-equal to
+    /// the request -- a digest-named file is a LOCATION, never the identity, so a hash
+    /// collision cannot serve another input's formatting (DESIGN section 5).
+    disk_cache: Option<PathBuf>,
 }
+
+/// Every NORMALIZE spawn this process has made -- the `--version` probe in `with_normalize_cache`
+/// is not counted, since the fixed-point claim is about normalizations. Read by `--regen-round-cost` before and after
+/// the round so the receipt carries the count -- the fixed-point control's claim is that it
+/// is ~0, and a claim about a count is checked against the count.
+static RUSTFMT_SPAWNS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+pub fn rustfmt_spawn_count() -> u64 {
+    RUSTFMT_SPAWNS.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+const NORMALIZE_CACHE_DIR_REL: &str = "target/stage0-regen-rustfmt-cache";
 
 impl ResolvedFormatter {
     /// Resolve `rustfmt` against a supplied PATH string. Separate from the environment read so
@@ -1444,6 +1540,8 @@ impl ResolvedFormatter {
             let resolved = ResolvedFormatter {
                 program: candidate,
                 searched: path_var.to_string(),
+                memo: Rc::new(std::cell::RefCell::new(HashMap::new())),
+                disk_cache: None,
             };
             resolved.probe()?;
             return Ok(resolved);
@@ -1524,6 +1622,36 @@ impl ResolvedFormatter {
         Self::from_path_var(&std::env::var("PATH").unwrap_or_default())
     }
 
+    /// Attach the on-disk normalize cache for this formatter's version under `target/`.
+    /// The version is read from the program itself, so a toolchain change opens a new
+    /// directory rather than serving another rustfmt's fixed points.
+    fn with_normalize_cache(mut self, workspace: &Path) -> Result<Self, String> {
+        let out = self
+            .command()
+            .arg("--version")
+            .output()
+            .map_err(|e| self.spawn_refusal(e))?;
+        if !out.status.success() {
+            return Err(format!(
+                "rustfmt --version failed at {}: {}",
+                self.program.display(),
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+        let version: String = String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+            .collect();
+        if version.is_empty() {
+            return Err("rustfmt --version printed nothing; the cache has no key".to_string());
+        }
+        let dir = workspace.join(NORMALIZE_CACHE_DIR_REL).join(version);
+        fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+        self.disk_cache = Some(dir);
+        Ok(self)
+    }
+
     fn command(&self) -> Command {
         Command::new(&self.program)
     }
@@ -1550,6 +1678,7 @@ fn normalize_generated_source_attempt(
     formatter: &ResolvedFormatter,
     content: &str,
 ) -> Result<String, String> {
+    RUSTFMT_SPAWNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let mut child = formatter
         .command()
         .arg("--edition")
@@ -1587,6 +1716,7 @@ fn normalize_with_workdir(
 ) -> Result<String, String> {
     let path = work_dir.join(format!("{label}.rs"));
     fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+    RUSTFMT_SPAWNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let output = formatter
         .command()
         .arg("--edition")
@@ -2296,6 +2426,7 @@ fn render_round_cost_receipt(
     tree_dirty: bool,
     seed_build_compiled_crates: u64,
     rebuild_compiled_crates: u64,
+    rustfmt_spawns: u64,
     marks: &[v1_rt::TraceLedgerRow],
     changed_paths: &[String],
 ) -> Result<String, String> {
@@ -2382,6 +2513,7 @@ fn render_round_cost_receipt(
                 ctx.sym("rebuild_compiled_crates"),
                 Value::Int(rebuild_compiled_crates as i64),
             ),
+            (ctx.sym("rustfmt_spawns"), Value::Int(rustfmt_spawns as i64)),
             (ctx.sym("marks"), Value::List(Rc::new(mark_values.into()))),
             (
                 ctx.sym("changed_paths"),
@@ -2417,6 +2549,7 @@ pub fn run_regen_round_cost(
     let exe_before = current_exe_digest()?;
 
     v1_rt::trace_ledger_arm();
+    let rustfmt_spawns_before = rustfmt_spawn_count();
     let seed_build = seed_cargo_build(&workspace, "round.seed_build")?;
     let exe_after = current_exe_digest()?;
     if exe_before != exe_after {
@@ -2487,6 +2620,7 @@ pub fn run_regen_round_cost(
         tree_dirty,
         seed_build.compiled_crates,
         rebuild_compiled_crates,
+        rustfmt_spawn_count() - rustfmt_spawns_before,
         &marks,
         &changed_paths,
     )?;
@@ -2538,6 +2672,7 @@ mod regen_round_cost_tests {
             true,
             0,
             2,
+            7,
             &marks,
             &["v1_rt.rs".to_string()],
         )
@@ -2546,7 +2681,7 @@ mod regen_round_cost_tests {
             rendered,
             "regen-round-cost: producer=claim_executor --regen-round-cost host=srv1 \
              tree=2a11b317d2caf3c37d1d38a4421e8e0c06188925 tree_dirty=true \
-             seed_build_compiled_crates=0 rebuild_compiled_crates=2\n\
+             seed_build_compiled_crates=0 rebuild_compiled_crates=2 rustfmt_spawns=7\n\
              regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\n\
              regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
              regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
@@ -2567,5 +2702,621 @@ mod regen_round_cost_tests {
         if let (Some(b), Some(a)) = (before, after) {
             assert!(a >= b, "cpu went backwards: {b} -> {a}");
         }
+    }
+}
+
+// ===========================================================================================
+// THE AFFECTED SET OF ONE EDIT -- host realization of `gunbc.regen_affected_set`.
+//
+// The host does three things the model cannot: read the edit (the floor's git diff range), read
+// the tree (module names from the edited files, the seed's closure edge index, the committed
+// mirror population), and take the reverse walk over the full edge index at native cost. The
+// VERDICT -- which arm, which members -- is the model's: the host hands `regen_affected_set` the
+// edited modules, the unlocatable paths, the edges among the modules its own walk reached, the
+// compared rows, and the declared bootstrap rows, and prints what the model answers. The host's
+// walk is then held to the model's answer on every run (`lockstep` below): a disagreement is a
+// refusal, never a silently preferred side.
+// ===========================================================================================
+
+const REGEN_AFFECTED_SET_PRODUCER: &str = "claim_executor --regen-affected-set";
+const REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT: &str = "gunbc/regen_affected_set.dag";
+
+pub struct RegenAffectedSetOutcome {
+    /// Provenance, the edited population, the bound line, and one `member` line per mirror.
+    pub rendered: String,
+    /// The model's arm name (`AffectedMirrors` | `WholePopulation` | `EditedSetUnlocatable`).
+    pub arm: String,
+    /// The mirrors the bound names, by committed basename; empty for the two non-selecting arms.
+    pub members: Vec<String>,
+}
+
+/// The model's answer for one edited population, as the host consumes it.
+pub struct AffectedSetBound {
+    pub line: String,
+    pub arm: String,
+    pub members: Vec<String>,
+}
+
+/// The edited population, classified. `unlocatable` is every `.dag` path the diff names that the
+/// tree cannot name as a module -- departed, unreadable, or without a `module` line -- and a
+/// non-empty list is the model's refusal arm. Paths that are not `.dag` are not the selection's
+/// subject (a hand edit to a mirror is what the regen's own diff catches) and are only counted.
+#[derive(Debug, PartialEq, Eq)]
+pub struct EditedPopulation {
+    pub edited_modules: Vec<String>,
+    pub unlocatable: Vec<String>,
+    pub non_dag_paths: Vec<String>,
+}
+
+pub fn edited_population_from_diff(workspace: &Path, diff_text: &str) -> EditedPopulation {
+    let departed = super::parse_unified_diff_departed_paths(diff_text);
+    let mut paths: BTreeSet<String> = super::parse_unified_diff_changed_new_lines(diff_text)
+        .keys()
+        .cloned()
+        .collect();
+    paths.extend(super::parse_unified_diff_added_paths(diff_text));
+    paths.extend(departed.iter().cloned());
+    let mut edited_modules: BTreeSet<String> = BTreeSet::new();
+    let mut unlocatable = Vec::new();
+    let mut non_dag_paths = Vec::new();
+    for path in paths {
+        if !path.ends_with(".dag") {
+            non_dag_paths.push(path);
+            continue;
+        }
+        if departed.contains(&path) {
+            unlocatable.push(format!(
+                "{path} (departed: no module line remains in the tree)"
+            ));
+            continue;
+        }
+        match fs::read_to_string(workspace.join(&path)) {
+            Ok(content) => match super::extract_module_path_public(&content) {
+                Some(module) => {
+                    edited_modules.insert(module);
+                }
+                None => unlocatable.push(format!("{path} (no module line)")),
+            },
+            Err(e) => unlocatable.push(format!("{path} (unreadable: {e})")),
+        }
+    }
+    EditedPopulation {
+        edited_modules: edited_modules.into_iter().collect(),
+        unlocatable,
+        non_dag_paths,
+    }
+}
+
+/// The seed's closure edges, module to module, off the SAME edge index the regen's closure walk
+/// uses (`both_closure_edge_index`: dotted references, which include every import line, plus bare
+/// references) -- one authority for "what pulls what", read here in reverse. A file the index
+/// names but cannot map to a module is a refusal: an edge dropped silently would shrink the bound.
+pub fn regen_module_edges(
+    workspace: &Path,
+) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    let abs_roots: Vec<String> = super::regen_source_roots()
+        .all()
+        .iter()
+        .map(|root| {
+            workspace
+                .join(root.repo_relative_path())
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect();
+    let index = super::build_multi_entry_index(&abs_roots);
+    let edge_index = super::both_closure_edge_index(&index)?;
+    let mut module_of_path: HashMap<String, String> = HashMap::new();
+    let mut modules: BTreeSet<String> = BTreeSet::new();
+    for (module, source) in index.source_files.iter() {
+        module_of_path.insert(
+            super::workspace_relative_repo_path(&source.path),
+            module.clone(),
+        );
+        modules.insert(module.clone());
+    }
+    let mut edges: BTreeSet<(String, String)> = BTreeSet::new();
+    let mut unmapped: BTreeSet<String> = BTreeSet::new();
+    for table in [&edge_index.ref_out, &edge_index.bare_out] {
+        for (from_path, to_paths) in table {
+            let from_key = super::workspace_relative_repo_path(from_path);
+            let Some(from) = module_of_path.get(&from_key) else {
+                unmapped.insert(from_key);
+                continue;
+            };
+            for to_path in to_paths {
+                let to_key = super::workspace_relative_repo_path(to_path);
+                match module_of_path.get(&to_key) {
+                    Some(to) if to != from => {
+                        edges.insert((from.clone(), to.clone()));
+                    }
+                    Some(_) => {}
+                    None => {
+                        unmapped.insert(to_key);
+                    }
+                }
+            }
+        }
+    }
+    if !unmapped.is_empty() {
+        return Err(format!(
+            "refusal: {} closure edge endpoint(s) name no module in the index, so the reverse \
+             walk would be missing edges: {:?}",
+            unmapped.len(),
+            unmapped.iter().take(8).collect::<Vec<_>>()
+        ));
+    }
+    Ok((edges.into_iter().collect(), modules.into_iter().collect()))
+}
+
+/// The host's reverse walk: every module from which an edited module is reachable. The model's
+/// `regen_reverse_closure` is the same relation as a bounded fold; `lockstep` holds them equal.
+pub fn regen_reverse_closure_host(
+    edited: &[String],
+    edges: &[(String, String)],
+) -> BTreeSet<String> {
+    let mut dependents_of: HashMap<&str, Vec<&str>> = HashMap::new();
+    for (from, to) in edges {
+        dependents_of
+            .entry(to.as_str())
+            .or_default()
+            .push(from.as_str());
+    }
+    let mut reached: BTreeSet<String> = edited.iter().cloned().collect();
+    let mut frontier: Vec<String> = edited.to_vec();
+    while let Some(module) = frontier.pop() {
+        if let Some(dependents) = dependents_of.get(module.as_str()) {
+            for dependent in dependents {
+                if reached.insert((*dependent).to_string()) {
+                    frontier.push((*dependent).to_string());
+                }
+            }
+        }
+    }
+    reached
+}
+
+/// The committed mirror population as `(module, basename)` rows: a module whose mirror basename
+/// (`a.b.c` -> `a_b_c.rs`) is a committed generated file. Rows are the join of two authorities the
+/// regen already owns -- the module index and the committed generated population -- never a list.
+pub fn compared_mirror_rows(
+    stage0_src: &Path,
+    modules: &[String],
+) -> Result<Vec<(String, String)>, String> {
+    let committed: BTreeSet<String> = committed_generated_basenames(stage0_src)?
+        .into_iter()
+        .collect();
+    Ok(modules
+        .iter()
+        .filter_map(|module| {
+            let basename = format!("{}.rs", module.replace('.', "_"));
+            committed
+                .contains(&basename)
+                .then(|| (module.clone(), basename))
+        })
+        .collect())
+}
+
+fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
+    source_roots
+        .iter()
+        .map(|root| Path::new(root).join(REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT))
+        .find(|candidate| candidate.is_file())
+        .map(|found| found.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "refusal: {REGEN_AFFECTED_SET_ENTRY_UNDER_ROOT} is not under any declared source \
+                 root {source_roots:?}, so the bound has no authority to answer from"
+            )
+        })
+}
+
+/// Ask the model. The edges handed over are those whose target the host's walk reached -- the
+/// subgraph on which the model's bounded fold re-derives the same closure at interpreter cost --
+/// and `modules` is that reached set, which bounds the fold (a path among n modules has at most
+/// n-1 edges). The bootstrap rows are the model's own declaration; nothing is passed for them.
+pub fn render_affected_set_bound(
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+    edges: &[(String, String)],
+    compared: &[(String, String)],
+) -> Result<AffectedSetBound, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = affected_set_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the bound cannot answer: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+
+    let reached = regen_reverse_closure_host(edited, edges);
+    let edge_values: Vec<Value> = edges
+        .iter()
+        .filter(|(_, to)| reached.contains(to))
+        .map(|(from, to)| Value::Record {
+            type_name: ctx.sym("DependencyEdge"),
+            fields: Rc::new(vec![
+                (ctx.sym("from"), str_value(from.clone())),
+                (ctx.sym("to"), str_value(to.clone())),
+            ]),
+        })
+        .collect();
+    let compared_values: Vec<Value> = compared
+        .iter()
+        .map(|(module, basename)| Value::Record {
+            type_name: ctx.sym("MirrorRow"),
+            fields: Rc::new(vec![
+                (ctx.sym("module"), str_value(module.clone())),
+                (ctx.sym("basename"), str_value(basename.clone())),
+            ]),
+        })
+        .collect();
+    let strs = |items: &[String]| {
+        let values: Vec<Value> = items.iter().map(str_value).collect();
+        Value::List(Rc::new(values.into()))
+    };
+    let reached_list: Vec<String> = reached.iter().cloned().collect();
+    let args = vec![
+        (Some("edited".to_string()), strs(edited)),
+        (Some("unlocatable".to_string()), strs(unlocatable)),
+        (
+            Some("edges".to_string()),
+            Value::List(Rc::new(edge_values.into())),
+        ),
+        (
+            Some("compared".to_string()),
+            Value::List(Rc::new(compared_values.into())),
+        ),
+        (Some("modules".to_string()), strs(&reached_list)),
+    ];
+    let bound = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, "regen_affected_set", &args, false)
+    })
+    .map_err(|e| format!("refusal: regen_affected_set did not answer: {e}"))?;
+    let bound_arg = vec![(Some("bound".to_string()), bound)];
+    let line = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_bound_line",
+            &bound_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_affected_set_bound_line did not render: {e}"))?
+    {
+        Value::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "refusal: regen_affected_set_bound_line returned {} where a String was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let members: Vec<String> = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_affected_set_members",
+            &bound_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_affected_set_members did not answer: {e}"))?
+    {
+        Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "refusal: regen_affected_set_members holds a {} where a String was expected",
+                    other.type_label_public()
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+        other => {
+            return Err(format!(
+                "refusal: regen_affected_set_members returned {} where a List was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let arm = line
+        .strip_prefix("regen-affected-set: ")
+        .and_then(|rest| rest.split_whitespace().next())
+        .ok_or_else(|| format!("refusal: bound line has no arm: {line}"))?
+        .to_string();
+    // LOCKSTEP, every run: on the selecting arm the model's mirrors must be exactly the host's
+    // reached modules joined to the compared rows. Either side alone could be wrong; agreement is
+    // the evidence, and disagreement stops the line rather than electing a side.
+    if arm == "AffectedMirrors" {
+        let host_mirrors: BTreeSet<String> = compared
+            .iter()
+            .filter(|(module, _)| reached.contains(module))
+            .map(|(_, basename)| basename.clone())
+            .collect();
+        let model_mirrors: BTreeSet<String> = members
+            .iter()
+            .filter(|m| host_mirrors.contains(*m) || compared.iter().any(|(_, b)| b == *m))
+            .cloned()
+            .collect();
+        if host_mirrors != model_mirrors {
+            return Err(format!(
+                "refusal: lockstep disagreement -- host reverse walk names {} mirror(s), the model's \
+                 regen_affected_set names {}; host-only {:?}, model-only {:?}",
+                host_mirrors.len(),
+                model_mirrors.len(),
+                host_mirrors.difference(&model_mirrors).take(8).collect::<Vec<_>>(),
+                model_mirrors.difference(&host_mirrors).take(8).collect::<Vec<_>>()
+            ));
+        }
+    }
+    Ok(AffectedSetBound { line, arm, members })
+}
+
+/// The bound for an edited population against the live tree: edges and compared rows from the
+/// tree, verdict from the model.
+pub fn affected_set_bound_for(
+    workspace: &Path,
+    source_roots: &[String],
+    edited: &[String],
+    unlocatable: &[String],
+) -> Result<AffectedSetBound, String> {
+    let (edges, modules) = regen_module_edges(workspace)?;
+    let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)?;
+    render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
+}
+
+/// `claim_executor --regen-affected-set`: the edited population is the floor's own diff range
+/// (the same "what changed" the required floor selects witnesses from), so the selection and the
+/// gate read one edit.
+pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSetOutcome, String> {
+    let workspace = workspace_root();
+    let tree = git_head_sha(&workspace)?;
+    let tree_dirty = git_tree_dirty(&workspace)?;
+    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
+    let population = edited_population_from_diff(&workspace, &diff_text);
+    let bound = affected_set_bound_for(
+        &workspace,
+        source_roots,
+        &population.edited_modules,
+        &population.unlocatable,
+    )?;
+    let mut rendered = format!(
+        "regen-affected-set: producer={REGEN_AFFECTED_SET_PRODUCER} host={} tree={tree} tree_dirty={tree_dirty}\n",
+        host_name()
+    );
+    for module in &population.edited_modules {
+        rendered.push_str(&format!("regen-affected-set: edited {module}\n"));
+    }
+    for path in &population.unlocatable {
+        rendered.push_str(&format!("regen-affected-set: unlocatable {path}\n"));
+    }
+    rendered.push_str(&format!(
+        "regen-affected-set: non_dag_paths={}\n",
+        population.non_dag_paths.len()
+    ));
+    rendered.push_str(&bound.line);
+    rendered.push('\n');
+    for member in &bound.members {
+        rendered.push_str(&format!("regen-affected-set: member {member}\n"));
+    }
+    Ok(RegenAffectedSetOutcome {
+        rendered,
+        arm: bound.arm,
+        members: bound.members,
+    })
+}
+
+#[cfg(test)]
+mod regen_affected_set_tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn s(x: &str) -> String {
+        x.to_string()
+    }
+
+    /// The witness's fixture graph, so the host walk and the model fold are held to one answer on
+    /// the same edges the .dag witness asserts against.
+    fn fixture_edges() -> Vec<(String, String)> {
+        vec![
+            (s("std.b"), s("std.a")),
+            (s("gunbc.c"), s("std.b")),
+            (s("gunbc.d"), s("std.x")),
+            (s("v1.compiler.emit_rust"), s("std.a")),
+        ]
+    }
+
+    fn fixture_compared() -> Vec<(String, String)> {
+        [
+            "std.a",
+            "std.b",
+            "gunbc.c",
+            "gunbc.d",
+            "std.x",
+            "v1.compiler.emit_rust",
+        ]
+        .iter()
+        .map(|m| (s(m), format!("{}.rs", m.replace('.', "_"))))
+        .collect()
+    }
+
+    #[test]
+    fn host_walk_and_model_fold_agree_on_the_fixture_graph() {
+        let host = regen_reverse_closure_host(&[s("std.a")], &fixture_edges());
+        assert_eq!(
+            host,
+            ["std.a", "std.b", "gunbc.c", "v1.compiler.emit_rust"]
+                .iter()
+                .map(|m| s(m))
+                .collect::<BTreeSet<_>>()
+        );
+        let bound = render_affected_set_bound(
+            &roots(),
+            &[s("std.a")],
+            &[],
+            &fixture_edges(),
+            &fixture_compared(),
+        )
+        .expect("the model answers on the fixture");
+        assert_eq!(bound.arm, "AffectedMirrors");
+        assert_eq!(
+            bound.line,
+            "regen-affected-set: AffectedMirrors edited=1 mirrors=4 bootstrap_products=0"
+        );
+        let members: BTreeSet<String> = bound.members.into_iter().collect();
+        assert_eq!(
+            members,
+            [
+                "std_a.rs",
+                "std_b.rs",
+                "gunbc_c.rs",
+                "v1_compiler_emit_rust.rs"
+            ]
+            .iter()
+            .map(|m| s(m))
+            .collect()
+        );
+    }
+
+    /// RED CONTROL: an unlocatable path refuses with no members, and does not widen to the
+    /// population -- the arm is the refusal, and the edited module beside it is not walked.
+    #[test]
+    fn an_unlocatable_edited_path_refuses_and_selects_nothing() {
+        let bound = render_affected_set_bound(
+            &roots(),
+            &[s("std.a")],
+            &[s(
+                "dag/std/gone.dag (departed: no module line remains in the tree)",
+            )],
+            &fixture_edges(),
+            &fixture_compared(),
+        )
+        .expect("the refusal is an arm, not an error");
+        assert_eq!(bound.arm, "EditedSetUnlocatable");
+        assert!(bound.members.is_empty());
+        assert!(bound
+            .line
+            .starts_with("regen-affected-set: EditedSetUnlocatable unlocatable=1 reason="));
+    }
+
+    /// The edit reader on a synthetic diff: an existing module is named, a departed `.dag` and an
+    /// added `.dag` that is not in the tree are unlocatable, and a `.rs` is only counted.
+    #[test]
+    fn edited_population_classifies_named_departed_and_missing_paths() {
+        let diff = "\
+diff --git a/dag/std/content_hash.dag b/dag/std/content_hash.dag
+--- a/dag/std/content_hash.dag
++++ b/dag/std/content_hash.dag
+@@ -1,1 +1,2 @@
+ module std.content_hash
++data planted: Int = 1
+diff --git a/dag/std/gone.dag b/dag/std/gone.dag
+deleted file mode 100644
+--- a/dag/std/gone.dag
++++ /dev/null
+@@ -1,1 +0,0 @@
+-module std.gone
+diff --git a/dag/std/never_written.dag b/dag/std/never_written.dag
+new file mode 100644
+--- /dev/null
++++ b/dag/std/never_written.dag
+@@ -0,0 +1,1 @@
++module std.never_written
+diff --git a/src/v1/stage0/src/v1_rt.rs b/src/v1/stage0/src/v1_rt.rs
+--- a/src/v1/stage0/src/v1_rt.rs
++++ b/src/v1/stage0/src/v1_rt.rs
+@@ -1,1 +1,2 @@
+ // x
++// y
+";
+        let population = edited_population_from_diff(&workspace_root(), diff);
+        assert_eq!(population.edited_modules, vec![s("std.content_hash")]);
+        assert_eq!(
+            population.unlocatable.len(),
+            2,
+            "{:?}",
+            population.unlocatable
+        );
+        assert!(population.unlocatable[0].starts_with("dag/std/gone.dag (departed"));
+        assert!(population.unlocatable[1].starts_with("dag/std/never_written.dag (unreadable"));
+        assert_eq!(
+            population.non_dag_paths,
+            vec![s("src/v1/stage0/src/v1_rt.rs")]
+        );
+    }
+
+    /// THE LIVE-TREE CONTROLS, one index build for all three: the three measured edits of
+    /// 2026-08-30 (tree 677988a2 / 0fe2c517) each land on the arm and members the measurement
+    /// drifted. A leaf std edit names its own mirror and not the runtime shim; the runtime
+    /// template names its mirror AND the shim through the declared bootstrap edge; an emitter
+    /// edit is the whole population.
+    #[test]
+    fn live_tree_controls_land_on_the_measured_arms() {
+        let workspace = workspace_root();
+        let (edges, modules) = regen_module_edges(&workspace).expect("the closure edge index maps");
+        let compared = compared_mirror_rows(&workspace.join("src/v1/stage0/src"), &modules)
+            .expect("committed population");
+        assert!(compared.iter().any(|(m, _)| m == "std.content_hash"));
+
+        let leaf =
+            render_affected_set_bound(&roots(), &[s("std.content_hash")], &[], &edges, &compared)
+                .expect("leaf edit answers");
+        assert_eq!(leaf.arm, "AffectedMirrors", "{}", leaf.line);
+        assert!(
+            leaf.members.iter().any(|m| m == "std_content_hash.rs"),
+            "{:?}",
+            leaf.members
+        );
+        assert!(
+            !leaf.members.iter().any(|m| m == "v1_rt.rs"),
+            "{:?}",
+            leaf.members
+        );
+        assert!(
+            leaf.members.len() < compared.len(),
+            "the leaf bound is a proper subset"
+        );
+
+        let template = render_affected_set_bound(
+            &roots(),
+            &[s("v1.compiler.runtime_rust")],
+            &[],
+            &edges,
+            &compared,
+        )
+        .expect("template edit answers");
+        assert_eq!(template.arm, "AffectedMirrors", "{}", template.line);
+        assert!(
+            template
+                .members
+                .iter()
+                .any(|m| m == "v1_compiler_runtime_rust.rs"),
+            "{:?}",
+            template.members
+        );
+        assert!(
+            template.members.iter().any(|m| m == "v1_rt.rs"),
+            "{:?}",
+            template.members
+        );
+
+        let emitter = render_affected_set_bound(
+            &roots(),
+            &[s("v1.compiler.emit_rust")],
+            &[],
+            &edges,
+            &compared,
+        )
+        .expect("emitter edit answers");
+        assert_eq!(emitter.arm, "WholePopulation", "{}", emitter.line);
+        assert!(emitter.members.is_empty());
     }
 }

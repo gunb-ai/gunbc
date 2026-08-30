@@ -37,8 +37,14 @@ import gunbc.roadmap_component {
   activity_ledger_class, activity_obligation_class,
   activity_evidence_class, activity_evidence_row_class, activity_located_reason_class,
 }
+import gunbc.roadmap_belt { spawn_mode_label }
+import gunbc.roadmap_launch_admission {
+  LaunchHostStanding, LaunchGraphStanding, launch_graph_of_document,
+  launch_host_unobserved_static_render, launch_cause_label,
+  launch_identity_instance_text, launch_identity_revision_hex,
+}
 import gunbc.roadmap_presentation {
-  WorkRowView, work_row_view, row_headline,
+  WorkRowView, work_row_view, row_headline, LaunchRowContext,
   WorkLifecycle, OpenLifecycle, ReviewLifecycle, DoneLifecycle, SupersededLifecycle,
   work_lifecycle, work_lifecycle_key,
   WorkScheduling, SchedulingReady, SchedulingUpcoming, SchedulingDone, SchedulingSuperseded, SchedulingUnplanned,
@@ -47,6 +53,7 @@ import gunbc.roadmap_presentation {
   ActivityAttention, activity_attention_key, activity_arm_key, activity_summary_line,
   ActivityEvidenceRow,
   ActionView, WorkAction, WorkActionKind, DispatchAction, ClearSessionAction,
+  ActionAvailability, ActionAvailable, ActionUnavailable,
   action_priority_key, action_availability_key,
   SupportingFact,
   DisclosureView, NoDisclosure, TicketDisclosure, LegacyBodyDisclosure,
@@ -316,7 +323,7 @@ fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Roadm
 }
 
 
-data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review node; only signoff-Done and authored Superseded rows hide it. This deliberately preserves manual out-of-order dispatch for blocked and unsized rows: spawn_frontier.ready governs automatic belt reconciliation and page grouping, not the manual POST admission contract. belt_dispatch_node currently refuses signoff-Done but does not consult Ready, so the page must not claim otherwise. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
+data dispatch_button_note: String = "The launch button (operator 2026-07-20: manual click-to-dispatch). Rendered on every open or review row as the PROJECTION of gunbc.roadmap_launch_admission for cause Operator (RLM-1): an admitted row renders the operable button; a refused row renders the same button disabled, carrying data-launch = the refusal's wire label and title = its reason -- the words POST /dispatch would answer, because both read one decision. Done and superseded rows hide it. The manual out-of-order dispatch the page used to preserve for blocked and unsized rows is gone with the AvailableAsOverride arm: spawn_frontier.ready no longer governs one surface while the route governs another. The button carries data-node = the node id. Its client behavior is a MODELED TsProgram (gunbc.roadmap_component.dispatch_client_program), emitted as an EXTERNAL served asset (roadmap_dispatch_asset_path, served by belt B) and referenced by <script src> -- NOT a hand-concatenated JS string inlined into the HTML (the former was the dispatch-button incident's root class, §5, and the inline placement was a hack: an inline <script> text node escapes '>' under std.markup, corrupting an arrow's `=>`; external emission is escape-clean). It reads belt B's `status` contract with the ok-set DERIVED from belt_dispatch_ok_status_labels; the retired belt-A `ok`/`node` shape is gone and cannot return (the page witness holds a RED on `j.ok`)."
 
 fn superseded_badge_of(view: WorkRowView) -> List<Fragment> {
   if view.superseded_by == "" {
@@ -339,14 +346,33 @@ fn view_dispatch_actions(view: WorkRowView) -> List<WorkAction> {
 
 data dispatch_button_axes_note: String = "THE BUTTON CARRIES ITS DECIDED AXES (A2 hierarchy closeout, operator gap ruling 2026-08-02: 'action prominence derives from selection and priority, not mere availability'). The seam already decided priority and availability per action (action_axes_note); this renderer used to flatten both into one identical class, which is exactly how fourteen equally loud pills reached the desktop fold while LANDED rows kept the ready-row treatment. The class now carries the decided priority (action-primary / action-secondary) and data-availability carries the admission fact, so the stylesheet can rest every in-row control quiet and the client program can raise ONLY the selected row's primary action to the invite band (the action-focal class — selection is client state, prominence is its projection; named for the grant, not for liveness). Status classes keep winning in the cascade: emphasis never overrides truth. No-JS visitors see every control quiet but present, labeled, and operable — honest-before-JS forbids blankness, not calm."
 
+fn dispatch_button_attributes(view: WorkRowView, a: WorkAction) -> List<Attribute> {
+  let base = [
+    attr(name: "class", value: concat("dispatch-btn action-", action_priority_key(p: a.priority)) ),
+    attr(name: "type", value: "button" ),
+    attr(name: "data-node", value: view.node_id ),
+    attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
+    attr(name: "data-launch", value: a.label ),
+    attr(name: "title", value: a.detail ),
+  ]
+  let with_identity = match a.launch {
+    Absent => base
+    Present { value: id } => concat(base, [
+      attr(name: "data-launch-cause", value: launch_cause_label(c: id.cause) ),
+      attr(name: "data-launch-mode", value: spawn_mode_label(m: id.mode) ),
+      attr(name: "data-launch-instance", value: launch_identity_instance_text(id: id) ),
+      attr(name: "data-launch-revision", value: launch_identity_revision_hex(id: id) ),
+    ])
+  }
+  match a.availability {
+    ActionAvailable => with_identity
+    ActionUnavailable => concat(with_identity, [ attr(name: "disabled", value: "" ) ])
+  }
+}
+
 fn dispatch_button_nodes(view: WorkRowView) -> List<Fragment> {
   map(view_dispatch_actions(view: view), a =>
-    el_attrs("button", [
-      attr(name: "class", value: concat("dispatch-btn action-", action_priority_key(p: a.priority)) ),
-      attr(name: "type", value: "button" ),
-      attr(name: "data-node", value: view.node_id ),
-      attr(name: "data-availability", value: action_availability_key(a: a.availability) ),
-    ], [ txt("dispatch") ]))
+    el_attrs("button", dispatch_button_attributes(view: view, a: a), [ txt("dispatch") ]))
 }
 
 data workflow_controls_actions_only_note: String = "The actuator cell carries ACTIONS ONLY (A2, the falsifier correction — see roadmap_row_archetype_note). The server-rendered lamp strip, seven pending stage chips, and 'waiting' activity text that used to preload this wrapper were exactly the furniture the attention rule forbids: a row with no attempt renders NO workflow DOM at all, and a row with one gets its activity painted by the client into the under-head ActivityRegion from the DECIDED /workflow.json view — never into this cell. The wrapper stays always-present so the dispatch control keeps a stable actuator home and the head grid keeps its three derived tracks."
@@ -532,19 +558,19 @@ fn node_li_attributes(view: WorkRowView) -> List<Attribute> {
   ]
 }
 
-fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> WorkRowView {
-  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork)
+fn node_work_row_view(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, launch: LaunchRowContext) -> WorkRowView {
+  work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, activity: NoActiveWork, launch: launch)
 }
 
-fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
-  let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged)
+fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
+  let view = node_work_row_view(rn: rn, nodes: nodes, edges: edges, merged: merged, launch: launch)
   let head = render_work_row(view: view)
   let kids = children_of(nodes: nodes, edges: edges, parent: rn.node)
   let child_block = if count(kids) == 0 {
     []
   } else {
     if fuel > 0 {
-      [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1) ]
+      [ nodes_ul(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1, launch: launch) ]
     } else {
       [ el_class("ul", "depth-limited", [
           el_class("li", "depth-limit", [
@@ -560,13 +586,13 @@ fn node_li(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, 
   }
 }
 
-fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> Fragment {
-  el("ul", map(items, rn => node_li(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)))
+fn nodes_ul(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int, launch: LaunchRowContext) -> Fragment {
+  el("ul", map(items, rn => node_li(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel, launch: launch)))
 }
 
-fn group_markup(g: SectionGroup, merged: List<Int>) -> List<Fragment> {
+fn group_markup(g: SectionGroup, merged: List<Int>, launch: LaunchRowContext) -> List<Fragment> {
   let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
-  let ul = nodes_ul(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_page_max_depth())
+  let ul = nodes_ul(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_page_max_depth(), launch: launch)
   if g.label == "" {
     [ ul ]
   } else {
@@ -574,10 +600,10 @@ fn group_markup(g: SectionGroup, merged: List<Int>) -> List<Fragment> {
   }
 }
 
-fn element_markup(e: SectionElement, merged: List<Int>) -> List<Fragment> {
+fn element_markup(e: SectionElement, merged: List<Int>, launch: LaunchRowContext) -> List<Fragment> {
   match e {
     Prose { prose } => [ el_class("p", "prose", markdown_inlines_to_fragments(inlines: parse_inline_markdown_minimal(text: prose.content))) ]
-    Group { group } => group_markup(g: group, merged: merged)
+    Group { group } => group_markup(g: group, merged: merged, launch: launch)
   }
 }
 
@@ -610,8 +636,8 @@ fn section_statuses(s: RoadmapSection, merged: List<Int>) -> List<String> {
   })
 }
 
-fn section_markup(s: RoadmapSection, merged: List<Int>) -> Fragment {
-  let body = fold(s.elements, init: [], f: (acc, e) => concat(acc, element_markup(e: e, merged: merged)))
+fn section_markup(s: RoadmapSection, merged: List<Int>, launch: LaunchRowContext) -> Fragment {
+  let body = fold(s.elements, init: [], f: (acc, e) => concat(acc, element_markup(e: e, merged: merged, launch: launch)))
   altitude_section(
     cls: "roadmap-section",
     title_nodes: [ el("h2", [ txt(s.title) ]) ],
@@ -777,19 +803,26 @@ fn live_work_family_members_for_accepted(accepted: List<RoadmapNodeId>) -> List<
   })
 }
 
+fn page_launch_context(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> LaunchRowContext {
+  LaunchRowContext { standing: launch, graph: launch_graph_of_document(doc: doc), merged: merged }
+}
+
 fn daily_workspace_view_of_for_accepted(
   doc: RoadmapDocument,
   merged: List<Int>,
   accepted_ids: List<RoadmapNodeId>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  launch: LaunchHostStanding,
 ) -> DailyWorkspaceView {
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let observation = observation_impact_view(workflow_refused: attempts_refused)
+  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
   let rows = map(nodes, rn => work_row_view(
     rn: rn, nodes: nodes, edges: edges, merged: merged,
-    activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused)))
+    activity: daily_row_activity(node_id: rn.node as String, attempts: attempts, attempts_refused: attempts_refused),
+    launch: ctx))
   let ready_count = count(rows |> filter(r =>
     !row_is_active_work(row: r) && work_scheduling_key(s: r.scheduling) == "ready"))
   daily_workspace_view(
@@ -800,7 +833,7 @@ fn daily_workspace_view_of_for_accepted(
     members: live_work_family_members_for_accepted(accepted: accepted_ids))
 }
 
-fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> DailyWorkspaceView {
+fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> DailyWorkspaceView {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       daily_workspace_view_of_for_accepted(
@@ -809,6 +842,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         accepted_ids: [],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        launch: launch,
       )
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
       daily_workspace_view_of_for_accepted(
@@ -817,6 +851,7 @@ fn daily_workspace_view_of(doc: RoadmapDocument, merged: List<Int>, attempts: Li
         accepted_ids: accepted_ids,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        launch: launch,
       )
   }
 }
@@ -828,6 +863,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   main_prefix: List<Fragment>,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  launch: LaunchHostStanding,
 ) -> Fragment {
   let ws = daily_workspace_view_of_for_accepted(
     doc: doc,
@@ -835,6 +871,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
     accepted_ids: accepted_ids,
     attempts: attempts,
     attempts_refused: attempts_refused,
+    launch: launch,
   )
   let program_strip = match ws.program {
     Present { value: v } => [ program_progress_markup_of(v: v) ]
@@ -861,7 +898,7 @@ fn roadmap_daily_workspace_page_impl_for_accepted(
   }
 }
 
-fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
+fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> Fragment {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -871,6 +908,7 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         main_prefix: main_prefix,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        launch: launch,
       )
     AcceptedRoadmapNodeIdsProjected { ids: accepted_ids } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -880,13 +918,15 @@ fn roadmap_daily_workspace_page_impl(doc: RoadmapDocument, merged: List<Int>, ma
         main_prefix: main_prefix,
         attempts: attempts,
         attempts_refused: attempts_refused,
+        launch: launch,
       )
   }
 }
 
-fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>) -> Fragment {
-  let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
-  let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
+fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<Fragment>, launch: LaunchHostStanding) -> Fragment {
+  let ctx = page_launch_context(doc: doc, merged: merged, launch: launch)
+  let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged, launch: ctx))
+  let secs = map(doc.sections, s => section_markup(s: s, merged: merged, launch: ctx))
   let main_children = concat(main_prefix, concat(lead, secs))
   let body_base = [
     roadmap_header(page: "roadmap"),
@@ -913,7 +953,11 @@ fn roadmap_page_impl(doc: RoadmapDocument, merged: List<Int>, main_prefix: List<
 }
 
 fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [])
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch_host_unobserved_static_render())
+}
+
+fn roadmap_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
+  roadmap_page_impl(doc: doc, merged: merged, main_prefix: [], launch: launch)
 }
 
 data roadmap_page_focus_parameter_note: String = "roadmap_page_for_doc exists so a claim about how a TICKET ROW renders can be written without a claim about which lanes are currently shown. witness_ticket_rows_render_structured asserts the row markup — disclosure mark, brief class, displaced-cost label, carrier href — and it happened to pick a node from a lane the focus later hid, so it went red having found nothing wrong with the rendering at all. Passing an unfocused document keeps that claim measuring markup. roadmap_page_for_authority keeps the declared focus, because the served page IS the focused view."
@@ -926,6 +970,7 @@ fn roadmap_page_for_doc(doc: RoadmapDocument) -> Fragment {
       dashboard_instance_banner(),
       finish_line_progress_markup(),
     ],
+    launch: launch_host_unobserved_static_render(),
   )
 }
 
@@ -938,11 +983,21 @@ fn roadmap_authority_refusal_markup(detail: String) -> Fragment {
   ])
 }
 
+data page_launch_standing_note: String = "Which renders can offer a launch (RLM-1). The SERVED pages receive the host standing the serve handler observed through gunbc.roadmap_belt_actuate belt_launch_host_standing, so their rows project the same admission the route answers. Every other entry -- the static site, the surface-observation probe, a page rendered for a document fixture -- passes launch_host_unobserved_static_render, and every row refuses at the instance gate: there is no actuating instance behind those bytes, so a Launch there would be a claim the page cannot honor."
+
 fn roadmap_page_for_authority() -> Fragment {
   roadmap_page_for_projection(proj: roadmap_authority_projection())
 }
 
+fn roadmap_page_for_authority_launch(launch: LaunchHostStanding) -> Fragment {
+  roadmap_page_for_projection_launch(proj: roadmap_authority_projection(), launch: launch)
+}
+
 fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
+  roadmap_page_for_projection_launch(proj: proj, launch: launch_host_unobserved_static_render())
+}
+
+fn roadmap_page_for_projection_launch(proj: RoadmapAuthorityProjection, launch: LaunchHostStanding) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
       roadmap_page_impl(
@@ -952,6 +1007,7 @@ fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
           dashboard_instance_banner(),
           roadmap_authority_refusal_markup(detail: detail),
         ],
+        launch: launch,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
       roadmap_page_impl(
@@ -961,20 +1017,26 @@ fn roadmap_page_for_projection(proj: RoadmapAuthorityProjection) -> Fragment {
           dashboard_instance_banner(),
           finish_line_progress_markup_for_accepted(accepted_ids: accepted),
         ],
+        launch: launch,
       )
   }
 }
 
 fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> Fragment {
-  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none)
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, launch: launch_host_unobserved_static_render())
+}
+
+fn roadmap_daily_workspace_page_launch(doc: RoadmapDocument, merged: List<Int>, launch: LaunchHostStanding) -> Fragment {
+  roadmap_daily_workspace_page_impl(doc: doc, merged: merged, main_prefix: [], attempts: [], attempts_refused: none, launch: launch)
 }
 
 // The served daily workspace consumes the OBSERVED attempt evidence at render (the serve handler decomposes the belt observation and passes progress rows or the located refusal), so the active band and every server-rendered activity region are real facts, not placeholders — the same decided views the /workflow.json wire carries, giving the client poll an identical starting DOM (the parity obligation's server half). The zero-argument form stays pure (empty attempts, nominal observation) for witnesses that assert composition without observation.
-fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?) -> Fragment {
+fn roadmap_daily_workspace_page_for_authority_observed(attempts: List<WorkflowAttemptProgress>, attempts_refused: String?, launch: LaunchHostStanding) -> Fragment {
   roadmap_daily_workspace_page_for_projection_observed(
     proj: roadmap_authority_projection(),
     attempts: attempts,
     attempts_refused: attempts_refused,
+    launch: launch,
   )
 }
 
@@ -982,6 +1044,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
   proj: RoadmapAuthorityProjection,
   attempts: List<WorkflowAttemptProgress>,
   attempts_refused: String?,
+  launch: LaunchHostStanding,
 ) -> Fragment {
   match proj {
     RoadmapAuthorityProjectionRefused { detail: detail } =>
@@ -994,6 +1057,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        launch: launch,
       )
     RoadmapAuthorityProjected { doc: doc, accepted: accepted } =>
       roadmap_daily_workspace_page_impl_for_accepted(
@@ -1005,6 +1069,7 @@ fn roadmap_daily_workspace_page_for_projection_observed(
         ],
         attempts: attempts,
         attempts_refused: attempts_refused,
+        launch: launch,
       )
   }
 }
@@ -1018,5 +1083,6 @@ fn roadmap_daily_workspace_page_for_projection(proj: RoadmapAuthorityProjection)
     proj: proj,
     attempts: [],
     attempts_refused: none,
+    launch: launch_host_unobserved_static_render(),
   )
 }
