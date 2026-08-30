@@ -12,8 +12,10 @@ import v2.workflow.floor_changed_witness {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   DeclinedCostDebt,
+  required_floor_disposition_with_changed_selection,
 }
 import v2.workflow.floor_terminal_ledger {
   ClaimDisposition, Passed, Failed, KnownRedHeld, RouteGapBeforeVerdict,
@@ -86,6 +88,51 @@ test fn planned_with_passed_verdict_stands_green() -> Bool {
       }
     )
   )
+}
+
+// The changed-witness sublane is a second planning mechanism, not an admission exception.
+// Its terminal verdict is judged identically while its distinct disposition preserves why it ran.
+test fn changed_sublane_with_passed_verdict_stands_green() -> Bool {
+  is_planned_and_passed(
+    s: changed_standing_of(
+      reading: DispositionRow {
+        disposition: PlannedAsChangedWitness {},
+        terminal: TerminalOutcome { outcome: Passed {} }
+      }
+    )
+  )
+}
+
+test fn changed_selector_replaces_an_ordinary_decline_with_its_own_planned_arm() -> Bool {
+  match required_floor_disposition_with_changed_selection(
+    ordinary: DeclinedOutsideGateClosure {},
+    selected_as_changed_witness: true,
+  ) {
+    PlannedAsChangedWitness => true
+    Planned => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedOutsideGateClosure => false
+    DeclinedCostDebt => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+  }
+}
+
+test fn unchanged_identity_keeps_its_ordinary_disposition() -> Bool {
+  match required_floor_disposition_with_changed_selection(
+    ordinary: DeclinedOutsideGateClosure {},
+    selected_as_changed_witness: false,
+  ) {
+    DeclinedOutsideGateClosure => true
+    Planned => false
+    PlannedAsChangedWitness => false
+    DeclinedLongModule { matched_prefix: _ } => false
+    DeclinedOutsideRequiredGate => false
+    DeclinedCostDebt => false
+    DeclinedFixtureMember { matched_prefix: _ } => false
+    DeclinedDiscoveryExcluded { matched_substring: _ } => false
+  }
 }
 
 // A planned identity the receipt records as never executed is nonterminal — red.

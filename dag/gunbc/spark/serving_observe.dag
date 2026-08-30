@@ -157,9 +157,9 @@ import gunbc.spark.serving_runtime_receipt {
 }
 import gunbc.spark.serving_runtime_admission { spark_serving_parse_nvidia_driver_version }
 import gunbc.spark.serving_desired {
-  spark_serving_desired_hosts,
   spark_serving_automation_principal_login,
 }
+import gunbc.spark.serving_observation_scope { spark_serving_observation_scope }
 import gunbc.spark.serving_readback_parse {
   SparkServingReadbackField,
   SparkServingReadbackAbsent,
@@ -1074,6 +1074,43 @@ fn spark_serving_all_observations_succeeded(observations: List<SparkServingObser
   )
 }
 
+// THIS IS A ROLE QUESTION, AND IT IS NO LONGER THE OBSERVER'S TERMINAL.
+//
+// "Did every host answer" and "is every host serving" are different questions, and this one answers
+// the second: SparkServingAbsent counts as failure here. That was harmless while the observation
+// roster was the DESIRED roster, because a desired host that is absent genuinely is a fault. Once the
+// roster became the physical Spark population it stopped being harmless -- a RETIRED training cell is
+// structurally SparkServingAbsent, so a successful retirement would make this report "unsuccessful"
+// and drive the workstation observer to exit non-zero on the exactly-correct final state. Fail-closed,
+// but the wrong answer for an instrument whose job is to describe what is there.
+//
+// Both observer entries therefore terminate on spark_serving_report_observations_were_made, which asks
+// whether the probe answered. A serving-health verdict over the DESIRED subset is a separate consumer
+// that judges srv5 and ignores srv6 by policy; it is not written yet, and this row is retained for it
+// rather than deleted.
+//
+// THE TERMINAL SWAP BELOW HAS EVIDENCE, AND THAT EVIDENCE DOES NOT EXECUTE.
+//
+// spark_serving_observe_witness_test already pins the exact distinction this repair turns on -- it
+// asserts was_made(obs) is true while succeeded(obs) is false for an absent host -- so the control is
+// authored and discriminating. It is also inert: that module is test.claim.spark.*, outside the
+// required gate closure, so it has never run in CI. An attempt to restate the claim under the executed
+// v2.test.* prefix was made and abandoned on measurement, not preference: importing this module to
+// reach these two predicates pulls its 46-import closure and the claim module is killed during resolve
+// with no rows, the same wall that holds the 59 nonterminal identities. Moving the predicates to the
+// light module where the type lives would fix that and force an edit to the inert test, which would
+// classify its witnesses as changed-and-declined and red the required floor.
+//
+// So the honest standing of the swap is: correct by argument, controlled by an authored claim, and
+// NOT established by execution. It is recorded here rather than in a commit message because a reader
+// of this function is the person who needs to know it.
+//
+// RETAINED, NOT KEPT: by the trimming rule applied elsewhere in this stack, a row whose only consumers
+// are its own claims should be deleted until a real consumer exists. It survives here for a mechanical
+// reason worth stating rather than hiding -- its claims live in test.claim.spark.*, which is outside
+// the required gate closure, so editing that module would classify its witnesses as changed-and-
+// declined and red the required floor. The row is therefore load-bearing for nothing and blocked from
+// deletion by an enrollment gap, which is the same gap that owns the 59 nonterminal identities.
 fn spark_serving_observation_report_succeeded(report: SparkServingObservationReport) -> Bool {
   match report {
     SparkServingObservationsProduced { first: f, more: m } =>
@@ -1152,7 +1189,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
             Present { value: context } =>
               spark_serving_observe_with_context(
                 context: context,
-                hosts: spark_serving_desired_hosts,
+                hosts: spark_serving_observation_scope(),
               )
           }
         }
@@ -1170,7 +1207,7 @@ func spark_serving_observe_with_attempt(attempt_raw: String) -> ProcessExit
         attempt_raw: attempt_raw,
         materialization_receipt: materialization_receipt,
       )
-      if spark_serving_observation_report_succeeded(report: report) == false {
+      if spark_serving_report_observations_were_made(report: report) == false {
         exit_failure(reason: receipt)
       } else {
         let w = Filesystem.Write(path: spark_serving_observe_receipt_path, content: receipt)
@@ -1208,7 +1245,7 @@ func spark_serving_observe_ci_with_context(
 ) -> ProcessExit {
   let now = clock_now_probed_at()
   let observations = map(
-    spark_serving_desired_hosts,
+    spark_serving_observation_scope(),
     h => spark_serving_observe_host_via_locus(context: context, host: h),
   )
   let report = match spark_serving_observation_report_from_observations(observations: observations) {

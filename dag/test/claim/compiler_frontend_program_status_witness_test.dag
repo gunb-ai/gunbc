@@ -78,7 +78,7 @@ import gunbc.compiler_frontend_program_status {
   WholeCorpusEmissionBoard,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  CarrierOriginRosterProducer,
+  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   all_missing_instruments,
   conditionally_awaited_instruments,
@@ -511,18 +511,18 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL5Waves))
 }
 
-// F1 -- XL-0 IS THE CARRIER-ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
+// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
 //
 // The arm this replaced read the subject roster's unobservable host probes, so making every host
-// probe observable would have flipped XL-0 to CLEAR while no carrier-origin roster had ever been
+// probe observable would have flipped XL-0 to CLEAR while no repair-input origin roster had been
 // produced. That is the falsifier stated as a rule: XL-0's standing may not be a function of probe
 // observability at all. Asserting NOT-DERIVABLE with this exact cause holds it, because a rewiring
 // back onto any observable population would have to abandon the cause to change the standing.
-test fn xl0_is_not_derivable_and_awaits_the_carrier_origin_producer() -> Bool {
+test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: CarrierOriginRosterProducer),
+    && any(stages_awaiting(i: RepairInputOriginRosterProducer),
          l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: CarrierOriginRosterProducer)) == 0
+    && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
 }
 
 // F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT

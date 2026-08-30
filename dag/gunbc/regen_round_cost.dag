@@ -104,9 +104,9 @@ type RegenRoundCostReceipt {
   host: String
   tree: String
   tree_dirty: Bool
-  seed_build_compiled_crates: Int
-  rebuild_compiled_crates: Int
-  rustfmt_spawns: Int
+  seed_build_compiled_crates: Nat
+  rebuild_compiled_crates: Nat
+  rustfmt_spawns: Nat
   marks: List<TraceMark>
   changed_paths: List<String>
 }
