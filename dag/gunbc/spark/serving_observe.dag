@@ -481,10 +481,40 @@ fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountOb
 // while staying silent on whether its unit would survive a power cycle, which is exactly the
 // question the run was dispatched to answer. A field with a witness and no wet reader is a carrier,
 // not an observation.
-type SparkServingHostObservation {
+// THE HOST WAS CARRIED TWICE AND COVERAGE JOINED ONE OF THEM.
+//
+// Found on review of #9754. Every SparkServingObservation arm carries its own `host`, so a row could
+// be authored with readback.host = srv6 and observation.host = srv7: coverage would be satisfied for
+// srv6 while the report emitted an observation of srv7. The production path could not do this --
+// derive_spark_serving_observation sets the observation's host from readback.host in every arm -- but
+// the TYPE permitted it, and "the only current producer happens to agree" is not a property, it is a
+// coincidence that holds until someone writes a second producer. The fixtures in this repository
+// already construct both halves independently, so the counterexample was not hypothetical.
+//
+// THE REPAIR IS CONSTRUCTION, NOT A SECOND CHECK. Adding a readback.host == observation.host guard
+// beside the coverage join would be validation standing exactly where construction was available,
+// and DESIGN §5's tell applies literally: it could be satisfied by editing the declaration while the
+// realization still lied. sole_constructor confines the mint to this module, and the single mint
+// below DERIVES the observation from the readback rather than accepting it. The disagreeing state
+// now has no constructor, which is why the coverage join can read readback.host and be reading the
+// only host there is.
+type SparkServingHostObservation sole_constructor {
   readback: SparkServingReadback
   observation: SparkServingObservation
   account: SparkManagedAccountObservation
+}
+
+// The only mint. The observation is not a parameter -- it is a function of the readback, which is
+// what makes the two hosts one fact.
+fn spark_serving_host_observation(
+  readback: SparkServingReadback,
+  account: SparkManagedAccountObservation,
+) -> SparkServingHostObservation {
+  SparkServingHostObservation {
+    readback: readback,
+    observation: derive_spark_serving_observation(readback: readback),
+    account: account,
+  }
 }
 
 type SparkServingObservationReport
@@ -549,14 +579,13 @@ fn spark_serving_observe_host_via_locus(
     uptime: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_uptime_probe_argv()),
     grants: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_grant_probe_words),
   )
-  SparkServingHostObservation {
+  spark_serving_host_observation(
     readback: readback,
-    observation: derive_spark_serving_observation(readback: readback),
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
     ),
-  }
+  )
 }
 
 fn spark_serving_probe_leg(
@@ -845,14 +874,13 @@ fn spark_serving_observe_host(
     uptime: uptime,
     grants: grants,
   )
-  SparkServingHostObservation {
+  spark_serving_host_observation(
     readback: readback,
-    observation: derive_spark_serving_observation(readback: readback),
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
     ),
-  }
+  )
 }
 
 fn spark_serving_observations_from_hosts(
