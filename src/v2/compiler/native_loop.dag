@@ -16,11 +16,15 @@ import gunbc.repository_census_observation { SourceRootIdentity }
 type EntryIdentity { value: NonEmptyStr }
 type TestRosterIdentity { value: NonEmptyStr }
 type OutputDirectory { value: NonEmptyStr }
+type NativeSourceRoots {
+  first_source_root: SourceRootIdentity
+  additional_source_roots: List<SourceRootIdentity>
+}
 
 type NativeRequest
-  = CompileRequest { source_roots: List<SourceRootIdentity>, entry: EntryIdentity, target: TargetModel, output_directory: OutputDirectory }
-  | TestRequest { source_roots: List<SourceRootIdentity>, roster_identity: TestRosterIdentity, optional_subject_selection: Optional<EntryIdentity> }
-  | ExecuteRequest { source_roots: List<SourceRootIdentity>, entry: EntryIdentity, inputs: FreeMonoid<Node> }
+  = CompileRequest { source_roots: NativeSourceRoots, entry: EntryIdentity, target: TargetModel, output_directory: OutputDirectory }
+  | TestRequest { source_roots: NativeSourceRoots, roster_identity: TestRosterIdentity, optional_subject_selection: Optional<EntryIdentity> }
+  | ExecuteRequest { source_roots: NativeSourceRoots, entry: EntryIdentity, inputs: FreeMonoid<Node> }
 
 // The decoder owns tag recognition. An unknown JSON action can never inhabit NativeRequest.
 type NativeRequestDecode
