@@ -211,12 +211,26 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
   }
 }
 
-// THE DECISION. Logical connectives and null-coalescing are not operand-structure questions (their
-// operands are the kernel Bool and an Optional respectively) and answer HostOperator; an operand
-// whose identity is unavailable at the site is the seed's pre-existing host path and also answers
-// HostOperator, because refusing there would refuse every kernel-minted operand (a literal's own
-// type carries no declaration) -- the structural arm is entered only on a RESOLVED structural
-// declaration, which is the only place the host token was ever wrong.
+// THE DECISION, arm by arm, each stating what it is keyed on.
+//
+// NULL-COALESCING never reaches this fold from the Rust emitter: emit_typed_bin_op answers it from
+// emit_null_coalesce before asking for a realization, because its operand is an Optional carrier and
+// the question is cardinality, not operand structure. Its arm here is the fold's totality over the
+// closed BinOp vocabulary, not a second decision about it.
+//
+// LOGICAL CONNECTIVES answer HostOperator on a structural operand, and that arm is HONEST ABOUT
+// WHAT IT DOES NOT CHECK. Inference types `&&`/`||` as returning Bool without constraining its
+// OPERANDS to be one (v1.compiler.types infer_binop_type_node: the And and Or arms name only the
+// result), so `a && b` with a Peano-shaped `a` is authorable and this arm would emit the host token
+// for it. It is not repaired by refusing every structural operand: v2.std.logic Bool is a declared
+// structural coproduct that 593 modules import as their ordinary Bool, so a blanket refusal would
+// refuse the corpus's ordinary conjunction -- the wall paid for in false refusals. The repair is a
+// declared-connective row family beside the ordering rows, and it is a DECLARED STALL with that
+// trigger (gunbc.structural_realization_bindings structural_connective_stall), not a claim this
+// authority already covers connectives.
+//
+// AN OPERAND WHOSE DECLARATION COULD NOT BE READ is not a widen and not a guess: it decides by
+// operator class, below.
 fn operator_realization_for(
   op: BinOp,
   operand: OperandRealization,
