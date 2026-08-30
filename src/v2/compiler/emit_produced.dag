@@ -7,6 +7,7 @@ import v2.std.compilers.target_model {
   ProducedDeclUnwired,
   ProducedDeclWired,
   TargetModel,
+  produced_decl_render_from_rows,
   render_target_text,
   target_model_with_produced_scaffold
 }
@@ -85,11 +86,12 @@ fn emit_produced_decl_with_target(
   )
 }
 
-// The compiler asks the TARGET to render the declaration and receives a bodied-arrow
-// scaffold back. It does not know whether the signature leads with a keyword or a
-// return type, which side of a parameter the type sits on, whether a return arrow
-// exists, or how the declaration closes -- all of that is the renderer's. A target
-// that registered no renderer refuses with a typed, located produced_decl_target_unwired:
+// The compiler reads the TARGET's declared rendering rows and folds them into a
+// bodied-arrow scaffold. It does not know whether the signature leads with a keyword or
+// a return type, which side of a parameter the type sits on, whether a return arrow
+// exists, or how the declaration closes -- every one of those is a row the target
+// declares. A target that registered no rows refuses with a typed, located
+// produced_decl_target_unwired:
 // never a widen, never a fabricated default (DESIGN section 5).
 fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>> {
   match target.produced_decl_support {
@@ -98,12 +100,12 @@ fn emit_produced_decl(decl: Node, target: TargetModel) -> Outcome<Medium<String>
         d: emit_produced_decl_diagnostic(reason: ^produced_decl_target_unwired, node: decl)
       )
     ProducedDeclWired {
-      render: render,
+      render_rows: rows,
       scaffold_relation_rule_name: rule_name,
       scaffold_base_row: base_row
     } =>
       bind_outcome(
-        o: render(decl),
+        o: produced_decl_render_from_rows(rows: rows, decl: decl),
         f: fn(scaffold) {
           emit_produced_decl_with_target(
             decl: decl,

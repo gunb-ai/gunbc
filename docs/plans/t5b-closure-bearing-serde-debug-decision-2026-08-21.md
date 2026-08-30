@@ -133,6 +133,18 @@ gone, `ProducedDeclSupport`, `TargetModel`, and everything that contains them ke
 Debug/Clone/PartialEq/Serialize/Deserialize, undiminished — the fix is removing a misplaced fact,
 not weakening the record that held it.
 
+**SUPERSEDED, AND IN THE SAME DIRECTION.** The `render` field is gone, but not into a peripheral
+registry keyed by `scaffold_relation_rule_name`: the rendering is now DECLARED ROWS on the variant
+(`v2.std.compilers.target_model` `ProducedDeclRenderRows`, read by the single shared fold
+`produced_decl_render_from_rows`), and each target declares its own signature order as data
+(`v2.extdeps.languages.rust` `rust_produced_decl_render_rows`, `v2.extdeps.languages.c`
+`c_produced_decl_render_rows`). A registry would have kept the fn alive one indirection away — the
+value would still have been origin-bound, which is precisely what blocked the required floor from
+sharing one evaluation of a target model across claim frames
+(`v2.workflow.floor_pure_producer_share`). Rows delete the fn outright, so `TargetModel` is a pure
+content value; the interface/realization split this section demanded is preserved, with the target
+still owning its order and the compiler holding no per-target arm.
+
 **The other four `v2_std_compilers_target_model.rs` sites are very likely the same collateral
 pattern as `InterpretationStructureWitness`, not independent decisions.**
 `v2.std.compilers.target_model` `TargetDeriveSupplementalGenericBoundContractAuthority`,

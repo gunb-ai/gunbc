@@ -113,9 +113,9 @@ import v1.compiler.infer_env {
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
   SymbolIndex, SymbolIndexEntry, NominalDeclarationBinding, VariantDeclarationBinding, ResolvedAliasBinding,
-  AliasReferentUnresolvedAfterIndexClosure, AliasReferentAmbiguous, AliasReferentCycle,
+  AliasReferentUnresolvedAfterIndexClosure, AliasReferentAmbiguous, AliasReferentCycle, ConflictingIndexedIdentity,
   empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup, symbol_index_entry_lookup, symbol_index_with_insert_refusal,
-  qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
+  qualify_borrowed_type_names, qualify_borrowed_inferred,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
   lookup_binding_by_name, binding_declares_name,
@@ -124,7 +124,7 @@ import v1.compiler.infer_env {
   build_unit_variant_index, UnitVariantContribution
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
-import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_member_name }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_member_name, declaration_ref_qualified_key }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 import std.interface_summary {
   InterfaceSummary,
@@ -4704,7 +4704,7 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
               }
               let value_type = qualify_borrowed_type_names(
                 n: raw_value_type,
-                owner_module_path: qualified_all_but_last(name: spine.dotted),
+                owner_module_path: entry.declaring_declaration.module_path,
                 env: scope.type_env,
                 excluded: empty_map()
               )
@@ -10411,6 +10411,30 @@ fn symbol_index_finalize_aliases(
   }
 }
 
+fn symbol_index_insert_refusal_diagnostics(index: SymbolIndex) -> List<ErrorNode> {
+  index.insert_refusals |> map(refusal =>
+    let message = match refusal {
+      AliasReferentUnresolvedAfterIndexClosure { alias_qualified_name, referent_qualified_name } =>
+        concat("AliasReferentUnresolvedAfterIndexClosure: ", concat(alias_qualified_name, concat(" -> ", referent_qualified_name)))
+      AliasReferentAmbiguous { alias_qualified_name, referent_name } =>
+        concat("AliasReferentAmbiguous: ", concat(alias_qualified_name, concat(" -> ", referent_name)))
+      AliasReferentCycle { alias_qualified_name, cycle_at } =>
+        concat("AliasReferentCycle: ", concat(alias_qualified_name, concat(" at ", cycle_at)))
+      ConflictingIndexedIdentity { qualified_name, existing, proposed } =>
+        concat(
+          "ConflictingIndexedIdentity: ",
+          concat(qualified_name, concat(
+            " existing=", concat(declaration_ref_qualified_key(reference: existing), concat(" proposed=", declaration_ref_qualified_key(reference: proposed)))
+          ))
+        )
+    }
+    make_error_node(
+      diagnostic: InternalError { message: message, span: no_span },
+      module_name: "<symbol-index>"
+    )
+  )
+}
+
 fn node_declaration_file(n: Node) -> String {
   match n.ident_span {
     Present { value: sp } => sp.file
@@ -12091,7 +12115,11 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     }
   )
   let expanded_registry = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
-  TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
+  TypedGraph {
+    modules: modules,
+    item_registry: expanded_registry,
+    diagnostics: concat(symbol_index_insert_refusal_diagnostics(index: symbol_index), flat_map(diag_chunks, c => c))
+  }
 }
 
 fn realize_module(
