@@ -64,32 +64,44 @@ import v2.std.text { String }
 // through claim_batch + GUNBC_INTERP_PROFILE (2026-08-29, this lane); on the first enrolled
 // floor run each was read by 35-44 later claims (run 33269961629, [floor-shared-fill]).
 //
-// THE TWO RUST TARGET MODELS ARE NOW HERE, and their earlier absence is why: their value
-// carried a fn at `.produced_decl_support.render` -- an origin-bound evaluator reference
-// the serve tier refuses by ruling (ServeCacheValueNotPortable, kind=OriginBoundNode;
-// publication is checked totally at store time). The named re-enrol trigger was "carry the
-// produced-decl render transform as declared rows the model layer can reify rather than as
-// a fn value", and that modeling change landed: v2.std.compilers.target_model
-// ProducedDeclRenderRows plus one shared fold (produced_decl_render_from_rows), with each
-// target declaring its own signature order as rows (rust_produced_decl_render_rows,
-// c_produced_decl_render_rows). The value became portable because it no longer contains a
-// fn -- the publication wall did not move, and its RED still refuses a fn-carrying value.
-// Both are ~125ms of pure re-derivation per claim (58 and 75 consumer claims on run
-// 33269961629), which is what every emit claim was paying while they sat out.
+// THE TWO RUST TARGET MODELS ARE NOT HERE, AND THE REASON IS NOW A MEASUREMENT RATHER THAN
+// A REFUSAL. Their earlier absence was a portability refusal: the value carried a fn at
+// `.produced_decl_support.render`, so publication refused it (ServeCacheValueNotPortable,
+// kind=OriginBoundNode). That is FIXED — v2.std.compilers.target_model ProducedDeclRenderRows
+// carries the render transform as declared rows, the value reifies totally, and an enrolled
+// run stores it clean (disposition=Stored, notportable=0, byte-budget refusals=0). The
+// portability trigger fired and is retired.
 //
-// THE TWO ROWS ARE ONE-WAY REACHABLE, and that is a declared fact rather than an
-// ordering hazard: rust_target_model reaches rust_target_model_staging through its
-// atom-realization catalog rows, so whichever order the warm runs, the second row's
-// publication finds its entry already present. Both rows stay declared -- a row states
-// THAT the producer is shared, not that this particular warm is what put it there --
-// and the seed reports the already-present disposition rather than refusing it
-// (v1_compiler.v1_interpreter CrossClaimStoreOutcome; run 33295721732 is the receipt
-// for what the older boolean did here).
+// They are out for a DIFFERENT reason, and the evidentiary status of each half is stated
+// exactly. MEASURED: with both rows enrolled, the v2.test.emit rows that touch a rust target
+// model got SLOWER than the same rows on main, while the median across the emit rows improved
+// — the corpus-wide win is real and specific to the OTHER rostered producers. MEASURED:
+// rust_target_model's own recompute, under claim_batch with GUNBC_RECOMPUTE_TRACE=1, is far
+// cheaper per call than the roster comment for it originally assumed. INFERRED, and this
+// roster edit is the experiment that tests it: a serve is not free — the tier reifies the
+// stored portable value into the consuming frame, re-interning every symbol and re-sorting
+// every record's fields, and a TargetModel is a large value (bundle node, lex rules, spelling
+// map, realization catalogs), so a serve that loses to its own recompute would produce exactly
+// this split. If the floor with these rows absent returns those emit rows to their main-side
+// cost, the inference is confirmed; if it does not, the cost is in the renderer and belongs
+// there instead.
+//
+// THE ADMISSION CRITERION THIS DISCOVERED, now binding on every future row: measured
+// per-claim recompute is necessary but NOT sufficient. A row is admitted only when its SERVE
+// cost — reification in the consuming frame, not just the avoided recompute — is below its
+// recompute cost. Cite the instruments, never a transcribed number: claim_batch under
+// GUNBC_RECOMPUTE_TRACE=1 for the recompute side, and the required floor's
+// required_floor_claim_cost.tsv joined against a run with the row absent for the serve side.
+// A producer that is expensive to BUILD and expensive to REIFY is not a sharing candidate;
+// the tier's win comes from values whose reification is cheap relative to their derivation.
+//
+// RE-ENROL TRIGGER for these two, naming the capability and not an artifact: a serve that
+// does not re-intern and re-sort per consuming frame — an interner-stable representation the
+// tier can hand over without walking the whole value. That is a seed change in the
+// v1_compiler.v1_interpreter cross-claim tier, out of scope for the roster.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
-  "v2.extdeps.languages.bash_command_fold.bash_fold_lex",
-  "v2.extdeps.languages.rust.rust_target_model",
-  "v2.extdeps.languages.rust.rust_target_model_staging"
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
 ]
 
 // The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
