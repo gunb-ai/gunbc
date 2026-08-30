@@ -41,6 +41,11 @@ and cross-checked. For the source documents, ask Lotes for **GAP-AZIFA072 revisi
 is `AZIFA072_B_20220208 (LGA4926 Socket)` = socket body `AZIFA072_B_220208(LGA4926 SKT)-1` +
 protective cap `SKT4926 CAP_A_20220107`).
 
+The operator holds the copies Lotes delivered on 2026-08-22; their locators live in one place,
+`extdeps.cpu_attachment.lotes_azifa072` `azifa072_held_copies` (one row for the drawing PDF, one
+for the STEP), and are not repeated here. Access is governed by the holder's sharing setting, not
+by this repository.
+
 ## The land pattern
 
 Extracted from the sheet-3 pad view, whose vector content draws every pad individually.

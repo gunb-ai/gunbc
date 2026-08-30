@@ -9817,6 +9817,19 @@ pub struct MultiEntryIndex {
     /// drain accumulation lane). Each eviction is a typed, located diagnostic — never
     /// a silent widen (§5).
     typed_cache_evictions: Cell<u64>,
+    /// Content keys the cap has evicted from this index — the governor's memory of its own
+    /// evictions, consulted on the next miss so a recompute of previously-evicted work is
+    /// countable as a READMISSION rather than folded into ordinary misses. Carried in the
+    /// stall refusal's observation (`gunbc.memory_stall_refusal`) so an operator reading
+    /// the refusal can see whether the typed cache was implicated in the treadmill.
+    typed_cache_evicted_keys: RefCell<std::collections::HashSet<String>>,
+    /// Count of misses whose key was previously evicted from this index (see above).
+    typed_cache_readmissions: Cell<u64>,
+    /// The open stall-observation window for this index (`gunbc.memory_stall_refusal`):
+    /// the wall instant and counter values the current window started at. Rolls forward on
+    /// every admissible verdict, so an hour of quiet history can never dilute a fresh
+    /// treadmill.
+    memory_stall_window: RefCell<Option<MemoryStallWindowStart>>,
     /// Host-budget-derived typed-cache entry cap, sampled ONCE for this index's
     /// lifetime — a run-start fact, never re-read per insert. Re-deriving the cap
     /// from a live, host-shared signal (`/proc/meminfo MemAvailable`, then the fallback
@@ -11829,6 +11842,10 @@ fn enforce_typed_cache_entry_cap(index: &MultiEntryIndex) {
             break;
         };
         cache.remove(&key);
+        // Remember WHAT was evicted, not just how many: a later miss on this key is a
+        // readmission — the governor re-buying work it already paid for — which is the
+        // eviction/readmission observation the stall refusal carries.
+        index.typed_cache_evicted_keys.borrow_mut().insert(key);
         evicted += 1;
     }
     drop(cache);
@@ -11869,6 +11886,75 @@ fn check_index_module_source_identity(
             mod_name,
             decl_file,
         )
+    }
+}
+
+/// Where the open stall window started: a wall instant and the counter values at that
+/// instant, so the window's observation is a pure delta.
+pub(crate) struct MemoryStallWindowStart {
+    started: std::time::Instant,
+    major_faults: u64,
+    self_user_cpu_ms: u64,
+    cache_evictions: u64,
+    cache_readmissions: u64,
+}
+
+/// The stall governor's per-module-boundary step (`gunbc.memory_stall_refusal`): fold the
+/// counters since the window opened into one observation and act on its verdict — open
+/// window accumulates, an admissible verdict rolls the window forward, a refusal stops the
+/// line with the pressure clause located to the module that was in hand and the budget the
+/// run was admitted under. Inert (`Ok`) where the fault counter is unreadable (Darwin has
+/// no procfs): a check that cannot observe must not refuse, and must not fabricate a zero.
+fn memory_stall_check(index: &MultiEntryIndex, mod_name: &str) -> Result<(), String> {
+    let (Some(now_faults), Some(now_cpu_ms)) = (
+        crate::memory_governor::self_major_faults(),
+        crate::memory_governor::self_user_cpu_ms(),
+    ) else {
+        return Ok(());
+    };
+    let evictions = index.typed_cache_evictions.get();
+    let readmissions = index.typed_cache_readmissions.get();
+    let mut window = index.memory_stall_window.borrow_mut();
+    let Some(start) = window.as_ref() else {
+        *window = Some(MemoryStallWindowStart {
+            started: std::time::Instant::now(),
+            major_faults: now_faults,
+            self_user_cpu_ms: now_cpu_ms,
+            cache_evictions: evictions,
+            cache_readmissions: readmissions,
+        });
+        return Ok(());
+    };
+    let observation = crate::memory_governor::MemoryStallObservation {
+        window_wall_ms: start.started.elapsed().as_millis() as u64,
+        major_faults_in_window: now_faults.saturating_sub(start.major_faults),
+        self_user_cpu_ms_in_window: now_cpu_ms.saturating_sub(start.self_user_cpu_ms),
+        cache_evictions_in_window: evictions.saturating_sub(start.cache_evictions),
+        cache_readmissions_in_window: readmissions.saturating_sub(start.cache_readmissions),
+    };
+    match crate::memory_governor::memory_stall_verdict(observation) {
+        crate::memory_governor::MemoryStallVerdict::StallWindowOpen { .. } => Ok(()),
+        crate::memory_governor::MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. } => {
+            *window = Some(MemoryStallWindowStart {
+                started: std::time::Instant::now(),
+                major_faults: now_faults,
+                self_user_cpu_ms: now_cpu_ms,
+                cache_evictions: evictions,
+                cache_readmissions: readmissions,
+            });
+            Ok(())
+        }
+        refusal @ crate::memory_governor::MemoryStallVerdict::StallRefusedPageThrash { .. } => {
+            let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+            Err(format!(
+                "{} (while typechecking module '{mod_name}'; admitted budget={} bytes, \
+                 source={source})",
+                crate::memory_governor::memory_stall_refusal_pressure_text(&refusal),
+                budget
+                    .map(|b| b.to_string())
+                    .unwrap_or_else(|| "unreadable".into()),
+            ))
+        }
     }
 }
 
@@ -14107,6 +14193,14 @@ fn reconcile_with_typed_cache(
                                 if let Some(hit) = index_get_typed(index, &typed_key)? {
                                     return Ok(hit);
                                 }
+                                // A miss on a key this index already evicted is a READMISSION —
+                                // the governor re-buying paid-for work — counted for the stall
+                                // refusal's observation (`gunbc.memory_stall_refusal`).
+                                if index.typed_cache_evicted_keys.borrow().contains(&typed_key) {
+                                    index
+                                        .typed_cache_readmissions
+                                        .set(index.typed_cache_readmissions.get() + 1);
+                                }
                                 // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
                                 bump_typecheck_compute_count();
                                 if phase_profile::phase_profile_enabled() {
@@ -14234,6 +14328,11 @@ fn reconcile_with_typed_cache(
                 resolve_stage_slot_add(|s| {
                     s.assembly_environment += environment_started.elapsed().as_nanos()
                 });
+                // The stall governor's boundary (`gunbc.memory_stall_refusal`): one windowed
+                // observation per completed module, so a resolve spending its wall refaulting
+                // evicted pages refuses here with a located diagnostic instead of holding for
+                // hours (2026-08-30 default-VM treadmill, memory_stall_observed_receipt_note).
+                memory_stall_check(index, &mod_name)?;
                 progressed = true;
             }
             if !progressed {
@@ -16213,6 +16312,14 @@ pub fn reconcile_identity_population<'a>(
 pub enum CostDebtRosterStanding {
     /// Withheld for cost: the operative debt. This is the only arm that may be counted as debt.
     Withheld,
+    /// Enrolled, still valid debt, and PLANNED ANYWAY because changed-witness selection required
+    /// its correctness verdict on this run (FLOOR-CHANGED-COST-0, operator ruling 2026-08-30).
+    ///
+    /// THIS IS NOT STALE, and separating it from `DeclaredButNotWithheld` is the whole reason the
+    /// arm exists: nothing about the identity's measured expensiveness changed and the roster
+    /// line still describes the tree, so the stale remedy — delete the row — would be wrong
+    /// advice. It is not counted as withheld either, because this run withheld nothing for it.
+    WithholdOverriddenForChangedVerdict,
     /// Declared by the tree, but preparation never offered it — its module is outside the gate
     /// closure or was excluded from discovery. It withholds NOTHING on this run, so it is not
     /// debt; it is kept as the record that the identity was once measured expensive, and it
@@ -16261,6 +16368,12 @@ pub fn partition_cost_debt_roster<'a>(
                 None => CostDebtRosterStanding::Undeclared,
                 Some(RequiredFloorDisposition::DeclinedCostDebt) => {
                     CostDebtRosterStanding::Withheld
+                }
+                // The changed-witness sublane replaced the withhold with its own planned arm, so
+                // the row is overridden rather than stale. `v2.workflow.required_floor`
+                // `cost_debt_roster_standing` is the authority for this mapping.
+                Some(RequiredFloorDisposition::PlannedAsChangedWitness) => {
+                    CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
                 }
                 Some(RequiredFloorDisposition::DeclinedOutsideGateClosure)
                 | Some(RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. }) => {
@@ -36703,6 +36816,61 @@ pub struct RequiredFloorClaim {
     /// calibration evidence and read only by the diagnostic `exceeds_completed_cost_line`; no
     /// admission-path code may consult it.
     pub cost_line_ms: u64,
+    /// WHICH COST POLICY THIS CLAIM RUNS UNDER. Modeled authority:
+    /// `v2.workflow.required_floor` `ChangedWitnessCostPolicy`, derived by
+    /// `changed_witness_cost_policy` from the intersection of changed-witness selection and
+    /// `v2.workflow.floor_cost_debt` enrollment (FLOOR-CHANGED-COST-0, operator ruling
+    /// 2026-08-30). It selects WHICH CLOCK IS ARMED, never what the claim is allowed to cost:
+    /// `cpu_safety_limit_ms` above carries the same 500ms figure under both policies, and under
+    /// the override that figure is measured against and published rather than enforced.
+    pub cost_policy: ChangedWitnessCostPolicy,
+}
+
+/// The cost policy of one executing claim. Modeled authority: `v2.workflow.required_floor`
+/// `ChangedWitnessCostPolicy` — this enum is the seed realization of those arms, not their
+/// origin.
+///
+/// `ChangedCostDebtVerdictOnly` applies to exactly one population: an identity this change
+/// touched AND that `v2.workflow.floor_cost_debt` enrolls. Cost debt answers "should this
+/// witness run on every ordinary floor"; changed selection answers "did the witness this PR
+/// changed reach a semantic verdict". Neither erases the other, so the CPU line is observed and
+/// published while the WALL safety deadline stays armed and stays a red.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangedWitnessCostPolicy {
+    /// The standing policy: the CPU safety deadline is armed and a crossing blocks.
+    Ordinary,
+    /// The join: the CPU line is measured against and published against the debt identity, and
+    /// decides nothing. Every other red — semantic failure, panic, route gap, runtime error,
+    /// unreadable observation, and no verdict before the wall deadline — is unchanged.
+    ChangedCostDebtVerdictOnly,
+}
+
+/// What the run measured for one claim executing under `ChangedCostDebtVerdictOnly`, published
+/// against the DEBT identity. Modeled authority: `v2.workflow.floor_changed_witness`
+/// `ChangedWitnessCostObservation`.
+///
+/// IT IS A RECEIPT AND NOT A REPAYMENT: nothing here edits or deletes the authored roster row.
+/// A single run landing under the line does not establish that a row whose observations ranged
+/// through 505ms has become safely ordinary; the row leaves through the explicit debt-removal
+/// transaction or not at all.
+///
+/// THE MEASUREMENTS ARE NANOSECONDS AND THE LINE IS MILLISECONDS, matching the modeled carrier:
+/// `std.measure` `nanosecond_millisecond_projection_note` makes nanosecond the canonical exact
+/// elapsed carrier and millisecond a policy and presentation scale, and the line IS policy. The
+/// millisecond figures are floored at the printing boundary only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChangedWitnessCostObservation {
+    /// The CPU-clock reading: marginal CPU, with shared-artifact fill already subtracted by
+    /// `run_claim_measured` — the same quantity the CPU deadline would have enforced against.
+    /// Modeled as the `CpuClock` member of the observation's `List<TimedMeasurement>`.
+    pub cpu_clock_nanos: u128,
+    /// The wall-clock reading, for the deadline that remains armed. Modeled as the `WallClock`
+    /// member of the same list.
+    pub wall_clock_nanos: u128,
+    /// The policy line the observation is reported against
+    /// (`required_floor_claim_cpu_safety_limit_ms`), on the CPU clock — the model carries that
+    /// basis beside it as `observed_against_basis` rather than in this field's name.
+    pub cpu_line_ms: u64,
 }
 
 /// The site-projection loop's one decision, per identity, kept instead of discarded into three
@@ -38177,8 +38345,14 @@ pub fn run_regen_round_cost(
     candidate_dir_rel: &str,
     receipt_rel: &str,
     source_roots: &[String],
+    affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
-    required_regen_host::run_regen_round_cost(candidate_dir_rel, receipt_rel, source_roots)
+    required_regen_host::run_regen_round_cost(
+        candidate_dir_rel,
+        receipt_rel,
+        source_roots,
+        affected_scope,
+    )
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`

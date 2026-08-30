@@ -794,7 +794,18 @@ fn floor_cost_debt_censored_chunk_02() -> List<String> {
 // `bootstrap_footprint_anchor` rows are a different shape: 474-505ms CPU on three consecutive CI
 // runs (0829ad8, 154fb1f, f462bc9 claim-cost receipts), no fill billed to them, so the ceiling
 // itself is what decides them, run by run, by which runner slot the job landed on. That is not a
-// verdict about the claim; it is withheld here until the ceiling stops deciding. The
+// verdict about the claim; it is withheld here until the ceiling stops deciding.
+//
+// THE WITHHOLD IS FOR THE ORDINARY FLOOR, AND CHANGED SELECTION OVERRIDES IT FOR THE VERDICT
+// (FLOOR-CHANGED-COST-0, operator ruling 2026-08-30). This roster answers "should this witness
+// run on every ordinary floor?"; when a change TOUCHES one of these identities its author is
+// present and the floor must learn its verdict, so `v2.workflow.required_floor`
+// `changed_witness_cost_policy` runs it under `ChangedCostDebtVerdictOnly` -- the 500ms CPU line
+// observed and published against the debt identity, the wall deadline still armed, every
+// non-verdict still red. THE ROW IS NOT REPAID BY THAT RUN and is not stale while it stands
+// (`CostDebtWithholdOverriddenForChangedVerdict`): one favourable runner slot does not establish
+// that a row observed through 505ms became safely ordinary, and this line leaves only through
+// the explicit debt-removal transaction. The
 // `non_fold_residue_no_unrostered_or_stale` row is the same shape: its whole cost is the
 // `non_fold_residue corpus` scan it exists to check (475ms fill billed to it on the green run,
 // 629ms CPU on srv2 lane 14 once the roster it reads carried its 22 missing rows), so the
