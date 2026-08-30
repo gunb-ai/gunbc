@@ -677,13 +677,10 @@ pub(crate) fn wet_seed_bootstrap_lease_declared(
             ctx.resolve(*variant_name)
         ));
     }
-    let Some(v1_interpreter::Value::Record { fields: rf, .. }) = ctx.field(fields, "value")
-    else {
-        return Err(
-            "wet_seed_bootstrap_lease_declared: Present must carry a \
+    let Some(v1_interpreter::Value::Record { fields: rf, .. }) = ctx.field(fields, "value") else {
+        return Err("wet_seed_bootstrap_lease_declared: Present must carry a \
              BootstrapExecutorSnapshotReceipt record"
-                .to_string(),
-        );
+            .to_string());
     };
     let field_str = |name: &str| -> Result<String, String> {
         match ctx.field(rf, name) {
@@ -7092,22 +7089,17 @@ pub fn run_required_floor(
                     .expect("executor-snapshot standing entails an envelope");
                 let envelope_digest = {
                     use sha2::Digest as _;
-                    let bytes =
-                        std::fs::read(&wet_route_receipt_json_rel_path).map_err(|e| {
-                            format!(
-                                "bootstrap lease: read {}: {e}",
-                                wet_route_receipt_json_rel_path
-                            )
-                        })?;
+                    let bytes = std::fs::read(&wet_route_receipt_json_rel_path).map_err(|e| {
+                        format!(
+                            "bootstrap lease: read {}: {e}",
+                            wet_route_receipt_json_rel_path
+                        )
+                    })?;
                     format!("{:x}", sha2::Sha256::digest(&bytes))
                 };
                 let roster_digest = {
                     use sha2::Digest as _;
-                    let joined = roster_sorted
-                        .iter()
-                        .cloned()
-                        .collect::<Vec<_>>()
-                        .join("\n");
+                    let joined = roster_sorted.iter().cloned().collect::<Vec<_>>().join("\n");
                     format!("{:x}", sha2::Sha256::digest(joined.as_bytes()))
                 };
                 match evaluated_tree_commit_secs {
@@ -7133,8 +7125,9 @@ pub fn run_required_floor(
                 )
             );
             if admitted_under_lease {
-                if let WetSeedBootstrapAdmission::Admitted { not_after_unix_secs } =
-                    &lease_admission
+                if let WetSeedBootstrapAdmission::Admitted {
+                    not_after_unix_secs,
+                } = &lease_admission
                 {
                     eprintln!(
                         "[floor-wet-route] ADMITTED UNDER BOOTSTRAP LEASE — \
