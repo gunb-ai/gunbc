@@ -1,4 +1,4 @@
-module test.claim.regen_round_cost_witness
+module test.claim.self_host_regen_round_cost_witness
 
 import std.types { Bool, String, List, NonEmptyStr }
 import std.measure { CpuClock, WallClock, Nanosecond, nanosecond, nanosecond_count }
