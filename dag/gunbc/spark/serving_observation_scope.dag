@@ -48,15 +48,21 @@ fn spark_serving_observation_scope() -> List<HostIdentity> {
 // dispositions and neither re-derives the predicate.
 //
 // It is a coproduct rather than a Bool because the arms are read for different reasons and a bare
-// Bool would need a comment to say which way round it points. The unobserved arm carries the host
-// so the refusal it becomes can name the subject without a second lookup.
+// Bool would need a comment to say which way round it points. Each arm carries the host so the
+// disposition it becomes can name the subject without a second lookup.
+//
+// THE ENROLLED ARM IS NAMED FOR WHAT THIS PRODUCER KNOWS, WHICH IS ENROLLMENT AND NOTHING ELSE.
+// It was briefly called SparkServingHostEnrolledUnobserved, which folded a second fact into the
+// name: whether a transaction exists is decided later, by a consumer that has one or does not.
+// Once the observer is wired, that name would have said "unobserved" about a host just observed --
+// a nickname for a disposition, minted by something that cannot see it.
 type SparkServingEnrollment
-  = SparkServingHostEnrolledUnobserved { host: HostIdentity }
+  = SparkServingHostEnrolled { host: HostIdentity }
   | SparkServingHostNotEnrolled { host: HostIdentity }
 
 fn spark_serving_enrollment(host: HostIdentity) -> SparkServingEnrollment {
   if host_in(hosts: spark_serving_observation_scope(), host: host) {
-    SparkServingHostEnrolledUnobserved { host: host }
+    SparkServingHostEnrolled { host: host }
   } else {
     SparkServingHostNotEnrolled { host: host }
   }

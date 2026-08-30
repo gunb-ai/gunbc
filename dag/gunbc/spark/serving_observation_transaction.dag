@@ -25,6 +25,76 @@ import extdeps.ssh.session { SshSessionExecResult }
 // transport; every derivation afterwards is a pure read of a captured result. A derivation that
 // wants a fact nobody captured cannot invent a leg for it -- there is no transport in scope -- so it
 // refuses, which is how a missing leg becomes visible instead of becoming an extra round trip.
+// THE CAPTURE CARRIES THE REQUEST, SO THERE IS NO LABEL TO GET WRONG.
+//
+// The first cut had the mint take (leg, argv) as independent arguments, which meant a capture could
+// be MISLABELLED -- run the is-active argv and file it under ProbeLoadState -- and every downstream
+// reader would trust it, because the label was the only claim about what ran. The review found the
+// counterexample inside this repository's own witness, which is the sharpest possible demonstration
+// that the pair was authorable: the fixture supplied ["systemctl","is-active"] for every leg it
+// named, including ProbeLoadState, and the transaction admitted it.
+//
+// So there is no pair any more. A capture carries a REQUEST, the leg name is projected from it, and
+// the argv is projected from it by the module that owns each argv authority. One value, two
+// projections, nothing for a caller to make disagree.
+//
+// ModelBlobDigestsRequest carries its digest population because it is the one request whose command
+// depends on an earlier capture. Carrying the digests IN the request is what keeps that dependency
+// visible: a blob-digest request with no digests is a different request from one with three, and the
+// prerequisite arm below refuses rather than executing a bare sha256sum over nothing.
+type SparkServingProbeRequest
+  = LoadStateRequest
+  | IsActiveRequest
+  | VersionRequest
+  | TagsRequest
+  | NvidiaDriverRequest
+  | RuntimeReceiptRequest
+  | ActiveEnterRequest
+  | DefaultTargetEnterRequest
+  | UptimeRequest
+  | GrantsRequest
+  | PasswdRequest
+  | AuthorizedKeysRequest
+  | LingerRequest
+  | ModelManifestRequest
+  | ModelBlobsListingRequest
+  | ModelManifestDigestRequest
+  | ModelBlobDigestsRequest { digests: List<NonEmptyStr> }
+  | UserUnitReadRequest
+  | UserUnitIsEnabledRequest
+  | RuntimeRootRequest
+  | RuntimeExecutableRequest
+  | RuntimeExecutableBitRequest
+  | RuntimeRootListingRequest
+
+fn spark_serving_probe_request_leg(request: SparkServingProbeRequest) -> SparkServingProbeLeg {
+  match request {
+    LoadStateRequest => ProbeLoadState
+    IsActiveRequest => ProbeIsActive
+    VersionRequest => ProbeVersion
+    TagsRequest => ProbeTags
+    NvidiaDriverRequest => ProbeNvidiaDriver
+    RuntimeReceiptRequest => ProbeRuntimeReceipt
+    ActiveEnterRequest => ProbeActiveEnter
+    DefaultTargetEnterRequest => ProbeDefaultTargetEnter
+    UptimeRequest => ProbeUptime
+    GrantsRequest => ProbeGrants
+    PasswdRequest => ProbePasswd
+    AuthorizedKeysRequest => ProbeAuthorizedKeys
+    LingerRequest => ProbeLinger
+    ModelManifestRequest => ProbeModelManifest
+    ModelBlobsListingRequest => ProbeModelBlobsListing
+    ModelManifestDigestRequest => ProbeModelManifestDigest
+    ModelBlobDigestsRequest { digests: _ } => ProbeModelBlobDigests
+    UserUnitReadRequest => ProbeUserUnitRead
+    UserUnitIsEnabledRequest => ProbeUserUnitIsEnabled
+    RuntimeRootRequest => ProbeRuntimeRoot
+    RuntimeExecutableRequest => ProbeRuntimeExecutable
+    RuntimeExecutableBitRequest => ProbeRuntimeExecutableBit
+    RuntimeRootListingRequest => ProbeRuntimeRootListing
+  }
+}
+
 type SparkServingProbeLeg
   = ProbeLoadState
   | ProbeIsActive
@@ -88,10 +158,40 @@ fn spark_serving_probe_leg_eq(a: SparkServingProbeLeg, b: SparkServingProbeLeg) 
 // -- the blob-digest leg is literally one of them, its argv derived from an earlier capture -- would
 // be indistinguishable receipts. The argv is what makes the capture a receipt of a specific act
 // rather than an opaque string that arrived from somewhere.
+// A TRANSPORT THAT REFUSED IS NOT A COMMAND THAT EXITED 127.
+//
+// The first cut manufactured an SshSessionExecResult with exit_code 127 when the transport refused
+// the leg, so "we never reached the host" and "the host ran the command and it exited 127" became
+// the same value. That is the fabricated-plausible-output failure in miniature: a reader asking
+// "did it run?" got yes, and a reader asking "what happened?" got a number the far side never
+// produced. Three arms, because there are three genuinely different situations, and the third --
+// prerequisite refused -- is where the blob-digest request goes when the manifest named no digests
+// to verify. Executing a bare sha256sum over an empty list would have "verified" every blob it was
+// asked about by being asked about none.
+type SparkServingProbeOutcome
+  = SparkServingProbeExecuted { result: SshSessionExecResult }
+  | SparkServingProbeTransportRefused { cause: NonEmptyStr }
+  | SparkServingProbePrerequisiteRefused { cause: NonEmptyStr }
+
 type SparkServingProbeLegCapture sole_constructor {
-  leg: SparkServingProbeLeg
-  argv: List<String>
-  result: SshSessionExecResult
+  request: SparkServingProbeRequest
+  outcome: SparkServingProbeOutcome
+}
+
+// The manifest body the blob-digest request is derived from. An unexecuted capture yields the empty
+// body, which flows into an EMPTY digest population and therefore into the prerequisite refusal --
+// so a manifest leg that never ran cannot produce a blob-digest command that appears to have
+// verified everything.
+fn spark_serving_capture_stdout(c: SparkServingProbeLegCapture) -> String {
+  match c.outcome {
+    SparkServingProbeExecuted { result: r } => r.stdout
+    SparkServingProbeTransportRefused { cause: _ } => ""
+    SparkServingProbePrerequisiteRefused { cause: _ } => ""
+  }
+}
+
+fn spark_serving_capture_leg(c: SparkServingProbeLegCapture) -> SparkServingProbeLeg {
+  spark_serving_probe_request_leg(request: c.request)
 }
 
 // THE TRANSACTION IS sole_constructor SO A DERIVED OBSERVATION CANNOT BE ASSEMBLED FROM NOWHERE.
@@ -133,16 +233,28 @@ fn spark_serving_transaction_capture(
   txn: SparkServingObservationTransaction,
   leg: SparkServingProbeLeg,
 ) -> SparkServingProbeLegCapture? {
-  filter(txn.captures, c => spark_serving_probe_leg_eq(a: c.leg, b: leg)) |> first
+  filter(txn.captures, c => spark_serving_probe_leg_eq(a: spark_serving_capture_leg(c: c), b: leg)) |> first
 }
 
+// A DERIVATION READS THE EXECUTED ARM OR IT READS NOTHING.
+//
+// Absent here means one of three things -- nobody captured this leg, the transport refused it, or a
+// prerequisite refused it -- and all three are "this fact was not measured", which is exactly what
+// every downstream unobserved arm is built to receive. What none of them is, is a result: a refusal
+// cannot arrive dressed as an exit code, because the only way out of this function is through the
+// executed arm.
 fn spark_serving_transaction_result(
   txn: SparkServingObservationTransaction,
   leg: SparkServingProbeLeg,
 ) -> SshSessionExecResult? {
   match spark_serving_transaction_capture(txn: txn, leg: leg) {
     Absent => none
-    Present { value: c } => Present { value: c.result }
+    Present { value: c } =>
+      match c.outcome {
+        SparkServingProbeExecuted { result: r } => Present { value: r }
+        SparkServingProbeTransportRefused { cause: _ } => none
+        SparkServingProbePrerequisiteRefused { cause: _ } => none
+      }
   }
 }
 
@@ -156,8 +268,41 @@ fn spark_serving_transaction_duplicated_legs(
   txn: SparkServingObservationTransaction,
 ) -> List<NonEmptyStr> {
   filter(
-    map(txn.captures, c => spark_serving_probe_leg_key(leg: c.leg)),
-    k => length(filter(txn.captures, c2 => spark_serving_probe_leg_key(leg: c2.leg) == k)) > 1,
+    map(txn.captures, c => spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c))),
+    k => length(filter(txn.captures, c2 => spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c2)) == k)) > 1,
+  )
+}
+
+// THE REQUIRED POPULATION IS CLOSED AND KNOWN, SO A MISSING CAPTURE IS A REFUSAL.
+//
+// The first admission checked duplicates only, so a transaction with NO captures was admitted and
+// the witness cheerfully used the empty one as a positive fixture. That directly contradicts the
+// invariant the carrier advertises: "exactly one capture per leg" was enforced in one direction
+// only. An absent capture must not be left for whichever downstream reader happens to want it
+// first, because that reader will read Absent and honestly report unobserved -- and the whole host
+// will look measured-and-empty rather than never-acquired.
+fn spark_serving_required_probe_legs() -> List<SparkServingProbeLeg> {
+  [
+    ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
+    ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
+    ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
+    ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
+    ProbeUserUnitRead, ProbeUserUnitIsEnabled,
+    ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
+  ]
+}
+
+fn spark_serving_transaction_missing_legs(
+  txn: SparkServingObservationTransaction,
+) -> List<NonEmptyStr> {
+  map(
+    filter(
+      spark_serving_required_probe_legs(),
+      leg => length(
+        filter(txn.captures, c => spark_serving_probe_leg_eq(a: spark_serving_capture_leg(c: c), b: leg)),
+      ) == 0,
+    ),
+    leg => spark_serving_probe_leg_key(leg: leg),
   )
 }
 
@@ -166,11 +311,10 @@ type SparkServingTransactionAdmission
   | SparkServingTransactionRefused { cause: NonEmptyStr }
 
 fn spark_serving_probe_leg_capture_of(
-  leg: SparkServingProbeLeg,
-  argv: List<String>,
-  result: SshSessionExecResult,
+  request: SparkServingProbeRequest,
+  outcome: SparkServingProbeOutcome,
 ) -> SparkServingProbeLegCapture {
-  SparkServingProbeLegCapture { leg: leg, argv: argv, result: result }
+  SparkServingProbeLegCapture { request: request, outcome: outcome }
 }
 
 // THE MINT IS THE ADMISSION, SO A DUPLICATED TRANSACTION IS NOT A VALUE THAT EXISTS.
@@ -199,7 +343,19 @@ fn spark_serving_observation_transaction_of(
 fn spark_serving_admit_transaction(
   txn: SparkServingObservationTransaction,
 ) -> SparkServingTransactionAdmission {
-  if length(spark_serving_transaction_duplicated_legs(txn: txn)) > 0 {
+  if length(spark_serving_transaction_missing_legs(txn: txn)) > 0 {
+    SparkServingTransactionRefused {
+      cause: join([
+        "observation transaction for host ",
+        txn.host as String,
+        " attempt ",
+        txn.attempt as String,
+        " is missing required capture(s), so the facts they carry would read as unobserved and the",
+        " host would look measured-and-empty rather than never-acquired: ",
+        join(map(spark_serving_transaction_missing_legs(txn: txn), k => k as String), ", "),
+      ], "") as NonEmptyStr,
+    }
+  } else if length(spark_serving_transaction_duplicated_legs(txn: txn)) > 0 {
     SparkServingTransactionRefused {
       cause: join([
         "observation transaction for host ",

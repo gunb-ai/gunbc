@@ -137,6 +137,18 @@ import gunbc.spark.serving_observation_transaction {
   ProbeModelManifest, ProbeModelBlobsListing, ProbeModelManifestDigest, ProbeModelBlobDigests,
   ProbeUserUnitRead, ProbeUserUnitIsEnabled,
   ProbeRuntimeRoot, ProbeRuntimeExecutable, ProbeRuntimeExecutableBit, ProbeRuntimeRootListing,
+  SparkServingProbeRequest,
+  SparkServingProbeOutcome,
+  SparkServingProbeExecuted,
+  SparkServingProbeTransportRefused,
+  SparkServingProbePrerequisiteRefused,
+  spark_serving_capture_stdout,
+  LoadStateRequest, IsActiveRequest, VersionRequest, TagsRequest, NvidiaDriverRequest,
+  RuntimeReceiptRequest, ActiveEnterRequest, DefaultTargetEnterRequest, UptimeRequest,
+  GrantsRequest, PasswdRequest, AuthorizedKeysRequest, LingerRequest,
+  ModelManifestRequest, ModelBlobsListingRequest, ModelManifestDigestRequest, ModelBlobDigestsRequest,
+  UserUnitReadRequest, UserUnitIsEnabledRequest,
+  RuntimeRootRequest, RuntimeExecutableRequest, RuntimeExecutableBitRequest, RuntimeRootListingRequest,
 }
 import gunbc.spark.managed_access_bootstrap { SparkGrantOutcome, GrantEnumerated, GrantAbsent, GrantProbeRefused, spark_managed_executor_login, spark_managed_principal_home }
 import gunbc.spark.managed_grant_reconcile { spark_managed_grant_report }
@@ -713,7 +725,7 @@ fn spark_serving_acquire_observation_transaction(
   attempt: NonEmptyStr,
 ) -> SparkServingTransactionAdmission {
   let manifest = spark_serving_captured_leg(
-    context: context, host: host, leg: ProbeModelManifest, manifest_body: "",
+    context: context, host: host, request: ModelManifestRequest,
   )
   spark_serving_observation_transaction_of(
     host: host,
@@ -721,33 +733,37 @@ fn spark_serving_acquire_observation_transaction(
     locus: fleet_locus_label(context: context) as NonEmptyStr,
     captures: concat(
       [
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeLoadState, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeIsActive, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeVersion, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeTags, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeNvidiaDriver, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeReceipt, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeActiveEnter, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeDefaultTargetEnter, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeUptime, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeGrants, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbePasswd, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeAuthorizedKeys, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeLinger, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, request: LoadStateRequest),
+        spark_serving_captured_leg(context: context, host: host, request: IsActiveRequest),
+        spark_serving_captured_leg(context: context, host: host, request: VersionRequest),
+        spark_serving_captured_leg(context: context, host: host, request: TagsRequest),
+        spark_serving_captured_leg(context: context, host: host, request: NvidiaDriverRequest),
+        spark_serving_captured_leg(context: context, host: host, request: RuntimeReceiptRequest),
+        spark_serving_captured_leg(context: context, host: host, request: ActiveEnterRequest),
+        spark_serving_captured_leg(context: context, host: host, request: DefaultTargetEnterRequest),
+        spark_serving_captured_leg(context: context, host: host, request: UptimeRequest),
+        spark_serving_captured_leg(context: context, host: host, request: GrantsRequest),
+        spark_serving_captured_leg(context: context, host: host, request: PasswdRequest),
+        spark_serving_captured_leg(context: context, host: host, request: AuthorizedKeysRequest),
+        spark_serving_captured_leg(context: context, host: host, request: LingerRequest),
         manifest,
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeModelBlobsListing, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeModelManifestDigest, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeUserUnitRead, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeUserUnitIsEnabled, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeRoot, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeExecutable, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeExecutableBit, manifest_body: ""),
-        spark_serving_captured_leg(context: context, host: host, leg: ProbeRuntimeRootListing, manifest_body: ""),
+        spark_serving_captured_leg(context: context, host: host, request: ModelBlobsListingRequest),
+        spark_serving_captured_leg(context: context, host: host, request: ModelManifestDigestRequest),
+        spark_serving_captured_leg(context: context, host: host, request: UserUnitReadRequest),
+        spark_serving_captured_leg(context: context, host: host, request: UserUnitIsEnabledRequest),
+        spark_serving_captured_leg(context: context, host: host, request: RuntimeRootRequest),
+        spark_serving_captured_leg(context: context, host: host, request: RuntimeExecutableRequest),
+        spark_serving_captured_leg(context: context, host: host, request: RuntimeExecutableBitRequest),
+        spark_serving_captured_leg(context: context, host: host, request: RuntimeRootListingRequest),
       ],
       [
         spark_serving_captured_leg(
-          context: context, host: host, leg: ProbeModelBlobDigests,
-          manifest_body: manifest.result.stdout,
+          context: context, host: host,
+          request: ModelBlobDigestsRequest {
+            digests: spark_serving_manifest_required_digests(
+              manifest_body: spark_serving_capture_stdout(c: manifest),
+            ),
+          },
         ),
       ],
     ),
@@ -765,58 +781,68 @@ fn spark_serving_acquire_observation_transaction(
 // The blob-digest leg is the single leg whose argv depends on an earlier capture, so the mapping
 // takes the manifest body it needs. That is a parameter of the ARGV, not a second naming scheme:
 // every other leg ignores it.
-fn spark_serving_leg_argv(leg: SparkServingProbeLeg, manifest_body: String) -> List<String> {
-  match leg {
-    ProbeLoadState => spark_serving_load_state_probe_words()
-    ProbeIsActive => spark_serving_active_probe_words()
-    ProbeVersion => spark_serving_version_probe_words
-    ProbeTags => spark_serving_tags_probe_words
-    ProbeNvidiaDriver => spark_serving_nvidia_driver_probe_words
-    ProbeRuntimeReceipt => spark_serving_runtime_materialization_receipt_probe_argv()
-    ProbeActiveEnter => spark_serving_active_enter_probe_argv()
-    ProbeDefaultTargetEnter => spark_serving_default_target_enter_probe_argv()
-    ProbeUptime => spark_serving_uptime_probe_argv()
-    ProbeGrants => spark_serving_grant_probe_words
-    ProbePasswd => spark_serving_account_probe_words()
-    ProbeAuthorizedKeys => spark_serving_authorized_keys_probe_words()
-    ProbeLinger => spark_serving_linger_probe_words()
-    ProbeModelManifest => spark_serving_model_manifest_probe_argv()
-    ProbeModelBlobsListing => spark_serving_model_blobs_listing_argv()
-    ProbeModelManifestDigest => spark_serving_model_manifest_digest_argv()
-    ProbeModelBlobDigests =>
-      spark_serving_model_blob_digest_argv(
-        digest_hexes: spark_serving_manifest_required_digests(manifest_body: manifest_body),
-      )
-    ProbeUserUnitRead => spark_serving_user_unit_read_argv()
-    ProbeUserUnitIsEnabled => spark_serving_user_unit_is_enabled_argv()
-    ProbeRuntimeRoot => spark_serving_runtime_root_probe_argv()
-    ProbeRuntimeExecutable => spark_serving_runtime_executable_probe_argv()
-    ProbeRuntimeExecutableBit => spark_serving_runtime_executable_bit_probe_argv()
-    ProbeRuntimeRootListing => spark_serving_runtime_root_listing_argv()
+fn spark_serving_probe_request_argv(request: SparkServingProbeRequest) -> List<String> {
+  match request {
+    LoadStateRequest => spark_serving_load_state_probe_words()
+    IsActiveRequest => spark_serving_active_probe_words()
+    VersionRequest => spark_serving_version_probe_words
+    TagsRequest => spark_serving_tags_probe_words
+    NvidiaDriverRequest => spark_serving_nvidia_driver_probe_words
+    RuntimeReceiptRequest => spark_serving_runtime_materialization_receipt_probe_argv()
+    ActiveEnterRequest => spark_serving_active_enter_probe_argv()
+    DefaultTargetEnterRequest => spark_serving_default_target_enter_probe_argv()
+    UptimeRequest => spark_serving_uptime_probe_argv()
+    GrantsRequest => spark_serving_grant_probe_words
+    PasswdRequest => spark_serving_account_probe_words()
+    AuthorizedKeysRequest => spark_serving_authorized_keys_probe_words()
+    LingerRequest => spark_serving_linger_probe_words()
+    ModelManifestRequest => spark_serving_model_manifest_probe_argv()
+    ModelBlobsListingRequest => spark_serving_model_blobs_listing_argv()
+    ModelManifestDigestRequest => spark_serving_model_manifest_digest_argv()
+    ModelBlobDigestsRequest { digests: hexes } =>
+      spark_serving_model_blob_digest_argv(digest_hexes: hexes)
+    UserUnitReadRequest => spark_serving_user_unit_read_argv()
+    UserUnitIsEnabledRequest => spark_serving_user_unit_is_enabled_argv()
+    RuntimeRootRequest => spark_serving_runtime_root_probe_argv()
+    RuntimeExecutableRequest => spark_serving_runtime_executable_probe_argv()
+    RuntimeExecutableBitRequest => spark_serving_runtime_executable_bit_probe_argv()
+    RuntimeRootListingRequest => spark_serving_runtime_root_listing_argv()
   }
 }
 
+// A REFUSED TRANSPORT IS RECORDED AS A REFUSAL, NOT AS A COMMAND THAT EXITED 127.
+//
+// The prerequisite arm is the blob-digest request with an empty digest population. The old builder
+// produced a bare ["sha256sum"] there and executed it, which is not a request to verify zero named
+// blob files -- it is a request to verify nothing, whose success would have been read as "every
+// required blob verified" by a store classifier that asked how many failed.
 fn spark_serving_captured_leg(
   context: FleetSshExecutionContext,
   host: HostIdentity,
-  leg: SparkServingProbeLeg,
-  manifest_body: String,
+  request: SparkServingProbeRequest,
 ) -> SparkServingProbeLegCapture {
-  let argv = spark_serving_leg_argv(leg: leg, manifest_body: manifest_body)
   spark_serving_probe_leg_capture_of(
-    leg: leg,
-    argv: argv,
-    result: match run_typed_argv_transport(
-      argv: argv,
-      transport: fleet_locus_transport(context: context, host: host),
-    ) {
-      TypedArgvExecConverged { result: r } => r
-      TypedArgvExecRefused { reason: why } =>
-        SshSessionExecResult {
-          exit_code: 127,
-          success: false,
-          stdout: "",
-          stderr: join(["transport refused the leg, it was never attempted: ", why], ""),
+    request: request,
+    outcome: match request {
+      ModelBlobDigestsRequest { digests: [] } =>
+        SparkServingProbePrerequisiteRefused {
+          cause: join([
+            "the model manifest named no blob digests to verify, so there is no blob-digest command",
+            " to run: executing a bare digest over an empty list would report every required blob",
+            " verified by requiring none",
+          ], "") as NonEmptyStr,
+        }
+      _ =>
+        match run_typed_argv_transport(
+          argv: spark_serving_probe_request_argv(request: request),
+          transport: fleet_locus_transport(context: context, host: host),
+        ) {
+          TypedArgvExecConverged { result: r } => SparkServingProbeExecuted { result: r }
+          TypedArgvExecRefused { reason: why } =>
+            SparkServingProbeTransportRefused {
+              cause: join(["transport refused the leg, it was never attempted: ", why], "")
+                as NonEmptyStr,
+            }
         }
     },
   )
