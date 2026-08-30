@@ -9,6 +9,7 @@ import gunbc.memory_provisioning { EvidenceSupported, EvidenceUnsupported }
 import gunbc.memory_per_vcpu_convention {
   MemoryPerVcpuConvention,
   Unattributed,
+  Attributed,
   arm64_three_gb_per_vcpu_convention,
   x64_four_gb_per_vcpu_convention,
   surveyed_conventions,
@@ -18,7 +19,6 @@ import gunbc.memory_per_vcpu_convention {
   conforming_count,
   non_conforming_count,
   convention_is_universal,
-  origin_is_attributed,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -47,9 +47,15 @@ test fn w_x64_four_gb_is_supported_but_not_universal() -> Bool {
 // Attributed arm with no authority is unwritable, and an Unattributed arm with an empty search
 // list would be a shrug rather than a standing obligation.
 test fn w_the_origin_is_unattributed_and_the_search_is_recorded() -> Bool {
-  !origin_is_attributed(c: arm64_three_gb_per_vcpu_convention)
-    && !origin_is_attributed(c: x64_four_gb_per_vcpu_convention)
-    && list_length(items: origin_search_receipt()) >= 3
+  let arm_open = match arm64_three_gb_per_vcpu_convention.origin {
+    Unattributed { searched: s } => list_length(items: s) >= 3
+    Attributed { authority: _ } => false
+  }
+  let x64_open = match x64_four_gb_per_vcpu_convention.origin {
+    Unattributed { searched: s } => list_length(items: s) >= 3
+    Attributed { authority: _ } => false
+  }
+  arm_open && x64_open && list_length(items: origin_search_receipt()) >= 3
 }
 
 // EVERY CONSULTED SET SPANS THE SURVEY: the arm convention consults every surveyed arm64 surface,

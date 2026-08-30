@@ -69,13 +69,6 @@ fn convention_is_universal(c: MemoryPerVcpuConvention) -> Bool {
   non_conforming_count(c: c) == 0
 }
 
-fn origin_is_attributed(c: MemoryPerVcpuConvention) -> Bool {
-  match c.origin {
-    Attributed { authority: _ } => true
-    Unattributed { searched: _ } => false
-  }
-}
-
 fn arm_benchmarks() -> List<MarketShapeBenchmark> {
   [ubicloud_arm_benchmark, blacksmith_arm_benchmark, github_arm_benchmark, depot_arm_benchmark, warpbuild_arm_benchmark]
 }
