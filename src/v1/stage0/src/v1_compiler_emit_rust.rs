@@ -26631,6 +26631,14 @@ pub struct RcGroupedArmPlan {
     pub pat_str: String,
     pub ref_field: String,
     pub inner_pat_str: String,
+    pub plain_bindings: Rc<Vec<Rc<RcPlainFieldBinding>>>,
+    pub plain_refutable: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RcPlainFieldBinding {
+    pub field: String,
+    pub ident: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26652,7 +26660,160 @@ pub fn ungroupable_arm_plan(variant: String, pat_str: String) -> Rc<RcGroupedArm
         pat_str: pat_str.clone(),
         ref_field: "".to_string(),
         inner_pat_str: "".to_string(),
+        plain_bindings: Rc::new(vec![]),
+        plain_refutable: false,
     })
+}
+
+pub fn rc_arm_plain_bindings(
+    pattern: Rc<MatchPattern>,
+    ref_field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<Rc<RcPlainFieldBinding>>> {
+    match (*pattern.clone()).clone() {
+        MatchPattern::VariantPattern {
+            field_bindings: fbs,
+            ..
+        } => Rc::new({
+            let mut __result = Vec::new();
+            for fb in fbs.iter().cloned() {
+                __result.extend(
+                    (*{
+                        let fb_name = crate::v1_std_core::field_binding_name_at(
+                            fb.clone(),
+                            source_indices.clone(),
+                        );
+                        if (fb_name.clone() == ref_field.clone()) {
+                            Rc::new(vec![])
+                        } else {
+                            match (*crate::v1_std_core::field_binding_pattern(fb.clone())).clone() {
+                                MatchPattern::Bind { declaration: d, .. } => {
+                                    Rc::new(vec![Rc::new(RcPlainFieldBinding {
+                                        field: fb_name.clone(),
+                                        ident: d.name.clone(),
+                                    })])
+                                }
+                                _ => Rc::new(vec![]),
+                            }
+                        }
+                    })
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+        _ => Rc::new(vec![]),
+    }
+}
+
+pub fn rc_arm_has_refutable_plain_field(
+    pattern: Rc<MatchPattern>,
+    ref_field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match (*pattern.clone()).clone() {
+        MatchPattern::VariantPattern {
+            field_bindings: fbs,
+            ..
+        } => {
+            let mut __found = false;
+            for fb in fbs.iter().cloned() {
+                if ((crate::v1_std_core::field_binding_name_at(fb.clone(), source_indices.clone())
+                    != ref_field.clone())
+                    && !match_pattern_is_irrefutable(crate::v1_std_core::field_binding_pattern(
+                        fb.clone(),
+                    )))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+        _ => false,
+    }
+}
+
+pub fn rc_plan_bindings_within(member: Rc<RcGroupedArmPlan>, rep: Rc<RcGroupedArmPlan>) -> bool {
+    ((member.pat_str.clone() == rep.pat_str.clone())
+        || ((!member.plain_refutable.clone() && !rep.plain_refutable.clone()) && {
+            let mut __all = true;
+            for b in member.plain_bindings.clone().iter().cloned() {
+                if !({
+                    let mut __found = false;
+                    for r in rep.plain_bindings.clone().iter().cloned() {
+                        if ((r.field.clone() == b.field.clone())
+                            && (r.ident.clone() == b.ident.clone()))
+                        {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }) {
+                    __all = false;
+                    break;
+                }
+            }
+            __all
+        }))
+}
+
+pub fn rc_group_representative(
+    entries: Rc<Vec<Rc<RcGroupedArmEntry>>>,
+    variant: String,
+) -> Option<Rc<RcGroupedArmPlan>> {
+    {
+        let members = rc_group_members(entries.clone(), variant.clone());
+        match members.clone().first().cloned() {
+            Some(head) => {
+                let all_groupable = {
+                    let mut __all = true;
+                    for e in members.iter().cloned() {
+                        if !(e.plan.clone().groupable.clone()
+                            && (e.plan.clone().ref_field.clone()
+                                == head.plan.clone().ref_field.clone()))
+                        {
+                            __all = false;
+                            break;
+                        }
+                    }
+                    __all
+                };
+                if !all_groupable.clone() {
+                    std::option::Option::None
+                } else {
+                    match Rc::new({
+                        let mut __result = Vec::new();
+                        for cand in members.clone().iter().cloned() {
+                            if {
+                                let mut __all = true;
+                                for e in members.iter().cloned() {
+                                    if !(rc_plan_bindings_within(e.plan.clone(), cand.plan.clone()))
+                                    {
+                                        __all = false;
+                                        break;
+                                    }
+                                }
+                                __all
+                            } {
+                                __result.push(cand);
+                            }
+                        }
+                        __result
+                    })
+                    .first()
+                    .cloned()
+                    {
+                        Some(rep) => Some(rep.plan.clone()),
+                        std::option::Option::None => std::option::Option::None,
+                    }
+                }
+            }
+            std::option::Option::None => std::option::Option::None,
+        }
+    }
 }
 
 pub fn variant_pattern_field_binding_named(
@@ -26794,6 +26955,16 @@ pub fn rc_grouped_arm_plan(
                                         pat_str: pat_str.clone(),
                                         ref_field: field_name.clone(),
                                         inner_pat_str: inner_pat_str.clone(),
+                                        plain_bindings: rc_arm_plain_bindings(
+                                            arm_pat.clone(),
+                                            field_name.clone(),
+                                            si.clone(),
+                                        ),
+                                        plain_refutable: rc_arm_has_refutable_plain_field(
+                                            arm_pat.clone(),
+                                            field_name.clone(),
+                                            si.clone(),
+                                        ),
                                     })
                                 }
                             }
@@ -26822,28 +26993,6 @@ pub fn rc_group_members(
         }
         __result
     })
-}
-
-pub fn rc_group_is_whole_coverage(
-    entries: Rc<Vec<Rc<RcGroupedArmEntry>>>,
-    plan: Rc<RcGroupedArmPlan>,
-) -> bool {
-    {
-        let members = rc_group_members(entries.clone(), plan.variant.clone());
-        {
-            let mut __all = true;
-            for e in members.iter().cloned() {
-                if !((e.plan.clone().groupable.clone()
-                    && (e.plan.clone().ref_field.clone() == plan.ref_field.clone()))
-                    && (e.plan.clone().pat_str.clone() == plan.pat_str.clone()))
-                {
-                    __all = false;
-                    break;
-                }
-            }
-            __all
-        }
-    }
 }
 
 pub fn emit_rc_grouped_match_arm(
@@ -26967,46 +27116,50 @@ pub fn emit_typed_match_arm_strs(
                         out: Rc::new(vec![]),
                     }),
                     |acc: Rc<RcGroupedArmAcc>, e: Rc<RcGroupedArmEntry>| {
-                        if (e.plan.clone().groupable.clone()
-                            && rc_group_is_whole_coverage(entries.clone(), e.plan.clone()))
-                        {
-                            if {
-                                let mut __found = false;
-                                for s in acc.seen.clone().iter().cloned() {
-                                    if (s.clone() == e.plan.clone().variant.clone()) {
-                                        __found = true;
-                                        break;
-                                    }
-                                }
-                                __found
-                            } {
-                                acc.clone()
-                            } else {
-                                Rc::new(RcGroupedArmAcc {
-                                    seen: v1_rt::rc_list_push(
-                                        acc.seen.clone(),
-                                        e.plan.clone().variant.clone(),
-                                    ),
-                                    out: v1_rt::rc_list_push(
-                                        acc.out.clone(),
-                                        emit_rc_grouped_match_arm(
-                                            rc_group_members(
-                                                entries.clone(),
-                                                e.plan.clone().variant.clone(),
-                                            ),
-                                            e.plan.clone(),
-                                            registry.clone(),
-                                            scope.clone(),
-                                            depth.clone(),
-                                            shared_types.clone(),
-                                            emit_info.clone(),
-                                            match_result_type.clone(),
-                                        ),
-                                    ),
-                                })
-                            }
+                        let representative = if e.plan.clone().groupable.clone() {
+                            rc_group_representative(entries.clone(), e.plan.clone().variant.clone())
                         } else {
-                            Rc::new(RcGroupedArmAcc {
+                            std::option::Option::None
+                        };
+                        match representative.clone() {
+                            Some(rep) => {
+                                if {
+                                    let mut __found = false;
+                                    for s in acc.seen.clone().iter().cloned() {
+                                        if (s.clone() == e.plan.clone().variant.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    acc.clone()
+                                } else {
+                                    Rc::new(RcGroupedArmAcc {
+                                        seen: v1_rt::rc_list_push(
+                                            acc.seen.clone(),
+                                            e.plan.clone().variant.clone(),
+                                        ),
+                                        out: v1_rt::rc_list_push(
+                                            acc.out.clone(),
+                                            emit_rc_grouped_match_arm(
+                                                rc_group_members(
+                                                    entries.clone(),
+                                                    e.plan.clone().variant.clone(),
+                                                ),
+                                                rep.clone(),
+                                                registry.clone(),
+                                                scope.clone(),
+                                                depth.clone(),
+                                                shared_types.clone(),
+                                                emit_info.clone(),
+                                                match_result_type.clone(),
+                                            ),
+                                        ),
+                                    })
+                                }
+                            }
+                            std::option::Option::None => Rc::new(RcGroupedArmAcc {
                                 seen: acc.seen.clone(),
                                 out: v1_rt::rc_list_push(
                                     acc.out.clone(),
@@ -27022,7 +27175,7 @@ pub fn emit_typed_match_arm_strs(
                                         false,
                                     ),
                                 ),
-                            })
+                            }),
                         }
                     },
                 );
