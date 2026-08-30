@@ -228,6 +228,69 @@ fn gpt_oss_120b_blob_closure_count() -> Int {
   length(gpt_oss_120b_blob_closure)
 }
 
+// THE MANIFEST AND ITS CLOSURE ARE ONE FACT, AND WERE TWO DECLARATIONS.
+//
+// Added on review of #9749 (codex/gpt-5.6-sol, REQUEST_CHANGES), whose finding was correct and
+// whose scope was larger than the diff that provoked it: `gpt_oss_120b_resolution` and
+// `gpt_oss_120b_blob_closure` were independent values with no edge between them, so pairing the
+// digest with a DIFFERENT five-entry closure -- or rewiring the resolution's reference or evidence
+// -- left every claim green. The 20b pair beside it had the same shape, which is why this repair is
+// made at the root for both rather than only for the row under review.
+//
+// WHY THE EDGE MATTERS RATHER THAN BEING TIDIER. A closure is not a list that happens to sit near a
+// digest; it is the set of blobs THAT MANIFEST names, and the install plan's whole safety property
+// is that the bytes fetched are the bytes the resolved manifest called for. Two free-standing
+// declarations can drift into disagreeing while every consumer keeps reading whichever one it
+// imported -- DESIGN §3's fork, in the input to a materializer. One constructor carrying both makes
+// the association the thing consumers hold, so a claim about a manifest is unavoidably a claim
+// about its closure too.
+type OllamaResolvedManifest {
+  resolution: TrackedReferenceResolution<OllamaModelRef, OllamaManifestReading>
+  closure: List<OllamaBlobDigest>
+}
+
+fn ollama_resolved_manifest_reference(m: OllamaResolvedManifest) -> OllamaModelRef {
+  m.resolution.reference
+}
+
+fn ollama_resolved_manifest_identity(m: OllamaResolvedManifest) -> String {
+  serialize_content_hash(hash: m.resolution.resolved_identity) as String
+}
+
+fn ollama_resolved_manifest_closure(m: OllamaResolvedManifest) -> List<OllamaBlobDigest> {
+  m.closure
+}
+
+fn ollama_resolved_manifest_evidence(m: OllamaResolvedManifest) -> List<OllamaManifestReading> {
+  tracked_reference_resolution_evidence(resolution: m.resolution)
+}
+
+// Membership by identity, which is what DESIGN §5 asks of a completeness check and what a count
+// cannot give: a closure of the right length holding the wrong bytes is exactly the state the
+// review found unprotected.
+fn ollama_resolved_manifest_names_blob(m: OllamaResolvedManifest, hex: NonEmptyStr) -> Bool {
+  any(ollama_resolved_manifest_closure(m: m), b => b.hex as String == hex as String)
+}
+
+// Every reading behind this manifest agrees with the identity the resolution settled on. An
+// evidence row that disagreed would mean the three authorities did not in fact concur, which is the
+// premise the whole three-reading discipline rests on and was nowhere checked.
+fn ollama_resolved_manifest_evidence_is_unanimous(m: OllamaResolvedManifest) -> Bool {
+  let settled = ollama_resolved_manifest_identity(m: m)
+  !any(ollama_resolved_manifest_evidence(m: m), r =>
+    !(serialize_content_hash(hash: as_content_hash_cryptographic(digest: r.observed_identity)) as String == settled))
+}
+
+data gpt_oss_20b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
+  resolution: gpt_oss_20b_resolution(),
+  closure: gpt_oss_20b_blob_closure,
+}
+
+data gpt_oss_120b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
+  resolution: gpt_oss_120b_resolution(),
+  closure: gpt_oss_120b_blob_closure,
+}
+
 fn ollama_manifest_reading_wire(reading: OllamaManifestReading) -> String {
   join([reading.authority as String, "@", reading.observed_at, "=", reading.observed_identity.hex as String], "")
 }
