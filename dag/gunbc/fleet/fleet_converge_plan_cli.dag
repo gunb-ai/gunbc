@@ -340,6 +340,18 @@ func fleet_converge_apply_wet() -> ProcessExit
                 observed_slots: observed_slots,
                 observed_fabric_cells: observed_fabric_cells,
               }
+              if host_in(hosts: spark_serving_observation_scope(), host: observed_host as HostIdentity) {
+                exit_failure(
+                  reason: join([
+                    "fleet_converge_apply: SparkAxisUnobserved — ",
+                    observed_host as String,
+                    " is an enrolled Spark and apply does not run the serving observer, so it",
+                    " re-observes an EMPTY spark population. An artifact minted against that same",
+                    " emptiness matches the baseline and is admitted, which is why refusing on the",
+                    " plan side alone left this path silent. Refusing here until the observer is wired.",
+                  ], ""),
+                )
+              } else {
               match fleet_converge_apply_artifact_admits(
                 planned_host_text: planned_host as String,
                 planned_scope_wire: read_scope.content,
@@ -392,6 +404,7 @@ func fleet_converge_apply_wet() -> ProcessExit
                   ],
                   transport: LocalExec,
                 )
+              }
               }
               }
             }
