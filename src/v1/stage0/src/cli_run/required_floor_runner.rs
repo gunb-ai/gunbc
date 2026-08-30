@@ -2451,14 +2451,18 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 // rostered producer reachable from an earlier rostered producer is stored
                 // by that traversal, and its own warm correctly finds the work done.
                 if !outcome.is_servable() {
-                    let detail = match v1_interpreter::cross_claim_take_last_unportable() {
-                        Some((_, refusal)) => format!(
+                    // The located detail comes from the OUTCOME, so a cause can only ever be
+                    // paired with its own evidence. Reading the retained slot here instead
+                    // would decorate a byte-budget or entry-cap refusal with a stale path
+                    // left by an earlier producer's unportable value (review 57554).
+                    let detail = match outcome.not_portable_detail() {
+                        Some(refusal) => format!(
                             "{} path={} kind={}",
                             outcome.cause(),
                             if refusal.path_into_value.is_empty() {
-                                "<root>".to_string()
+                                "<root>"
                             } else {
-                                refusal.path_into_value
+                                refusal.path_into_value.as_str()
                             },
                             refusal.encountered_kind
                         ),

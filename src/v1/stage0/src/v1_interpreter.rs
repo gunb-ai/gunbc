@@ -1720,6 +1720,9 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
+    // The retained refusal is tier state too: leaving it across a reset is how a stale path
+    // outlives the store that produced it (review 57554).
+    CROSS_CLAIM_LAST_UNPORTABLE.with(|c| *c.borrow_mut() = None);
 }
 
 /// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
@@ -1946,7 +1949,7 @@ fn try_cross_claim_pure_memo(
 /// as `stored=false` made the floor refuse a correctly populated tier and print a
 /// three-way disjunction ("duplicate key, entry cap, or byte budget") in place of the
 /// cause — the `diagnostic_name_mechanism_silent` failure mode, named in DESIGN.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrossClaimStoreOutcome {
     /// This call published the entry.
     Stored,
@@ -1959,8 +1962,15 @@ pub enum CrossClaimStoreOutcome {
     RefusedArgsNotHashable,
     /// The argument row failed TOTAL reification.
     RefusedArgsNotPortable,
-    /// The VALUE failed TOTAL reification; the located refusal is retained.
-    RefusedValueNotPortable,
+    /// The VALUE failed TOTAL reification. THE LOCATED REFUSAL IS CARRIED ON THE VARIANT,
+    /// not fetched from a side channel: review 57554 found that reading the retained
+    /// `CROSS_CLAIM_LAST_UNPORTABLE` slot for EVERY non-servable outcome would decorate a
+    /// byte-budget or entry-cap refusal with a stale path and kind left by some earlier
+    /// producer, since only this arm ever writes that slot and no reset clears it. Naming
+    /// one cause and then attaching another cause's evidence is the fabrication this type
+    /// exists to remove. Binding the detail to the arm that owns it makes the mismatch
+    /// UNCONSTRUCTIBLE rather than guarded (DESIGN section 5: construction over validation).
+    RefusedValueNotPortable(ServeCacheValueNotPortable),
     /// The key population is at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`.
     RefusedEntryCap,
     /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
@@ -1970,22 +1980,31 @@ pub enum CrossClaimStoreOutcome {
 impl CrossClaimStoreOutcome {
     /// Whether the value is retained and servable to later claims after this attempt —
     /// true for a fresh store AND for one that found its entry already present.
-    pub fn is_servable(self) -> bool {
+    pub fn is_servable(&self) -> bool {
         matches!(
             self,
             CrossClaimStoreOutcome::Stored | CrossClaimStoreOutcome::AlreadyPresent
         )
     }
 
+    /// The located detail for the ONE arm that has any, so a caller cannot pair a cause with
+    /// another cause's evidence.
+    pub fn not_portable_detail(&self) -> Option<&ServeCacheValueNotPortable> {
+        match self {
+            CrossClaimStoreOutcome::RefusedValueNotPortable(refusal) => Some(refusal),
+            _ => None,
+        }
+    }
+
     /// The cause, for a refusal's located line-stop message.
-    pub fn cause(self) -> &'static str {
+    pub fn cause(&self) -> &'static str {
         match self {
             CrossClaimStoreOutcome::Stored => "Stored",
             CrossClaimStoreOutcome::AlreadyPresent => "AlreadyPresent",
             CrossClaimStoreOutcome::NotAdmitted => "NotAdmitted",
             CrossClaimStoreOutcome::RefusedArgsNotHashable => "ArgumentRowNotHashable",
             CrossClaimStoreOutcome::RefusedArgsNotPortable => "ArgumentRowNotPortable",
-            CrossClaimStoreOutcome::RefusedValueNotPortable => "ServeCacheValueNotPortable",
+            CrossClaimStoreOutcome::RefusedValueNotPortable(_) => "ServeCacheValueNotPortable",
             CrossClaimStoreOutcome::RefusedEntryCap => "EntryCapReached",
             CrossClaimStoreOutcome::RefusedByteBudget => "ByteBudgetExceeded",
         }
@@ -2017,9 +2036,9 @@ fn store_cross_claim_pure_memo(
             // typed and located, and is retained so the warm path can stop the line with the
             // exact path instead of a bare "not stored".
             CROSS_CLAIM_LAST_UNPORTABLE
-                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal)));
+                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal.clone())));
             CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().unportable_refusals += 1);
-            return CrossClaimStoreOutcome::RefusedValueNotPortable;
+            return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
         }
     };
     let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
@@ -2369,6 +2388,71 @@ mod cross_claim_memo_tests {
             refused.cause(),
             second.cause(),
             "the two declines must not report the same cause"
+        );
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (review 57554): A CAUSE MUST NEVER CARRY ANOTHER CAUSE'S EVIDENCE. The located
+    // path/kind lives on the RefusedValueNotPortable arm, so a later byte-budget or
+    // entry-cap refusal has no detail to borrow. The defect this controls was real and
+    // subtle: `CROSS_CLAIM_LAST_UNPORTABLE` is written ONLY by the unportable arm and was
+    // cleared by nothing, so a runner that read it for every non-servable outcome would
+    // print a stale `path=.produced_decl_support.render kind=OriginBoundNode` beside a
+    // ByteBudgetExceeded cause — naming one cause and proving another.
+    //
+    // The ORDER is the discriminator: the unportable refusal happens FIRST and leaves the
+    // slot populated, then the budget refusal must still report no detail.
+    #[test]
+    fn a_budget_refusal_after_an_unportable_one_carries_no_borrowed_detail() {
+        use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+
+        // A fn-carrying record refuses reification and populates the retained slot.
+        let unportable = Value::Record {
+            type_name: ctx.sym("TargetModelish"),
+            fields: Rc::new(vec![(
+                ctx.sym("transform"),
+                Value::Fn {
+                    node: fn_node.clone(),
+                },
+            )]),
+        };
+        let first_args = [(None, list_value(vec![Value::Int(1)]))];
+        let first = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &first_args,
+            &unportable,
+            None,
+        );
+        assert_eq!(first.cause(), "ServeCacheValueNotPortable");
+        let carried = first
+            .not_portable_detail()
+            .expect("the unportable arm carries its own located refusal");
+        assert_eq!(carried.path_into_value, ".transform");
+        assert_eq!(carried.encountered_kind, "OriginBoundNode");
+
+        // Now a DIFFERENT refusal, with the slot still populated by the one above.
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(Some(512)));
+        let big_args = [(None, list_value(vec![Value::Int(2)]))];
+        let big = Value::Str(RcStr::from("x".repeat(4096)));
+        let second =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args, &big, None);
+        assert_eq!(second, CrossClaimStoreOutcome::RefusedByteBudget);
+        assert_eq!(second.cause(), "ByteBudgetExceeded");
+        assert!(
+            second.not_portable_detail().is_none(),
+            "a byte-budget refusal must not borrow the unportable arm's path and kind"
         );
         super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
         super::clear_cross_claim_pure_memos();
