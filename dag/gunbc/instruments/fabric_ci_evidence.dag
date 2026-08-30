@@ -141,7 +141,7 @@ type FabricCiCalibrationProjection
 fn fabric_ci_calibration_projection_wire(value: FabricCiCalibrationProjection) -> String {
   match value {
     FabricCiCalibrationAlpha { payload: payload } => join(["alpha|", payload as String], "")
-    FabricCiCalibrationBeta { payload: payload } => join(["beta|", payload as String], "")
+    FabricCiCalibrationBeta { payload: payload } => join(["beta|", payload as String], "") // FCI_EVIDENCE_PROJECTION_BETA_ARM
   }
 }
 
@@ -211,4 +211,58 @@ func fabric_ci_calibration_assert_beta_transport(wire: String) -> ProcessExit {
       if (decoded as String) == fabric_ci_calibration_projection_wire(value: FabricCiCalibrationBeta { payload: "different-value" }) { ExitSuccess }
       else { exit_failure(reason: "FCI-EVIDENCE-0 status did not distinguish transported values") }
   }
+}
+
+type FabricCiCalibrationStep
+  = FabricCiCalibrationExpectStatus { function: NonEmptyStr, status: Int }
+  | FabricCiCalibrationTransportAssert { producer: NonEmptyStr, coordinate: NonEmptyStr, assertion: NonEmptyStr }
+  | FabricCiCalibrationTransportCrossRed { producer: NonEmptyStr, coordinate: NonEmptyStr, wrong_assertion: NonEmptyStr }
+  | FabricCiCalibrationDiagnosticNotChannel { function: NonEmptyStr, coordinate: NonEmptyStr }
+  | FabricCiCalibrationAlteredByteRed { producer: NonEmptyStr, coordinate: NonEmptyStr, assertion: NonEmptyStr }
+  | FabricCiCalibrationAssertionRed { function: NonEmptyStr }
+  | FabricCiCalibrationWriteFailureRed { function: NonEmptyStr, path: NonEmptyStr }
+  | FabricCiCalibrationIgnoredWriteRed { function: NonEmptyStr, coordinate: NonEmptyStr }
+  | FabricCiCalibrationDeleteProjectionArmRed { selector: NonEmptyStr }
+  | FabricCiCalibrationFinalAssertion { function: NonEmptyStr }
+
+fn fabric_ci_calibration_steps() -> List<FabricCiCalibrationStep> {
+  [
+    FabricCiCalibrationExpectStatus { function: "fabric_ci_calibration_assertion_success", status: 0 },
+    FabricCiCalibrationExpectStatus { function: "fabric_ci_calibration_bool_must_refuse", status: 2 },
+    FabricCiCalibrationExpectStatus { function: "fabric_ci_calibration_raw_coproduct_must_not_cross", status: 2 },
+    FabricCiCalibrationTransportAssert { producer: "fabric_ci_calibration_transport_alpha", coordinate: "alpha", assertion: "fabric_ci_calibration_assert_transport" },
+    FabricCiCalibrationTransportAssert { producer: "fabric_ci_calibration_transport_beta", coordinate: "beta", assertion: "fabric_ci_calibration_assert_beta_transport" },
+    FabricCiCalibrationTransportCrossRed { producer: "fabric_ci_calibration_transport_beta", coordinate: "beta-cross", wrong_assertion: "fabric_ci_calibration_assert_transport" },
+    FabricCiCalibrationDiagnosticNotChannel { function: "fabric_ci_calibration_diagnostic_forgery", coordinate: "diagnostic-only" },
+    FabricCiCalibrationAlteredByteRed { producer: "fabric_ci_calibration_transport_alpha", coordinate: "alpha-alter", assertion: "fabric_ci_calibration_assert_transport" },
+    FabricCiCalibrationAssertionRed { function: "fabric_ci_calibration_collapsed_projection_must_red" },
+    FabricCiCalibrationWriteFailureRed { function: "fabric_ci_calibration_transport_alpha", path: "/proc/fci-evidence-write-refusal" },
+    FabricCiCalibrationIgnoredWriteRed { function: "fabric_ci_calibration_transport_ignores_write_failure", coordinate: "ignored" },
+    FabricCiCalibrationDeleteProjectionArmRed { selector: join(["FCI_EVIDENCE_PROJECTION_", "BETA_ARM"], "") as NonEmptyStr },
+    FabricCiCalibrationFinalAssertion { function: "fabric_ci_calibration_assertion_success" },
+  ]
+}
+
+// Total, default-free projection: the host carrier sequences only rows authored by this coproduct.
+fn fabric_ci_calibration_step_wire(step: FabricCiCalibrationStep) -> String {
+  match step {
+    FabricCiCalibrationExpectStatus { function, status } => join(["expect-status|", function as String, "|", to_string(status)], "")
+    FabricCiCalibrationTransportAssert { producer, coordinate, assertion } => join(["transport-assert|", producer as String, "|", coordinate as String, "|", assertion as String], "")
+    FabricCiCalibrationTransportCrossRed { producer, coordinate, wrong_assertion } => join(["transport-cross-red|", producer as String, "|", coordinate as String, "|", wrong_assertion as String], "")
+    FabricCiCalibrationDiagnosticNotChannel { function, coordinate } => join(["diagnostic-not-channel|", function as String, "|", coordinate as String], "")
+    FabricCiCalibrationAlteredByteRed { producer, coordinate, assertion } => join(["altered-byte-red|", producer as String, "|", coordinate as String, "|", assertion as String], "")
+    FabricCiCalibrationAssertionRed { function } => join(["assertion-red|", function as String], "")
+    FabricCiCalibrationWriteFailureRed { function, path } => join(["write-failure-red|", function as String, "|", path as String], "")
+    FabricCiCalibrationIgnoredWriteRed { function, coordinate } => join(["ignored-write-red|", function as String, "|", coordinate as String], "")
+    FabricCiCalibrationDeleteProjectionArmRed { selector } => join(["delete-projection-arm-red|", selector as String], "")
+    FabricCiCalibrationFinalAssertion { function } => join(["final-assertion|", function as String], "")
+  }
+}
+
+fn fabric_ci_calibration_plan_wire() -> String {
+  concat(join(map(fabric_ci_calibration_steps(), step => fabric_ci_calibration_step_wire(step: step)), "\n"), "\n")
+}
+
+func fabric_ci_calibration_write_plan(path: String) -> ProcessExit {
+  fabric_ci_write_wire(path: path, wire: fabric_ci_calibration_plan_wire())
 }
