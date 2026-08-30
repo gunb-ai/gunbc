@@ -18639,7 +18639,7 @@ pub fn emit_variant_pattern(
                                 fb_pat.clone(),
                                 v1_rt::rc_list_push(path_prefix.clone(), rust_name.clone()),
                                 shared_types.clone(),
-                                scrut_type.clone(),
+                                "".to_string(),
                                 source_indices.clone(),
                                 emit_info.clone(),
                             );

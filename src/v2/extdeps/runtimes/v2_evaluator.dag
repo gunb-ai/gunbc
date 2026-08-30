@@ -6,6 +6,7 @@ import v2.std.collection {
   List,
   Map,
   Present,
+  empty_map,
   list_at_optional,
   map_insert
 }
@@ -89,7 +90,6 @@ import v2.std.runtime {
   runtime_reject_match_arm,
   runtime_value_resolved_type
 }
-import v2.std.optional { Optional, optional_absent }
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
   core: ModelCore
@@ -159,14 +159,8 @@ fn v2_eval_runtime_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Optional<RuntimeValue> {
-  optional_absent()
-}
-
-fn v2_eval_empty_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
-  PartialFunction {
-    lookup: v2_eval_binding_lookup_miss
-  }
+fn v2_eval_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  empty_map()
 }
 
 fn v2_eval_empty_environment() -> EvaluationEnvironment {

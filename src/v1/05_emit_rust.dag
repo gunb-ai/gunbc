@@ -101,6 +101,7 @@ import v1.compiler.trait_derive_emit {
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
+  v1_map_key_head_names_in_type_expr,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
@@ -1482,6 +1483,33 @@ The v2 corpus authors qualified names in type position only rarely today, which 
 // The env travels: an alias right-hand side that is an Arrow renders its return through
 // render_rust_type, and the zero-param-alias verdict there is asked of emit_info.fn_type_env. An
 // empty env answered ClosedAliasBindingAbsent for every alias and the arm could never fire.
+// THE ALIAS RHS IS A DECLARATION POSITION, AND A CONTAINER THERE LOWERS EXACTLY AS IT DOES IN A
+// FIELD. render_rust_decl_type asks node_is_keyed_collection / node_is_collection and renders the
+// host template (`HashMap<K, V>`, `Vec<T>`); this branch rendered the authored base instead, so
+// `type Map<key, value> = FinitelySupportedFunction<key, value>` became the algebra STRUCT and
+// `type X = Map<A, B>` became `Rc<crate::std_types::Map<..>>` -- a second storage representation
+// for one carrier, met by rustc wherever an X flowed into a HashMap parameter (E0308
+// `expected Rc<Rc<..>>, found Rc<HashMap<_, _>>`; the derive rows on any struct holding an X).
+// One template, consulted from the same predicate the field renderer uses.
+fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String, arg_list: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if node_is_keyed_collection(n: n, source_indices: source_indices) {
+    match arg_list |> first {
+      Present { value: k } => match arg_list |> skip(1) |> first {
+        Present { value: v } => emit_map_type(key_type: k, val_type: v, target: Rust)
+        Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+      }
+      Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+    }
+  } else if node_is_collection(n: n, source_indices: source_indices) && (arg_list |> count) == 1 {
+    match arg_list |> first {
+      Present { value: inner } => emit_container(name: leaf, inner: inner, target: Rust)
+      Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+    }
+  } else {
+    concat(base, "<", arg_list |> join(separator: ", "), ">")
+  }
+}
+
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_where_refinement_type(ty: n) {
     match n.children |> first {
@@ -1543,14 +1571,15 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
             if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
           AliasDeclArityHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let args = n.children |> map(arg =>
+    let arg_list = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
         render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
-    ) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
+    )
+    let args = arg_list |> join(separator: ", ")
+    let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
     if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
@@ -1561,14 +1590,15 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         }
       ClosedAliasHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let args = n.children |> map(arg =>
+    let arg_list = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
         render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
-    ) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
+    )
+    let args = arg_list |> join(separator: ", ")
+    let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
     if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
@@ -7181,15 +7211,40 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
 // oracle for "equality changed nothing that did not need changing".
 fn v1_fn_bounds_by_param(
   clone_param_names: List<String>,
-  eq_param_names: List<String>
+  eq_param_names: List<String>,
+  map_key_param_names: List<String>
 ) -> Map<String, List<String>> {
   let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
-  eq_param_names |> fold(init: with_clone, f: (m, n) =>
+  let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
       Absent => map_insert(m, n, ["PartialEq"])
     }
   )
+  map_key_param_names |> fold(init: with_eq, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, rust_map_key_bound_traits()))
+      Absent => map_insert(m, n, rust_map_key_bound_traits())
+    }
+  )
+}
+
+// A GENERIC IN KEY POSITION OF A KEYED COLLECTION CARRIES THE HOST KEY BOUNDS. The Rust row for
+// FinitelySupportedFunction / PartialFunction is `HashMap<K, V>`, whose every bridge
+// (v1_rt::lookup, rc_map_insert, rc_map_merge) declares `K: Eq + Hash`; a fn generic over the key
+// that emitted only `K: Clone` refused at each bridge call (E0277 on map_insert / map_lookup /
+// map_get in v2_std_collection, three sites, one class). The bound is read from the SIGNATURE --
+// parameters and return type -- through the same keyed-map walker the struct derive path uses
+// (v1_map_key_head_names_in_type_expr), so a key generic is decided by the declared carrier, not
+// by inspecting the body for a bridge call.
+fn rust_map_key_bound_traits() -> List<String> {
+  ["std::cmp::Eq", "std::hash::Hash"]
+}
+
+fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let from_params = value_params |> flat_map(p => v1_map_key_head_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
+  let from_ret = v1_map_key_head_names_in_type_expr(type_expr: ret, source_indices: source_indices)
+  unique_strings(items: concat(from_params, from_ret) |> filter(n => generic_param_names |> any(g => g == n)))
 }
 
 // Node-consuming extraction for the equality bound, kept here rather than in
@@ -7596,11 +7651,18 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     base: self_eq_param_names,
     extra: call_forwarding_eq_param_names
   )
+  let map_key_param_names = v1_fn_signature_map_key_param_names(
+    value_params: value_params,
+    ret: inferred,
+    generic_param_names: generic_param_names,
+    source_indices: si
+  )
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
-    eq_param_names: eq_param_names
+    eq_param_names: eq_param_names,
+    map_key_param_names: map_key_param_names
   )
-  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0
   let type_params_str = if needs_bound {
     v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {
