@@ -67,8 +67,33 @@ fn ok(out: String) -> SparkServingProbeOutcome {
   }
 }
 
+// THE ONE ADMITTED FIXTURE ROUTE INTO EACH SEALED MINT.
+//
+// Both mints are sealed with admit_callers to the real producer plus exactly one function here. That
+// is what makes the annotations beside them true rather than aspirational: the previous version of
+// this file imported the factories directly and built whatever it liked, which is precisely how the
+// review established that the "only acquisition can mint this" claim was false. Every fixture below
+// goes through these two, so the seal is exercised by the witness rather than bypassed by it.
+fn hermetic_capture_fixture(
+  request: SparkServingProbeRequest,
+  outcome: SparkServingProbeOutcome,
+) -> SparkServingProbeLegCapture {
+  spark_serving_probe_leg_capture_of(request: request, outcome: outcome)
+}
+
+fn hermetic_transaction_fixture(
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingTransactionAdmission {
+  spark_serving_observation_transaction_of(
+    host: subject_host,
+    attempt: "witness-attempt" as NonEmptyStr,
+    locus: "witness-locus" as NonEmptyStr,
+    captures: captures,
+  )
+}
+
 fn capture(request: SparkServingProbeRequest, out: String) -> SparkServingProbeLegCapture {
-  spark_serving_probe_leg_capture_of(request: request, outcome: ok(out: out))
+  hermetic_capture_fixture(request: request, outcome: ok(out: out))
 }
 
 // THE COMPLETE POPULATION, BECAUSE A TRANSACTION MISSING ONE OF THEM IS NOT A TRANSACTION.
@@ -94,12 +119,7 @@ fn complete_captures() -> List<SparkServingProbeLegCapture> {
 }
 
 fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission {
-  spark_serving_observation_transaction_of(
-    host: subject_host,
-    attempt: "witness-attempt" as NonEmptyStr,
-    locus: "witness-locus" as NonEmptyStr,
-    captures: captures,
-  )
+  hermetic_transaction_fixture(captures: captures)
 }
 
 fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservationTransaction? {
@@ -191,11 +211,11 @@ test fn a_leg_captured_twice_refuses_the_transaction() -> Bool {
 // what happened got a number the far side never produced. The refusal arms read as no result at
 // all, which is what every unobserved arm downstream is built to receive.
 test fn a_transport_refusal_is_not_a_remote_exit_code() -> Bool {
-  let refused = spark_serving_probe_leg_capture_of(
+  let refused = hermetic_capture_fixture(
     request: IsActiveRequest,
     outcome: SparkServingProbeTransportRefused { cause: "no route" as NonEmptyStr },
   )
-  let exited_127 = spark_serving_probe_leg_capture_of(
+  let exited_127 = hermetic_capture_fixture(
     request: IsActiveRequest,
     outcome: SparkServingProbeExecuted {
       result: SshSessionExecResult { exit_code: 127, success: false, stdout: "", stderr: "no such" },
@@ -232,7 +252,7 @@ fn swap_is_active(with: SparkServingProbeLegCapture) -> List<SparkServingProbeLe
 // A prerequisite refusal is its own arm: the blob-digest leg with no digests to verify never ran,
 // and it is not the same fact as a digest command that ran and failed.
 test fn a_prerequisite_refusal_reads_as_no_result() -> Bool {
-  let blocked = spark_serving_probe_leg_capture_of(
+  let blocked = hermetic_capture_fixture(
     request: ModelBlobDigestsRequest { digests: [] },
     outcome: SparkServingProbePrerequisiteRefused { cause: "manifest named none" as NonEmptyStr },
   )
