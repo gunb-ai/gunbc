@@ -1,4 +1,4 @@
-module test.claim.semantic_conformance_witness
+module test.claim.self_host_semantic_conformance_witness
 
 // Imported from the definer rather than left as bare references: a module this new is in nobody
 // else's closure, so bare references would not bind.

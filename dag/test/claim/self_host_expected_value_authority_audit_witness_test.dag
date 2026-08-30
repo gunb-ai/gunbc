@@ -1,4 +1,4 @@
-module test.claim.expected_value_authority_audit_witness
+module test.claim.self_host_expected_value_authority_audit_witness
 
 import std.types { String, NonEmptyStr, Bool, Int, List, CommitSha, list_length }
 import std.decl_ref { DeclarationRef, decl_ref }
