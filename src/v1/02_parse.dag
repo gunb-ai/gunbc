@@ -8,7 +8,7 @@ import v1.std.core {
   make_param_node, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span,
-  ExprData, NoExprData,
+  ExprData, NoExprData, CallableTargetUndetermined,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
@@ -2489,7 +2489,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
         let min = mint_parsed_optional_int_property(ctx: r2.ctx, name: "min", value: r2.min_val, span: zero_span)
         let max = mint_parsed_optional_int_property(ctx: min.ctx, name: "max", value: r2.max_val, span: zero_span)
-        parsed_predicate_result(tokens: r3.tokens, ctx: max.ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "range", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprRecordLit { parent_enum: none }, children: concat(min.properties, max.properties), inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(tokens: r3.tokens, ctx: max.ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "range", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: concat(min.properties, max.properties), inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       _ =>
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: token_stream_first(stream: tokens))) } }
@@ -5720,7 +5720,7 @@ fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: Stri
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: name_span))
+  parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span, name_span: name_span))
 }
 
 fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsResult {
@@ -5825,7 +5825,7 @@ fn parse_paren_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: r.tokens)
 
   if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
-    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
+    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: [], inferred: none, span: span))
   } else {
     let lambda_r = try_lambda_params(tokens: tokens, ctx: ctx)
     if lambda_r.is_lambda {
@@ -5992,7 +5992,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 
   let tok = token_stream_first(stream: tokens)
   if tok_is_rbrace(tok: tok) {
-    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
+    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: [], inferred: none, span: span))
   } else {
     let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
     match sh {
@@ -6016,7 +6016,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
             let tokens = skip_newlines(tokens: r.tokens)
             let r2 = expect(tokens: tokens, expected: ExpectRBrace)
             if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span))
           } else {
             let r = parse_expr(tokens: tokens, ctx: ctx)
             if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -6035,14 +6035,14 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           let tokens = skip_newlines(tokens: r.tokens)
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span))
         } else if tok_is_lit_str(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
           let r = parse_field_init_list(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           let tokens = skip_newlines(tokens: r.tokens)
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span))
         } else {
           let r = parse_stmts(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }

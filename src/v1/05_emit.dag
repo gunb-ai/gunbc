@@ -206,7 +206,7 @@ fn emit_simple_expr(expr: Node, target: RenderTarget, source_indices: Map<String
           let el_strs = expr.children |> map(e => emit_simple_expr(expr: e, target: target, source_indices: source_indices))
           concat("[", el_strs |> join(separator: ", "), "]")
       }
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       match target {
         Go => emit_error_expr(message: "record literal in simple expr not yet supported for Go", target: target)
         _ =>
@@ -442,7 +442,7 @@ fn emit_data_value_json(value: Node, source_indices: Map<String, NewlineIndex>) 
         FragmentsAccumulated { pieces: ps } => Emitted { json: concat("[", ps |> join(separator: ", "), "]") }
       }
     }
-    ExprRecordLit { parent_enum: _ } => {
+    ExprRecordLit { parent_enum: _, target: _ } => {
       let accum = value.children |> fold(init: FragmentsAccumulated { pieces: [] }, f: (acc, fld) =>
         accumulate_json_field(
           acc: acc,
@@ -1269,7 +1269,7 @@ fn classify_expr(texpr: Node) -> ExprCategory {
     ExprFieldAccess { summary: _ } => ExprCatCompound
     ExprCall { call_semantics: _, descent_evidence: _ } => ExprCatCompound
     ExprMethodCall { method_semantics: _ } => ExprCatCompound
-    ExprRecordLit { parent_enum: _ } => ExprCatCompound
+    ExprRecordLit { parent_enum: _, target: _ } => ExprCatCompound
     ExprListLit => ExprCatCompound
     ExprBinOp { op: _, algebra_field: _ } => ExprCatCompound
     ExprUnaryOp { op: _ } => ExprCatCompound
@@ -2492,7 +2492,7 @@ fn emit_shared_expr(
       emit_if(texpr)
     ExprLet =>
       emit_let(texpr)
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       emit_record_lit(texpr)
     ExprBinOp { op: _, algebra_field: _ } =>
       emit_bin_op(texpr)

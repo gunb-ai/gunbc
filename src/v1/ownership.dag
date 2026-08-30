@@ -369,7 +369,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       match bk {
-        Present { value: FunctionValueBinding } =>
+        Present { value: FunctionValueBinding { target: _ } } =>
           let n = expr_var_name_at(texpr: texpr, source_indices: si)
           set_insert(empty_set(), n)
         _ => empty_set()
@@ -526,7 +526,7 @@ fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si:
       let body = lambda_body(texpr: lambda_node)
       let terminal = fold_terminal_expr(body: body)
       match terminal.expr_data {
-        ExprRecordLit { parent_enum: _ } => authored_name_at(source_indices: si, node: terminal) == acc_type_name
+        ExprRecordLit { parent_enum: _, target: _ } => authored_name_at(source_indices: si, node: terminal) == acc_type_name
         _ => false
       }
     _ => false
@@ -609,4 +609,3 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
     fold_acc_unwrap: fold_proofs
   }
 }
-

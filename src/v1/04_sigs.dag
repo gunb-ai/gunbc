@@ -1,5 +1,7 @@
 module v1.compiler.infer_sigs
 
+import std.decl_ref { decl_ref }
+
 import v1.std.core {
   Node,
   ExprData, ExprCall, expr_call_func_at,
@@ -209,7 +211,7 @@ fn parent_closure_callable_candidates(env: ResolvedFuncEnv, name: String) -> Lis
     match map_get(p.local, name) {
       Present { value: sig } =>
         concat(acc, [CallableCandidate {
-          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: name } },
+          identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: p.name, decl_name: name, declaration: decl_ref(module_path: p.name, decl_name: name) } },
           sig: sig
         }])
       Absent => acc
@@ -296,7 +298,7 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
 fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
   match map_get(env.local, name) {
     Present { value: sig } =>
-      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: env.name, decl_name: name } }
+      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: env.name, decl_name: name, declaration: decl_ref(module_path: env.name, decl_name: name) } }
     Absent =>
       if name_resolution_policy_is_namespace_only() {
         lookup_resolved_sig_unique_across_parents(env: env, name: name)
@@ -319,7 +321,7 @@ fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
           Present { value: found } =>
             FuncSigResolved {
               sig: found.sig,
-              declared: DeclaredCallableIdentity { owner_module_path: found.owner_module_path, decl_name: name }
+              declared: DeclaredCallableIdentity { owner_module_path: found.owner_module_path, decl_name: name, declaration: decl_ref(module_path: found.owner_module_path, decl_name: name) }
             }
           Absent => FuncSigUnresolved
         }
