@@ -35,6 +35,7 @@ import gunbc.machine_intake_phase {
   intake_phase_rank,
   arrival_phases_all,
   provisioning_phases_all,
+  placement_phases_all,
 }
 import gunbc.machine_intake_receipt {
   AgentReceiptAbsent,
@@ -212,6 +213,31 @@ fn full_ledger(subject: QualificationSubject) -> List<IntakeReceiptEnvelope> {
 
 fn ledger_without(subject: QualificationSubject, omitted: IntakePhase) -> List<IntakeReceiptEnvelope> {
   fold(fleet_admission_required_phases, init: [], f: (acc, p) => if p == omitted { acc } else { concat(acc, [satisfied_receipt(phase: p, subject: subject, previous: none)]) })
+}
+
+// POSITIVE WITNESS (ruling 4, LedgerPhaseUnranked ruling): every phase the
+// three per-transaction rosters name has exactly one rank, and the ranks are
+// distinct. The validator's Unranked arm stays as fail-closed coverage for a
+// phase variant added without being placed in the required ordering.
+test fn every_current_phase_has_exactly_one_rank() -> Bool {
+  let all = concat(arrival_phases_all, concat(provisioning_phases_all, placement_phases_all))
+  let ranked = fold(
+    all,
+    init: 0,
+    f: (acc, p) => match intake_phase_rank(phase: p) {
+      Present { value: _ } => acc + 1
+      Absent => acc
+    },
+  )
+  let distinct = fold(
+    all,
+    init: [],
+    f: (acc, p) => match intake_phase_rank(phase: p) {
+      Present { value: r } => if fold(acc, init: false, f: (seen, x) => seen || x == r) { acc } else { concat(acc, [r]) }
+      Absent => acc
+    },
+  )
+  list_length(items: all) == 22 && ranked == 22 && list_length(items: distinct) == 22 && list_length(items: fleet_admission_required_phases) == 22
 }
 
 fn phase_rank_or_neg(phase: IntakePhase) -> Int {

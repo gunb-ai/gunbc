@@ -41,3 +41,18 @@ type BmcEndpoint {
   host: NonEmptyStr
   protocol: BmcProtocol
 }
+
+// THE CONTROLLER, protocol-neutral (machine-intake ruling 4 §3). One Mt.
+// Collins boot drives one controller over at least two routes — MegaRAC REST
+// for artifact delivery, IPMI lanplus for boot control — so an identity that
+// carries a protocol has already selected a route. Intake targets, access
+// observations and bound access contexts name the controller with this shape;
+// HOW it is reached is the profile's BmcAccessRoute population
+// (extdeps.bmc.access_profile). BmcEndpoint stays for its legacy consumers.
+type BmcControllerEndpoint {
+  host: NonEmptyStr
+}
+
+fn bmc_controller_of_endpoint(endpoint: BmcEndpoint) -> BmcControllerEndpoint {
+  BmcControllerEndpoint { host: endpoint.host }
+}

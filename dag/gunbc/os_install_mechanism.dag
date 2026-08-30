@@ -1,6 +1,6 @@
 module gunbc.os_install_mechanism
 
-import extdeps.bmc.endpoint { BmcEndpoint }
+import extdeps.bmc.endpoint { BmcControllerEndpoint, BmcEndpoint, bmc_controller_of_endpoint }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { Bool, EpochMs, Int, List, String }
 import extdeps.bmc.types {
@@ -10,6 +10,7 @@ import extdeps.bmc.types {
 }
 import extdeps.bmc.capability {
   BmcFirmwareCapabilityRow,
+  BmcFirmwareReleaseIdentity,
   BmcFirmwareVersion,
 }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog }
@@ -33,10 +34,13 @@ import gunbc.machine_intake_access {
   AccessContextCatalogRefused,
   AccessContextObservationEvidenceMismatch,
   AccessContextObservationForOtherAttempt,
+  AccessContextProbeEvidenceMismatch,
   AccessContextProfileAmbiguous,
   AccessContextProfileLookupNotRun,
   AccessContextProfileUncatalogued,
+  AccessContextPromotedProfileUnverified,
   AccessContextUnobserved,
+  BootDeliveryTarget,
   BoundBmcAccessContextStanding,
 }
 import gunbc.boot_artifact_delivery {
@@ -47,8 +51,8 @@ import gunbc.boot_artifact_delivery {
   BootDeliveryRefused,
   BootDeliverySolution,
   DeliveryAccessUnbound,
-  DeliveryTargetContextMismatch,
-  BootDeliveryTarget,
+  DeliveryTargetControllerMismatch,
+  DeliveryTargetSubjectMismatch,
   DeliveryNoBootSourceOverride,
   DeliveryNoEligibleTransport,
   MegaRacRestRemoteMedia,
@@ -76,12 +80,12 @@ type OsInstallMechanismRefusalCause
   = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
   | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }
   | InstallFirmwareVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
-  | InstallAccessProfileNotLookedUp { endpoint: BmcEndpoint }
+  | InstallAccessProfileNotLookedUp { endpoint: BmcControllerEndpoint }
   | InstallAccessContextUnbound { standing: BoundBmcAccessContextStanding }
-  | InstallTargetContextMismatch { requested: BootDeliveryTarget, bound_endpoint: BmcEndpoint }
-  | InstallNoBootSourceOverride { firmware: BmcFirmwareVersion }
+  | InstallTargetContextMismatch { requested: BootDeliveryTarget }
+  | InstallNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
   | InstallNoEligibleTransport {
-      firmware: BmcFirmwareVersion,
+      firmware: BmcFirmwareReleaseIdentity,
       considered: List<BootDeliveryCandidateVerdict>,
     }
   | InstallDeliveryOutsideLegacyMechanism { delivery: BootArtifactDelivery }
@@ -118,12 +122,15 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
             AccessContextBound { context: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextUnobserved { endpoint: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextObservationForOtherAttempt { expected: _, found: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
-            AccessContextObservationEvidenceMismatch { endpoint: _, receipt: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextObservationEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
+            AccessContextPromotedProfileUnverified { observation_receipt: _, promotion_receipt: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProfileUncatalogued { observed_identity: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextProfileAmbiguous { observed_identity: _, count: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
             AccessContextCatalogRefused { standing: _ } => OsInstallMechanismRefused { cause: InstallAccessContextUnbound { standing: s } }
           }
-        DeliveryTargetContextMismatch { requested: r, bound_subject: _, bound_endpoint: e } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r, bound_endpoint: e } }
+        DeliveryTargetSubjectMismatch { requested: r, bound_subject: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
+        DeliveryTargetControllerMismatch { requested: r, bound_endpoint: _ } => OsInstallMechanismRefused { cause: InstallTargetContextMismatch { requested: r } }
         DeliveryNoBootSourceOverride { firmware: fw } => OsInstallMechanismRefused { cause: InstallNoBootSourceOverride { firmware: fw } }
         DeliveryNoEligibleTransport { firmware: fw, considered: considered } =>
           OsInstallMechanismRefused { cause: InstallNoEligibleTransport { firmware: fw, considered: considered } }
@@ -131,11 +138,13 @@ fn os_install_solution_of_delivery(solution: BootDeliverySolution) -> OsInstallM
   }
 }
 
-fn bmc_firmware_evidence_endpoint(ev: BmcFirmwareEvidence) -> BmcEndpoint {
+// The legacy evidence names its controller with a protocol-carrying
+// BmcEndpoint; the access standing names the controller alone.
+fn bmc_firmware_evidence_endpoint(ev: BmcFirmwareEvidence) -> BmcControllerEndpoint {
   match ev {
-    BmcFirmwareEvidenceObserved { observation: o } => o.endpoint
-    BmcFirmwareEvidenceAttested { attestation: a } => a.endpoint
-    BmcFirmwareEvidenceUnobserved { endpoint: e } => e
+    BmcFirmwareEvidenceObserved { observation: o } => bmc_controller_of_endpoint(endpoint: o.endpoint)
+    BmcFirmwareEvidenceAttested { attestation: a } => bmc_controller_of_endpoint(endpoint: a.endpoint)
+    BmcFirmwareEvidenceUnobserved { endpoint: e } => bmc_controller_of_endpoint(endpoint: e)
   }
 }
 

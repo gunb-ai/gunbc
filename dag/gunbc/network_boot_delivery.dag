@@ -3,6 +3,7 @@ module gunbc.network_boot_delivery
 import std.types { EpochMs, List, String }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
+import gunbc.machine_intake_access { BootDeliveryTarget }
 
 data network_boot_delivery_note: String = "THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3, namespace ruling). Its four evidence axes have independent producers — client firmware mode, serving infrastructure, boot artifacts, boot control — and the standing they compose is consumed by gunbc.boot_artifact_delivery, which imports it and selects the PxeChainBoot constructor from it. Keeping it beside its sole constructor would not have violated ruling 2; it lives here so the solver is not the home of every candidate's evidence lifecycle."
 
@@ -33,7 +34,12 @@ type NetworkBootRequirementEvidence {
   observed_at: EpochMs
 }
 
+// The establishment names the TARGET it was established for (ruling 4 §1): four
+// observations and a digest bind an artifact, not a host, so without the
+// target a network boot established on one unit could authorize another's
+// request.
 type NetworkBootDeliveryEstablishment {
+  target: BootDeliveryTarget
   boot_source_override: NetworkBootRequirementEvidence
   client_boot_mode: NetworkBootRequirementEvidence
   serving_infrastructure: NetworkBootRequirementEvidence

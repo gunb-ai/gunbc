@@ -5,15 +5,14 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash { ContentHash }
 import extdeps.uri { Uri }
 import extdeps.toolchain.types { Architecture, X86_64, Aarch64, X86, Arm, Armv7, Mips, Mipsel, Mips64, Mips64el, Riscv64, Wasm32 }
-import extdeps.bmc.endpoint { BmcEndpoint }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.bmc.capability {
-  BmcFirmwareCapabilityRow,
-  BmcFirmwareVersion,
+  BmcFirmwareReleaseIdentity,
   CapabilityBootSourceOverride,
   CapabilityNbdProxyVirtualMedia,
   CapabilityOemRemoteMedia,
   CapabilityVirtualMedia,
-  firmware_has_capability,
+  release_row_has_capability,
 }
 import extdeps.bmc.virtual_media {
   ConfigfsGadgetParams,
@@ -24,18 +23,10 @@ import extdeps.bmc.virtual_media {
 }
 import extdeps.bmc.megarac { MegaRacImageRedirectionEnabled, MegaRacImageRedirectionUnset, MegaRacImageRedirectionOn }
 import extdeps.bmc.redfish_virtual_media {
-  CollectionDiscovered,
-  EjectSucceededAndDetached,
-  InsertMediaActionAdvertised,
-  InsertSucceeded,
-  ObservedAbsent,
-  OperationRefused,
-  ProbeUnreached,
   RedfishVirtualMediaProbe,
   RedfishVirtualMediaProbeReceipt,
   RedfishVirtualMediaTransferProtocol,
-  ResourceReadable,
-  TransferProtocolAdmitted,
+  redfish_probe_receipt_at_plan_floor,
   redfish_transfer_protocol_in,
 }
 import extdeps.bmc.access_profile {
@@ -57,12 +48,16 @@ import gunbc.machine_intake_access {
   AccessContextCatalogRefused,
   AccessContextObservationEvidenceMismatch,
   AccessContextObservationForOtherAttempt,
+  AccessContextProbeEvidenceMismatch,
   AccessContextProfileAmbiguous,
   AccessContextProfileLookupNotRun,
   AccessContextProfileUncatalogued,
+  AccessContextPromotedProfileUnverified,
   AccessContextUnobserved,
+  BootDeliveryTarget,
   BoundBmcAccessContext,
   BoundBmcAccessContextStanding,
+  same_boot_delivery_target,
 }
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { EvidenceRef, content_hash_equal, same_intake_subject }
@@ -70,8 +65,9 @@ import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
   ReinstallPathRefused,
-  ReinstallPathStanding,
   ReinstallPathUnestablished,
+  TargetBoundReinstallPath,
+  TransportProbeObservation,
 }
 import gunbc.network_boot_delivery {
   NetworkBootDeliveryEstablished,
@@ -81,7 +77,7 @@ import gunbc.network_boot_delivery {
   NetworkBootRequirement,
 }
 
-data boot_artifact_delivery_note: String = "ONE OBLIGATION, N CONSTRUCTORS (machine-intake ruling 2026-08-29 §3, bound by ruling 3 §1-§2). 'Virtual CD' is not a phase. Redfish VirtualMedia, the MegaRAC OEM REST remote media, the bmcweb OEM NBD WebSocket, the OpenBMC configfs USB gadget, UEFI HTTP boot and PXE chain boot are alternative constructors for one obligation: deliver THIS content-addressed boot artifact to THIS identified host for one boot, prove that the intended artifact executed, and restore the prior boot-control state. Boot CONTROL (one-shot target, reset, override consumption, restore) is a separate obligation from artifact DELIVERY, so the plan carries a protocol-neutral BootControlTarget rather than a Redfish override value. This module is the ONE solver. It reads a BootDeliveryRequest (target unit and attempt, exact BootArtifact, the staging offers each naming the digest they serve), BoundBootDeliveryEvidence (an access context that gunbc.machine_intake_access has already bound to this attempt, plus the transport-local standings) and a BootDeliveryPolicy, and answers with a BootDeliveryPlan that repeats target and artifact and names the profile provenance and observation receipt its eligibility came from. A transport is eligible only from the intersection of the bound profile and the live observation; a Redfish plan derives its locator and protocol from the probe receipt, never from separately supplied parameters; a MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its operation contract requires; and every staged offer must name the requested digest, so 'the URI serves digest B while the request names digest A' is a typed refusal. gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access context and therefore always refuses at AccessContextProfileLookupNotRun."
+data boot_artifact_delivery_note: String = "ONE OBLIGATION, N CONSTRUCTORS (machine-intake ruling 2026-08-29 §3, bound by ruling 3 §1-§2). 'Virtual CD' is not a phase. Redfish VirtualMedia, the MegaRAC OEM REST remote media, the bmcweb OEM NBD WebSocket, the OpenBMC configfs USB gadget, UEFI HTTP boot and PXE chain boot are alternative constructors for one obligation: deliver THIS content-addressed boot artifact to THIS identified host for one boot, prove that the intended artifact executed, and restore the prior boot-control state. Boot CONTROL (one-shot target, reset, override consumption, restore) is a separate obligation from artifact DELIVERY, so the plan carries a protocol-neutral BootControlTarget rather than a Redfish override value. This module is the ONE solver. It reads a BootDeliveryRequest (target unit, attempt and protocol-neutral controller, exact BootArtifact, the staging offers each naming the digest they serve), BoundBootDeliveryEvidence (an access context that gunbc.machine_intake_access has already bound to this attempt, plus the transport-local standings, each bound to a target) and a BootDeliveryPolicy. It first binds the request's target to the access context — same subject and attempt, same controller — and consumes only that bound arm (ruling 4 §1); every transport-local standing must name the same target or its candidate is refused as evidence for another target. It answers with a BootDeliveryPlan that repeats target and artifact and names the profile provenance, the evidence manifest, the evidence particular to the selected candidate, and every candidate's standing. A transport is eligible only from the intersection of the bound profile and the live observation; a Redfish plan derives its locator and protocol from the probe receipt, never from separately supplied parameters; a MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its operation contract requires; and every staged offer must name the requested digest, so 'the URI serves digest B while the request names digest A' is a typed refusal. gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access context and therefore always refuses at AccessContextProfileLookupNotRun."
 
 // What the artifact is FOR is data the same delivery mechanism accepts, never
 // a reason to fork the mechanism.
@@ -180,7 +176,7 @@ type UefiHttpBootParams {
 }
 
 type UefiHttpDeliveryStanding
-  = UefiHttpDeliveryEstablished { params: UefiHttpBootParams, evidence: List<DeclarationRef> }
+  = UefiHttpDeliveryEstablished { target: BootDeliveryTarget, params: UefiHttpBootParams, evidence: List<DeclarationRef> }
   | UefiHttpDeliveryUnestablished { missing: List<UefiHttpRequirement> }
 
 // THE BOOT-CONTROL TARGET, protocol-neutral. Which BMC operation sets it — a
@@ -276,15 +272,10 @@ data boot_artifact_staging_unbound: BootArtifactStagingBinding = BootArtifactSta
   configfs_gadget: none,
 }
 
-// WHO and WHAT. The target is the intake subject (unit key, manifests,
-// attempt) plus the endpoint the plan will drive; the artifact is the exact
-// content-addressed thing to boot. Both are repeated on the plan, and the
-// eventual agent callback repeats the digest from the same plan.
-type BootDeliveryTarget {
-  subject: MachineIntakeSubject
-  endpoint: BmcEndpoint
-}
-
+// WHO and WHAT. The target (gunbc.machine_intake_access BootDeliveryTarget) is
+// the intake subject plus the controller the plan will drive; the artifact is
+// the exact content-addressed thing to boot. Both are repeated on the plan, and
+// the eventual agent callback repeats the digest from the same plan.
 type BootDeliveryRequest {
   target: BootDeliveryTarget
   artifact: BootArtifact
@@ -296,7 +287,7 @@ type BootDeliveryRequest {
 // establishment says so with the Unestablished arm.
 type BoundBootDeliveryEvidence {
   access: BoundBmcAccessContextStanding
-  configfs: ReinstallPathStanding
+  configfs: TargetBoundReinstallPath
   uefi_http: UefiHttpDeliveryStanding
   network_boot: NetworkBootDeliveryStanding
 }
@@ -348,6 +339,7 @@ type BootDeliveryCandidateStanding
   | CandidateOemParameterUnset { surface: BmcAccessSurface }
   | CandidateStagingAbsent
   | CandidateStagedArtifactMismatch { offered: ContentHash, requested: ContentHash }
+  | CandidateEvidenceForOtherTarget { evidence_target: BootDeliveryTarget }
   | CandidateConfigfsUnestablished { missing: List<ConfigfsTransportRequirement> }
   | CandidateConfigfsRefused { observed_absent: List<ConfigfsTransportRequirement> }
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
@@ -358,12 +350,24 @@ type BootDeliveryCandidateVerdict {
   standing: BootDeliveryCandidateStanding
 }
 
-// Where the plan's eligibility came from: the profile's producer, the
-// observation receipt the intersection was judged against, and every
-// candidate's standing.
+// The evidence particular to the SELECTED candidate (ruling 4 §1): a
+// CandidateEligible verdict alone does not tell an executor what made it
+// eligible. Profile-shaped candidates are eligible from the profile/observation
+// intersection on a named surface; configfs from its qualification
+// observations; UEFI HTTP from its evidence list; PXE from its establishment.
+type SelectedCandidateEvidence
+  = SelectedFromProfileIntersection { surface: BmcAccessSurface }
+  | SelectedFromConfigfsQualification { qualified_by: List<TransportProbeObservation> }
+  | SelectedFromUefiHttpEvidence { evidence: List<DeclarationRef> }
+  | SelectedFromNetworkBootEstablishment { establishment: NetworkBootDeliveryEstablishment }
+
+// Where the plan's eligibility came from: the profile's producer, the evidence
+// manifest the intersection was judged against, the selected candidate's own
+// evidence, and every candidate's standing.
 type BootDeliveryEligibilityProvenance {
   profile_provenance: BmcAccessProfileProvenance
-  observation_receipt: EvidenceRef
+  evidence_manifest: List<EvidenceRef>
+  selected: SelectedCandidateEvidence
   considered: List<BootDeliveryCandidateVerdict>
 }
 
@@ -382,13 +386,33 @@ type BootDeliveryPlan {
 
 type BootDeliveryRefusalCause
   = DeliveryAccessUnbound { standing: BoundBmcAccessContextStanding }
-  | DeliveryTargetContextMismatch { requested: BootDeliveryTarget, bound_subject: MachineIntakeSubject, bound_endpoint: BmcEndpoint }
-  | DeliveryNoBootSourceOverride { firmware: BmcFirmwareVersion }
-  | DeliveryNoEligibleTransport { firmware: BmcFirmwareVersion, considered: List<BootDeliveryCandidateVerdict> }
+  | DeliveryTargetSubjectMismatch { requested: BootDeliveryTarget, bound_subject: MachineIntakeSubject }
+  | DeliveryTargetControllerMismatch { requested: BootDeliveryTarget, bound_endpoint: BmcControllerEndpoint }
+  | DeliveryNoBootSourceOverride { firmware: BmcFirmwareReleaseIdentity }
+  | DeliveryNoEligibleTransport { firmware: BmcFirmwareReleaseIdentity, considered: List<BootDeliveryCandidateVerdict> }
 
 type BootDeliverySolution
   = BootDeliveryPlanned { plan: BootDeliveryPlan }
   | BootDeliveryRefused { cause: BootDeliveryRefusalCause }
+
+// THE REQUEST TARGET BOUND TO THE ACCESS CONTEXT (ruling 4 §1). The binder
+// joined the observation to the subject it was asked to bind; this joins the
+// REQUEST to that context, so a context bound for subject/controller A can no
+// longer admit a plan that names B. The solver consumes only the bound arm.
+type BoundBootDeliveryTargetContext
+  = DeliveryTargetContextBound { target: BootDeliveryTarget, access: BoundBmcAccessContext }
+  | DeliveryTargetSubjectUnbound { requested: BootDeliveryTarget, bound_subject: MachineIntakeSubject }
+  | DeliveryTargetControllerUnbound { requested: BootDeliveryTarget, bound_endpoint: BmcControllerEndpoint }
+
+fn bind_boot_delivery_target(target: BootDeliveryTarget, access: BoundBmcAccessContext) -> BoundBootDeliveryTargetContext {
+  if same_intake_subject(left: target.subject, right: access.subject) == false {
+    DeliveryTargetSubjectUnbound { requested: target, bound_subject: access.subject }
+  } else if (target.endpoint == access.endpoint) == false {
+    DeliveryTargetControllerUnbound { requested: target, bound_endpoint: access.endpoint }
+  } else {
+    DeliveryTargetContextBound { target: target, access: access }
+  }
+}
 
 // The intersection rule for a surface-shaped candidate (ruling §2): the bound
 // context's capability row must NAME the capability, and the profile and the
@@ -410,24 +434,13 @@ fn staged_digest_standing(offered: ContentHash, requested: ContentHash) -> BootD
   }
 }
 
-// The Redfish probe ladder's plan floor, read off the RECEIPT: the resource
-// must have admitted a transfer protocol, and the one the staging service
-// offers must be among those admitted. InsertSucceeded and
-// EjectSucceededAndDetached are above the floor only because the receipt
-// still carries the locator and admitted protocols they were reached with.
+// The Redfish probe's plan floor, read off the RECEIPT's one protocol
+// authority (ruling 4 §5): the resource must have admitted a nonempty
+// population of transfer protocols, and the one the staging service offers
+// must be among them. The ladder arm is carried on the refusal for diagnosis;
+// it decides nothing.
 fn redfish_probe_standing(receipt: RedfishVirtualMediaProbeReceipt, offered: RedfishVirtualMediaTransferProtocol) -> BootDeliveryCandidateStanding {
-  let at_floor = match receipt.progress {
-    ProbeUnreached => false
-    ObservedAbsent => false
-    CollectionDiscovered => false
-    ResourceReadable => false
-    InsertMediaActionAdvertised => false
-    TransferProtocolAdmitted { protocol: _ } => true
-    InsertSucceeded => true
-    EjectSucceededAndDetached => true
-    OperationRefused => false
-  }
-  if at_floor == false {
+  if redfish_probe_receipt_at_plan_floor(receipt: receipt) == false {
     CandidateRedfishProbeBelowPlanFloor { progress: receipt.progress }
   } else if redfish_transfer_protocol_in(protocols: receipt.admitted_protocols, protocol: offered) == false {
     CandidateRedfishProtocolNotAdmitted { offered: offered, admitted: receipt.admitted_protocols }
@@ -437,7 +450,7 @@ fn redfish_probe_standing(receipt: RedfishVirtualMediaProbeReceipt, offered: Red
 }
 
 fn redfish_virtual_media_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
-  if firmware_has_capability(row: ctx.capability_row, cap: CapabilityVirtualMedia) == false {
+  if release_row_has_capability(row: ctx.capability_row, cap: CapabilityVirtualMedia) == false {
     CandidateCapabilityAbsent
   } else {
     let standing = surface_candidate_standing(ctx: ctx, surface: SurfaceRedfishVirtualMedia)
@@ -466,7 +479,7 @@ fn redfish_virtual_media_candidate(ctx: BoundBmcAccessContext, request: BootDeli
 }
 
 fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
-  if firmware_has_capability(row: ctx.capability_row, cap: CapabilityNbdProxyVirtualMedia) == false {
+  if release_row_has_capability(row: ctx.capability_row, cap: CapabilityNbdProxyVirtualMedia) == false {
     CandidateCapabilityAbsent
   } else {
     let standing = surface_candidate_standing(ctx: ctx, surface: SurfaceOemNbdWebsocket)
@@ -491,7 +504,7 @@ fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDelive
 // MegaRAC route leaves image_redirection Unset cannot plan this arm — that is
 // the executed refusal (opaque codes 13410/13460) modeled as a standing.
 fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
-  if firmware_has_capability(row: ctx.capability_row, cap: CapabilityOemRemoteMedia) == false {
+  if release_row_has_capability(row: ctx.capability_row, cap: CapabilityOemRemoteMedia) == false {
     CandidateCapabilityAbsent
   } else {
     let standing = surface_candidate_standing(ctx: ctx, surface: SurfaceOemRestRemoteMedia)
@@ -517,32 +530,53 @@ fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: Boot
 
 // The configfs gadget rides on the BMC shell, not on a Redfish capability, so
 // its eligibility is the transport qualification's own standing — the
-// requirement probes gunbc.install_transport_qualification names — plus a
-// staged export naming the requested digest.
+// requirement probes gunbc.install_transport_qualification names — bound to
+// THIS request's target, plus a staged export naming the requested digest.
 fn configfs_usb_gadget_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
-  match ev.configfs {
-    ReinstallPathEstablished { qualified_by: _ } =>
-      match request.staging.configfs_gadget {
-        Absent => CandidateStagingAbsent
-        Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
-      }
-    ReinstallPathUnestablished { missing_probes: m } => CandidateConfigfsUnestablished { missing: m }
-    ReinstallPathRefused { observed_absent: a } => CandidateConfigfsRefused { observed_absent: a }
+  if same_boot_delivery_target(left: ev.configfs.target, right: request.target) == false {
+    CandidateEvidenceForOtherTarget { evidence_target: ev.configfs.target }
+  } else {
+    match ev.configfs.standing {
+      ReinstallPathEstablished { qualified_by: _ } =>
+        match request.staging.configfs_gadget {
+          Absent => CandidateStagingAbsent
+          Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
+        }
+      ReinstallPathUnestablished { missing_probes: m } => CandidateConfigfsUnestablished { missing: m }
+      ReinstallPathRefused { observed_absent: a } => CandidateConfigfsRefused { observed_absent: a }
+    }
   }
 }
 
 fn uefi_http_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   match ev.uefi_http {
-    UefiHttpDeliveryEstablished { params: p, evidence: _ } => staged_digest_standing(offered: p.artifact_digest, requested: request.artifact.digest)
+    UefiHttpDeliveryEstablished { target: t, params: p, evidence: _ } =>
+      if same_boot_delivery_target(left: t, right: request.target) == false {
+        CandidateEvidenceForOtherTarget { evidence_target: t }
+      } else {
+        staged_digest_standing(offered: p.artifact_digest, requested: request.artifact.digest)
+      }
     UefiHttpDeliveryUnestablished { missing: m } => CandidateUefiHttpUnestablished { missing: m }
   }
 }
 
 fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   match ev.network_boot {
-    NetworkBootDeliveryEstablished { evidence: e } => staged_digest_standing(offered: e.artifact_digest, requested: request.artifact.digest)
+    NetworkBootDeliveryEstablished { evidence: e } =>
+      if same_boot_delivery_target(left: e.target, right: request.target) == false {
+        CandidateEvidenceForOtherTarget { evidence_target: e.target }
+      } else {
+        staged_digest_standing(offered: e.artifact_digest, requested: request.artifact.digest)
+      }
     NetworkBootDeliveryUnestablished { missing: m } => CandidateNetworkBootUnestablished { missing: m }
   }
+}
+
+// A built delivery together with the evidence that made its candidate
+// eligible, so the plan's provenance is read off the same selection.
+type BuiltBootArtifactDelivery {
+  delivery: BootArtifactDelivery
+  selected: SelectedCandidateEvidence
 }
 
 fn boot_delivery_candidate_verdicts(
@@ -577,7 +611,7 @@ fn build_boot_artifact_delivery(
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
   candidate: BootDeliveryCandidate,
-) -> BootArtifactDelivery? {
+) -> BuiltBootArtifactDelivery? {
   match candidate {
     CandidateRedfishVirtualMedia =>
       match ctx.observation.redfish_virtual_media_probe {
@@ -587,8 +621,11 @@ fn build_boot_artifact_delivery(
             Absent => none
             Present { value: offer } =>
               Present {
-                value: RedfishVirtualMediaPull {
-                  params: RedfishVirtualMediaParams { media: receipt.locator, image: offer.image, transfer_protocol: offer.transfer_protocol },
+                value: BuiltBootArtifactDelivery {
+                  delivery: RedfishVirtualMediaPull {
+                    params: RedfishVirtualMediaParams { media: receipt.locator, image: offer.image, transfer_protocol: offer.transfer_protocol },
+                  },
+                  selected: SelectedFromProfileIntersection { surface: SurfaceRedfishVirtualMedia },
                 },
               }
           }
@@ -598,14 +635,17 @@ fn build_boot_artifact_delivery(
         Absent => none
         Present { value: offer } =>
           Present {
-            value: MegaRacRestRemoteMedia {
-              params: MegaRacRemoteMediaParams {
-                share_type: offer.share_type,
-                server_address: offer.server_address,
-                source_path: offer.source_path,
-                image_name: offer.image_name,
-                image_redirection: MegaRacImageRedirectionOn,
+            value: BuiltBootArtifactDelivery {
+              delivery: MegaRacRestRemoteMedia {
+                params: MegaRacRemoteMediaParams {
+                  share_type: offer.share_type,
+                  server_address: offer.server_address,
+                  source_path: offer.source_path,
+                  image_name: offer.image_name,
+                  image_redirection: MegaRacImageRedirectionOn,
+                },
               },
+              selected: SelectedFromProfileIntersection { surface: SurfaceOemRestRemoteMedia },
             },
           }
       }
@@ -617,36 +657,49 @@ fn build_boot_artifact_delivery(
             Absent => none
             Present { value: offer } =>
               Present {
-                value: OpenBmcNbdProxyWebsocket {
-                  params: NbdProxyWebsocatParams { session_token: offer.session_token, ws_path: ws_path, local_nbd_port: offer.local_nbd_port },
+                value: BuiltBootArtifactDelivery {
+                  delivery: OpenBmcNbdProxyWebsocket {
+                    params: NbdProxyWebsocatParams { session_token: offer.session_token, ws_path: ws_path, local_nbd_port: offer.local_nbd_port },
+                  },
+                  selected: SelectedFromProfileIntersection { surface: SurfaceOemNbdWebsocket },
                 },
               }
           }
       }
     CandidateOpenBmcConfigfsUsbGadget =>
-      match request.staging.configfs_gadget {
-        Absent => none
-        Present { value: offer } =>
-          Present {
-            value: OpenBmcConfigfsUsbGadget {
-              params: ConfigfsGadgetParams {
-                nbd_server_host: offer.nbd_server_host,
-                nbd_port: offer.nbd_port,
-                export_name: offer.export_name,
-                nbd_device: offer.nbd_device,
-                udc: offer.udc,
-              },
-            },
+      match ev.configfs.standing {
+        ReinstallPathEstablished { qualified_by: q } =>
+          match request.staging.configfs_gadget {
+            Absent => none
+            Present { value: offer } =>
+              Present {
+                value: BuiltBootArtifactDelivery {
+                  delivery: OpenBmcConfigfsUsbGadget {
+                    params: ConfigfsGadgetParams {
+                      nbd_server_host: offer.nbd_server_host,
+                      nbd_port: offer.nbd_port,
+                      export_name: offer.export_name,
+                      nbd_device: offer.nbd_device,
+                      udc: offer.udc,
+                    },
+                  },
+                  selected: SelectedFromConfigfsQualification { qualified_by: q },
+                },
+              }
           }
+        ReinstallPathUnestablished { missing_probes: _ } => none
+        ReinstallPathRefused { observed_absent: _ } => none
       }
     CandidateUefiHttpBoot =>
       match ev.uefi_http {
-        UefiHttpDeliveryEstablished { params: p, evidence: _ } => Present { value: UefiHttpBoot { params: p } }
+        UefiHttpDeliveryEstablished { target: _, params: p, evidence: evs } =>
+          Present { value: BuiltBootArtifactDelivery { delivery: UefiHttpBoot { params: p }, selected: SelectedFromUefiHttpEvidence { evidence: evs } } }
         UefiHttpDeliveryUnestablished { missing: _ } => none
       }
     CandidatePxeChainBoot =>
       match ev.network_boot {
-        NetworkBootDeliveryEstablished { evidence: e } => Present { value: PxeChainBoot { evidence: e } }
+        NetworkBootDeliveryEstablished { evidence: e } =>
+          Present { value: BuiltBootArtifactDelivery { delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
         NetworkBootDeliveryUnestablished { missing: _ } => none
       }
   }
@@ -674,16 +727,17 @@ fn select_boot_artifact_delivery(
     },
   )
   match chosen {
-    Present { value: d } =>
+    Present { value: built } =>
       BootDeliveryPlanned {
         plan: BootDeliveryPlan {
           target: request.target,
           artifact: request.artifact,
-          delivery: d,
-          boot_control: boot_artifact_delivery_boot_control(delivery: d),
+          delivery: built.delivery,
+          boot_control: boot_artifact_delivery_boot_control(delivery: built.delivery),
           eligibility: BootDeliveryEligibilityProvenance {
             profile_provenance: ctx.profile_provenance,
-            observation_receipt: ctx.observation_receipt,
+            evidence_manifest: ctx.evidence_manifest,
+            selected: built.selected,
             considered: verdicts,
           },
         },
@@ -692,16 +746,36 @@ fn select_boot_artifact_delivery(
   }
 }
 
+// Solve from a target context the binder admitted: boot-source override gates
+// every arm (each drives the host through a BMC one-shot target); then the
+// candidates are judged in the policy's order and the first eligible one is
+// built. Every arm is reached from something the request or the evidence
+// NAMES, never from the absence of another arm: the else is a refusal carrying
+// every candidate's standing.
+fn solve_bound_boot_artifact_delivery(
+  ctx: BoundBmcAccessContext,
+  request: BootDeliveryRequest,
+  ev: BoundBootDeliveryEvidence,
+  policy: BootDeliveryPolicy,
+) -> BootDeliverySolution {
+  if release_row_has_capability(row: ctx.capability_row, cap: CapabilityBootSourceOverride) == false {
+    BootDeliveryRefused { cause: DeliveryNoBootSourceOverride { firmware: ctx.capability_row.firmware } }
+  } else {
+    select_boot_artifact_delivery(
+      ctx: ctx,
+      ev: ev,
+      request: request,
+      policy: policy,
+      verdicts: boot_delivery_candidate_verdicts(ctx: ctx, ev: ev, request: request),
+    )
+  }
+}
+
 // THE SOLVER. No bound access context, no plan — the standing that refused
-// the binding is the refusal. The bound context must be THIS request's target
-// (same subject and attempt, same endpoint): a context bound for another unit
-// or another controller is a splice, refused before anything is judged. Then
-// boot-source override gates every arm (each
-// drives the host through a BMC one-shot target); then the candidates are
-// judged in the policy's order and the first eligible one is built. Every arm
-// is reached from something the request or the evidence NAMES, never from the
-// absence of another arm: the else is a refusal carrying every candidate's
-// standing.
+// the binding is the refusal. The request's target is then bound to that
+// context (same subject and attempt, same controller) and only the bound arm
+// is solved: a context bound for another unit or another controller is a
+// splice, refused before anything is judged.
 fn solve_boot_artifact_delivery(
   request: BootDeliveryRequest,
   ev: BoundBootDeliveryEvidence,
@@ -709,26 +783,20 @@ fn solve_boot_artifact_delivery(
 ) -> BootDeliverySolution {
   match ev.access {
     AccessContextBound { context: ctx } =>
-      if same_intake_subject(left: request.target.subject, right: ctx.subject) == false || (request.target.endpoint == ctx.endpoint) == false {
-        BootDeliveryRefused { cause: DeliveryTargetContextMismatch { requested: request.target, bound_subject: ctx.subject, bound_endpoint: ctx.endpoint } }
-      } else if firmware_has_capability(row: ctx.capability_row, cap: CapabilityBootSourceOverride) == false {
-        BootDeliveryRefused { cause: DeliveryNoBootSourceOverride { firmware: ctx.capability_row.firmware } }
-      } else {
-        select_boot_artifact_delivery(
-          ctx: ctx,
-          ev: ev,
-          request: request,
-          policy: policy,
-          verdicts: boot_delivery_candidate_verdicts(ctx: ctx, ev: ev, request: request),
-        )
+      match bind_boot_delivery_target(target: request.target, access: ctx) {
+        DeliveryTargetContextBound { target: _, access: bound } => solve_bound_boot_artifact_delivery(ctx: bound, request: request, ev: ev, policy: policy)
+        DeliveryTargetSubjectUnbound { requested: r, bound_subject: s } => BootDeliveryRefused { cause: DeliveryTargetSubjectMismatch { requested: r, bound_subject: s } }
+        DeliveryTargetControllerUnbound { requested: r, bound_endpoint: e } => BootDeliveryRefused { cause: DeliveryTargetControllerMismatch { requested: r, bound_endpoint: e } }
       }
     AccessContextProfileLookupNotRun { endpoint: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextUnobserved { endpoint: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextObservationForOtherAttempt { expected: _, found: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
-    AccessContextObservationEvidenceMismatch { endpoint: _, receipt: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
+    AccessContextObservationEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
+    AccessContextProbeEvidenceMismatch { endpoint: _, manifest: _, raw_response: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProfileUncatalogued { observed_identity: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextProfileAmbiguous { observed_identity: _, count: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
     AccessContextCatalogRefused { standing: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
+    AccessContextPromotedProfileUnverified { observation_receipt: _, promotion_receipt: _ } => BootDeliveryRefused { cause: DeliveryAccessUnbound { standing: ev.access } }
   }
 }
 

@@ -225,6 +225,22 @@ fn firmware_has_capability(row: BmcFirmwareCapabilityRow, cap: BmcCapability) ->
   row.capabilities |> any(c => c == cap)
 }
 
+// THE EXACT-RELEASE CAPABILITY CARRIER (machine-intake ruling 4 §2). A
+// BmcFirmwareCapabilityRow is keyed by a SEMANTIC version, so a release whose
+// vendor string has no semantic reading — the observed Mt. Collins "0.32" — can
+// be represented as a BmcFirmwareReleaseIdentity but can never match a row, and
+// every profile embedding a semantic row refused it forever. This row is keyed
+// by the exact release identity; the access-profile path consumes it, and the
+// semantic row remains for the existing OpenBMC evidence consumers.
+type BmcFirmwareReleaseCapabilityRow {
+  firmware: BmcFirmwareReleaseIdentity
+  capabilities: List<BmcCapability>
+}
+
+fn release_row_has_capability(row: BmcFirmwareReleaseCapabilityRow, cap: BmcCapability) -> Bool {
+  row.capabilities |> any(c => c == cap)
+}
+
 fn catalog_has_vm_capable_firmware(catalog: List<BmcFirmwareCapabilityRow>) -> Bool {
   catalog |> any(row => firmware_has_capability(row: row, cap: CapabilityVirtualMedia))
 }

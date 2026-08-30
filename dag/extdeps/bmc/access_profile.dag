@@ -7,9 +7,9 @@ import v2.std.algebra { filter }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.credentials { FactoryLogin }
-import extdeps.bmc.endpoint { BmcEndpoint }
+import extdeps.bmc.endpoint { BmcControllerEndpoint }
 import extdeps.boards.types { BaseboardModel }
-import extdeps.bmc.capability { BmcFirmwareCapabilityRow, BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq, bmc_firmware_release_matches_version }
+import extdeps.bmc.capability { BmcFirmwareReleaseCapabilityRow, BmcFirmwareReleaseIdentity, bmc_firmware_release_identity_eq }
 import extdeps.bmc.megarac { MegaRacImageRedirection }
 import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbeReceipt }
 
@@ -32,7 +32,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3 §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis applicability, implementation, exact vendor release string): the routes and quirks a firmware release is documented or previously observed to expose, PLUS the capability row that release carries, so a solver never joins a capability row to a profile by hand. BmcAccessObservation is a LIVE, per-endpoint reading of what that endpoint served just now. A solver may select a surface only from their intersection — a platform row saying that firmware should expose virtual media does not establish that this endpoint currently does, and a live discovery on one endpoint does not become a platform fact. This module carries the two shapes, the lookup (Known | Uncatalogued | Ambiguous — external facts only) and the intersection predicate; which attempt an observation belongs to, whether a lookup ran at all, and the binding of profile+observation into one solve input are WORKFLOW standings and live in gunbc.machine_intake_access. Concrete profile rows live in the board and implementation modules that cite them, and observations are receipts in the workflow layer (DESIGN §3: observations are never authored inside an upstream module)."
+data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3 §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis applicability, implementation, exact vendor release string): the routes and quirks a firmware release is documented or previously observed to expose, PLUS the exact-release capability row that release carries (BmcFirmwareReleaseCapabilityRow, keyed by the raw vendor string so a release with no semantic reading such as the Mt. Collins 0.32 can inhabit a valid profile — ruling 4 §2), so a solver never joins a capability row to a profile by hand. The controller is named protocol-neutrally (BmcControllerEndpoint, ruling 4 §3); which routes reach it is the profile's route population. BmcAccessObservation is a LIVE, per-endpoint reading of what that endpoint served just now. A solver may select a surface only from their intersection — a platform row saying that firmware should expose virtual media does not establish that this endpoint currently does, and a live discovery on one endpoint does not become a platform fact. This module carries the two shapes, the lookup (Known | Uncatalogued | Ambiguous — external facts only) and the intersection predicate; which attempt an observation belongs to, whether a lookup ran at all, and the binding of profile+observation into one solve input are WORKFLOW standings and live in gunbc.machine_intake_access. Concrete profile rows live in the board and implementation modules that cite them, and observations are receipts in the workflow layer (DESIGN §3: observations are never authored inside an upstream module)."
 
 // The surfaces intake asks a BMC about. Each is a thing an endpoint either
 // served or did not when probed; none is a promise. SurfaceBmcShell is the
@@ -92,7 +92,7 @@ type BmcAccessProfile {
   routes: List<BmcAccessRoute>
   bootstrap_credential: FactoryLogin?
   candidate_surfaces: List<BmcAccessSurface>
-  capability_row: BmcFirmwareCapabilityRow
+  capability_row: BmcFirmwareReleaseCapabilityRow
 }
 
 // Where a profile's admissibility comes from. A DeclarationRef names the
@@ -109,14 +109,15 @@ type BmcAccessProfileCatalogRow {
 }
 
 // A catalog row is admissible only when the capability row it carries
-// describes the release its key names. Membership is decidable here, so the
-// join is refused at the row, once, and no consumer re-checks it.
+// describes EXACTLY the release its key names — same family, same raw vendor
+// string. Membership is decidable here, so the join is refused at the row,
+// once, and no consumer re-checks it.
 type BmcAccessProfileCatalogRowStanding
   = CatalogRowAdmitted { row: BmcAccessProfileCatalogRow }
-  | CatalogRowCapabilityFirmwareMismatch { key: BmcAccessProfileKey, row: BmcFirmwareCapabilityRow }
+  | CatalogRowCapabilityFirmwareMismatch { key: BmcAccessProfileKey, row: BmcFirmwareReleaseCapabilityRow }
 
 fn bmc_access_profile_catalog_row_standing(row: BmcAccessProfileCatalogRow) -> BmcAccessProfileCatalogRowStanding {
-  if bmc_firmware_release_matches_version(rel: row.profile.key.firmware, version: row.profile.capability_row.firmware) {
+  if bmc_firmware_release_identity_eq(a: row.profile.key.firmware, b: row.profile.capability_row.firmware) {
     CatalogRowAdmitted { row: row }
   } else {
     CatalogRowCapabilityFirmwareMismatch { key: row.profile.key, row: row.profile.capability_row }
@@ -140,7 +141,7 @@ type BmcObservedIdentity {
 // digest of the captured discovery bytes so an observation can be traced to what
 // was actually read.
 type BmcAccessObservation {
-  endpoint: BmcEndpoint
+  endpoint: BmcControllerEndpoint
   identity: BmcObservedIdentity
   discovered_surfaces: List<BmcAccessSurface>
   redfish_virtual_media_probe: RedfishVirtualMediaProbeReceipt?
@@ -155,7 +156,7 @@ type BmcAccessObservation {
 // for "not yet probed".
 type BmcAccessObservationStanding
   = BmcAccessObserved { observation: BmcAccessObservation }
-  | BmcAccessUnobserved { endpoint: BmcEndpoint }
+  | BmcAccessUnobserved { endpoint: BmcControllerEndpoint }
 
 fn chassis_applicability_admits(applicability: ChassisApplicability, observed: NonEmptyStr?) -> Bool {
   match applicability {

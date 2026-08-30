@@ -206,7 +206,7 @@ type LedgerFold {
   index: Int
   refusal: IntakeLedgerRefusalCause?
   previous: ContentHash?
-  last_started: Int
+  last_started: EpochMs
   last_rank: Int
 }
 

@@ -5,9 +5,24 @@ lane. The `.dag` modules cite this document; this document does not restate what
 Where a section below names a type, the type is the authority and this is its rationale.
 
 Status: **INTAKE-0 and BOOT-DELIVERY-0 modeling in review** (gunbc#9690), reworked under the
-operator's second ruling of 2026-08-29 and the third ruling of 2026-08-30
-([machine-intake-ruling-3.md](machine-intake-ruling-3.md), which is the merge gate: neither
-slice is recorded complete until its seven items hold). Under ruling 3 the solver reads a
+operator's second ruling of 2026-08-29, the third ruling of 2026-08-30
+([machine-intake-ruling-3.md](machine-intake-ruling-3.md)) and the fourth ruling of 2026-08-30
+([machine-intake-ruling-4.md](machine-intake-ruling-4.md), whose ten-item final approval gate is
+the merge gate: neither slice is recorded complete until they hold). Under ruling 4 the request's
+`BootDeliveryTarget` (subject × protocol-neutral `BmcControllerEndpoint`) is BOUND to the access
+context before any candidate is judged (`bind_boot_delivery_target`; subject and controller
+mismatches are separate refusals), every transport-local standing (configfs via
+`TargetBoundReinstallPath`, UEFI HTTP, network boot) carries the target it was established for
+and is refused as `CandidateEvidenceForOtherTarget` otherwise; the profile's capability row is
+the exact-release `BmcFirmwareReleaseCapabilityRow` so raw "0.32" inhabits a valid profile (a
+positive control proves it); a promoted profile binds only beside `ProfilePromotionVerified`,
+which no producer can construct until INTAKE-AGENT-0A's evidence store — so every promoted
+profile refuses today; the Redfish probe receipt has one protocol authority (nonempty
+`admitted_protocols` is the plan floor; the ladder arm is payload-free) and the observation
+receipt carries an evidence MANIFEST that must name both the discovery bytes and the nested
+probe's bytes; the plan's provenance preserves the selected candidate's own evidence. The
+changed-witness execution sublane #9717 requires is dispatched as its own CI PR (child work
+item of this lane). Under ruling 3 the solver reads a
 `BootDeliveryRequest` (target unit and attempt, exact `BootArtifact`, staging offers each naming
 the digest they serve), a `BoundBootDeliveryEvidence` whose access context
 `gunbc.machine_intake_access` has already bound to this attempt (profile ∩ observation, capability
@@ -96,9 +111,17 @@ build is representable without inventing locators, plus the capability row that 
 `ProfileFromExternalAuthority | ProfilePromotedFromObservation`, never the rendering declaration.
 `BmcAccessObservation` is per endpoint with its raw response digest and a resource-bound
 `RedfishVirtualMediaProbeReceipt?`; the lookup answers `Known | Uncatalogued | Ambiguous |
-CatalogRowRefused` (external facts only). Which attempt the observation belongs to and whether
-the lookup ran are WORKFLOW standings: `gunbc.machine_intake_access.bind_bmc_access_context`
-produces the one `BoundBmcAccessContext` the solver may read.
+CatalogRowRefused` (external facts only). The controller is named protocol-neutrally
+(`BmcControllerEndpoint { host }`, ruling 4 §3): one Mt. Collins boot drives one controller over
+MegaRAC REST for delivery and IPMI for boot control, so an identity carrying a protocol has
+already selected a route. The capability row a profile carries is the exact-release
+`BmcFirmwareReleaseCapabilityRow` (ruling 4 §2), so a release with no semantic reading can be
+catalogued. Which attempt the observation belongs to, whether the lookup ran, whether the
+evidence manifest names every blob read, and whether a promoted profile's receipts were
+verified are WORKFLOW standings: `gunbc.machine_intake_access.bind_bmc_access_context` produces
+the one `BoundBmcAccessContext` the solver may read, and `ProfilePromotionVerificationStanding`
+refuses every promoted profile until the INTAKE-AGENT-0A evidence store produces
+`ProfilePromotionVerified` (ruling 4 §4).
 
 `BmcFirmwareFamily` gained `AmiMegaRac` (`extdeps.bmc.endpoint`, gunbc#9678); the implementation
 module is `extdeps.bmc.megarac` and the vendor row `extdeps.vendor.ami`. The family-keyed
@@ -139,7 +162,12 @@ of its own; its consumers migrate to `BootDeliverySolution` and it is then delet
 carries the trigger). A `BootDeliveryPlanned` result is a candidate PLAN bound to target and
 artifact — insert, host consumption, eject and detach are established only by execution receipts.
 The boot-control target is protocol-neutral (`BootControlTarget`); which BMC operation sets it is
-realization bound to the route the profile exposes.
+realization bound to the route the profile exposes. The request's `BootDeliveryTarget` is bound
+to the access context first (`BoundBootDeliveryTargetContext`, ruling 4 §1) and the transport-local
+standings each carry their own target, so a plan can never name a subject or controller other
+than the one its evidence was gathered for; the plan's `BootDeliveryEligibilityProvenance` names
+the profile provenance, the evidence manifest, the selected candidate's own evidence
+(`SelectedCandidateEvidence`) and every candidate's standing.
 
 ## 4. The workflow: one `MachineIntake`, three transactions
 
@@ -285,7 +313,10 @@ byte/schema-equivalent receipt envelopes for both the Mt. Collins and ASRock tra
 | `extdeps.bmc.access_profile` | profile/observation carriers and intersection (landed) |
 | `extdeps.bmc.redfish_virtual_media`, `extdeps.bmc.virtual_media` | DMTF shape; `RedfishVirtualMediaTransport` arm (landed) |
 | `gunbc.boot_artifact_delivery` | the one delivery solver: request × bound evidence × policy → plan (landed, ruling 3 §1-§2) |
-| `gunbc.machine_intake_access` | attempt-bound access context producer (landed, ruling 3 §1) |
+| `gunbc.machine_intake_access` | attempt-bound access context producer; `BootDeliveryTarget`, evidence manifest, promotion verification standing (landed, ruling 3 §1, ruling 4 §1/§4/§5) |
+| `extdeps.bmc.endpoint`, `extdeps.bmc.capability` | `BmcControllerEndpoint`; `BmcFirmwareReleaseCapabilityRow` (landed, ruling 4 §2-§3) |
+| `gunbc.install_transport_qualification` | `TargetBoundReinstallPath` — the host transport standing joined to an intake target (landed, ruling 4 §1) |
+| CI changed-witness execution sublane | dispatched as its own PR (child work item; ruling 4 "#9717 is not an unrelated CI incident") |
 | `gunbc.bmc_firmware_transition`, `gunbc.network_boot_delivery` | standings cut out of the solver into their own authorities (landed, ruling 3 namespace ruling) |
 | `gunbc.os_install_mechanism` | compatibility projection; capability-only solver and `FirmwareUpdateThenVirtualMedia` deleted (landed, ruling 3 §3) |
 | `gunbc.os_install`, `gunbc.generated_artifact` | `fleet_install_server_specs`, `InstallServerSpec`, `gunbc.install_server_emit` and the `ProxyDhcpDnsmasqArtifact` path deleted (ruling 3 §3) |
@@ -334,7 +365,14 @@ evidence; automating media attachment while the verdict stays manual is not it.
 | Remove Redfish VirtualMedia from live observation, keep it in the profile | Redfish transport not selected | boot delivery witness |
 | Stage a URI serving digest B for a request naming digest A | `CandidateStagedArtifactMismatch`, no plan | boot delivery witness |
 | Hand the solve an observation receipt from another attempt | `AccessContextObservationForOtherAttempt`, no plan | boot delivery witness |
-| Receipt digest differs from the observation's raw response | `AccessContextObservationEvidenceMismatch` | boot delivery witness |
+| Receipt manifest omits the observation's raw response | `AccessContextObservationEvidenceMismatch` | boot delivery witness |
+| Receipt manifest names the discovery bytes but not the nested probe's | `AccessContextProbeEvidenceMismatch` | boot delivery witness |
+| Request target for attempt two, context bound for attempt one (same controller) | `DeliveryTargetSubjectMismatch`, no plan | boot delivery witness |
+| Request target for controller .61, context bound for .60 (same subject) | `DeliveryTargetControllerMismatch`, no plan | boot delivery witness |
+| Configfs path / network boot established for another target | `CandidateEvidenceForOtherTarget` | boot delivery witness |
+| Profile promoted from an observation, receipts unresolvable | `AccessContextPromotedProfileUnverified`, no plan | boot delivery witness |
+| Raw release "0.32" with an exact-release OEM row and matching observation | context binds, MegaRAC plan (positive) | boot delivery witness |
+| Every current phase in the three rosters | exactly one rank, all distinct (positive) | disposition witness |
 | Catalog row whose capability firmware differs from its key | lookup refuses the catalog | boot delivery witness |
 | Probe admitted NFS only, staging offers HTTPS | `CandidateRedfishProtocolNotAdmitted` | boot delivery witness |
 | MegaRAC route with `image_redirection` Unset | `CandidateOemParameterUnset`, no plan | boot delivery witness |
