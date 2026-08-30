@@ -3,8 +3,9 @@ module v2.lens.reference_deps
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ClockBasis, WallClock, Millisecond, millisecond }
 
-import v2.extdeps.languages.dag { qualified_name_from_module_node }
-import v2.lens.module_graph { no_paths, module_graph_exclude_substrings }
+import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.lens.module_graph { map_lookup_where_rejected_unreachable, no_paths, module_graph_exclude_substrings }
+import v2.std.algebra { contains }
 
 
 type ReferenceResolutionFact {
