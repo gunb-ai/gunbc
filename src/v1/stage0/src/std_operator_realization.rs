@@ -120,7 +120,16 @@ pub fn ordering_test_for(op: BinOp) -> Option<Rc<OrderingTest>> {
         BinOp::Ge => Some(Rc::new(OrderingTest::OrderingIsNot {
             variant: "Less".to_string(),
         })),
-        _ => None,
+        BinOp::Add => None,
+        BinOp::Sub => None,
+        BinOp::Mul => None,
+        BinOp::Div => None,
+        BinOp::Mod => None,
+        BinOp::Eq => None,
+        BinOp::Ne => None,
+        BinOp::And => None,
+        BinOp::Or => None,
+        BinOp::NullCoalesce => None,
     }
 }
 
@@ -128,7 +137,18 @@ pub fn binop_is_equality(op: BinOp) -> bool {
     match op.clone() {
         BinOp::Eq => true,
         BinOp::Ne => true,
-        _ => false,
+        BinOp::Add => false,
+        BinOp::Sub => false,
+        BinOp::Mul => false,
+        BinOp::Div => false,
+        BinOp::Mod => false,
+        BinOp::Lt => false,
+        BinOp::Gt => false,
+        BinOp::Le => false,
+        BinOp::Ge => false,
+        BinOp::And => false,
+        BinOp::Or => false,
+        BinOp::NullCoalesce => false,
     }
 }
 
@@ -215,58 +235,75 @@ pub fn operator_realization_for(
         OperandRealization::OperandIdentityUnavailable => {
             Rc::new(OperatorRealization::HostOperator)
         }
-        OperandRealization::StructuralOperand { declaration: d, .. } => {
-            if binop_is_equality(op.clone()) {
-                Rc::new(OperatorRealization::StructuralEquality {
-                    declaration: d.clone(),
-                })
-            } else {
-                match ordering_test_for(op.clone()) {
-                    Some(test) => {
-                        match (*structural_ordering_for(ordering_rows.clone(), d.clone())).clone() {
-                            StructuralOrderingLookup::StructuralOrderingFound {
-                                row: row, ..
-                            } => Rc::new(OperatorRealization::StructuralComparison {
-                                declaration: d.clone(),
-                                binding: row.clone(),
-                                test: test.clone(),
-                            }),
-                            StructuralOrderingLookup::StructuralOrderingAbsent => {
-                                Rc::new(OperatorRealization::OperatorRealizationRefused {
-                                    cause: Rc::new(
-                                        OperatorRealizationRefusal::NoStructuralOperationDeclared {
-                                            declaration: d.clone(),
-                                            operator: binop_label(op.clone()),
-                                        },
-                                    ),
-                                })
-                            }
-                            StructuralOrderingLookup::StructuralOrderingAmbiguous {
-                                row_count: n,
-                                ..
-                            } => Rc::new(OperatorRealization::OperatorRealizationRefused {
-                                cause: Rc::new(
-                                    OperatorRealizationRefusal::StructuralOrderingDuplicated {
-                                        declaration: d.clone(),
-                                        row_count: n.clone(),
-                                    },
-                                ),
-                            }),
-                        }
-                    }
-                    None => match op.clone() {
-                        BinOp::And => Rc::new(OperatorRealization::HostOperator),
-                        BinOp::Or => Rc::new(OperatorRealization::HostOperator),
-                        BinOp::NullCoalesce => Rc::new(OperatorRealization::HostOperator),
-                        _ => Rc::new(OperatorRealization::OperatorRealizationRefused {
-                            cause: Rc::new(
-                                OperatorRealizationRefusal::NoStructuralOperationDeclared {
-                                    declaration: d.clone(),
-                                    operator: binop_label(op.clone()),
-                                },
-                            ),
+        OperandRealization::StructuralOperand { declaration: d, .. } => match op.clone() {
+            BinOp::Eq => Rc::new(OperatorRealization::StructuralEquality {
+                declaration: d.clone(),
+            }),
+            BinOp::Ne => Rc::new(OperatorRealization::StructuralEquality {
+                declaration: d.clone(),
+            }),
+            BinOp::Lt => {
+                structural_ordering_realization(op.clone(), d.clone(), ordering_rows.clone())
+            }
+            BinOp::Gt => {
+                structural_ordering_realization(op.clone(), d.clone(), ordering_rows.clone())
+            }
+            BinOp::Le => {
+                structural_ordering_realization(op.clone(), d.clone(), ordering_rows.clone())
+            }
+            BinOp::Ge => {
+                structural_ordering_realization(op.clone(), d.clone(), ordering_rows.clone())
+            }
+            BinOp::And => Rc::new(OperatorRealization::HostOperator),
+            BinOp::Or => Rc::new(OperatorRealization::HostOperator),
+            BinOp::NullCoalesce => Rc::new(OperatorRealization::HostOperator),
+            BinOp::Add => structural_arithmetic_refusal(op.clone(), d.clone()),
+            BinOp::Sub => structural_arithmetic_refusal(op.clone(), d.clone()),
+            BinOp::Mul => structural_arithmetic_refusal(op.clone(), d.clone()),
+            BinOp::Div => structural_arithmetic_refusal(op.clone(), d.clone()),
+            BinOp::Mod => structural_arithmetic_refusal(op.clone(), d.clone()),
+        },
+    }
+}
+
+pub fn structural_arithmetic_refusal(
+    op: BinOp,
+    declaration: Rc<DeclarationRef>,
+) -> Rc<OperatorRealization> {
+    Rc::new(OperatorRealization::OperatorRealizationRefused {
+        cause: Rc::new(OperatorRealizationRefusal::NoStructuralOperationDeclared {
+            declaration: declaration.clone(),
+            operator: binop_label(op.clone()),
+        }),
+    })
+}
+
+pub fn structural_ordering_realization(
+    op: BinOp,
+    declaration: Rc<DeclarationRef>,
+    ordering_rows: Rc<Vec<Rc<StructuralOrderingBinding>>>,
+) -> Rc<OperatorRealization> {
+    match ordering_test_for(op.clone()) {
+        None => structural_arithmetic_refusal(op.clone(), declaration.clone()),
+        Some(test) => {
+            match (*structural_ordering_for(ordering_rows.clone(), declaration.clone())).clone() {
+                StructuralOrderingLookup::StructuralOrderingFound { row: row, .. } => {
+                    Rc::new(OperatorRealization::StructuralComparison {
+                        declaration: declaration.clone(),
+                        binding: row.clone(),
+                        test: test.clone(),
+                    })
+                }
+                StructuralOrderingLookup::StructuralOrderingAbsent => {
+                    structural_arithmetic_refusal(op.clone(), declaration.clone())
+                }
+                StructuralOrderingLookup::StructuralOrderingAmbiguous { row_count: n, .. } => {
+                    Rc::new(OperatorRealization::OperatorRealizationRefused {
+                        cause: Rc::new(OperatorRealizationRefusal::StructuralOrderingDuplicated {
+                            declaration: declaration.clone(),
+                            row_count: n.clone(),
                         }),
-                    },
+                    })
                 }
             }
         }
