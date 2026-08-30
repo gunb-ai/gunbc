@@ -1380,10 +1380,24 @@ fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, 
 // binding, the module-visible NAME binding (lookup_type_by_name) -- that module's own import
 // binding -- still names the declaration; the found node is STILL matched by span against the
 // census, so a by-name hit only ever confirms an exact declaration, never picks among homonyms.
+fn declaration_ref_from_unique_census(decl_name: String, env: TypeEnv) -> DeclarationRef? {
+  if decl_name == "" { return none }
+  match map_get(env.symbol_index.global_bare, decl_name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } =>
+      Present { value: decl_ref(module_path: mp, decl_name: decl_name) }
+    _ => none
+  }
+}
+
 fn declaration_ref_from_module_binding(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
-    Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
-    Absent => none
+  let authored = authored_name_at(source_indices: source_indices, node: n)
+  match lookup_type_by_name(env: env, name: authored) {
+    Present { value: bound } =>
+      match declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env) {
+        Present { value: d } => Present { value: d }
+        Absent => declaration_ref_from_unique_census(decl_name: qualified_last_segment(name: authored), env: env)
+      }
+    Absent => declaration_ref_from_unique_census(decl_name: qualified_last_segment(name: authored), env: env)
   }
 }
 
