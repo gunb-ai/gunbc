@@ -114,12 +114,16 @@ fn w_retired_unit_silent() -> SparkServingRetirementObservation {
   )
 }
 
-fn w_pool_or_refused(host: HostIdentity, free_pool: ByteSize, after: Bool) -> SparkUnifiedPoolObservation? {
+fn w_pool_or_refused(
+  host: HostIdentity,
+  free_pool: ByteSize,
+  after: SparkServingRetirementObservation,
+) -> SparkUnifiedPoolObservation? {
   match spark_unified_pool_observation_from_capture(
     host: host,
     free_pool: free_pool,
     capture: ProbeAnswered { stdout: "MemAvailable" },
-    observed_after_retirement: after,
+    after: after,
   ) {
     SparkUnifiedPoolRead { observation: o } => Present { value: o }
     SparkUnifiedPoolUnread { cause: _ } => none
@@ -130,12 +134,11 @@ fn w_readiness(
   retirement: SparkServingRetirementObservation,
   host: HostIdentity,
   free_pool: ByteSize,
-  after: Bool,
 ) -> Bool {
-  match w_pool_or_refused(host: host, free_pool: free_pool, after: after) {
+  match w_pool_or_refused(host: host, free_pool: free_pool, after: retirement) {
     Absent => false
     Present { value: pool } =>
-      match spark_training_readiness(retirement: retirement, pool: pool) {
+      match spark_training_readiness(pool: pool) {
         SparkTrainingReady { proof: _ } => true
         SparkTrainingNotReady { cause: _ } => false
       }
@@ -143,7 +146,7 @@ fn w_readiness(
 }
 
 test fn w_a_fully_retired_training_cell_is_ready() -> Bool {
-  w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
+  w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
 }
 
 // THE POSITIVE CONTROL'S MIRROR: THE SERVING CELL IS NEVER READY.
@@ -156,15 +159,14 @@ test fn w_a_serving_cell_refuses_even_with_a_perfect_retirement_observation() ->
     retirement: w_retired(host: operator_host_srv5),
     host: operator_host_srv5,
     free_pool: byte_size(count: 100000000000),
-    after: true,
   )
 }
 
 // AN UNREACHED PROBE IS NOT ABSENCE, AND THIS IS THE CLAIM THAT COSTS THE MOST TO GET WRONG.
 test fn w_an_unobserved_subject_refuses_on_every_axis() -> Bool {
-  !w_readiness(retirement: w_retired_endpoint_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
-    && !w_readiness(retirement: w_retired_process_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
-    && !w_readiness(retirement: w_retired_unit_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: true)
+  !w_readiness(retirement: w_retired_endpoint_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
+    && !w_readiness(retirement: w_retired_process_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
+    && !w_readiness(retirement: w_retired_unit_silent(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000))
 }
 
 // A SERVER THAT ANSWERED IS THE LOUD ARM: the retirement did not happen.
@@ -178,24 +180,35 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
     ),
     host: operator_host_srv6,
     free_pool: byte_size(count: 100000000000),
-    after: true,
   )
 }
 
-// A POOL READ BEFORE THE RETIREMENT DESCRIBES A MACHINE THAT WAS STILL SERVING.
+// A POOL READING OVER AN UNESTABLISHED RETIREMENT REFUSES, WHICH IS WHERE THE ORDERING NOW LIVES.
 //
-// This input carries the same byte count as the passing case and differs only in when it was taken,
-// which is why the ordering is a field the producer answers for rather than something inferable.
-test fn w_a_pool_measured_before_the_retirement_refuses() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 100000000000), after: false)
+// The claim this replaces asserted that a pool flagged `observed_after_retirement: false` refused.
+// That state has no constructor any more: the reading carries the retirement observation it
+// followed, so a caller cannot describe a measurement taken before the retirement -- the value
+// proving the ordering did not exist until the retirement was observed. Per the dissolution rule the
+// production check went away and its discriminating RED did not: the same input is now refused one
+// stage earlier, by the producer, and this is that refusal.
+test fn w_a_pool_over_an_unestablished_retirement_is_refused() -> Bool {
+  match spark_unified_pool_observation_from_capture(
+    host: operator_host_srv6,
+    free_pool: byte_size(count: 100000000000),
+    capture: ProbeAnswered { stdout: "MemAvailable" },
+    after: w_retired_endpoint_silent(),
+  ) {
+    SparkUnifiedPoolUnread { cause: c } => length(c as String) > 0
+    SparkUnifiedPoolRead { observation: _ } => false
+  }
 }
 
 test fn w_a_pool_measured_on_another_host_refuses() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv5, free_pool: byte_size(count: 100000000000), after: true)
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv5, free_pool: byte_size(count: 100000000000))
 }
 
 test fn w_a_non_positive_pool_refuses_rather_than_offering_nothing() -> Bool {
-  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 0), after: true)
+  !w_readiness(retirement: w_retired_srv6(), host: operator_host_srv6, free_pool: byte_size(count: 0))
 }
 
 // A CAPTURE THAT DID NOT ANSWER CANNOT CARRY A BYTE COUNT, whatever integer is passed beside it.
@@ -204,7 +217,7 @@ test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
     host: operator_host_srv6,
     free_pool: byte_size(count: 100000000000),
     capture: ProbeNeverRan { cause: "ssh timed out" as NonEmptyStr },
-    observed_after_retirement: true,
+    after: w_retired_srv6(),
   ) {
     SparkUnifiedPoolUnread { cause: _ } => true
     SparkUnifiedPoolRead { observation: _ } => false
