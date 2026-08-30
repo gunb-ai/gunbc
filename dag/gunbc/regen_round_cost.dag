@@ -35,7 +35,6 @@ import std.types { String, Int, List, Bool }
 type RegenRoundPhase
   = SeedBuild
   | CorpusLoad
-  | CorpusReload
   | Frontend
   | Normalize
   | Reconcile
@@ -74,6 +73,7 @@ type RegenRoundCostReceipt {
   tree_dirty: Bool
   seed_build_compiled_crates: Int
   rebuild_compiled_crates: Int
+  rustfmt_spawns: Int
   marks: List<TraceMark>
   changed_paths: List<String>
 }
@@ -82,7 +82,6 @@ fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
   match phase {
     SeedBuild => "seed_build"
     CorpusLoad => "corpus_load"
-    CorpusReload => "corpus_reload"
     Frontend => "compile.frontend"
     Normalize => "compile.normalize"
     Reconcile => "compile.reconcile"
@@ -108,7 +107,6 @@ fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
   match phase {
     SeedBuild => "round.seed_build"
     CorpusLoad => "regen.corpus_load"
-    CorpusReload => "regen.corpus_reload"
     Frontend => "compile.frontend"
     Normalize => "compile.normalize"
     Reconcile => "compile.reconcile"
@@ -126,7 +124,7 @@ fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
 }
 
 fn regen_round_phases() -> List<RegenRoundPhase> {
-  [SeedBuild, CorpusLoad, CorpusReload, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, Diff]
+  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, Diff]
 }
 
 fn regen_round_phase_of_label(label: String) -> RegenRoundPhaseAttribution {
@@ -191,7 +189,10 @@ fn regen_round_header_line(receipt: RegenRoundCostReceipt) -> String {
       concat(concat(" tree=", receipt.tree), concat(" tree_dirty=", regen_round_bool_text(b: receipt.tree_dirty))),
       concat(
         concat(" seed_build_compiled_crates=", to_string(receipt.seed_build_compiled_crates)),
-        concat(" rebuild_compiled_crates=", to_string(receipt.rebuild_compiled_crates))
+        concat(
+          concat(" rebuild_compiled_crates=", to_string(receipt.rebuild_compiled_crates)),
+          concat(" rustfmt_spawns=", to_string(receipt.rustfmt_spawns))
+        )
       )
     )
   )
@@ -282,6 +283,11 @@ data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
 // a round with a real edit; the two cargo builds of the seed (before the round, and
 // rebuild-from-installed) are the majority of such a round even for a one-mirror change,
 // because every mirror compiles into one crate and cargo recompiles that crate whole; the
-// corpus is read twice (corpus_load then corpus_reload, the second inside compile_stage0) and
-// rustfmt normalizes the whole population three times (mirror_write, adjudicate, digest).
+// corpus WAS read twice (corpus_load then a corpus_reload inside compile_stage0) and rustfmt
+// normalized the whole population three times (mirror_write, adjudicate, digest) -- both
+// closed in the change after the measurement: one read threaded to both consumers, and one
+// normalize per distinct input through a memo plus a per-rustfmt-version disk cache under
+// target/stage0-regen-rustfmt-cache whose entries are honoured only when the stored raw input
+// is byte-equal to the request. rustfmt_spawns on the receipt is the count the fixed-point
+// control is checked against.
 data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."
