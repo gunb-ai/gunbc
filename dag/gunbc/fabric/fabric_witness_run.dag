@@ -18,6 +18,7 @@ import product.fabric.work {
   work_for,
 }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
+import gunbc.required_ci_phase_roster { BuildLane, WitnessesLane, required_ci_lane_name }
 import extdeps.git.object_store { GitObjectId, git_object_id_wire_hex, git_object_id_content_hash, git_sha1_object_id }
 import product.fabric.supply {
   SupplierOffer, OfferFungibility, DemandOfferAffordability, GrantDuration, EstimatedGrantDuration,
@@ -547,9 +548,12 @@ fn required_ci_lane_command(lane: String) -> ArgvCommand {
   )
 }
 
-data required_ci_lane_build: String = "build"
+// THE LANE WORDS ARE THE ROSTER'S, NOT THIS MODULE'S. gunbc.required_ci_phase_roster owns lane
+// identity and the phase-to-lane partition; these two datas survive as the join point every
+// existing consumer already names, derived from that single authority rather than restating it.
+data required_ci_lane_build: String = required_ci_lane_name(l: BuildLane)
 
-data required_ci_lane_witnesses: String = "witnesses"
+data required_ci_lane_witnesses: String = required_ci_lane_name(l: WitnessesLane)
 
 // The witnesses lane: the .dag parse sweep and the witness floor fold. Named for its lane
 // rather than for the floor alone, because the parse phase rides here too and a name that
