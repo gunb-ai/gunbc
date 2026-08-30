@@ -1300,6 +1300,10 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       }
     Absent =>
       let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+      let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+      match exact_leaf {
+        Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+        Absent =>
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
@@ -1355,6 +1359,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       } else {
         render_rust_type_with_applied_binding_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, env: env)
       }
+      }
   }
 }
 
@@ -1391,6 +1396,10 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+  match exact_leaf {
+    Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+    Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decl_file: type_reference_decl_file(n: n)) {
@@ -1401,6 +1410,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
     render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
+  }
   }
 }
 
