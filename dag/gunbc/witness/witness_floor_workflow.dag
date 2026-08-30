@@ -31,10 +31,10 @@ import gunbc.toolchain_workflow_steps {
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   upload_artifact_action,
-  WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule,
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
-  WorkflowPermissions, PermRead,
+  WorkflowPermissions, PermRead, PermWrite,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
@@ -44,6 +44,9 @@ import gunbc.repo_identity { gunbc_default_branch_name }
 import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.fabric_witness_run { witnesses_lane_run_command, build_lane_run_command }
+import gunbc.claim_executor_cli { claim_batch_command }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard }
+import v2.workflow.floor_wet_route { floor_wet_route_receipt_rel_path }
 import extdeps.exec.command { ArgvCommand, shell_command_render }
 import gunbc.required_lanes_gate { required_lanes_gate_stmts }
 import extdeps.github.expressions { ContextAccess, Github, Needs, interpolate }
@@ -1152,7 +1155,7 @@ fn witness_floor_job() -> Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: not_on_wet_cadence_condition() },
     timeout_minutes: 180,
     continue_on_error: none,
     concurrency: none,
@@ -1283,11 +1286,176 @@ fn rust_unit_tests_job() -> Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: not_on_wet_cadence_condition() },
     timeout_minutes: 60,
     continue_on_error: none,
     concurrency: none,
     permissions: none
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// THE WET RECEIPTS LANE (parent ruling 2026-08-30, FLOOR-ROUTE-GAP-SELF-HOST). A separate,
+// NON-REQUIRED job that executes the `v2.workflow.floor_wet_route` roster with real effects —
+// a real gunbc emit, real cargo builds of the seed-linked shims, real driver runs — and lands
+// the per-identity receipt the required floor's DeclinedRoutedToWetLane join refuses without.
+// It runs on a daily schedule and on manual dispatch, never per pull request and never as a
+// required context: one seed-linked behavioral receipt alone measured ~305s of witness wall
+// (gunbc#9371), which the 2026-08-29 bankruptcy ruling prices off the required path.
+//
+// THE POPULATION IS DERIVED, NEVER SPELLED HERE: `claim_batch --wet-route` reads
+// `floor_wet_route_roster` from the .dag authority at run time, so a roster edit needs no
+// workflow regeneration and no second list can drift. The receipt TSV reaches main by PULL
+// REQUEST (transport a', same ruling): this job commits the refreshed file to a well-known
+// branch and opens/refreshes the PR; merging stays under the ordinary rule. No bot push to
+// the protected default branch, and no API read anywhere on the required path — the floor
+// only ever reads the committed TSV.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+// THE REQUIRED LANES DO NOT RUN ON THE WET CADENCE. The schedule trigger exists for the
+// wet-receipts job alone; without this condition every daily tick would also pay a full
+// required floor, a whole-workspace build and the unit-test job on an unchanged main — cost
+// with no new subject, against the 2026-08-29 bankruptcy's whole point. Skipped-on-schedule is
+// safe for the required context because a schedule run guards no merge: required checks bind
+// to pull-request and merge-group heads, which the schedule event never carries.
+fn not_on_wet_cadence_condition() -> String {
+  "github.event_name != 'schedule'"
+}
+
+data wet_receipts_job_id: String = "wet-receipts"
+
+// Daily, at a fixed off-peak minute; the floor's freshness budget
+// (`floor_wet_route_cadence_secs` + `floor_wet_route_receipt_grace_secs`) is declared beside
+// this cadence's model in `v2.workflow.floor_wet_route`, which is the authority a reader
+// should price the tolerated miss count from.
+data wet_receipts_cron: CronSchedule = CronSchedule {
+  minute: extdeps.cron.schedule_model.Exact { value: 17 },
+  hour: extdeps.cron.schedule_model.Exact { value: 9 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+fn wet_receipts_job_condition() -> String {
+  "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'"
+}
+
+// The lane builds exactly the three bins its rows execute through: claim_batch (the wet
+// executor), gunbc (the emit the cssl harness dispatches), cssl_assemble (the closure
+// assembler those transports invoke).
+data wet_receipts_required_bins: List<String> = ["claim_batch", "gunbc", "cssl_assemble"]
+
+fn wet_receipts_run_command() -> ArgvCommand {
+  claim_batch_command(
+    mode_flag: "--wet-route",
+    operands: append(
+      fold(
+        witness_layer_roots,
+        init: [],
+        f: fn(acc, root) { append(acc, items: ["--source-root", root]) },
+      ),
+      items: ["--receipt-out", floor_wet_route_receipt_rel_path],
+    ),
+  )
+}
+
+fn wet_receipts_run_step() -> Step {
+  RunStep {
+    name: Present { value: "Wet receipts lane (rows named by the run, not by this label)" },
+    id: Present { value: "wet_receipts_run" },
+    run: required_lane_run_script(command: wet_receipts_run_command()),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// THE RECEIPT LANDS EVEN WHEN THE LANE IS RED — `!cancelled()` rather than the implicit
+// success() — because an honest fail receipt is the routed witnesses' verdict channel and an
+// absent receipt refuses every open pull request three days later. The lane's own red stays
+// on this job.
+data wet_receipts_pr_annotation: String = "# dissolve-on: wet_receipts_pr_script -- orch-emitted foreign-executor step committing the lane's generated receipt to its refresh branch and opening the carrying pull request. Leaf git/gh strings remain until a typed repository-write effect lands on host_effect_apply (shell-to-intent Phase 2), the same terminal construction the toolchain isolation steps above wait on; the receipt file itself is the modeled artifact (v2.workflow.floor_wet_route, digest-sealed).\n"
+
+data wet_receipts_pr_body: String = "cd \"$ROOT\"\ngit config user.name gunbc-ci-auto-heal\ngit config user.email gunbc-ci-auto-heal@users.noreply.github.com\ngit checkout -B 'wet-receipts/refresh'\ngit add dag/gunbc/witness/wet_lane_receipt.tsv\ngit commit -m \"wet-receipts: refresh lane receipt (run $\{GITHUB_RUN_ID\})\"\ngit push -f origin 'wet-receipts/refresh'\ngh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt' --body \"Generated artifact: per-identity wet-lane receipt (v2.workflow.floor_wet_route), produced by workflow run $\{GITHUB_RUN_ID\} on $\{GITHUB_SHA\}. The digest line seals the rows; regenerate via the wet-receipts job, never by hand.\" || echo 'PR already open; the push refreshed it'\n"
+
+fn wet_receipts_pr_script() -> String {
+  concat(
+    wet_receipts_pr_annotation,
+    concat(
+      "set -eu\n",
+      concat("ROOT=", concat(ci_repo_root_shell(), concat("\n", wet_receipts_pr_body)))
+    )
+  )
+}
+
+fn wet_receipts_pr_step() -> Step {
+  RunStep {
+    name: Present { value: "Commit the receipt and open its pull request" },
+    id: none,
+    run: wet_receipts_pr_script(),
+    shell: none,
+    env: Present { value: [kv(key: "GH_TOKEN", value: yaml_string(s: "${{ github.token }}"))] },
+    working_directory: none,
+    if_condition: Present { value: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped'" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn wet_receipts_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(build_script: repo_self_build_command(bins: wet_receipts_required_bins)),
+    items: [
+      WitnessFloorBoundStep {
+        step: wet_receipts_run_step(),
+        role: consumes_only(capabilities: [CargoCapability, RustcCapability]),
+        step_name: "Wet receipts lane (rows named by the run, not by this label)",
+      },
+      WitnessFloorBoundStep {
+        step: wet_receipts_pr_step(),
+        role: capability_neutral,
+        step_name: "Commit the receipt and open its pull request",
+      },
+    ],
+  )
+}
+
+fn wet_receipts_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: wet_receipts_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn wet_receipts_job() -> Job {
+  Job {
+    id: wet_receipts_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: wet_receipts_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: wet_receipts_job_condition() },
+    timeout_minutes: 180,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermWrite },
+        pull_requests: Present { value: PermWrite },
+        issues: none,
+        actions: none,
+        id_token: none
+      }
+    }
   }
 }
 
@@ -1300,7 +1468,7 @@ fn build_lane_job() -> Job {
     needs: [],
     env: none,
     outputs: none,
-    if_condition: none,
+    if_condition: Present { value: not_on_wet_cadence_condition() },
     timeout_minutes: 90,
     continue_on_error: none,
     concurrency: none,
@@ -1449,7 +1617,7 @@ fn build_lane_job() -> Job {
 // the required context skipped on a head that was still the merge candidate. The exclusion treats
 // `cancelled` as evidence of supersession; the measurement says it is evidence of nothing.
 fn required_lanes_aggregate_job_condition() -> String {
-  "always()"
+  concat("always() && ", not_on_wet_cadence_condition())
 }
 //
 // THE STEP-LEVEL `always()` STAYS, and it guards a different thing rather than restating this
@@ -1638,6 +1806,7 @@ data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
   on: [
     WorkflowDispatch { inputs: [] },
+    Schedule { cron: wet_receipts_cron },
     MergeGroup,
     Push { branches: [gunbc_default_branch_name], paths: [] },
     PullRequest {
@@ -1674,7 +1843,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), required_lanes_aggregate_job()]
+  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), wet_receipts_job(), required_lanes_aggregate_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim.
@@ -1694,7 +1863,7 @@ data witness_floor_capability_closure_refusal: String = "REFUSED gunbc.witness_f
 // whole-workflow closure would be the wrong shape, and checking only the job that existed first
 // would leave the new one guarded by nothing while the emission still refused on its behalf.
 // That is the inert half DESIGN §6 names: machinery that exists and gates nothing.
-data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and witness_floor_capability_closure_holds and build_lane_capability_closure_holds; adding a third job without adding its conjunct would emit that job unchecked."
+data witness_floor_capability_closure_per_job_note: String = "expected_witness_floor_yml conjoins required_lanes_gate_is_renderable and witness_floor_capability_closure_holds and build_lane_capability_closure_holds and rust_unit_tests_capability_closure_holds and wet_receipts_capability_closure_holds; adding another job without adding its conjunct would emit that job unchecked."
 
 type WitnessFloorGenerationOutcome
   = WitnessFloorGenerated { content: String }
@@ -1710,7 +1879,7 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       WitnessFloorGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
     WorkflowToolchainHomesAdmitted =>
-      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && required_lanes_gate_is_renderable() {
+      if witness_floor_capability_closure_holds() && build_lane_capability_closure_holds() && rust_unit_tests_capability_closure_holds() && wet_receipts_capability_closure_holds() && required_lanes_gate_is_renderable() {
         WitnessFloorGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow)) }
       } else {
         WitnessFloorGenerationRefused { reason: witness_floor_capability_closure_refusal_reason }

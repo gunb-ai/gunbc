@@ -26,3 +26,14 @@ fn claim_executor_command(mode_flag: String, operands: List<String>) -> ArgvComm
     arguments: append([mode_flag], items: operands),
   )
 }
+
+// The sibling batch binary, same reasoning and same shape: built from this tree, flags owned
+// here, path relative to the checkout the job stands in.
+data claim_batch_release_path: NonEmptyStr = "target/release/claim_batch"
+
+fn claim_batch_command(mode_flag: String, operands: List<String>) -> ArgvCommand {
+  argv_command(
+    program: claim_batch_release_path,
+    arguments: append([mode_flag], items: operands),
+  )
+}

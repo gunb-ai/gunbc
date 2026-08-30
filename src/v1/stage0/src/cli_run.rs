@@ -55,7 +55,8 @@ mod required_floor_runner;
 pub(crate) use required_floor_runner::*;
 pub use required_floor_runner::{
     make_eval_context, make_eval_context_with_runtime_options, run_claim_measured,
-    run_required_floor,
+    run_required_floor, wet_route_lane_rows, write_wet_lane_receipt_tsv_rows,
+    WetLaneExecutedReceipt, WetRouteLaneRow,
 };
 mod entry_resolve;
 pub(crate) use active_workset::*;
@@ -36880,6 +36881,15 @@ pub enum RequiredFloorDisposition {
     /// own remedy. `collect_deferred_discovery_rows` receipts the same removal at ENTRY grain;
     /// this is the identity grain the population join is keyed on.
     DeclinedDiscoveryExcluded { matched_substring: String },
+    /// Declined because the qualified identity is enrolled in `v2.workflow.floor_wet_route`:
+    /// its subject is a real host-effect chain no honest mock can answer (a real gunbc emit,
+    /// a real cargo build, real scratch I/O), so its executing consumer is the wet receipts
+    /// lane at that lane's cadence, never the hermetic fold. Carries no payload — the roster
+    /// is the authority for the population, and the lane's committed receipt is the authority
+    /// for each identity's last verdict. NEVER a quiet skip: the floor joins every routed
+    /// identity against the lane's receipt and REFUSES the run when the receipt is absent or
+    /// stale beyond the declared budget, so a dead lane un-routes its population loudly.
+    DeclinedRoutedToWetLane,
 }
 
 /// ONE EXECUTED CLAIM'S MEASURED OCCURRENCE, minted the instant `run_claim_measured`
@@ -37031,6 +37041,10 @@ pub struct RequiredFloorOutcome {
     pub declined_outside_gate_closure: usize,
     /// Declared identities excluded from discovery by an `exclude_substrings` match.
     pub declined_discovery_excluded: usize,
+    /// Declared identities declined from hermetic execution because `v2.workflow.floor_wet_route`
+    /// routes them to the wet receipts lane. Counted, never green-by-decline: the three
+    /// blocking collections below are what keep the decline honest.
+    pub declined_routed_to_wet_lane: usize,
     pub claims_planned: usize,
     pub claims_executed: usize,
     pub receipt_identities: usize,
@@ -37106,6 +37120,17 @@ pub struct RequiredFloorOutcome {
     /// leaves a line behind that withholds nothing, and the roster's length then overstates the
     /// debt in the direction that flatters. Same shape as `stale_quarantine`, same reason.
     pub stale_cost_debt: Vec<String>,
+    /// BLOCKING. A wet-routed identity with NO row in the lane's committed receipt: the lane
+    /// has never executed it, so the decline would be coverage by illusion.
+    pub wet_route_receipt_absent: Vec<String>,
+    /// BLOCKING. A wet-routed identity whose receipt is older than the declared staleness
+    /// budget: the lane has stopped producing evidence, and a dead lane must un-route its
+    /// population loudly rather than hold it forever.
+    pub wet_route_receipt_stale: Vec<String>,
+    /// BLOCKING. A `floor_wet_route` roster row naming an identity this run did not offer and
+    /// route — renamed, deleted, or declined by an earlier home policy. Same rot guard as
+    /// `stale_cost_debt`.
+    pub stale_wet_route: Vec<String>,
     /// ENROLLED AS EXPECTED-RED AND THREW, or answered with a non-verdict. Its own collections
     /// for the same reason `route_gap` is not folded into `host_tool_unresolved`: the remedy
     /// differs. A throw is a defect in the witness or its subject; an unreadable observation is
@@ -37603,6 +37628,7 @@ fn write_required_floor_disposition_tsv(
     let mut declined_outside_gate = 0usize;
     let mut declined_gate_closure = 0usize;
     let mut declined_discovery_excluded = 0usize;
+    let mut declined_routed_to_wet_lane = 0usize;
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
@@ -37614,13 +37640,14 @@ fn write_required_floor_disposition_tsv(
             RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => {
                 declined_discovery_excluded += 1
             }
+            RequiredFloorDisposition::DeclinedRoutedToWetLane => declined_routed_to_wet_lane += 1,
         }
     }
     writeln!(
         file,
         "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
-         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
+         \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}\tdeclined_routed_to_wet_lane={}",
         rows.len(),
         planned,
         declined_long,
@@ -37628,7 +37655,8 @@ fn write_required_floor_disposition_tsv(
         declined_outside_gate,
         declined_gate_closure,
         declined_discovery_excluded,
-        declined_cost_debt
+        declined_cost_debt,
+        declined_routed_to_wet_lane
     )
     .map_err(|e| format!("write_required_floor_disposition_tsv: write {path}: {e}"))?;
     writeln!(file, "identity\tdisposition\tmatched_prefix\toutcome")

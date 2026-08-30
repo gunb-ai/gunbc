@@ -34,7 +34,7 @@ import gunbc.discovery_census {
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
   Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate, DeclinedCostDebt,
-  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+  DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedRoutedToWetLane,
   required_floor_site_disposition,
 }
 import v2.workflow.floor_terminal_ledger { ClaimDisposition, Passed }
@@ -216,6 +216,7 @@ test fn w_fixture_home_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
   }
 }
 
@@ -231,6 +232,7 @@ test fn w_long_home_module_declines_with_its_matched_prefix() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
   }
 }
 
@@ -249,6 +251,7 @@ test fn w_long_home_is_a_prefix_not_a_substring() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
   }
 }
 
@@ -264,6 +267,7 @@ test fn w_site_is_planned_when_no_home_matched() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
   }
 }
 
@@ -282,6 +286,7 @@ test fn w_site_outside_the_required_gate_is_declined() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
   }
 }
 
@@ -308,7 +313,8 @@ test fn w_counts_partition_the_offered_population() -> Bool {
           + counts.declined_outside_required_gate
           + counts.declined_outside_gate_closure
           + counts.declined_discovery_excluded
-          + counts.declined_cost_debt)
+          + counts.declined_cost_debt
+          + counts.declined_routed_to_wet_lane)
 }
 
 // THE SITE FUNCTION NEVER RETURNS `DeclinedCostDebt`, AND THAT IS A CLAIM ABOUT WHERE THE
@@ -340,6 +346,7 @@ test fn w_rostered_identity_declines_for_cost_debt() -> Bool {
     DeclinedOutsideRequiredGate => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
     Planned => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
@@ -360,6 +367,7 @@ test fn w_unrostered_sibling_in_the_same_module_is_planned() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }
@@ -380,6 +388,7 @@ test fn w_home_decline_outranks_cost_debt() -> Bool {
     DeclinedCostDebt => false
     DeclinedOutsideGateClosure => false
     DeclinedDiscoveryExcluded { matched_substring: _ } => false
+    DeclinedRoutedToWetLane => false
     Planned => false
     DeclinedFixtureMember { matched_prefix: _ } => false
   }
@@ -428,6 +437,8 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      DeclinedRoutedToWetLane => false
+    DeclinedRoutedToWetLane => false
     })
     && all(split.declined, r => match r.disposition {
       DeclinedOutsideRequiredGate => true
@@ -437,6 +448,8 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedCostDebt => false
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
+      DeclinedRoutedToWetLane => false
+    DeclinedRoutedToWetLane => false
     })
 }
 

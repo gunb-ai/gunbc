@@ -1,0 +1,146 @@
+module v2.test.floor_wet_route
+
+import v2.workflow.floor_wet_route {
+  WetRouteRow,
+  WetLaneOutcome, WetPass, WetFail,
+  WetRouteReceipt,
+  WetRouteReceiptStanding, ReceiptFresh, ReceiptAbsent, ReceiptStale,
+  wet_route_receipt_standing,
+  wet_route_standing_blocks_floor,
+  floor_wet_route_receipt_staleness_budget_secs,
+  floor_wet_route_roster,
+  floor_wet_route_identities,
+}
+import v2.std.algebra { filter, fold_list, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.optional { Optional, Absent, Present }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// Every fixture below is authored in this source; the module reaches nothing outside the
+// substrate inputs.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FOLD'S EXECUTING CONSUMERS. `v2.workflow.floor_wet_route` is the authority the required
+// floor's host projection realizes; these witnesses execute the .dag standing fold itself, one
+// discriminating arm each. The lane-side half of the route — that the routed witnesses run
+// with real effects and that a planted self-host fault yields the exact FAIL marker — is
+// established on the wet receipts lane by the receipts themselves (the cssl harness's
+// three-conjunct fault check is already the executing control there); these witnesses own the
+// floor-side half: the join that makes a dead or silent lane a refusal instead of a decline.
+
+// Recorded at the constant base 1000000; a caller makes the receipt AGE by passing
+// evaluated_tree_commit_unix_secs = 1000000 + age, so every fixture's age is a visible literal at its use site.
+fn fixture_pass_receipt() -> WetRouteReceipt {
+  WetRouteReceipt {
+    identity: "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds",
+    outcome: WetPass {},
+    wall_ms: 305558,
+    run_id: "fixture-run",
+    head_sha: "0000000000000000000000000000000000000000",
+    recorded_unix_secs: 1000000
+  }
+}
+
+test fn wet_route_fresh_receipt_is_not_blocking() -> Bool {
+  let standing = wet_route_receipt_standing(
+    receipt: Present { value: fixture_pass_receipt() },
+    evaluated_tree_commit_unix_secs: 1000000
+  )
+  match standing {
+    ReceiptFresh { outcome: o, age_secs: age } =>
+      match o {
+        WetPass => age == 0 && !wet_route_standing_blocks_floor(standing: standing)
+        WetFail => false
+      }
+    ReceiptAbsent => false
+    ReceiptStale { age_secs: _ } => false
+  }
+}
+
+// A FAILING receipt is still FRESH and still not floor-blocking: pass/fail is the lane's
+// verdict at the lane's cadence, and converting it into a per-PR red would charge every open
+// pull request for a main-wide wet regression it did not introduce. The lane itself is red on
+// that run, which is the signal's home.
+test fn wet_route_fresh_fail_receipt_reports_fail_and_does_not_block() -> Bool {
+  let failing = WetRouteReceipt {
+    identity: "x",
+    outcome: WetFail {},
+    wall_ms: 1,
+    run_id: "fixture-run",
+    head_sha: "0000000000000000000000000000000000000000",
+    recorded_unix_secs: 1000000
+  }
+  let standing = wet_route_receipt_standing(
+    receipt: Present { value: failing },
+    evaluated_tree_commit_unix_secs: 1000000
+  )
+  match standing {
+    ReceiptFresh { outcome: o, age_secs: _ } =>
+      match o {
+        WetFail => !wet_route_standing_blocks_floor(standing: standing)
+        WetPass => false
+      }
+    ReceiptAbsent => false
+    ReceiptStale { age_secs: _ } => false
+  }
+}
+
+// THE COVERAGE-BY-ILLUSION CONTROL: routed with no receipt ever produced must refuse, never
+// decline quietly. This is the arm the falsifier deletion (2026-08-15) reached nowhere.
+test fn wet_route_absent_receipt_blocks() -> Bool {
+  let standing = wet_route_receipt_standing(receipt: Absent, evaluated_tree_commit_unix_secs: 1000000)
+  match standing {
+    ReceiptAbsent => wet_route_standing_blocks_floor(standing: standing)
+    ReceiptFresh { outcome: _, age_secs: _ } => false
+    ReceiptStale { age_secs: _ } => false
+  }
+}
+
+test fn wet_route_stale_receipt_blocks() -> Bool {
+  let over = floor_wet_route_receipt_staleness_budget_secs() + 1
+  let standing = wet_route_receipt_standing(
+    receipt: Present { value: fixture_pass_receipt() },
+    evaluated_tree_commit_unix_secs: 1000000 + over
+  )
+  match standing {
+    ReceiptStale { age_secs: age } => age == over && wet_route_standing_blocks_floor(standing: standing)
+    ReceiptFresh { outcome: _, age_secs: _ } => false
+    ReceiptAbsent => false
+  }
+}
+
+// The boundary discriminates the comparison's direction: a receipt EXACTLY at the budget is
+// still fresh, so the wall fires on `>` and a re-spelling as `>=` reds here.
+test fn wet_route_receipt_at_exact_budget_is_fresh() -> Bool {
+  let at = floor_wet_route_receipt_staleness_budget_secs()
+  let standing = wet_route_receipt_standing(
+    receipt: Present { value: fixture_pass_receipt() },
+    evaluated_tree_commit_unix_secs: 1000000 + at
+  )
+  match standing {
+    ReceiptFresh { outcome: _, age_secs: age } => age == at
+    ReceiptAbsent => false
+    ReceiptStale { age_secs: _ } => false
+  }
+}
+
+// Roster hygiene the host wall then re-checks at run grain: identities are pairwise
+// distinct (a duplicated row would receipt one witness twice and mask a missing sibling),
+// and the projection is total — one identity per row, no more and no fewer. No population
+// count is asserted here: the roster IS the population authority, and a literal copied from
+// it would collapse to measure() == measure().
+test fn wet_route_roster_identities_are_distinct() -> Bool {
+  let rows = floor_wet_route_roster()
+  let identities = floor_wet_route_identities()
+  let distinct = fold_list(
+    xs: identities,
+    empty: true,
+    cons: fn(acc, id) {
+      acc && length(xs: identities |> filter(other => other == id)) == 1
+    }
+  )
+  distinct && length(xs: identities) == length(xs: rows)
+}

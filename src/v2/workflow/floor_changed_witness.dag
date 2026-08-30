@@ -2,7 +2,7 @@ module v2.workflow.floor_changed_witness
 
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt, DeclinedRoutedToWetLane,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
 }
 import v2.workflow.floor_terminal_ledger {
@@ -76,6 +76,14 @@ type ChangedWitnessDispositionReading =
 // CHANGED-SET grain — the line that names the identity the PR touched. The twelve outcome arms
 // are spelled rather than wildcarded so a thirteenth `ClaimDisposition` arm must be classified
 // here, never absorbed.
+//
+// `DeclinedRoutedToWetLane` BLOCKS LIKE EVERY OTHER DECLINE, and the composition is deliberate
+// rather than inherited: a changed wet-routed declaration cannot reach a terminal verdict at
+// merge — its executing consumer is the wet receipts lane, at that lane's cadence — and
+// greening the edit by decline would be the coverage inflation `v2.workflow.floor_wet_route`
+// exists to refuse. The red's remedy is live, not dead: dispatch the wet receipts lane on the
+// head (workflow_dispatch executes the routed roster with the edit applied) and read its
+// receipt.
 fn changed_witness_execution_standing(
   reading: ChangedWitnessDispositionReading,
 ) -> ChangedWitnessExecutionStanding {
@@ -109,6 +117,7 @@ fn changed_witness_execution_standing(
         DeclinedOutsideGateClosure => Declined { disposition: d }
         DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
         DeclinedCostDebt => Declined { disposition: d }
+        DeclinedRoutedToWetLane => Declined { disposition: d }
       }
   }
 }

@@ -1,0 +1,211 @@
+module v2.workflow.floor_wet_route
+
+import v2.std.algebra { fold_list }
+import v2.std.collection { List }
+import v2.std.integer { Int, int_gt }
+import v2.std.logic { Bool }
+import v2.std.optional { Optional, Absent, Present }
+import v2.std.text { String }
+
+// THE WET EXECUTION ROUTE: identities the required floor DECLINES from hermetic execution
+// because their subject is a real host effect chain no honest mock can answer, routed instead
+// to the wet receipts lane — a separate, non-required workflow job that executes them with
+// real effects (`claim_batch --wet-route`) and publishes a per-identity receipt this floor
+// then joins against.
+//
+// WHY A ROUTE AND NOT A MOCK (operator/parent ruling 2026-08-30, work item
+// FLOOR-ROUTE-GAP-SELF-HOST, option (b)). Every identity below reaches
+// `tools.self_host_curated_seed_linked_harness` or the artifact-materialization wet chain:
+// mktemp, a real `gunbc compile` of the subject module, a real cargo build of the emitted
+// crate, two driver executions, recursive scratch removal. `gunbc.hermetic_mock_fidelity` is
+// the filed error class for answering any link of that chain with a canned value — the witness
+// then asserts about the mock, and a mock for the FIRST refused operation (shell.Mktemp.Dir)
+// only moves the refusal to the next link while the identity stays held. The honest route for
+// the whole chain is real execution; the honest per-PR fact is a typed decline that names
+// where the execution happens and REFUSES when that lane stops producing evidence.
+//
+// WHERE THE LANE RUNS, AND WHAT THAT COSTS THE GUARANTEE (§4b rung honesty, stated at the
+// grain the ruling demanded). The wet receipts lane runs on a schedule and on manual
+// dispatch, never per pull request and never as a required context — the 2026-08-29 CI
+// bankruptcy ruling priced an ~87-minute required gate out of existence, and one seed-linked
+// behavioral receipt alone measured ~305s of witness wall (gunbc#9371, first green since the
+// falsifier deletion). So for every identity on this roster the rung is MECHANICALLY
+// PREVENTABLE AT THE LANE'S CADENCE: a regression in a routed witness is caught at the next
+// wet run, not at the merge that introduces it. This is not a §4b(3) drop from anything the
+// required floor previously established — these identities were route_gap_held, executing
+// into a typed refusal and reaching no verdict at all, so the lane's cadence-grain verdict is
+// a strict climb from no-verdict, and the drop ledger gains no row.
+//
+// THE COVERAGE-BY-ILLUSION WALL, which is the one thing this module adds beyond a roster.
+// The falsifier lane's history is the counterexample this design answers: rows sat
+// "scheduled" for months after falsifier.yml was deleted, and nothing on the required path
+// could tell. Here the required floor JOINS every routed identity against the lane's
+// committed receipt, every run:
+//
+//   - routed, receipt fresh:            declined-to-wet, counted, never green-by-decline —
+//                                       the receipt's own pass/fail lives on the lane.
+//   - routed, receipt ABSENT:           the run REFUSES (blocking). A row may not sit in
+//                                       "routed to wet" with no receipt ever produced.
+//   - routed, receipt STALE beyond      the run REFUSES (blocking). A dead lane un-routes
+//     the declared budget:              its population loudly instead of holding it forever.
+//   - routed, identity not discovered:  the run REFUSES (stale roster row), same contract as
+//                                       `floor_cost_debt` — a renamed or deleted identity
+//                                       must not leave a permission slip behind.
+//   - NOT routed, and hermetic          unchanged: the route-gap wall (`floor_route_gap`)
+//     execution reaches a bare effect:  still reds on any unenrolled gap, so this roster
+//                                       cannot quietly widen into a skip list.
+//
+// An identity may be enrolled here or in `floor_route_gap`, never both: this roster asserts
+// the identity does not execute hermetically at all, the other asserts its hermetic execution
+// gaps — both cannot be true of one run.
+//
+// HOW THE RECEIPT REACHES THE FLOOR (parent ruling 2026-08-30, transport a'): the lane
+// writes the TSV and opens a PULL REQUEST carrying it as a generated artifact — authority is
+// the lane's run, projection is the committed file, and a hand edit is refused by the digest
+// check below — which merges under the ordinary rule. The required floor reads ONLY the
+// committed TSV from the tree: hermetic, no network, no api.github.com read on the required
+// path (a rate-limited API refusal would be a correct AND nondeterministic merge gate, the
+// class the 2026-08-29 bankruptcy ruled against), and no bot push to a ruleset-protected main.
+//
+// FRESHNESS IS MEASURED AGAINST THE EVALUATED TREE'S OWN COMMIT TIME, never the reading
+// host's wall clock, so the join is a deterministic property of the commit: age =
+// commit_time(HEAD under evaluation) − receipt.recorded_unix_secs, refused when it exceeds
+// cadence + grace. The two figures are declared as separate rows below so the tolerated miss
+// count — how many silent cadence skips fit inside the grace — is a read, not an inference.
+// Pull-request floors evaluate the merge ref, so the receipt they read is main's latest, not
+// the branch's ancestor.
+//
+// COMPOSITION WITH THE CHANGED-WITNESS STANDING (#9717): `floor_changed_witness` matches
+// exhaustively over `RequiredFloorDisposition`, so the routed arm is a compile-forced
+// decision there, and the decision is BLOCK: a pull request that edits a routed witness
+// declaration cannot reach a terminal verdict for it at merge, and greening the edit by
+// decline would be exactly the coverage inflation this module exists to refuse. The recorded
+// remedy is to dispatch the wet receipts lane on the head (workflow_dispatch executes the
+// roster with the edit applied) and read its receipt; the changed-witness red names this.
+//
+// THE LANE'S COST IS READ FROM THE LANE, NOT FROM PROSE: every wet run prints one
+// `wet-lane:` line per identity carrying its measured wall, and the receipt rows carry the
+// same figure, so the roster's price is re-derivable from any run and no number is
+// transcribed here.
+
+type WetRouteRow = {
+  identity: String,
+  entry_rel: String,
+  function: String
+}
+
+type WetLaneOutcome =
+    WetPass
+  | WetFail
+
+// One identity's row in the lane's committed receipt
+// (`floor_wet_route_receipt_rel_path`). `recorded_unix_secs` is the lane's own clock at the
+// moment the row was minted; `run_id` and `head_sha` make the row a citation of the producing
+// run rather than a bare verdict.
+type WetRouteReceipt = {
+  identity: String,
+  outcome: WetLaneOutcome,
+  wall_ms: Int,
+  run_id: String,
+  head_sha: String,
+  recorded_unix_secs: Int
+}
+
+// The floor-side standing of one routed identity's receipt, decided against the evaluated
+// tree's commit time. `ReceiptFresh` carries the outcome so a consumer can report it, but the
+// floor never converts it to its own green or red: pass/fail is the lane's verdict at the
+// lane's cadence.
+type WetRouteReceiptStanding =
+    ReceiptFresh { outcome: WetLaneOutcome, age_secs: Int }
+  | ReceiptAbsent
+  | ReceiptStale { age_secs: Int }
+
+// Daily cadence, two missed runs of grace. The staleness budget is DERIVED as their sum so
+// the tolerated miss count is a read, not an inference, and no third figure exists to drift.
+fn floor_wet_route_cadence_secs() -> Int {
+  86400
+}
+
+fn floor_wet_route_receipt_grace_secs() -> Int {
+  172800
+}
+
+fn floor_wet_route_receipt_staleness_budget_secs() -> Int {
+  floor_wet_route_cadence_secs() + floor_wet_route_receipt_grace_secs()
+}
+
+data floor_wet_route_receipt_rel_path: String = "dag/gunbc/witness/wet_lane_receipt.tsv"
+
+fn wet_route_receipt_standing(
+  receipt: Optional<WetRouteReceipt>,
+  evaluated_tree_commit_unix_secs: Int
+) -> WetRouteReceiptStanding {
+  match receipt {
+    Absent => ReceiptAbsent {}
+    Present { value: r } => {
+      let age = evaluated_tree_commit_unix_secs - r.recorded_unix_secs
+      if int_gt(a: age, b: floor_wet_route_receipt_staleness_budget_secs()) {
+        ReceiptStale { age_secs: age }
+      } else {
+        ReceiptFresh { outcome: r.outcome, age_secs: age }
+      }
+    }
+  }
+}
+
+fn wet_route_standing_blocks_floor(standing: WetRouteReceiptStanding) -> Bool {
+  match standing {
+    ReceiptFresh { outcome: _, age_secs: _ } => false
+    ReceiptAbsent => true
+    ReceiptStale { age_secs: _ } => true
+  }
+}
+
+// THE ROSTER. The self-host behavioral cluster: the seventeen per-module seed-linked
+// behavioral receipts (config authority
+// `tools.self_host_module_behavioral_transport_roster`; kernel
+// `tools.self_host_curated_seed_linked_harness`) and the six artifact-materialization
+// real-execution claims. Each row was route_gap_held on main's required floor at enrollment
+// (operation Dir, ground NoMockResponse — the first link of the chain, measured, not read),
+// and each leaves `floor_route_gap` in the same change that lands here.
+fn floor_wet_route_roster() -> List<WetRouteRow> {
+  [
+    WetRouteRow { identity: "test.claim.self_host_00_compile_behavioral_witness.self_host_00_compile_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_00_compile_behavioral_witness_test.dag", function: "self_host_00_compile_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_01_tokenize_behavioral_witness.self_host_01_tokenize_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_01_tokenize_behavioral_witness_test.dag", function: "self_host_01_tokenize_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_02_parse_behavioral_witness.self_host_02_parse_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_02_parse_behavioral_witness_test.dag", function: "self_host_02_parse_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_03_ingest_behavioral_witness.self_host_03_ingest_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_03_ingest_behavioral_witness_test.dag", function: "self_host_03_ingest_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_03_normalize_behavioral_witness.self_host_03_normalize_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag", function: "self_host_03_normalize_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_03_resolve_behavioral_witness.self_host_03_resolve_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_03_resolve_behavioral_witness_test.dag", function: "self_host_03_resolve_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_04_infer_behavioral_witness.self_host_04_infer_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_04_infer_behavioral_witness_test.dag", function: "self_host_04_infer_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_body_producer_behavioral_witness.self_host_body_producer_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_body_producer_behavioral_witness_test.dag", function: "self_host_body_producer_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_discovery_enumeration_behavioral_witness.self_host_discovery_enumeration_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_discovery_enumeration_behavioral_witness_test.dag", function: "self_host_discovery_enumeration_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_logic_behavioral_witness.self_host_logic_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_logic_behavioral_witness_test.dag", function: "self_host_logic_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_materialization_carriers_behavioral_witness.self_host_materialization_carriers_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_materialization_carriers_behavioral_witness_test.dag", function: "self_host_materialization_carriers_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_parse_engine_hooks_behavioral_witness.self_host_parse_engine_hooks_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_parse_engine_hooks_behavioral_witness_test.dag", function: "self_host_parse_engine_hooks_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_program_assembly_behavioral_witness.self_host_program_assembly_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_program_assembly_behavioral_witness_test.dag", function: "self_host_program_assembly_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_program_partition_behavioral_witness.self_host_program_partition_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_program_partition_behavioral_witness_test.dag", function: "self_host_program_partition_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_source_authority_behavioral_witness.self_host_source_authority_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_source_authority_behavioral_witness_test.dag", function: "self_host_source_authority_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_target_carriers_behavioral_witness.self_host_target_carriers_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_target_carriers_behavioral_witness_test.dag", function: "self_host_target_carriers_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_use_site_verdict_behavioral_witness.self_host_use_site_verdict_behavioral_receipt_holds", entry_rel: "dag/test/claim/self_host_use_site_verdict_behavioral_witness_test.dag", function: "self_host_use_site_verdict_behavioral_receipt_holds" },
+    WetRouteRow { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.a_real_cargo_build_materializes_through_the_real_digest", entry_rel: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", function: "a_real_cargo_build_materializes_through_the_real_digest" },
+    WetRouteRow { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.the_materialized_path_is_the_one_the_real_cargo_stream_named", entry_rel: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", function: "the_materialized_path_is_the_one_the_real_cargo_stream_named" },
+    WetRouteRow { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.a_target_the_build_never_produced_refuses_and_does_not_materialize", entry_rel: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", function: "a_target_the_build_never_produced_refuses_and_does_not_materialize" },
+    WetRouteRow { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file", entry_rel: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", function: "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file" },
+    WetRouteRow { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.changing_only_the_source_bytes_names_exactly_the_artifact_axis", entry_rel: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", function: "changing_only_the_source_bytes_names_exactly_the_artifact_axis" },
+    WetRouteRow { identity: "test.claim.self_host_artifact_materialization_real_execution_witness.rebuilding_identical_source_in_place_moves_no_axis", entry_rel: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", function: "rebuilding_identical_source_in_place_moves_no_axis" }
+  ]
+}
+
+fn floor_wet_route_identities() -> List<String> {
+  floor_wet_route_roster() |> map(row => row.identity)
+}
+
+// Membership at identity grain, the shape `floor_cost_debt_holds` established: the site
+// disposition asks this once per offered identity.
+fn floor_wet_route_holds(name: String) -> Bool {
+  fold_list(
+    xs: floor_wet_route_identities(),
+    empty: false,
+    cons: fn(acc, id) { acc || id == name }
+  )
+}

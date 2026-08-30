@@ -1253,7 +1253,7 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     eprintln!(
         "required-floor: declared={} offered={} routed={} declined_long={} declined_fixture={} \
          declined_outside_required_gate={} declined_outside_gate_closure={} \
-         declined_discovery_excluded={} — every DECLARED witness identity in the tree is exactly \
+         declined_discovery_excluded={} declined_routed_to_wet_lane={} — every DECLARED witness identity in the tree is exactly \
          one of these, joined at identity grain (FloorDispositionJoinInexact refuses otherwise), \
          and no `*_test.dag` entry declared zero sites (v2.workflow.floor_discovery_producer \
          refuses a barren or misplaced sidecar upstream of this line, over the full module \
@@ -1265,7 +1265,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.declined_fixture_member,
         outcome.declined_outside_required_gate,
         outcome.declined_outside_gate_closure,
-        outcome.declined_discovery_excluded
+        outcome.declined_discovery_excluded,
+        outcome.declined_routed_to_wet_lane
     );
     // WHY route_gap IS NOW SPELLED route_gap_unenrolled, AND WHY route_gap_held JOINS IT HERE.
     // The old field printed `outcome.route_gap.len()` under the bare name `route_gap` — the
@@ -1298,7 +1299,8 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
          known_red_passed_over_budget={} known_red_host_tool_unresolved={} \
          known_red_host_effect_refused={} known_red_runtime_errored={} \
          known_red_observation_unreadable={} over_cost_line_diagnostic={} \
-         withheld_cost_debt={} stale_cost_debt={}",
+         withheld_cost_debt={} stale_cost_debt={} routed_to_wet_lane={} \
+         wet_route_receipt_absent={} wet_route_receipt_stale={} stale_wet_route={}",
         outcome.claims_planned,
         outcome.claims_executed,
         outcome.not_attempted_after_abort,
@@ -1322,7 +1324,11 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
         outcome.known_red_observation_unreadable.len(),
         outcome.over_cost_line_diagnostic,
         outcome.withheld_cost_debt.len(),
-        outcome.stale_cost_debt.len()
+        outcome.stale_cost_debt.len(),
+        outcome.declined_routed_to_wet_lane,
+        outcome.wet_route_receipt_absent.len(),
+        outcome.wet_route_receipt_stale.len(),
+        outcome.stale_wet_route.len()
     );
     // ONE receipt, both numbers (#8642). This replaced a per-miss trace line that had no hit
     // counterpart, so the ratio it is really about was never readable.
@@ -1398,6 +1404,15 @@ fn report_required_floor_outcome(outcome: &v1_compiler::cli_run::RequiredFloorOu
     // stale the next time a row is enrolled or released. The authority is named instead.
     for stale in &outcome.stale_cost_debt {
         eprintln!("required-floor: STALE-COST-DEBT {stale}");
+    }
+    for absent in &outcome.wet_route_receipt_absent {
+        eprintln!("required-floor: WET-ROUTE-RECEIPT-ABSENT {absent}");
+    }
+    for stale in &outcome.wet_route_receipt_stale {
+        eprintln!("required-floor: WET-ROUTE-RECEIPT-STALE {stale}");
+    }
+    for stale in &outcome.stale_wet_route {
+        eprintln!("required-floor: STALE-WET-ROUTE {stale}");
     }
     for errored in &outcome.known_red_runtime_errored {
         eprintln!("required-floor: KNOWN-RED-RUNTIME-ERRORED {errored}");
@@ -1493,6 +1508,14 @@ fn required_floor_outcome_is_clean(outcome: &v1_compiler::cli_run::RequiredFloor
         // roster that has stopped describing the tree, which voids the contract's monotone
         // claim, so it blocks exactly as `stale_quarantine` and `stale_route_gap` do.
         && outcome.stale_cost_debt.is_empty()
+        // THE WET ROUTE'S THREE BLOCKING JOINS. A routed identity with no wet-lane receipt has
+        // never been executed by the lane it was routed to; one with a stale receipt is routed
+        // to a lane that stopped running; a roster row this run did not route names an identity
+        // the tree no longer offers. Every one is the decline decaying into a skip list, so
+        // every one stops the line (`v2.workflow.floor_wet_route`).
+        && outcome.wet_route_receipt_absent.is_empty()
+        && outcome.wet_route_receipt_stale.is_empty()
+        && outcome.stale_wet_route.is_empty()
         // A CHANGED witness identity that did not execute to a passing verdict — declined,
         // absent from the disposition receipt, or without a terminal Passed verdict — reds the
         // required context. The classification authority is

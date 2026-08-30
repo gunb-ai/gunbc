@@ -179,6 +179,11 @@ struct ParsedArgs {
     fixture_store: Option<PathBuf>,
     eval_budget_ms: Option<u64>,
     pre_push: bool,
+    /// The wet receipts lane: derive the row population from
+    /// `v2.workflow.floor_wet_route.floor_wet_route_roster`, execute each row with real
+    /// effects, and write the per-identity receipt TSV the required floor joins against.
+    wet_route: bool,
+    receipt_out: Option<PathBuf>,
 }
 
 struct DiscoveryConfig {
@@ -196,6 +201,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut fixture_store: Option<PathBuf> = None;
     let mut eval_budget_ms: Option<u64> = None;
     let mut pre_push = false;
+    let mut wet_route = false;
+    let mut receipt_out: Option<PathBuf> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -249,6 +256,11 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 notice_title = require_value(args, i, "--notice-title")?;
             }
             "--claim-run" => {}
+            "--wet-route" => wet_route = true,
+            "--receipt-out" => {
+                i += 1;
+                receipt_out = Some(PathBuf::from(require_value(args, i, "--receipt-out")?));
+            }
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
             "--record" => execution_mode = ExecutionMode::Record,
@@ -299,6 +311,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
         fixture_store,
         eval_budget_ms,
         pre_push,
+        wet_route,
+        receipt_out,
     })
 }
 
@@ -629,6 +643,130 @@ fn run() -> Result<ExitCode, ExitCode> {
     // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
     // phases — a 20-minute silent resolve is uninterpretable.
     let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
+
+    // THE WET RECEIPTS LANE. Population derived from the .dag authority at run time (never a
+    // second roster in YAML or argv), every row executed with real effects, and one receipt
+    // row per identity written for the required floor's freshness join. The lane is red if any
+    // row fails — that red is the routed witnesses' verdict channel — but the receipt is
+    // written for every row FIRST, fail rows included, so the floor can see an honest fail
+    // rather than an absent receipt.
+    if parsed.wet_route {
+        let receipt_out = match &parsed.receipt_out {
+            Some(p) => p.clone(),
+            None => {
+                eprintln!("claim_batch: --wet-route requires --receipt-out <path>");
+                return Err(ExitCode::from(2));
+            }
+        };
+        let rows = match v1_compiler::cli_run::wet_route_lane_rows(&source_roots) {
+            Ok(rows) => rows,
+            Err(e) => {
+                eprintln!("claim_batch: {e}");
+                return Err(ExitCode::from(1));
+            }
+        };
+        if rows.is_empty() {
+            eprintln!(
+                "claim_batch: --wet-route: the roster is empty (fail closed — an empty \
+                       lane writes no receipt and greens nothing)"
+            );
+            return Err(ExitCode::from(2));
+        }
+        eprintln!(
+            "wet-lane: executing {} routed row(s) from v2.workflow.floor_wet_route",
+            rows.len()
+        );
+        let index = process_shared_index(&source_roots);
+        let whole_tree_published_keys =
+            match precompute_whole_tree_published_mock_keys(&source_roots) {
+                Ok(keys) if keys.is_empty() => None,
+                Ok(keys) => Some(Rc::new(keys)),
+                Err(e) => {
+                    eprintln!(
+                        "claim_batch: whole-tree published mock corpus precompute failed: {e}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+            };
+        let mut receipts: Vec<v1_compiler::cli_run::WetLaneExecutedReceipt> = Vec::new();
+        let mut any_failed = false;
+        let mut timings = ResolveTimings::default();
+        for row in &rows {
+            let (graph, source_indices) = match resolve_timed(&index, &row.entry_rel, &mut timings)
+            {
+                Ok(r) => r,
+                Err(_) => {
+                    println!(
+                        "FAIL {} (entry resolve failed: {})",
+                        row.function, row.entry_rel
+                    );
+                    receipts.push(v1_compiler::cli_run::WetLaneExecutedReceipt {
+                        identity: row.identity.clone(),
+                        passed: false,
+                        wall_ms: 0,
+                    });
+                    any_failed = true;
+                    continue;
+                }
+            };
+            let closure_subject = match closure_subject_for_entry(&index, &row.entry_rel) {
+                Ok(s) => s,
+                Err(e) => {
+                    println!("FAIL {} (closure subject: {e})", row.function);
+                    receipts.push(v1_compiler::cli_run::WetLaneExecutedReceipt {
+                        identity: row.identity.clone(),
+                        passed: false,
+                        wall_ms: 0,
+                    });
+                    any_failed = true;
+                    continue;
+                }
+            };
+            let ctx = make_eval_context_with_runtime_options(
+                &graph,
+                source_indices,
+                ExecutionMode::Wet,
+                fixture_store.clone(),
+                whole_tree_published_keys.clone(),
+            );
+            ctx.set_witness_eval_budget(eval_budget_ms);
+            let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &row.function);
+            let passed = matches!(outcome, ClaimOutcome::Pass);
+            report_outcome(&row.function, outcome, &mut any_failed);
+            let wall_ms = receipt.wall_nanos / 1_000_000;
+            eprintln!(
+                "wet-lane: identity={} outcome={} wall_ms={}",
+                row.identity,
+                if passed { "pass" } else { "fail" },
+                wall_ms
+            );
+            timings.witnesses += 1;
+            timings.witness_ms += wall_ms;
+            receipts.push(v1_compiler::cli_run::WetLaneExecutedReceipt {
+                identity: row.identity.clone(),
+                passed,
+                wall_ms,
+            });
+            v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
+        }
+        let out_path = receipt_out.to_string_lossy().to_string();
+        if let Err(e) = v1_compiler::cli_run::write_wet_lane_receipt_tsv_rows(&out_path, &receipts)
+        {
+            eprintln!("claim_batch: {e}");
+            return Err(ExitCode::from(1));
+        }
+        eprintln!(
+            "wet-lane: receipt written path={} rows={} total_wall_ms={}",
+            out_path,
+            receipts.len(),
+            timings.witness_ms
+        );
+        return if any_failed {
+            Ok(ExitCode::from(1))
+        } else {
+            Ok(ExitCode::SUCCESS)
+        };
+    }
 
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         let excludes = witness_exclusion_substrings();

@@ -220,6 +220,340 @@ pub(crate) fn floor_route_gap_expectation_mismatch(
     }
 }
 
+/// One row of the wet receipts lane's committed per-identity receipt
+/// (`v2.workflow.floor_wet_route` `WetRouteReceipt`; the committed artifact is
+/// `floor_wet_route_receipt_rel_path`). The floor consumes only what its join needs — the
+/// identity, the recorded clock for the staleness comparison, and the outcome/run reference
+/// for reporting; it never converts the outcome into its own green or red.
+#[derive(Debug, Clone)]
+pub(crate) struct WetLaneReceiptRow {
+    pub outcome: String,
+    pub run_id: String,
+    pub recorded_unix_secs: u64,
+}
+
+/// Parse the wet lane's committed receipt TSV. Fail-closed on shape: a malformed row is a
+/// refusal naming the line, never a skipped row — a receipt that cannot be read is
+/// indistinguishable from a receipt that was never produced, and the join must not treat the
+/// two differently by accident.
+pub(crate) fn read_wet_lane_receipt_tsv(
+    rel_path: &str,
+) -> Result<HashMap<String, WetLaneReceiptRow>, String> {
+    let content = match std::fs::read_to_string(rel_path) {
+        Ok(c) => c,
+        // An absent FILE is the absent-receipt state for every routed identity: return the
+        // empty map and let the per-identity join refuse with the identity named, which is
+        // the grain the remedy is applied at.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(HashMap::new()),
+        Err(e) => return Err(format!("wet-lane receipt {rel_path}: {e}")),
+    };
+    let mut rows = HashMap::new();
+    let mut digest_line: Option<String> = None;
+    let mut hashed_rows: Vec<&str> = Vec::new();
+    for (idx, line) in content.lines().enumerate() {
+        if let Some(rest) = line.strip_prefix("# digest\t") {
+            if digest_line.replace(rest.to_string()).is_some() {
+                return Err(format!(
+                    "wet-lane receipt {rel_path}:{}: second digest line — one artifact, one \
+                     digest",
+                    idx + 1
+                ));
+            }
+            continue;
+        }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        hashed_rows.push(line);
+        let cols: Vec<&str> = line.split('\t').collect();
+        if cols.len() != 6 {
+            return Err(format!(
+                "wet-lane receipt {rel_path}:{}: expected 6 tab-separated columns \
+                 (identity outcome wall_ms run_id head_sha recorded_unix_secs), got {}",
+                idx + 1,
+                cols.len()
+            ));
+        }
+        let identity = cols[0].to_string();
+        let outcome = cols[1].to_string();
+        if outcome != "pass" && outcome != "fail" {
+            return Err(format!(
+                "wet-lane receipt {rel_path}:{}: outcome must be pass or fail, got {outcome}",
+                idx + 1
+            ));
+        }
+        let recorded_unix_secs: u64 = cols[5].parse().map_err(|e| {
+            format!(
+                "wet-lane receipt {rel_path}:{}: recorded_unix_secs: {e}",
+                idx + 1
+            )
+        })?;
+        if rows
+            .insert(
+                identity.clone(),
+                WetLaneReceiptRow {
+                    outcome,
+                    run_id: cols[3].to_string(),
+                    recorded_unix_secs,
+                },
+            )
+            .is_some()
+        {
+            return Err(format!(
+                "wet-lane receipt {rel_path}:{}: duplicate identity {identity}",
+                idx + 1
+            ));
+        }
+    }
+    // THE HAND-EDIT WALL. The committed TSV is a generated artifact — the authority is the wet
+    // lane's run — so its rows travel with a digest the writer computed and this reader
+    // recomputes. A row edited (or added, or dropped) by hand no longer matches, and the
+    // mismatch is a refusal naming the file, not a silently accepted "receipt". Honest rung:
+    // mechanically preventable — an editor who also recomputes the digest defeats it, and the
+    // review surface for that is the PR diff, where a digest edit beside a row edit is loud.
+    let expected = wet_lane_receipt_digest(&hashed_rows);
+    match digest_line {
+        None => {
+            return Err(format!(
+                "wet-lane receipt {rel_path}: no `# digest` line — the committed receipt must \
+                 be the lane's own artifact, and the lane's writer always appends one"
+            ));
+        }
+        Some(found) if found != expected => {
+            return Err(format!(
+                "wet-lane receipt {rel_path}: digest mismatch (found {found}, computed \
+                 {expected}) — the committed rows are not the ones the lane wrote. Regenerate \
+                 the file from a lane run instead of editing it"
+            ));
+        }
+        Some(_) => {}
+    }
+    Ok(rows)
+}
+
+/// One digest for the receipt's data rows, shared by writer and reader so the two cannot
+/// disagree about what is hashed: the non-comment lines, in file order, joined by newlines.
+pub(crate) fn wet_lane_receipt_digest(rows: &[&str]) -> String {
+    use sha2::Digest as _;
+    let mut hasher = sha2::Sha256::new();
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 {
+            hasher.update(b"\n");
+        }
+        hasher.update(row.as_bytes());
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+/// One routed row of `v2.workflow.floor_wet_route.floor_wet_route_roster`, decoded for the
+/// wet receipts lane: the entry file to resolve, the function to run, and the qualified
+/// identity the receipt is keyed by. The roster is the single population authority — the lane
+/// derives its work from it at run time, so a roster edit needs no second surface updated.
+#[derive(Debug, Clone)]
+pub struct WetRouteLaneRow {
+    pub identity: String,
+    pub entry_rel: String,
+    pub function: String,
+}
+
+/// Decode the wet-route roster from its .dag authority. Fail-closed on shape and on
+/// duplicates, exactly as the floor's own read is.
+pub fn wet_route_lane_rows(source_roots: &[String]) -> Result<Vec<WetRouteLaneRow>, String> {
+    let index = process_shared_index(source_roots);
+    let entry = "src/v2/workflow/floor_wet_route.dag";
+    let (graph, source_indices) = resolve_entry_with_index(&index, entry)
+        .map_err(|e| format!("wet_route_lane_rows: resolve {entry}: {e}"))?;
+    let ctx = make_eval_context(
+        &graph,
+        source_indices,
+        v1_interpreter::ExecutionMode::Hermetic,
+    );
+    let value = v1_interpreter::run_in_context(
+        &ctx,
+        "v2.workflow.floor_wet_route.floor_wet_route_roster",
+        false,
+    )
+    .map_err(|e| format!("floor_wet_route_roster: {e}"))?;
+    let items = floor_decode_list(&ctx, Some(&value))
+        .map_err(|e| format!("floor_wet_route_roster: {e}"))?;
+    let mut seen = HashSet::new();
+    let mut out = Vec::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "floor_wet_route_roster: expected WetRouteRow, got {}",
+                floor_value_shape(Some(item))
+            ));
+        };
+        if !ctx.sym_eq(*type_name, "WetRouteRow") {
+            return Err(format!(
+                "floor_wet_route_roster: expected WetRouteRow, got record {}",
+                ctx.resolve(*type_name)
+            ));
+        }
+        let field_str = |name: &str| -> Result<String, String> {
+            match ctx.field(fields, name) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "floor_wet_route_roster: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let row = WetRouteLaneRow {
+            identity: field_str("identity")?,
+            entry_rel: field_str("entry_rel")?,
+            function: field_str("function")?,
+        };
+        if !seen.insert(row.identity.clone()) {
+            return Err(format!(
+                "floor_wet_route_roster: duplicate routed identity: {}",
+                row.identity
+            ));
+        }
+        out.push(row);
+    }
+    Ok(out)
+}
+
+/// One executed receipt for the wet lane's committed TSV — the producer side of
+/// `read_wet_lane_receipt_tsv`, one function so the two cannot disagree about the format.
+pub struct WetLaneExecutedReceipt {
+    pub identity: String,
+    pub passed: bool,
+    pub wall_ms: u128,
+}
+
+/// Write the wet lane's per-identity receipt TSV. `run_id` and `head_sha` come from the
+/// producing run's environment (GITHUB_RUN_ID / GITHUB_SHA on the lane; "local" otherwise) —
+/// a citation of the run, never fabricated here.
+pub fn write_wet_lane_receipt_tsv_rows(
+    path: &str,
+    rows: &[WetLaneExecutedReceipt],
+) -> Result<(), String> {
+    use std::io::Write as _;
+    let run_id = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string());
+    let head_sha = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let mut sorted: Vec<&WetLaneExecutedReceipt> = rows.iter().collect();
+    sorted.sort_by(|a, b| a.identity.cmp(&b.identity));
+    let data_lines: Vec<String> = sorted
+        .iter()
+        .map(|row| {
+            format!(
+                "{}\t{}\t{}\t{}\t{}\t{}",
+                row.identity,
+                if row.passed { "pass" } else { "fail" },
+                row.wall_ms,
+                run_id,
+                head_sha,
+                now_secs
+            )
+        })
+        .collect();
+    let refs: Vec<&str> = data_lines.iter().map(|l| l.as_str()).collect();
+    let digest = wet_lane_receipt_digest(&refs);
+    let mut file = std::fs::File::create(path)
+        .map_err(|e| format!("write_wet_lane_receipt_tsv_rows: create {path}: {e}"))?;
+    writeln!(
+        file,
+        "# identity\toutcome\twall_ms\trun_id\thead_sha\trecorded_unix_secs"
+    )
+    .map_err(|e| format!("write_wet_lane_receipt_tsv_rows: {e}"))?;
+    for line in &data_lines {
+        writeln!(file, "{line}").map_err(|e| format!("write_wet_lane_receipt_tsv_rows: {e}"))?;
+    }
+    writeln!(file, "# digest\t{digest}")
+        .map_err(|e| format!("write_wet_lane_receipt_tsv_rows: {e}"))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod wet_lane_receipt_tests {
+    use super::*;
+
+    fn scratch_path(name: &str) -> String {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc_wet_receipt_{}_{name}", std::process::id()));
+        dir.to_string_lossy().to_string()
+    }
+
+    fn write_fixture(rows: &[WetLaneExecutedReceipt], name: &str) -> String {
+        let path = scratch_path(name);
+        write_wet_lane_receipt_tsv_rows(&path, rows).expect("write fixture");
+        path
+    }
+
+    fn one_row() -> Vec<WetLaneExecutedReceipt> {
+        vec![WetLaneExecutedReceipt {
+            identity: "test.claim.x.holds".to_string(),
+            passed: true,
+            wall_ms: 42,
+        }]
+    }
+
+    #[test]
+    fn writer_output_reads_back() {
+        let path = write_fixture(&one_row(), "roundtrip");
+        let rows = read_wet_lane_receipt_tsv(&path).expect("read back");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows["test.claim.x.holds"].outcome, "pass");
+        std::fs::remove_file(&path).ok();
+    }
+
+    /// THE HAND-EDIT RED: flip one outcome byte-for-byte and the digest refuses. This is the
+    /// discriminating control for the tamper wall — remove the digest verification and this
+    /// test greens a forged receipt.
+    #[test]
+    fn hand_edited_row_refuses_on_digest() {
+        let path = write_fixture(&one_row(), "tamper");
+        let content = std::fs::read_to_string(&path).unwrap();
+        let forged = content.replace("\tpass\t", "\tfail\t");
+        assert_ne!(content, forged, "fixture must contain the edited cell");
+        std::fs::write(&path, forged).unwrap();
+        let err = read_wet_lane_receipt_tsv(&path).unwrap_err();
+        assert!(err.contains("digest mismatch"), "got: {err}");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn missing_digest_line_refuses() {
+        let path = write_fixture(&one_row(), "nodigest");
+        let content = std::fs::read_to_string(&path).unwrap();
+        let stripped: String = content
+            .lines()
+            .filter(|l| !l.starts_with("# digest\t"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        std::fs::write(&path, stripped).unwrap();
+        let err = read_wet_lane_receipt_tsv(&path).unwrap_err();
+        assert!(err.contains("no `# digest` line"), "got: {err}");
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn absent_file_is_empty_not_error() {
+        let rows = read_wet_lane_receipt_tsv("/nonexistent/gunbc_wet_receipt_absent.tsv")
+            .expect("absent file is the absent-receipt state");
+        assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn malformed_column_count_refuses() {
+        let path = scratch_path("malformed");
+        std::fs::write(&path, "only\tthree\tcols\n").unwrap();
+        let err = read_wet_lane_receipt_tsv(&path).unwrap_err();
+        assert!(
+            err.contains("expected 6 tab-separated columns"),
+            "got: {err}"
+        );
+        std::fs::remove_file(&path).ok();
+    }
+}
+
 /// `v2.workflow.required_floor`'s claims execute Hermetic (pure in-process evaluation), so
 /// CPU is the judged basis. A lane that later admits an execution mode whose purpose is
 /// external or blocking interaction picks wall instead — but the choice is made here, by
@@ -3409,6 +3743,100 @@ pub fn run_required_floor(
         cost_debt_roster.len()
     );
 
+    // THE WET EXECUTION ROUTE (`v2.workflow.floor_wet_route`): identities whose subject is a
+    // real host-effect chain no honest mock can answer, declined from hermetic execution and
+    // executed by the wet receipts lane at that lane's cadence. The floor's obligation here is
+    // the JOIN, not the verdict: every routed identity must show a receipt from that lane that
+    // is younger than the declared staleness budget, and an absent or stale receipt REFUSES the
+    // run — a row may not sit in "routed to wet" with no evidence the lane still runs it.
+    let wet_route_roster: HashSet<String> = {
+        let value = v1_interpreter::run_in_context(
+            &hermetic,
+            "v2.workflow.floor_wet_route.floor_wet_route_identities",
+            false,
+        )
+        .map_err(|e| format!("floor_wet_route_identities: {e}"))?;
+        let items = floor_decode_list(&hermetic, Some(&value))
+            .map_err(|e| format!("floor_wet_route_identities: {e}"))?;
+        let mut out = HashSet::new();
+        for item in items {
+            match item {
+                v1_interpreter::Value::Str(s) => {
+                    if !out.insert(s.to_string()) {
+                        return Err(format!(
+                            "floor_wet_route_identities: duplicate routed identity: {s}"
+                        ));
+                    }
+                }
+                other => {
+                    return Err(format!(
+                        "floor_wet_route_identities: expected a qualified name, got {}",
+                        floor_value_shape(Some(other))
+                    ));
+                }
+            }
+        }
+        out
+    };
+    // EXACTLY ONE MECHANISM HOLDS A ROW (gunbc.quarantine_probe_disposition): a wet-routed
+    // identity asserts it never executes hermetically, so a cost-debt withhold over the same
+    // row would be a second holder claiming one fact. Refused here, at the point both rosters
+    // are live, rather than surfacing later as an unexplainable stale row.
+    {
+        let mut both: Vec<&String> = wet_route_roster.intersection(&cost_debt_roster).collect();
+        both.sort_unstable();
+        if !both.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=WetRouteCostDebtDoubleEnrollment — {} identity(ies) \
+                 enrolled in both v2.workflow.floor_wet_route (which routes them off the hermetic \
+                 floor) and v2.workflow.floor_cost_debt (which withholds a claim the floor would \
+                 otherwise run). One mechanism holds a row: [{}]",
+                both.len(),
+                both.iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
+    let wet_route_staleness_budget_secs: u64 = {
+        let qualified = "v2.workflow.floor_wet_route.floor_wet_route_receipt_staleness_budget_secs";
+        match v1_interpreter::run_in_context(&hermetic, qualified, false) {
+            Ok(v1_interpreter::Value::Int(n)) if n > 0 => n as u64,
+            Ok(other) => {
+                return Err(format!(
+                    "{qualified}: expected a positive Int, got {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+            Err(e) => return Err(format!("{qualified}: {e}")),
+        }
+    };
+    let wet_route_receipt_rel_path: String = {
+        let qualified = "v2.workflow.floor_wet_route.floor_wet_route_receipt_rel_path";
+        match v1_interpreter::run_in_context(&hermetic, qualified, false) {
+            Ok(v1_interpreter::Value::Str(s)) => s.to_string(),
+            Ok(other) => {
+                return Err(format!(
+                    "{qualified}: expected a String path, got {}",
+                    floor_value_shape(Some(&other))
+                ))
+            }
+            Err(e) => return Err(format!("{qualified}: {e}")),
+        }
+    };
+    let wet_route_receipts: HashMap<String, WetLaneReceiptRow> = if wet_route_roster.is_empty() {
+        HashMap::new()
+    } else {
+        read_wet_lane_receipt_tsv(&wet_route_receipt_rel_path)?
+    };
+    eprintln!(
+        "[floor-wet-route] roster routes {} identity(ies) to the wet receipts lane; committed \
+         receipt carries {} row(s)",
+        wet_route_roster.len(),
+        wet_route_receipts.len()
+    );
+
     // EXACTLY ONE DECLARED MECHANISM HOLDS A ROW, and when cost debt withholds one it is the
     // holder. `gunbc.quarantine_probe_disposition` states the rule this implements: the question
     // is never WHICH roster names a row, it is whether exactly one MECHANISM holds it, and a row
@@ -3479,6 +3907,7 @@ pub fn run_required_floor(
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
+    let mut wet_route_seen: HashSet<String> = HashSet::new();
     // THE POPULATION, AT IDENTITY GRAIN. The discovery authority above answered over the FULL
     // module index, so this loop sees every DECLARED witness identity in the tree and classifies
     // each one — the prepared closure and the exclusion map decide which are offered and which
@@ -3580,6 +4009,20 @@ pub fn run_required_floor(
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
                     disposition: RequiredFloorDisposition::DeclinedCostDebt,
+                });
+                continue;
+            }
+            // THE WET ROUTE, after cost debt (the double-enrollment refusal above makes the
+            // order unobservable in practice) and before the gate test, because routing is an
+            // execution-route fact about the identity, not a gate-membership fact. Declined at
+            // build, never skipped at execution — same partition arithmetic as cost debt — and
+            // the receipt join AFTER this loop is what keeps the decline honest: an absent or
+            // stale wet-lane receipt for any identity seen here refuses the run.
+            if wet_route_roster.contains(&identity) {
+                wet_route_seen.insert(identity.clone());
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity,
+                    disposition: RequiredFloorDisposition::DeclinedRoutedToWetLane,
                 });
                 continue;
             }
@@ -4099,6 +4542,35 @@ pub fn run_required_floor(
             ));
         }
     }
+    // THE SAME CONTRADICTION AGAINST THE WET ROUTE, in both directions. A wet-routed identity
+    // never executes hermetically, so a `floor_route_gap` row over it (its hermetic execution
+    // gaps) and a `floor_expected_red` row over it (it reaches its subject and answers false)
+    // each assert a hermetic execution that no longer happens. Supplying the route and deleting
+    // the debt row are therefore ONE change, which is exactly what this wall enforces.
+    {
+        let mut both: Vec<&String> = wet_route_roster
+            .iter()
+            .filter(|q| {
+                route_gap_roster.contains(q.as_str()) || expected_red_roster.contains(q.as_str())
+            })
+            .collect();
+        both.sort();
+        if !both.is_empty() {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=WetRouteRosterClaimsContradict count={} — these \
+                 identities are enrolled in v2.workflow.floor_wet_route (which routes them off \
+                 hermetic execution entirely) AND in floor_route_gap or floor_expected_red \
+                 (each of which asserts a fact about their hermetic execution). Both cannot be \
+                 true: routing an identity to the wet lane and deleting its hermetic debt row \
+                 are one change: {}",
+                both.len(),
+                both.iter()
+                    .map(|q| q.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+    }
 
     // THE NON-VERDICT ROSTER. See `v2.workflow.floor_non_verdict` for the contract; the short
     // form is that an enrolled expected-red identity which produces NO VERDICT — it throws, or
@@ -4325,6 +4797,10 @@ pub fn run_required_floor(
         completed_over_cost_requirement: Vec::new(),
         withheld_cost_debt: outcome_withheld_cost_debt,
         stale_cost_debt: Vec::new(),
+        declined_routed_to_wet_lane: wet_route_seen.len(),
+        wet_route_receipt_absent: Vec::new(),
+        wet_route_receipt_stale: Vec::new(),
+        stale_wet_route: Vec::new(),
         known_red_runtime_errored: Vec::new(),
         non_verdict_unenrolled: Vec::new(),
         stale_non_verdict: Vec::new(),
@@ -5400,6 +5876,98 @@ pub fn run_required_floor(
             ));
         }
     }
+    // THE WET ROUTE'S TWO JOINS, both blocking, both at identity grain. The forward join asks
+    // whether every routed identity the run declined still has a live receipt from the wet
+    // receipts lane — absent and stale are the two ways "routed to wet" decays into a skip
+    // list, and each is refused by name with its own remedy (run the lane; fix the lane's
+    // cadence). The reverse join asks whether every roster row still names an identity this
+    // run offered and routed — the same rot guard every sibling roster carries.
+    {
+        for identity in wet_route_roster
+            .iter()
+            .filter(|q| reverse_joins_answerable && !wet_route_seen.contains(*q))
+        {
+            outcome.stale_wet_route.push(format!(
+                "{identity} is enrolled in v2.workflow.floor_wet_route but was not offered and \
+                 routed by this run — it was renamed, deleted, or declined by an earlier home \
+                 policy. Delete or correct the row: a wet route over an identity the floor does \
+                 not hold routes nothing and can never ask to be removed."
+            ));
+        }
+        // FRESHNESS AGAINST THE EVALUATED TREE'S OWN COMMIT TIME, never this host's wall
+        // clock, so the join is a deterministic property of the commit (parent ruling
+        // 2026-08-30). On CI a failed observation REFUSES; a local run without one reports
+        // NOT EVALUATED loudly and skips only the freshness half — the roster joins above and
+        // below are tree-derived and still run. Same composition #9717 uses for the diff
+        // observation.
+        let evaluated_tree_commit_secs: Option<u64> = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%ct", "HEAD"])
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|t| t.trim().parse::<u64>().ok());
+        let on_ci = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
+        let evaluated_tree_commit_secs = match (evaluated_tree_commit_secs, on_ci) {
+            (Some(t), _) => Some(t),
+            (None, true) if !wet_route_seen.is_empty() => {
+                return Err(
+                    "REQUIRED-FLOOR REFUSAL cause=WetRouteCommitTimeUnobservable — the wet-route \
+                     freshness join needs the evaluated tree's commit time (git log -1 \
+                     --format=%ct) and could not observe it on CI. A routed population with an \
+                     unevaluable freshness join must refuse, not skip."
+                        .to_string(),
+                );
+            }
+            (None, _) => {
+                if !wet_route_seen.is_empty() {
+                    eprintln!(
+                        "[floor-wet-route] freshness NOT EVALUATED — no git commit time \
+                         observable in this environment; receipt absence is still joined, \
+                         staleness is not. CI refuses in this state; a local run only says so."
+                    );
+                }
+                None
+            }
+        };
+        let mut routed: Vec<&String> = wet_route_seen.iter().collect();
+        routed.sort_unstable();
+        for identity in routed {
+            match wet_route_receipts.get(identity.as_str()) {
+                None => outcome.wet_route_receipt_absent.push(format!(
+                    "{identity} is routed to the wet receipts lane but {wet_route_receipt_rel_path} \
+                     carries no receipt row for it — the lane has never executed it (or its row \
+                     was dropped). Run the lane (workflow_dispatch on the witnesses workflow, or \
+                     claim_batch --wet-route) and land its receipt; a routed identity with no \
+                     receipt is coverage by illusion and refuses the floor."
+                )),
+                Some(row) => {
+                    let Some(tree_secs) = evaluated_tree_commit_secs else {
+                        continue;
+                    };
+                    let age_secs = tree_secs.saturating_sub(row.recorded_unix_secs);
+                    if age_secs > wet_route_staleness_budget_secs {
+                        outcome.wet_route_receipt_stale.push(format!(
+                            "{identity}: wet-lane receipt (run {run_id}, outcome {outcome_word}) \
+                             is {age_secs}s old against a {budget}s budget — the lane has stopped \
+                             producing evidence for a routed identity. Restore the lane's cadence \
+                             and commit a fresh receipt; a stale route is refused, never held.",
+                            run_id = row.run_id,
+                            outcome_word = row.outcome,
+                            budget = wet_route_staleness_budget_secs
+                        ));
+                    }
+                }
+            }
+        }
+        eprintln!(
+            "[floor-wet-route] routed={} receipt_absent={} receipt_stale={} stale_roster_rows={}",
+            wet_route_seen.len(),
+            outcome.wet_route_receipt_absent.len(),
+            outcome.wet_route_receipt_stale.len(),
+            outcome.stale_wet_route.len()
+        );
+    }
     // THE ROSTER IS A TWO-WAY JOIN, NOT A ONE-WAY LOOKUP. Enrollment as written above only ever
     // asks "is this executing claim enrolled". The reverse question — is every enrolled identity
     // still executing — has no consumer unless it is asked here, and without it the roster rots
@@ -5748,6 +6316,7 @@ pub(crate) fn required_floor_disposition_label(
         RequiredFloorDisposition::DeclinedCostDebt => "declined_cost_debt",
         RequiredFloorDisposition::DeclinedOutsideGateClosure => "declined_outside_gate_closure",
         RequiredFloorDisposition::DeclinedDiscoveryExcluded { .. } => "declined_discovery_excluded",
+        RequiredFloorDisposition::DeclinedRoutedToWetLane => "declined_routed_to_wet_lane",
     }
 }
 
@@ -5768,7 +6337,8 @@ pub(crate) fn required_floor_disposition_matched_prefix(
         RequiredFloorDisposition::Planned
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedOutsideGateClosure
-        | RequiredFloorDisposition::DeclinedCostDebt => "",
+        | RequiredFloorDisposition::DeclinedCostDebt
+        | RequiredFloorDisposition::DeclinedRoutedToWetLane => "",
     }
 }
 
