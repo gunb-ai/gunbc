@@ -32,8 +32,25 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data access_profile_two_carriers_note: String = "TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3 §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis applicability, implementation, exact vendor release string): the routes and quirks a firmware release is documented or previously observed to expose, PLUS the exact-release capability row that release carries (BmcFirmwareReleaseCapabilityRow, keyed by the raw vendor string so a release with no semantic reading such as the Mt. Collins 0.32 can inhabit a valid profile — ruling 4 §2), so a solver never joins a capability row to a profile by hand. The controller is named protocol-neutrally (BmcControllerEndpoint, ruling 4 §3); which routes reach it is the profile's route population. BmcAccessObservation is a LIVE, per-endpoint reading of what that endpoint served just now. A solver may select a surface only from their intersection — a platform row saying that firmware should expose virtual media does not establish that this endpoint currently does, and a live discovery on one endpoint does not become a platform fact. This module carries the two shapes, the lookup (Known | Uncatalogued | Ambiguous — external facts only) and the intersection predicate; which attempt an observation belongs to, whether a lookup ran at all, and the binding of profile+observation into one solve input are WORKFLOW standings and live in gunbc.machine_intake_access. Concrete profile rows live in the board and implementation modules that cite them, and observations are receipts in the workflow layer (DESIGN §3: observations are never authored inside an upstream module)."
-
+// TWO CARRIERS, ONE INTERSECTION (machine-intake ruling 2026-08-29 §2, refined by ruling 3
+// §1-§2). BmcAccessProfile is PLATFORM CATALOG data keyed by (baseboard, chassis
+// applicability, implementation, exact vendor release string): the routes and quirks a
+// firmware release is documented or previously observed to expose, PLUS the exact-release
+// capability row that release carries (BmcFirmwareReleaseCapabilityRow, keyed by the raw
+// vendor string so a release with no semantic reading such as the Mt. Collins 0.32 can inhabit
+// a valid profile — ruling 4 §2), so a solver never joins a capability row to a profile by
+// hand. The controller is named protocol-neutrally (BmcControllerEndpoint, ruling 4 §3); which
+// routes reach it is the profile's route population. BmcAccessObservation is a LIVE, per-
+// endpoint reading of what that endpoint served just now. A solver may select a surface only
+// from their intersection — a platform row saying that firmware should expose virtual media
+// does not establish that this endpoint currently does, and a live discovery on one endpoint
+// does not become a platform fact. This module carries the two shapes, the lookup (Known |
+// Uncatalogued | Ambiguous — external facts only) and the intersection predicate; which
+// attempt an observation belongs to, whether a lookup ran at all, and the binding of
+// profile+observation into one solve input are WORKFLOW standings and live in
+// gunbc.machine_intake_access. Concrete profile rows live in the board and implementation
+// modules that cite them, and observations are receipts in the workflow layer (DESIGN §3:
+// observations are never authored inside an upstream module).
 // The surfaces intake asks a BMC about. Each is a thing an endpoint either
 // served or did not when probed; none is a promise. SurfaceBmcShell is the
 // authenticated management shell (OpenBMC SSH) the configfs gadget transport
@@ -291,13 +308,17 @@ fn bmc_profile_megarac_image_redirection(profile: BmcAccessProfile) -> MegaRacIm
 // IPMI lanplus (chassis bootdev). The OEM remote-media, shell and NBD routes
 // deliver artifacts; a boot-control observation claiming one of them names a
 // route that has no boot-control operation, and is refused as such.
-fn bmc_route_is_boot_control_capable(route: BmcAccessRoute) -> Bool {
+type BmcRouteBootControlCapability
+  = BootControlRealizedByRoute
+  | BootControlNotRealizedByRoute
+
+fn bmc_route_boot_control_capability(route: BmcAccessRoute) -> BmcRouteBootControlCapability {
   match route {
-    RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => true
-    IpmiLanplusRoute => true
-    MegaRacRestRoute { image_redirection: _ } => false
-    OpenBmcShellRoute => false
-    OpenBmcNbdWebsocketRoute { ws_path: _ } => false
+    RedfishRoute { system_locator: _, chassis_locator: _, manager_locator: _ } => BootControlRealizedByRoute
+    IpmiLanplusRoute => BootControlRealizedByRoute
+    MegaRacRestRoute { image_redirection: _ } => BootControlNotRealizedByRoute
+    OpenBmcShellRoute => BootControlNotRealizedByRoute
+    OpenBmcNbdWebsocketRoute { ws_path: _ } => BootControlNotRealizedByRoute
   }
 }
 

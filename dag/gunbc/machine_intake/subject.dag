@@ -16,8 +16,18 @@ import std.content_hash {
 }
 import extdeps.bmc.endpoint { BmcEndpoint }
 
-data machine_intake_subject_note: String = "THE SUBJECT BEING QUALIFIED (machine-intake ruling 2026-08-29 §1). Board serial is the durable fleet identity, and it is NOT enough to key a qualification: a repaired machine keeps its board serial while every DIMM changes. So the admission subject is UnitKey × AssemblyManifestDigest × FirmwareManifestDigest, and a run carries a separate attempt identity. The consequences this construction buys, each executed by test.claim.machine_intake_subject: a BMC IP change is no identity change (the endpoint is not an input to the key); one DIMM change is a new assembly subject, so the previous admission cannot apply; a BIOS/BMC change is a new firmware subject; a motherboard change is a new unit key; and a board serial that is absent, duplicated across units or contradictory between sources REFUSES — no fleet key is fabricated from a label, a hostname or an IP. The chassis part number is retained as a first-class identity fact because it is a platform-variant discriminator, but it is deliberately not the unit key."
-
+// THE SUBJECT BEING QUALIFIED (machine-intake ruling 2026-08-29 §1). Board serial is the
+// durable fleet identity, and it is NOT enough to key a qualification: a repaired machine
+// keeps its board serial while every DIMM changes. So the admission subject is UnitKey ×
+// AssemblyManifestDigest × FirmwareManifestDigest, and a run carries a separate attempt
+// identity. The consequences this construction buys, each executed by
+// test.claim.machine_intake_subject: a BMC IP change is no identity change (the endpoint is
+// not an input to the key); one DIMM change is a new assembly subject, so the previous
+// admission cannot apply; a BIOS/BMC change is a new firmware subject; a motherboard change is
+// a new unit key; and a board serial that is absent, duplicated across units or contradictory
+// between sources REFUSES — no fleet key is fabricated from a label, a hostname or an IP. The
+// chassis part number is retained as a first-class identity fact because it is a platform-
+// variant discriminator, but it is deliberately not the unit key.
 // Where a board serial reading came from. The provisional bind uses bootstrap
 // BMC access; the Linux intake agent repeats the read from the host side; the
 // platform row says what the seller claimed. Agreement across sources is what

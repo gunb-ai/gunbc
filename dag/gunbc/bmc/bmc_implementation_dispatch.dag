@@ -12,8 +12,17 @@ import extdeps.bmc.openbmc {
 }
 import extdeps.bmc.megarac { megarac_factory_login, megarac_supported_protocols_floor }
 
-data bmc_implementation_dispatch_note: String = "THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor extdeps.bmc.megarac imports the other or matches on BmcFirmwareFamily. gunbc#9678 added the AmiMegaRac arms to three family-keyed functions INSIDE extdeps.bmc.openbmc, and made the OpenBMC module import the MegaRAC one — the 'a Chrome change must not require editing Safari's module' violation named in DESIGN §3, and the reason those functions now live here. Each is an exhaustive match, so a third implementation refuses to compile here and nowhere else; that is the census. Every arm returns what its implementation module CITES at the family grain: MegaRAC's published admin/admin default and IPMI-only protocol floor come from extdeps.bmc.megarac, whose scope note explains why Redfish presence is a build-scoped fact carried on the build binding, never here."
-
+// THE DISPATCH THAT SELECTS AN IMPLEMENTATION IS ITSELF REALIZATION (DESIGN §3), so it sits
+// here, peripheral to both implementation authorities, and neither extdeps.bmc.openbmc nor
+// extdeps.bmc.megarac imports the other or matches on BmcFirmwareFamily. gunbc#9678 added the
+// AmiMegaRac arms to three family-keyed functions INSIDE extdeps.bmc.openbmc, and made the
+// OpenBMC module import the MegaRAC one — the 'a Chrome change must not require editing
+// Safari's module' violation named in DESIGN §3, and the reason those functions now live here.
+// Each is an exhaustive match, so a third implementation refuses to compile here and nowhere
+// else; that is the census. Every arm returns what its implementation module CITES at the
+// family grain: MegaRAC's published admin/admin default and IPMI-only protocol floor come from
+// extdeps.bmc.megarac, whose scope note explains why Redfish presence is a build-scoped fact
+// carried on the build binding, never here.
 fn bmc_firmware_factory_login(family: BmcFirmwareFamily) -> FactoryLogin {
   match family {
     OpenBmc => openbmc_factory_login

@@ -221,11 +221,3 @@ type HostInstalledOsStanding
   = InstalledOsRunning { observed_at: EpochMs }
   | InstalledOsNotRunning { observed_at: EpochMs }
   | InstalledOsUnobserved
-
-fn installed_os_is_running(standing: HostInstalledOsStanding) -> Bool {
-  match standing {
-    InstalledOsRunning { observed_at: _ } => true
-    InstalledOsNotRunning { observed_at: _ } => false
-    InstalledOsUnobserved => false
-  }
-}

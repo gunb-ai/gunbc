@@ -4,8 +4,14 @@ import std.types { Int, List, String }
 import std.decl_ref { DeclarationRef }
 import extdeps.bmc.capability { BmcFirmwareVersion }
 
-data bmc_firmware_transition_note: String = "A FIRMWARE TRANSITION IS NOT A DELIVERY (machine-intake ruling 3 §3 and namespace ruling). gunbc.boot_artifact_delivery does not consume this standing: after a transition is executed the workflow re-observes the endpoint and calls the one delivery solver again on the new release — it may not preselect 'then virtual media'. This module owns the six requirements and the standing today. Its next rung (not built, because no producer exists to consume it) is the establishment producer binding an exact target catalog row, and the execution receipt of the transition; until then fleet_firmware_transition_standing is Unestablished with the full requirement list for every host."
-
+// A FIRMWARE TRANSITION IS NOT A DELIVERY (machine-intake ruling 3 §3 and namespace ruling).
+// gunbc.boot_artifact_delivery does not consume this standing: after a transition is executed
+// the workflow re-observes the endpoint and calls the one delivery solver again on the new
+// release — it may not preselect 'then virtual media'. This module owns the six requirements
+// and the standing today. Its next rung (not built, because no producer exists to consume it)
+// is the establishment producer binding an exact target catalog row, and the execution receipt
+// of the transition; until then fleet_firmware_transition_standing is Unestablished with the
+// full requirement list for every host.
 // CapabilityFirmwareUpdate means "this firmware exposes an update operation", NOT "therefore a
 // VM-capable firmware is reachable from here". The pre-repair FirmwareUpdateThenVirtualMedia arm
 // inferred the second from the first plus "the catalog contains SOME VM-capable row", which

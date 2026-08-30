@@ -25,8 +25,20 @@ import extdeps.bmc.access_profile {
 import gunbc.machine_intake_subject { MachineIntakeSubject }
 import gunbc.machine_intake_receipt { EvidenceRef, content_hash_equal, same_intake_subject }
 
-data machine_intake_access_note: String = "THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3 §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the external shapes — profile, observation, the catalog lookup. This module owns the WORKFLOW standings around them: whether the lookup ran, whether this controller was observed at all, whether the observation belongs to THIS attempt, whether every raw blob the observation and its nested probe were read from is named in the receipt's evidence manifest, whether a promoted profile's provenance has been verified by a producer that can resolve its receipts, and the one record — BoundBmcAccessContext — that exists only when every one of those joins has held. The solver consumes that record and never the loose inputs, so a capability row for release A can no longer be handed beside a profile and observation for release B: the capability row is read off the profile, and the profile was admitted against the observation's identity. It also owns BootDeliveryTarget — the (subject, controller) pair every transport-local standing must be bound to — because the same join that binds an access context binds every other piece of evidence a delivery may rest on."
-
+// THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3
+// §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the
+// external shapes — profile, observation, the catalog lookup. This module owns the WORKFLOW
+// standings around them: whether the lookup ran, whether this controller was observed at all,
+// whether the observation belongs to THIS attempt, whether every raw blob the observation and
+// its nested probe were read from is named in the receipt's evidence manifest, whether a
+// promoted profile's provenance has been verified by a producer that can resolve its receipts,
+// and the one record — BoundBmcAccessContext — that exists only when every one of those joins
+// has held. The solver consumes that record and never the loose inputs, so a capability row
+// for release A can no longer be handed beside a profile and observation for release B: the
+// capability row is read off the profile, and the profile was admitted against the
+// observation's identity. It also owns BootDeliveryTarget — the (subject, controller) pair
+// every transport-local standing must be bound to — because the same join that binds an access
+// context binds every other piece of evidence a delivery may rest on.
 // WHO and WHERE. The intake subject (unit key, manifests, attempt) plus the
 // protocol-neutral controller the plan will drive. The delivery solver, the
 // configfs qualification, the UEFI HTTP standing and the network-boot

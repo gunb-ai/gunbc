@@ -23,13 +23,13 @@ import extdeps.bmc.virtual_media {
 }
 import extdeps.bmc.megarac { MegaRacImageRedirectionEnabled, MegaRacImageRedirectionUnset, MegaRacImageRedirectionOn }
 import extdeps.bmc.redfish_virtual_media {
-  ProbeReceiptCoherent,
+  ProbeReceiptAtFloor,
+  ProbeReceiptBelowFloor,
   ProbeReceiptFloorWithoutProtocols,
   ProbeReceiptProtocolsWithoutFloor,
   RedfishVirtualMediaProbe,
   RedfishVirtualMediaProbeReceipt,
   RedfishVirtualMediaTransferProtocol,
-  redfish_probe_receipt_at_plan_floor,
   redfish_probe_receipt_coherence,
   redfish_transfer_protocol_in,
 }
@@ -48,7 +48,9 @@ import extdeps.bmc.access_profile {
   SurfaceRedfishVirtualMedia,
   bmc_profile_megarac_image_redirection,
   bmc_profile_names_route,
-  bmc_route_is_boot_control_capable,
+  BootControlNotRealizedByRoute,
+  BootControlRealizedByRoute,
+  bmc_route_boot_control_capability,
   bmc_profile_nbd_websocket_path,
   bmc_surface_eligibility,
 }
@@ -89,8 +91,31 @@ import gunbc.network_boot_delivery {
   NetworkBootRequirement,
 }
 
-data boot_artifact_delivery_note: String = "ONE OBLIGATION, N CONSTRUCTORS (machine-intake ruling 2026-08-29 §3, bound by ruling 3 §1-§2). 'Virtual CD' is not a phase. Redfish VirtualMedia, the MegaRAC OEM REST remote media, the bmcweb OEM NBD WebSocket, the OpenBMC configfs USB gadget, UEFI HTTP boot and PXE chain boot are alternative constructors for one obligation: deliver THIS content-addressed boot artifact to THIS identified host for one boot, prove that the intended artifact executed, and restore the prior boot-control state. Boot CONTROL (one-shot target, reset, override consumption, restore) is a separate obligation from artifact DELIVERY, so the plan carries a protocol-neutral BootControlTarget rather than a Redfish override value. This module is the ONE solver. It reads a BootDeliveryRequest (target unit, attempt and protocol-neutral controller, exact BootArtifact, the staging offers each naming the digest they serve), BoundBootDeliveryEvidence (an access context that gunbc.machine_intake_access has already bound to this attempt, plus the transport-local standings, each bound to a target) and a BootDeliveryPolicy. It first binds the request's target to the access context — same subject and attempt, same controller — and consumes only that bound arm (ruling 4 §1); every transport-local standing must name the same target or its candidate is refused as evidence for another target. It answers with a BootDeliveryPlan that repeats target and artifact and names the profile provenance, the evidence manifest, the evidence particular to the selected candidate, and every candidate's standing. A transport is eligible only from the intersection of the bound profile and the live observation; a Redfish plan derives its locator and protocol from the probe receipt, never from separately supplied parameters; a MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its operation contract requires; and every staged offer must name the requested digest, so 'the URI serves digest B while the request names digest A' is a typed refusal. gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access context and therefore always refuses at AccessContextProfileLookupNotRun."
-
+// ONE OBLIGATION, N CONSTRUCTORS (machine-intake ruling 2026-08-29 §3, bound by ruling 3
+// §1-§2). 'Virtual CD' is not a phase. Redfish VirtualMedia, the MegaRAC OEM REST remote
+// media, the bmcweb OEM NBD WebSocket, the OpenBMC configfs USB gadget, UEFI HTTP boot and PXE
+// chain boot are alternative constructors for one obligation: deliver THIS content-addressed
+// boot artifact to THIS identified host for one boot, prove that the intended artifact
+// executed, and restore the prior boot-control state. Boot CONTROL (one-shot target, reset,
+// override consumption, restore) is a separate obligation from artifact DELIVERY, so the plan
+// carries a protocol-neutral BootControlTarget rather than a Redfish override value. This
+// module is the ONE solver. It reads a BootDeliveryRequest (target unit, attempt and protocol-
+// neutral controller, exact BootArtifact, the staging offers each naming the digest they
+// serve), BoundBootDeliveryEvidence (an access context that gunbc.machine_intake_access has
+// already bound to this attempt, plus the transport-local standings, each bound to a target)
+// and a BootDeliveryPolicy. It first binds the request's target to the access context — same
+// subject and attempt, same controller — and consumes only that bound arm (ruling 4 §1); every
+// transport-local standing must name the same target or its candidate is refused as evidence
+// for another target. It answers with a BootDeliveryPlan that repeats target and artifact and
+// names the profile provenance, the evidence manifest, the evidence particular to the selected
+// candidate, and every candidate's standing. A transport is eligible only from the
+// intersection of the bound profile and the live observation; a Redfish plan derives its
+// locator and protocol from the probe receipt, never from separately supplied parameters; a
+// MegaRAC plan exists only when the profile's OEM route carries the image_redirection fact its
+// operation contract requires; and every staged offer must name the requested digest, so 'the
+// URI serves digest B while the request names digest A' is a typed refusal.
+// gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access
+// context and therefore always refuses at AccessContextProfileLookupNotRun.
 // What the artifact is FOR is data the same delivery mechanism accepts, never
 // a reason to fork the mechanism.
 type BootPurpose
@@ -464,20 +489,19 @@ fn staged_digest_standing(offered: ContentHash, requested: ContentHash) -> BootD
 // must be among them. The ladder arm is carried on the refusal for diagnosis;
 // it decides nothing.
 fn redfish_probe_standing(receipt: RedfishVirtualMediaProbeReceipt, offered: RedfishVirtualMediaTransferProtocol) -> BootDeliveryCandidateStanding {
-  let coherence = redfish_probe_receipt_coherence(receipt: receipt)
-  let contradictory = match coherence {
-    ProbeReceiptCoherent => false
-    ProbeReceiptProtocolsWithoutFloor { progress: _, admitted: _ } => true
-    ProbeReceiptFloorWithoutProtocols { progress: _ } => true
-  }
-  if contradictory {
-    CandidateRedfishProbeContradictory { progress: receipt.progress, admitted: receipt.admitted_protocols }
-  } else if redfish_probe_receipt_at_plan_floor(receipt: receipt) == false {
-    CandidateRedfishProbeBelowPlanFloor { progress: receipt.progress }
-  } else if redfish_transfer_protocol_in(protocols: receipt.admitted_protocols, protocol: offered) == false {
-    CandidateRedfishProtocolNotAdmitted { offered: offered, admitted: receipt.admitted_protocols }
-  } else {
-    CandidateEligible
+  match redfish_probe_receipt_coherence(receipt: receipt) {
+    ProbeReceiptProtocolsWithoutFloor { progress: progress, admitted: admitted } =>
+      CandidateRedfishProbeContradictory { progress: progress, admitted: admitted }
+    ProbeReceiptFloorWithoutProtocols { progress: progress } =>
+      CandidateRedfishProbeContradictory { progress: progress, admitted: receipt.admitted_protocols }
+    ProbeReceiptBelowFloor { progress: progress } =>
+      CandidateRedfishProbeBelowPlanFloor { progress: progress }
+    ProbeReceiptAtFloor { admitted: admitted } =>
+      if redfish_transfer_protocol_in(protocols: admitted, protocol: offered) {
+        CandidateEligible
+      } else {
+        CandidateRedfishProtocolNotAdmitted { offered: offered, admitted: admitted }
+      }
   }
 }
 
@@ -816,7 +840,10 @@ fn first_route_not_control_capable(ctx: BoundBmcAccessContext) -> BmcAccessRoute
     init: none,
     f: (acc, r) => match acc {
       Present { value: _ } => acc
-      Absent => if bmc_route_is_boot_control_capable(route: r.route) { none } else { Present { value: r.route } }
+      Absent => match bmc_route_boot_control_capability(route: r.route) {
+        BootControlRealizedByRoute => none
+        BootControlNotRealizedByRoute => Present { value: r.route }
+      }
     },
   )
 }

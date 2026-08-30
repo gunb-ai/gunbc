@@ -17,8 +17,25 @@ import extdeps.toolchain.types { Architecture }
 import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey }
 import gunbc.machine_intake_phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
 
-data machine_intake_receipt_note: String = "THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized envelope plus references to raw evidence by digest. Required properties, each a field or a function here: canonical content identity (in-substrate today: intake_receipt_structural_fingerprint, a structural fingerprint and not a SHA); attempt identity and exact qualification subject; tool, agent, artifact and policy identities; start and end times; raw evidence references by digest; explicit success or typed refusal with its owner; a hash-chain link whose ordering is checked by validate_intake_receipt_ledger, the sole constructor of the ledger admission reads, under these rules: one genesis, every predecessor link, one subject and attempt, started_at <= ended_at on each receipt, started_at nondecreasing across receipts, phase rank (position in fleet_admission_required_phases) nondecreasing so a phase may be retried immediately or advanced but never re-recorded after a later phase, one policy digest across the attempt, one producer identity across the attempt; executor/staging identity; and NO credentials or one-time callback tokens in durable output — IntakeAttemptNonce has no field on IntakeReceiptEnvelope, and the boot attestation that consumes the nonce is a separate carrier whose durable projection is the envelope, so the exclusion is structural rather than a redaction step. The JSON on the wire (schema gunbc.machine-intake.receipt/v1, the /srv/bmc/intake/attempts/<id>/phase/*.json layout in the design doc) is an OBSERVATION TRANSPORT that ingests into these carriers; it is not a second decision authority."
-
+// THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized
+// envelope plus references to raw evidence by digest. Required properties, each a field or a
+// function here: canonical content identity (in-substrate today:
+// intake_receipt_structural_fingerprint, a structural fingerprint and not a SHA); attempt
+// identity and exact qualification subject; tool, agent, artifact and policy identities; start
+// and end times; raw evidence references by digest; explicit success or typed refusal with its
+// owner; a hash-chain link whose ordering is checked by validate_intake_receipt_ledger, the
+// sole constructor of the ledger admission reads, under these rules: one genesis, every
+// predecessor link, one subject and attempt, started_at <= ended_at on each receipt,
+// started_at nondecreasing across receipts, phase rank (position in
+// fleet_admission_required_phases) nondecreasing so a phase may be retried immediately or
+// advanced but never re-recorded after a later phase, one policy digest across the attempt,
+// one producer identity across the attempt; executor/staging identity; and NO credentials or
+// one-time callback tokens in durable output — IntakeAttemptNonce has no field on
+// IntakeReceiptEnvelope, and the boot attestation that consumes the nonce is a separate
+// carrier whose durable projection is the envelope, so the exclusion is structural rather than
+// a redaction step. The JSON on the wire (schema gunbc.machine-intake.receipt/v1, the
+// /srv/bmc/intake/attempts/<id>/phase/*.json layout in the design doc) is an OBSERVATION
+// TRANSPORT that ingests into these carriers; it is not a second decision authority.
 type IntakeReceiptSchema = | MachineIntakeReceiptV1
 
 fn intake_receipt_schema_wire(schema: IntakeReceiptSchema) -> NonEmptyStr {

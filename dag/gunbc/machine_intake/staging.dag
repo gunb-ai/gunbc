@@ -13,8 +13,20 @@ import gunbc.boot_artifact_delivery {
 }
 import extdeps.bmc.virtual_media { MegaRacShareCifs, MegaRacShareNfs }
 
-data machine_intake_staging_note: String = "AN ABSTRACT STAGING SERVICE, NOT srv2 (machine-intake ruling 2026-08-29, operational answer (b)). srv2 is today's candidate realization of IntakeStagingService, not the permanent identity of that service, and the workflow does not bake it in: the service is named by its required capabilities, and a host becomes its realization only after an observation shows it actually provides them. A cheap dedicated always-on management box is the preferable terminal realization — intake must stay available while production nodes reboot, are reimaged, leave the fleet or are under repair, and it gives the BMC network, artifact store, receipt collector and power-meter integrations a stable home — but that is a REALIZATION MIGRATION, not a workflow change, and the MVP does not block on buying it. Current-state discrepancy the ruling requires be resolved by observation, not prose: gunbc.bmc_virtual_media's concrete srv4 configfs plan names srv1 as its NBD server, while the brief says srv2 is today's staging host. Neither is chosen here; intake_staging_realization_today is StagingUnobserved until the staging-service observation runs and binds whichever host is actually serving artifacts."
-
+// AN ABSTRACT STAGING SERVICE, NOT srv2 (machine-intake ruling 2026-08-29, operational answer
+// (b)). srv2 is today's candidate realization of IntakeStagingService, not the permanent
+// identity of that service, and the workflow does not bake it in: the service is named by its
+// required capabilities, and a host becomes its realization only after an observation shows it
+// actually provides them. A cheap dedicated always-on management box is the preferable
+// terminal realization — intake must stay available while production nodes reboot, are
+// reimaged, leave the fleet or are under repair, and it gives the BMC network, artifact store,
+// receipt collector and power-meter integrations a stable home — but that is a REALIZATION
+// MIGRATION, not a workflow change, and the MVP does not block on buying it. Current-state
+// discrepancy the ruling requires be resolved by observation, not prose:
+// gunbc.bmc_virtual_media's concrete srv4 configfs plan names srv1 as its NBD server, while
+// the brief says srv2 is today's staging host. Neither is chosen here;
+// intake_staging_realization_today is StagingUnobserved until the staging-service observation
+// runs and binds whichever host is actually serving artifacts.
 type IntakeStagingCapability
   = ContentAddressedArtifactStore
   | BmcManagementReachability

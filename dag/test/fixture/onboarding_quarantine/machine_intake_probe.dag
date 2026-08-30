@@ -12,8 +12,11 @@ import gunbc.machine_intake_receipt { IntakeLedgerValidation }
 // the witness reads this module through the same parse-only declaration census as the live
 // pool and requires each derivation to fire on it by identity. Moving any declaration here
 // into dag/gunbc/machine_intake or dag/gunbc/bmc is the edit that turns the live wall red.
-data onboarding_quarantine_probe_note: String = "Positive control for the onboarding quarantine wall, one specimen per grain the parse-only census carries: a type whose fields join an onboarding type to an intake type (bridge), a type with an onboarding field only (consumer), and a fn whose top-level body expression is an onboarding callee (consumer). Not production; outside the live pool by its directory, which the witness declares."
-
+// Positive control for the onboarding quarantine wall, one specimen per grain the parse-only
+// census carries: a type whose fields join an onboarding type to an intake type (bridge), a
+// type with an onboarding field only (consumer), and a fn whose top-level body expression is
+// an onboarding callee (consumer). Not production; outside the live pool by its directory,
+// which the witness declares.
 type OnboardingQuarantineProbeBridge {
   phase: BmcOnboardingPhase
   ledger: IntakeLedgerValidation

@@ -81,8 +81,21 @@ type OsInstallMechanism
   | NbdProxyVirtualMediaInstall
   | PxeHttpInstall
 
-data os_install_mechanism_frozen_note: String = "FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29 §14, ruling 3 §3). gunbc.boot_artifact_delivery is the one delivery solver. This module is a compatibility PROJECTION of its answer onto the three legacy mechanism names, kept only because gunbc.srv3_os_install_actuate_scope and gunbc.nbd_proxy_virtual_media_install still read OsInstallMechanismSolution and fail closed on its refusals. It has no solver of its own any more: the capability-only solve_install_mechanism (virtual media from a capability row alone, PXE by absence in its else-arm) and the FirmwareUpdateThenVirtualMedia precursor were deleted with ruling 3, together with srv3_install_mechanism, gunbc.os_install fleet_install_server_specs and the ProxyDhcpDnsmasqArtifact path that consumed them. The per-host rows here never bind an access context — nothing on the install path observes an endpoint or runs a profile lookup — so every host's solution is InstallAccessProfileNotLookedUp for its evidence endpoint, asserted, not defaulted. DISSOLVE-ON: each remaining consumer reading BootDeliverySolution directly, at which point this module is deleted whole; growth surfaces (new arms, new causes, new per-host rows) are closed."
-
+// FROZEN X UNDER A LIVE Y (DESIGN §3 replacement migration, machine-intake ruling 2026-08-29
+// §14, ruling 3 §3). gunbc.boot_artifact_delivery is the one delivery solver. This module is a
+// compatibility PROJECTION of its answer onto the three legacy mechanism names, kept only
+// because gunbc.srv3_os_install_actuate_scope and gunbc.nbd_proxy_virtual_media_install still
+// read OsInstallMechanismSolution and fail closed on its refusals. It has no solver of its own
+// any more: the capability-only solve_install_mechanism (virtual media from a capability row
+// alone, PXE by absence in its else-arm) and the FirmwareUpdateThenVirtualMedia precursor were
+// deleted with ruling 3, together with srv3_install_mechanism, gunbc.os_install
+// fleet_install_server_specs and the ProxyDhcpDnsmasqArtifact path that consumed them. The
+// per-host rows here never bind an access context — nothing on the install path observes an
+// endpoint or runs a profile lookup — so every host's solution is
+// InstallAccessProfileNotLookedUp for its evidence endpoint, asserted, not defaulted.
+// DISSOLVE-ON: each remaining consumer reading BootDeliverySolution directly, at which point
+// this module is deleted whole; growth surfaces (new arms, new causes, new per-host rows) are
+// closed.
 type OsInstallMechanismRefusalCause
   = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
   | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }

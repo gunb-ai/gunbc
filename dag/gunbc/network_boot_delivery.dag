@@ -5,8 +5,12 @@ import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import gunbc.machine_intake_access { BootDeliveryTarget }
 
-data network_boot_delivery_note: String = "THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3, namespace ruling). Its four evidence axes have independent producers — client firmware mode, serving infrastructure, boot artifacts, boot control — and the standing they compose is consumed by gunbc.boot_artifact_delivery, which imports it and selects the PxeChainBoot constructor from it. Keeping it beside its sole constructor would not have violated ruling 2; it lives here so the solver is not the home of every candidate's evidence lifecycle."
-
+// THE NETWORK-BOOT ESTABLISHMENT VOCABULARY, in its own authority (machine-intake ruling 3,
+// namespace ruling). Its four evidence axes have independent producers — client firmware mode,
+// serving infrastructure, boot artifacts, boot control — and the standing they compose is
+// consumed by gunbc.boot_artifact_delivery, which imports it and selects the PxeChainBoot
+// constructor from it. Keeping it beside its sole constructor would not have violated ruling
+// 2; it lives here so the solver is not the home of every candidate's evidence lifecycle.
 // PXE was previously reached by ABSENCE: the pre-repair install solver's else-arm answered
 // PxeHttpInstall whenever no virtual-media capability was found, so "this BMC exposes no virtual
 // media" silently became "therefore it network-boots". Those are different states, and a BMC

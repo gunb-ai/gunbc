@@ -27,8 +27,19 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   ]
 }
 
-data redfish_virtual_media_shape_note: String = "THE STANDARD SHAPE, NOT ITS PRESENCE. DMTF Redfish defines the VirtualMedia resource under Managers/<ManagerId>/VirtualMedia/<MediaId> (and, on older implementations, under Systems/<SystemId>/VirtualMedia), with the InsertMedia and EjectMedia actions, an Image URI, a TransferProtocolType, and Inserted / WriteProtected flags; ComputerSystem.Boot defines the one-shot BootSourceOverride with Cd, Pxe and UefiHttp targets and the HttpBootUri property. These are OPERATION SHAPES. Whether a given BMC serves the collection at all, which of the two locations it uses, which TransferProtocolType values it accepts, and whether InsertMedia reads Image over HTTPS with a self-signed staging certificate are per-endpoint, per-firmware discoveries recorded in a BmcAccessObservation (extdeps.bmc.access_profile) — never derived from this module. extdeps.boards.asrock_rack live-probe rows record BOTH locations as absent on the observed ASRock OpenBMC surface, which is why this repository had no Redfish VirtualMedia model before the 2026-08-29 machine-intake ruling named MegaRAC as the first platform expected to serve it."
-
+// THE STANDARD SHAPE, NOT ITS PRESENCE. DMTF Redfish defines the VirtualMedia resource under
+// Managers/<ManagerId>/VirtualMedia/<MediaId> (and, on older implementations, under
+// Systems/<SystemId>/VirtualMedia), with the InsertMedia and EjectMedia actions, an Image URI,
+// a TransferProtocolType, and Inserted / WriteProtected flags; ComputerSystem.Boot defines the
+// one-shot BootSourceOverride with Cd, Pxe and UefiHttp targets and the HttpBootUri property.
+// These are OPERATION SHAPES. Whether a given BMC serves the collection at all, which of the
+// two locations it uses, which TransferProtocolType values it accepts, and whether InsertMedia
+// reads Image over HTTPS with a self-signed staging certificate are per-endpoint, per-firmware
+// discoveries recorded in a BmcAccessObservation (extdeps.bmc.access_profile) — never derived
+// from this module. extdeps.boards.asrock_rack live-probe rows record BOTH locations as absent
+// on the observed ASRock OpenBMC surface, which is why this repository had no Redfish
+// VirtualMedia model before the 2026-08-29 machine-intake ruling named MegaRAC as the first
+// platform expected to serve it.
 // TransferProtocolType, VirtualMedia schema. The Oem arm exists because the
 // schema admits it, not because any consumer selects it.
 type RedfishVirtualMediaTransferProtocol
@@ -178,51 +189,58 @@ type RedfishVirtualMediaProbeReceipt {
   raw_response: ContentHash
 }
 
-// The ladder arms at or above the admitted-protocol floor. Insert and eject
-// receipts are above it only because the receipt still carries the locator and
-// admitted population they were reached with.
-fn redfish_probe_progress_at_floor(progress: RedfishVirtualMediaProbe) -> Bool {
+// Where a ladder arm stands against the admitted-protocol floor. Insert and
+// eject receipts are above it only because the receipt still carries the
+// locator and admitted population they were reached with.
+type RedfishProbeFloorStanding
+  = ProbeFloorReached
+  | ProbeFloorNotReached
+
+fn redfish_probe_floor_standing(progress: RedfishVirtualMediaProbe) -> RedfishProbeFloorStanding {
   match progress {
-    ProbeUnreached => false
-    ObservedAbsent => false
-    CollectionDiscovered => false
-    ResourceReadable => false
-    InsertMediaActionAdvertised => false
-    TransferProtocolAdmitted => true
-    InsertSucceeded => true
-    EjectSucceededAndDetached => true
-    OperationRefused => false
+    ProbeUnreached => ProbeFloorNotReached
+    ObservedAbsent => ProbeFloorNotReached
+    CollectionDiscovered => ProbeFloorNotReached
+    ResourceReadable => ProbeFloorNotReached
+    InsertMediaActionAdvertised => ProbeFloorNotReached
+    TransferProtocolAdmitted => ProbeFloorReached
+    InsertSucceeded => ProbeFloorReached
+    EjectSucceededAndDetached => ProbeFloorReached
+    OperationRefused => ProbeFloorNotReached
   }
 }
 
 // ONE COHERENT RECEIPT (2026-08-30 re-review §2). The ladder arm and the
-// admitted-protocol population are two statements about one reading; a
-// receipt whose arm says the floor was not reached while listing protocols, or
-// says it was reached while listing none, contradicts itself and is refused as
-// such — never resolved by preferring one side.
+// admitted-protocol population are two statements about one reading, and the
+// four cells of that product are four named standings: at the floor with a
+// population (the plan floor), below it with none (coherent, not yet at the
+// floor), and the two self-contradictions — protocols listed under an arm that
+// says the floor was not reached, or the floor reached with none listed —
+// which are refused as such, never resolved by preferring one side. No cell is
+// folded into another: a below-floor empty receipt is not "coherent at the
+// floor", and the plan reads ProbeReceiptAtFloor alone.
 type RedfishProbeReceiptCoherence
-  = ProbeReceiptCoherent
+  = ProbeReceiptAtFloor { admitted: List<RedfishVirtualMediaTransferProtocol> }
+  | ProbeReceiptBelowFloor { progress: RedfishVirtualMediaProbe }
   | ProbeReceiptProtocolsWithoutFloor { progress: RedfishVirtualMediaProbe, admitted: List<RedfishVirtualMediaTransferProtocol> }
   | ProbeReceiptFloorWithoutProtocols { progress: RedfishVirtualMediaProbe }
 
 fn redfish_probe_receipt_coherence(receipt: RedfishVirtualMediaProbeReceipt) -> RedfishProbeReceiptCoherence {
-  let at_floor = redfish_probe_progress_at_floor(progress: receipt.progress)
   let has_protocols = list_length(items: receipt.admitted_protocols) > 0
-  if at_floor && has_protocols {
-    ProbeReceiptCoherent
-  } else if has_protocols {
-    ProbeReceiptProtocolsWithoutFloor { progress: receipt.progress, admitted: receipt.admitted_protocols }
-  } else if at_floor {
-    ProbeReceiptFloorWithoutProtocols { progress: receipt.progress }
-  } else {
-    ProbeReceiptCoherent
+  match redfish_probe_floor_standing(progress: receipt.progress) {
+    ProbeFloorReached =>
+      if has_protocols {
+        ProbeReceiptAtFloor { admitted: receipt.admitted_protocols }
+      } else {
+        ProbeReceiptFloorWithoutProtocols { progress: receipt.progress }
+      }
+    ProbeFloorNotReached =>
+      if has_protocols {
+        ProbeReceiptProtocolsWithoutFloor { progress: receipt.progress, admitted: receipt.admitted_protocols }
+      } else {
+        ProbeReceiptBelowFloor { progress: receipt.progress }
+      }
   }
-}
-
-// The plan floor: a coherent receipt whose arm reached the floor and whose
-// population is nonempty.
-fn redfish_probe_receipt_at_plan_floor(receipt: RedfishVirtualMediaProbeReceipt) -> Bool {
-  redfish_probe_progress_at_floor(progress: receipt.progress) && list_length(items: receipt.admitted_protocols) > 0
 }
 
 fn redfish_transfer_protocol_in(protocols: List<RedfishVirtualMediaTransferProtocol>, protocol: RedfishVirtualMediaTransferProtocol) -> Bool {

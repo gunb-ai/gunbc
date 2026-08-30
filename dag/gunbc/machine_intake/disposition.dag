@@ -29,8 +29,22 @@ import gunbc.machine_intake_receipt {
   intake_receipt_structural_fingerprint,
 }
 
-data machine_intake_disposition_note: String = "ADMITTED IS DERIVED, NEVER AUTHORED (machine-intake ruling 2026-08-29 §11). The three top-level arms are kept and each preserves WHY it was reached. FleetAdmissionStanding is derived from phase receipts: identity bound, BMC secured, prior-life boundary, boot delivery, diagnostic boot attested, inventory conformant, memory qualified, subsystems qualified, arrival soak, OS provisioned, placement qualified, cleanup confirmed, AND the qualification subject still current. A hand-authored strategy.foo_held_unit = Admitted row cannot substitute for those producers because the only path to FleetAdmissible is derive_fleet_admission over a ValidatedIntakeReceiptLedger — one genesis, every link checked, one subject and attempt — whose receipts' subject matches. RUNG, honestly: this is mechanically preventable, not structurally impossible — .dag record literals are public, so an Admitted { admission_receipt: FleetAdmissionReceipt { ... } } literal can still be WRITTEN; what the construction guarantees is that no derivation produces it without the receipts, and what the witness executes is that the derivation refuses on each missing phase. The construction wall over the literal is the corpus-wide gap docs/plans/hollow-alias-construction-wall.md names, the same row as ValidatedBmcFanCurve; this module claims no more than that."
-
+// ADMITTED IS DERIVED, NEVER AUTHORED (machine-intake ruling 2026-08-29 §11). The three top-
+// level arms are kept and each preserves WHY it was reached. FleetAdmissionStanding is derived
+// from phase receipts: identity bound, BMC secured, prior-life boundary, boot delivery,
+// diagnostic boot attested, inventory conformant, memory qualified, subsystems qualified,
+// arrival soak, OS provisioned, placement qualified, cleanup confirmed, AND the qualification
+// subject still current. A hand-authored strategy.foo_held_unit = Admitted row cannot
+// substitute for those producers because the only path to FleetAdmissible is
+// derive_fleet_admission over a ValidatedIntakeReceiptLedger — one genesis, every link
+// checked, one subject and attempt — whose receipts' subject matches. RUNG, honestly: this is
+// mechanically preventable, not structurally impossible — .dag record literals are public, so
+// an Admitted { admission_receipt: FleetAdmissionReceipt { ... } } literal can still be
+// WRITTEN; what the construction guarantees is that no derivation produces it without the
+// receipts, and what the witness executes is that the derivation refuses on each missing
+// phase. The construction wall over the literal is the corpus-wide gap docs/plans/hollow-
+// alias-construction-wall.md names, the same row as ValidatedBmcFanCurve; this module claims
+// no more than that.
 type IntakePhaseStanding
   = PhaseSatisfiedByReceipt { receipt: ContentHash }
   | PhaseRefusedByReceipt { owner: QualificationRefusalOwner, cause: NonEmptyStr, receipt: ContentHash }

@@ -2,8 +2,21 @@ module gunbc.machine_intake_phase
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
 
-data machine_intake_phase_note: String = "THREE TRANSACTIONS, ONE LIFECYCLE (machine-intake ruling 2026-08-29 §4). Hardware qualification, OS provisioning and placement commissioning are separate transactions: they may share boot delivery and receipts, but success in one must not fabricate success in another. A machine can be physically good while installation is unestablished, and installation can succeed on defective hardware. Arrival qualification runs immediately on delivery or repair, before shelving, while the return clock is valuable; placement commissioning runs in the actual serving location and is invalidated by a move, a PSU feed change, a cooling change or a fan-policy change WITHOUT invalidating the earlier memory qualification. The state between them is not Admitted. The phase vocabulary here is the ruling's, one arm per required result; the required result itself is stated on the phase's row in docs/plans/machine-intake-design.md and is what a receipt for that phase must carry. gunbc.bmc_onboarding's single-lifecycle vocabulary (CredentialsRotated, OsInstalled, FabricJoined) is what this splits apart; extracting its BMC-security, provisioning and fabric-join standings into these three transactions is the follow-up the ruling's §14 names, not a second lifecycle grown beside it."
-
+// THREE TRANSACTIONS, ONE LIFECYCLE (machine-intake ruling 2026-08-29 §4). Hardware
+// qualification, OS provisioning and placement commissioning are separate transactions: they
+// may share boot delivery and receipts, but success in one must not fabricate success in
+// another. A machine can be physically good while installation is unestablished, and
+// installation can succeed on defective hardware. Arrival qualification runs immediately on
+// delivery or repair, before shelving, while the return clock is valuable; placement
+// commissioning runs in the actual serving location and is invalidated by a move, a PSU feed
+// change, a cooling change or a fan-policy change WITHOUT invalidating the earlier memory
+// qualification. The state between them is not Admitted. The phase vocabulary here is the
+// ruling's, one arm per required result; the required result itself is stated on the phase's
+// row in docs/plans/machine-intake-design.md and is what a receipt for that phase must carry.
+// gunbc.bmc_onboarding's single-lifecycle vocabulary (CredentialsRotated, OsInstalled,
+// FabricJoined) is what this splits apart; extracting its BMC-security, provisioning and
+// fabric-join standings into these three transactions is the follow-up the ruling's §14 names,
+// not a second lifecycle grown beside it.
 type IntakeTransaction
   = ArrivalHardwareQualification
   | OsProvisioning
