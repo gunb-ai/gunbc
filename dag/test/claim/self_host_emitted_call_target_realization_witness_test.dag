@@ -463,3 +463,85 @@ test fn w_service_op_in_a_service_free_fn_refuses_instead_of_awaiting_an_unbound
     [".await?"]
   )
 }
+
+// COMMIT-3 MECHANISMS OF THE #9664 CLOSURE, ONE ROW EACH. Every must_not_contain below is the byte
+// sequence the pre-fix binary emitted for the same source (observed on the seed at 8781269 before
+// the mechanism landed), so each row is a discriminating red that went green by the mechanism it
+// names, not a decoration.
+
+// A parameter declared `Optional<T>` is optional: the applied spelling carries no cardinality flag,
+// so the fail-closed unwrap fired on an argument the callee exists to inspect.
+test fn w_optional_carrier_parameter_takes_the_optional_argument_without_an_unwrap() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.optional_param_probe\nimport std.types { Int }\nimport v2.std.optional { Optional }\nfn inspect(opt: Optional<Int>) -> Optional<Int> { opt }\nfn caller(x: Int?) -> Optional<Int> { inspect(opt: x) }\n",
+    "src/test_claim_optional_param_probe.rs",
+    ["inspect(x.clone())"],
+    [".expect(\"fail-closed: an optional value flowed into non-optional parameter"]
+  )
+}
+
+// The shared-field accessor returns T by value from &self; without T: Clone on its impl rustc
+// clones the reference.
+test fn w_generic_coproduct_shared_accessor_impl_carries_the_clone_bound() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.shared_accessor_probe\nimport std.types { Int }\ntype Pair<T> = Left { v: T, n: Int } | Right { v: T, m: Int }\nfn v_of<T>(p: Pair<T>) -> T { p.v }\n",
+    "src/test_claim_shared_accessor_probe.rs",
+    ["impl<T: Clone> Pair<T> {"],
+    ["impl<T> Pair<T> {"]
+  )
+}
+
+// A Violates literal in a record field is typed by its position, not by the enclosing fn's return.
+test fn w_violates_literal_in_a_record_field_takes_the_field_witness_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.witness_field_probe\nimport std.types { Int }\nimport v2.std.node { Node }\nimport v2.std.diagnostic { Diagnostic }\nimport v2.std.witness { Holds, Violates, Witness }\ntype Judged { resolved: Witness<Node>, ok: Witness<Int> }\nfn judge(d: Diagnostic, n: Int) -> Judged { Judged { resolved: Violates { diagnostic: d }, ok: Holds { value: n } } }\n",
+    "src/test_claim_witness_field_probe.rs",
+    ["Witness::<Rc<Node>>::Violates"],
+    ["Witness::<Rc<Judged>>::Violates"]
+  )
+}
+
+// A record pattern over a generic call's result: the scrutinee carrier is decided by the shared set,
+// exactly as a shared enum's variant pattern is, so the pattern must meet the value, not the Rc.
+test fn w_record_pattern_over_a_generic_call_result_derefs_the_shared_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.record_pattern_probe\nimport std.types { Int }\ntype Rec { a: Int, b: Int }\nfn ident<C>(c: C) -> C { c }\nfn probe(r: Rec) -> Int { match ident(c: r) { Rec { a: x, b: _ } => x } }\n",
+    "src/test_claim_record_pattern_probe.rs",
+    ["Rec { a: x, .. } => x.clone()"],
+    ["match ident(r.clone()) {"]
+  )
+}
+
+// A generic stored into a `dyn Fn` must outlive it: a fn returning a record whose fields are arrows
+// carries 'static on every generic, the same gate the param-side `impl Fn` already fires.
+test fn w_fn_returning_an_arrow_field_record_carries_static_on_its_generics() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.static_generic_probe\nimport std.types { Int }\ntype Ops<T> { op: fn(T, T) -> T }\nfn ops<T>(z: T) -> Ops<T> { Ops { op: fn(a, b) { z } } }\n",
+    "src/test_claim_static_generic_probe.rs",
+    ["pub fn ops<T: Clone + 'static>(z: T)"],
+    ["pub fn ops<T: Clone>(z: T)"]
+  )
+}
+
+// A module declaring a nullary variant named None also emits `pub struct None;` at module scope,
+// which captures the prelude's Option::None: the null keyword row names the item by its path.
+test fn w_null_keyword_survives_a_module_declaring_a_none_variant() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.none_capture_probe\nimport std.types { Int }\ntype ScopeX = None | Keyed\ntype PlanX { layer: Int?, scope: ScopeX }\nfn plan_x() -> PlanX { PlanX { layer: none, scope: Keyed } }\n",
+    "src/test_claim_none_capture_probe.rs",
+    ["layer: std::option::Option::None,"],
+    ["layer: None,"]
+  )
+}
+
+// The fn-field header prints well-formedness bounds asked per parameter: `divergence: ValueDiff<A>`
+// names a type declared `<A: Clone>`, so A must carry the bound even though the bare `expected: A`
+// earns none; the earlier set-difference dropped both.
+test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.wf_header_probe\nimport std.types { Int }\nimport v2.std.host_run { EmitHostRunReceipt, ValueDiff }\ntype ReceiptX<Subj, A> { subject: Subj, expected: A, divergence: ValueDiff<A>, receipt: EmitHostRunReceipt }\n",
+    "src/test_claim_wf_header_probe.rs",
+    ["pub struct ReceiptX<Subj, A: Clone> {"],
+    ["pub struct ReceiptX<Subj, A> {"]
+  )
+}

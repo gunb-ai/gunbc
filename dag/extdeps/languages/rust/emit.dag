@@ -55,7 +55,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 data rust_keywords: Map<String, String> = {
-  "true": "true", "false": "false", "null": "None",
+  "true": "true", "false": "false", "null": "std::option::Option::None",
   "and": "&&", "or": "||", "not": "!",
   "div": "/"
 }
