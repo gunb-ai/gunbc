@@ -5,6 +5,8 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
   spark_serving_hermetic_provenance_of,
+  spark_serving_provenance_host,
+  spark_serving_provenance_observation_attempt,
 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -1420,14 +1422,18 @@ test fn the_axis_accessor_reads_the_host_off_the_arm_it_is_given() -> Bool {
   c3_axis_host(a: c3_axis(linger: LingerObservedEnabled)) == subject_host
 }
 
-// The provenance claim proper: the attempt and locus in a planned axis are the ones the projection
-// was observed under. Nothing at the plan site supplies them, so they cannot be set to a value the
-// observation never had.
-test fn a_planned_axis_carries_the_attempt_and_locus_its_projection_was_observed_under() -> Bool {
+// The provenance claim proper: the planned axis carries the projection's OWN provenance value, not
+// two strings copied out of it. This fixture's projection is hermetic, and the assertion is that the
+// axis says so rather than presenting a plausible acquired identity -- a hermetic observation has no
+// observation attempt, and that absence is what stops it being mistaken for a measured one.
+test fn a_planned_axis_carries_the_provenance_its_projection_was_observed_under() -> Bool {
   match c3_axis(linger: LingerObservedEnabled) {
     SparkServingAxisPlanned { plan: p } =>
-      p.attempt == ("witness-attempt" as NonEmptyStr)
-        && p.locus == ("witness-locus" as NonEmptyStr)
+      spark_serving_provenance_host(p: p.provenance) == subject_host
+        && match spark_serving_provenance_observation_attempt(p: p.provenance) {
+          Absent => true
+          Present { value: _ } => false
+        }
     SparkServingAxisNotApplicable { host: _ } => false
     SparkServingAxisUnobserved { host: _ } => false
     SparkServingAxisRefused { host: _, cause: _ } => false
