@@ -559,18 +559,24 @@ type SparkServingHostObservation sole_constructor {
 // moment with its enablement read at another. Two facts about one machine taken from two
 // observations are not an observation of that machine.
 //
-// WHAT IS TRUE TODAY, STATED AT ITS ACTUAL STRENGTH. Readback and projection are assembled during
-// one enclosing per-host call, but their captures are NOT yet owned by one typed probe transaction:
-// some facts are probed twice -- `is-active` for the readback and again inside the user-unit
-// projection, the runtime materialization receipt likewise -- and the via-locus path currently mixes
-// executor adapters, populating the readback through `spark_serving_probe_leg_via_locus` while the
-// projection helpers reach for the other leg.
+// WHAT IS TRUE TODAY, STATED AT ITS ACTUAL STRENGTH. The paragraph that stood here said "one
+// observation, one producer" was the DESTINATION and not yet the state, and it was right to: at the
+// time, is-active and the runtime receipt were each probed twice, and the via-locus path mixed
+// executor adapters -- readback through one leg runner, projection helpers reaching for another.
 //
-// So "one observation, one producer" is the DESTINATION and not yet the state. An earlier revision
-// of this paragraph asserted it as fact, which is the failure this file is otherwise careful about:
-// an annotation is never evidence that a machine claim holds, because no Accepted program can read
-// one. The probe-transaction carrier is what would make the stronger sentence true, and this
-// paragraph should be replaced by it only once it is.
+// That is now the state. Every capture in a host observation comes from one
+// SparkServingObservationTransaction: one host, one credential locus, one observation attempt
+// derived from the sealed fleet attempt and a typed phase, and exactly one capture per required
+// request, with missing and duplicated requests both refusing admission. The derivations below hold
+// no transport, so none of them can add a leg; the capture carries its request rather than a label
+// beside an argv, so none of them can be misfiled; and this mint is sealed by admit_callers to the
+// transaction projectors and one named hermetic fixture, so an observation cannot be assembled
+// without a transaction behind it.
+//
+// THE ONE REMAINING EXCEPTION, named rather than glossed: the converge slice's POST-APPLY replan
+// still probes linger on its own and passes a Bool, instead of acquiring a second transaction under
+// SparkServingPostApplyObservation. Until that lands, the post-apply path is the one place where a
+// planning input is not a projection of the transaction it was planned from.
 //
 // THE MINT TAKES PROBES, NOT A FINISHED PROJECTION, AND THAT IS THE WHOLE PROVENANCE ARGUMENT.
 //
