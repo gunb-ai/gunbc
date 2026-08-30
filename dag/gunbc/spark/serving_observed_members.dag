@@ -359,6 +359,17 @@ fn spark_serving_unit_state_was_observed(unit: SparkServingObservedUnitState) ->
 // A plan built while the unit member was never looked at cannot honestly report convergence: the
 // unit would be planned as an addition on every run, so a second plan can never be empty. Consumers
 // that care about the empty-replan bar read this rather than re-deriving it.
+// The projection's own record of where it was observed. A consumer that wants to plan from it must
+// be able to ask which host it belongs to without being told separately, which is the whole point of
+// carrying provenance through the projection rather than beside it.
+fn spark_serving_projection_provenance(
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingObservationProvenance {
+  match projection {
+    SparkServingObservedMembers { provenance: p } => p
+  }
+}
+
 fn spark_serving_projection_supports_empty_replan(
   projection: SparkServingObservedMemberProjection,
 ) -> Bool {

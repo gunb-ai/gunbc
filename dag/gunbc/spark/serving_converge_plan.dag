@@ -1,13 +1,18 @@
 module gunbc.spark.serving_converge_plan
 
 import gunbc.spark.serving_observed_members {
+  spark_serving_projection_provenance,
   SparkServingObservedMemberProjection,
   SparkServingObservedMembers,
 }
 
 import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value, content_hash_atom, serialize_content_hash }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import gunbc.spark.serving_observation_transaction {
+  spark_serving_provenance_host,
+  spark_serving_provenance_observation_attempt,
+}
 import gunbc.fleet_intent_network { operator_host_srv5 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -549,14 +554,64 @@ fn spark_serving_scheduled_rows_for(
 
 // THE AXIS SEAM. A caller that wants the Spark axis for a host gets a DISPOSITION, so a refusal
 // arrives as a refusal rather than as an empty plan the converge would read as "nothing to do".
+// THE PRODUCTION ROUTE TAKES ONE SEALED OBSERVATION, NOT A HOST AND A PROJECTION.
+//
+// spark_serving_axis_for takes them independently and never joins host to
+// projection.provenance.host, so a fabricated projection plus any host string still yielded a
+// "bound" payload -- the opacity was real and the binding was not. This is the route production
+// uses: everything the bound plan carries comes out of the one observation, so there is no second
+// argument for the first to disagree with.
+fn spark_serving_axis_for_observation(
+  observation: SparkServingHostObservation,
+) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  match spark_serving_provenance_observation_attempt(p: observation.provenance) {
+    Absent =>
+      SparkServingAxisRefused {
+        host: spark_serving_provenance_host(p: observation.provenance),
+        cause: join([
+          "the observation for host ",
+          spark_serving_provenance_host(p: observation.provenance) as String,
+          " carries no acquired provenance -- its transaction refused, or it is a hermetic fixture",
+          " -- so there is no measured population to plan from",
+        ], ""),
+      }
+    Present { value: _ } =>
+      spark_serving_axis_for(
+        host: spark_serving_provenance_host(p: observation.provenance) as NonEmptyStr,
+        projection: observation.projection,
+      )
+  }
+}
+
+// THE LOWER-LEVEL ROUTE SURVIVES FOR PURE PLAN TESTS AND JOINS THE TWO ARGUMENTS ITSELF.
+//
+// It is reachable from a hermetic witness, which is why it cannot simply trust its host argument:
+// if the projection was observed on another host, planning here would tag one host's schedule with
+// another's identity, and the artifact's own subject join would then compare two values that already
+// agreed with each other by the caller's arrangement.
 fn spark_serving_axis_for(
   host: NonEmptyStr,
   projection: SparkServingObservedMemberProjection,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  if !host_identity_eq(
+    a: host as HostIdentity,
+    b: spark_serving_provenance_host(p: spark_serving_projection_provenance(projection: projection)),
+  ) {
+    SparkServingAxisRefused {
+      host: host as HostIdentity,
+      cause: join([
+        "the projection was observed on host ",
+        spark_serving_provenance_host(p: spark_serving_projection_provenance(projection: projection)) as String,
+        " but the axis is being planned for ",
+        host as String,
+      ], ""),
+    }
+  } else {
   match spark_serving_scheduled_rows_for(host: host, projection: projection) {
     SparkServingScheduledRowsRefused { cause: why } =>
       SparkServingAxisRefused { host: host as HostIdentity, cause: why }
     SparkServingScheduledRowsReady { axis: axis, plan: _ } => axis
+  }
   }
 }
 
