@@ -14,7 +14,7 @@ import std.content_hash {
   serialize_content_hash,
 }
 import extdeps.toolchain.types { Architecture }
-import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey }
+import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey, content_hash_equal }
 import gunbc.machine_intake_phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
 
 // THE RECEIPT SPINE (machine-intake ruling 2026-08-29 §12). Every phase emits one normalized
@@ -158,14 +158,6 @@ fn intake_receipt_structural_fingerprint(envelope: IntakeReceiptEnvelope) -> Con
       ),
     ),
   )
-}
-
-fn content_hash_equal(left: ContentHash, right: ContentHash) -> Bool {
-  match compare_content_hash(left: left, right: right) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
-  }
 }
 
 // A VALIDATED LEDGER IS THE ONLY INPUT TO ADMISSION (ruling 2026-08-29,

@@ -144,10 +144,6 @@ data placement_phases_all: List<IntakePhase> = [
 // this roster being satisfied, never a phase of its own.
 data fleet_admission_required_phases: List<IntakePhase> = concat(arrival_phases_all, concat(provisioning_phases_all, placement_phases_all))
 
-fn intake_phase_in(phases: List<IntakePhase>, phase: IntakePhase) -> Bool {
-  fold(phases, init: false, f: (acc, p) => acc || p == phase)
-}
-
 type PhaseRankFold {
   index: Int
   rank: Int?

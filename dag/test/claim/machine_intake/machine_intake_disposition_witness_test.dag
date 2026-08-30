@@ -7,6 +7,9 @@ import extdeps.toolchain.types { Aarch64 }
 import gunbc.machine_intake_subject {
   SubjectCurrent,
   SubjectStale,
+  StaleAxis,
+  AssemblyManifestStale,
+  FirmwareManifestStale,
   AssemblyManifest,
   ComponentIdentity,
   DimmComponent,
@@ -31,7 +34,6 @@ import gunbc.machine_intake_phase {
   StagingInfrastructure,
   UnitHardware,
   fleet_admission_required_phases,
-  intake_phase_in,
   intake_phase_rank,
   arrival_phases_all,
   provisioning_phases_all,
@@ -330,7 +332,7 @@ test fn one_missing_phase_blocks_admission_and_is_named() -> Bool {
     Present { value: a } =>
       match a {
         FleetNotAdmissible { missing: m, refused: _, subject_mismatched: _, subject_currency: _ } =>
-          list_length(items: m) == 1 && intake_phase_in(phases: m, phase: omitted)
+          list_length(items: m) == 1 && (m |> any(p => p == omitted))
         FleetAdmissible { receipt: _ } => false
       }
     Absent => false
@@ -364,17 +366,20 @@ fn currency_of(standing: FleetAdmissionStanding?) -> SubjectCurrency? {
 }
 
 // REVIEW 57434 CONTROL — the reported currency is the axes that actually moved,
-// never a constant: a firmware-only re-flash reports firmware_changed and NOT
-// assembly_changed; a ledger produced before BOTH a DIMM swap and a re-flash
-// reports both. The fabricated `{ assembly_changed: true }` this replaces
-// would fail both halves. (A validated ledger carries exactly one subject, so
+// never a constant: a firmware-only re-flash reports FirmwareManifestStale and
+// NOT AssemblyManifestStale; a ledger produced before BOTH a DIMM swap and a
+// re-flash reports both. The fabricated `{ assembly_changed: true }` this
+// replaces would fail both halves, and so would a constant axis list: each arm
+// requires the exact cardinality as well as the membership (review 57612 moved
+// the three parallel Booleans to List<StaleAxis>). (A validated ledger carries exactly one subject, so
 // receipts of two different stale subjects cannot share a ledger — that case
 // refuses at validation, see mixed_attempt_ids_on_one_subject_are_refused.)
 test fn stale_currency_names_the_axes_that_moved() -> Bool {
   let flash_only = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_before))) {
     Present { value: c } =>
       match c {
-        SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == false && f == true
+        SubjectStale { axes: axes } =>
+          list_length(items: axes) == 1 && (axes |> any(x => x == FirmwareManifestStale))
         SubjectCurrent => false
       }
     Absent => false
@@ -382,7 +387,10 @@ test fn stale_currency_names_the_axes_that_moved() -> Bool {
   let both = match currency_of(standing: admission_over(subject: subject_after_flash, receipts: full_ledger(subject: subject_after))) {
     Present { value: c } =>
       match c {
-        SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == true && f == true
+        SubjectStale { axes: axes } =>
+          list_length(items: axes) == 2
+            && (axes |> any(x => x == AssemblyManifestStale))
+            && (axes |> any(x => x == FirmwareManifestStale))
         SubjectCurrent => false
       }
     Absent => false

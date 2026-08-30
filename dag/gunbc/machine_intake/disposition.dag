@@ -7,6 +7,7 @@ import gunbc.machine_intake_subject {
   SubjectCurrency,
   SubjectCurrent,
   SubjectStale,
+  stale_axes_all,
   compare_qualification_subject,
 }
 import gunbc.machine_intake_phase {
@@ -73,7 +74,7 @@ fn phase_standing(
       } else {
         let digest = intake_receipt_structural_fingerprint(envelope: r)
         match compare_qualification_subject(admitted: subject, observed: r.subject.subject) {
-          SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } =>
+          SubjectStale { axes: axes } =>
             match acc {
               PhaseSatisfiedByReceipt { receipt: _ } => acc
               PhaseRefusedByReceipt { owner: _, cause: _, receipt: _ } => acc
@@ -81,7 +82,7 @@ fn phase_standing(
               PhaseUnobserved =>
                 PhaseReceiptSubjectMismatch {
                   receipt: digest,
-                  currency: SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f },
+                  currency: SubjectStale { axes: axes },
                 }
             }
           SubjectCurrent =>
@@ -146,11 +147,13 @@ type AdmissionFold {
 fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
   match left {
     SubjectCurrent => right
-    SubjectStale { unit_changed: lu, assembly_changed: la, firmware_changed: lf } =>
+    SubjectStale { axes: la } =>
       match right {
         SubjectCurrent => left
-        SubjectStale { unit_changed: ru, assembly_changed: ra, firmware_changed: rf } =>
-          SubjectStale { unit_changed: lu || ru, assembly_changed: la || ra, firmware_changed: lf || rf }
+        SubjectStale { axes: ra } =>
+          SubjectStale {
+            axes: stale_axes_all |> filter(a => (la |> any(x => x == a)) || (ra |> any(x => x == a))),
+          }
       }
   }
 }
@@ -245,10 +248,6 @@ fn first_refusal(refused: List<PhaseRefusal>) -> PhaseRefusal? {
   })
 }
 
-fn phases_all_in_transaction(phases: List<IntakePhase>, transaction: IntakeTransaction) -> Bool {
-  fold(phases, init: true, f: (acc, p) => acc && intake_phase_transaction(phase: p) == transaction)
-}
-
 fn first_phase(phases: List<IntakePhase>) -> IntakePhase? {
   fold(phases, init: none, f: (acc, p) => match acc {
     Present { value: _ } => acc
@@ -283,7 +282,7 @@ fn derive_disposition(
             Absent =>
               if list_length(items: mismatched) > 0 {
                 PartsHold { reason: QualificationSubjectStale { currency: currency }, next_action: "start a new intake attempt for the current subject" }
-              } else if phases_all_in_transaction(phases: missing, transaction: PlacementCommissioning) {
+              } else if missing |> all(p => intake_phase_transaction(phase: p) == PlacementCommissioning) {
                 PartsHold { reason: PlacementQualificationPending, next_action: "run placement commissioning in the serving location" }
               } else {
                 match first_phase(phases: missing) {

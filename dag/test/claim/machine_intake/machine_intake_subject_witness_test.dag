@@ -23,6 +23,9 @@ import gunbc.machine_intake_subject {
   SpdSerialRead,
   SubjectCurrent,
   SubjectStale,
+  StaleAxis,
+  AssemblyManifestStale,
+  FirmwareManifestStale,
   UnitIdentityInputs,
   UnitKey,
   UnitKeyBound,
@@ -84,7 +87,8 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_after_dimm_swap, firmware: firmware_v1)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
-    SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == true && f == false
+    SubjectStale { axes: axes } =>
+      list_length(items: axes) == 1 && (axes |> any(x => x == AssemblyManifestStale))
     SubjectCurrent => false
   }
 }
@@ -100,7 +104,8 @@ test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v2)
   match compare_qualification_subject(admitted: admitted, observed: observed) {
-    SubjectStale { unit_changed: u, assembly_changed: a, firmware_changed: f } => u == false && a == false && f == true
+    SubjectStale { axes: axes } =>
+      list_length(items: axes) == 1 && (axes |> any(x => x == FirmwareManifestStale))
     SubjectCurrent => false
   }
 }

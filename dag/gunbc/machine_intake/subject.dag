@@ -62,14 +62,6 @@ type UnitIdentityInputs {
   board_serial_observations: List<BoardSerialObservation>
 }
 
-fn board_serials_all_agree(observations: List<BoardSerialObservation>, first: NonEmptyStr) -> Bool {
-  fold(observations, init: true, f: (acc, o) => acc && o.serial == first)
-}
-
-fn unit_key_in(keys: List<UnitKey>, serial: NonEmptyStr) -> Bool {
-  fold(keys, init: false, f: (acc, k) => acc || (k as NonEmptyStr) == serial)
-}
-
 // Total in the refusing direction on all three failure shapes. `other_units`
 // is the set of unit keys ALREADY bound to other physical units in the fleet
 // ledger: a serial that keys one of them is a duplicate, and two boxes claiming
@@ -79,9 +71,9 @@ fn bind_unit_key_from_first(
   first: NonEmptyStr,
   other_units: List<UnitKey>,
 ) -> UnitKeyStanding {
-  if board_serials_all_agree(observations: observations, first: first) == false {
+  if (observations |> all(o => o.serial == first)) == false {
     UnitKeyRefused { cause: BoardSerialContradictory { observations: observations } }
-  } else if unit_key_in(keys: other_units, serial: first) {
+  } else if other_units |> any(k => (k as NonEmptyStr) == first) {
     UnitKeyRefused { cause: BoardSerialDuplicatedAcrossUnits { serial: first } }
   } else {
     UnitKeyBound { key: first as UnitKey }
@@ -212,7 +204,16 @@ fn qualification_subject_of(
   }
 }
 
-fn content_hash_same(left: ContentHash, right: ContentHash) -> Bool {
+// THE ONE DIGEST-EQUALITY DECISION FOR THIS LAYER (review 57612). It was
+// authored twice -- here and again in gunbc.machine_intake_receipt -- which is
+// two names for one predicate and the hollow_alias class DESIGN section 3
+// names. It is homed here because the qualification subject is what the
+// digests identify and every other machine-intake module already imports this
+// one. std.content_hash deliberately offers no union-level Bool: the
+// cross-family arm is a DECISION, and this layer makes it once, in the
+// refusing direction -- two digests from different families are never the same
+// subject, so they cannot be treated as unchanged.
+fn content_hash_equal(left: ContentHash, right: ContentHash) -> Bool {
   match compare_content_hash(left: left, right: right) {
     ContentHashEqual => true
     ContentHashDifferent => false
@@ -223,18 +224,45 @@ fn content_hash_same(left: ContentHash, right: ContentHash) -> Bool {
 // Which axes moved between an admitted subject and the one observed now. All
 // three are reported, not the first: a repair that changed a DIMM and flashed
 // the BIOS is two invalidations with two different re-qualification scopes.
+// THE AXES THEMSELVES, NOT THREE PARALLEL BOOLEANS (review 57612). The
+// previous shape was a hand-rolled sum: three Bool fields whose consumers read
+// them with `== false`, so `{ unit_changed: false, assembly_changed: false,
+// firmware_changed: false }` was an authorable SubjectStale that means
+// SubjectCurrent -- a state the coproduct already forbids and the record
+// re-admitted. The list carries exactly which axes moved and cannot be empty
+// in a well-constructed stale standing, because the sole constructor below
+// returns SubjectCurrent when no axis moved.
+type StaleAxis
+  = UnitKeyStale
+  | AssemblyManifestStale
+  | FirmwareManifestStale
+
 type SubjectCurrency
   = SubjectCurrent
-  | SubjectStale { unit_changed: Bool, assembly_changed: Bool, firmware_changed: Bool }
+  | SubjectStale { axes: List<StaleAxis> }
+
+// THE CANONICAL AXIS POPULATION AND ITS ORDER, declared once. Both the
+// constructor below and the merge in gunbc.machine_intake_disposition derive
+// their lists by FILTERING this roster, so a merged standing carries the same
+// order as a freshly compared one and neither can mint an axis the coproduct
+// does not declare. A union computed by concatenating two lists would order by
+// which side was measured first, which is a fact about the caller and not
+// about the machine.
+data stale_axes_all: List<StaleAxis> = [UnitKeyStale, AssemblyManifestStale, FirmwareManifestStale]
 
 fn compare_qualification_subject(admitted: QualificationSubject, observed: QualificationSubject) -> SubjectCurrency {
   let unit_changed = (admitted.unit_key as NonEmptyStr) != (observed.unit_key as NonEmptyStr)
-  let assembly_changed = content_hash_same(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
-  let firmware_changed = content_hash_same(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
-  if unit_changed || assembly_changed || firmware_changed {
-    SubjectStale { unit_changed: unit_changed, assembly_changed: assembly_changed, firmware_changed: firmware_changed }
-  } else {
+  let assembly_changed = content_hash_equal(left: admitted.assembly_manifest_digest, right: observed.assembly_manifest_digest) == false
+  let firmware_changed = content_hash_equal(left: admitted.firmware_manifest_digest, right: observed.firmware_manifest_digest) == false
+  let axes = stale_axes_all |> filter(a => match a {
+    UnitKeyStale => unit_changed
+    AssemblyManifestStale => assembly_changed
+    FirmwareManifestStale => firmware_changed
+  })
+  if list_length(items: axes) == 0 {
     SubjectCurrent
+  } else {
+    SubjectStale { axes: axes }
   }
 }
 

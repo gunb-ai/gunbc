@@ -22,8 +22,8 @@ import extdeps.bmc.access_profile {
   ProfilePromotedFromObservation,
   bmc_access_profile_for,
 }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
-import gunbc.machine_intake_receipt { EvidenceRef, content_hash_equal, same_intake_subject }
+import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
+import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 
 // THE ACCESS CONTEXT IS BOUND ONCE, BEFORE THE DELIVERY SOLVER RUNS (machine-intake ruling 3
 // §1 and its layer-placement ruling; ruling 4 §1, §4, §5). extdeps.bmc.access_profile owns the
@@ -63,10 +63,6 @@ type AccessObservationReceipt {
   subject: MachineIntakeSubject
   standing: BmcAccessObservationStanding
   evidence_manifest: List<EvidenceRef>
-}
-
-fn evidence_manifest_names(manifest: List<EvidenceRef>, digest: ContentHash) -> Bool {
-  fold(manifest, init: false, f: (acc, ev) => acc || content_hash_equal(left: ev.digest, right: digest))
 }
 
 // WHETHER A PROMOTED PROFILE'S RECEIPTS WERE RESOLVED (ruling 4 §4). A catalog
@@ -168,7 +164,7 @@ fn probe_evidence_unnamed(receipt: AccessObservationReceipt, observation: BmcAcc
   match observation.redfish_virtual_media_probe {
     Absent => none
     Present { value: probe } =>
-      if evidence_manifest_names(manifest: receipt.evidence_manifest, digest: probe.raw_response) {
+      if receipt.evidence_manifest |> any(ev => content_hash_equal(left: ev.digest, right: probe.raw_response)) {
         none
       } else {
         Present { value: probe.raw_response }
@@ -184,7 +180,9 @@ fn control_route_evidence_unnamed(receipt: AccessObservationReceipt, observation
     init: none,
     f: (acc, r) => match acc {
       Present { value: _ } => acc
-      Absent => if evidence_manifest_names(manifest: receipt.evidence_manifest, digest: r.raw_response) { none } else { Present { value: r.raw_response } }
+      Absent =>
+        if receipt.evidence_manifest |> any(ev => content_hash_equal(left: ev.digest, right: r.raw_response)) { none }
+        else { Present { value: r.raw_response } }
     },
   )
 }
@@ -210,7 +208,7 @@ fn bind_observed_access_context(
   observation: BmcAccessObservation,
   catalog: List<BmcAccessProfileCatalogRow>,
 ) -> BoundBmcAccessContextStanding {
-  if evidence_manifest_names(manifest: receipt.evidence_manifest, digest: observation.raw_response) == false {
+  if (receipt.evidence_manifest |> any(ev => content_hash_equal(left: ev.digest, right: observation.raw_response))) == false {
     AccessContextObservationEvidenceMismatch { endpoint: observation.endpoint, manifest: receipt.evidence_manifest, raw_response: observation.raw_response }
   } else {
     match probe_evidence_unnamed(receipt: receipt, observation: observation) {

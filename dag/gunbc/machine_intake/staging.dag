@@ -68,10 +68,6 @@ type IntakeStagingRealization
   | StagingUnrealized { host: HostIdentity, missing: List<IntakeStagingCapability> }
   | StagingUnobserved
 
-fn staging_capability_in(capabilities: List<IntakeStagingCapability>, capability: IntakeStagingCapability) -> Bool {
-  fold(capabilities, init: false, f: (acc, c) => acc || c == capability)
-}
-
 fn staging_missing_capabilities(
   required: List<IntakeStagingCapability>,
   observation: IntakeStagingObservation,
@@ -79,7 +75,7 @@ fn staging_missing_capabilities(
   fold(
     required,
     init: [],
-    f: (acc, c) => if staging_capability_in(capabilities: observation.observed_capabilities, capability: c) { acc } else { concat(acc, [c]) },
+    f: (acc, c) => if observation.observed_capabilities |> any(o => o == c) { acc } else { concat(acc, [c]) },
   )
 }
 

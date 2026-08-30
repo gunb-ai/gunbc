@@ -71,8 +71,8 @@ import gunbc.machine_intake_access {
   BoundBmcAccessContextStanding,
   same_boot_delivery_target,
 }
-import gunbc.machine_intake_subject { MachineIntakeSubject }
-import gunbc.machine_intake_receipt { EvidenceRef, content_hash_equal, same_intake_subject }
+import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
+import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
