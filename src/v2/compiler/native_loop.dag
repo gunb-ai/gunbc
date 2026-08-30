@@ -1,0 +1,51 @@
+module v2.compiler.native_loop
+
+import std.algebra { FreeMonoid }
+import std.types { NonEmptyStr, String }
+import v2.std.collection { List }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.node { Node }
+import v2.std.optional { Optional }
+import v2.std.diagnostic { NonEmptyDiagnostics }
+import gunbc.repository_census_observation { SourceRootIdentity }
+
+// XL-2 schema only: the typed request, response, and decode boundary of the
+// minimal native compile/test/execute loop. Admission and realization are
+// deliberately absent; this module owns no effect-operation identity, effect
+// evidence, or caller-authorable admission arm.
+type EntryIdentity { value: NonEmptyStr }
+type TestRosterIdentity { value: NonEmptyStr }
+type OutputDirectory { value: NonEmptyStr }
+type NativeSourceRoots {
+  first_source_root: SourceRootIdentity
+  additional_source_roots: List<SourceRootIdentity>
+}
+
+type NativeRequest
+  = CompileRequest { source_roots: NativeSourceRoots, entry: EntryIdentity, target: TargetModel, output_directory: OutputDirectory }
+  | TestRequest { source_roots: NativeSourceRoots, roster_identity: TestRosterIdentity, optional_subject_selection: Optional<EntryIdentity> }
+  | ExecuteRequest { source_roots: NativeSourceRoots, entry: EntryIdentity, inputs: FreeMonoid<Node> }
+
+// The decoder owns tag recognition. An unknown JSON action can never inhabit NativeRequest.
+type NativeRequestDecode
+  = NativeRequestDecoded { request: NativeRequest }
+  | NativeRequestDecodeRefusedUnknownAction {
+      action: String,
+      diagnostics: NonEmptyDiagnostics
+    }
+  | NativeRequestDecodeRefusedMalformedJson { diagnostics: NonEmptyDiagnostics }
+
+type CompileResponse
+  = CompileAccepted { output_directory: OutputDirectory }
+  | CompileRefused { diagnostics: NonEmptyDiagnostics }
+type TestResponse
+  = TestAccepted { roster_identity: TestRosterIdentity }
+  | TestRefused { diagnostics: NonEmptyDiagnostics }
+type ExecuteResponse
+  = ExecuteAccepted { value: Node }
+  | ExecuteRefused { diagnostics: NonEmptyDiagnostics }
+
+type NativeResponse
+  = NativeCompileResponse { response: CompileResponse }
+  | NativeTestResponse { response: TestResponse }
+  | NativeExecuteResponse { response: ExecuteResponse }

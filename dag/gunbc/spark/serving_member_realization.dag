@@ -21,6 +21,11 @@ import gunbc.spark.serving_membership {
 }
 import gunbc.spark.serving_realization {
   ServingInstallEffect,
+  SparkServingRetirementEffect,
+  StopUserUnit,
+  DisableUserUnit,
+  RemoveUserUnitFile,
+  ReloadUserManagerAfterRemoval,
   InstallOwnedRuntimeClosure,
   WriteUserUnitFile,
   ReloadUserManager,
@@ -89,34 +94,146 @@ fn spark_serving_install_effects_for_change(
   spark_serving_install_effects_for_address(address: to.address)
 }
 
-fn spark_serving_install_effects_for_remove(_member: SparkServingMember) -> List<ServingInstallEffect> {
-  []
+// THE REMOVAL REMEDY MAP, WHICH IS WHAT THIS FUNCTION USED TO RETURN NOTHING FOR.
+//
+// It was `-> []`, and the empty list was not a placeholder anybody had marked: it was the honest
+// output of a vocabulary in which retirement did not exist. Every constructor of
+// `ServingInstallEffect` installs something, so there was no value this function could have returned
+// that meant "take the service down" -- and an empty list of install effects is a perfectly typed
+// way to say nothing at all. Deleting a host from desired state therefore planned a removal whose
+// remedy was silence, and the only thing that stopped it applying as a successful no-op is that the
+// plan projection refuses a row with no executions. Refusing was better than lying, and it was still
+// not the ability to retire a service.
+//
+// Now removal has its own return type, so the empty install list is not merely wrong here but
+// unspellable: this function cannot return one, because it does not return install effects.
+//
+// EVERY ADDRESS HAS EXACTLY ONE REMEDY, mirroring the install map above, and for the same reason
+// recorded there -- two addresses selecting the same operation is how one unit came to be enabled
+// twice for one drift. Stop answers activity, disable answers enablement, remove answers content,
+// reload answers registration, and the three retain arms answer the addresses whose bytes outlive
+// the service.
+// A BASELINE ADDRESS REACHING THE RETIREMENT MAP IS A REFUSAL, NOT AN EMPTY REMEDY.
+//
+// Four addresses are the service and each retires with one operation. The other three -- the runtime
+// closure, the model blob, account linger -- are host baseline and retained cache, and they are not
+// in the serving role's desired population at all, so no removal action can name them. If one
+// arrives here anyway, the membership split has been broken upstream and the honest answer is to
+// stop: an empty list would report a retirement that ran nothing, which is the state this whole
+// change exists to make unwritable.
+type SparkServingRetirementRemedy
+  = SparkServingRetirementRemedyPresent { effects: List<SparkServingRetirementEffect> }
+  | SparkServingRetirementRemedyRefused { cause: NonEmptyStr }
+
+fn spark_serving_retirement_effects_for_address(address: SparkServingResourceAddress) -> SparkServingRetirementRemedy {
+  match address {
+    SparkServingUserUnitActivityAddress =>
+      SparkServingRetirementRemedyPresent { effects: [StopUserUnit] }
+    SparkServingUserUnitEnablementAddress =>
+      SparkServingRetirementRemedyPresent { effects: [DisableUserUnit] }
+    SparkServingUserUnitAddress =>
+      SparkServingRetirementRemedyPresent { effects: [RemoveUserUnitFile] }
+    SparkServingUserUnitRegistrationAddress =>
+      SparkServingRetirementRemedyPresent { effects: [ReloadUserManagerAfterRemoval] }
+    SparkServingRuntimeRootAddress =>
+      SparkServingRetirementRemedyRefused {
+        cause: "spark_serving_member_realization: the runtime closure is host baseline, retained as cache across a serving retirement — a removal action naming it means the serving-role membership split leaked a baseline address" as NonEmptyStr,
+      }
+    SparkServingModelSlotAddress { slot: _ } =>
+      SparkServingRetirementRemedyRefused {
+        cause: "spark_serving_member_realization: the model blob is retained cache across a serving retirement — retirement frees the resident pool, it does not delete artifacts that would only be pulled again" as NonEmptyStr,
+      }
+    SparkServingLingerAddress =>
+      SparkServingRetirementRemedyRefused {
+        cause: "spark_serving_member_realization: linger is an account property, not a serving one — retiring a service is not deprovisioning the principal that ran it" as NonEmptyStr,
+      }
+  }
 }
 
-fn spark_serving_install_effects_for_member_action(
+fn spark_serving_retirement_effects_for_remove(member: SparkServingMember) -> SparkServingRetirementRemedy {
+  spark_serving_retirement_effects_for_address(address: member.address)
+}
+
+// THE DIRECTION IS CHOSEN BY THE ACTION, AND THAT IS THE WHOLE JOIN.
+//
+// An add or a change installs; a removal retires. Returning a coproduct rather than one list is what
+// makes those two answers structurally different values instead of two lengths of the same list --
+// so a consumer cannot receive a retirement and fold it as an install, and the plan renderer cannot
+// print a stop where a start would have gone without saying which it was.
+//
+// The two Absent arms are unchanged and still carry the same meaning they did: a refusal is not a
+// realization. The plan projection turns Absent into a typed refusal rather than dropping the row,
+// which is the repair recorded in gunbc.spark.serving_converge_plan, and nothing here widens it.
+type SparkServingMemberRealization
+  = SparkServingMemberInstalls { effects: List<ServingInstallEffect> }
+  | SparkServingMemberRetires { effects: List<SparkServingRetirementEffect> }
+
+fn spark_serving_realization_for_member_action(
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
-) -> List<ServingInstallEffect>? {
+) -> SparkServingMemberRealization? {
   match action {
     MemberAdded { at: _, to: member } =>
-      Present { value: spark_serving_install_effects_for_add(member: member) }
+      Present { value: SparkServingMemberInstalls { effects: spark_serving_install_effects_for_add(member: member) } }
     MemberChanged { at: _, from: f, to: t } =>
-      Present { value: spark_serving_install_effects_for_change(from: f, to: t) }
+      Present { value: SparkServingMemberInstalls { effects: spark_serving_install_effects_for_change(from: f, to: t) } }
     MemberRemoved { at: _, from: member } =>
-      Present { value: spark_serving_install_effects_for_remove(member: member) }
+      match spark_serving_retirement_effects_for_remove(member: member) {
+        SparkServingRetirementRemedyRefused { cause: _ } => Absent
+        SparkServingRetirementRemedyPresent { effects: es } =>
+          Present { value: SparkServingMemberRetires { effects: es } }
+      }
     MemberRemovalRefused { from: _, cause: _ } => Absent
     MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => Absent
   }
 }
 
+// THE EFFECT-GRAIN TWIN OF THE ACTION DISPATCH, AND IT TAKES THE SAME COPRODUCT FOR THE SAME REASON.
+//
+// MemberEffect is the classification of a change without the reconcile key attached; the three arms
+// map onto the three action arms that carry work. Leaving this one returning a bare install list
+// would have reinstated the exact defect the action dispatch just retired -- EffectRemove had no
+// install effects to name, so it would have answered the empty list again, one function over from
+// where that was fixed. The remove arm retires.
+fn spark_serving_realization_for_member_effect(
+  effect: MemberEffect<SparkServingMember>,
+) -> SparkServingMemberRealization? {
+  match effect {
+    EffectAdd { to: member } =>
+      Present { value: SparkServingMemberInstalls { effects: spark_serving_install_effects_for_add(member: member) } }
+    EffectReplace { from: f, to: t } =>
+      Present { value: SparkServingMemberInstalls { effects: spark_serving_install_effects_for_change(from: f, to: t) } }
+    EffectRemove { from: member } =>
+      match spark_serving_retirement_effects_for_remove(member: member) {
+        SparkServingRetirementRemedyPresent { effects: es } =>
+          Present { value: SparkServingMemberRetires { effects: es } }
+        SparkServingRetirementRemedyRefused { cause: _ } => Absent
+      }
+  }
+}
+
+// A PROJECTION FOR THE CONSUMERS THAT ONLY ASK ABOUT INSTALLS, and it REFUSES rather than flattening.
+//
+// Absent here means "this was a retirement, you asked the wrong question", which is a different
+// answer from "this installed nothing". Returning [] for a retirement would put the erased
+// distinction straight back.
 fn spark_serving_install_effects_for_member_effect(
   effect: MemberEffect<SparkServingMember>,
-) -> List<ServingInstallEffect> {
-  match effect {
-    EffectAdd { to: member } => spark_serving_install_effects_for_add(member: member)
-    EffectReplace { from: f, to: t } =>
-      spark_serving_install_effects_for_change(from: f, to: t)
-    EffectRemove { from: member } => spark_serving_install_effects_for_remove(member: member)
+) -> List<ServingInstallEffect>? {
+  match spark_serving_realization_for_member_effect(effect: effect) {
+    Absent => Absent
+    Present { value: r } =>
+      match r {
+        SparkServingMemberInstalls { effects: es } => Present { value: es }
+        SparkServingMemberRetires { effects: _ } => Absent
+      }
   }
+}
+
+fn spark_serving_retirement_effects_include(
+  effects: List<SparkServingRetirementEffect>,
+  needle: SparkServingRetirementEffect,
+) -> Bool {
+  any(effects, e => e == needle)
 }
 
 fn spark_serving_install_effects_include(

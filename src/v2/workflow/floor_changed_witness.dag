@@ -1,0 +1,146 @@
+module v2.workflow.floor_changed_witness
+
+import v2.workflow.required_floor {
+  RequiredFloorDisposition,
+  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
+}
+import v2.workflow.floor_terminal_ledger {
+  ClaimDisposition,
+  Passed, Failed, KnownRedHeld, KnownRedNowPassing, BudgetRefusedBeforeVerdict,
+  PassedOverBudget, BudgetTerminalWithoutSafetyCause, HostToolUnresolvedBeforeVerdict,
+  RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
+  NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+// THE CHANGED-WITNESS PROJECTION (operator-relayed ruling, 2026-08-30).
+//
+// THE INCIDENT THIS EXISTS FOR: two PRs added witness identities (+26 and +44) and the required
+// floor reported GREEN while ZERO of the added identities executed — every one was
+// `DeclinedOutsideGateClosure`, because the authored module names fall outside
+// `v2.workflow.required_floor.required_gate_prefixes`. The per-identity facts were in the run's
+// own disposition receipt (`required_floor_disposition.tsv`, one row per DECLARED identity);
+// nothing projected them FOR THE CHANGED SET, so the author's question — "did the witnesses I
+// just added actually run?" — was answered by a green context that had never looked.
+//
+// WHAT THIS IS NOT, by the same ruling: not a per-identity report over the ~10,600 declined
+// identities (the §4b rung drop "Required gate reduced to the compiler floor" already names that
+// population, and re-printing it per run buries the signal this projection exists to carry), and
+// not a second declined-population instrument (the disposition receipt remains the single
+// authority over admission facts; this module PROJECTS it onto the changed set, joined at the
+// same identity grain the receipt is keyed by — the qualified `module.function` spelling).
+//
+// THE STANDING IS A JOIN OF TWO FACTS THE RUN ALREADY HOLDS — the identity's
+// `RequiredFloorDisposition` and, where it executed, its terminal `ClaimDisposition` — restated
+// in no new vocabulary: the `Declined` arm CARRIES the disposition rather than renaming it.
+type ChangedWitnessExecutionStanding =
+    PlannedAndPassed
+  | PlannedWithoutTerminalVerdict
+  | Declined { disposition: RequiredFloorDisposition }
+  | MissingDisposition
+
+// WHAT THE RUN CAN READ ABOUT ONE CHANGED IDENTITY, shaped exactly as the disposition receipt
+// is: one optional disposition row, and — only meaningful on a Planned row — one optional
+// terminal outcome. `NotExecuted` is the receipt's own outcome for a row that never ran; it is
+// an arm here rather than an absent-by-default so that "the row says it did not execute" and
+// "there is no row" stay two different facts with two different standings.
+type ChangedWitnessTerminalReading =
+    TerminalOutcome { outcome: ClaimDisposition }
+  | NotExecuted
+
+type ChangedWitnessDispositionReading =
+    DispositionRow {
+      disposition: RequiredFloorDisposition,
+      terminal: ChangedWitnessTerminalReading
+    }
+  | NoDispositionRow
+
+// THE FOLD. Four standings from two receipt facts, and every red is one of the three the ruling
+// names: declined, missing, nonterminal.
+//
+// `PlannedAndPassed` MEANS "executed to a terminal verdict the run holds as this witness's own
+// green": an ordinary Pass, an enrolled expected-red failing exactly as enrolled
+// (`KnownRedHeld` — DESIGN §4b(4) keeps discriminating REDs enrolled, so adding or editing one
+// is a sanctioned move this projection must not veto), and an enrolled row that passed
+// (`KnownRedNowPassing` — the witness itself is green; the STALE roster row reds the floor at
+// its own grain, `stale_quarantine`, with its own remedy, and a second red here would tell the
+// author to fix a witness that is not broken).
+//
+// `PlannedWithoutTerminalVerdict` MEANS "no such verdict stands". That is deliberately wider
+// than "the fold never reached it": a planned changed identity whose outcome is Failed,
+// RouteGapBeforeVerdict, PanickedBeforeVerdict or any other remaining arm lands here too. Each
+// of those already reds the floor through its own mechanism; what this projection adds is the
+// CHANGED-SET grain — the line that names the identity the PR touched. The twelve outcome arms
+// are spelled rather than wildcarded so a thirteenth `ClaimDisposition` arm must be classified
+// here, never absorbed.
+fn changed_witness_execution_standing(
+  reading: ChangedWitnessDispositionReading,
+) -> ChangedWitnessExecutionStanding {
+  match reading {
+    NoDispositionRow => MissingDisposition {}
+    DispositionRow { disposition: d, terminal: t } =>
+      match d {
+        Planned =>
+          match t {
+            NotExecuted => PlannedWithoutTerminalVerdict {}
+            TerminalOutcome { outcome: o } =>
+              match o {
+                Passed => PlannedAndPassed {}
+                Failed => PlannedWithoutTerminalVerdict {}
+                KnownRedHeld => PlannedAndPassed {}
+                KnownRedNowPassing => PlannedAndPassed {}
+                BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                PassedOverBudget => PlannedWithoutTerminalVerdict {}
+                BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
+                HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
+                NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
+                ObservationUnreadableBeforeVerdict => PlannedWithoutTerminalVerdict {}
+              }
+          }
+        DeclinedLongModule { matched_prefix: _ } => Declined { disposition: d }
+        DeclinedFixtureMember { matched_prefix: _ } => Declined { disposition: d }
+        DeclinedOutsideRequiredGate => Declined { disposition: d }
+        DeclinedOutsideGateClosure => Declined { disposition: d }
+        DeclinedDiscoveryExcluded { matched_substring: _ } => Declined { disposition: d }
+        DeclinedCostDebt => Declined { disposition: d }
+      }
+  }
+}
+
+// THE BLOCKING POLARITY, STATED ONCE. Exactly one standing is green, and it is the one that
+// required execution: a changed witness identity that did not run to a passing verdict — for
+// any reason, including a decline that is perfectly lawful for the STANDING population — is a
+// red at the changed-set grain, because the change is precisely the moment its author is
+// present to route it, rename it into the gate, or remove it deliberately.
+fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) -> Bool {
+  match standing {
+    PlannedAndPassed => false
+    PlannedWithoutTerminalVerdict => true
+    Declined { disposition: _ } => true
+    MissingDisposition => true
+  }
+}
+
+type ChangedWitnessRow {
+  identity: String
+  standing: ChangedWitnessExecutionStanding
+}
+
+// THE ONE FOLD OVER THE CHANGED SET: the identities whose standing blocks, in input order.
+// Zero changed identities is the positive control — an empty list in, an empty list out, and
+// the required context stays green with zero projection lines.
+fn changed_witness_blocking_identities(rows: List<ChangedWitnessRow>) -> List<String> {
+  reverse(fold(rows, init: [], f: fn(acc, row) {
+    if changed_witness_standing_blocks(standing: row.standing) {
+      concat([row.identity], acc)
+    } else {
+      acc
+    }
+  }))
+}

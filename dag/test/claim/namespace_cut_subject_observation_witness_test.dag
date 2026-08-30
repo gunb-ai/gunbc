@@ -1,5 +1,6 @@
 module test.claim.namespace_cut_subject_observation_witness
 
+import std.types { String, NonEmptyStr, FilePath, Bool }
 import std.decl_ref { decl_ref }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 import v2.std.decl_index { FnItem }
@@ -18,6 +19,8 @@ import gunbc.namespace_cut_subject_roster {
   subject_probe_list,
   probe_render,
 }
+import gunbc.rust_item_identity { RustItemIdentity, RustFunction }
+import gunbc.rust_item_host_observation { LiveHandRustObserved, LiveHandRustHostRefused }
 import gunbc.namespace_cut_subject_observation {
   SubjectProbeObservation,
   SubjectProbePresent,
@@ -25,7 +28,9 @@ import gunbc.namespace_cut_subject_observation {
   SubjectProbeUnobservable,
   observation_from_resolution,
   observe_probe,
+  observe_host_probe,
   probe_is_v1,
+  probe_is_host,
 }
 
 // ReadsLiveTree by G1 carrier-closure honesty, exactly as v2.test.lens_enforcement.gate_test
@@ -61,11 +66,61 @@ test fn resolution_maps_to_observation_without_collapsing_ambiguity() -> Bool {
     && observation_kind(o: observation_from_resolution(p: fixture_probe(), r: DeclarationRefAmbiguous { reference: r, candidates: [DeclarationIdentity { qualified_name: "fixture.a", name: "a", rel_path: "fixture.dag", kind: FnItem }, DeclarationIdentity { qualified_name: "fixture.b", name: "b", rel_path: "fixture.dag", kind: FnItem }] })) == "unobservable"
 }
 
-// A host probe refuses on EMPTY facts rather than answering Absent -- handed a fact population
-// that contains nothing, it must not fabricate a deletion.
-test fn a_host_probe_refuses_rather_than_answering_from_no_instrument() -> Bool {
+// A host probe handed to the DECLARATION-FACT route still refuses rather than answering Absent:
+// that route resolves substrate declarations, and a host probe reaching it is a mis-route, not a
+// deletion. The host probe's real answer comes from observe_host_probe, exercised below.
+test fn a_host_probe_refuses_rather_than_answering_from_the_declaration_route() -> Bool {
   let p = HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "extract_import_paths" }
   observation_kind(o: observe_probe(p: p, facts: [], modules: [])) == "unobservable"
+    && probe_is_host(p: p)
+    && !probe_is_host(p: fixture_probe())
+}
+
+// ---------------------------------------------------------------------------------------------
+// THE HOST JOIN, ALL FOUR ARMS, AUTHORED. This is the arm set that makes the join safe to trust,
+// and it is authorable in full because observe_host_probe takes the observation as a parameter --
+// no tree state moves any of these.
+//
+// The load-bearing pair is the last two. A scanned file with no matching item is ABSENT (the
+// cut's success state), and a file the population never covered is UNOBSERVABLE. Collapsing the
+// second into the first is the absorbing fallback DESIGN section 5 forbids -- an unread file
+// silently joining the deleted -- and it is exactly one `else` away at all times, so it is
+// asserted rather than argued.
+// ---------------------------------------------------------------------------------------------
+fn host_fixture_probe() -> NamespaceCutSubjectProbe {
+  HostRustItemProbe { crate_relative_file: "src/v1/stage0/src/cli_run.rs", item_name: "extract_import_paths" }
+}
+
+fn host_fixture_item(name: String) -> RustItemIdentity {
+  RustItemIdentity {
+    repo_path: "src/v1/stage0/src/cli_run.rs" as FilePath,
+    kind: RustFunction,
+    name: name as NonEmptyStr,
+    impl_subject: "",
+    enclosing_module: "",
+    start_line: 1,
+    loc: 1,
+  }
+}
+
+test fn the_host_join_answers_present_absent_and_two_distinct_refusals() -> Bool {
+  let probe = host_fixture_probe()
+  let refused = observe_host_probe(
+    p: probe,
+    observation: LiveHandRustHostRefused { detail: "fixture: the producer refused" })
+  let present = observe_host_probe(
+    p: probe,
+    observation: LiveHandRustObserved { items: [host_fixture_item(name: "extract_import_paths")], unscannable: [] })
+  let scanned_and_gone = observe_host_probe(
+    p: probe,
+    observation: LiveHandRustObserved { items: [host_fixture_item(name: "some_other_item")], unscannable: [] })
+  let file_never_covered = observe_host_probe(
+    p: probe,
+    observation: LiveHandRustObserved { items: [], unscannable: [] })
+  observation_kind(o: refused) == "unobservable"
+    && observation_kind(o: present) == "present"
+    && observation_kind(o: scanned_and_gone) == "absent"
+    && observation_kind(o: file_never_covered) == "unobservable"
 }
 
 // A dag probe over EMPTY module facts answers Absent by the module-absent route -- authored
