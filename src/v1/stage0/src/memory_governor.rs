@@ -385,6 +385,182 @@ pub fn whole_corpus_compile_refusal_diagnostic(
     }
 }
 
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_major_fault_rate_per_minute_threshold`.
+/// POLICY, like the AIMD thresholds above: two orders of magnitude over healthy background
+/// (a warm resolve sustains ~0 majflt/min), an order under the measured treadmill (a
+/// thrashing swapless VM refaults thousands per second — the 2026-08-30 default-VM
+/// specimens, `memory_stall_observed_receipt_note`).
+pub const MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD: u64 = 6000;
+
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_verdict_window_minimum_wall_ms`.
+/// What makes the rate a rate rather than a spike detector: no verdict below this much wall,
+/// so a cold-start refault burst can never refuse a run that then progresses.
+pub const MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS: u64 = 30000;
+
+/// SEED MIRROR of `gunbc.memory_stall_refusal` `memory_stall_progress_cpu_share_floor`.
+/// The progress half of the refusal's conjunction, forced by this verdict's own first CI
+/// execution (`memory_stall_admitted_under_pressure_receipt_note`): the floor runner
+/// sustained 12431 majflt/min through a 13-minute CPU-bound typecheck under a memory.high
+/// reclaim throttle — over the rate line and demonstrably completing, so rate alone
+/// over-refuses. A window is a treadmill only if the process's own USER CPU is also below
+/// this share of the wall — utime alone, never stime, because the measured treadmill
+/// (invocation dd090164-9f2b-45fe-93bc-789cdd4ef9c4: 178795 majflt/min, utime 0.8% of
+/// wall, stime 34%) shows the kernel billing its reclaim labour to the faulting process
+/// as system time, so a utime+stime share reads a pure treadmill as one-third computing.
+/// Declared in BASIS POINTS (the `std.measure` `BasisPoint` carrier the authority row
+/// uses): 2000 bp = 20%.
+pub const MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS: u64 = 2000;
+
+/// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallObservation`: one windowed
+/// sample of the process's own eviction/readmission behaviour — its major-fault counter
+/// (the kernel's record of this process re-reading its own evicted pages) and its own CPU
+/// time for the same wall, beside the typed cache's own eviction and readmission counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoryStallObservation {
+    pub window_wall_ms: u64,
+    pub major_faults_in_window: u64,
+    pub self_user_cpu_ms_in_window: u64,
+    pub cache_evictions_in_window: u64,
+    pub cache_readmissions_in_window: u64,
+}
+
+/// Seed mirror of `gunbc.memory_stall_refusal` `MemoryStallVerdict`. Three states, none
+/// conflated: an open window is not evidence in either direction, a computable window with
+/// the fault counter flat is progress however slow the arithmetic (time enters only as the
+/// rate's denominator — never a refusal condition), and a computable window over the line
+/// is the refusal, carrying the whole observation so the diagnostic names what was seen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryStallVerdict {
+    StallWindowOpen {
+        window_wall_ms: u64,
+        minimum_wall_ms: u64,
+    },
+    ProgressUnderMemoryAdmissible {
+        major_faults_per_minute: u64,
+        self_cpu_share_basis_points: u64,
+    },
+    StallRefusedPageThrash {
+        major_faults_per_minute: u64,
+        threshold_per_minute: u64,
+        self_cpu_share_basis_points: u64,
+        cpu_share_floor_basis_points: u64,
+        observation: MemoryStallObservation,
+    },
+}
+
+/// Mirror of `memory_stall_major_faults_per_minute`. Callers reach it through
+/// `memory_stall_verdict`, which guards the zero-wall window behind `StallWindowOpen`.
+pub fn memory_stall_major_faults_per_minute(o: &MemoryStallObservation) -> u64 {
+    o.major_faults_in_window.saturating_mul(60000) / o.window_wall_ms.max(1)
+}
+
+/// Mirror of `memory_stall_self_cpu_share` — the progress half of the conjunction, in
+/// basis points of the window's wall (the `BasisPoint` grain of the authority row).
+pub fn memory_stall_self_cpu_share_basis_points(o: &MemoryStallObservation) -> u64 {
+    o.self_user_cpu_ms_in_window.saturating_mul(10_000) / o.window_wall_ms.max(1)
+}
+
+/// Mirror of `gunbc.memory_stall_refusal` `memory_stall_verdict`: the refusal is a
+/// CONJUNCTION — fault rate above its line AND the process's own CPU share of the window
+/// below its floor. Rate alone over-refuses (the CI floor runner sustains 12431 majflt/min
+/// through a CPU-bound typecheck under a memory.high reclaim throttle and completes —
+/// `memory_stall_admitted_under_pressure_receipt_note`); CPU share is what the "not
+/// computing" claim in the refusal actually measures.
+pub fn memory_stall_verdict(o: MemoryStallObservation) -> MemoryStallVerdict {
+    if o.window_wall_ms < MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS {
+        return MemoryStallVerdict::StallWindowOpen {
+            window_wall_ms: o.window_wall_ms,
+            minimum_wall_ms: MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS,
+        };
+    }
+    let rate = memory_stall_major_faults_per_minute(&o);
+    let cpu_share_bp = memory_stall_self_cpu_share_basis_points(&o);
+    if rate > MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD
+        && cpu_share_bp < MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS
+    {
+        MemoryStallVerdict::StallRefusedPageThrash {
+            major_faults_per_minute: rate,
+            threshold_per_minute: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD,
+            self_cpu_share_basis_points: cpu_share_bp,
+            cpu_share_floor_basis_points: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS,
+            observation: o,
+        }
+    } else {
+        MemoryStallVerdict::ProgressUnderMemoryAdmissible {
+            major_faults_per_minute: rate,
+            self_cpu_share_basis_points: cpu_share_bp,
+        }
+    }
+}
+
+/// Mirror of `memory_stall_refusal_pressure_text`: the pressure clause of the refusal —
+/// what was observed, against what line, from which counter, and the remedy. The LOCATION
+/// half (which module, which budget and source) is composed by the consumer that holds
+/// those facts. Non-refusing verdicts render nothing: a consumer logging the clause
+/// unconditionally must not fabricate pressure prose for a window that admitted.
+pub fn memory_stall_refusal_pressure_text(v: &MemoryStallVerdict) -> String {
+    match v {
+        MemoryStallVerdict::StallWindowOpen { .. }
+        | MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. } => String::new(),
+        MemoryStallVerdict::StallRefusedPageThrash {
+            major_faults_per_minute,
+            threshold_per_minute,
+            self_cpu_share_basis_points,
+            cpu_share_floor_basis_points,
+            observation,
+        } => format!(
+            "MemoryStallRefusedPageThrash: this process refaulted its own evicted pages at \
+             {major_faults_per_minute} major faults/minute while computing for only \
+             {}% of the wall, over the last {} ms ({} major faults; \
+             rate line {threshold_per_minute}/minute, CPU-share floor \
+             {}%; source /proc/self/stat majflt and utime; \
+             typed-cache evictions in window {}, readmissions {}). The wall clock is being \
+             spent re-reading resident pages the kernel evicted, not computing: the machine \
+             underneath cannot deliver the admitted budget beside its own page cache, and \
+             with swap disabled this treadmill holds indefinitely instead of failing. \
+             Refusing rather than holding. Remedy: run where the admitted budget is \
+             genuinely available (a larger runner), or scope the compile with --entry to a \
+             smaller closure.",
+            self_cpu_share_basis_points / 100,
+            observation.window_wall_ms,
+            observation.major_faults_in_window,
+            cpu_share_floor_basis_points / 100,
+            observation.cache_evictions_in_window,
+            observation.cache_readmissions_in_window,
+        ),
+    }
+}
+
+/// This process's cumulative major-fault count — `/proc/self/stat` majflt, proc.5 field 12
+/// (index 9 after the comm field, whose parentheses force the split on the LAST `)` —
+/// the same parse discipline as `v1_rt::trace_process_tree_cpu_ms`). `None` where the file
+/// is absent or unparsable (Darwin has no procfs): the stall check is inert for that
+/// sample, never a fabricated zero — the documented `MemorySignals` discipline above.
+pub fn self_major_faults() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit(')').next()?;
+    after_comm.split_whitespace().nth(9)?.parse().ok()
+}
+
+/// This process's own cumulative USER-CPU milliseconds — utime alone (`/proc/self/stat`
+/// field 14, index 11 after comm). Deliberately WITHOUT stime: the measured treadmill
+/// runs 34% stime while computing nothing, because the kernel bills reclaim and
+/// fault-handling labour to the faulting process as system time — utime is the only
+/// component that measures this program's own instructions retiring. And deliberately
+/// WITHOUT the reaped-child fields `v1_rt::trace_process_tree_cpu_ms` adds: a child's CPU
+/// landing at reap time would spike the share of a window the parent spent waiting. Same
+/// `None`-when-unreadable discipline as `self_major_faults`.
+pub fn self_user_cpu_ms() -> Option<u64> {
+    let stat = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let after_comm = stat.rsplit(')').next()?;
+    after_comm
+        .split_whitespace()
+        .nth(11)?
+        .parse::<u64>()
+        .ok()
+        .map(|t| t * 1000 / 100)
+}
+
 /// The typed budget SOURCE — seed mirror of `gunbc.host_budget_source` `HostBudgetSource`.
 /// Consumers ask the discriminant rather than scanning the display label:
 /// `cli_run::entry_resolve::typed_module_cache_cap_derivation` decided "degraded" with
@@ -887,6 +1063,148 @@ mod tests {
             "env GUNBC_MEMORY_BUDGET_BYTES",
         );
         assert!(whole_corpus_compile_refusal_diagnostic(&one_short).is_some());
+    }
+
+    /// THE DISCRIMINATING RED for the 2026-08-30 default-VM treadmill: a window shaped like
+    /// the measured specimen — two minutes of wall spent almost entirely refaulting — must
+    /// refuse with the typed class name, the observed rate against the declared line, the
+    /// counter it was read from, and the remedy. Before this change no arm existed: the
+    /// budget was readable and admitted, and the run held for hours with no diagnostic.
+    #[test]
+    #[allow(non_snake_case)]
+    fn RED_a_treadmill_window_refuses_and_names_the_pressure() {
+        let verdict = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 120_000,
+            major_faults_in_window: 120_000,
+            self_user_cpu_ms_in_window: 4_800,
+            cache_evictions_in_window: 4_213,
+            cache_readmissions_in_window: 388,
+        });
+        assert!(matches!(
+            verdict,
+            MemoryStallVerdict::StallRefusedPageThrash {
+                major_faults_per_minute: 60_000,
+                self_cpu_share_basis_points: 400,
+                ..
+            }
+        ));
+        let text = memory_stall_refusal_pressure_text(&verdict);
+        assert!(text.contains("MemoryStallRefusedPageThrash"), "{text}");
+        assert!(text.contains("/proc/self/stat"), "{text}");
+        assert!(text.contains("--entry"), "{text}");
+        assert!(text.contains("readmissions 388"), "{text}");
+    }
+
+    /// The measured specimen the rate-only form of this verdict wrongly refused on its own
+    /// first CI execution (run 33319823294, required-witnesses-floor): 163296 major faults
+    /// over 788140 ms — 12431/minute, over the rate line — during one 13-minute CPU-bound
+    /// typecheck under srv3's memory.high reclaim throttle, a configuration that completes
+    /// green on main daily. It must ADMIT, or the floor's own slow phases red every
+    /// crowded runner.
+    #[test]
+    fn the_ci_runner_progressing_under_pressure_specimen_is_admitted() {
+        let verdict = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 788_140,
+            major_faults_in_window: 163_296,
+            self_user_cpu_ms_in_window: 552_000,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert_eq!(
+            verdict,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible {
+                major_faults_per_minute: 12_431,
+                self_cpu_share_basis_points: 7003,
+            }
+        );
+    }
+
+    /// THE POSITIVE CONTROLS, without which the RED is satisfied by a verdict that refuses
+    /// everything — and the acceptance distinction itself: a slow-but-progressing resolve
+    /// (an hour of wall, fault counter flat) and a thrashing one are different states, and
+    /// no amount of elapsed time alone may refuse. A burst below the minimum window is an
+    /// OPEN window, not a verdict in either direction; the line is tight at the declared
+    /// rate (at the line admits, one more refuses); non-refusing arms carry no pressure
+    /// prose.
+    #[test]
+    fn a_slow_but_progressing_resolve_is_admitted_however_long_it_runs() {
+        let slow = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 3_600_000,
+            major_faults_in_window: 60,
+            self_user_cpu_ms_in_window: 3_200_000,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert_eq!(
+            slow,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible {
+                major_faults_per_minute: 1,
+                self_cpu_share_basis_points: 8888,
+            }
+        );
+        assert_eq!(memory_stall_refusal_pressure_text(&slow), "");
+
+        let burst = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: MEMORY_STALL_VERDICT_WINDOW_MINIMUM_WALL_MS - 1,
+            major_faults_in_window: 1_000_000,
+            self_user_cpu_ms_in_window: 0,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(burst, MemoryStallVerdict::StallWindowOpen { .. }));
+        assert_eq!(memory_stall_refusal_pressure_text(&burst), "");
+    }
+
+    /// Tight at BOTH declared lines: with CPU share pinned to zero, a fault count at the
+    /// rate line admits and one more refuses; with the rate pinned far over its line, a
+    /// CPU share at the floor admits and one point under refuses.
+    #[test]
+    fn the_refusal_is_tight_at_both_declared_lines() {
+        let at_rate_line = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 60_000,
+            major_faults_in_window: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD,
+            self_user_cpu_ms_in_window: 0,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            at_rate_line,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. }
+        ));
+        let over_rate_line = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 60_000,
+            major_faults_in_window: MEMORY_STALL_MAJOR_FAULT_RATE_PER_MINUTE_THRESHOLD + 1,
+            self_user_cpu_ms_in_window: 0,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            over_rate_line,
+            MemoryStallVerdict::StallRefusedPageThrash { .. }
+        ));
+        let at_cpu_floor = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 100_000,
+            major_faults_in_window: 100_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS * 10,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            at_cpu_floor,
+            MemoryStallVerdict::ProgressUnderMemoryAdmissible { .. }
+        ));
+        let under_cpu_floor = memory_stall_verdict(MemoryStallObservation {
+            window_wall_ms: 100_000,
+            major_faults_in_window: 100_000,
+            self_user_cpu_ms_in_window: MEMORY_STALL_PROGRESS_CPU_SHARE_FLOOR_BASIS_POINTS * 10
+                - 10,
+            cache_evictions_in_window: 0,
+            cache_readmissions_in_window: 0,
+        });
+        assert!(matches!(
+            under_cpu_floor,
+            MemoryStallVerdict::StallRefusedPageThrash { .. }
+        ));
     }
 
     /// An unreadable budget refuses rather than admitting against the widest cap available —

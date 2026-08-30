@@ -574,6 +574,19 @@ impl PositiveCelsiusDelta {
 
 pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
+pub type EventsPerMinute = Rc<Measure<(), (), i64>>;
+
+pub fn events_per_minute(count: Nat) -> EventsPerMinute {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+    measure_count(r.clone())
+}
+
 pub fn watt(count: Nat) -> Watt {
     Rc::new(Measure {
         count: count.clone(),

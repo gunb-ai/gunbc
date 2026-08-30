@@ -10,7 +10,7 @@ on:
       mode:
         description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
         required: true
-        options: [plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
+        options: [plan, allocation_store_plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -206,6 +206,13 @@ jobs:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
+      - name: Fleet allocation-store substrate plan
+        id: allocation_store_plan
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_allocation_store_plan_wet
+        if: github.event.inputs.mode == 'allocation_store_plan'
+        timeout-minutes: 5
       - name: Upload fleet converge plan artifact
         id: plan_upload
         uses: actions/upload-artifact@v4
@@ -215,7 +222,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
-        if: github.event.inputs.mode == 'plan'
+        if: github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'allocation_store_plan'
         timeout-minutes: 10
       - name: Download fleet converge plan artifact
         id: plan_download
