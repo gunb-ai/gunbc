@@ -1774,7 +1774,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "resolve_type_node",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node_reflection") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1810,7 +1810,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "coproduct_nullary_inhabitants",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node_query") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node_reflection") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {

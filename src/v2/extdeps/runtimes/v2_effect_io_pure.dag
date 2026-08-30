@@ -108,11 +108,7 @@ fn effect_io_pure_operation_ref() -> PrimitiveOperationRef {
 
 fn effect_io_pure_empty_environment() -> EvaluationEnvironment {
   EvaluationEnvironment {
-    bindings: PartialFunction {
-      lookup: fn(_) {
-        Absent
-      }
-    }
+    bindings: empty_map()
   }
 }
 

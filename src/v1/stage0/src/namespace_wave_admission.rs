@@ -427,7 +427,561 @@ pub struct TransitionAdmission {
 /// authored with, in the first PR cut from the main that carries the move. The roster is
 /// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
 /// refuses it as UNADJUDICATED until its author adds a row here.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// THIRD TRANSITION: `admission_from_module_root` moved home. #9710 relocated
+/// `admission_from_module_root` (with `import_rows_from_parsed_module`, `collect_import_decl_nodes`
+/// and `ImportRowsState`) from `v2.compiler.name_resolve` to `v2.lens.reference_deps`, the layer
+/// of its only two consumers, so that the compiler entry's emitted closure no longer carries the
+/// reference_deps subtree for a function no compile path reaches. The two consumers repoint their
+/// import; the spelling denotes a different declaration home, so each is a `TargetChanged`
+/// binding delta, admitted here by exact subject. Both rows dissolve when the relocation is on
+/// main: they then match no delta and report stale, refusing the first unrelated PR -- which is
+/// the trigger to delete them.
+/// FOURTH TRANSITION: three host seams segregated out of the modules the compile closure
+/// carries (A1-R). Emission decides membership at MODULE grain, so an unrealized host seam was
+/// emitted into the v2 compiler's own Rust crate whenever any NEIGHBOUR in its file was needed --
+/// measured before this change as five `panic!` sites in the emitted closure, none of them
+/// reachable from a compile. Three modules now separate the seam from the vocabulary that was
+/// actually wanted: `resolve_type_node` / `coproduct_arm_keys` / `coproduct_nullary_inhabitants`
+/// to `v2.std.node_reflection`, `layer_import_facts_live` to `v2.std.layer_import_scan`, and the
+/// `Filesystem.Read` read-through with `SourceRootIngestBuild` to
+/// `v2.compiler.source_authority_read`. Every consumer repoints its import, so each moved
+/// spelling denotes a different declaration home and arrives here as a `TargetChanged` binding
+/// delta -- the wall working on a deliberate relocation, exactly as the transitions above.
+///
+/// EVERY ROW BELOW HAS BLAST RADIUS 0 AND NAMES ONE EXACT SUBJECT. That is the whole content of
+/// the adjudication: no row admits a module, a prefix or a spelling in general, so a binding this
+/// change did not intend still refuses. The count is 56 because the read-through moved a type,
+/// two variants and a function that eight consumers each reference from several declarations --
+/// one row per (module, declaration, spelling) triple, never one row per module.
+///
+/// DISSOLVE-ON: this stack merging. Base and head then both carry the relocations, no run can
+/// produce these deltas, all 56 report stale, and they are removed by that trigger exactly as
+/// every shrink above was -- a stale row here refuses every unrelated PR in the repository.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "admission_from_module_root relocated to v2.lens.reference_deps (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_admission_from_ingest",
+            spelling: "admission_from_module_root",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label:
+            "admission_from_module_root relocated to v2.lens.reference_deps (compile_door_ledger)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.compile_door_ledger",
+            in_declaration: "derive_module_admission",
+            spelling: "admission_from_module_root",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (compiler_closure_emit_driver)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.compiler_closure_emit_driver",
+            in_declaration: "closure_emit_population_admission",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (compiler_closure_emit_driver)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.compiler_closure_emit_driver",
+            in_declaration: "closure_emit_population_admission",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (compiler_closure_emit_driver)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.compiler_closure_emit_driver",
+            in_declaration: "closure_emit_population_admission",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefFilesystemReadRefused -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_detail_from_read_result",
+            spelling: "SourceRefFilesystemReadRefused",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadAccepted -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_detail_from_read_result",
+            spelling: "SourceRefReadAccepted",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadHashMismatch -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_detail_from_read_result",
+            spelling: "SourceRefReadHashMismatch",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadResult -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_detail_from_read_result",
+            spelling: "SourceRefReadResult",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefFilesystemReadRefused -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_read_failure_reason",
+            spelling: "SourceRefFilesystemReadRefused",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadAccepted -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_read_failure_reason",
+            spelling: "SourceRefReadAccepted",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadHashMismatch -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_read_failure_reason",
+            spelling: "SourceRefReadHashMismatch",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadResult -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_read_failure_reason",
+            spelling: "SourceRefReadResult",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_ref_content_hash_mismatch -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_read_failure_reason",
+            spelling: "source_ref_content_hash_mismatch",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_ref_read_refused -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_read_failure_reason",
+            spelling: "source_ref_read_refused",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_receipt_from_discovered_closure",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_receipt_from_discovered_closure",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_receipt_from_discovered_closure",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRefReadResult -> v2.compiler.source_authority_read (frontier_probe)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.self_host.frontier_probe",
+            in_declaration: "frontier_probe_receipt_from_read_failed",
+            spelling: "SourceRefReadResult",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (affected_set)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.affected_set",
+            in_declaration: "ci_gate_processes",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (affected_set)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.affected_set",
+            in_declaration: "meta_processes",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (affected_set)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.affected_set",
+            in_declaration: "repo_process_universe_from",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (meta_exec_confinement)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.meta_exec_confinement",
+            in_declaration: "meta_exec_confinement_clean_live",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (meta_exec_confinement)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.meta_exec_confinement",
+            in_declaration: "meta_exec_leak_count_live",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (meta_exec_confinement)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.meta_exec_confinement",
+            in_declaration: "meta_exec_live_leak_candidate_paths",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.realization_vocabulary_containment",
+            in_declaration: "realization_vocab_containment_clean_live",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.realization_vocabulary_containment",
+            in_declaration: "realization_vocab_leak_count_live",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.realization_vocabulary_containment",
+            in_declaration: "realization_vocab_live_leak_candidate_paths",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.realization_vocabulary_containment",
+            in_declaration: "realization_vocab_live_leak_edges",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.realization_vocabulary_containment",
+            in_declaration: "vocab_leak_count_live_in",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.lens.realization_vocabulary_containment",
+            in_declaration: "vocab_scan_fact_count_live",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_nullary_inhabitants -> v2.std.node_reflection (coproduct_reflection_generic_wrapper)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.fixture.coproduct_reflection_generic_wrapper",
+            in_declaration: "nullary_reflection_through_generic_wrapper",
+            spelling: "coproduct_nullary_inhabitants",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (coproduct_exhaustiveness)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.generated.coproduct_exhaustiveness",
+            in_declaration: "roster_covers_all_arms_of_roster",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_ref_for_observed_storage_path -> v2.compiler.source_authority_read (frontier_probe_closure_matrix_integration)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.frontier_probe_closure_matrix_integration",
+            in_declaration: "fp_matrix_ref_a",
+            spelling: "source_ref_for_observed_storage_path",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_ref_for_observed_storage_path -> v2.compiler.source_authority_read (frontier_probe_closure_matrix_integration)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.frontier_probe_closure_matrix_integration",
+            in_declaration: "fp_matrix_ref_v2",
+            spelling: "source_ref_for_observed_storage_path",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (meta_exec_confinement_clean_tree)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.meta_exec_confinement_clean_tree",
+            in_declaration: "meta_exec_live_scan_non_degenerate_holds",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (module_binding_host_consistency)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.module_binding_host_consistency",
+            in_declaration: "module_binding_oracle_ingest_from_manifest",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (module_binding_host_consistency)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.module_binding_host_consistency",
+            in_declaration: "module_binding_oracle_ingest_from_manifest",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (module_binding_host_consistency)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.module_binding_host_consistency",
+            in_declaration: "module_binding_oracle_ingest_from_manifest",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "layer_import_facts_live -> v2.std.layer_import_scan (realization_vocabulary_containment_witness)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.long.realization_vocabulary_containment_witness",
+            in_declaration: "realization_vocab_live_corpus_receipt_holds",
+            spelling: "layer_import_facts_live",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (coproduct_reflection_conformance)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.manual.coproduct_reflection_conformance",
+            in_declaration: "witness_behavior_nullary_inhabitant_set_matches_arm_keys",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_nullary_inhabitants -> v2.std.node_reflection (coproduct_reflection_conformance)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.manual.coproduct_reflection_conformance",
+            in_declaration: "witness_behavior_nullary_inhabitant_set_matches_arm_keys",
+            spelling: "coproduct_nullary_inhabitants",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (coproduct_reflection_conformance)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.manual.coproduct_reflection_conformance",
+            in_declaration: "witness_connective_behavior_arm_sets_are_distinct",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_nullary_inhabitants -> v2.std.node_reflection (coproduct_reflection_conformance)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.manual.coproduct_reflection_conformance",
+            in_declaration: "witness_connective_nullary_inhabitants_fail_closed",
+            spelling: "coproduct_nullary_inhabitants",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_arm_keys -> v2.std.node_reflection (coproduct_reflection_conformance)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.manual.coproduct_reflection_conformance",
+            in_declaration: "witness_nullary_reflection_accepts_imported_named_coproduct_through_generic_wrapper",
+            spelling: "coproduct_arm_keys",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "coproduct_nullary_inhabitants -> v2.std.node_reflection (coproduct_reflection_conformance)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.manual.coproduct_reflection_conformance",
+            in_declaration: "witness_nullary_reflection_rejects_requested_a_with_context_b",
+            spelling: "coproduct_nullary_inhabitants",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (real_ingest)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.program_assembly.real_ingest",
+            in_declaration: "real_ingest_from_manifest",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (real_ingest)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.program_assembly.real_ingest",
+            in_declaration: "real_ingest_from_manifest",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (real_ingest)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.program_assembly.real_ingest",
+            in_declaration: "real_ingest_from_manifest",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (compiler_closure_emit_from_ingest)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.self_host.compiler_closure_emit_from_ingest",
+            in_declaration: "gap4_probe_first_ingest_reject",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (compiler_closure_emit_from_ingest)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.self_host.compiler_closure_emit_from_ingest",
+            in_declaration: "gap4_probe_first_ingest_reject",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (compiler_closure_emit_from_ingest)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.test.self_host.compiler_closure_emit_from_ingest",
+            in_declaration: "gap4_probe_first_ingest_reject",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (realization_sweep)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "member_parse_rows_from_refs",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (realization_sweep)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "member_parse_rows_from_refs",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (realization_sweep)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "member_parse_rows_from_refs",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildOk -> v2.compiler.source_authority_read (realization_sweep)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "sweep_rows_from_refs",
+            spelling: "SourceRootIngestBuildOk",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SourceRootIngestBuildReadFailed -> v2.compiler.source_authority_read (realization_sweep)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "sweep_rows_from_refs",
+            spelling: "SourceRootIngestBuildReadFailed",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "source_root_ingest_build_from_source_refs -> v2.compiler.source_authority_read (realization_sweep)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.workflow.realization_sweep",
+            in_declaration: "sweep_rows_from_refs",
+            spelling: "source_root_ingest_build_from_source_refs",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
 /// an instrument failure wearing coverage's clothes.

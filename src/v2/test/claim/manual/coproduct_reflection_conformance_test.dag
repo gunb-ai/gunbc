@@ -3,7 +3,8 @@ module v2.test.manual.coproduct_reflection_conformance
 import extdeps.languages.rust.capabilities {
   RustCapability
 }
-import v2.std.node_query {
+import extdeps.uri { UriScheme, uri_scheme_inhabitants }
+import v2.std.node_reflection {
   coproduct_arm_keys,
   coproduct_nullary_inhabitants
 }
@@ -16,6 +17,8 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data reflect_connective_type: Symbol = ^Connective
 data reflect_behavior_type: Symbol = ^Behavior
 data reflect_imported_derive_trait_type: Symbol = ^RustCapability
+
+data reflect_uri_scheme_type: Symbol = ^UriScheme
 
 type NullaryReflectionRequestedA
   = NullaryReflectionRequestedAFirst
@@ -153,4 +156,48 @@ test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true
   }
+}
+
+// THE DRIFT WALL FOR THE ONE DECLARED INHABITANT ROSTER THE COMPILE CLOSURE DEPENDS ON.
+//
+// extdeps.uri uri_scheme_inhabitants exists because v2.std.compilers.target_model must
+// decode a UriScheme from a node WITHOUT host type reflection -- the emitted compiler
+// carries no declaration index, so the reflective form was an unrealized seam there. The
+// price of that repair is a second statement of a fact the type declaration already makes,
+// and this row is what stops the two drifting: reflection over the SAME type, which is
+// available here because a witness runs under the interpreter, must agree arm-for-arm with
+// the roster's discriminants.
+//
+// It is bag equality in both directions on purpose. A roster missing an arm reds because
+// reflection carries a key the roster does not; a roster carrying a stale arm the type no
+// longer declares reds because the roster carries a key reflection does not. A subset check
+// in either direction would have admitted exactly one of those, and the missing-arm case is
+// the one that reaches production as a refusal on a scheme the model does declare.
+fn uri_scheme_discriminant(value: UriScheme) -> Symbol {
+  discriminant(v: value)
+}
+
+fn uri_scheme_roster_discriminants(inhabitants: List<UriScheme>) -> List<Symbol> {
+  fold_list(
+    xs: inhabitants,
+    empty: std.algebra.Empty,
+    cons: fn(acc, value) {
+      list_snoc_item(xs: acc, item: uri_scheme_discriminant(value: value))
+    }
+  )
+}
+
+test fn witness_uri_scheme_declared_roster_matches_reflected_arm_keys() -> Bool {
+  bag_eq(
+    xs: uri_scheme_roster_discriminants(inhabitants: uri_scheme_inhabitants()),
+    ys: coproduct_arm_keys(type_name: reflect_uri_scheme_type),
+    eq: symbol_eq
+  )
+}
+
+// THE NON-VACUITY CONTROL FOR THE ROW ABOVE. bag_eq over two empty lists is true, so a
+// reflection call that silently returned nothing -- the empty-observation narrow -- would
+// green the wall while checking nothing at all.
+test fn witness_uri_scheme_reflected_arm_keys_are_non_empty() -> Bool {
+  length(xs: coproduct_arm_keys(type_name: reflect_uri_scheme_type)) > 0
 }

@@ -257,7 +257,7 @@ pub fn checked_int_multiply(a: i64, b: i64) -> Rc<CheckedInt> {
 pub fn checked_int_optional(r: Rc<CheckedInt>) -> Option<i64> {
     match (*r.clone()).clone() {
         CheckedInt::CheckedIntReady { value: v, .. } => Some(v.clone()),
-        CheckedInt::CheckedIntOverflow { cause: _, .. } => None,
+        CheckedInt::CheckedIntOverflow { cause: _, .. } => std::option::Option::None,
     }
 }
 

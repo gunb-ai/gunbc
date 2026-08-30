@@ -167,7 +167,7 @@ pub fn reference_named(
         .cloned()
     {
         Some(reference) => Some(reference.clone()),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -223,7 +223,7 @@ pub fn index_entry_for_occurrence(
         .iter()
         .cloned()
         .fold(
-            None,
+            std::option::Option::None,
             |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().occurrence.clone().value.clone()
@@ -248,7 +248,7 @@ pub fn occurrence_id_for_authored_name(
         .iter()
         .cloned()
         .fold(
-            None,
+            std::option::Option::None,
             |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
                 None => match (entry.projection.clone().authored_name.clone() == name.clone()) {
@@ -258,6 +258,6 @@ pub fn occurrence_id_for_authored_name(
             },
         ) {
         Some(occurrence) => Some(occurrence.clone()),
-        None => None,
+        None => std::option::Option::None,
     }
 }

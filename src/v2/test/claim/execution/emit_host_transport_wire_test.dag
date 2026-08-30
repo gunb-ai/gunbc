@@ -11,6 +11,7 @@ import v2.compiler.emit_host {
 }
 import v2.compiler.eval { Inputs, inputs_root_only }
 import v2.extdeps.languages.rust {
+  rust_host_build_environment,
   rust_emit_host_cargo_manifest,
   rust_source_text,
   rust_target_model_staging
@@ -53,6 +54,7 @@ fn wire_source() -> Medium<String> {
 fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
   EmitHostRuntimeRow {
     transport: HostTransportDescriptor {
+      build_environment: rust_host_build_environment(),
       identity: ^emit_host_wire_probe_fixed_main,
       workspace: [
         WorkspaceFile {
@@ -78,6 +80,7 @@ fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
 fn wire_escaping_row() -> EmitHostRuntimeRow {
   EmitHostRuntimeRow {
     transport: HostTransportDescriptor {
+      build_environment: rust_host_build_environment(),
       identity: ^emit_host_wire_probe_escaping,
       workspace: [
         WorkspaceFile {

@@ -2208,22 +2208,32 @@ fn v1_emit_type_params_with_bounds(
 // remainder. It is a subtraction rather than a second fixpoint because propagation must still see
 // every OTHER item's seed -- OrderedClosedInterval earns its bound from its own bare `low: T`
 // field, and a WF-only fixpoint with no seeds anywhere would have nothing to propagate FROM.
+// THE FN-FIELD HEADER PRINTS THE WELL-FORMEDNESS BOUNDS, ASKED DIRECTLY. An fn-field item carries
+// a supplemental Clone impl, so the header owes no bound for CLONING a bare `expected: A` -- but it
+// still owes every bound a FIELD'S DECLARED TYPE demands to be nameable at all. The earlier form
+// subtracted the seed-needed parameters from the bounded set, which removed `A` from
+// `FalsificationReceipt<Subj, A>` even though its field `divergence: ValueDiff<A>` names a type
+// declared `<A: Clone>` (E0277 at v2.std.test_claim_falsification). Set difference conflated the
+// two obligations; the well-formedness predicate is the single authority for the header and is
+// asked per parameter.
 fn v1_item_wf_propagated_clone_bounded_param_names(
   item_name: String,
   item: Node,
   generic_param_names: List<String>,
   bounds: Map<String, Set<String>>,
+  type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
-  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
   v1_item_clone_bounded_param_names(
     item_name: item_name,
     generic_param_names: generic_param_names,
     bounds: bounds
   ) |> filter(g =>
-    !v1_item_type_param_needs_clone_bound_struct(
+    v1_item_param_wf_needs_clone(
       param_name: g,
-      field_type_exprs: field_type_exprs,
+      item: item,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
       source_indices: source_indices
     )
   )

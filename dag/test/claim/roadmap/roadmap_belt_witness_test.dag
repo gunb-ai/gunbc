@@ -9,21 +9,14 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, Unsigned }
 import gunbc.roadmap_execution_contract { ExecutionContractUnspecified }
-import gunbc.roadmap_spawner { SpawnFrontier, spawn_frontier }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import gunbc.roadmap_spawner { SpawnFrontier }
 import gunbc.roadmap_belt {
-  BeltRunState, Running, Paused,
+  SpawnMode, Paused, ManualReady, AutomaticReady, spawn_mode_label,
+  roadmap_belt_production_spawn_mode,
   BeltCapacity,
-  BeltAction, HoldPaused, AtCapacity,
-  belt_step,
-  belt_action_is_spawn,
-  belt_spawn_count,
-  belt_spawns_node,
-  belt_plan,
-  roadmap_belt_status_json,
   BeltReconcile,
   belt_reconcile,
-  belt_reconcile_spawn_count,
+  belt_reconcile_upsert_count,
   belt_reconcile_teardown_count,
   belt_reconcile_refusal_count,
   belt_member_ids,
@@ -61,77 +54,6 @@ fn frontier_ready(ids: List<String>) -> SpawnFrontier {
 
 fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }
 
-fn any_paused(actions: List<BeltAction>) -> Bool {
-  any(actions, a => match a { HoldPaused => true, _ => false })
-}
-
-fn at_capacity_waiting(actions: List<BeltAction>) -> Int {
-  fold(actions, init: 0, f: (acc, a) => match a { AtCapacity { ready_waiting } => ready_waiting, _ => acc })
-}
-
-test fn witness_paused_spawns_nothing() -> Bool {
-  let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: Paused, frontier: f, occupied: [], cap: cap(n: 3))
-  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
-}
-
-test fn witness_running_spawns_ready_within_capacity() -> Bool {
-  let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
-  belt_spawn_count(actions: actions) == 2
-    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
-    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
-}
-
-test fn witness_capacity_limits_spawns() -> Bool {
-  let f = frontier_ready(ids: ["a", "b", "c"])
-  let actions = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 1))
-  belt_spawn_count(actions: actions) == 1
-}
-
-test fn witness_occupied_node_not_respawned() -> Bool {
-  let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: Running, frontier: f, occupied: [roadmap_belt_nid(s: "a")], cap: cap(n: 3))
-  belt_spawn_count(actions: actions) == 1
-    && belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "b"))
-    && !belt_spawns_node(actions: actions, id: roadmap_belt_nid(s: "a"))
-}
-
-test fn witness_at_capacity_reports_backlog() -> Bool {
-  let f = frontier_ready(ids: ["a", "b"])
-  let actions = belt_step(state: Running, frontier: f, occupied: [roadmap_belt_nid(s: "x"), roadmap_belt_nid(s: "y")], cap: cap(n: 2))
-  belt_spawn_count(actions: actions) == 0 && at_capacity_waiting(actions: actions) == 2
-}
-
-test fn witness_belt_plan_equals_step_composition() -> Bool {
-  let doc = roadmap_authority()
-  let merged = authored_merged_prs()
-  let f = spawn_frontier(doc: doc, merged: merged)
-  let via_plan = belt_plan(state: Running, doc: doc, merged: merged, occupied: [], cap: cap(n: 3))
-  let via_step = belt_step(state: Running, frontier: f, occupied: [], cap: cap(n: 3))
-  belt_spawn_count(actions: via_plan) == belt_spawn_count(actions: via_step)
-}
-
-test fn witness_belt_plan_paused_holds_on_authority() -> Bool {
-  let actions = belt_plan(
-    state: Paused,
-    doc: roadmap_authority(),
-    merged: authored_merged_prs(),
-    occupied: [],
-    cap: cap(n: 3),
-  )
-  belt_spawn_count(actions: actions) == 0 && any_paused(actions: actions)
-}
-
-test fn witness_belt_status_json_shape() -> Bool {
-  let j = roadmap_belt_status_json()
-  string_contains(s: j, pattern: "roadmap-belt/v1")
-    && string_contains(s: j, pattern: "run_state")
-    && string_contains(s: j, pattern: "running")
-    && string_contains(s: j, pattern: "would_spawn")
-    && string_contains(s: j, pattern: "max_concurrent")
-}
-
 fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSession {
   DispatchLiveSession {
     session_name: "gunbc-dispatch-{node_id}",
@@ -145,7 +67,7 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
 }
 
 fn spawns_node(r: BeltReconcile, id: String) -> Bool {
-  any(belt_member_ids(ms: r.spawns), x => x == id)
+  any(belt_member_ids(ms: r.upserts), x => x == id)
 }
 
 fn tears_down_node(r: BeltReconcile, id: String) -> Bool {
@@ -154,8 +76,8 @@ fn tears_down_node(r: BeltReconcile, id: String) -> Bool {
 
 test fn witness_reconcile_spawns_ready_missing_session() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
-  let r = belt_reconcile(state: Running, frontier: f, live: [], cap: cap(n: 3))
-  belt_reconcile_spawn_count(r: r) == 2
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [], cap: cap(n: 3))
+  belt_reconcile_upsert_count(r: r) == 2
     && spawns_node(r: r, id: "a")
     && spawns_node(r: r, id: "b")
     && belt_reconcile_teardown_count(r: r) == 0
@@ -164,62 +86,79 @@ test fn witness_reconcile_spawns_ready_missing_session() -> Bool {
 
 test fn witness_reconcile_noop_when_ready_and_live() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
-  belt_reconcile_spawn_count(r: r) == 0
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "a", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_upsert_count(r: r) == 0
     && belt_reconcile_teardown_count(r: r) == 0
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_reaps_owned_done_session() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1
     && tears_down_node(r: r, id: "z")
-    && belt_reconcile_spawn_count(r: r) == 1
+    && belt_reconcile_upsert_count(r: r) == 1
     && spawns_node(r: r, id: "a")
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_reaps_drifted_owned_session() -> Bool {
   let f = frontier_ready(ids: [])
-  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Drifted)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 1 && tears_down_node(r: r, id: "z")
 }
 
 test fn witness_r5_refuses_foreign_teardown() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 0
     && !tears_down_node(r: r, id: "z")
     && belt_reconcile_refusal_count(r: r) == 1
-    && belt_reconcile_spawn_count(r: r) == 1
+    && belt_reconcile_upsert_count(r: r) == 1
 }
 
 test fn witness_r5_refuses_nameonly_teardown() -> Bool {
   let f = frontier_ready(ids: [])
-  let r = belt_reconcile(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: UnknownRefused)], cap: cap(n: 3))
   belt_reconcile_teardown_count(r: r) == 0 && belt_reconcile_refusal_count(r: r) == 1
 }
 
-test fn witness_reconcile_capacity_defers_surfaced() -> Bool {
+// RLM-1 (review 5059520727 finding 1): the reconcile returns EVERY upsert in plan order regardless of
+// capacity; capacity is the launch admission's gate, so the third row here reaches the admission and
+// receives a typed LaunchNoCapacity there (test.claim.roadmap.roadmap_launch_admission_witness
+// witness_three_candidates_one_slot_all_reach_admission) instead of vanishing into a count.
+test fn witness_reconcile_returns_every_upsert_regardless_of_capacity() -> Bool {
   let f = frontier_ready(ids: ["a", "b", "c"])
-  let r = belt_reconcile(state: Running, frontier: f, live: [], cap: cap(n: 1))
-  belt_reconcile_spawn_count(r: r) == 1 && r.deferred == 2
+  let r = belt_reconcile(state: AutomaticReady, frontier: f, live: [], cap: cap(n: 1))
+  belt_reconcile_upsert_count(r: r) == 3 && spawns_node(r: r, id: "c")
+}
+
+// RLM-1 red control (b) at the reconcile layer: ManualReady still PLANS -- the departed member is torn
+// down and the ready-not-observed member is planned as an upsert for the tick's admission to refuse --
+// so the mode is distinguishable from Paused on the reconcile axis and the reap arm continues.
+test fn witness_reconcile_manual_ready_still_reaps_and_plans() -> Bool {
+  let f = frontier_ready(ids: ["a"])
+  let r = belt_reconcile(state: ManualReady, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
+  belt_reconcile_teardown_count(r: r) == 1
+    && tears_down_node(r: r, id: "z")
+    && belt_reconcile_upsert_count(r: r) == 1
+    && spawn_mode_label(m: r.mode) == "manual_ready"
 }
 
 test fn witness_reconcile_paused_no_actions() -> Bool {
   let f = frontier_ready(ids: ["a", "b"])
   let r = belt_reconcile(state: Paused, frontier: f, live: [live_session(node_id: "z", verdict: Converged)], cap: cap(n: 3))
-  belt_reconcile_spawn_count(r: r) == 0
+  belt_reconcile_upsert_count(r: r) == 0
     && belt_reconcile_teardown_count(r: r) == 0
     && belt_reconcile_refusal_count(r: r) == 0
 }
 
 test fn witness_reconcile_status_json_shape() -> Bool {
   let f = frontier_ready(ids: ["a"])
-  let j = belt_reconcile_status_json(state: Running, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
+  let j = belt_reconcile_status_json(state: AutomaticReady, frontier: f, live: [live_session(node_id: "z", verdict: Conflict)], cap: cap(n: 3))
   string_contains(s: j, pattern: "roadmap-belt-reconcile/v1")
     && string_contains(s: j, pattern: "would_teardown")
     && string_contains(s: j, pattern: "refusal_count")
-    && string_contains(s: j, pattern: "deferred")
+    && string_contains(s: j, pattern: "upserts")
+    && !string_contains(s: j, pattern: "deferred")
 }

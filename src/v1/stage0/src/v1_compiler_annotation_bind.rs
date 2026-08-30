@@ -237,7 +237,7 @@ pub fn render_subject_annotation_blocks(
                 },
             );
         if ((texts.clone().len() as i64) == 0) {
-            None
+            std::option::Option::None
         } else {
             Some(
                 Rc::new({
@@ -279,16 +279,16 @@ pub fn authored_name_among(
     entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
     id: OccurrenceId,
 ) -> Option<String> {
-    entries
-        .iter()
-        .cloned()
-        .fold(None, |acc: _, entry: Rc<OccurrenceIndexEntry>| {
+    entries.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, entry: Rc<OccurrenceIndexEntry>| {
             if (entry.projection.clone().occurrence.clone().value.clone() == id.value.clone()) {
                 Some(entry.projection.clone().authored_name.clone())
             } else {
                 acc.clone()
             }
-        })
+        },
+    )
 }
 
 pub fn eligible_name_count(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>, name: String) -> i64 {
@@ -328,7 +328,7 @@ pub fn keyed_annotation_rows(
     {
         let eligible = eligible_key_entries(transport.clone());
         if !eligible_names_unique(eligible.clone()) {
-            None
+            std::option::Option::None
         } else {
             crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
                 .iter()
@@ -337,10 +337,10 @@ pub fn keyed_annotation_rows(
                     Some(empty_keyed_rows()),
                     |acc: Option<Rc<Vec<Rc<KeyedAnnotationRow>>>>,
                      row: Rc<SourceAnnotationDebt>| match acc.clone() {
-                        None => None,
+                        None => std::option::Option::None,
                         Some(rows) => {
                             match authored_name_among(eligible.clone(), row.subject.clone()) {
-                                None => None,
+                                None => std::option::Option::None,
                                 Some(name) => Some(v1_rt::rc_list_push(
                                     rows.clone(),
                                     Rc::new(KeyedAnnotationRow {

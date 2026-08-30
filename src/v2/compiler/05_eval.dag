@@ -19,6 +19,7 @@ import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
   List,
   Map,
+  empty_map,
   list_at_optional,
   list_nth
 }
@@ -955,14 +956,8 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Optional<RuntimeValue> {
-  optional_absent()
-}
-
-fn empty_runtime_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
-  PartialFunction {
-    lookup: runtime_binding_lookup_miss
-  }
+fn empty_runtime_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  empty_map()
 }
 
 fn empty_evaluation_environment() -> EvaluationEnvironment {

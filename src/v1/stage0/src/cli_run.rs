@@ -36831,6 +36831,10 @@ pub enum RequiredFloorDisposition {
     /// per identity, carried by the claim that runs it, so there is no second vocabulary here
     /// restating what the claim already says.
     Planned,
+    /// Selected by the required CI run's per-change sublane. This is distinct from `Planned`:
+    /// the static compiler-floor gate did not admit the identity; the exact changed-witness
+    /// identity set did. It nevertheless executes in the same fold and terminal ledger.
+    PlannedAsChangedWitness,
     /// Declined because the module's AUTHORED name (read from its own source, never its path)
     /// matches a `long_home_prefixes()` entry. Carries the exact prefix that matched, which the
     /// former bare `long_declined` counter discarded.
@@ -37597,6 +37601,7 @@ fn write_required_floor_disposition_tsv(
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("write_required_floor_disposition_tsv: create {path}: {e}"))?;
     let mut planned = 0usize;
+    let mut planned_as_changed_witness = 0usize;
     let mut declined_long = 0usize;
     let mut declined_fixture = 0usize;
     let mut declined_cost_debt = 0usize;
@@ -37606,6 +37611,7 @@ fn write_required_floor_disposition_tsv(
     for row in rows {
         match &row.disposition {
             RequiredFloorDisposition::Planned => planned += 1,
+            RequiredFloorDisposition::PlannedAsChangedWitness => planned_as_changed_witness += 1,
             RequiredFloorDisposition::DeclinedLongModule { .. } => declined_long += 1,
             RequiredFloorDisposition::DeclinedFixtureMember { .. } => declined_fixture += 1,
             RequiredFloorDisposition::DeclinedOutsideRequiredGate => declined_outside_gate += 1,
@@ -37618,11 +37624,12 @@ fn write_required_floor_disposition_tsv(
     }
     writeln!(
         file,
-        "# summary\ttotal={}\tplanned={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
+        "# summary\ttotal={}\tplanned={}\tplanned_as_changed_witness={}\tdeclined_long_module={}\tdeclined_fixture_member={}\
          \tdeclined_outside_required_gate={}\tdeclined_outside_gate_closure={}\
          \tdeclined_discovery_excluded={}\tdeclined_cost_debt={}",
         rows.len(),
         planned,
+        planned_as_changed_witness,
         declined_long,
         declined_fixture,
         declined_outside_gate,
@@ -38265,6 +38272,17 @@ pub fn run_required_regen_fixed_point(
     pass1_digest: Option<String>,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
+}
+
+pub use required_regen_host::RegenRoundCostOutcome;
+
+/// One priced regen round — see `required_regen_host::run_regen_round_cost`.
+pub fn run_regen_round_cost(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<RegenRoundCostOutcome, String> {
+    required_regen_host::run_regen_round_cost(candidate_dir_rel, receipt_rel, source_roots)
 }
 
 /// The emitted generated surface, keyed by basename, off the SAME `measure_generated_surface`

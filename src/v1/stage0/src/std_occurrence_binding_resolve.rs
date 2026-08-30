@@ -239,7 +239,7 @@ pub fn binding_candidates_from_supplied_declarations(
     supplied_candidates.iter().cloned().fold(Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: Rc::new(vec![]),
     seen_candidate_ids: v1_rt::rc_empty_map::<i64, OccurrenceId>(),
-    refusal: None,
+    refusal: std::option::Option::None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),
     None => match v1_rt::map_get(&validated.entries_by_id.clone(), candidate_occurrence.value.clone()) {
@@ -285,12 +285,12 @@ match (*occurrence_category_binding_verdict(reference.category.clone(), declarat
     OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingAdmissible => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: v1_rt::concat(build.candidates.clone(), Rc::new(vec![binding_candidate_from_declaration(declaration.clone())])),
     seen_candidate_ids: seen_candidate_ids.clone(),
-    refusal: None,
+    refusal: std::option::Option::None,
 }),
     OccurrenceCategoryBindingVerdict::OccurrenceCategoryBindingInadmissible { .. } => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: seen_candidate_ids.clone(),
-    refusal: None,
+    refusal: std::option::Option::None,
 }),
 }
 },
