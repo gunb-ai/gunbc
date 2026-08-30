@@ -28,6 +28,8 @@ import gunbc.machine_intake_subject {
   StaleAxes,
   stale_axis_items,
   merge_subject_currency,
+  subject_currency_of_axes,
+  UnitKeyStale,
   AssemblyManifestStale,
   FirmwareManifestStale,
   QualificationSubject,
@@ -216,4 +218,29 @@ test fn merging_two_one_axis_standings_is_the_canonical_ordered_union() -> Bool 
     }
     && merge_subject_currency(left: SubjectCurrent, right: assembly_only) == assembly_only
     && merge_subject_currency(left: assembly_only, right: SubjectCurrent) == assembly_only
+}
+
+// THE MINT'S OWN BOUNDARY, WHICH THE SEAL DOES NOT COVER (review follow-up).
+// sole_constructor confines who may WRITE a StaleAxes literal; it says nothing
+// about what the sanctioned mint ACCEPTS, and subject_currency_of_axes is
+// importable. A pass-through mint therefore hands any caller a sealed carrier
+// in the caller's own order carrying the caller's duplicates, with no record
+// literal anywhere for SoleConstructorViolation to refuse. This calls the mint
+// DIRECTLY with the adversarial population -- reversed order, one axis twice --
+// and requires the roster's order and one occurrence each. A pass-through
+// implementation returns [firmware, assembly, assembly] and goes red on both
+// halves; the merge-law witness above cannot catch it, because its callers
+// reduce before they reach here.
+test fn the_mint_canonicalizes_whatever_a_caller_supplies() -> Bool {
+  let noncanonical = subject_currency_of_axes(
+    axes: [FirmwareManifestStale, AssemblyManifestStale, AssemblyManifestStale],
+  )
+  let duplicated_single = subject_currency_of_axes(axes: [UnitKeyStale, UnitKeyStale])
+  is_assembly_then_firmware(currency: noncanonical)
+    && match duplicated_single {
+      SubjectCurrent => false
+      SubjectStale { axes: axes } =>
+        list_length(items: axes.further_axes) == 0 && axes.first_axis == UnitKeyStale
+    }
+    && subject_currency_of_axes(axes: [] as List<StaleAxis>) == SubjectCurrent
 }

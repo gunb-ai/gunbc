@@ -289,11 +289,24 @@ fn stale_axis_items(axes: StaleAxes) -> List<StaleAxis> {
   concat([axes.first_axis], axes.further_axes)
 }
 
+// THE MINT CANONICALIZES ITS OWN INPUT, because sealing confines who may WRITE
+// the record and says nothing about what the sanctioned mint ACCEPTS. This
+// function is importable exactly as stale_axis_items and merge_subject_currency
+// are, so before this it was a pass-through: a caller outside this module could
+// hand it [FirmwareManifestStale, AssemblyManifestStale, AssemblyManifestStale]
+// and receive a sealed StaleAxes carrying a duplicate in caller order, with no
+// cross-module record literal anywhere for SoleConstructorViolation to refuse.
+// Reducing the argument through stale_axes_all makes membership the only thing
+// a caller controls: order and multiplicity come from the roster, so the same
+// axis set has exactly one representation whoever asks for it. This is the ONE
+// executable home of that canonicalization -- merge_subject_currency hands its
+// two populations here unreduced rather than filtering a second time.
 fn subject_currency_of_axes(axes: List<StaleAxis>) -> SubjectCurrency {
-  match axes.first() {
+  let canonical = stale_axes_all |> filter(a => axes |> any(candidate => candidate == a))
+  match canonical.first() {
     Absent => SubjectCurrent
     Present { value: head } =>
-      SubjectStale { axes: StaleAxes { first_axis: head, further_axes: axes.skip(n: 1) } }
+      SubjectStale { axes: StaleAxes { first_axis: head, further_axes: canonical.skip(n: 1) } }
   }
 }
 
@@ -319,11 +332,13 @@ fn compare_qualification_subject(admitted: QualificationSubject, observed: Quali
 
 // THE SECOND LEGITIMATE MINT, AND IT LIVES BESIDE THE FIRST (review 57612
 // follow-up). Merging two standings for one subject is a union over the axis
-// identity, computed by filtering the same canonical roster both sides were
-// derived from -- so the merged standing carries the roster's order and not
-// the order the two sides were measured in, and an axis present on both sides
-// appears once. It cannot live in the consuming module now that StaleAxes is
-// sealed, and it should not have: a mint is a fact about the carrier.
+// identity: both populations go to the mint unreduced, and the mint's
+// canonicalization against stale_axes_all is what drops the duplicate an axis
+// present on both sides would otherwise produce and what orders the result by
+// the roster rather than by which side was measured first. The union is not
+// computed a second time here -- one canonicalization, one home. It cannot live
+// in the consuming module now that StaleAxes is sealed, and it should not have:
+// a mint is a fact about the carrier.
 fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> SubjectCurrency {
   match left {
     SubjectCurrent => right
@@ -332,10 +347,7 @@ fn merge_subject_currency(left: SubjectCurrency, right: SubjectCurrency) -> Subj
         SubjectCurrent => left
         SubjectStale { axes: ra } =>
           subject_currency_of_axes(
-            axes: stale_axes_all |> filter(a =>
-              (stale_axis_items(axes: la) |> any(x => x == a))
-                || (stale_axis_items(axes: ra) |> any(x => x == a))
-            ),
+            axes: concat(stale_axis_items(axes: la), stale_axis_items(axes: ra)),
           )
       }
   }
