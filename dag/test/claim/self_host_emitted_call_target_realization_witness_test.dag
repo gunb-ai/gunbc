@@ -588,3 +588,14 @@ test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scal
     ["Box2<S, Rc<Nat>>", "Box2<S, Nat>"]
   )
 }
+
+// sort_by over a list whose element type is a type variable must still compare by the authored
+// key function; the element-type-unknown arm used to drop the key and compare elements directly.
+test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.generic_sort_probe\nimport std.types { Int }\nimport v2.std.collection { List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
+    "src/test_claim_generic_sort_probe.rs",
+    ["let __ka = ("],
+    ["a.partial_cmp(b)"]
+  )
+}

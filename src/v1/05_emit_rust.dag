@@ -10631,12 +10631,19 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
   let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
-  if elem_type_str == "_" {
-    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+  let closure_params = if elem_type_str == "_" {
+    "|a, b|"
   } else {
-    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+    concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
   }
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
 }
+
+// The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
+// authored key function and compared elements directly, which is a fabricated plausible output
+// (DESIGN 5): rustc reported it only where T carried no PartialOrd (E0599 at v2.std.node
+// sort_labeled), and where T happened to be ordered it would have sorted by the wrong key with no
+// diagnostic at all. The key function is the semantics; only the closure annotations are optional.
 
 fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)

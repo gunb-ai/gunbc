@@ -450,7 +450,7 @@ fn local_termination_proof_witness(n: Node) -> Witness<TerminationProof> {
 
 fn termination_proof_fold_step(
   acc: Witness<TerminationProof>,
-  _: Edge,
+  _e: Edge,
   child: Witness<TerminationProof>
 ) -> Witness<TerminationProof> {
   match acc {
