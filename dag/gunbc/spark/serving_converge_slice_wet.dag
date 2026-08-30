@@ -57,6 +57,7 @@ import gunbc.spark.serving_terminal_health {
   spark_serving_residency_wire,
 }
 import gunbc.spark.serving_observe {
+  spark_serving_linger_probe_words,
   spark_serving_observe_terminal_health,
   spark_serving_observe_residency,
   spark_serving_observe_host_via_locus,
@@ -102,16 +103,6 @@ data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: o
 data spark_serving_converge_slice_wet_receipt_path: String = "target/spark-serving-converge-slice-wet-receipt.txt"
 
 data spark_serving_converge_slice_wet_hosts: List<HostIdentity> = [operator_host_srv5, operator_host_srv6]
-
-fn spark_serving_linger_probe_words() -> List<String> {
-  [
-    "loginctl",
-    "show-user",
-    spark_serving_automation_principal_login() as String,
-    "-p",
-    "Linger",
-  ]
-}
 
 fn spark_serving_linger_enabled_from_stdout(stdout: String) -> Bool? {
   let line = trim(s: stdout)

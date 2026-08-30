@@ -28,6 +28,8 @@ import gunbc.runner_service_activation { runner_activation_readiness_unobserved_
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_plan_artifact,
+  FleetConvergePlanArtifactReady,
+  FleetConvergePlanArtifactRefused,
   fleet_converge_plan_body_path,
   fleet_converge_plan_baseline_hex_path,
   fleet_converge_plan_apply_shell_path,
@@ -62,6 +64,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_spark_serving_typed_actions_wire,
 }
 import gunbc.spark.serving_execution_schedule {
+  spark_serving_axis_product_unobserved,
   scheduled_rows_list,
 }
 
@@ -167,14 +170,14 @@ func fleet_converge_plan_wet() -> ProcessExit
     prior_generation: prior_generation,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-    observed_spark: [],
+    spark_axis: spark_serving_axis_product_unobserved(),
     observed_slots: observed_slots,
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
-    Absent =>
-      exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")
-    Present { value: artifact } =>
+    FleetConvergePlanArtifactRefused { cause: why } =>
+      exit_failure(reason: concat("fleet_converge_plan: ", why))
+    FleetConvergePlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,
         apply_shell: artifact.apply_shell,

@@ -5,6 +5,12 @@ import std.measure { microsecond }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_boot_provenance { SparkServingBootProvenance, BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
+import gunbc.spark.serving_observed_members {
+  UserUnitStateUnobserved,
+  UserUnitManagerUnobserved,
+  UnitActivityUnobserved,
+  LingerUnobservedState,
+}
 import gunbc.spark.serving_release {
   SparkServingObservation, SparkServingAbsent, SparkServingObserved,
   SparkServingObservationRefused,
@@ -30,12 +36,15 @@ import extdeps.ollama.binary_release {
   ollama_v0_32_9_jetpack5_release,
 }
 import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationAbsent,
+  ModelStoreAbsent,
   ollama_runtime_materialization_identity,
   ollama_runtime_materialization_identity_for_observed_release,
   ollama_runtime_materialization_identity_for_required_release,
 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
+  SparkServingObservedUnit,
   spark_serving_host_observation,
   SparkServingCurrentBootDurabilityStanding,
   CurrentBootDurabilityExhibitedFleetWide,
@@ -557,10 +566,27 @@ fn readback_active_complete_at(host: HostIdentity) -> SparkServingReadback {
   }
 }
 
+// A projection carrying nothing observed. These fixtures vary the reporting facts, not the member
+// projection, so it stays fixed and empty -- and empty is the HONEST value, since no probe ran.
+// Listing a member with a placeholder digest would fabricate a state, and absence from the observed
+// list is exactly what makes membership_reconcile plan an addition.
+// The fixture supplies UNOBSERVED probes rather than a hand-built projection: since the mint derives
+// the projection from readback.host, a fixture cannot state a host for the projection at all, which
+// is the provenance property being bought. Nothing is observed here because no probe ran, and empty
+// is the honest value -- listing a member with a placeholder digest would fabricate a state, and
+// absence from the observed list is exactly what makes membership_reconcile plan an addition.
 fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
   spark_serving_host_observation(
     readback: readback,
     account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+    runtime: RuntimeMaterializationAbsent,
+    store: ModelStoreAbsent,
+    observed_unit: SparkServingObservedUnit {
+      state: UserUnitStateUnobserved,
+      enablement: UserUnitManagerUnobserved,
+      activity: UnitActivityUnobserved,
+    },
+    linger: LingerUnobservedState,
   )
 }
 

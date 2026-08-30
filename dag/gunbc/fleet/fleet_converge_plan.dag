@@ -7,6 +7,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash {
+  content_hash_atom,
   content_hash_of_value,
   serialize_content_hash,
   Fnv1a64StructuralDigestHex,
@@ -112,7 +113,16 @@ import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_principal, grounded_posix_principal_name,
   ci_runner_sudo_binary_path, SudoInstall, SudoSystemctl,
 }
-import gunbc.spark.serving_execution_schedule { ScheduledRows, scheduled_rows_empty, scheduled_rows_list }
+import gunbc.spark.serving_execution_schedule {
+  ScheduledRows,
+  scheduled_rows_empty,
+  scheduled_rows_list,
+  SparkServingAxisProduct,
+  spark_serving_axis_product_rows,
+  spark_serving_axis_product_observed_members,
+  spark_serving_axis_product_unobserved,
+}
+
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
@@ -2219,21 +2229,59 @@ fn fabric_cell_apply_executable_lines(
   }
 }
 
+// THE ARTIFACT'S OPTIONAL CARRIED A FACT THAT CANNOT HAPPEN, so it is dissolved rather than reused.
+//
+// It answered `Absent` when `content_hash_of_value` did not return the Fnv1a64 arm -- an absorbing
+// arm in the narrowing direction, since a hash the match did not recognize became "there is no plan
+// artifact", which every caller reads as nothing to converge rather than as could-not-classify. The
+// Spark plan builder repaired exactly this in its own copy and this one was left behind.
+// `content_hash_atom` returns Fnv1a64Structural directly -- the same digest, since
+// `content_hash_of_value` is that function wrapped in the union -- so there is no union to match and
+// no arm to get wrong.
+//
+// The outcome type stays a sum rather than collapsing to a bare artifact, because assembling a plan
+// IS refusable for a reason this axis does not own: the Spark rows handed in may not exist, and the
+// caller that computed them is where that refusal is decided.
+type FleetConvergePlanArtifactOutcome
+  = FleetConvergePlanArtifactReady { artifact: FleetConvergePlanArtifact }
+  | FleetConvergePlanArtifactRefused { cause: String }
+
+// P0-C3: THE SPARK AXIS ARRIVES AS ONE ALREADY-PLANNED PRODUCT.
+//
+// THE MEMBERS AND THE ROWS ARE ONE PARAMETER BECAUSE THEY ARE ONE FACT. A first cut took
+// `observed_spark` and the schedule separately, so a caller could hand members from one observation
+// and rows planned from another. `observed_spark` feeds the observed BASELINE, and the baseline is
+// what apply re-checks to decide the plan still applies -- so that disagreement would have been
+// invisible at exactly the moment it mattered. SparkServingAxisProduct is sole_constructor and only
+// the row producer mints it, so the members that fingerprinted the baseline are the members the
+// schedule was planned from.
+//
+// `spark_serving_typed_actions: scheduled_rows_empty()` stood here unconditionally, so the
+// production full-host plan could not emit a Spark row even when handed a real observation. That is
+// one of two independent breaks that made P0-WET unreachable -- the other being that the CLI passed
+// `observed_spark: []` -- which is why repairing either alone changed nothing.
+//
+// THE ROWS ARE A PARAMETER AND NOT SOMETHING THIS FUNCTION PLANS. A first attempt had the artifact
+// call the Spark row producer directly, and the substrate refused it with a circular dependency:
+// gunbc.fleet_converge_plan -> gunbc.spark.serving_converge_apply -> gunbc.spark.serving_converge_plan
+// already runs the other way. That refusal was correct and load-bearing. Artifact assembly consumes
+// already-planned axis products -- timer plan, cap plan, slot plan, fabric plan, activation plan --
+// and the Spark schedule is one more of them, not an exception this module reaches down to compute.
 fn fleet_converge_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
+  spark_axis: SparkServingAxisProduct<FleetConvergeSparkServingTypedAction>,
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
-) -> FleetConvergePlanArtifact? {
+) -> FleetConvergePlanArtifactOutcome {
   let request = FullHostConverge {
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-    observed_spark: observed_spark,
+    observed_spark: spark_serving_axis_product_observed_members(a: spark_axis),
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
   }
@@ -2312,20 +2360,16 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
     ),
   )
-  match content_hash_of_value(value: baseline as NonEmptyStr) {
-    Fnv1a64(structural) =>
-      Present {
-        value: FleetConvergePlanArtifact {
-          subject: subject,
-          prior_generation: prior_generation,
-          plan_lease: lease,
-          observed_baseline_hex: structural.digest,
-          plan_body: body,
-          apply_shell: apply_shell,
-          spark_serving_typed_actions: scheduled_rows_empty(),
-        },
-      }
-    _ => Absent
+  FleetConvergePlanArtifactReady {
+    artifact: FleetConvergePlanArtifact {
+      subject: subject,
+      prior_generation: prior_generation,
+      plan_lease: lease,
+      observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+      plan_body: body,
+      apply_shell: apply_shell,
+      spark_serving_typed_actions: spark_serving_axis_product_rows(a: spark_axis),
+    },
   }
 }
 

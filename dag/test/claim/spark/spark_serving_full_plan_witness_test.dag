@@ -27,6 +27,7 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark.serving_execution_schedule {
+  spark_serving_axis_product_rows,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
   spark_serving_freeze_execution_schedule,
@@ -63,7 +64,18 @@ import gunbc.spark.serving_observed_members {
   spark_serving_activity_was_observed,
   spark_serving_observed_unit_activity_members,
 }
+import gunbc.fleet_converge_plan {
+  fleet_converge_plan_artifact,
+  FleetConvergePlanArtifactReady,
+  FleetConvergePlanArtifactRefused,
+}
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.spark.serving_converge_plan {
+  spark_serving_scheduled_rows_for,
+  SparkServingScheduledRowsVerdict,
+  SparkServingScheduledRowsReady,
+  SparkServingScheduledRowsRefused,
   SparkServingTypedActionProjection,
   SparkServingTypedActionsProjected,
   SparkServingTypedActionsRefused,
@@ -1255,4 +1267,78 @@ test fn a_missing_unit_projects_no_activity_member_but_a_stopped_one_does() -> B
 // and the plan must still refuse rather than start off a probe that never answered.
 test fn a_genuinely_unobserved_activity_still_refuses() -> Bool {
   !spark_serving_activity_was_observed(activity: UnitActivityUnobserved)
+}
+
+fn c3_projection(
+  linger: SparkServingObservedLingerState,
+) -> SparkServingObservedMemberProjection {
+  spark_serving_observed_members(
+    host: subject_host,
+    store: complete_required_store(),
+    runtime: RuntimeMaterializationAbsent,
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
+    linger: linger,
+  )
+}
+
+fn c3_rows_count(v: SparkServingScheduledRowsVerdict) -> Int {
+  match v {
+    SparkServingScheduledRowsRefused { cause: _ } => 0 - 1
+    SparkServingScheduledRowsReady { axis: axis, plan: _ } =>
+      length(scheduled_rows_list(scheduled: spark_serving_axis_product_rows(a: axis)))
+  }
+}
+
+test fn the_extracted_row_producer_plans_real_work_from_an_observation() -> Bool {
+  c3_rows_count(v: spark_serving_scheduled_rows_for(
+    host: subject_host as NonEmptyStr,
+    projection: c3_projection(linger: LingerObservedEnabled),
+  )) > 0
+}
+
+test fn the_extracted_row_producer_still_refuses_an_unobserved_linger() -> Bool {
+  c3_rows_count(v: spark_serving_scheduled_rows_for(
+    host: subject_host as NonEmptyStr,
+    projection: c3_projection(linger: LingerUnobservedState),
+  )) == 0 - 1
+}
+
+test fn extraction_did_not_change_what_the_slice_artifact_plans() -> Bool {
+  match artifact_verdict(host: subject_host, projection: c3_projection(linger: LingerObservedEnabled)) {
+    SparkServingPlanArtifactRefused { cause: _ } => false
+    SparkServingPlanArtifactReady { artifact: a } =>
+      length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+        == c3_rows_count(v: spark_serving_scheduled_rows_for(
+             host: subject_host as NonEmptyStr,
+             projection: c3_projection(linger: LingerObservedEnabled),
+           ))
+  }
+}
+
+test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
+  match spark_serving_scheduled_rows_for(
+    host: subject_host as NonEmptyStr,
+    projection: c3_projection(linger: LingerObservedEnabled),
+  ) {
+    SparkServingScheduledRowsRefused { cause: _ } => false
+    SparkServingScheduledRowsReady { axis: axis, plan: _ } =>
+      match fleet_converge_plan_artifact(
+        host: subject_host as NonEmptyStr,
+        prior_generation: 0,
+        observed_timers: [],
+        observed_caps: [],
+        spark_axis: axis,
+        observed_slots: [],
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
+        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      ) {
+        FleetConvergePlanArtifactRefused { cause: _ } => false
+        FleetConvergePlanArtifactReady { artifact: a } =>
+          length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+            == length(scheduled_rows_list(scheduled: spark_serving_axis_product_rows(a: axis)))
+            && length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) > 0
+      }
+  }
 }

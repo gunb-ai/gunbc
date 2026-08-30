@@ -136,6 +136,9 @@ import gunbc.spark.serving_observed_members {
   spark_serving_observed_members,
   SparkServingObservedMemberProjection,
   SparkServingObservedLingerState,
+  LingerObservedEnabled,
+  LingerObservedDisabled,
+  LingerUnobservedState,
   SparkServingObservedUnitState,
   UserUnitStateUnobserved,
   SparkServingUnitManagerState,
@@ -502,18 +505,97 @@ type SparkServingHostObservation sole_constructor {
   readback: SparkServingReadback
   observation: SparkServingObservation
   account: SparkManagedAccountObservation
+  projection: SparkServingObservedMemberProjection
 }
 
-// The only mint. The observation is not a parameter -- it is a function of the readback, which is
-// what makes the two hosts one fact.
+// P0-C3: THE PLANNING PROJECTION IS CARRIED BY THE OBSERVATION THAT PRODUCED IT.
+//
+// This carrier held only the reporting facts, so the planner could not be fed from it. The two
+// routes available instead were both wrong in the same way: parse the human receipt back into
+// members, or run a SECOND observation for planning. The second is the one that looks harmless --
+// it is only more probes -- and it is the one that silently joins a unit's content read at one
+// moment with its enablement read at another. Two facts about one machine taken from two
+// observations are not an observation of that machine.
+//
+// So one physical observation attempt owns the probe results, and the report and the plan are both
+// PROJECTIONS OF THAT SAME PRODUCER. The field is what makes that structural rather than a
+// convention nobody can check -- and because this carrier is sole_constructor, there is no way to
+// obtain one whose projection came from a different observation than its readback.
+//
+// THE MINT TAKES PROBES, NOT A FINISHED PROJECTION, AND THAT IS THE WHOLE PROVENANCE ARGUMENT.
+//
+// A first version of this took the projection as a parameter, on the reasoning that it is a function
+// of four probes this type does not carry, so a mint claiming to derive it would be fabricating
+// them. That reasoning was right about the probes and wrong about the interface, and it reopened the
+// exact class #9754 had just closed one field over: nothing stopped a caller pairing srv5's readback
+// with a projection built for srv6. Two hosts, one carrier, disagreeing -- the same defect, a
+// different field.
+//
+// So the mint takes the four PROBE OBSERVATIONS and builds the projection itself from
+// `readback.host`. Nothing is fabricated: every probe result still arrives from the caller that ran
+// it. What the caller no longer supplies is the HOST those probes are about, because there is only
+// one host in this carrier and it comes from the readback. A projection about a different machine
+// is now unconstructible rather than merely discouraged.
 fn spark_serving_host_observation(
   readback: SparkServingReadback,
   account: SparkManagedAccountObservation,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  observed_unit: SparkServingObservedUnit,
+  linger: SparkServingObservedLingerState,
 ) -> SparkServingHostObservation {
   SparkServingHostObservation {
     readback: readback,
     observation: derive_spark_serving_observation(readback: readback),
     account: account,
+    projection: spark_serving_observed_members_for_unit(
+      host: readback.host,
+      runtime: runtime,
+      store: store,
+      observed_unit: observed_unit,
+      linger: linger,
+    ),
+  }
+}
+
+// THE LINGER PROBE WORDS LIVE HERE NOW, and serving_converge_slice_wet imports them rather than
+// declaring its own copy. They were duplicated across the transport boundary -- one spelling on the
+// context path, an identical one on the HostEffectTransport path -- which is the §3 fork: the same
+// argv authored twice, free to drift the first time loginctl's interface moves.
+fn spark_serving_linger_probe_words() -> List<String> {
+  [
+    "loginctl",
+    "show-user",
+    spark_serving_automation_principal_login() as String,
+    "-p",
+    "Linger",
+  ]
+}
+
+// LINGER IS THREE-VALUED AND THE SLICE COLLAPSED IT TO TWO.
+//
+// serving_converge_slice_wet reads the probe into a Bool and then writes
+// `if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled }`, which turns "the
+// probe did not answer" into "linger is off". SparkServingObservedLingerState carries
+// LingerUnobservedState precisely so those stay apart, and the distinction is load-bearing rather
+// than fastidious: an unobserved property must not enter the observed member list, because absence
+// from that list is what makes membership_reconcile plan an ADDITION. Conflating them plans a write
+// against a state nobody measured.
+fn spark_serving_observed_linger_from_probe(
+  result: SshSessionExecResult?,
+) -> SparkServingObservedLingerState {
+  match result {
+    Absent => LingerUnobservedState
+    Present { value: r } =>
+      if r.exit_code != 0 {
+        LingerUnobservedState
+      } else if trim(s: r.stdout) == "Linger=yes" {
+        LingerObservedEnabled
+      } else if trim(s: r.stdout) == "Linger=no" {
+        LingerObservedDisabled
+      } else {
+        LingerUnobservedState
+      }
   }
 }
 
@@ -610,6 +692,12 @@ fn spark_serving_observe_host_via_locus(
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
+    ),
+    runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
+    store: spark_serving_observe_model_store(context: context, host: host),
+    observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
+    linger: spark_serving_observed_linger_from_probe(
+      result: spark_serving_probe_leg_via_locus(context: context, host: host, raw_words: spark_serving_linger_probe_words()),
     ),
   )
 }
@@ -905,6 +993,12 @@ fn spark_serving_observe_host(
     account: spark_serving_account_observation_from_probes(
       passwd_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_account_probe_words()),
       key_probe: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_authorized_keys_probe_words()),
+    ),
+    runtime: spark_serving_observe_runtime_materialization(context: context, host: host),
+    store: spark_serving_observe_model_store(context: context, host: host),
+    observed_unit: spark_serving_observe_user_unit_pair(context: context, host: host),
+    linger: spark_serving_observed_linger_from_probe(
+      result: spark_serving_probe_leg(context: context, host: host, raw_words: spark_serving_linger_probe_words()),
     ),
   )
 }

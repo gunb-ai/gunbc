@@ -682,6 +682,46 @@ fn scheduled_rows_from_frozen_schedule<Row>(
   }
 }
 
+// THE OBSERVED MEMBERS AND THE ROWS PLANNED FROM THEM ARE ONE AXIS PRODUCT.
+//
+// The full-host artifact took `observed_spark` (which feeds the observed baseline) and the scheduled
+// rows as two independent parameters, so a caller could hand it members from one observation and a
+// schedule planned from another. The baseline would then fingerprint a state the rows were never
+// derived from -- and the baseline is precisely what apply re-checks to decide the plan still
+// applies, so the disagreement would be invisible at exactly the moment it mattered.
+//
+// This is the same class as the two-host defect #9754 closed and the projection-provenance one
+// beside it: a fact carried twice, joinable only by convention. Pairing them under one carrier that
+// only the row producer mints means the members that fingerprinted the baseline are the members the
+// schedule was planned from, structurally.
+// It is generic in the row for the same reason ScheduledRows is: the row type is declared upstream
+// in the plan layer, and naming it here would close an import cycle.
+type SparkServingAxisProduct<Row> sole_constructor {
+  observed_members: List<SparkServingMember>
+  rows: ScheduledRows<Row>
+}
+
+fn spark_serving_axis_product<Row>(
+  observed_members: List<SparkServingMember>,
+  rows: ScheduledRows<Row>,
+) -> SparkServingAxisProduct<Row> {
+  SparkServingAxisProduct { observed_members: observed_members, rows: rows }
+}
+
+fn spark_serving_axis_product_observed_members<Row>(a: SparkServingAxisProduct<Row>) -> List<SparkServingMember> {
+  a.observed_members
+}
+
+fn spark_serving_axis_product_rows<Row>(a: SparkServingAxisProduct<Row>) -> ScheduledRows<Row> {
+  a.rows
+}
+
+// The empty axis: a host with no Spark observation at all. Distinct from an observed host that owes
+// no writes, which arrives through the row producer with its members attached.
+fn spark_serving_axis_product_unobserved<Row>() -> SparkServingAxisProduct<Row> {
+  SparkServingAxisProduct { observed_members: [], rows: scheduled_rows_empty() }
+}
+
 fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> List<Row> {
   scheduled.rows
 }
