@@ -52,13 +52,40 @@ import v2.std.optional { Present, Absent }
 
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-data guarantee_floor_class_probe_execution_status_note: String = "READ THIS BEFORE THE SCOPE NOTE BELOW. THIS FILE DOES NOT RUN IN CI. It declares ReadsLiveTree -- truthfully, because compile_dag_diagnostic_census resolves its synthetic sources against the live checkout -- and the required floor DECLINES every ReadsLiveTree module before the fold sees it (v2.workflow.required_floor DeclinedLiveTree). So every probe here is AUTHORED evidence, green under a local gunbc run --claim-run on 2026-08-22 and executing nowhere else. That is strictly weaker than enrolment and the six gap-analysis rows it serves say so in line. The distinction is not pedantry in this file of all files: a witness that cannot execute is exactly the defect these probes exist to count, and it applies to them first. DISSOLVES with the DeclinedLiveTree arm deletion (gap analysis section 11 item 28), at which point these become executing evidence with no further authorship. Do NOT dissolve it by relabelling this file SubstrateInputsOnly."
+// READ THIS BEFORE THE SCOPE NOTE BELOW. THIS FILE DOES NOT RUN IN CI. It declares ReadsLiveTree —
+// truthfully, since compile_dag_diagnostic_census resolves its synthetic sources against the live
+// checkout — and the required floor DECLINES every ReadsLiveTree module before the fold sees it
+// (v2.workflow.required_floor DeclinedLiveTree). So every probe here is AUTHORED evidence, green
+// under a local gunbc run --claim-run on 2026-08-22 and executing nowhere else — strictly weaker
+// than enrolment, and the six gap-analysis rows it serves say so in line. In this file of all files
+// the distinction matters: a witness that cannot execute is exactly the defect these probes count,
+// and it applies to them first. DISSOLVES with the DeclinedLiveTree arm deletion (gap analysis
+// section 11 item 28), at which point these become executing evidence with no further authorship.
+// Do NOT dissolve it by relabelling this file SubstrateInputsOnly.
 
 data guarantee_floor_class_probe_scope_note: String = "WHAT THIS FILE IS. Five floor classes in docs/plans/compiler-guarantee-recovery-gap-analysis.md carried rungs established by a ONE-OFF hand execution of compile_dag_diagnostic_census on 2026-08-01 (four of them said NOT ENROLLED in their own Evidence cell; the parse-separator row cited a session's throwaway probe). A SIXTH class was authored here and REMOVED before merge: the v2.-module direct-call argument-type exemption, which gunbc#8902 landed on main as direct_call_argument_type_class while this change was in flight. One concept, one authority (DESIGN 3) — that seam is theirs, this file carries no second name for it, and the gap-analysis row for it cites their rows. Nothing re-ran any of them, so each rung was honest about the day it was measured and silent about today -- the shape DESIGN 4b meta-obligation 4 forbids. This file is the enrolment: every one of those measurements now executes on every required-floor run, and every one of them reds if the compiler's behaviour changes in either direction. FOUR OF THE FIVE ARE BELOW-FLOOR HOLES AND THEIR PROBES ARE GREEN BY DESIGN. Do not read those greens as guarantees: they pin a DEFECT (ExpectSilentAcceptanceHole, whose note explains why it is a separate variant from ExpectZeroDiagnostics) and they flip RED on the day the wall lands, which is the signal to rewrite the row as ExpectBlockingRefusal rather than to delete the probe. PROBE ADEQUACY, per the operator-adopted 2026-08-01 mandate that every below-floor row carry closure AND shape evidence: each hole ships beside a control that DOES refuse on this same harness and this same run -- the monomorphic record for generic instantiation, the declared-record field access for field-through-generics, the doubled separator for the omitted one, so a zero on the hole is the compiler's silence and never the harness failing to reach the judgment. The exhaustiveness hole's adequacy control is not re-authored here: the coproduct-scrutinee arm is already enrolled and executing at test.claim.match_exhaustiveness_coproduct_witness w_missing_coproduct_arm_reports_one_non_exhaustive, on this same harness, and duplicating it would be a second authority for one fact."
 
-data guarantee_floor_class_probe_instrument_note: String = "THE INSTRUMENT THAT PRODUCED EVERY NUMBER BELOW IS A LOCALLY BUILT gunbc, AND ITS VINTAGE WAS TESTED RATHER THAN ASSUMED. Because this file is declined by the floor (see the execution-status note above), CI never re-runs these probes, so a single local binary is the ONLY execution evidence they have -- which makes that binary a variable, not a given. CROSS-CHECK, 2026-08-22: two independently built binaries roughly fifteen hours apart were run over the same four probes -- both silent holes and both refusing controls -- and returned identical verdicts, PASS on all eight. The pairs stay DISCRIMINATING in both, which is the part that matters: a binary that refused everything or refused nothing would show up as a control flipping, and neither did. So the verdicts here are not an artifact of one build. What this does NOT establish is that any binary in this family agrees with the seed CI would use, because CI does not execute this file at all; that question dissolves with the DeclinedLiveTree arm and not before."
+// THE INSTRUMENT THAT PRODUCED EVERY NUMBER BELOW IS A LOCALLY BUILT gunbc, AND ITS VINTAGE WAS
+// TESTED RATHER THAN ASSUMED. Because the floor declines this file (see above), CI never re-runs
+// these probes; a single local binary is their ONLY execution evidence, so that binary is a
+// variable, not a given. CROSS-CHECK, 2026-08-22: two independently built binaries roughly fifteen
+// hours apart ran the same four probes — both silent holes and both refusing controls — and
+// returned identical verdicts, PASS on all eight. The pairs stay DISCRIMINATING in both, which is
+// what matters: a binary refusing everything or nothing would show as a control flipping, and
+// neither did. So the verdicts are not an artifact of one build. NOT established: that any binary
+// in this family agrees with the seed CI would use, because CI does not execute this file; that
+// question dissolves with the DeclinedLiveTree arm and not before.
 
-data guarantee_floor_class_probe_measurement_note: String = "MEASURED 2026-08-22 on this harness, full dag + src/v2 pool, before these probes were authored -- the numbers the rows below encode. generic-instantiation hole 0 rows; monomorphic control 1 blocking TypeMismatch; generic green 0. field-through-generics hole 0 rows; declared-record control 1 blocking InternalError; green 0. exhaustiveness type-variable hole 0 rows. record completeness red 1 blocking MissingField; green 0. parse list separator hole 0 rows; doubled-separator control 1 blocking ParseError; green 0. THE InternalError ROW IS PINNED AS OBSERVED, NOT AS ENDORSED: a field access naming no declared field refuses, which is the property the control exists to establish, but it refuses under a class name that says nothing about what went wrong. That is its own diagnostic-quality defect and it is recorded here rather than laundered into a nicer-sounding assertion; improving the class is a change that reds this probe, which is the correct place for the conversation to happen."
+// MEASURED 2026-08-22 on this harness, full dag + src/v2 pool, before these probes were authored —
+// the numbers the rows below encode. generic-instantiation hole 0 rows; monomorphic control 1
+// blocking TypeMismatch; generic green 0. field-through-generics hole 0 rows; declared-record
+// control 1 blocking InternalError; green 0. exhaustiveness type-variable hole 0 rows. record
+// completeness red 1 blocking MissingField; green 0. parse list separator hole 0 rows;
+// doubled-separator control 1 blocking ParseError; green 0. THE InternalError ROW IS PINNED AS
+// OBSERVED, NOT AS ENDORSED: a field access naming no declared field refuses, the property the
+// control exists to establish, but under a class name that says nothing about what went wrong. That
+// is its own diagnostic-quality defect, recorded here rather than laundered into a nicer-sounding
+// assertion; improving the class reds this probe, the correct place for the conversation.
 
 fn census_of(source: String) -> CompileDiagnosticCensus {
   compile_dag_diagnostic_census(source)
@@ -144,7 +171,6 @@ data record_completeness_green_source: String = "module probe_floor_record_full\
 data parse_list_separator_hole_source: String = "module probe_floor_list_sep\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }  Cell { n: 3 } ] }\n"
 data parse_list_separator_double_source: String = "module probe_floor_list_sep_double\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, , Cell { n: 3 } ] }\n"
 data parse_list_separator_green_source: String = "module probe_floor_list_sep_green\ntype Cell { n: Int }\nfn f() -> List<Cell> { [ Cell { n: 1 }, Cell { n: 2 }, Cell { n: 3 } ] }\n"
-
 
 test fn floor_generic_instantiation_is_still_silently_accepted() -> Bool {
   silent_hole_holds(probe: floor_generic_instantiation_hole_probe, source: generic_instantiation_hole_source)

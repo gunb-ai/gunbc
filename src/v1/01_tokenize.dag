@@ -26,8 +26,6 @@ import extdeps.languages.dag.syntax { dag_keyword_set }
 
 import v1.compiler.languages { EmojiCharEscape, canonical_emoji_char_escape }
 
-
-
 fn is_keyword_text(text: String) -> Bool {
   match lookup(dag_keyword_set, key: text) {
     Present { value: _ } => true
@@ -50,13 +48,19 @@ type TokenizerState {
   interp_depth: List<Int>
 }
 
-data v1_scan_step_note: String = "scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names — the scan result becomes a sum, and the caller decides which accumulator it lands in."
+// scan_next_token used to return exactly one Token, which encoded the assumption that every lexeme
+// becomes one. An annotation breaks that: it consumes source and produces NO semantic token. Rather
+// than smuggle it through as a token the parser must filter — the TokenRule mistake DESIGN 4c names
+// — the scan result becomes a sum, and the caller decides which accumulator it lands in.
 
 type ScanStep
   = ScannedToken { result: ScanResult }
   | ScannedAnnotation { pos: Int, capture: UnboundAnnotationCapture, interp_depth: List<Int> }
 
-data v1_tokenize_artifact_note: String = "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
+// tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller
+// (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is
+// the authored result. The projection direction is one-way on purpose: a semantic consumer cannot
+// reach annotation text.
 
 type V1LexArtifact {
   tokens: List<Token>
@@ -175,7 +179,13 @@ fn preceded_by_blank_line(source: SourceRef, pos: Int) -> Bool {
   }
 }
 
-data v1_annotation_line_lookback_note: String = "Whether the previous line is a STANDALONE annotation line — indentation then the `//` delimiter — observed here beside preceded_by_blank_line for the same reason it is: the physical lines are consumed before attachment runs, so block continuation cannot be re-derived later. A trailing comment on a code line deliberately does not count. The rule this bit feeds treats an annotation-preceded capture as a continuation of the block the previous line belongs to; a capture under a code line continues nothing, whatever that code line happens to carry after its code. The walk is bounded by one line."
+// Whether the previous line is a STANDALONE annotation line — indentation then the `//` delimiter —
+// observed here beside preceded_by_blank_line for the same reason it is: the physical lines are
+// consumed before attachment runs, so block continuation cannot be re-derived later. A trailing
+// comment on a code line deliberately does not count. The rule this bit feeds treats an
+// annotation-preceded capture as a continuation of the block the previous line belongs to; a
+// capture under a code line continues nothing, whatever that code line happens to carry after its
+// code. The walk is bounded by one line.
 
 fn tokenize_line_first_content_pos(source: SourceRef, pos: Int, end: Int) -> Int {
   if pos >= end {
@@ -518,21 +528,54 @@ fn process_escapes(chars: List<Int>) -> EscapeProcessResult {
   process_escapes_loop(source: chars, pos: 0, acc: [])
 }
 
-data code_point_at_accessor_note: String = "Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but the Rust realization of an index is a bare element that panics out of range. The two disagree, so wherever the emitter acts on the declared type it emits a coercion the realization cannot satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64` (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary. It works because return position is not checked against the body (recorded on the finalization carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together with those two when the index model and its realization are reconciled — either the index realizes as an Option or it types as the element — at which point return-position typechecking would red all three at once."
+// Why this accessor exists rather than indexing inline. `04_access.check_index_access_node` types a
+// list index as OPTIONAL (`with_optional_cardinality`) — an out-of-range index has no value — but
+// the Rust realization of an index is a bare element that panics out of range. The two disagree, so
+// wherever the emitter acts on the declared type it emits a coercion the realization cannot
+// satisfy: passing `chars[i]` straight to a declared fn parameter emits `.expect(...)` on an `i64`
+// (E0599). Untouched positions — a let binding, a comparison, arithmetic, a builtin call — happen
+// to line up, which is why the corpus has exactly one prior index-as-argument site and it calls the
+// BUILTIN `from_code_point`. This accessor is the same shape as `source_code_point` and
+// `source_char` above: a declared `-> Int` return is what carries the value across a fn boundary.
+// It works because return position is not checked against the body (recorded on the finalization
+// carrier, #7481), so it is borrowed load-bearing behavior, not a guarantee. Dissolves together
+// with those two when the index model and its realization are reconciled — either the index
+// realizes as an Option or it types as the element — at which point return-position typechecking
+// would red all three at once.
 
 fn code_point_at(chars: List<Int>, pos: Int) -> Int {
   chars[pos]
 }
 
-data escape_code_point_table_note: String = "The escape table below is written in code points because the whole tokenizer is: scan_token compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116 `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL, 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings instead, which is what forced it to re-index a raw String and made it the last quadratic scan in the file."
+// The escape table below is written in code points because the whole tokenizer is: scan_token
+// compares `ch == 61 && next_ch == 62` for `=>`, source_scan_to_eol compares `== 10`. The decimal
+// literals here are the same alphabet: 34 double-quote, 48 `0`, 92 backslash, 110 `n`, 114 `r`, 116
+// `t`, 117 `u`, 120 `x`, 123 open-brace, 125 close-brace; the values they resolve TO include 0 NUL,
+// 10 line-feed, 13 carriage-return, and 9 tab. This function used to compare one-character Strings
+// instead, which is what forced it to re-index a raw String and made it the last quadratic scan in
+// the file.
 
 data escape_receipt_seed_growth_mark: String = "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness_test constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks."
 
 data hex_escape_note: String = "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies)."
 
-data unicode_escape_note: String = "\\u\{H...\} decodes one to six hexadecimal digits to one Unicode scalar value. The shared std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of disappearing in runtime conversion. Before this arm every \\u escape fell through to unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look for printable escape text instead of NUL. The scanner consumes the opening brace with the escape prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation remains owned by this decoder rather than duplicated into the span scan."
+// \u{H...} decodes one to six hexadecimal digits to one Unicode scalar value. The shared
+// std.unicode.types.unicode_scalar authority denoted by the Char refinement is checked before
+// chars_to_string, so values above 0x10FFFF and the UTF-16 surrogate interval refuse instead of
+// disappearing in runtime conversion. Before this arm every \u escape fell through to
+// unknown-escape passthrough as eight or more literal characters. That made extdeps.render.ansi's
+// 32 ECMA-48 C1 rows inert and, more severely, made effect_plan_bash_materialize's NUL guard look
+// for printable escape text instead of NUL. The scanner consumes the opening brace with the escape
+// prefix so a valid hex digit A-F cannot be misread as an interpolation start; digit accumulation
+// remains owned by this decoder rather than duplicated into the span scan.
 
-data unknown_escape_refusal_note: String = "An escape marker has already entered a closed grammar production, so an unrecognized or malformed escape refuses as one located ShUnknown string token; it never returns a successfully decoded prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled \\\\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier migrated with this close, and the whole corpus is the receipt because every source passes through this tokenizer."
+// An escape marker has already entered a closed grammar production, so an unrecognized or malformed
+// escape refuses as one located ShUnknown string token; it never returns a successfully decoded
+// prefix and never copies unsupported syntax into an accepted value. A literal backslash is spelled
+// \\. The former passthrough arm made unsupported syntax indistinguishable from supported syntax
+// and was the root class behind the inert Unicode escapes. Its 142-site regex-heavy corpus frontier
+// migrated with this close, and the whole corpus is the receipt because every source passes through
+// this tokenizer.
 
 fn hex_digit_value(cp: Int) -> Int? {
   if cp >= 48 && cp <= 57 {

@@ -8,7 +8,18 @@ import std.types { List, NonEmptyStr, list_length }
 // Generic acquisition funnel mechanism, sibling to gunbc.econ.scm_serving_model: stages are PARAMETERS (declared labels on scenario rows, never baked into the mechanism), conversion rates are exact Nat fractions (never floats), and every underivable input refuses with a typed, located cause. This module is mechanism only -- instantiations with actual assumptions carry their own citations and live elsewhere. Vendor stage vocabularies to instantiate stage labels against are cited in extdeps.crm (Salesforce opportunity stages, HubSpot lifecycle stages); channel pricing interfaces for entry unit costs are cited in extdeps.advertising.
 type ConversionRate = FieldOfFractions<Nat>
 
-data conversion_rate_note: String = "A conversion rate is an exact fraction and CONSUMES the std.algebra FieldOfFractions carrier at Nat (non-negative fractions): num is the converted count, denom is the cohort count -- 1 of 40 stays 1/40, never 0.025. Composition multiplies num and denom; nothing in the mechanism divides until a consumer explicitly asks for the floor projection, so the exact fraction is the authority and the floor is a declared lossy view. Fixed-scale dimensionless carriers (Percent, BasisPoint) do not absorb this concept -- projecting onto any fixed scale loses the exactness (1 of 3 has no exact basis-point image). The at-most-unity semantics (num at most denom) is a conversion-rate FACT enforced by typed refusal at composition, not a property of the generic fraction carrier. An earlier revision of this note claimed no std exact-rational carrier existed on main and minted a local pair; refuted against the tree by review 45963 (std.algebra FieldOfFractions carries the grounded num/denom body and std.rational.Rational builds on it), so the local pair was dissolved into the authority."
+// A conversion rate is an exact fraction and CONSUMES the std.algebra FieldOfFractions carrier at
+// Nat (non-negative fractions): num is the converted count, denom is the cohort count -- 1 of 40
+// stays 1/40, never 0.025. Composition multiplies num and denom; nothing in the mechanism divides
+// until a consumer explicitly asks for the floor projection, so the exact fraction is the authority
+// and the floor is a declared lossy view. Fixed-scale dimensionless carriers (Percent, BasisPoint)
+// do not absorb this concept -- projecting onto any fixed scale loses the exactness (1 of 3 has no
+// exact basis-point image). The at-most-unity semantics (num at most denom) is a conversion-rate
+// FACT enforced by typed refusal at composition, not a property of the generic fraction carrier. An
+// earlier revision of this note claimed no std exact-rational carrier existed on main and minted a
+// local pair; refuted against the tree by review 45963 (std.algebra FieldOfFractions carries the
+// grounded num/denom body and std.rational.Rational builds on it), so the local pair was dissolved
+// into the authority.
 
 type AcquisitionStageStep {
   stage_label: NonEmptyStr
@@ -40,7 +51,16 @@ type AcquisitionCostForecast {
   entry_unit_cost: MoneyOnce
 }
 
-data acquisition_forecast_distinctness_note: String = "AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be passed where an actual is required -- the distinction is structural, not a naming convention. Money stays on the std.measure MoneyOnce carrier (currency and micro denomination live there, never as bare scalars beside it), and the cost per outcome is DERIVED, never stored: the exact value is entry_unit_cost scaled by denom over num on the ConversionRate fraction. Every forecast the derivation PRODUCES carries a nonzero num (a zero numerator refuses before composition), but the record itself remains publicly constructible with num zero, so the floor projection below does not trust its caller: it is total by typed refusal, returning none on a zero num rather than dividing."
+// AcquisitionCostForecast is a FORECAST carrier: a derived consequence of declared assumptions. It
+// shares no type with any observation or Measured row anywhere in the tree, so a forecast cannot be
+// passed where an actual is required -- the distinction is structural, not a naming convention.
+// Money stays on the std.measure MoneyOnce carrier (currency and micro denomination live there,
+// never as bare scalars beside it), and the cost per outcome is DERIVED, never stored: the exact
+// value is entry_unit_cost scaled by denom over num on the ConversionRate fraction. Every forecast
+// the derivation PRODUCES carries a nonzero num (a zero numerator refuses before composition), but
+// the record itself remains publicly constructible with num zero, so the floor projection below
+// does not trust its caller: it is total by typed refusal, returning none on a zero num rather than
+// dividing.
 
 type AcquisitionForecastResult
   = AcquisitionForecastDerived { forecast: AcquisitionCostForecast }

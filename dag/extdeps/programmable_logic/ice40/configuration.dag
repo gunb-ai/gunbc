@@ -18,11 +18,25 @@ import extdeps.programmable_logic.ice40.supply {
   configuration_modes_equal,
 }
 
-data ice40_configuration_note: String = "THE CONFIGURATION PORT, from Table 4.28 SPI Master or NVCM Configuration Time and Table 4.29 sysCONFIG Port Timing Specifications of iCE40 LP/HX Family Data Sheet FPGA-DS-02029, Version 4.3, February 2025. TWO THINGS IN THESE TABLES ARE NOT NUMBERS AND WOULD HAVE BECOME ONE. First, a timing row APPLIES TO SOME MODES AND NOT OTHERS: tCR_SCK is a slave-SPI row and asking for it on a master-SPI board is asking about a transaction that board never performs, which is a different state from the specification being unknown. Second, the high-frequency tCONFIG values were DELETED by a revision of this document — the change history records the deletion for every device — and note 3 says high frequency is supported only on SPI Master. A blank cell in a published table is not zero, not the low-frequency figure, and not an oversight to fill in from a previous revision; it is the vendor withdrawing a number, and a model that carried the old value would be asserting a specification the vendor has retracted. A READING NOTE ON THE TABLE ITSELF: Table 4.29 carries a condition column between Parameter and Min, so the 200 ns against tCRESET_B sits in the MINIMUM column and not the typical one. That was checked rather than assumed, because reading it one column left would have turned a minimum pulse width into a typical one — and a design built to a typical where a minimum is required fails intermittently, which is the worst way to fail."
+// THE CONFIGURATION PORT, from Table 4.28 SPI Master or NVCM Configuration Time and Table 4.29
+// sysCONFIG Port Timing Specifications of iCE40 LP/HX Family Data Sheet FPGA-DS-02029, Version 4.3,
+// February 2025. TWO THINGS IN THESE TABLES ARE NOT NUMBERS AND WOULD HAVE BECOME ONE. First, a
+// timing row APPLIES TO SOME MODES AND NOT OTHERS: tCR_SCK is a slave-SPI row, and asking for it on
+// a master-SPI board asks about a transaction that board never performs — a different state from
+// the specification being unknown. Second, the high-frequency tCONFIG values were DELETED by a
+// revision of this document — the change history records the deletion for every device — and note 3
+// says high frequency is supported only on SPI Master. A blank cell in a published table is not
+// zero, not the low-frequency figure, and not an oversight to fill from a previous revision; it is
+// the vendor withdrawing a number, and a model carrying the old value would assert a retracted
+// specification. A READING NOTE ON THE TABLE ITSELF: Table 4.29 carries a condition column between
+// Parameter and Min, so the 200 ns against tCRESET_B sits in the MINIMUM column, not the typical.
+// Checked rather than assumed, because reading one column left would turn a minimum pulse width
+// into a typical — and a design built to a typical where a minimum is required fails
+// intermittently, the worst way to fail.
 
-// THE SIGNALS THE CONFIGURATION PORT PRESENTS. SPI_SS carries the name this revision gives it:
-// the change history records that SPI_SS_B was renamed to SPI_SS in the Signal Descriptions table,
-// so a model spelling it the old way is citing a document that no longer exists under that name.
+// THE SIGNALS THE CONFIGURATION PORT PRESENTS. SPI_SS carries the name this revision gives it: the
+// change history records SPI_SS_B renamed to SPI_SS in the Signal Descriptions table, so the old
+// spelling cites a document that no longer exists under that name.
 
 // This module's own citation of the same data sheet. It is a literal because the corpus wall reads
 // the anchor structurally and cannot see a binding to a sibling's value - see the note in
@@ -53,9 +67,9 @@ fn configuration_signal_name(s: Ice40ConfigurationSignal) -> NonEmptyStr {
   }
 }
 
-// A TIMING ROW HAS A SCOPE, and the scope is part of the fact. A row that applies to every mode
-// and a row that applies only to slave SPI are different claims, and a consumer asking a
-// master-SPI board about tCR_SCK is asking about a transaction that board does not perform.
+// A TIMING ROW HAS A SCOPE, and the scope is part of the fact. A row applying to every mode and one
+// applying only to slave SPI are different claims; asking a master-SPI board about tCR_SCK asks
+// about a transaction it does not perform.
 type TimingScope
   = AllConfigurationModes
   | OnlyUnderMode { mode: Ice40ConfigurationMode }
@@ -70,25 +84,24 @@ fn scope_admits(s: TimingScope, m: Ice40ConfigurationMode) -> Bool {
 
 // THE COLUMN A VALUE CAME FROM IS CARRIED, because a minimum and a typical are different
 // obligations and the table states both. A design built to a typical where the document gives a
-// minimum meets the specification on average and violates it intermittently, which is the failure
-// mode hardest to find. Carrying the column means a consumer wanting a guaranteed bound can
-// refuse a typical rather than silently accept it.
+// minimum meets the specification on average and violates it intermittently — the failure hardest
+// to find. Carrying the column lets a consumer wanting a guaranteed bound refuse a typical rather
+// than silently accept it.
 type SpecColumn
   = MinimumColumn
   | TypicalColumn
   | MaximumColumn
 
 // THE QUANTITY IS TYPED, and the heterogeneity is what makes it a coproduct rather than a number
-// beside a unit string. An earlier revision of this module carried value: Int with unit:
-// NonEmptyStr holding "ns", "us", "MHz" and "clock cycles" - a unit written in a name, which is a
-// unit no consumer can read, so a nanosecond and a megahertz became the same type and comparing
-// them typechecked. This module's sibling says exactly that about package dimensions; the excuse
-// here was that the rows genuinely differ in kind, and rows differing in kind is the definition of
-// a coproduct, not a licence for a string.
+// beside a unit string. An earlier revision carried value: Int with unit: NonEmptyStr holding "ns",
+// "us", "MHz" and "clock cycles" — a unit written in a name, which no consumer can read, so a
+// nanosecond and a megahertz became one type and comparing them typechecked. This module's sibling
+// says exactly that about package dimensions; the excuse here was that the rows differ in kind, and
+// rows differing in kind is the definition of a coproduct, not a licence for a string.
 //
-// A clock-cycle count is deliberately NOT a Measure. It is a cardinality, like the contact count
-// in the subject module: forty-nine cycles is a number of things, and how long they take depends
-// on a clock this table does not name.
+// A clock-cycle count is deliberately NOT a Measure. It is a cardinality, like the contact count in
+// the subject module: forty-nine cycles is a number of things, and how long they take depends on a
+// clock this table does not name.
 type TimingQuantity
   = BoundInNanoseconds { value: Nanosecond }
   | BoundInMicroseconds { value: Microsecond }
@@ -152,10 +165,10 @@ fn timings_for_mode(m: Ice40ConfigurationMode) -> List<ConfigurationTiming> {
 
 // THE CONFIGURATION CLOCK SPEED SELECTION, and the arm that matters is the third one. The vendor
 // published high-frequency tCONFIG values and then DELETED them: the change history records
-// removing the high-frequency figure for every device in the family, and the surviving note says
-// high frequency is supported only on SPI Master. A withdrawn value is not an absent one — the
-// remedy for absent is to go and read; the remedy for withdrawn is that there is nothing to read,
-// and carrying the retired number would assert a specification the vendor has retracted.
+// removing the figure for every device in the family, and the surviving note says high frequency is
+// supported only on SPI Master. A withdrawn value is not an absent one — the remedy for absent is
+// to go and read; for withdrawn there is nothing to read, and carrying the retired number would
+// assert a retracted specification.
 type ConfigurationClockSelection
   = LowFrequencyDefault
   | MediumFrequency

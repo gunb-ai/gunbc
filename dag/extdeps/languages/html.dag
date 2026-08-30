@@ -252,7 +252,14 @@ data html5_void_tags: List<String> = [
   "input", "link", "meta", "param", "source", "track", "wbr",
 ]
 
-data html5_raw_text_tags_note: String = "The HTML spec's raw-text elements (HTML Standard section 13.1.2, 'Raw text elements'): script and style. Their text content is NOT entity-decoded by browsers, so entity-ESCAPING it at serialization corrupts it — a CSS child combinator '>' emitted as '&gt;' silently kills the rule in every browser (the roadmap strikethrough incident, 2026-07-24; same escape class as the dispatch-button inline-script incident). Serialization emits their text raw; the one hazard — content containing the element's own close sequence — REFUSES at try_serialize_html_source (typed, located), never emits corrupted output. textarea/title are the spec's escapable-raw-text class (entities ARE decoded there) and deliberately stay in the escaping default."
+// The HTML spec's raw-text elements (HTML Standard section 13.1.2, 'Raw text elements'): script and
+// style. Their text content is NOT entity-decoded by browsers, so entity-ESCAPING it at
+// serialization corrupts it — a CSS child combinator '>' emitted as '&gt;' silently kills the rule
+// in every browser (the roadmap strikethrough incident, 2026-07-24; same escape class as the
+// dispatch-button inline-script incident). Serialization emits their text raw; the one hazard —
+// content containing the element's own close sequence — REFUSES at try_serialize_html_source
+// (typed, located), never emits corrupted output. textarea/title are the spec's escapable-raw-text
+// class (entities ARE decoded there) and deliberately stay in the escaping default.
 
 data html5_raw_text_tags: List<String> = ["script", "style"]
 

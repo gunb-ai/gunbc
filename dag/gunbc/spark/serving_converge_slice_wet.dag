@@ -98,7 +98,11 @@ import gunbc.membership_reconcile {
   MemberRosterDuplicateKeyRefused,
 }
 
-data spark_serving_converge_slice_wet_note: String = "Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.spark.dgx_procurement OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host was observed."
+// Wet Seam 2 linger slice: observe durable Linger property on each Spark via FleetSsh (endpoint
+// from gunbc.fleet_reach_endpoint.fleet_probe_endpoint_for → gunbc.spark.dgx_procurement
+// OperatorAllocation rows, NOT fleet_intent_network DNS), plan frozen typed rows, derive apply
+// argv. Hermetic witnesses prove logic given linger_enabled input; this entry proves a REAL host
+// was observed.
 
 data spark_serving_converge_slice_wet_receipt_path: String = "target/spark-serving-converge-slice-wet-receipt.txt"
 

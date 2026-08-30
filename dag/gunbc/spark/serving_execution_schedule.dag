@@ -48,7 +48,16 @@ import gunbc.spark.serving_membership {
 // from validation to construction -- there is no authored sequence left to get wrong, and a new
 // address cannot be given a position in the order at all, only facts, from which its position
 // follows.
-data spark_serving_execution_schedule_authority_note: String = "Execution order for a Spark serving convergence is DERIVED from per-address requires/establishes resource facts and scheduled by the one v2.workflow.scheduler kernel bound to SparkServingMemberAt -- never authored, never the membership diff's row order, which is a set difference with no order. A required fact with no provider among the planned rows and no observed establishment REFUSES (SparkServingScheduleMissingProvider); two providers for one fact REFUSE (SparkServingScheduleAmbiguousProvider); a cycle REFUSES through the kernel's own SchedulerPlanBlocked arm rather than through a second cycle check authored here. Apply consumes SparkServingFrozenExecutionSchedule and nothing else: the carrier has one constructor, reachable only through spark_serving_freeze_execution_schedule, so a row list cannot be handed to actuation in the order it was diffed."
+// Execution order for a Spark serving convergence is DERIVED from per-address requires/establishes
+// resource facts and scheduled by the one v2.workflow.scheduler kernel bound to
+// SparkServingMemberAt -- never authored, never the membership diff's row order, which is a set
+// difference with no order. A required fact with no provider among the planned rows and no observed
+// establishment REFUSES (SparkServingScheduleMissingProvider); two providers for one fact REFUSE
+// (SparkServingScheduleAmbiguousProvider); a cycle REFUSES through the kernel's own
+// SchedulerPlanBlocked arm rather than through a second cycle check authored here. Apply consumes
+// SparkServingFrozenExecutionSchedule and nothing else: the carrier has one constructor, reachable
+// only through spark_serving_freeze_execution_schedule, so a row list cannot be handed to actuation
+// in the order it was diffed.
 
 // WHAT A RESOURCE IS, AS A FACT ANOTHER RESOURCE CAN DEPEND ON.
 //

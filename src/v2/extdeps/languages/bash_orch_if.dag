@@ -430,7 +430,12 @@ fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: St
   )
 }
 
-data bash_stmt_if_else_block_note: String = "Same If/else semantics as bash_stmt_if_else_tokens, spelled with real newlines around each body instead of the single-line \"; then \"/\"; else \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when either arm's Pipeline carries more than one step — see bash_stmt_if_block_note (bash.dag) for why this is a formatting realization, not a correctness fix. Reuses bash_stmt_if_cond/bash_stmt_if_body/bash_stmt_if_else_body as binding keys, same fields as the inline row."
+// Same If/else semantics as bash_stmt_if_else_tokens, spelled with real newlines around each body
+// instead of the single-line "; then "/"; else "/"; fi" join. Selected by orch_emit_if_step
+// (05_emit_orchestration.dag) when either arm's Pipeline carries more than one step — see
+// bash_stmt_if_block_note (bash.dag) for why this is a formatting realization, not a correctness
+// fix. Reuses bash_stmt_if_cond/bash_stmt_if_body/bash_stmt_if_else_body as binding keys, same
+// fields as the inline row.
 
 fn bash_stmt_if_else_block_tokens() -> List<ConcreteSyntaxToken> {
   [

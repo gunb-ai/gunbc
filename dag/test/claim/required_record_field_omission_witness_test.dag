@@ -15,7 +15,14 @@ import tools.multi_module_compile_fixture {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data required_record_field_omission_witness_note: String = "Construction control for the v1 NodeOccurrenceIdentity carrier. The negative and positive manifests differ only in whether the required `occurrence_identity` field is supplied. The negative reaches the isolated v1-to-Rust compiler and observes exactly one blocking MissingField row naming occurrence_identity; FixtureInstrumentRefused cannot impersonate that refusal. The positive reaches Rust emission with no diagnostics and a nonempty artifact population. Both measured arms carry nonempty source and compiler digests, binding the receipt to the ordered manifest and running transform. This instrument does not assert interpreter behavior or any non-Rust render target."
+// Construction control for the v1 NodeOccurrenceIdentity carrier. The negative and positive
+// manifests differ only in whether the required `occurrence_identity` field is supplied. The
+// negative reaches the isolated v1-to-Rust compiler and observes exactly one blocking MissingField
+// row naming occurrence_identity; FixtureInstrumentRefused cannot impersonate that refusal. The
+// positive reaches Rust emission with no diagnostics and a nonempty artifact population. Both
+// measured arms carry nonempty source and compiler digests, binding the receipt to the ordered
+// manifest and running transform. This instrument does not assert interpreter behavior or any
+// non-Rust render target.
 
 fn required_record_field_fixture(source: String) -> MultiModuleCompileFixtureOutcome {
   compile_fixture(MultiModuleCompileFixture {

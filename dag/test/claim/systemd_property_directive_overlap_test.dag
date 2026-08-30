@@ -14,7 +14,16 @@ import std.dissolution { dissolution_trigger_ref, DissolutionCondition, BoundDis
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data overlap_witness_doc: String = "WHAT THESE WITNESSES ARE FOR, given the carrier they cover records a defect rather than repairing one. The risk with a recorded-and-not-repaired finding is that the record rots into prose nobody can check: someone splits the coproduct, or widens it, and the row still says what it said. So the claims below are about the TYPE, not about the note. The classification is asserted on both sides at named members, the mixing predicate is asserted to be currently TRUE, and the dissolution is asserted to name the declaration whose disappearance is the completion.\n\nThe mixing predicate is the one that will change, and its going FALSE is the intended future event rather than a regression -- at which point this witness and the carrier retire together, which is exactly what the DeclarationRetires trigger describes."
+// WHAT THESE WITNESSES ARE FOR, given the carrier they cover records a defect rather than repairing
+// one. The risk with a recorded-and-not-repaired finding is that the record rots into prose nobody
+// can check: someone splits the coproduct, or widens it, and the row still says what it said. So
+// the claims below are about the TYPE, not about the note. The classification is asserted on both
+// sides at named members, the mixing predicate is asserted to be currently TRUE, and the
+// dissolution is asserted to name the declaration whose disappearance is the completion.
+//
+// The mixing predicate is the one that will change, and its going FALSE is the intended future
+// event rather than a regression -- at which point this witness and the carrier retire together,
+// which is exactly what the DeclarationRetires trigger describes.
 
 // THE CLASSIFICATION IS ASSERTED AT NAMED MEMBERS ON BOTH SIDES, not by counting. A member on the
 // wrong side is the defect that would make the whole carrier misleading -- it would license writing

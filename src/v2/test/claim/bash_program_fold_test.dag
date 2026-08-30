@@ -43,10 +43,13 @@ import v2.test.claim.bash_program_fold_support {
   bash_program_fold_tag_with_redir
 }
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data bash_program_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each test compares bash_emit_program (row-emit) against its golden only, so a row/emitter regression cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
+// Goldens below are hand-authored expected bytes, deliberately independent of
+// extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each
+// test compares bash_emit_program (row-emit) against its golden only, so a row/emitter regression
+// cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden
+// pattern).
 
 data bash_program_fold_sample_set_e_golden: String = "set -e\n'echo' 'hi'\nX='1'\n"
 data bash_program_fold_sample_no_set_e_golden: String = "'echo' 'hi'\nX='1'\n"
@@ -62,13 +65,25 @@ data bash_program_mktemp_rm_golden: String = "set -e\nOUT=$('mktemp' '-d')\n'rm'
 data bash_program_metachars_quoted_golden: String = "'echo' '$(rm -rf /)'\n"
 data bash_program_varref_vs_lit_golden: String = "\"$ROOT\" 'ROOT'\n"
 
-data bash_program_real_offline_disposition_note: String = "Real-program golden probes execute as test fns under src/v2/test/claim/long/bash_program_real_probes_witness_test.dag (OfflineLocalRecipe) — review 43557; never if-false pins. Goldens below remain the oracle in this module."
+// Real-program golden probes execute as test fns under
+// src/v2/test/claim/long/bash_program_real_probes_witness_test.dag (OfflineLocalRecipe) — review
+// 43557; never if-false pins. Goldens below remain the oracle in this module.
 
 data bash_program_real_witness_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nV1_DAG_PARSE=\"$ROOT\"'/target/release/v1srcdag_parse'\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'v1srcdag_parse') || exit 1; fi\nif '[' '!' '-x' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\nif '[' '!' '-s' \"$V1_DAG_PARSE\" ']'; then 'echo' '::error::build verification: declared artifact '\\''v1srcdag_parse'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$V1_DAG_PARSE\" >&2; exit 1; fi\n'cd' \"$ROOT\"\n\"$V1_DAG_PARSE\" '--entry' 'dag/std/algebra.dag'\n"
 
 data bash_program_real_claims_golden: String = "set -e\nROOT=$('git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd')\nGUNBC=\"$ROOT\"'/target/release/gunbc'\nif '[' '!' '-x' \"$GUNBC\" ']'; then ('cd' \"$ROOT\" && 'cargo' 'build' '-p' 'v1-compiler' '--release' '--bin' 'gunbc') || exit 1; fi\nif '[' '!' '-x' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' absent or not executable after a '\\''successful'\\'' build (sccache/cache corruption — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\nif '[' '!' '-s' \"$GUNBC\" ']'; then 'echo' '::error::build verification: declared artifact '\\''gunbc'\\'' is zero-byte after a '\\''successful'\\'' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: '\"$GUNBC\" >&2; exit 1; fi\n\"$GUNBC\" 'run' '--source-root' 'src/v2' '--source-root' 'dag' '--entry' 'src/v2/test/claim/bash_program_fold_test.dag' '--function' 'bash_program_serialize_matches_golden_holds' '--claim-run'\n"
 
-data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-golden oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
+// The exit-in-joined-tail tests below are the discriminating controls for the improper-string class
+// fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling
+// attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-golden
+// oracle alone can be fooled when both sides carry the same hybrid - which is why the
+// literal-equality witness exists: it is normalization-independent). Red before the concat
+// grounding of serialize_concrete_syntax_tokens_to_source_string /
+// target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after.
+// Declared residue of the same class (not yet grounded, no bash-row consumer today): the
+// type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the
+// list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds
+// them the same way (native concat accumulator), priced by the first oracle that reds on them.
 
 fn bash_program_fold_sample_specials() -> List<BashEmitSpecial> {
   [
@@ -212,7 +227,6 @@ test fn bash_program_serialize_concat_matches_golden_holds() -> Bool {
   )
 }
 
-
 test fn bash_program_assign_root_matches_golden_holds() -> Bool {
   bash_emit_program_matches_golden(
     statements: [bash_program_fold_tag_assign(node: bash_program_fixture_assign_root_node())],
@@ -282,5 +296,4 @@ test fn bash_program_andor_exit_matches_golden_holds() -> Bool {
     golden: bash_program_andor_exit_golden
   )
 }
-
 

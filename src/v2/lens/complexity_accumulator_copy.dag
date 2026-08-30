@@ -28,7 +28,18 @@ type PortReading
   | PortComputedExpression { mentions: List<Symbol> }
   | PortMissing
 
-data port_mentions_note: String = "PortComputedExpression carries the value identifiers the expression MENTIONS (collected by the same walk that decides the 0/1/many identifier split - one authority). Without the payload, a carrier buried inside a non-call computed argument (Wrapped { inner: acc }) reaching an UNREGISTERED combiner was a silent false-clean: the reading destroyed the occurrence at construction time, any_port_carries_carrier saw nothing, and no descendant call capture existed to catch it. Mentions make the unregistered-combiner arm fail closed: intersect(mentions, carriers) => ^combiner_unregistered_carrier_reaches. BindsComputed carries the same payload with the RHS's raw mentions (depth-1; see mentions_depth_note in the analyze module for why bind-time substitution was priced and deferred to Stage B). The collector itself is the linear accumulator-threading walk and earns one honest ^combiner_unregistered_carrier_reaches refusal from this lens (see roster_lens_traversal_ceiling_note in the roster gate) - linearity wins over lens-greenness per the bare-minimum-cost rule."
+// PortComputedExpression carries the value identifiers the expression MENTIONS (collected by the
+// same walk that decides the 0/1/many identifier split - one authority). Without the payload, a
+// carrier buried inside a non-call computed argument (Wrapped { inner: acc }) reaching an
+// UNREGISTERED combiner was a silent false-clean: the reading destroyed the occurrence at
+// construction time, any_port_carries_carrier saw nothing, and no descendant call capture existed
+// to catch it. Mentions make the unregistered-combiner arm fail closed: intersect(mentions,
+// carriers) => ^combiner_unregistered_carrier_reaches. BindsComputed carries the same payload with
+// the RHS's raw mentions (depth-1; see mentions_depth_note in the analyze module for why bind-time
+// substitution was priced and deferred to Stage B). The collector itself is the linear
+// accumulator-threading walk and earns one honest ^combiner_unregistered_carrier_reaches refusal
+// from this lens (see roster_lens_traversal_ceiling_note in the roster gate) - linearity wins over
+// lens-greenness per the bare-minimum-cost rule.
 
 type Finding
   = Poly2Suspect { at: Node, cost: v2.lens.cost.SymbolicCost }
@@ -81,7 +92,16 @@ type LetBinding {
   fact: LetBindingFact
 }
 
-data let_binding_note: String = "The within-body definition closure (Stage A: def edges decide aliasing). A let binder whose RHS closes to a CARRIER joins the carriers list at bind time - transitive closure by construction, so `let g = acc  let h = g` proves h - and needs no carrier here. BindsFresh (RHS a pure literal) and BindsComputed (RHS a computed expression) substitute the port reading via resolve_port_reading BEFORE classification, so classify_call and the copied-port lattice stay untouched. A binder whose RHS is a bare name that closes to NOTHING (unbound in scope) records NO binding: its uses still refuse ^copied_port_name_may_alias - the closure only ever DECIDES, never defaults clean. Reader today: the analyze traversal's let-spine arm over surface captures (binding-name lexeme stamping, dag_grammar_let_expr); repoints to Bind definition edges when stmt-chain lowering lands, deleting the surface read."
+// The within-body definition closure (Stage A: def edges decide aliasing). A let binder whose RHS
+// closes to a CARRIER joins the carriers list at bind time - transitive closure by construction, so
+// `let g = acc  let h = g` proves h - and needs no carrier here. BindsFresh (RHS a pure literal)
+// and BindsComputed (RHS a computed expression) substitute the port reading via
+// resolve_port_reading BEFORE classification, so classify_call and the copied-port lattice stay
+// untouched. A binder whose RHS is a bare name that closes to NOTHING (unbound in scope) records NO
+// binding: its uses still refuse ^copied_port_name_may_alias - the closure only ever DECIDES, never
+// defaults clean. Reader today: the analyze traversal's let-spine arm over surface captures
+// (binding-name lexeme stamping, dag_grammar_let_expr); repoints to Bind definition edges when
+// stmt-chain lowering lands, deleting the surface read.
 
 fn no_let_binding_fact() -> Optional<LetBindingFact> {
   Absent

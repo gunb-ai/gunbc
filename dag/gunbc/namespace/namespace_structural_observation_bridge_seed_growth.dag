@@ -5,7 +5,10 @@ import std.types { String }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.seed_growth { SeedGrowthJustification }
 
-data namespace_structural_observation_bridge_seed_growth_note: String = "Seed-growth obligation for the host bridge that carries the v1 parser walk's four in-file visibility observations to the dag closing check for roadmap node namespace-structural-observations. Homed beside the obligation it declares rather than in gunbc.seed_growth_admission, which owns the roster and the join."
+// Seed-growth obligation for the host bridge that carries the v1 parser walk's four in-file
+// visibility observations to the dag closing check for roadmap node
+// namespace-structural-observations. Homed beside the obligation it declares rather than in
+// gunbc.seed_growth_admission, which owns the roster and the join.
 
 data namespace_structural_observation_bridge_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

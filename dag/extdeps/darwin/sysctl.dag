@@ -13,7 +13,27 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data darwin_sysctl_subject_note: String = "sysctl IS DARWIN'S ANSWER TO /proc/meminfo, and modeling it is what lets the memory governor stop treating macOS as a platform with no memory facts. The corpus previously reached a terminal arm on any host without /proc and reported having read a file that does not exist there; the honest repair is not a better label for the absence, it is to read the interface the platform actually provides.\n\nWHAT THIS MODULE OWNS: the named MIB entries this repository reads and their units. hw.memsize is total physical RAM in BYTES — note the contrast with /proc/meminfo, whose fields are kibibytes, so a consumer that shared one parser across both would be wrong by 1024x in the same direction as the ru_maxrss trap one module over. hw.pagesize is the VM page size in bytes, required to turn Mach page counts into byte quantities.\n\nOBSERVED LIVE on the operator's machine, 2026-08-05: hw.memsize = 17179869184 (exactly 16 GiB) and hw.pagesize = 16384 (Apple silicon's 16 KiB pages, not the 4096 an x86 habit would assume — which is precisely the constant a hand-written page-count conversion gets wrong).\n\nWHAT THIS MODULE DOES NOT OWN: an available-memory figure. Darwin exposes no single MemAvailable equivalent; the nearest construction sums free, inactive and speculative page counts from Mach VM statistics, and whether that sum is the right analogue is a judgement this module declines to make silently. Total physical RAM is a fact; a derived availability estimate would be a model, and it belongs where its assumptions can be stated."
+// sysctl IS DARWIN'S ANSWER TO /proc/meminfo, and modeling it is what lets the memory governor stop
+// treating macOS as a platform with no memory facts. The corpus previously reached a terminal arm
+// on any host without /proc and reported having read a file that does not exist there; the honest
+// repair is not a better label for the absence, it is to read the interface the platform actually
+// provides.
+//
+// WHAT THIS MODULE OWNS: the named MIB entries this repository reads and their units. hw.memsize is
+// total physical RAM in BYTES — note the contrast with /proc/meminfo, whose fields are kibibytes,
+// so a consumer that shared one parser across both would be wrong by 1024x in the same direction as
+// the ru_maxrss trap one module over. hw.pagesize is the VM page size in bytes, required to turn
+// Mach page counts into byte quantities.
+//
+// OBSERVED LIVE on the operator's machine, 2026-08-05: hw.memsize = 17179869184 (exactly 16 GiB)
+// and hw.pagesize = 16384 (Apple silicon's 16 KiB pages, not the 4096 an x86 habit would assume —
+// which is precisely the constant a hand-written page-count conversion gets wrong).
+//
+// WHAT THIS MODULE DOES NOT OWN: an available-memory figure. Darwin exposes no single MemAvailable
+// equivalent; the nearest construction sums free, inactive and speculative page counts from Mach VM
+// statistics, and whether that sum is the right analogue is a judgement this module declines to
+// make silently. Total physical RAM is a fact; a derived availability estimate would be a model,
+// and it belongs where its assumptions can be stated.
 
 type DarwinSysctlMib
   = HwMemsize

@@ -48,7 +48,10 @@ import v2.std.algebra { length, list_append, list_map }
 // of the two happened -- the distinction is carried in the text rather than in the status, because
 // an admission gate that exited zero on an unobservable change would be the empty-observation
 // narrow arriving through the exit code.
-data rust_item_census_instrument_note: String = "Named instrument for the item-grain Rust census. Writes the merge-base-to-HEAD change population, the live hand-Rust population, and the seed-growth admission verdict computed from them. Exit status is the ADMISSION verdict, not the instrument's own completion: an unjustified addition and an unobservable change both exit nonzero, and the report says which."
+// Named instrument for the item-grain Rust census. Writes the merge-base-to-HEAD change population,
+// the live hand-Rust population, and the seed-growth admission verdict computed from them. Exit
+// status is the ADMISSION verdict, not the instrument's own completion: an unjustified addition and
+// an unobservable change both exit nonzero, and the report says which.
 
 fn item_row(item: RustItemIdentity) -> String {
   concat(

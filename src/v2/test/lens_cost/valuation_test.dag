@@ -265,7 +265,12 @@ test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {
   }
 }
 
-data log_cause_separation_note: String = "Four witnesses for one construct, because a logarithm fails in three unrelated ways and an earlier revision of the evaluator reported every non-refusing case as UngroundedLogArgument - ignoring the base entirely, so base 0 read as an ARGUMENT problem and a fully grounded argument was called UNGROUNDED. Each witness pins one cause. The discriminating pair is base-zero against grounded-argument: under the earlier arm both answered the same cause, so either one alone would have passed while the arm was wrong, and only asserting that they differ catches it."
+// Four witnesses for one construct, because a logarithm fails in three unrelated ways and an
+// earlier revision of the evaluator reported every non-refusing case as UngroundedLogArgument -
+// ignoring the base entirely, so base 0 read as an ARGUMENT problem and a fully grounded argument
+// was called UNGROUNDED. Each witness pins one cause. The discriminating pair is base-zero against
+// grounded-argument: under the earlier arm both answered the same cause, so either one alone would
+// have passed while the arm was wrong, and only asserting that they differ catches it.
 
 test fn log_base_zero_refuses_as_an_invalid_base() -> Bool {
   match evaluate_cost_expr(
@@ -331,7 +336,12 @@ test fn log_of_an_unbound_argument_refuses_as_a_missing_binding() -> Bool {
   }
 }
 
-data refusing_body_cause_count_note: String = "Ten iterations of a body that refuses unconditionally yield ONE cause, not ten. Both halves of that are the subject: ten identical causes would amplify a single deficit tenfold, degrading the countability the accumulate rule exists to protect, and building them costs quadratic time because non_empty_append is linear in its left argument. This witness reds if the settled-disposition skip in evaluate_summation is removed, which is what makes it a regression control rather than a description."
+// Ten iterations of a body that refuses unconditionally yield ONE cause, not ten. Both halves of
+// that are the subject: ten identical causes would amplify a single deficit tenfold, degrading the
+// countability the accumulate rule exists to protect, and building them costs quadratic time
+// because non_empty_append is linear in its left argument. This witness reds if the
+// settled-disposition skip in evaluate_summation is removed, which is what makes it a regression
+// control rather than a description.
 
 test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   match evaluate_cost_expr(
@@ -351,7 +361,14 @@ test fn refusing_body_under_a_bound_yields_exactly_one_cause() -> Bool {
   }
 }
 
-data zero_multiplicity_note: String = "Three discriminators, and the third is what keeps the first two from being a blanket zero. A zero factor means the other factor is executed ZERO times, so its work is zero whatever it is - refusing there would conflate did-no-work with could-not-model, which is the earned-zero distinction one level out. Both operand orders are asserted because multiplication is commutative and an order-sensitive answer is a defect; that exact defect existed in v2.lens.cost symbolic_product, which matched UnknownCost on the left operand before ever inspecting the right, and is fixed with this change. ONE times an unmodelled effect still REFUSES, because that factor is executed."
+// Three discriminators, and the third is what keeps the first two from being a blanket zero. A zero
+// factor means the other factor is executed ZERO times, so its work is zero whatever it is -
+// refusing there would conflate did-no-work with could-not-model, which is the earned-zero
+// distinction one level out. Both operand orders are asserted because multiplication is commutative
+// and an order-sensitive answer is a defect; that exact defect existed in v2.lens.cost
+// symbolic_product, which matched UnknownCost on the left operand before ever inspecting the right,
+// and is fixed with this change. ONE times an unmodelled effect still REFUSES, because that factor
+// is executed.
 
 test fn zero_times_an_unmodelled_effect_is_exactly_zero() -> Bool {
   is_exact(
@@ -396,7 +413,13 @@ test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
   }
 }
 
-data symbolic_product_commutativity_note: String = "Every arm is asserted in BOTH operand orders - the zero absorption AND the one-times-unknown non-absorption - because the defect being fixed was precisely that operand order changed the answer, so a one-sided assertion is the shape that missed it in the first place. The projection authority is asserted in both orders, because it previously answered zero in one and unknown in the other. The unknown-times-zero direction is the one that was wrong and is the regression control for the reorder; the zero-times-unknown direction must keep working and is the control that the reorder did not simply swap the bug to the other side."
+// Every arm is asserted in BOTH operand orders - the zero absorption AND the one-times-unknown
+// non-absorption - because the defect being fixed was precisely that operand order changed the
+// answer, so a one-sided assertion is the shape that missed it in the first place. The projection
+// authority is asserted in both orders, because it previously answered zero in one and unknown in
+// the other. The unknown-times-zero direction is the one that was wrong and is the regression
+// control for the reorder; the zero-times-unknown direction must keep working and is the control
+// that the reorder did not simply swap the bug to the other side.
 
 fn unknown_symbolic_cost() -> SymbolicCost {
   normalize_cost_expr_to_symbolic(expr: CostEffect { operation: effect_operation })
@@ -430,7 +453,16 @@ test fn symbolic_product_one_times_unknown_stays_unknown() -> Bool {
   }
 }
 
-data claim_conjunction_totality_note: String = "The conjunction enumerates EVERY other test fn in this file, and that totality is the point rather than a convenience. It is itself a `test fn` rather than a plain helper, which the corpus naming-hygiene walk requires and which is not a formality here: reached only from the claim `data` it would have been unreachable from every `test fn`, i.e. silently de-enrolled - the conjunction added to close a specification-without-execution finding, not executing. An earlier revision listed three of them while the claim label asserted refusal and scoping behaviour the others established, so the claim could have gone green with its own label false - specification-without-execution at the claim seam, caught by review 49620. The rule this file now follows: a claim label may assert only what its conjunction executes, so adding a test fn without adding it here is the defect to watch for."
+// The conjunction enumerates EVERY other test fn in this file, and that totality is the point
+// rather than a convenience. It is itself a `test fn` rather than a plain helper, which the corpus
+// naming-hygiene walk requires and which is not a formality here: reached only from the claim
+// `data` it would have been unreachable from every `test fn`, i.e. silently de-enrolled - the
+// conjunction added to close a specification-without-execution finding, not executing. An earlier
+// revision listed three of them while the claim label asserted refusal and scoping behaviour the
+// others established, so the claim could have gone green with its own label false -
+// specification-without-execution at the claim seam, caught by review 49620. The rule this file now
+// follows: a claim label may assert only what its conjunction executes, so adding a test fn without
+// adding it here is the defect to watch for.
 
 test fn every_valuation_witness_holds() -> Bool {
   unit_body_over_size_five_evaluates_to_five()

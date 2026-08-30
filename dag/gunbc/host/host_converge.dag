@@ -47,17 +47,16 @@ import extdeps.systemd.oomd {
   managed_oom_pressure_limit_show_value,
 }
 
-
 data gunbc_cgroup_v2_root: String = "/sys/fs/cgroup"
 data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 
 // THE UNIT NAME AND ITS DROP-IN DIRECTORY COME FROM gunbc.runner_unit AND ARE NO LONGER SPELLED
-// HERE. Each of these six rows carried the template name as a literal -- four of them by embedding
-// it inside a path -- so the drop-in directory agreed with the unit it configures by convention
-// across six independent strings. Renaming the unit would have left four drop-ins writing into a
-// directory systemd no longer reads, with nothing to refuse it: a drop-in in the wrong directory is
-// not an error, it is simply never applied, so the caps would silently stop being enforced while
-// every row here still read correctly.
+// HERE. Each of these six rows carried the template name as a literal -- four by embedding it in a
+// path -- so the drop-in directory agreed with its unit by convention across six independent
+// strings. Renaming the unit would have left four drop-ins writing into a directory systemd no
+// longer reads, with nothing to refuse it: a drop-in in the wrong directory is not an error, it is
+// simply never applied, so the caps would silently stop being enforced while every row here still
+// read correctly.
 //
 // The ROW NAMES stay, because the drop-in FILE names -- which knob is 20, which is 30 -- are this
 // module's own fact and not the unit contract's.
@@ -75,15 +74,15 @@ data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
 // THE DAEMON'S FIFO PATH, WHICH THE RUNNER UNIT HAS TO NAME AND NOTHING HERE PREVIOUSLY DID.
 //
 // The jobserver's token count already lives beside the env file above; the FIFO those tokens are
-// handed out over did not, because no consumer in this repository had to name it until a runner unit
-// was rendered from gunbc. It sits here rather than in `extdeps.jobserver` for the reason that
-// module's own placement caveat states: the protocol shape is upstream's, this fleet's installed
+// handed out over did not, because no consumer here had to name it until a runner unit was
+// rendered from gunbc. It sits here rather than in `extdeps.jobserver` for the reason that
+// module's placement caveat states: the protocol shape is upstream's, this fleet's installed
 // daemon is ours.
 //
 // It is the DEFAULT. The daemon reads `/etc/default/ctrl-jobserver` and a host may override it
-// there, so a render that assumes this path on a host that overrode it would point MAKEFLAGS at a
-// FIFO nobody owns. That is why the unit render takes the path as a parameter and this row is what
-// the fleet passes, rather than the render reaching for a constant it cannot check.
+// there, so a render assuming this path on a host that overrode it would point MAKEFLAGS at a FIFO
+// nobody owns. Hence the unit render takes the path as a parameter and this row is what the fleet
+// passes, rather than the render reaching for a constant it cannot check.
 data gunbc_runner_jobserver_default_fifo: String = "/var/lib/ctrl/jobserver/host.fifo"
 
 data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
@@ -150,7 +149,6 @@ type ConvergeVerdict
   = VerdictConverged
   | Drifted
   | Absent
-
 
 fn converge_verdict(effective: String, expected: String) -> ConvergeVerdict {
   if effective == "" { Absent }
@@ -504,7 +502,12 @@ fn gunbc_pinned_tree_knobs(host: HostIdentity) -> List<ConvergeKnob> {
   [gunbc_pinned_tree_knob(host: host)]
 }
 
-data codex_runtime_bundle_converge_knob_note: String = "RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong identity replace, present noop. Registered on every fleet compute host in fleet_converge_policy; EXECUTION AUTHORITY is gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt (ProvisionCodexRuntime via realize_provision_codex_runtime), not host_converge_realize interpret_converge_knob — slice1/knob-frontier routes bypass converge_apply today. host_standup P1c remains assimilation-time ensure."
+// RECURRING reconcile for the pinned Codex provider-runtime bundle — absent materialize, wrong
+// identity replace, present noop. Registered on every fleet compute host in fleet_converge_policy;
+// EXECUTION AUTHORITY is gunbc.fleet_converge_cli converge_provider_runtime_codex_receipt
+// (ProvisionCodexRuntime via realize_provision_codex_runtime), not host_converge_realize
+// interpret_converge_knob — slice1/knob-frontier routes bypass converge_apply today. host_standup
+// P1c remains assimilation-time ensure.
 
 fn codex_runtime_bundle_knob(host: HostIdentity) -> ConvergeKnob {
   legacy_converge_knob(
@@ -655,9 +658,9 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
 // The fleet-wide Regime-2 row carried a single 21474836480-byte aggregate, and this function handed
 // it to map(hosts, ...) below -- so a converge would have set sessions.slice MemoryMax to 20 GiB on
 // every host in the plan. srv1's live sessions.slice cap is 137438953472 and its slice has already
-// peaked at 55216033792, so applying the projection would have driven the cap to roughly 40% of an
-// already-observed peak on a host running 18 sessions. The projection was never applied, which is
-// why this was latent rather than an incident.
+// peaked at 55216033792, so the projection would have driven the cap to roughly 40% of an
+// already-observed peak on a host running 18 sessions. It was never applied, so this was latent
+// rather than an incident.
 //
 // The knobs are now derived per host from the reservation that host actually owes.
 //
@@ -666,13 +669,13 @@ fn session_host_knobs(slice_max: ByteSize, per_session: ByteSize) -> List<Conver
 // UNKNOWN, and for a fleet with no admission ceiling -- three states with three remedies, rendered
 // identically. On the current plan path that was quiet: an unestablished host refuses upstream in
 // host_deployment_standing and never reaches a converge target. But the function is total and
-// public, so the next caller reaching it directly receives an empty knob list and cannot tell
-// "nothing to write here" from "I could not work out what to write" -- the empty-observation narrow
-// DESIGN names, the absorbing fallback's mirror, and strictly worse than a widen because a narrow
-// is silently uncovered rather than merely expensive.
+// public, so the next direct caller receives an empty knob list and cannot tell "nothing to write
+// here" from "I could not work out what to write" -- the empty-observation narrow DESIGN names,
+// the absorbing fallback's mirror, strictly worse than a widen because a narrow is silently
+// uncovered rather than merely expensive.
 //
-// The standing is returned instead, so a new caller must decide. The plan path's behaviour is
-// unchanged: it converts the standing back to knobs and a non-derived standing contributes none.
+// The standing is returned instead, so a new caller must decide. The plan path is unchanged: it
+// converts the standing back to knobs and a non-derived standing contributes none.
 type SessionKnobStanding
   = SessionKnobsDerived { knobs: List<ConvergeKnob> }
   | SessionKnobsNotOwed { cause: String }
@@ -738,8 +741,8 @@ fn host_converge_of(h: RunnerHostDeployment, session_knobs: List<ConvergeKnob>) 
 // PlanUnsound into ConvergePolicyUnsound before any host was chosen -- so srv2's unestablished
 // reservation would have blocked converging srv1, srv3 and srv4, none of which depend on it.
 //
-// A refused host contributes NO converge target, which is the point: it is not converged, and it is
-// not silently converged with a guessed size either. The refused roster stays readable through
+// A refused host contributes NO converge target: it is not converged, and not silently converged
+// with a guessed size either. The refused roster stays readable through
 // fleet_deployment_completion for a consumer that needs to know the fleet is incomplete.
 fn fleet_converge_policy_from(plan: RunnerDeploymentPlan) -> ConvergePolicy {
   ConvergePolicyDerived {
