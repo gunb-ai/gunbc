@@ -57,9 +57,9 @@ type SystemdUnitProperty
   | SubState
   | Result
   | ExecMainStatus
-  | ExecStart
+  | ExecStartProperty
   | User
-  | WorkingDirectory
+  | WorkingDirectoryProperty
   | Unit
   | NextElapseUSecMonotonic
   | TimersMonotonic
@@ -82,9 +82,9 @@ fn systemd_unit_property_wire(property: SystemdUnitProperty) -> NonEmptyStr {
     SubState => "SubState" as NonEmptyStr
     Result => "Result" as NonEmptyStr
     ExecMainStatus => "ExecMainStatus" as NonEmptyStr
-    ExecStart => "ExecStart" as NonEmptyStr
+    ExecStartProperty => "ExecStart" as NonEmptyStr
     User => "User" as NonEmptyStr
-    WorkingDirectory => "WorkingDirectory" as NonEmptyStr
+    WorkingDirectoryProperty => "WorkingDirectory" as NonEmptyStr
     Unit => "Unit" as NonEmptyStr
     NextElapseUSecMonotonic => "NextElapseUSecMonotonic" as NonEmptyStr
     TimersMonotonic => "TimersMonotonic" as NonEmptyStr

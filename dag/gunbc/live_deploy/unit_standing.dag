@@ -5,7 +5,7 @@ import std.algebra { trim }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
   SystemdUnitProperty,
-  LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStart, User, WorkingDirectory, Unit, TimersMonotonic,
+  LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit, TimersMonotonic,
   systemd_unit_property_wire,
 }
 import extdeps.systemd.unit_file {
@@ -76,13 +76,13 @@ fn observe_service_unit(unit: NonEmptyStr) -> ServiceUnitObservation {
                       match read_unit_property(unit: unit, property: ExecMainStatus) {
                         UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
                         UnitPropertyValue { value: exec_main_status } =>
-                          match read_unit_property(unit: unit, property: ExecStart) {
+                          match read_unit_property(unit: unit, property: ExecStartProperty) {
                             UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
                             UnitPropertyValue { value: exec_start } =>
                               match read_unit_property(unit: unit, property: User) {
                                 UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
                                 UnitPropertyValue { value: user } =>
-                                  match read_unit_property(unit: unit, property: WorkingDirectory) {
+                                  match read_unit_property(unit: unit, property: WorkingDirectoryProperty) {
                                     UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
                                     UnitPropertyValue { value: wd } =>
                                       ServiceUnitObservedOk {

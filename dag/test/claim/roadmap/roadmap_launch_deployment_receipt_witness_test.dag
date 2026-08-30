@@ -290,8 +290,8 @@ test fn witness_automatic_ready_tick_is_incomplete_at_tick_standing() -> Bool {
   incomplete_at(facts: with_tick(f: rlm_complete_facts(), t: rlm_tick_fact(t: rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: AutomaticReady, observed_at: rlm_fixture_tick_observed_at))), member: "tick_standing")
 }
 
+// The v4 decoder refuses a v3 document; the observer records that as an unreadable tick.
 test fn witness_v3_tick_on_disk_is_incomplete_at_tick_standing() -> Bool {
-  // The v4 decoder refuses a v3 document; the observer records that as an unreadable tick.
   let read = belt_tick_receipt_decode(raw: "{\"schema\":\"roadmap-belt-tick-receipt/v3\",\"observed_at\":\"2026-08-30T12:01:00Z\"}")
   let fact = match read {
     BeltTickReceiptUnreadable { reason: r } => TickUnobserved { detail: r }
