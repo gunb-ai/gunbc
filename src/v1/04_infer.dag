@@ -10,6 +10,7 @@ import std.content_hash {
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
 import std.syntax { Add, BinOp, LitStr, LitInt, LitBool, LiteralValue }
 import std.decl_ref { DeclarationRef }
+import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
@@ -123,7 +124,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref,
+  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -4851,6 +4852,27 @@ type BinopOperands {
   right: InferResult
 }
 
+// THE LEFT OPERAND'S DECLARATION, read here where the reference's scoped binding is live, after
+// hopping a where-refinement to its base (`type Char = Int where ...` realizes as Int): the fact
+// std.operator_realization decides on, stamped on the ExprBinOp node for emission. Absent when the
+// operand's type node names no declaration (an inference-synthesized node), which emission answers
+// by operator class.
+fn operand_declaration_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandDeclaration? {
+  if fuel > 0 && is_where_refinement_type(ty: rt) {
+    match rt.children |> first {
+      Present { value: base } =>
+        let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
+          Present { value: r } => r
+          Absent => base
+        }
+        operand_declaration_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
+      Absent => type_reference_declaration(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    }
+  } else {
+    type_reference_declaration(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+  }
+}
+
 fn infer_operand_literal(lit_expr: Node, other: Node, scope: InferScope) -> InferResult {
   let other_type = match other.inferred {
     Present { value: Resolved { node: rt } } => Present { value: rt }
@@ -5996,7 +6018,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
       let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
-      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
+      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
         diagnostics: concat(left_diags, right_diags)

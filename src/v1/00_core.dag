@@ -9,6 +9,7 @@ import std.syntax {
 }
 import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.literal_elaboration { LiteralElaboration }
+import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
@@ -177,7 +178,7 @@ type ExprData
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind? }
+  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda
   | ExprStringInterp

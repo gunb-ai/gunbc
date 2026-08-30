@@ -47,8 +47,11 @@ pub use crate::std_measure::millisecond_count;
 pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
+use crate::std_operator_realization::HostRealizationReason::{
+    GenericTypeParameter, HostContainer, KernelMintedType,
+};
 use crate::std_operator_realization::OperandRealization::{
-    HostNumericOperand, OperandIdentityUnavailable, StructuralOperand,
+    HostNumericOperand, HostRealizedOperand, OperandIdentityUnavailable, StructuralOperand,
 };
 use crate::std_operator_realization::OperatorRealization::{
     HostOperator, OperatorRealizationRefused, StructuralComparison, StructuralEquality,
@@ -58,7 +61,8 @@ pub use crate::std_operator_realization::{
     operator_realization_for, operator_realization_refusal_message,
 };
 pub use crate::std_operator_realization::{
-    OperandRealization, OperatorRealization, OrderingTest, StructuralOrderingBinding,
+    HostRealizationReason, OperandRealization, OperandShapeFacts, OperatorRealization,
+    OrderingTest, StructuralOrderingBinding,
 };
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
@@ -86,11 +90,12 @@ pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::decl_identity_file;
 pub use crate::v1_compiler_coercion::{
-    coerce_primitive_type, declaration_realizes_natively_on_rust, is_copy, lookup_checkpoint,
-    rust_lookup_exact_binding, rust_seed_host_numeric_alias, target_callable,
+    coerce_primitive_type, declaration_realizes_natively_on_rust, is_copy, is_kernel_minted_file,
+    lookup_checkpoint, rust_lookup_exact_binding, rust_seed_host_numeric_alias, target_callable,
     type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
+pub use crate::v1_compiler_dag_collect_support::connective_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -29445,71 +29450,115 @@ pub fn rust_operand_realization_of_type(
     mut fuel: i64,
 ) -> Rc<OperandRealization> {
     loop {
-        match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-            rt.clone(),
+        let decl_file = crate::v1_compiler_coercion::type_reference_decl_file(rt.clone());
+        let authored = crate::v1_std_core::authored_name_at(
             scope.type_env.clone().source_indices.clone(),
-            scope.type_env.clone(),
-        ) {
-            None => {
-                break Rc::new(OperandRealization::OperandIdentityUnavailable);
-            }
-            Some(d) => {
-                if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
-                    d.clone(),
-                    crate::v1_compiler_coercion::type_reference_decl_file(rt.clone()),
-                ) {
-                    break Rc::new(OperandRealization::HostNumericOperand);
+            rt.clone(),
+        );
+        let rt_is_type_var = match rt.inferred.clone() {
+            Some(i) => is_type_variable(i.clone()),
+            None => false,
+        };
+        if crate::v1_compiler_coercion::is_kernel_minted_file(decl_file.clone()) {
+            break Rc::new(OperandRealization::HostRealizedOperand {
+                reason: HostRealizationReason::KernelMintedType,
+            });
+        } else {
+            if rt_is_type_var.clone() {
+                break Rc::new(OperandRealization::HostRealizedOperand {
+                    reason: HostRealizationReason::GenericTypeParameter,
+                });
+            } else {
+                if crate::std_types::is_container_type(crate::v1_std_core::qualified_last_segment(
+                    authored.clone(),
+                )) {
+                    break Rc::new(OperandRealization::HostRealizedOperand {
+                        reason: HostRealizationReason::HostContainer,
+                    });
                 } else {
-                    let decl = match rt.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-                        _ => rt.clone(),
-                    };
-                    if ((fuel.clone() > 0)
-                        && crate::v1_compiler_infer::is_where_refinement_type(rt.clone()))
-                    {
-                        match rt.children.clone().first().cloned() {
-                            Some(base) => {
-                                let base_resolved =
-                                    match crate::v1_compiler_infer_env::lookup_type_for(
-                                        scope.type_env.clone(),
-                                        base.clone(),
-                                    ) {
-                                        Some(r) => r.clone(),
-                                        None => base.clone(),
-                                    };
+                    match crate::v1_compiler_infer_env::type_reference_declaration_ref(
+                        rt.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        scope.type_env.clone(),
+                    ) {
+                        None => {
+                            break Rc::new(OperandRealization::OperandIdentityUnavailable {
+                                facts: Rc::new(OperandShapeFacts {
+                                    authored_name: authored.clone(),
+                                    connective:
+                                        crate::v1_compiler_dag_collect_support::connective_name(
+                                            rt.connective.clone(),
+                                        ),
+                                    child_count: (rt.children.clone().len() as i64),
+                                    resolved: (rt.inferred.clone() != std::option::Option::None),
+                                    decl_file: decl_file.clone(),
+                                }),
+                            });
+                        }
+                        Some(d) => {
+                            if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
+                                d.clone(),
+                                crate::v1_compiler_coercion::type_reference_decl_file(rt.clone()),
+                            ) {
+                                break Rc::new(OperandRealization::HostNumericOperand);
+                            } else {
+                                let decl = match rt.inferred.clone().as_deref().cloned() {
+                                    Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+                                    _ => rt.clone(),
+                                };
+                                if ((fuel.clone() > 0)
+                                    && crate::v1_compiler_infer::is_where_refinement_type(
+                                        rt.clone(),
+                                    ))
                                 {
-                                    let __tco_0 = base_resolved.clone();
-                                    let __tco_1 = (fuel - 1);
-                                    rt = __tco_0;
-                                    fuel = __tco_1;
-                                    continue;
+                                    match rt.children.clone().first().cloned() {
+                                        Some(base) => {
+                                            let base_resolved =
+                                                match crate::v1_compiler_infer_env::lookup_type_for(
+                                                    scope.type_env.clone(),
+                                                    base.clone(),
+                                                ) {
+                                                    Some(r) => r.clone(),
+                                                    None => base.clone(),
+                                                };
+                                            {
+                                                let __tco_0 = base_resolved.clone();
+                                                let __tco_1 = (fuel - 1);
+                                                rt = __tco_0;
+                                                fuel = __tco_1;
+                                                continue;
+                                            }
+                                        }
+                                        None => {
+                                            break Rc::new(OperandRealization::StructuralOperand {
+                                                declaration: d.clone(),
+                                            });
+                                        }
+                                    }
+                                } else {
+                                    if ((fuel.clone() > 0)
+                                        && crate::v1_compiler_emit_core_support::is_type_alias_item(
+                                            decl.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ))
+                                    {
+                                        {
+                                            let __tco_0 =
+                                                crate::v1_compiler_infer_types::resolved_type(
+                                                    decl.clone(),
+                                                );
+                                            let __tco_1 = (fuel - 1);
+                                            rt = __tco_0;
+                                            fuel = __tco_1;
+                                            continue;
+                                        }
+                                    } else {
+                                        break Rc::new(OperandRealization::StructuralOperand {
+                                            declaration: d.clone(),
+                                        });
+                                    }
                                 }
                             }
-                            None => {
-                                break Rc::new(OperandRealization::StructuralOperand {
-                                    declaration: d.clone(),
-                                });
-                            }
-                        }
-                    } else {
-                        if ((fuel.clone() > 0)
-                            && crate::v1_compiler_emit_core_support::is_type_alias_item(
-                                decl.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ))
-                        {
-                            {
-                                let __tco_0 =
-                                    crate::v1_compiler_infer_types::resolved_type(decl.clone());
-                                let __tco_1 = (fuel - 1);
-                                rt = __tco_0;
-                                fuel = __tco_1;
-                                continue;
-                            }
-                        } else {
-                            break Rc::new(OperandRealization::StructuralOperand {
-                                declaration: d.clone(),
-                            });
                         }
                     }
                 }

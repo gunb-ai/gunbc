@@ -30,6 +30,18 @@ import std.syntax { BinOp, Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And,
 // operation exists to expose. So the source spells structural arithmetic as calls, and this
 // decision refuses the infix form on structural operands.
 
+// THE OPERAND'S DECLARATION AS READ AT INFERENCE, carried on the typed tree (the ExprBinOp node)
+// so emission consumes it and never re-reads identity with a weaker env. Inference reads a
+// parameter's type reference in the function's own scope, where the reference's ident binding is
+// live; the emitter's scope is the module env, where that binding is gone and a by-name read can
+// only answer the module-visible homonym (measured: `a < b` with a: v2.std.nat.Nat emitted the host
+// `<` because the emitter read std.nat.Nat, which realizes natively). decl_file is the declaration's
+// own file -- the key v1.compiler.coercion's native-realization decision is made on.
+type OperandDeclaration {
+  declaration: DeclarationRef
+  decl_file: String
+}
+
 type OperandRealization
   = HostNumericOperand
   | HostRealizedOperand { reason: HostRealizationReason }

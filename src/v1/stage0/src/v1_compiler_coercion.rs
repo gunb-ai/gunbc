@@ -225,6 +225,10 @@ pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
     ])
 }
 
+pub fn is_kernel_minted_file(file: String) -> bool {
+    v1_rt::contains(file.clone(), "<kernel:".to_string())
+}
+
 pub fn decl_file_realizes_natively(decl_file: String) -> bool {
     if (decl_file.clone() == "".to_string()) {
         false

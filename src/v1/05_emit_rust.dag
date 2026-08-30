@@ -125,7 +125,7 @@ import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
-  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, OperandShapeFacts,
+  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, OperandShapeFacts, OperandDeclaration,
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   operator_realization_for, operator_realization_refusal_message
 }
@@ -9607,8 +9607,8 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBinOp { op: op, algebra_field: algebra } =>
-      emit_typed_bin_op(op: op, algebra_field: algebra, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprBinOp { op: op, algebra_field: algebra, operand: od } =>
+      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
   }
 }
@@ -12001,13 +12001,13 @@ fn rust_zero_value(type_name: String) -> String? {
   else { none }
 }
 
-fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else {
-    match binop_operator_realization(op: op, left: left, scope: scope) {
+    match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
       OperatorRealizationRefused { cause: c } =>
         emit_rust_compile_error_expr(message: operator_realization_refusal_message(cause: c))
       StructuralComparison { declaration: _, binding: b, test: t } =>
@@ -12094,8 +12094,19 @@ fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> O
 }
 
 
-fn binop_operator_realization(op: BinOp, left: Node, scope: InferScope) -> OperatorRealization {
-  operator_realization_for(op: op, operand: rust_operand_realization(operand: left, scope: scope), ordering_rows: structural_ordering_rows)
+// The operand's declaration is the one inference stamped on the node (std.operator_realization
+// OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
+fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
+  let realization = match operand {
+    Present { value: od } =>
+      if declaration_realizes_natively_on_rust(declaration: od.declaration, decl_file: od.decl_file) {
+        HostNumericOperand
+      } else {
+        StructuralOperand { declaration: od.declaration }
+      }
+    Absent => rust_operand_realization(operand: left, scope: scope)
+  }
+  operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
 }
 
 fn rust_declaration_path(module_path: String, decl_name: String) -> String {

@@ -7,6 +7,7 @@ import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type }
 import std.decl_ref { decl_ref, DeclarationRef }
+import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -1244,23 +1245,20 @@ fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
 // (lookup_type_for) carries the declaration's own ident_span, which is the span the global roster is
 // matched on. Without this arm every recursive destination answered Absent here and fell to the
 // identity-unavailable arms downstream (measured: the Peano literal and ordering rows passed for
-// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler). The ident-keyed lookup
-// serves inference; the emitter's scope env answers a reference by the module-visible NAME
-// (lookup_type_by_name), which is that module's own import binding -- and either way the
-// declaration found here is then matched by SPAN against the global roster, so a by-name hit can
-// only ever confirm an exact declaration, never pick among homonyms (measured: the Peano literal
-// rows passed and the Peano operator rows failed on the same compiler after the ident arm alone).
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler). The ident-keyed lookup is
+// scoped: a parameter's type reference is bound in its function's scope, so this read is correct
+// at inference and NOT at emission, where only the module env survives. A by-name arm was tried
+// here for the emitter and refuted: the module-visible name is answered by pool precedence, so it
+// returned std.nat.Nat for a module that imported v2.std.nat.Nat, and the span match then confirmed
+// that homonym exactly. The reading is therefore done once, at inference, and carried on the typed
+// tree (std.operator_realization OperandDeclaration on ExprBinOp) for emission to consume.
+fn type_reference_declaration(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> OperandDeclaration? {
   let rt = match n.inferred {
     Present { value: Resolved { node: r } } => r
     _ =>
       match lookup_type_for(env: env, node: n) {
         Present { value: bound } => bound
-        Absent =>
-          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
-            Present { value: bound } => bound
-            Absent => n
-          }
+        Absent => n
       }
   }
   let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
@@ -1270,13 +1268,22 @@ fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIn
     Present { value: sp } =>
       match map_get(env.symbol_index.global_bare, decl_name) {
         Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+          if binding_declares_span(binding: b, sp: sp) {
+            Present { value: OperandDeclaration { declaration: decl_ref(module_path: mp, decl_name: decl_name), decl_file: sp.file } }
+          } else { none }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
           match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
-            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+            Present { value: c } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: c.module_path, decl_name: decl_name), decl_file: sp.file } }
             Absent => none
           }
         Absent => none
       }
+  }
+}
+
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match type_reference_declaration(n: n, source_indices: source_indices, env: env) {
+    Present { value: od } => Present { value: od.declaration }
+    Absent => none
   }
 }
