@@ -48,12 +48,20 @@ data desired_allows_public_repositories: Bool = false
 // needs - a read that carried less could not answer without fabricating.
 // ---------------------------------------------------------------------------------------------
 
+// The read observation preserves the GROUP grain the upstream stores (review 57611: a
+// flattened admitted set plus one org-wide public flag loses WHICH group admits which
+// repository, so with multiple groups the public-fork answer could be fabricated from a
+// non-serving group's flag). One row per observed group, carrying its own public flag
+// and its own repository list - the joined group -> repository -> public-access
+// relationship, lossless.
+type ObservedGroupAccess {
+  group_name: NonEmptyStr
+  allows_public_repositories: Bool
+  repositories: List<NonEmptyStr>
+}
+
 type OrgSettingsObservation
-  = SettingsRead {
-      admitted_repositories: List<NonEmptyStr>,
-      allows_public_repositories: Bool,
-      observed_on: NonEmptyStr
-    }
+  = SettingsRead { groups: List<ObservedGroupAccess>, observed_on: NonEmptyStr }
   | SettingsReadRefusedTokenScope { refusal_fragment: NonEmptyStr, observed_on: NonEmptyStr }
 
 // run_id carried as decimal digits verbatim per the standing ruling in
@@ -90,17 +98,27 @@ data behavioral_receipts: List<BehavioralReceipt> = [receipt_private_on_fleet]
 
 type OrgAccessStanding
   = HoldsBySettingsRead { observed_on: NonEmptyStr }
-  | RefusedBySettingsRead { observed_on: NonEmptyStr }
+  | DivergesBySettingsRead { observed_admitted: Bool, desired: Bool, observed_on: NonEmptyStr }
   | HoldsByBehavior { run_id: NonEmptyStr, observed_on: NonEmptyStr }
   | Unobserved
 
+fn observed_admits(groups: List<ObservedGroupAccess>, repository: NonEmptyStr) -> Bool {
+  fold(groups, init: false, f: fn(acc, g) {
+    acc || count(filter(g.repositories, x => x == repository)) >= 1
+  })
+}
+
+// The read arm compares OBSERVED membership against the DESIRED boolean (review 57611:
+// membership alone reported a must_reach_fleet:false row's forbidden state as holding).
+// Agreement in either direction holds - admitted-and-required, or absent-and-forbidden -
+// and any mismatch is a typed divergence carrying both sides.
 fn standing_from(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> OrgAccessStanding {
   match obs {
-    SettingsRead { admitted_repositories, allows_public_repositories, observed_on } =>
-      if count(filter(admitted_repositories, x => x == r.repository)) >= 1 {
+    SettingsRead { groups, observed_on } =>
+      if observed_admits(groups: groups, repository: r.repository) == r.must_reach_fleet {
         HoldsBySettingsRead { observed_on: observed_on }
       } else {
-        RefusedBySettingsRead { observed_on: observed_on }
+        DivergesBySettingsRead { observed_admitted: observed_admits(groups: groups, repository: r.repository), desired: r.must_reach_fleet, observed_on: observed_on }
       },
     SettingsReadRefusedTokenScope { refusal_fragment, observed_on } =>
       fold(behavioral_receipts, init: Unobserved, f: fn(acc, b) {
@@ -113,21 +131,24 @@ fn repo_access_standing(r: RepoRunnerAccess) -> OrgAccessStanding {
   standing_from(obs: settings_observation_current, r: r)
 }
 
-// The public-fork policy row has its own standing because a behavioral receipt cannot
-// observe it at all - only a settings read can, and deriving a green from its absence
-// would be the reachability-read-as-occupancy failure.
+// Public-fork exposure is PER REPOSITORY over the group join: the desired-false policy is
+// violated exactly when some group that ADMITS this repository allows public
+// repositories - a non-serving group's flag can neither convict nor acquit.
 type PublicForkPolicyStanding
   = MatchesDesired { observed_on: NonEmptyStr }
-  | DivergesFromDesired { observed: Bool, observed_on: NonEmptyStr }
+  | DivergesFromDesired { exposing_groups: List<NonEmptyStr>, observed_on: NonEmptyStr }
   | UnobservableUntilSettingsRead
 
-fn public_fork_policy_standing(obs: OrgSettingsObservation) -> PublicForkPolicyStanding {
+fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) -> PublicForkPolicyStanding {
   match obs {
-    SettingsRead { admitted_repositories, allows_public_repositories, observed_on } =>
-      if allows_public_repositories == desired_allows_public_repositories {
-        MatchesDesired { observed_on: observed_on }
-      } else {
-        DivergesFromDesired { observed: allows_public_repositories, observed_on: observed_on }
+    SettingsRead { groups, observed_on } =>
+      match filter(groups, g => g.allows_public_repositories && count(filter(g.repositories, x => x == r.repository)) >= 1) {
+        exposing =>
+          if count(exposing) == 0 || desired_allows_public_repositories {
+            MatchesDesired { observed_on: observed_on }
+          } else {
+            DivergesFromDesired { exposing_groups: map(exposing, g => g.group_name), observed_on: observed_on }
+          },
       },
     SettingsReadRefusedTokenScope { refusal_fragment, observed_on } => UnobservableUntilSettingsRead,
   }
