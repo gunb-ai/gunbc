@@ -114,3 +114,28 @@ fn repair_input_origin_candidate_name(candidate: RepairInputOriginCandidate) -> 
 fn repair_input_origin_compatibility_names(candidates: List<RepairInputOriginCandidate>) -> List<String> {
   candidates |> map(candidate => repair_input_origin_candidate_name(candidate: candidate))
 }
+
+// The qualified-type emission route is an ITEM-SURFACE route, not a second spelling producer.
+// Derive its population from the tagged assembly so a dotted value-reference or rendered token
+// cannot enter merely because it shares the same textual shape.
+fn qualified_item_emit_surface_compatibility_names(
+  candidates: List<RepairInputOriginCandidate>,
+) -> List<String> {
+  candidates |> flat_map(candidate =>
+    match candidate {
+      SourceCarrierCandidate { identity } =>
+        match identity.producer_origin {
+          ItemEmitSurfaceOrigin =>
+            match identity.candidate_spelling {
+              QualifiedCandidate { authored_qualifier, member } => [concat(authored_qualifier, ".", member)]
+              BareCandidate { name: _ } => []
+            }
+          UnlistedTypeResolutionOrigin => []
+          ValueReferenceResolutionOrigin => []
+          FieldImportSurfaceOrigin => []
+          VariantPayloadSurfaceOrigin => []
+        }
+      RenderedTargetVocabularyCarrier { identity: _ } => []
+    }
+  )
+}

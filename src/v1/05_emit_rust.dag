@@ -5,6 +5,7 @@ import std.decl_ref { decl_ref }
 import std.repair_input_origin {
   repair_input_origin_candidates,
   repair_input_origin_compatibility_names,
+  qualified_item_emit_surface_compatibility_names,
 }
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
@@ -4249,7 +4250,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_rows = qualified_type_reference_rows(names: type_surface_names |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_rows = qualified_type_reference_rows(names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }

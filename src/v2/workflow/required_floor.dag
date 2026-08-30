@@ -395,7 +395,6 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.arity_zero_import_refusal_witness",
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
-    "test.claim.repair_input_origin_split_witness_test",
     "test.claim.compiler_frontend_program_status_witness",
     "test.claim.discovery_census_witness_test",
   ]

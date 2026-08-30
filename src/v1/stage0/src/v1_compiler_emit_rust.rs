@@ -49,7 +49,8 @@ pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
 };
 pub use crate::std_repair_input_origin::{
-    repair_input_origin_candidates, repair_input_origin_compatibility_names,
+    qualified_item_emit_surface_compatibility_names, repair_input_origin_candidates,
+    repair_input_origin_compatibility_names,
 };
 use crate::std_serialization::VariantEncoding::*;
 use crate::std_serialization::VariantNaming::*;
@@ -8610,7 +8611,13 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
         let qualified_rows = qualified_type_reference_rows(
             Rc::new({
                 let mut __result = Vec::new();
-                for nm in type_surface_names.iter().cloned() {
+                for nm in
+                    crate::std_repair_input_origin::qualified_item_emit_surface_compatibility_names(
+                        origin_candidates.clone(),
+                    )
+                    .iter()
+                    .cloned()
+                {
                     if crate::v1_compiler_infer_types::emit_map_has(
                         emitted_source_token_set.clone(),
                         crate::v1_std_core::qualified_last_segment(nm.clone()),

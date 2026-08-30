@@ -220,6 +220,49 @@ pub fn repair_input_origin_compatibility_names(
     })
 }
 
+pub fn qualified_item_emit_surface_compatibility_names(
+    candidates: Rc<Vec<Rc<RepairInputOriginCandidate>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for candidate in candidates.iter().cloned() {
+            __result.extend(
+                (*match (*candidate.clone()).clone() {
+                    RepairInputOriginCandidate::SourceCarrierCandidate {
+                        identity: identity,
+                        ..
+                    } => match identity.producer_origin.clone() {
+                        SourceCarrierOrigin::ItemEmitSurfaceOrigin => {
+                            match (*identity.candidate_spelling.clone()).clone() {
+                                CandidateSpelling::QualifiedCandidate {
+                                    authored_qualifier,
+                                    member,
+                                    ..
+                                } => Rc::new(vec![v1_rt::concat(
+                                    v1_rt::concat(authored_qualifier.clone(), ".".to_string()),
+                                    member.clone(),
+                                )]),
+                                CandidateSpelling::BareCandidate { name: _, .. } => Rc::new(vec![]),
+                            }
+                        }
+                        SourceCarrierOrigin::UnlistedTypeResolutionOrigin => Rc::new(vec![]),
+                        SourceCarrierOrigin::ValueReferenceResolutionOrigin => Rc::new(vec![]),
+                        SourceCarrierOrigin::FieldImportSurfaceOrigin => Rc::new(vec![]),
+                        SourceCarrierOrigin::VariantPayloadSurfaceOrigin => Rc::new(vec![]),
+                    },
+                    RepairInputOriginCandidate::RenderedTargetVocabularyCarrier {
+                        identity: _,
+                        ..
+                    } => Rc::new(vec![]),
+                })
+                .iter()
+                .cloned(),
+            );
+        }
+        __result
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct UnlistedTypeResolutionOrigin;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
