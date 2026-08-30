@@ -14,7 +14,8 @@ import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
   TestClaimRun,
-  accepted_runtime_value_outcome_eq,
+  accepted_runtime_value_outcome_equality,
+  runtime_value_equality_verdict,
   eval,
   eval_context_interpretation,
   inputs_for_emit_host,
@@ -589,24 +590,30 @@ fn run_test_claim_emit_vs_eval_verdict(
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
-      if accepted_runtime_value_outcome_eq(
+      match accepted_runtime_value_outcome_equality(
         a: Accepted { value: host_actual, diagnostics: None },
         b: expected
       ) {
-        Pass
-      } else {
-        verdict_semantic_mismatch(
-          actual: Accepted { value: host_actual, diagnostics: None },
-          falsification: optional_present(
-            value: FalsificationReceipt {
-              subject: subject,
-              expected: exp_val,
-              actual: host_actual,
-              divergence: ValueDiff { expected: exp_val, actual: host_actual },
-              evidence: Host { receipt: host_receipt }
-            }
+        RuntimeValuesEqual => Pass
+        RuntimeValuesDiffer =>
+          verdict_semantic_mismatch(
+            actual: Accepted { value: host_actual, diagnostics: None },
+            falsification: optional_present(
+              value: FalsificationReceipt {
+                subject: subject,
+                expected: exp_val,
+                actual: host_actual,
+                divergence: ValueDiff { expected: exp_val, actual: host_actual },
+                evidence: Host { receipt: host_receipt }
+              }
+            )
           )
-        )
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          runtime_value_equality_verdict(
+            equality: RuntimeValueEqualityUnavailable { reason: r },
+            actual: Accepted { value: host_actual, diagnostics: None },
+            at: subject.input.evaluator_input
+          )
       }
     Rejected { diagnostics: ds } =>
       verdict_build_failed(
