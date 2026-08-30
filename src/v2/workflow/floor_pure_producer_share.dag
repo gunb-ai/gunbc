@@ -101,6 +101,15 @@ import v2.std.text { String }
 // does not re-intern and re-sort per consuming frame — an interner-stable representation the
 // tier can hand over without walking the whole value. That is a seed change in the
 // v1_compiler.v1_interpreter cross-claim tier, out of scope for the roster.
+//
+// CORRECTNESS ROOT, separated from that cost trigger: Symbol identity in the seed used to be
+// a per-frame encounter ordinal, so a value crossing this boundary could compare the SAME
+// spelling unequal, or DIFFERENT spellings equal, against a consumer-frame value. Symbols are
+// now process-canonical spelling identities; crossing frames no longer changes equality. This
+// does NOT satisfy the re-enrol trigger above: value_from_portable_ctx still walks the portable
+// value, looks each spelling up in the consuming frame, and re-sorts every record. Equality is
+// frame-independent, while zero-walk serving remains an explicitly separate performance
+// capability.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex"

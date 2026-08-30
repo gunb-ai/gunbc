@@ -43,14 +43,52 @@ use crate::v1_std_core::{
 #[path = "bounded_shell_host_drain.rs"]
 pub mod bounded_shell_host_drain;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Symbol(u32);
+/// A spelling's process-stable identity.
+///
+/// Symbols used to be per-`InterpContext` integer ordinals.  A `Value` can cross an
+/// evaluation-frame boundary (the required floor deliberately creates one frame per claim),
+/// so structural equality over records and variants could then compare two unrelated ordinal
+/// spaces. Carry one process-canonical spelling: equality and hashing stay pointer-fast on the
+/// interpreter's hottest path, while ordering is lexical and therefore deterministic rather
+/// than encounter-ordered.
+#[derive(Debug, Clone, Copy, PartialOrd, Ord)]
+pub struct Symbol(&'static str);
+
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
+}
+
+impl Eq for Symbol {}
+
+impl Hash for Symbol {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::ptr::hash(self.0 as *const str, state);
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct SymbolInterner {
-    strings: Vec<String>,
-    index: HashMap<String, u32>,
+    index: HashMap<String, Symbol>,
     calls: u64,
+}
+
+fn canonical_symbol_spelling(s: &str) -> &'static str {
+    static SPELLINGS: std::sync::OnceLock<
+        std::sync::Mutex<std::collections::HashMap<String, &'static str>>,
+    > = std::sync::OnceLock::new();
+    let spellings =
+        SPELLINGS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
+    let mut spellings = spellings
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some(existing) = spellings.get(s) {
+        return existing;
+    }
+    let canonical = Box::leak(s.to_string().into_boxed_str());
+    spellings.insert(canonical.to_string(), canonical);
+    canonical
 }
 
 #[cfg(test)]
@@ -93,17 +131,16 @@ pub struct InternStats {
 impl SymbolInterner {
     pub fn intern(&mut self, s: &str) -> Symbol {
         self.calls += 1;
-        if let Some(&id) = self.index.get(s) {
-            return Symbol(id);
+        if let Some(&symbol) = self.index.get(s) {
+            return symbol;
         }
-        let id = self.strings.len() as u32;
-        self.strings.push(s.to_string());
-        self.index.insert(s.to_string(), id);
-        Symbol(id)
+        let symbol = Symbol(canonical_symbol_spelling(s));
+        self.index.insert(s.to_string(), symbol);
+        symbol
     }
 
     pub fn stats(&self) -> InternStats {
-        let distinct = self.strings.len() as u64;
+        let distinct = self.index.len() as u64;
         InternStats {
             calls: self.calls,
             distinct,
@@ -113,10 +150,7 @@ impl SymbolInterner {
     }
 
     pub fn resolve(&self, sym: Symbol) -> &str {
-        self.strings
-            .get(sym.0 as usize)
-            .map(|s| s.as_str())
-            .unwrap_or("<invalid-symbol>")
+        sym.0
     }
 
     // Read-only counterpart to `intern`: looks up a string already interned
@@ -124,15 +158,11 @@ impl SymbolInterner {
     // reentered while an immutable borrow of this interner is held elsewhere
     // on the stack (see `free_monoid_ctx_syms`).
     pub fn get(&self, s: &str) -> Option<Symbol> {
-        self.index.get(s).map(|&id| Symbol(id))
+        self.index.get(s).copied()
     }
 
     fn heap_bytes(&self) -> u64 {
-        let mut bytes = (self.strings.len() * std::mem::size_of::<String>()) as u64;
-        for s in &self.strings {
-            bytes += s.len() as u64;
-        }
-        bytes += (self.index.len() * std::mem::size_of::<(String, u32)>()) as u64;
+        let mut bytes = (self.index.len() * std::mem::size_of::<(String, Symbol)>()) as u64;
         for key in self.index.keys() {
             bytes += key.len() as u64;
         }
@@ -241,7 +271,7 @@ fn active_ctx() -> Option<&'static InterpContext> {
 fn resolve_sym(sym: Symbol) -> String {
     active_ctx()
         .map(|ctx| ctx.resolve(sym).to_string())
-        .unwrap_or_else(|| format!("#{}", sym.0))
+        .unwrap_or_else(|| sym.0.to_string())
 }
 
 fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool {
@@ -1289,19 +1319,13 @@ struct PureCallMemo {
 
 /// `Symbol`-free mirror of `Value`, used as the cross-claim memo's storage shape.
 ///
-/// A `Symbol` is an index into ONE `InterpContext`'s `SymbolInterner` (`v1_interpreter.rs`
-/// `resolve_sym`) — it carries no meaning outside that instance. Required-floor builds a
-/// FRESH `InterpContext` (fresh, empty interner) per claim by design (`cli_run.rs`
-/// `evaluation_frame`, "FRESH PER CLAIM"), while this memo's whole point is to survive
-/// across claims for the life of one prepared-subject run (`clear_cross_claim_pure_memos`
-/// is called once per `register_floor_prepared_authority`/`clear_floor_prepared_authority`,
-/// not per claim). Caching a raw `Value` there let a `Symbol` minted by claim N's interner
-/// be handed, unresolved-index-and-all, to claim N+1's unrelated interner: matching against
-/// it either missed every arm or hit the wrong one, and the `PatternMatchFailure`'s Display
-/// then resolved the stale index against claim N+1's interner and printed `<invalid-symbol>`
-/// (gunbc#8505; the 33 `body_lowering_*` floor-only rows in `floor_expected_red` chunk_14).
-/// Per-entry `claim_batch` never hit this because it keeps one interner live across the
-/// claims of an entry, so a memoized value's symbols stayed valid for every consumer.
+/// Required-floor builds a FRESH `InterpContext` per claim by design (`cli_run.rs`
+/// `evaluation_frame`, "FRESH PER CLAIM"), while this memo survives across claims for one
+/// prepared-subject run. Before `Symbol` identity became spelling-backed, caching a raw `Value`
+/// here leaked producer-frame ordinals into a consumer frame (gunbc#8505). Symbols themselves
+/// are now frame-independent, but this positive portable shape remains the store's authority
+/// for total publication, structural collision verification, byte accounting, and exclusion of
+/// origin-bound closures/functions.
 ///
 /// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
 /// prescribes: de-symbolize to `PortableValue` (raw strings) at store time, while the
@@ -1525,12 +1549,9 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
             map_value(fields)
         }
         PortableValue::Set(members) => Value::Set(members.clone()),
-        // FIELDS ARE RE-SORTED UNDER THE CONSUMING INTERNER. `fields_get` binary-searches on
-        // the Symbol ORDINAL, and ordinals are per-interner encounter order — a vector sorted
-        // under frame A's ordinals is unsorted under frame B's, so every field read misses
-        // ("no field 'produced_decl_support' on type 'TargetModel'", six emit reds on run
-        // 33269961629). Reification is not complete until the value satisfies the consuming
-        // frame's own representation invariants, order included.
+        // Re-sort after reconstruction so the representation invariant stays local to this
+        // constructor. Symbol ordering is spelling-backed and therefore frame-independent;
+        // retaining the sort here keeps `fields_get`'s binary-search contract explicit.
         PortableValue::Record { type_name, fields } => Value::Record {
             type_name: ctx.sym(type_name),
             fields: Rc::new(sorted_fields(
@@ -2142,6 +2163,60 @@ mod cross_claim_memo_tests {
             emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // Discriminating RED for the required-floor failure in
+    // `english_emit_add_ingest_round_trip_holds`: the emitter-produced diagnostics value can
+    // originate in a different evaluation frame from the literal `None` it is compared with.
+    // Encounter-order ordinals made the same coproduct arm unequal (or a different arm equal)
+    // across those frames.  Symbol identity is the spelling, so frame order is irrelevant.
+    #[test]
+    fn structural_variant_equality_is_independent_of_evaluation_frame() {
+        let producer = fresh_ctx();
+        let _ = producer.sym("producer_decoy");
+        let produced_none = Value::Variant {
+            type_name: producer.sym("Diagnostics"),
+            variant_name: producer.sym("None"),
+            fields: Rc::new(vec![]),
+        };
+
+        let consumer = fresh_ctx();
+        let _ = consumer.sym("consumer_decoy_one");
+        let _ = consumer.sym("consumer_decoy_two");
+        let literal_none = Value::Variant {
+            type_name: consumer.sym("Diagnostics"),
+            variant_name: consumer.sym("None"),
+            fields: Rc::new(vec![]),
+        };
+        let literal_other = Value::Variant {
+            type_name: consumer.sym("Diagnostics"),
+            variant_name: consumer.sym("Unavailable"),
+            fields: Rc::new(vec![]),
+        };
+
+        assert_eq!(produced_none, literal_none);
+        assert_ne!(produced_none, literal_other);
+    }
+
+    // The mirror-image defect is silent wrongness rather than a false negative: before symbols
+    // were process-canonical, two different first-seen spellings occupied the same ordinal in
+    // two frames and compared equal. Keep this direction separate so an always-equal repair
+    // cannot satisfy the reported `None == None` case.
+    #[test]
+    fn distinct_spellings_at_the_same_frame_ordinal_are_not_equal() {
+        let left_frame = fresh_ctx();
+        let right_frame = fresh_ctx();
+        let left = Value::Variant {
+            type_name: left_frame.sym("Diagnostics"),
+            variant_name: left_frame.sym("None"),
+            fields: Rc::new(vec![]),
+        };
+        let right = Value::Variant {
+            type_name: right_frame.sym("Diagnostics"),
+            variant_name: right_frame.sym("Some"),
+            fields: Rc::new(vec![]),
+        };
+        assert_ne!(left, right);
     }
 
     // RED1 (operator ruling, 2026-08-29): a value carrying an origin-bound fn ANYWHERE
