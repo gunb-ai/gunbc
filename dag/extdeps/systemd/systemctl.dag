@@ -114,10 +114,12 @@ fn systemctl_unmask_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", systemctl_unmask_verb as String, unit as String]
 }
 
+data systemctl_set_property_verb: NonEmptyStr = "set-property" as NonEmptyStr
+
 fn systemctl_set_property_argv(unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr) -> List<String> {
   [
     "systemctl",
-    "set-property",
+    systemctl_set_property_verb as String,
     unit as String,
     concat(property as String, concat("=", value as String)),
   ]

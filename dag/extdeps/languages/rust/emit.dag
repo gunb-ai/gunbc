@@ -76,7 +76,8 @@ data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "enumerate", template: "\{recv\}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",         wraps_result: true },
   { method_name: "chars",     template: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()",                                      wraps_result: true },
   { method_name: "skip",      template: "\{recv\}.iter().cloned().skip(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true },
-  { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true }
+  { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true },
+  { method_name: "is_empty",  template: "\{recv\}.is_empty()",                                                                       wraps_result: false }
 ]
 
 fn rust_method_templates() -> Map<String, String> {
@@ -255,7 +256,10 @@ data rt_function_registry: List<RuntimeFunction> = [
 
   { name: "is_xid_start",       bridge_name: "is_xid_start",     passes_by_ref: false, wraps_result: false },
   { name: "is_xid_continue",    bridge_name: "is_xid_continue",  passes_by_ref: false, wraps_result: false },
-  { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false }
+  { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false },
+
+  { name: "symbol_lexeme",        bridge_name: "symbol_lexeme",        passes_by_ref: false, wraps_result: false },
+  { name: "symbol_intern_lexeme", bridge_name: "symbol_intern_lexeme", passes_by_ref: false, wraps_result: false }
 ]
 
 fn rt_functions() -> Map<String, Bool> {

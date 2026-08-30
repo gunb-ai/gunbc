@@ -58,7 +58,8 @@ fn fixture_disposition(registry: Map<String, ItemInfo>, export_sets: Map<String,
     source_indices: empty_map(),
     module_index: build_module_index(modules: []),
     type_summaries: empty_map(),
-    variant_to_enum: empty_map()
+    variant_to_enum: empty_map(),
+    in_type_position: false
   ))
 }
 
@@ -86,7 +87,8 @@ test fn cross_module_candidate_with_export_proof_survives() -> Bool {
     source_indices: empty_map(),
     module_index: build_module_index(modules: []),
     type_summaries: empty_map(),
-    variant_to_enum: empty_map()
+    variant_to_enum: empty_map(),
+    in_type_position: false
   ) == CandidateSurvived { provider_module: "fixture.provider" }
 }
 
@@ -136,7 +138,8 @@ test fn known_variant_is_delegated_to_its_parent_not_registry_absent() -> Bool {
     source_indices: empty_map(),
     module_index: build_module_index(modules: []),
     type_summaries: fixture_variant_type_summaries(),
-    variant_to_enum: map_insert(empty_map(), "V", "E")
+    variant_to_enum: map_insert(empty_map(), "V", "E"),
+    in_type_position: false
   ) == CandidateVariantDelegatedToParent { parent_enum: "E" }
 }
 
@@ -165,8 +168,27 @@ test fn a_variant_whose_parent_is_ambiguous_is_not_delegated_to_nothing() -> Boo
     source_indices: empty_map(),
     module_index: build_module_index(modules: []),
     type_summaries: fixture_colliding_variant_type_summaries(),
-    variant_to_enum: map_insert(empty_map(), "V", "")
+    variant_to_enum: map_insert(empty_map(), "V", ""),
+    in_type_position: false
   ) == CandidateVariantParentUnresolved
+}
+
+// A TYPE POSITION CANNOT HOLD A VARIANT. The same spelling `V` that the whole-corpus type summaries
+// know as a variant, referenced from one of the module's type positions, is decided by the registry
+// arm -- here registry-absent, never delegated to an enum the position could not name.
+test fn a_known_variant_spelling_in_a_type_position_takes_the_registry_arm() -> Bool {
+  reference_derived_disposition_name(disposition: reference_derived_candidate_disposition(
+    name: "V",
+    this_module_name: "fixture.consumer",
+    registry: empty_map(),
+    export_sets: empty_map(),
+    typed_modules: [],
+    source_indices: empty_map(),
+    module_index: build_module_index(modules: []),
+    type_summaries: fixture_variant_type_summaries(),
+    variant_to_enum: map_insert(empty_map(), "V", "E"),
+    in_type_position: true
+  )) == "registry-absent"
 }
 
 test fn an_unresolved_parent_is_not_reported_as_registry_absent() -> Bool {
@@ -183,7 +205,8 @@ test fn non_variant_name_still_answers_registry_absent() -> Bool {
     source_indices: empty_map(),
     module_index: build_module_index(modules: []),
     type_summaries: fixture_variant_type_summaries(),
-    variant_to_enum: map_insert(empty_map(), "V", "E")
+    variant_to_enum: map_insert(empty_map(), "V", "E"),
+    in_type_position: false
   )) == "registry-absent"
 }
 
