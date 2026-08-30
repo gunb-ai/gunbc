@@ -551,3 +551,15 @@ test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool {
     ["    None => 0"]
   )
 }
+
+// Two arms of one record that disagree only on a plain binding (`target: t` beside `target: _`)
+// must still lower to one outer arm with a nested match on the Rc field: the guard form
+// (`if matches!(label.as_ref(), ..)` on every arm) is invisible to rustc's exhaustiveness check.
+test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.grouped_record_arms_probe\nimport std.types { Int, String }\nimport v2.std.collection { List }\ntype LblX = NamedX { name: String, items: List<Int> } | PositionalX\ntype EdgeX { label: LblX, target: Int }\nfn probe(e: EdgeX) -> Int { match e { EdgeX { label: NamedX { name: _, items: _ }, target: t } => t  EdgeX { label: PositionalX, target: _ } => 0 } }\n",
+    "src/test_claim_grouped_record_arms_probe.rs",
+    ["match label.as_ref() {"],
+    ["if matches!(label.as_ref()"]
+  )
+}

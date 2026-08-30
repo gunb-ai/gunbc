@@ -11075,6 +11075,17 @@ type RcGroupedArmPlan {
   pat_str: String
   ref_field: String
   inner_pat_str: String
+  plain_bindings: List<RcPlainFieldBinding>
+  plain_refutable: Bool
+}
+
+// A field of the outer pattern that is NOT the discriminated Rc field and is bound irrefutably to
+// an identifier. Two arms of one variant may bind different such fields (`target: magnitude` in one,
+// `target: _` in the next); the arm binding the superset carries the outer pattern for the whole
+// group, because a plain binding selects nothing -- it only names a component the body may read.
+type RcPlainFieldBinding {
+  field: String
+  ident: String
 }
 
 type RcGroupedArmEntry {
@@ -11088,7 +11099,61 @@ type RcGroupedArmAcc {
 }
 
 fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
-  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "" }
+  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false }
+}
+
+fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
+  match pattern {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      fbs |> flat_map(fb =>
+        let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+        if fb_name == ref_field { [] }
+        else {
+          match field_binding_pattern(n: fb) {
+            Bind { declaration: d } => [RcPlainFieldBinding { field: fb_name, ident: d.name }]
+            _ => []
+          }
+        }
+      )
+    _ => []
+  }
+}
+
+fn rc_arm_has_refutable_plain_field(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match pattern {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      fbs |> any(fb =>
+        field_binding_name_at(n: fb, source_indices: source_indices) != ref_field
+          && !match_pattern_is_irrefutable(pattern: field_binding_pattern(n: fb))
+      )
+    _ => false
+  }
+}
+
+// `member` may take `rep`'s outer pattern when the two agree byte-for-byte (the #8570 rule), or when
+// neither discriminates on a plain field and every plain binding of `member` is one `rep` also
+// makes under the same identifier -- then `rep`'s pattern binds a superset and selects the same
+// values, so the inner match is exhaustive exactly where the source arms were.
+fn rc_plan_bindings_within(member: RcGroupedArmPlan, rep: RcGroupedArmPlan) -> Bool {
+  member.pat_str == rep.pat_str
+    || (!member.plain_refutable && !rep.plain_refutable
+        && (member.plain_bindings |> all(b => rep.plain_bindings |> any(r => r.field == b.field && r.ident == b.ident))))
+}
+
+fn rc_group_representative(entries: List<RcGroupedArmEntry>, variant: String) -> RcGroupedArmPlan? {
+  let members = rc_group_members(entries: entries, variant: variant)
+  match members |> first {
+    Present { value: head } =>
+      let all_groupable = members |> all(e => e.plan.groupable && e.plan.ref_field == head.plan.ref_field)
+      if !all_groupable { none }
+      else {
+        match members |> filter(cand => members |> all(e => rc_plan_bindings_within(member: e.plan, rep: cand.plan))) |> first {
+          Present { value: rep } => Present { value: rep.plan }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
 }
 
 fn variant_pattern_field_binding_named(pattern: MatchPattern, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -11134,7 +11199,15 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
               ungroupable_arm_plan(variant: variant, pat_str: pat_str)
             } else {
               let inner_pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info)
-              RcGroupedArmPlan { groupable: true, variant: variant, pat_str: pat_str, ref_field: field_name, inner_pat_str: inner_pat_str }
+              RcGroupedArmPlan {
+                groupable: true,
+                variant: variant,
+                pat_str: pat_str,
+                ref_field: field_name,
+                inner_pat_str: inner_pat_str,
+                plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: field_name, source_indices: si),
+                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si)
+              }
             }
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
         }
@@ -11152,20 +11225,18 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
 // `unreachable pattern` errors, at v2.compiler.normalize, v2.compiler.resolve, v2.compiler.eval,
 // v2.compiler.translate, v2.std.compilers.target_model and v2.extdeps.languages.dag.
 //
-// So a variant is grouped only when EVERY arm carrying it is groupable AND agrees on both the
-// emitted outer pattern and the discriminated field. One dissenting arm -- a wildcard field, a
-// second Rc-bound field, an authored guard -- and the whole variant keeps the #8570 guard, which
-// is the honest arm: the guards are what make those arms selectable in the first place.
+// So a variant is grouped only when EVERY arm carrying it is groupable, agrees on the discriminated
+// field, and can take one representative's outer pattern (rc_plan_bindings_within: byte-equal, or a
+// plain-binding subset of it). One dissenting arm -- a refutable plain field, a second Rc-bound
+// field, an authored guard -- and the whole variant keeps the #8570 guard, which is the honest arm:
+// the guards are what make those arms selectable in the first place. The subset rule exists because
+// the guard form is invisible to rustc's exhaustiveness check: `Edge { label: Named {..}, target: t }`
+// beside `Edge { label: Positional, target: _ }` disagreed only on a plain binding and produced two
+// guarded arms, E0004 at v2.extdeps.languages.dag and v2.std.compilers.target_model.
 fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<RcGroupedArmEntry> {
   entries |> filter(e => e.plan.variant == variant)
 }
 
-fn rc_group_is_whole_coverage(entries: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan) -> Bool {
-  let members = rc_group_members(entries: entries, variant: plan.variant)
-  (members |> all(e =>
-    e.plan.groupable && e.plan.ref_field == plan.ref_field && e.plan.pat_str == plan.pat_str
-  ))
-}
 
 fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
   let inner_arms = members |> map(e =>
@@ -11184,20 +11255,22 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
       plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
     })
     let folded = entries |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, e) =>
-      if e.plan.groupable && rc_group_is_whole_coverage(entries: entries, plan: e.plan) {
-        if acc.seen |> any(s => s == e.plan.variant) {
-          acc
-        } else {
-          RcGroupedArmAcc {
-            seen: list_push(acc.seen, e.plan.variant),
-            out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: e.plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
+      let representative = if e.plan.groupable { rc_group_representative(entries: entries, variant: e.plan.variant) } else { none }
+      match representative {
+        Present { value: rep } =>
+          if acc.seen |> any(s => s == e.plan.variant) {
+            acc
+          } else {
+            RcGroupedArmAcc {
+              seen: list_push(acc.seen, e.plan.variant),
+              out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
+            }
           }
-        }
-      } else {
-        RcGroupedArmAcc {
-          seen: acc.seen,
-          out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
-        }
+        Absent =>
+          RcGroupedArmAcc {
+            seen: acc.seen,
+            out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
+          }
       }
     )
     folded.out
