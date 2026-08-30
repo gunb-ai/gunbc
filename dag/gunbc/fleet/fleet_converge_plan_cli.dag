@@ -32,6 +32,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_artifact,
   FleetConvergePlanArtifactReady,
   FleetConvergePlanArtifactRefused,
+  fleet_converge_plan_artifact_refusal_text,
   fleet_converge_plan_body_path,
   fleet_converge_plan_baseline_hex_path,
   fleet_converge_plan_apply_shell_path,
@@ -272,8 +273,13 @@ func fleet_converge_plan_wet() -> ProcessExit
     observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
-    FleetConvergePlanArtifactRefused { cause: why } =>
-      exit_failure(reason: concat("fleet_converge_plan: ", why))
+    FleetConvergePlanArtifactRefused { refusal: r } =>
+      exit_failure(
+        reason: concat(
+          "fleet_converge_plan: ",
+          fleet_converge_plan_artifact_refusal_text(r: r),
+        ),
+      )
     FleetConvergePlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_bundle_digest_hex(
         plan_body: artifact.plan_body,

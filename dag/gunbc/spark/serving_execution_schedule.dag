@@ -717,7 +717,7 @@ fn scheduled_rows_from_frozen_schedule<Row>(
 // AND THAT WAS A LIE. srv5 and srv6 are enrolled Sparks; saying the Spark axis does not apply to
 // them ASSERTS a fact, where the empty product it replaced merely failed to carry one. That is
 // strictly worse -- it converted missing evidence into a false claim. Unobserved says what is true,
-// and it refuses through spark_serving_axis_refusal rather than planning an empty schedule, so the
+// and it refuses at the artifact's exhaustive match rather than planning an empty schedule, so the
 // unwired observer is LOUD instead of quietly producing a plan with no Spark axis in it. The host travels in the arm rather than as a second parameter, so it cannot disagree
 // with the observation that produced it.
 //
@@ -745,41 +745,15 @@ fn spark_serving_axis_host<Row>(a: SparkServingAxisDisposition<Row>) -> HostIden
   }
 }
 
-fn spark_serving_axis_observed_members<Row>(a: SparkServingAxisDisposition<Row>) -> List<SparkServingMember> {
-  match a {
-    SparkServingAxisNotApplicable { host: _ } => []
-    SparkServingAxisUnobserved { host: _ } => []
-    SparkServingAxisRefused { host: _, cause: _ } => []
-    SparkServingAxisPlanned { host: _, observed_members: ms, rows: _ } => ms
-  }
-}
-
-fn spark_serving_axis_rows<Row>(a: SparkServingAxisDisposition<Row>) -> ScheduledRows<Row> {
-  match a {
-    SparkServingAxisNotApplicable { host: _ } => scheduled_rows_empty()
-    SparkServingAxisUnobserved { host: _ } => scheduled_rows_empty()
-    SparkServingAxisRefused { host: _, cause: _ } => scheduled_rows_empty()
-    SparkServingAxisPlanned { host: _, observed_members: _, rows: rows } => rows
-  }
-}
-
-fn spark_serving_axis_refusal<Row>(a: SparkServingAxisDisposition<Row>) -> String? {
-  match a {
-    SparkServingAxisNotApplicable { host: _ } => none
-    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => none
-    SparkServingAxisRefused { host: _, cause: why } => Present { value: why }
-    SparkServingAxisUnobserved { host: h } =>
-      Present {
-        value: join([
-          "spark axis for host ",
-          h as String,
-          " was never observed: this host is an enrolled Spark and the plan CLI does not yet run the",
-          " serving observer, so a plan built here would claim a completeness it does not have",
-        ], ""),
-      }
-  }
-}
-
+// THE PROJECTIONS ARE DELETED, NOT NARROWED: A REFUSAL HAS NO ROWS.
+//
+// spark_serving_axis_observed_members, spark_serving_axis_rows and spark_serving_axis_refusal used
+// to answer three separate questions about one disposition, and both non-plannable arms projected to
+// an empty member list and an empty schedule. That is an executable empty schedule minted FROM a
+// refusal: a caller that asked for rows without also asking for the refusal assembled a well-formed
+// plan for a host nobody observed, and the artifact was safe only because it happened to ask in the
+// right order. The disposition is a closed sum, so matching it exhaustively is enforced by the
+// compiler and costs nothing; that is now the only way to read it.
 fn scheduled_rows_list<Row>(scheduled: ScheduledRows<Row>) -> List<Row> {
   scheduled.rows
 }

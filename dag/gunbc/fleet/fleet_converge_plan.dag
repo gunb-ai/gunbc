@@ -119,10 +119,10 @@ import gunbc.spark.serving_execution_schedule {
   scheduled_rows_list,
   SparkServingAxisDisposition,
   SparkServingAxisNotApplicable,
-  spark_serving_axis_rows,
-  spark_serving_axis_observed_members,
-  spark_serving_axis_refusal,
-  spark_serving_axis_host,
+  scheduled_rows_empty,
+  SparkServingAxisUnobserved,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
 }
 
 import gunbc.fleet_converge_timer {
@@ -2272,7 +2272,42 @@ fn fabric_cell_apply_executable_lines(
 // than absent because it gets cited as coverage.
 type FleetConvergePlanArtifactOutcome
   = FleetConvergePlanArtifactReady { artifact: FleetConvergePlanArtifact }
-  | FleetConvergePlanArtifactRefused { cause: String }
+  | FleetConvergePlanArtifactRefused { refusal: FleetConvergePlanArtifactRefusal }
+
+// THE REFUSAL IS A COPRODUCT BECAUSE A DOWNSTREAM CONSUMER CANNOT ASK PROSE WHICH THING WENT WRONG.
+//
+// Rendering all four non-success situations into one `cause: String` repeated the C2
+// producer-versus-renderer mistake one layer later: "the axis does not apply", "the axis applies but
+// nobody observed it", "planning ran and refused", and "this axis belongs to another host" are four
+// different facts with four different operator responses, and a string is a second, lossy naming
+// scheme for a distinction the disposition already carries. The CLI renders this to prose at its
+// receipt boundary, which is where rendering belongs.
+type FleetConvergePlanArtifactRefusal
+  = SparkAxisSubjectHostMismatch { axis_host: HostIdentity, subject_host: HostIdentity }
+  | SparkAxisUnobservedRefusal { host: HostIdentity }
+  | SparkAxisPlanningRefused { host: HostIdentity, cause: String }
+
+fn fleet_converge_plan_artifact_refusal_text(r: FleetConvergePlanArtifactRefusal) -> String {
+  match r {
+    SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: sh } =>
+      join([
+        "SparkAxisSubjectHostMismatch — the spark axis is tagged for host ",
+        ah as String,
+        " but the plan subject is ",
+        sh as String,
+        "; the plan would carry one host's serving rows under another host's baseline and lease",
+      ], "")
+    SparkAxisUnobservedRefusal { host: h } =>
+      join([
+        "SparkAxisUnobserved — ",
+        h as String,
+        " is an enrolled Spark and its serving axis was never observed, so a plan built here would",
+        " claim a completeness that was never measured",
+      ], "")
+    SparkAxisPlanningRefused { host: h, cause: why } =>
+      join(["SparkAxisPlanningRefused — on host ", h as String, ": ", why], "")
+  }
+}
 
 // P0-C3: THE SPARK AXIS ARRIVES AS ONE ALREADY-PLANNED PRODUCT.
 //
@@ -2303,6 +2338,17 @@ type FleetConvergePlanArtifactOutcome
 // rows under srv5's baseline and lease. Third instance of the class #9754 opened -- a host carried
 // twice, joined by convention -- and this function refuses on the disagreement rather than making it
 // unrepresentable, because the two hosts are genuinely two facts until the comparison is made.
+// ONE EXHAUSTIVE MATCH ON THE AXIS, NOT THREE PROJECTIONS THAT AGREE BY CALLER ARRANGEMENT.
+//
+// The first cut asked the disposition three separate questions -- members, rows, refusal -- and was
+// safe only because the caller happened to consult the refusal before using the other two. Both
+// Unobserved and Refused projected to an empty member list and an empty schedule, so a caller that
+// forgot the third question would assemble a perfectly well-formed plan that actuates nothing on a
+// host nobody looked at. A refusal has no rows projection now: the arms that cannot be planned are
+// eliminated here and never reach the assembler, which takes members and rows as ordinary values.
+//
+// The subject-host join is part of the same match rather than a guard beside it: each arm binds the
+// host the axis is tagged for, so there is no second reading of it to disagree with.
 fn fleet_converge_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
@@ -2313,11 +2359,78 @@ fn fleet_converge_plan_artifact(
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
 ) -> FleetConvergePlanArtifactOutcome {
+  match spark_axis {
+    SparkServingAxisUnobserved { host: ah } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactRefused { refusal: SparkAxisUnobservedRefusal { host: ah } }
+      }
+    SparkServingAxisRefused { host: ah, cause: why } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactRefused { refusal: SparkAxisPlanningRefused { host: ah, cause: why } }
+      }
+    SparkServingAxisNotApplicable { host: ah } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        fleet_converge_plan_artifact_assembled(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: [],
+          spark_rows: scheduled_rows_empty(),
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+          observed_activation_readiness: observed_activation_readiness,
+        )
+      }
+    SparkServingAxisPlanned { host: ah, observed_members: ms, rows: rows } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        fleet_converge_plan_artifact_assembled(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: ms,
+          spark_rows: rows,
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+          observed_activation_readiness: observed_activation_readiness,
+        )
+      }
+  }
+}
+
+fn fleet_converge_plan_artifact_assembled(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+) -> FleetConvergePlanArtifactOutcome {
   let request = FullHostConverge {
     host: host,
     observed_timers: observed_timers,
     observed_caps: observed_caps,
-    observed_spark: spark_serving_axis_observed_members(a: spark_axis),
+    observed_spark: observed_spark,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
   }
@@ -2396,31 +2509,16 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
     ),
   )
-  if !host_identity_eq(a: spark_serving_axis_host(a: spark_axis), b: host as HostIdentity) {
-    FleetConvergePlanArtifactRefused {
-      cause: join([
-        "spark axis is tagged for host ",
-        spark_serving_axis_host(a: spark_axis) as String,
-        " but the plan subject is ",
-        host as String,
-      ], ""),
-    }
-  } else {
-  match spark_serving_axis_refusal(a: spark_axis) {
-    Present { value: why } => FleetConvergePlanArtifactRefused { cause: why }
-    Absent =>
-      FleetConvergePlanArtifactReady {
-        artifact: FleetConvergePlanArtifact {
-          subject: subject,
-          prior_generation: prior_generation,
-          plan_lease: lease,
-          observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-          plan_body: body,
-          apply_shell: apply_shell,
-          spark_serving_typed_actions: spark_serving_axis_rows(a: spark_axis),
-        },
-      }
-  }
+  FleetConvergePlanArtifactReady {
+    artifact: FleetConvergePlanArtifact {
+      subject: subject,
+      prior_generation: prior_generation,
+      plan_lease: lease,
+      observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+      plan_body: body,
+      apply_shell: apply_shell,
+      spark_serving_typed_actions: spark_rows,
+    },
   }
 }
 

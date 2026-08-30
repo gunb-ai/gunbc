@@ -27,13 +27,11 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.spark.serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark.serving_execution_schedule {
-  spark_serving_axis_rows,
   SparkServingAxisDisposition,
   SparkServingAxisNotApplicable,
   SparkServingAxisRefused,
   SparkServingAxisPlanned,
   SparkServingAxisUnobserved,
-  spark_serving_axis_refusal,
   scheduled_rows_empty,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
@@ -1296,7 +1294,7 @@ fn c3_rows_count(v: SparkServingScheduledRowsVerdict) -> Int {
   match v {
     SparkServingScheduledRowsRefused { cause: _ } => 0 - 1
     SparkServingScheduledRowsReady { axis: axis, plan: _ } =>
-      length(scheduled_rows_list(scheduled: spark_serving_axis_rows(a: axis)))
+      length(scheduled_rows_list(scheduled: axis_rows_or_empty(a: axis)))
   }
 }
 
@@ -1343,10 +1341,10 @@ test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
         observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
         observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
       ) {
-        FleetConvergePlanArtifactRefused { cause: _ } => false
+        FleetConvergePlanArtifactRefused { refusal: _ } => false
         FleetConvergePlanArtifactReady { artifact: a } =>
           length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
-            == length(scheduled_rows_list(scheduled: spark_serving_axis_rows(a: axis)))
+            == length(scheduled_rows_list(scheduled: axis_rows_or_empty(a: axis)))
             && length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) > 0
       }
   }
@@ -1391,10 +1389,10 @@ test fn a_planned_axis_carries_members_and_rows_together() -> Bool {
 // the baseline reads its members from the same arm the rows came from.
 test fn the_artifact_baseline_moves_with_the_observed_spark_population() -> Bool {
   match artifact_outcome(axis: c3_axis(linger: LingerObservedEnabled)) {
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: with_members } =>
       match artifact_outcome(axis: SparkServingAxisNotApplicable { host: subject_host }) {
-        FleetConvergePlanArtifactRefused { cause: _ } => false
+        FleetConvergePlanArtifactRefused { refusal: _ } => false
         FleetConvergePlanArtifactReady { artifact: without } =>
           !(with_members.observed_baseline_hex == without.observed_baseline_hex)
       }
@@ -1405,7 +1403,7 @@ test fn the_artifact_baseline_moves_with_the_observed_spark_population() -> Bool
 test fn a_refused_axis_refuses_the_artifact_instead_of_planning_nothing() -> Bool {
   match artifact_outcome(axis: c3_axis(linger: LingerUnobservedState)) {
     FleetConvergePlanArtifactReady { artifact: _ } => false
-    FleetConvergePlanArtifactRefused { cause: _ } => true
+    FleetConvergePlanArtifactRefused { refusal: _ } => true
   }
 }
 
@@ -1423,7 +1421,7 @@ test fn an_unobserved_probe_is_a_refusal_and_not_a_non_spark_subject() -> Bool {
 // A non-Spark subject still assembles a plan -- it just has no Spark axis to speak of.
 test fn a_non_spark_subject_still_assembles_an_artifact() -> Bool {
   match artifact_outcome(axis: SparkServingAxisNotApplicable { host: subject_host }) {
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
     FleetConvergePlanArtifactReady { artifact: a } =>
       length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) == 0
   }
@@ -1460,7 +1458,7 @@ test fn an_axis_tagged_for_another_host_refuses_instead_of_planning_for_the_subj
     },
   ) {
     FleetConvergePlanArtifactReady { artifact: _ } => false
-    FleetConvergePlanArtifactRefused { cause: _ } => true
+    FleetConvergePlanArtifactRefused { refusal: _ } => true
   }
 }
 
@@ -1475,7 +1473,7 @@ test fn an_axis_tagged_for_the_subject_is_admitted_by_the_same_guard() -> Bool {
     },
   ) {
     FleetConvergePlanArtifactReady { artifact: _ } => true
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -1487,17 +1485,76 @@ test fn an_axis_tagged_for_the_subject_is_admitted_by_the_same_guard() -> Bool {
 test fn an_unobserved_spark_axis_refuses_the_artifact() -> Bool {
   match artifact_outcome(axis: SparkServingAxisUnobserved { host: subject_host }) {
     FleetConvergePlanArtifactReady { artifact: _ } => false
-    FleetConvergePlanArtifactRefused { cause: _ } => true
+    FleetConvergePlanArtifactRefused { refusal: _ } => true
   }
 }
 
-test fn an_unobserved_axis_is_not_a_non_spark_axis() -> Bool {
-  match spark_serving_axis_refusal(a: SparkServingAxisUnobserved { host: subject_host }) {
-    Absent => false
-    Present { value: _ } =>
-      match spark_serving_axis_refusal(a: SparkServingAxisNotApplicable { host: subject_host }) {
-        Absent => true
-        Present { value: _ } => false
+// A LOCAL READER FOR THE TEST'S OWN CONVENIENCE, NOT A PRODUCTION PROJECTION.
+//
+// The production helpers that turned any arm into an empty schedule are deleted -- a refusal has no
+// rows. These two claims are about the PLANNED arm's row count, so the reader lives here, in the
+// witness, where an empty answer cannot be mistaken for a plan.
+fn axis_rows_or_empty(
+  a: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+) -> ScheduledRows<FleetConvergeSparkServingTypedAction> {
+  match a {
+    SparkServingAxisPlanned { host: _, observed_members: _, rows: rows } => rows
+    SparkServingAxisNotApplicable { host: _ } => scheduled_rows_empty()
+    SparkServingAxisUnobserved { host: _ } => scheduled_rows_empty()
+    SparkServingAxisRefused { host: _, cause: _ } => scheduled_rows_empty()
+  }
+}
+
+// THE CONTROL ASKS WHICH REFUSAL, NOT WHETHER ONE HAPPENED.
+//
+// A claim that only checks "the artifact refused" is satisfied by any refusal for any reason, so it
+// would stay green if the foreign-host arm collapsed into the unobserved one. This recovers both
+// identities out of the typed refusal and checks they are the two hosts that actually disagreed.
+test fn a_foreign_host_axis_refuses_with_both_identities_recoverable() -> Bool {
+  match artifact_outcome(
+    axis: SparkServingAxisPlanned {
+      host: "srv3" as HostIdentity,
+      observed_members: [],
+      rows: scheduled_rows_empty(),
+    },
+  ) {
+    FleetConvergePlanArtifactReady { artifact: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: r } =>
+      match r {
+        SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: sh } =>
+          ah == ("srv3" as HostIdentity) && sh == subject_host
+        SparkAxisUnobservedRefusal { host: _ } => false
+        SparkAxisPlanningRefused { host: _, cause: _ } => false
       }
   }
 }
+
+// The enrolled-unobserved case must inhabit its OWN arm, not a generic refusal. These are different
+// operator responses -- wire the observer, versus fix a mis-tagged axis -- and prose cannot be asked
+// which one it is.
+test fn an_unobserved_axis_refuses_as_unobserved_and_not_as_something_else() -> Bool {
+  match artifact_outcome(axis: SparkServingAxisUnobserved { host: subject_host }) {
+    FleetConvergePlanArtifactReady { artifact: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: r } =>
+      match r {
+        SparkAxisUnobservedRefusal { host: h } => h == subject_host
+        SparkAxisSubjectHostMismatch { axis_host: _, subject_host: _ } => false
+        SparkAxisPlanningRefused { host: _, cause: _ } => false
+      }
+  }
+}
+
+// And a planning refusal inhabits the third arm, so all three are distinguishable rather than three
+// spellings of one string.
+test fn a_planning_refusal_refuses_as_a_planning_refusal() -> Bool {
+  match artifact_outcome(axis: c3_axis(linger: LingerUnobservedState)) {
+    FleetConvergePlanArtifactReady { artifact: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: r } =>
+      match r {
+        SparkAxisPlanningRefused { host: h, cause: _ } => h == subject_host
+        SparkAxisUnobservedRefusal { host: _ } => false
+        SparkAxisSubjectHostMismatch { axis_host: _, subject_host: _ } => false
+      }
+  }
+}
+

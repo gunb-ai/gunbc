@@ -67,7 +67,13 @@ import product.placement_supply { HostIdentity }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv3, operator_host_srv4 }
 import gunbc.ownership { Owned }
-import gunbc.spark.serving_execution_schedule { scheduled_rows_empty, SparkServingAxisNotApplicable }
+import gunbc.spark.serving_execution_schedule {
+  scheduled_rows_empty,
+  SparkServingAxisNotApplicable,
+  SparkServingAxisUnobserved,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
+}
 import gunbc.fleet_converge_plan {
   fabric_cell_observation_refusal_line,
   TimerRetirementMember,
@@ -146,7 +152,7 @@ import gunbc.fleet_converge_plan_cli {
   FleetConvergeApplyObservedRequestReady,
   FleetConvergeApplySparkUnobserved,
 }
-import gunbc.spark.serving_execution_schedule { spark_serving_axis_refusal }
+
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -173,7 +179,7 @@ test fn timer_retirement_plan_shows_refused_removal_for_foreign_cap() -> Bool {
     FleetConvergePlanArtifactReady { artifact: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL cap ")
         && string_contains(s: artifact.plan_body, pattern: "MemberNotOwned")
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -220,9 +226,9 @@ test fn plan_artifact_hash_is_stable_for_fixed_observation() -> Bool {
               }
             Absent => false
           }
-        FleetConvergePlanArtifactRefused { cause: _ } => false
+        FleetConvergePlanArtifactRefused { refusal: _ } => false
       }
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -258,7 +264,7 @@ test fn observed_baseline_cas_refuses_after_drift() -> Bool {
         },
       )
     }
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -279,7 +285,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
         && string_contains(s: artifact.plan_body, pattern: "lease_key:fleet-converge-plan:srv1")
         && artifact.plan_lease.epoch.generation == 5
         && artifact.observed_baseline_hex != "0000000000000000"
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -310,7 +316,7 @@ test fn cross_host_apply_refuses_subject_identity() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         },
       )
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -349,9 +355,9 @@ test fn same_host_different_generation_changes_plan_hash() -> Bool {
               }
             Absent => false
           }
-        FleetConvergePlanArtifactRefused { cause: _ } => false
+        FleetConvergePlanArtifactRefused { refusal: _ } => false
       }
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -395,7 +401,7 @@ test fn member_set_fingerprint_mismatch_refuses_identity() -> Bool {
         },
       )
     }
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -441,7 +447,7 @@ test fn bundle_hash_binds_apply_shell_not_plan_body_only() -> Bool {
             )
         Absent => false
       }
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -601,7 +607,7 @@ test fn apply_shell_carries_dissolve_on_marker_not_host_gate() -> Bool {
         && !string_contains(s: artifact.apply_shell, pattern: "GEN_STORE")
         && !string_contains(s: artifact.apply_shell, pattern: "printf '%s'")
         && !string_contains(s: artifact.apply_shell, pattern: "/etc/systemd/system/")
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -677,7 +683,7 @@ test fn a_slot_add_reaches_the_emitted_apply_script() -> Bool {
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=0")
         && string_contains(s: artifact.apply_shell, pattern: "actions-runner")
         && (string_contains(s: artifact.apply_shell, pattern: "no slots to add") == false)
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -718,7 +724,7 @@ test fn slot_drift_breaks_the_member_set_fingerprint() -> Bool {
           observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
         },
       ) == false)
-    FleetConvergePlanArtifactRefused { cause: _ } => false
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
   }
 }
 
@@ -2013,18 +2019,22 @@ test fn witness_a_foreign_artifact_reports_its_host_before_its_scope() -> Bool {
 // replaced, because it turns missing evidence into a claim. The CLI consults the observation scope
 // and answers Unobserved, which refuses the artifact, so the unwired observer stops the line.
 test fn an_enrolled_spark_gets_an_unobserved_axis_from_the_cli_not_a_non_applicable_one() -> Bool {
-  match spark_serving_axis_refusal(a: spark_axis_for_unobserved_cli(host: "srv5" as HostIdentity)) {
-    Absent => false
-    Present { value: _ } => true
+  match spark_axis_for_unobserved_cli(host: "srv5" as HostIdentity) {
+    SparkServingAxisUnobserved { host: h } => h == ("srv5" as HostIdentity)
+    SparkServingAxisNotApplicable { host: _ } => false
+    SparkServingAxisRefused { host: _, cause: _ } => false
+    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
   }
 }
 
 // The positive control: a host that is genuinely not a Spark still gets NotApplicable, so the arm
 // above is a discrimination on enrollment and not a blanket refusal.
 test fn a_non_spark_host_still_gets_a_non_applicable_axis_from_the_cli() -> Bool {
-  match spark_serving_axis_refusal(a: spark_axis_for_unobserved_cli(host: operator_host_srv3)) {
-    Absent => true
-    Present { value: _ } => false
+  match spark_axis_for_unobserved_cli(host: operator_host_srv3) {
+    SparkServingAxisNotApplicable { host: h } => h == operator_host_srv3
+    SparkServingAxisUnobserved { host: _ } => false
+    SparkServingAxisRefused { host: _, cause: _ } => false
+    SparkServingAxisPlanned { host: _, observed_members: _, rows: _ } => false
   }
 }
 

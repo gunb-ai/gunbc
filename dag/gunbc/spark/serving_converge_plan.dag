@@ -24,8 +24,8 @@ import gunbc.spark.serving_execution_schedule {
   SparkServingAxisDisposition,
   SparkServingAxisPlanned,
   SparkServingAxisRefused,
-  spark_serving_axis_rows,
-  spark_serving_axis_observed_members,
+  SparkServingAxisNotApplicable,
+  SparkServingAxisUnobserved,
   SparkServingFrozenExecutionSchedule,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
@@ -571,18 +571,42 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
     SparkServingScheduledRowsRefused { cause: why } =>
       SparkServingPlanArtifactRefused { cause: why }
     SparkServingScheduledRowsReady { axis: axis, plan: full_plan } =>
-      SparkServingPlanArtifactReady {
-        artifact: spark_serving_fleet_converge_plan_artifact_from_rows(
-          host: host,
-          prior_generation: prior_generation,
-          observed_timers: observed_timers,
-          observed_caps: observed_caps,
-          spark_plan: full_plan,
-          spark_rows: spark_serving_axis_rows(a: axis),
-          observed_spark: spark_serving_axis_observed_members(a: axis),
-          observed_slots: [],
-          observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
-        ),
+      match axis {
+        SparkServingAxisNotApplicable { host: h } =>
+          SparkServingPlanArtifactRefused {
+            cause: join([
+              "the row producer reported Ready for host ",
+              h as String,
+              " but handed back a NotApplicable axis: a host with no Spark axis has no schedule to",
+              " freeze into an artifact",
+            ], ""),
+          }
+        SparkServingAxisUnobserved { host: h } =>
+          SparkServingPlanArtifactRefused {
+            cause: join([
+              "the row producer reported Ready for host ",
+              h as String,
+              " but handed back an Unobserved axis: nothing was measured, so there is nothing to plan",
+            ], ""),
+          }
+        SparkServingAxisRefused { host: h, cause: why } =>
+          SparkServingPlanArtifactRefused {
+            cause: join(["spark axis refused on host ", h as String, ": ", why], ""),
+          }
+        SparkServingAxisPlanned { host: _, observed_members: ms, rows: rows } =>
+          SparkServingPlanArtifactReady {
+            artifact: spark_serving_fleet_converge_plan_artifact_from_rows(
+              host: host,
+              prior_generation: prior_generation,
+              observed_timers: observed_timers,
+              observed_caps: observed_caps,
+              spark_plan: full_plan,
+              spark_rows: rows,
+              observed_spark: ms,
+              observed_slots: [],
+              observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
+            ),
+          }
       }
   }
 }
