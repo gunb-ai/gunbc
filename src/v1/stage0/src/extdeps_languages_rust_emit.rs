@@ -57,7 +57,7 @@ pub fn rust_keywords() -> Rc<HashMap<String, String>> {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
-            __m.insert("null".to_string(), "None".to_string());
+            __m.insert("null".to_string(), "std::option::Option::None".to_string());
             __m.insert("and".to_string(), "&&".to_string());
             __m.insert("or".to_string(), "||".to_string());
             __m.insert("not".to_string(), "!".to_string());

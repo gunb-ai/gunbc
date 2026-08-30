@@ -191,10 +191,10 @@ pub fn peano_literal_materialization_cap() -> i64 {
 pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDescentAmount>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (k.clone() <= 0) {
-            None
+            std::option::Option::None
         } else {
             if (k.clone() > peano_literal_materialization_cap()) {
-                None
+                std::option::Option::None
             } else {
                 if (k.clone() == 1) {
                     Some(Rc::new(PositiveDescentAmount::OneStep))
@@ -203,7 +203,7 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
                         Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
                             previous: prev.clone(),
                         })),
-                        None => None,
+                        None => std::option::Option::None,
                     }
                 }
             }
@@ -214,10 +214,10 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
 pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<ProportionalDivisor>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (k.clone() < 2) {
-            None
+            std::option::Option::None
         } else {
             if (k.clone() > peano_literal_materialization_cap()) {
-                None
+                std::option::Option::None
             } else {
                 if (k.clone() == 2) {
                     Some(Rc::new(ProportionalDivisor::DivideByTwo))
@@ -226,7 +226,7 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
                         Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
                             inner: prev.clone(),
                         })),
-                        None => None,
+                        None => std::option::Option::None,
                     }
                 }
             }

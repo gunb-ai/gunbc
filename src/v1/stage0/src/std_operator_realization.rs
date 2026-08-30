@@ -120,16 +120,16 @@ pub fn ordering_test_for(op: BinOp) -> Option<Rc<OrderingTest>> {
         BinOp::Ge => Some(Rc::new(OrderingTest::OrderingIsNot {
             variant: "Less".to_string(),
         })),
-        BinOp::Add => None,
-        BinOp::Sub => None,
-        BinOp::Mul => None,
-        BinOp::Div => None,
-        BinOp::Mod => None,
-        BinOp::Eq => None,
-        BinOp::Ne => None,
-        BinOp::And => None,
-        BinOp::Or => None,
-        BinOp::NullCoalesce => None,
+        BinOp::Add => std::option::Option::None,
+        BinOp::Sub => std::option::Option::None,
+        BinOp::Mul => std::option::Option::None,
+        BinOp::Div => std::option::Option::None,
+        BinOp::Mod => std::option::Option::None,
+        BinOp::Eq => std::option::Option::None,
+        BinOp::Ne => std::option::Option::None,
+        BinOp::And => std::option::Option::None,
+        BinOp::Or => std::option::Option::None,
+        BinOp::NullCoalesce => std::option::Option::None,
     }
 }
 
@@ -153,7 +153,7 @@ pub fn binop_is_equality(op: BinOp) -> bool {
 }
 
 pub fn binop_is_ordering(op: BinOp) -> bool {
-    (ordering_test_for(op.clone()) != None)
+    (ordering_test_for(op.clone()) != std::option::Option::None)
 }
 
 pub fn binop_label(op: BinOp) -> String {

@@ -73,7 +73,7 @@ pub fn target_callable(target: RenderTarget) -> Rc<CallableRepr> {
             template: "fn({params}) -> {return}".to_string(),
             param_separator: ", ".to_string(),
             return_separator: " -> ".to_string(),
-            import_path: None,
+            import_path: std::option::Option::None,
         }),
     }
 }
@@ -92,7 +92,7 @@ pub fn target_cast_syntax(target: RenderTarget) -> Option<Rc<CastSyntax>> {
         RenderTarget::Rust => Some(rust_cast_syntax()),
         RenderTarget::Python => Some(python_cast_syntax()),
         RenderTarget::Go => Some(go_cast_syntax()),
-        RenderTarget::Dag => None,
+        RenderTarget::Dag => std::option::Option::None,
     }
 }
 
@@ -248,7 +248,7 @@ pub fn rust_seed_host_numeric_alias(name: String, decl_file: String) -> Option<S
     {
         Some("i64".to_string())
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -291,7 +291,7 @@ pub fn type_realization_decision(
                         let native = if (target.clone() == RenderTarget::Rust) {
                             rust_seed_host_numeric_alias(dag_name.clone(), decl_file.clone())
                         } else {
-                            None
+                            std::option::Option::None
                         };
                         match native.clone() {
                             Some(host) => Rc::new(TypeRealizationDecision::Realized {
@@ -299,9 +299,9 @@ pub fn type_realization_decision(
                                     dag_name: dag_name.clone(),
                                     target_type: host.clone(),
                                     grounding_type: host.clone(),
-                                    default_expr: None,
-                                    is_copy: None,
-                                    literal_suffix: None,
+                                    default_expr: std::option::Option::None,
+                                    is_copy: std::option::Option::None,
+                                    literal_suffix: std::option::Option::None,
                                 }),
                             }),
                             None => Rc::new(TypeRealizationDecision::Unrealized),
@@ -335,8 +335,8 @@ pub fn lookup_checkpoint(
             .clone()
         {
             TypeRealizationDecision::Realized { checkpoint: cp, .. } => Some(cp.clone()),
-            TypeRealizationDecision::Unrealized => None,
-            TypeRealizationDecision::Refused { cause: _, .. } => None,
+            TypeRealizationDecision::Unrealized => std::option::Option::None,
+            TypeRealizationDecision::Refused { cause: _, .. } => std::option::Option::None,
         }
     }
 }
@@ -383,7 +383,7 @@ pub fn declaration_realizes_natively_on_rust(
                 RenderTarget::Rust,
                 declaration.decl_name.clone(),
                 decl_file.clone(),
-            ) != None)
+            ) != std::option::Option::None)
         }
     }
 }
@@ -423,7 +423,7 @@ pub fn coerce_primitive_type(target: RenderTarget, dag_name: String, decl_file: 
 pub fn is_copy(target: RenderTarget, dag_name: String, decl_file: String) -> Option<bool> {
     match lookup_checkpoint(target.clone(), dag_name.clone(), decl_file.clone()) {
         Some(cp) => cp.is_copy.clone(),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -433,7 +433,7 @@ pub fn literal_suffix(target: RenderTarget, dag_name: String, decl_file: String)
             Some(s) => Some(s.clone()),
             None => Some("".to_string()),
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -455,9 +455,9 @@ pub fn coerce_container_template(target: RenderTarget, container_name: String) -
     match crate::std_types::container_template_algebra(container_name.clone()) {
         Some(algebra) => match lookup_inhabitant(target.clone(), algebra.clone()) {
             Some(inh) => Some(inh.template.clone()),
-            None => None,
+            None => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 

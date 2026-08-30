@@ -74,9 +74,9 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
         match params.clone().last().cloned() {
             Some(tok) => match (*tok.clone()).clone() {
                 UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
-                UrlPathToken::LiteralToken { .. } => None,
+                UrlPathToken::LiteralToken { .. } => std::option::Option::None,
             },
-            None => None,
+            None => std::option::Option::None,
         }
     }
 }

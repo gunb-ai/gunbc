@@ -261,7 +261,7 @@ pub fn collect_type_names_from_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let self_name = if (n.ident_span.clone() != None) {
+        let self_name = if (n.ident_span.clone() != std::option::Option::None) {
             Rc::new(vec![crate::v1_std_core::authored_name_at(
                 source_indices.clone(),
                 n.clone(),
@@ -694,7 +694,7 @@ pub fn order_typed_call_args(
                 if (crate::v1_std_core::arg_name_at(
                     arg.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) == None)
+                ) == std::option::Option::None)
                 {
                     __found = true;
                     break;
@@ -715,7 +715,7 @@ pub fn order_typed_call_args(
                                 arg.clone(),
                                 scope.type_env.clone().source_indices.clone(),
                             );
-                            if (n.clone() != None) {
+                            if (n.clone() != std::option::Option::None) {
                                 v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
                             } else {
                                 acc.clone()
@@ -789,7 +789,7 @@ pub fn order_typed_call_args(
                                     arg.clone(),
                                     scope.type_env.clone().source_indices.clone(),
                                 );
-                                if (n.clone() == None) {
+                                if (n.clone() == std::option::Option::None) {
                                     true
                                 } else {
                                     (crate::v1_compiler_infer_types::emit_map_has(
@@ -1560,12 +1560,12 @@ pub fn render_node_type(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tn = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
-        let n_is_error = if (n.inferred.clone() != None) {
+        let n_is_error = if (n.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let n_is_type_var = if (n.inferred.clone() != None) {
+        let n_is_type_var = if (n.inferred.clone() != std::option::Option::None) {
             is_type_variable(n.inferred.clone().clone().unwrap())
         } else {
             false
@@ -1690,7 +1690,7 @@ pub fn render_node_type(
         );
         if is_disj.clone() {
             {
-                let base = if (n.ident_span.clone() != None) {
+                let base = if (n.ident_span.clone() != std::option::Option::None) {
                     render_named_type_base(n.clone(), target.clone(), source_indices.clone())
                 } else {
                     {
@@ -1712,7 +1712,7 @@ pub fn render_node_type(
         }
         if is_conj.clone() {
             {
-                if (n.type_annotation.clone() != None) {
+                if (n.type_annotation.clone() != std::option::Option::None) {
                     {
                         let refined_str = match n.children.clone().first().cloned() {
                             Some(base) => render_node_type(
@@ -1731,13 +1731,13 @@ pub fn render_node_type(
                     }
                 }
                 let is_pair = (((n.connective.clone() == Connective::Conj)
-                    && (n.ident_span.clone() == None))
+                    && (n.ident_span.clone() == std::option::Option::None))
                     && ((n.children.clone().len() as i64) == 2));
                 if is_pair.clone() {
                     {
                         let first_child = match n.children.clone().first().cloned() {
                             Some(c) => {
-                                if (c.inferred.clone() != None) {
+                                if (c.inferred.clone() != std::option::Option::None) {
                                     render_node_type(
                                         crate::v1_compiler_infer_types::resolved_type(c.clone()),
                                         target.clone(),
@@ -1758,7 +1758,7 @@ pub fn render_node_type(
                         let second_child =
                             match n.children.clone().iter().cloned().skip(1 as usize).next() {
                                 Some(c) => {
-                                    if (c.inferred.clone() != None) {
+                                    if (c.inferred.clone() != std::option::Option::None) {
                                         render_node_type(
                                             crate::v1_compiler_infer_types::resolved_type(
                                                 c.clone(),
@@ -1785,7 +1785,7 @@ pub fn render_node_type(
                         return tuple_str;
                     }
                 }
-                if (n.ident_span.clone() != None) {
+                if (n.ident_span.clone() != std::option::Option::None) {
                     {
                         let snake = crate::v1_compiler_emit_core_support::to_snake(tn.clone());
                         let has_template =
@@ -2093,7 +2093,7 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 }
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
-    if (item.transport.clone() == None) {
+    if (item.transport.clone() == std::option::Option::None) {
         crate::v1_std_core::local_transport_node(
             Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             item.span.clone(),
@@ -2123,7 +2123,7 @@ pub fn service_has_rest(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if (op.transport.clone() != std::option::Option::None) {
                     crate::v1_std_core::is_rest_transport(
                         op.transport.clone().clone().unwrap(),
                         source_indices.clone(),
@@ -2147,7 +2147,7 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<No
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if (op.transport.clone() != std::option::Option::None) {
                     crate::v1_std_core::is_shell_transport(op.transport.clone().clone().unwrap())
                 } else {
                     false
@@ -2175,7 +2175,7 @@ pub fn service_has_file(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if (op.transport.clone() != std::option::Option::None) {
                     crate::v1_std_core::is_file_transport(
                         op.transport.clone().clone().unwrap(),
                         source_indices.clone(),
@@ -2214,7 +2214,7 @@ pub fn service_has_rest_auth(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if (op.transport.clone() != std::option::Option::None) {
                     {
                         let t = op.transport.clone().clone().unwrap();
                         if crate::v1_std_core::is_rest_transport(t.clone(), source_indices.clone())
@@ -2451,7 +2451,7 @@ pub fn file_result_channel_of_key(key: String) -> Option<FileResultChannel> {
                     {
                         Some(FileResultChannel::FileChanContent)
                     } else {
-                        None
+                        std::option::Option::None
                     }
                 }
             }
@@ -2498,7 +2498,7 @@ pub fn bind_file_result_field(
             channel: c.clone(),
             optional: (ch.return_cardinality.clone() == Cardinality::CardOptional),
         })),
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4610,16 +4610,16 @@ pub fn child_from_key(
                 };
                 Some(s.clone())
             }
-            _ => None,
+            _ => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
 pub fn unwrap_single_field_product(n: Rc<Node>) -> Rc<Node> {
     {
         let is_product = crate::v1_compiler_infer_types::is_product_type(n.clone());
-        if ((is_product.clone() && (n.ident_span.clone() == None))
+        if ((is_product.clone() && (n.ident_span.clone() == std::option::Option::None))
             && ((n.children.clone().len() as i64) == 1))
         {
             match n.children.clone().first().cloned() {
@@ -4697,9 +4697,9 @@ pub fn file_transport_declared_verb(
                 };
                 Some(s.clone())
             }
-            _ => None,
+            _ => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4796,11 +4796,11 @@ pub fn file_emission_verb_refusal(
             if ((v.clone() == file_transport_verb_delete())
                 || (v.clone() == file_transport_verb_list()))
             {
-                None
+                std::option::Option::None
             } else {
                 if (v.clone() == file_transport_verb_write_owner_only()) {
                     if file_operation_has_content_input(op_node.clone(), source_indices.clone()) {
-                        None
+                        std::option::Option::None
                     } else {
                         Some(Rc::new(FileEmissionRefusal::FileWriteMissingContentInput {
                             verb: v.clone(),
@@ -4813,7 +4813,7 @@ pub fn file_emission_verb_refusal(
                 }
             }
         }
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -4870,7 +4870,7 @@ pub fn file_binding_refusal(
                                     key: k.clone(),
                                 }))
                             }
-                            None => None,
+                            None => std::option::Option::None,
                         }
                     }
                 }
@@ -5888,7 +5888,7 @@ pub fn method_template_emit_for_target(
             Some(crate::extdeps_languages_python_emit::python_method_templates_flat())
         }
         RenderTarget::Go => Some(crate::extdeps_languages_go_emit::go_method_templates_flat()),
-        RenderTarget::Dag => None,
+        RenderTarget::Dag => std::option::Option::None,
     }
 }
 
@@ -5911,9 +5911,9 @@ pub fn emit_algebra_method_template(
                     bindings.clone(),
                 ))
             }
-            None => None,
+            None => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -6368,7 +6368,7 @@ pub fn emit_typed_method_call_unified(
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(target.clone());
         let source_indices = scope.type_env.clone().source_indices.clone();
-        if (method_semantics.clone() != None) {
+        if (method_semantics.clone() != std::option::Option::None) {
             match (*method_semantics.clone().unwrap()).clone() {
                 MethodSemantics::ServiceMethodSemantics {
                     service_name: svc_name,
@@ -7074,7 +7074,7 @@ pub fn emit_unified_typed_expr(
                     IfValueForm::IfStatement => {
                         Some(crate::v1_compiler_infer_types::resolved_type(expr.clone()))
                     }
-                    _ => None,
+                    _ => std::option::Option::None,
                 };
                 emit_typed_if_shared(
                     cond_str.clone(),
