@@ -42,7 +42,8 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
     ],
     furthest_phase_reached: if count(resolve_ids) > 0 { Resolve } else { Typeck },
     furthest_phase_evidence: Observed,
-    census_identity_digest: content_hash_atom(value: "fixture-board" as NonEmptyStr)
+    census_identity_digest: content_hash_atom(value: "fixture-board" as NonEmptyStr),
+    partition_complete: true
   }
 }
 

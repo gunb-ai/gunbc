@@ -4,6 +4,7 @@ import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { content_hash_atom, Fnv1a64Structural }
 import extdeps.git.inspect { CommitSha }
 import extdeps.crypto.hash { Digest }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_identity }
 import extdeps.cargo_diagnostic {
   RustcCodedDiagnostic,
   RustcDiagnosticIdentity,
@@ -55,6 +56,7 @@ type RustcPhaseBoard {
   furthest_phase_reached: RustcPhase
   furthest_phase_evidence: PhaseCountEvidence
   census_identity_digest: Fnv1a64Structural
+  partition_complete: Bool
 }
 
 type ParsePhaseEvidence
@@ -68,7 +70,7 @@ type CompilePhaseInvocation {
 
 type CompilePhaseReceiptSubject {
   source_revision: CommitSha
-  git_tree_object: String
+  git_tree_object: FloorDiscoveryTreeId
   emitted_artifact_identity: Digest
   compiler_identity: Digest
   assembler_identity: Digest
@@ -76,11 +78,11 @@ type CompilePhaseReceiptSubject {
   rustc_identity: NonEmptyStr
   invocation: CompilePhaseInvocation
   classification_policy_digest: Fnv1a64Structural
+  comparison_epoch: NonEmptyStr
 }
 
 type RustcPhaseBoardRead
-  = PhaseBoardDerived { board: RustcPhaseBoard }
-  | PhaseBoardUnplacedDiagnostics { identities: List<String> }
+  = PhaseBoardDerived { board: RustcPhaseBoard, unplaced_identities: List<String> }
   | PhaseBoardMeasurementUnreached
 
 fn diagnostic_phase(d: RustcCodedDiagnostic) -> RustcErrorCodePhase {
@@ -145,17 +147,14 @@ fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> Rustc
     RustcUncoded => false
   })
   let unplaced = unplaced_identities(ds: errors)
-  if count(unplaced) > 0 {
-    PhaseBoardUnplacedDiagnostics { identities: unplaced }
-  } else {
-    let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
-    let furthest_order = rustc_phase_order(phase: furthest)
-    let all_identities = concat(
-      [concat("parse-errors:", to_string(parse_errors))],
-      deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
-    )
-    PhaseBoardDerived {
-      board: RustcPhaseBoard {
+  let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
+  let furthest_order = rustc_phase_order(phase: furthest)
+  let all_identities = concat(
+    [concat("parse-errors:", to_string(parse_errors))],
+    deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
+  )
+  PhaseBoardDerived {
+    board: RustcPhaseBoard {
         rows: [
           RustcPhaseBoardRow {
             phase: Parse,
@@ -168,10 +167,11 @@ fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> Rustc
           phase_row(ds: errors, phase: Borrowck, reached: furthest_order >= rustc_phase_order(phase: Borrowck))
         ],
         furthest_phase_reached: furthest,
-        furthest_phase_evidence: Observed,
-        census_identity_digest: content_hash_atom(value: (all_identities |> join(separator: "\n")) as NonEmptyStr)
-      }
-    }
+      furthest_phase_evidence: Observed,
+      census_identity_digest: content_hash_atom(value: (all_identities |> join(separator: "\n")) as NonEmptyStr),
+      partition_complete: count(unplaced) == 0
+    },
+    unplaced_identities: unplaced
   }
 }
 
@@ -216,6 +216,7 @@ type CompilePhaseFrontierReceipt {
   raw_coded_diagnostic_identities: List<String>
   unplaced_identities: List<String>
   newly_exposed: List<NewlyExposedDiagnostic>
+  reclassified_predecessor_board: RustcPhaseBoard?
   producer: PhaseBoardProducer
 }
 
@@ -244,26 +245,72 @@ type PhaseBoardSeriesFold
 
 fn receipt_subject_key(receipt: CompilePhaseFrontierReceipt) -> String {
   join([
-    receipt.subject.git_tree_object,
+    floor_discovery_tree_identity(tree: receipt.subject.git_tree_object),
     receipt.subject.emitted_artifact_identity.hex as String,
     receipt.subject.compiler_identity.hex as String,
     receipt.subject.assembler_identity.hex as String,
     receipt.subject.cargo_identity as String,
     receipt.subject.rustc_identity as String,
     receipt.subject.classification_policy_digest.digest as String,
+    receipt.subject.comparison_epoch as String,
     receipt.subject.invocation.target,
     receipt.subject.invocation.profile,
     receipt.subject.invocation.features |> join(separator: ",")
   ], "\t")
 }
 
+fn newly_exposed_row(row: NewlyExposedDiagnostic) -> String {
+  concat(
+    row.identity,
+    match row.cause {
+      ExposedByRemovedMaskingIdentity { removed_identity: masking } => concat("\tremoved-mask\t", masking)
+      ExposedByPhaseAdvance { previous_phase: old, reached_phase: reached } => concat(
+        "\tphase-advance\t",
+        concat(rustc_phase_name(phase: old), concat("\t", rustc_phase_name(phase: reached)))
+      )
+    }
+  )
+}
+
+fn receipt_position_text(position: PhaseBoardSeriesPosition) -> String {
+  match position {
+    PhaseBoardBaseline => "baseline"
+    PhaseBoardSuccessor { predecessor_invocation: prior } => concat("successor-of:", prior as String)
+  }
+}
+
+fn parse_evidence_rows(evidence: ParsePhaseEvidence) -> List<String> {
+  match evidence {
+    ParseReached { evidence: observation } => [
+      observation.producer,
+      to_string(observation.files_observed),
+      to_string(observation.parse_errors)
+    ]
+  }
+}
+
+fn optional_reclassified_digest(board: RustcPhaseBoard?) -> String {
+  match board {
+    Absent => "not-reclassified"
+    Present { value: b } => concat("reclassified:", b.census_identity_digest.digest as String)
+  }
+}
+
 fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Structural {
   content_hash_atom(
     value: join([
       receipt_subject_key(receipt: receipt),
+      to_string(receipt.sequence),
       receipt.invocation as String,
+      receipt_position_text(position: receipt.position),
+      parse_evidence_rows(evidence: receipt.parse_evidence) |> join(separator: "\t"),
       receipt.raw_coded_diagnostic_identities |> join(separator: "\n"),
       receipt.unplaced_identities |> join(separator: "\n"),
+      receipt.newly_exposed |> map(row => newly_exposed_row(row: row)) |> join(separator: "\n"),
+      optional_reclassified_digest(board: receipt.reclassified_predecessor_board),
+      receipt.producer.module_path,
+      receipt.producer.function,
+      receipt.producer.entry,
       receipt.board.census_identity_digest.digest as String,
       rustc_phase_name(phase: receipt.board.furthest_phase_reached)
     ], "\n") as NonEmptyStr
@@ -280,6 +327,56 @@ fn expected_prefix_digest(previous: Fnv1a64Structural?, identity: Fnv1a64Structu
       concat("\n", identity.digest as String)
     ) as NonEmptyStr
   )
+}
+
+fn seal_compile_phase_receipt(
+  sequence: Int,
+  subject: CompilePhaseReceiptSubject,
+  invocation: NonEmptyStr,
+  position: PhaseBoardSeriesPosition,
+  previous_prefix_digest: Fnv1a64Structural?,
+  parse_evidence: ParsePhaseEvidence,
+  board: RustcPhaseBoard,
+  raw_coded_diagnostic_identities: List<String>,
+  unplaced_identities: List<String>,
+  newly_exposed: List<NewlyExposedDiagnostic>,
+  reclassified_predecessor_board: RustcPhaseBoard?,
+  producer: PhaseBoardProducer
+) -> CompilePhaseFrontierReceipt {
+  let placeholder = content_hash_atom(value: "unsealed-compile-phase-receipt" as NonEmptyStr)
+  let unsealed = CompilePhaseFrontierReceipt {
+    sequence: sequence,
+    subject: subject,
+    invocation: invocation,
+    position: position,
+    previous_prefix_digest: previous_prefix_digest,
+    receipt_identity: placeholder,
+    prefix_digest: placeholder,
+    parse_evidence: parse_evidence,
+    board: board,
+    raw_coded_diagnostic_identities: raw_coded_diagnostic_identities,
+    unplaced_identities: unplaced_identities,
+    newly_exposed: newly_exposed,
+    reclassified_predecessor_board: reclassified_predecessor_board,
+    producer: producer
+  }
+  let identity = receipt_payload_identity(receipt: unsealed)
+  CompilePhaseFrontierReceipt {
+    sequence: sequence,
+    subject: subject,
+    invocation: invocation,
+    position: position,
+    previous_prefix_digest: previous_prefix_digest,
+    receipt_identity: identity,
+    prefix_digest: expected_prefix_digest(previous: previous_prefix_digest, identity: identity),
+    parse_evidence: parse_evidence,
+    board: board,
+    raw_coded_diagnostic_identities: raw_coded_diagnostic_identities,
+    unplaced_identities: unplaced_identities,
+    newly_exposed: newly_exposed,
+    reclassified_predecessor_board: reclassified_predecessor_board,
+    producer: producer
+  }
 }
 
 fn board_row(board: RustcPhaseBoard, phase: RustcPhase) -> RustcPhaseBoardRow? {
@@ -364,6 +461,47 @@ fn phase_ratchet_with_dispositions(
   }
 }
 
+fn receipt_pair_ratchet(
+  previous: CompilePhaseFrontierReceipt,
+  current: CompilePhaseFrontierReceipt
+) -> PhaseRatchetVerdict {
+  if previous.subject.comparison_epoch == current.subject.comparison_epoch {
+    match current.reclassified_predecessor_board {
+      Present { value: _ } => PhaseRatchetRefused {
+        phase: current.board.furthest_phase_reached,
+        identities: [],
+        reason: "a same-policy comparison carries an unnecessary reclassification" as NonEmptyStr
+      }
+      Absent => phase_ratchet_with_dispositions(
+        previous: previous.board,
+        current: current.board,
+        dispositions: current.newly_exposed
+      )
+    }
+  } else {
+    // A toolchain or classification-policy change starts a new epoch. When the producer also
+    // reclassifies the prior raw population under the new policy, the ordinary ratchet remains
+    // meaningful and executes against that typed board; otherwise no cross-policy count is made.
+    match current.reclassified_predecessor_board {
+      Absent => PhaseRatchetHeld
+      Present { value: reclassified } => phase_ratchet_with_dispositions(
+        previous: reclassified,
+        current: current.board,
+        dispositions: current.newly_exposed
+      )
+    }
+  }
+}
+
+fn comparison_inputs_same(a: CompilePhaseReceiptSubject, b: CompilePhaseReceiptSubject) -> Bool {
+  a.cargo_identity == b.cargo_identity
+    && a.rustc_identity == b.rustc_identity
+    && a.classification_policy_digest == b.classification_policy_digest
+    && a.invocation.target == b.invocation.target
+    && a.invocation.profile == b.invocation.profile
+    && a.invocation.features == b.invocation.features
+}
+
 fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> PhaseBoardSeriesVerdict {
   let folded = fold(
     series,
@@ -396,8 +534,10 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt or prefix digest does not match its payload" as NonEmptyStr }
               } else if any(seen, key => key == receipt_subject_key(receipt: receipt)) {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "the same tree and full observation subject appears twice" as NonEmptyStr }
+              } else if (previous.subject.comparison_epoch == receipt.subject.comparison_epoch) != comparison_inputs_same(a: previous.subject, b: receipt.subject) {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "comparison epoch does not change exactly when toolchain, policy, target, profile, or features change" as NonEmptyStr }
               } else {
-                match phase_ratchet_with_dispositions(previous: previous.board, current: receipt.board, dispositions: receipt.newly_exposed) {
+                match receipt_pair_ratchet(previous: previous, current: receipt) {
                   PhaseRatchetHeld => SeriesFoldHeld { previous: receipt, seen_subjects: concat(seen, [receipt_subject_key(receipt: receipt)]) }
                   PhaseRatchetRefused { phase: p, identities: ids, reason: why } => SeriesFoldRefused {
                     invocation: receipt.invocation as String,
@@ -415,270 +555,6 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
     SeriesFoldRefused { invocation: i, reason: why } => PhaseBoardSeriesRefused { invocation: i, reason: why }
   }
 }
-
-// Pre-model identity population produced by the 3af83d9 short-format emitted-crate census.
-// It remains historical evidence, not a CompilePhaseFrontierReceipt: that run did not observe
-// the full subject required by this frontier (artifact/toolchain identities and rustfmt evidence).
-data self_host_compile_phase_frontier_pre_model_raw_identities: List<String> = [
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2065\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2077\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2089\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2101\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2113\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2125\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2137\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2149\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2161\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t2173\t77\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/gunbc_v1_interpreter_primitive_surface.rs\t272\t75\tE0599\tno method named `concat` found for struct `std::string::String` in the current scope",
-  "src/std_cache_interface.rs\t650\t22\tE0308\tmismatched types: expected `Rc<Measure<(), (), i64>>`, found `Rc<Measure<(), (), Rc<i64>>>`",
-  "src/std_cache_interface.rs\t665\t43\tE0308\tmismatched types: expected `Rc<Measure<(), (), i64>>`, found `Rc<Measure<(), (), Rc<i64>>>`",
-  "src/std_cache_interface.rs\t693\t5\tE0308\tmismatched types: expected `String`, found `Option<String>`",
-  "src/std_cache_interface.rs\t697\t5\tE0308\tmismatched types: expected `String`, found `Option<String>`",
-  "src/std_cache_interface.rs\t701\t5\tE0308\tmismatched types: expected `Rc<CacheInterfaceFacts>`, found `Option<Rc<CacheInterfaceFacts>>`",
-  "src/std_checked_arithmetic.rs\t304\t12\tE0308\tmismatched types: expected `Rc<i64>`, found `i64`",
-  "src/std_measure.rs\t510\t18\tE0308\tmismatched types: expected `Rc<i64>`, found `i64`",
-  "src/std_measure.rs\t530\t109\tE0369\tcannot add `\{integer\}` to `Rc<i64>`",
-  "src/std_realization_measurement.rs\t96\t11\tE0308\tmismatched types: expected `Rc<Measure<(), S, Rc<i64>>>`, found `Rc<Measure<(), S, i64>>`",
-  "src/std_realization_schedule.rs\t64\t11\tE0308\tmismatched types: expected `Rc<Measure<(), S, Rc<i64>>>`, found `Rc<Measure<(), _, i64>>`",
-  "src/std_realization_schedule.rs\t74\t11\tE0308\tmismatched types: expected `Rc<Measure<(), S, Rc<i64>>>`, found `Rc<Measure<(), S, i64>>`",
-  "src/std_realization_schedule.rs\t83\t39\tE0308\tmismatched types: expected `Rc<Measure<_, _, i64>>`, found `Rc<Measure<(), S, Rc<i64>>>`",
-  "src/v2_compiler_body_lowering_fold.rs\t2383\t87\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_body_lowering_fold.rs\t2384\t92\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_body_lowering_fold.rs\t3176\t13\tE0308\t`match` arms have incompatible types: expected `Rc<Outcome<Option<Rc<Node>>>>`, found `Rc<Outcome<Rc<Node>>>`",
-  "src/v2_compiler_compile.rs\t183\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_compile.rs\t236\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_compile.rs\t281\t108\tE0308\tmismatched types: expected `Witness<Rc<Node>>`, found `Witness<Rc<Outcome<Rc<Witness<...>>>>>`",
-  "src/v2_compiler_compile.rs\t325\t5\tE0308\tmismatched types: expected `Rc<Outcome<Rc<Medium<Rc<Vector<i64>>>>>>`, found `Rc<Outcome<Rc<Medium<String>>>>`",
-  "src/v2_compiler_emit.rs\t20\t5\tE0308\tmismatched types: expected `Rc<Outcome<Rc<Medium<String>>>>`, found `Rc<Outcome<Rc<Medium<Rc<Vector<i64>>>>>>`",
-  "src/v2_compiler_eval.rs\t272\t36\tE0369\tbinary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`",
-  "src/v2_compiler_eval.rs\t572\t123\tE0369\tbinary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`",
-  "src/v2_compiler_eval.rs\t725\t56\tE0308\tmismatched types: expected `Witness<Rc<Node>>`, found `Witness<Rc<...>>`",
-  "src/v2_compiler_eval.rs\t733\t17\tE0308\tmismatched types: expected `Witness<Rc<Node>>`, found `Witness<Rc<...>>`",
-  "src/v2_compiler_eval.rs\t743\t17\tE0308\tmismatched types: expected `Witness<Rc<InferredFacts>>`, found `Witness<Rc<...>>`",
-  "src/v2_compiler_eval.rs\t752\t17\tE0308\tmismatched types: expected `Witness<Rc<InferredFacts>>`, found `Witness<Rc<...>>`",
-  "src/v2_compiler_infer.rs\t1404\t12\tE0308\tmismatched types: expected `Rc<PartialFunction<Rc<Node>, Rc<...>>>`, found `Rc<HashMap<Rc<Node>, Rc<InferredFacts>>>`",
-  "src/v2_compiler_infer.rs\t516\t29\tE0282\ttype annotations needed",
-  "src/v2_compiler_name_resolve.rs\t150\t177\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_parse.rs\t538\t143\tE0282\ttype annotations needed",
-  "src/v2_compiler_parse.rs\t542\t617\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_parse.rs\t662\t67\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_parse.rs\t782\t28\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_program_assembly.rs\t101\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_program_assembly.rs\t92\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1039\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1068\t111\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1076\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1085\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1094\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1132\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1141\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t117\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1287\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t1325\t8\tE0308\targuments to this function are incorrect",
-  "src/v2_compiler_source_authority.rs\t179\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t195\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t235\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t244\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t262\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t299\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t308\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t317\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t355\t105\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t402\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t410\t56\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t445\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t492\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t503\t27\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t520\t13\tE0282\ttype annotations needed",
-  "src/v2_compiler_source_authority.rs\t583\t62\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t590\t84\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t604\t62\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t643\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t651\t13\tE0282\ttype annotations needed",
-  "src/v2_compiler_source_authority.rs\t670\t37\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t671\t16\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t673\t51\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t692\t123\tE0308\tmismatched types: expected `Rc<Diagnostic>`, found `Rc<NonEmptyDiagnostics>`",
-  "src/v2_compiler_source_authority.rs\t693\t121\tE0308\tmismatched types: expected `Rc<Diagnostic>`, found `Rc<NonEmptyDiagnostics>`",
-  "src/v2_compiler_source_authority.rs\t698\t52\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_compiler_source_authority.rs\t726\t13\tE0308\tmismatched types: expected `Rc<SourceRefReadResult>`, found `SourceRefReadResult`",
-  "src/v2_compiler_source_authority.rs\t745\t138\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t745\t190\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t745\t76\tE0308\tmismatched types: expected `Rc<Diagnostic>`, found `Rc<NonEmptyDiagnostics>`",
-  "src/v2_compiler_source_authority.rs\t754\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t775\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t83\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t919\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t928\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_source_authority.rs\t969\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_target_carriers.rs\t106\t90\tE0308\tmismatched types: expected `Option<Rc<Node>>`, found `Rc<Node>`",
-  "src/v2_compiler_tokenize.rs\t700\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_translate.rs\t141\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_compiler_translate.rs\t1410\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t106\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t115\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t124\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t133\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t142\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t151\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t160\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1638\t168\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1638\t243\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1638\t315\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1638\t386\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1638\t458\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1661\t28\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t169\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1716\t1\tE0308\targuments to this function are incorrect",
-  "src/v2_extdeps_languages_dag.rs\t1836\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t1896\t11\tE0004\tnon-exhaustive patterns: `Edge { .. }` not covered: pattern `Edge { .. }` not covered",
-  "src/v2_extdeps_languages_dag.rs\t1964\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t3880\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t663\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1049\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1124\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1199\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1275\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1349\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1424\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1495\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1564\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1633\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1702\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1773\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1846\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1919\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t1989\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2059\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2128\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2198\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2270\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t228\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2339\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2409\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2476\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2546\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2616\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2684\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2753\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2824\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2895\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t2966\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3037\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t307\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3110\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3183\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3250\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3317\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3390\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t3474\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t385\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t461\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t536\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t609\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t681\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t753\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t826\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t902\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t676\t976\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t79\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t88\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t966\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_dag.rs\t97\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1172\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1197\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1199\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1201\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1203\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1205\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1207\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1209\t11\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_extdeps_languages_llvm_ir.rs\t1254\t14\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_lens_complexity_accumulator_copy_compile_gate.rs\t35\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_lens_cost.rs\t314\t123\tE0308\tmismatched types: expected `Rc<Nat>`, found `Nat`",
-  "src/v2_lens_cost.rs\t317\t123\tE0308\tmismatched types: expected `Rc<Nat>`, found `Nat`",
-  "src/v2_lens_determinism.rs\t128\t42\tE0308\targuments to this function are incorrect",
-  "src/v2_lens_machine_shape.rs\t79\t83\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_lens_machine_shape.rs\t85\t21\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_lens_machine_shape.rs\t85\t81\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_lens_machine_shape.rs\t92\t21\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_lens_machine_shape.rs\t92\t86\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_lens_mandatory_tag.rs\t113\t67\tE0308\targuments to this function are incorrect",
-  "src/v2_lens_mandatory_tag.rs\t117\t67\tE0308\targuments to this function are incorrect",
-  "src/v2_lens_mandatory_tag.rs\t121\t8\tE0308\targuments to this function are incorrect",
-  "src/v2_lens_mandatory_tag.rs\t45\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_lens_mandatory_tag.rs\t54\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_lens_mandatory_tag.rs\t63\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_lens_mandatory_tag.rs\t84\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_cardinality.rs\t581\t42\tE0308\targuments to this function are incorrect",
-  "src/v2_std_collection.rs\t93\t13\tE0308\tmismatched types: expected `HashMap<K, V>`, found `Rc<FinitelySupportedFunction<_, _>>`",
-  "src/v2_std_collection.rs\t94\t5\tE0560\tstruct `Rc<FinitelySupportedFunction<_, _>>` has no field named `lookup`: `Rc<FinitelySupportedFunction<_, _>>` does not have this field",
-  "src/v2_std_collection.rs\t94\t98\tE0282\ttype annotations needed",
-  "src/v2_std_compilers_lexing.rs\t191\t55\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_lexing.rs\t191\t72\tE0282\ttype annotations needed",
-  "src/v2_std_compilers_lexing.rs\t257\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_lexing.rs\t96\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t2384\t15\tE0308\tmismatched types: expected `String`, found `i64`",
-  "src/v2_std_compilers_target_model.rs\t3784\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t459\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t526\t48\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t535\t161\tE0277\texpected a `Fn(Rc<im::Vector<i64>>)` closure, found `Rc<im::Vector<i64>>`: expected an `Fn(Rc<im::Vector<i64>>)` closure, found `Rc<im::Vector<i64>>`",
-  "src/v2_std_compilers_target_model.rs\t545\t161\tE0277\texpected a `Fn(Rc<im::Vector<i64>>)` closure, found `Rc<im::Vector<i64>>`: expected an `Fn(Rc<im::Vector<i64>>)` closure, found `Rc<im::Vector<i64>>`",
-  "src/v2_std_compilers_target_model.rs\t5878\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t5971\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t7019\t90\tE0308\tmismatched types: expected `TargetUseSiteOwnershipLookup`, found `TargetUseSiteOwnershipCatalogLookup`",
-  "src/v2_std_compilers_target_model.rs\t7776\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_compilers_target_model.rs\t7802\t19\tE0004\tnon-exhaustive patterns: `Edge { .. }` not covered: pattern `Edge { .. }` not covered",
-  "src/v2_std_compilers_target_model.rs\t7831\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_cross_tree_resolution.rs\t103\t17\tE0599\tno associated item named `Empty` found for struct `im::Vector<A>` in the current scope: associated item not found in `im::Vector<_>`",
-  "src/v2_std_cross_tree_resolution.rs\t104\t5\tE0223\tambiguous associated type",
-  "src/v2_std_cross_tree_resolution.rs\t105\t17\tE0282\ttype annotations needed: cannot infer type of the type parameter `T` declared on the function `list_head`",
-  "src/v2_std_cross_tree_resolution.rs\t209\t18\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_cross_tree_resolution.rs\t211\t16\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_cross_tree_resolution.rs\t98\t102\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_fold_assembly.rs\t258\t38\tE0308\t`match` arms have incompatible types: expected `Rc<Outcome<Rc<Vector<Rc<Vector<...>>>>>>`, found `Rc<Outcome<Rc<Vector<Rc<Node>>>>>`",
-  "src/v2_std_integer.rs\t1354\t26\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1355\t9\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1357\t30\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1358\t13\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1360\t34\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1361\t17\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1363\t38\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1364\t21\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1366\t42\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1367\t25\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1369\t46\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1370\t29\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1372\t50\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1373\t33\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1375\t54\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1376\t37\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1378\t58\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1379\t41\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1381\t41\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_integer.rs\t1395\t30\tE0308\tmismatched types: expected `Rc<Nat>`, found integer",
-  "src/v2_std_integer.rs\t1398\t31\tE0369\tbinary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`",
-  "src/v2_std_integer.rs\t1402\t47\tE0369\tcannot divide `Rc<v2_std_nat::Nat>` by `\{integer\}`",
-  "src/v2_std_layer.rs\t38\t5\tE0618\texpected function, found `!`",
-  "src/v2_std_nat.rs\t56\t23\tE0369\tbinary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`",
-  "src/v2_std_node.rs\t748\t103\tE0599\tthe method `partial_cmp` exists for reference `&T`, but its trait bounds were not satisfied: method cannot be called on `&T` due to unsatisfied trait bounds",
-  "src/v2_std_qualified_name.rs\t231\t196\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_std_qualified_name.rs\t238\t68\tE0599\tno method named `split` found for struct `Rc<im::Vector<i64>>` in the current scope",
-  "src/v2_std_qualified_name.rs\t238\t97\tE0282\ttype annotations needed",
-  "src/v2_std_qualified_name.rs\t259\t5\tE0308\tmismatched types: expected `Rc<Vector<i64>>`, found `String`",
-  "src/v2_std_qualified_name.rs\t265\t72\tE0308\tmismatched types: expected `String`, found `Rc<Vector<i64>>`",
-  "src/v2_std_subject_evidence.rs\t49\t68\tE0308\t`match` arms have incompatible types: expected `Bool`, found `bool`",
-  "src/v2_std_subject_evidence.rs\t56\t69\tE0308\tmismatched types: expected `Bool`, found `bool`",
-  "src/v2_std_text.rs\t64\t13\tE0599\tno method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope: method not found in `Rc<im::Vector<i64>>`",
-  "src/v2_std_text.rs\t72\t22\tE0599\tno method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope: method not found in `Rc<im::Vector<i64>>`",
-  "src/v2_std_text.rs\t90\t18\tE0599\tno method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope: method not found in `Rc<im::Vector<i64>>`",
-  "src/v2_std_verdict.rs\t272\t5\tE0308\tmismatched types: expected `bool`, found `Bool`",
-  "src/v2_std_verdict.rs\t273\t49\tE0308\tmismatched types: expected `Bool`, found `bool`",
-  "src/v2_std_verdict.rs\t279\t5\tE0308\tmismatched types: expected `bool`, found `Bool`",
-  "src/v2_std_verdict.rs\t280\t70\tE0308\tmismatched types: expected `Bool`, found `bool`",
-  "src/v2_std_verdict.rs\t286\t5\tE0308\tmismatched types: expected `bool`, found `Bool`",
-]
 
 fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
   match row.standing {
