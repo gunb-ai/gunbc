@@ -17,6 +17,9 @@ import gunbc.self_host_compile_phase_frontier {
   phase_ratchet_with_dispositions,
   NewlyExposedDiagnostic,
   ExposedByPhaseAdvance,
+  PhaseBoardSeriesHeld,
+  phase_board_series_ratchet,
+  self_host_compile_phase_frontier_receipts,
   render_phase_board
 }
 
@@ -63,6 +66,16 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
     furthest_phase_evidence: Observed,
     census_identity_digest: content_hash_atom(value: "fixture-board" as NonEmptyStr),
     partition_complete: true
+  }
+}
+
+// The required witness executes over the persisted series, not a fixture or a copied count. The
+// genesis is the only row today; once a successor is appended this same call validates the link and
+// applies the phase/identity ratchet to the latest validated pair.
+test fn current_persisted_compile_phase_frontier_holds() -> Bool {
+  match phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts) {
+    PhaseBoardSeriesHeld => true
+    verdict => false
   }
 }
 

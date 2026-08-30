@@ -1,10 +1,11 @@
 module gunbc.self_host_compile_phase_frontier
 
 import std.types { Bool, Int, String, NonEmptyStr }
-import std.content_hash { content_hash_atom, Fnv1a64Structural }
+import std.content_hash { content_hash_atom, Fnv1a64Structural, Sha1Digest }
 import extdeps.git.inspect { CommitSha }
-import extdeps.crypto.hash { Digest }
-import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_identity }
+import extdeps.git.object_store { GitSha1ObjectId }
+import extdeps.crypto.hash { Digest, sha256_digest }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id, floor_discovery_tree_identity }
 import extdeps.cargo_diagnostic {
   RustcCodedDiagnostic,
   RustcDiagnosticIdentity,
@@ -24,7 +25,8 @@ import extdeps.languages.rust.compiler_phases {
   RustcErrorCodePhase,
   ErrorCodePlaced,
   ErrorCodeUnplaced,
-  rustc_error_code_phase
+  rustc_error_code_phase,
+  rustc_phase_classification_policy_digest
 }
 import tools.emission_entry_instrument {
   EmissionMeasurement,
@@ -326,6 +328,29 @@ type CompilePhaseFrontierStanding
   = CompilePhaseFrontierEmpty
   | CompilePhaseFrontierValidated { latest: CompilePhaseFrontierReceipt }
   | CompilePhaseFrontierInvalid { reason: NonEmptyStr }
+
+// This is the merge-floor enrolment fact, kept beside the population and ratchet it enrols so a
+// consumer cannot mistake the older observational cadence for this required witness.
+type CompilePhaseRatchetEnrolment {
+  witness: NonEmptyStr
+  required_prefix: NonEmptyStr
+  lane: NonEmptyStr
+}
+
+data self_host_compile_phase_ratchet_enrolment: CompilePhaseRatchetEnrolment = CompilePhaseRatchetEnrolment {
+  witness: "test.claim.self_host_compile_phase_frontier_witness_test" as NonEmptyStr,
+  required_prefix: "test.claim.self_host_" as NonEmptyStr,
+  lane: "required-witnesses-floor" as NonEmptyStr
+}
+
+// Append-only persisted observations live here. This genesis was produced by the one-entry
+// instrument at d20440d and published verbatim on PR #9710 as receipt 5469032391. Every later row
+// must be produced by the same entry point and link this row's prefix digest.
+data d20440d_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt 1.8.0-stable (254b59607d 2026-01-19): rustfmt --emit stdout --edition 2021 <each emitted src/*.rs in LC_ALL=C order>",
+  files_observed: 164,
+  refused_files: []
+}
 
 type PhaseBoardSeriesFold
   = SeriesFoldEmpty
@@ -637,6 +662,8 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board successor names a different predecessor" as NonEmptyStr }
               } else if receipt.sequence != previous.sequence + 1 {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt sequence is not chronological" as NonEmptyStr }
+              } else if (receipt.observed_at as String) <= (previous.observed_at as String) {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt observation timestamps are not strictly chronological" as NonEmptyStr }
               } else if receipt.previous_prefix_digest != Present { value: previous.prefix_digest } {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt does not link the preceding prefix digest" as NonEmptyStr }
               } else if receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: receipt.previous_prefix_digest, identity: receipt.receipt_identity) {
@@ -691,3 +718,289 @@ fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
 fn render_phase_board(board: RustcPhaseBoard) -> String {
   board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
 }
+data d20440d_raw_coded_diagnostic_identities: List<String> = [
+  "/home/briansrls/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/im-15.1.0/src/vector/mod.rs	97	13	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	272	75	E0599	no method named `concat` found for struct `std::string::String` in the current scope",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2065	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2077	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2089	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2101	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2113	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2125	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2137	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2149	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2161	77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs	2173	77	E0308	mismatched types",
+  "src/std_cache_interface.rs	651	22	E0308	mismatched types",
+  "src/std_cache_interface.rs	669	58	E0308	mismatched types",
+  "src/std_checked_arithmetic.rs	304	12	E0308	mismatched types",
+  "src/std_measure.rs	510	18	E0308	mismatched types",
+  "src/std_measure.rs	530	109	E0369	cannot add `\{integer\}` to `Rc<i64>`",
+  "src/std_realization_measurement.rs	96	11	E0308	mismatched types",
+  "src/std_realization_schedule.rs	64	11	E0308	mismatched types",
+  "src/std_realization_schedule.rs	74	11	E0308	mismatched types",
+  "src/std_realization_schedule.rs	83	39	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs	2383	87	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs	2384	92	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs	3176	34	E0308	`match` arms have incompatible types",
+  "src/v2_compiler_compile.rs	184	13	E0308	mismatched types",
+  "src/v2_compiler_compile.rs	237	13	E0308	mismatched types",
+  "src/v2_compiler_compile.rs	282	108	E0308	mismatched types",
+  "src/v2_compiler_compile.rs	326	5	E0308	mismatched types",
+  "src/v2_compiler_emit.rs	20	5	E0308	mismatched types",
+  "src/v2_compiler_eval.rs	272	36	E0369	binary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`",
+  "src/v2_compiler_eval.rs	572	123	E0369	binary operation `==` cannot be applied to type `Rc<InterpretationAlgebra>`",
+  "src/v2_compiler_eval.rs	725	56	E0308	mismatched types",
+  "src/v2_compiler_eval.rs	733	17	E0308	mismatched types",
+  "src/v2_compiler_eval.rs	743	17	E0308	mismatched types",
+  "src/v2_compiler_eval.rs	752	17	E0308	mismatched types",
+  "src/v2_compiler_infer.rs	516	29	E0282	type annotations needed",
+  "src/v2_compiler_infer.rs	1404	12	E0308	mismatched types",
+  "src/v2_compiler_name_resolve.rs	150	177	E0308	mismatched types",
+  "src/v2_compiler_parse.rs	538	143	E0282	type annotations needed",
+  "src/v2_compiler_parse.rs	542	617	E0308	mismatched types",
+  "src/v2_compiler_parse.rs	662	67	E0308	mismatched types",
+  "src/v2_compiler_parse.rs	782	28	E0308	mismatched types",
+  "src/v2_compiler_program_assembly.rs	92	13	E0308	mismatched types",
+  "src/v2_compiler_program_assembly.rs	101	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	79	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	113	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	175	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	191	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	231	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	240	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	258	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	295	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	304	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	313	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	351	105	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	398	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	406	56	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	441	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	488	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	499	27	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	545	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	566	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	710	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	719	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	760	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	830	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	859	111	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	867	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	876	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	885	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	923	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	932	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	1078	13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs	1116	8	E0308	arguments to this function are incorrect",
+  "src/v2_compiler_target_carriers.rs	106	90	E0308	mismatched types",
+  "src/v2_compiler_tokenize.rs	700	13	E0308	mismatched types",
+  "src/v2_compiler_translate.rs	141	13	E0308	mismatched types",
+  "src/v2_compiler_translate.rs	1410	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	79	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	88	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	97	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	106	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	115	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	124	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	133	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	142	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	151	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	160	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	169	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	663	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	228	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	307	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	385	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	461	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	536	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	609	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	681	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	753	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	826	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	902	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	976	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1049	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1124	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1199	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1275	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1349	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1424	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1495	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1564	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1633	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1702	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1773	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1846	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1919	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	1989	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2059	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2128	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2198	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2270	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2339	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2409	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2476	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2546	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2616	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2684	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2753	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2824	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2895	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	2966	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3037	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3110	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3183	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3250	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3317	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3390	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	676	3474	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	966	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1638	168	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1638	243	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1638	315	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1638	386	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1638	458	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1661	28	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1716	1	E0308	arguments to this function are incorrect",
+  "src/v2_extdeps_languages_dag.rs	1836	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	1896	11	E0004	non-exhaustive patterns: `Edge \{ .. \}` not covered",
+  "src/v2_extdeps_languages_dag.rs	1964	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs	3880	13	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1172	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1197	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1199	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1201	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1203	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1205	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1207	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1209	11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs	1254	14	E0308	mismatched types",
+  "src/v2_lens_complexity_accumulator_copy_compile_gate.rs	35	13	E0308	mismatched types",
+  "src/v2_lens_cost.rs	314	123	E0308	mismatched types",
+  "src/v2_lens_cost.rs	317	123	E0308	mismatched types",
+  "src/v2_lens_determinism.rs	128	42	E0308	arguments to this function are incorrect",
+  "src/v2_lens_machine_shape.rs	79	83	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs	85	21	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs	85	81	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs	92	21	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs	92	86	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs	45	13	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs	54	13	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs	63	13	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs	84	13	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs	113	67	E0308	arguments to this function are incorrect",
+  "src/v2_lens_mandatory_tag.rs	117	67	E0308	arguments to this function are incorrect",
+  "src/v2_lens_mandatory_tag.rs	121	8	E0308	arguments to this function are incorrect",
+  "src/v2_std_cardinality.rs	581	42	E0308	arguments to this function are incorrect",
+  "src/v2_std_collection.rs	93	13	E0308	mismatched types",
+  "src/v2_std_collection.rs	94	5	E0560	struct `Rc<FinitelySupportedFunction<_, _>>` has no field named `lookup`",
+  "src/v2_std_collection.rs	94	98	E0282	type annotations needed",
+  "src/v2_std_compilers_lexing.rs	96	13	E0308	mismatched types",
+  "src/v2_std_compilers_lexing.rs	191	55	E0308	mismatched types",
+  "src/v2_std_compilers_lexing.rs	191	72	E0282	type annotations needed",
+  "src/v2_std_compilers_lexing.rs	257	13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	642	13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	709	48	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	718	161	E0277	expected a `Fn(Rc<im::Vector<i64>>)` closure, found `Rc<im::Vector<i64>>`",
+  "src/v2_std_compilers_target_model.rs	728	161	E0277	expected a `Fn(Rc<im::Vector<i64>>)` closure, found `Rc<im::Vector<i64>>`",
+  "src/v2_std_compilers_target_model.rs	2567	15	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	3967	13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	6062	13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	6155	13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	7203	90	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	7960	13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs	7986	40	E0004	non-exhaustive patterns: `Edge \{ .. \}` not covered",
+  "src/v2_std_compilers_target_model.rs	8015	13	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs	98	102	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs	103	17	E0599	no associated item named `Empty` found for struct `im::Vector<A>` in the current scope",
+  "src/v2_std_cross_tree_resolution.rs	104	5	E0223	ambiguous associated type",
+  "src/v2_std_cross_tree_resolution.rs	105	17	E0282	type annotations needed",
+  "src/v2_std_cross_tree_resolution.rs	209	18	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs	211	16	E0308	mismatched types",
+  "src/v2_std_fold_assembly.rs	258	38	E0308	`match` arms have incompatible types",
+  "src/v2_std_integer.rs	1354	26	E0308	mismatched types",
+  "src/v2_std_integer.rs	1355	9	E0308	mismatched types",
+  "src/v2_std_integer.rs	1357	30	E0308	mismatched types",
+  "src/v2_std_integer.rs	1358	13	E0308	mismatched types",
+  "src/v2_std_integer.rs	1360	34	E0308	mismatched types",
+  "src/v2_std_integer.rs	1361	17	E0308	mismatched types",
+  "src/v2_std_integer.rs	1363	38	E0308	mismatched types",
+  "src/v2_std_integer.rs	1364	21	E0308	mismatched types",
+  "src/v2_std_integer.rs	1366	42	E0308	mismatched types",
+  "src/v2_std_integer.rs	1367	25	E0308	mismatched types",
+  "src/v2_std_integer.rs	1369	46	E0308	mismatched types",
+  "src/v2_std_integer.rs	1370	29	E0308	mismatched types",
+  "src/v2_std_integer.rs	1372	50	E0308	mismatched types",
+  "src/v2_std_integer.rs	1373	33	E0308	mismatched types",
+  "src/v2_std_integer.rs	1375	54	E0308	mismatched types",
+  "src/v2_std_integer.rs	1376	37	E0308	mismatched types",
+  "src/v2_std_integer.rs	1378	58	E0308	mismatched types",
+  "src/v2_std_integer.rs	1379	41	E0308	mismatched types",
+  "src/v2_std_integer.rs	1381	41	E0308	mismatched types",
+  "src/v2_std_integer.rs	1395	30	E0308	mismatched types",
+  "src/v2_std_integer.rs	1398	31	E0369	binary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`",
+  "src/v2_std_integer.rs	1402	47	E0369	cannot divide `Rc<v2_std_nat::Nat>` by `\{integer\}`",
+  "src/v2_std_nat.rs	56	23	E0369	binary operation `<` cannot be applied to type `Rc<v2_std_nat::Nat>`",
+  "src/v2_std_node.rs	744	103	E0599	the method `partial_cmp` exists for reference `&T`, but its trait bounds were not satisfied",
+  "src/v2_std_qualified_name.rs	231	196	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs	238	68	E0599	no method named `split` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_qualified_name.rs	238	97	E0282	type annotations needed",
+  "src/v2_std_qualified_name.rs	259	5	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs	265	72	E0308	mismatched types",
+  "src/v2_std_subject_evidence.rs	49	68	E0308	`match` arms have incompatible types",
+  "src/v2_std_subject_evidence.rs	56	69	E0308	mismatched types",
+  "src/v2_std_text.rs	64	13	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_text.rs	72	22	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_text.rs	90	18	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_verdict.rs	273	5	E0308	mismatched types",
+  "src/v2_std_verdict.rs	274	49	E0308	mismatched types",
+  "src/v2_std_verdict.rs	280	5	E0308	mismatched types",
+  "src/v2_std_verdict.rs	281	70	E0308	mismatched types",
+  "src/v2_std_verdict.rs	287	5	E0308	mismatched types",
+]
+
+data d20440d_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: d20440d_parse_observation,
+  raw_identities: d20440d_raw_coded_diagnostic_identities
+)
+
+fn d20440d_genesis_receipt(assembler_identity: Digest) -> CompilePhaseFrontierReceipt {
+  seal_compile_phase_receipt(
+    sequence: 0,
+    observed_at: "2026-08-30T13:41:13Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "d20440d81bdd8cd6446c12e041a4a18dc574b077" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "3fc23b55d0d0829f37986c1ebd0f2707be2ae3ec" } }),
+      emitted_artifact_identity: sha256_digest(hex: "702def2212f03f96334f8f1ed82d77c263860760e4a70041fe8f6dd0cc1da62f" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "deabfe3085a2d289c0cfe8cc2621272483d2223c2fb3f05025d228edfdae933d" as NonEmptyStr),
+      assembler_identity: assembler_identity,
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host aarch64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "aarch64-unknown-linux-gnu",
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-aarch64-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "xl0b8-d20440d-cargo-check-json-94371e6617bd87b" as NonEmptyStr,
+    position: PhaseBoardBaseline,
+    previous_prefix_digest: none,
+    parse_evidence: ParseReached { evidence: d20440d_parse_observation },
+    board: d20440d_phase_board_fold.board,
+    raw_coded_diagnostic_identities: d20440d_raw_coded_diagnostic_identities,
+    unplaced_identities: d20440d_phase_board_fold.unplaced_identities,
+    newly_exposed: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
+// Filled only after the instrument's independently observed assembler identity is available.
+data self_host_compile_phase_frontier_receipts: List<CompilePhaseFrontierReceipt> = []
