@@ -11,7 +11,7 @@ import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_dige
 import std.syntax { Add, BinOp, LitStr, LitInt, LiteralValue }
 import std.decl_ref { DeclarationRef }
 import std.literal_elaboration {
-  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold,
+  LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
   elaborate_literal_at, literal_source_kind_of, literal_elaboration_refusal_message
 }
@@ -4764,8 +4764,38 @@ fn unfold_peano_image(n: Int, zero: String, succ: String, prev_field: String, pa
   }
 }
 
+// The scalar elements are ordinary kernel Int literal nodes (a Char IS its scalar Int,
+// std.types `Char = Int where unicode_scalar`), and the sequence is carried as the list-literal
+// node -- the canonical FreeMonoid introduction every target already realizes linearly -- never as
+// a cons^n(empty) nesting (see the UnicodeScalarSequenceUnfold arm note in std.literal_elaboration
+// for why the nesting shape is refused: quadratic under a sequence carrier, and deeper than the
+// emitter's bounded recursion fuel on prose-length literals). `chars` reads CODE POINTS at the
+// character grain -- the same primitive the tokenizer's SourceRef is built from -- so a non-ASCII
+// literal's element count and values are its scalars, never its UTF-8 bytes.
+fn unfold_scalar_sequence_image(s: String, destination_type: Node, span: SourceSpan) -> Node {
+  let scalar_nodes = chars(s) |> map(cp =>
+    make_expr_node(
+      occurrence_identity: OccurrenceSynthetic,
+      expr_data: ExprLiteral { value: LitInt { value: cp } },
+      children: [],
+      inferred: Present { value: Resolved { node: int_type } },
+      span: span
+    ))
+  elaborated_expr_node(
+    name: "<unicode-scalar-sequence>",
+    expr_data: ExprListLit,
+    children: scalar_nodes, destination_type: destination_type, span: span
+  )
+}
+
 fn unfold_literal_image(lit: LiteralValue, elaboration: LiteralElaboration, destination_type: Node, span: SourceSpan) -> Node {
   match elaboration.homomorphism.producer {
+    UnicodeScalarSequenceUnfold =>
+      match lit {
+        LitStr { value: s } =>
+          unfold_scalar_sequence_image(s: s, destination_type: destination_type, span: span)
+        _ => make_expr_error_node(occurrence_identity: OccurrenceSynthetic, kind: InternalExprError, message: "literal elaboration: a Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)", span: span)
+      }
     PeanoUnfold { zero: zero, succ: succ, prev_field: prev_field } =>
       match lit {
         LitInt { value: n } =>

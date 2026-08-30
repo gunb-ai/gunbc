@@ -1,0 +1,120 @@
+module test.claim.self_host_structural_text_witness_test
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data structural_text_witness_note: String = "PERMANENT REGRESSION CONTROLS for the structural-text lane (XL-0T): a kernel string literal at an exact v2.std.text.String boundary is introduced through the declared Unicode-scalar-sequence homomorphism (std.literal_elaboration UnicodeScalarSequenceUnfold, row in gunbc.structural_realization_bindings keyed on the exact DeclarationRef), the image is the canonical FreeMonoid introduction (one scalar Int per CHARACTER, never per UTF-8 byte), and text-op realization over the structural carrier is the module's own declared bodies rather than a name-keyed host-Rust override. Each positive row is paired with a control that reds if the repair over-reached: the kernel-String, Symbol and std.types-String rows pin the host emission for every same-spelling destination that realizes natively or carries no homomorphism row.\n\nMUTATION FALSIFIERS, stated as the flip conditions these rows execute against: remove the KernelStringLiteral row from literal_homomorphism_rows and every scalar-sequence row here reds (the literal reverts to host .to_string() against the structural carrier); read UTF-8 bytes instead of scalars in unfold_scalar_sequence_image and the non-ASCII row reds on its byte-decomposition must_not_contain; restore the deleted rust_host_string_op_fn_emit arms and the op-closure rows red on .chars(); add a v2.std.text String row to gunbc.rust_source_type_bindings and test.claim.self_host_symbol_identity_binding_witness_test's conservation rows red.\n\nDISSOLVE-ON: never. These are the executing evidence that literal introduction and op realization stay keyed on declaration identity and operand representation, never on spelling."
+
+// THE SCALAR SEQUENCE AT A RETURN BOUNDARY. 'h' = 104, 'i' = 105. The image is the list-literal
+// realization Rc::new(vec![..]) of FreeMonoid<Char>; the host spelling for the same literal is
+// the must_not_contain.
+test fn w_string_literal_at_text_return_boundary_emits_scalar_sequence() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_return_probe\nimport v2.std.text { String }\nfn probe() -> String { \"hi\" }\n",
+    "src/test_claim_text_return_probe.rs",
+    ["vec![104, 105]"],
+    ["\"hi\".to_string()"]
+  )
+}
+
+// THE SCALAR SEQUENCE AT A CALL-ARGUMENT BOUNDARY.
+test fn w_string_literal_at_text_argument_boundary_emits_scalar_sequence() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_arg_probe\nimport v2.std.text { String }\nfn takes(s: String) -> String { s }\nfn probe() -> String { takes(s: \"hi\") }\n",
+    "src/test_claim_text_arg_probe.rs",
+    ["vec![104, 105]"],
+    ["\"hi\".to_string()"]
+  )
+}
+
+// THE SCALAR SEQUENCE AT A RECORD-FIELD BOUNDARY.
+test fn w_string_literal_at_text_record_field_emits_scalar_sequence() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_field_probe\nimport v2.std.text { String }\ntype Carrier { t: String }\nfn probe() -> Carrier { Carrier { t: \"hi\" } }\n",
+    "src/test_claim_text_field_probe.rs",
+    ["vec![104, 105]"],
+    ["\"hi\".to_string()"]
+  )
+}
+
+// THE SCALAR SEQUENCE AT A DATA-INITIALIZER BOUNDARY.
+test fn w_string_literal_at_text_data_initializer_emits_scalar_sequence() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_data_probe\nimport v2.std.text { String }\ndata anchor: String = \"hi\"\n",
+    "src/test_claim_text_data_probe.rs",
+    ["vec![104, 105]"],
+    ["\"hi\".to_string()"]
+  )
+}
+
+// THE SCALAR SEQUENCE AT AN ANNOTATED LET.
+test fn w_string_literal_at_annotated_let_emits_scalar_sequence() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_let_probe\nimport v2.std.text { String }\nfn probe() -> String { let x: String = \"hi\"\n  x }\n",
+    "src/test_claim_text_let_probe.rs",
+    ["vec![104, 105]"],
+    ["\"hi\".to_string()"]
+  )
+}
+
+// SCALARS, NOT BYTES -- THE NON-ASCII DISCRIMINATOR. é is ONE scalar 233 (two UTF-8 bytes
+// 195, 169) and U+1F600 is ONE scalar 128512 (four UTF-8 bytes starting 240). A byte-grain
+// decomposition, or a UTF-16 code-unit one (surrogates 55357, 56832), reds this row in the bytes.
+test fn w_non_ascii_literal_elements_are_unicode_scalars_not_utf8_bytes() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_scalar_probe\nimport v2.std.text { String }\nfn probe() -> String { \"aé😀\" }\n",
+    "src/test_claim_text_scalar_probe.rs",
+    ["vec![97, 233, 128512]"],
+    ["195, 169", "55357", "\".to_string()"]
+  )
+}
+
+// THE EMPTY LITERAL IS THE MONOID UNIT.
+test fn w_empty_string_literal_at_text_boundary_emits_the_empty_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_empty_probe\nimport v2.std.text { String }\nfn probe() -> String { \"\" }\n",
+    "src/test_claim_text_empty_probe.rs",
+    ["Rc::new(vec![])"],
+    ["\"\".to_string()"]
+  )
+}
+
+// HOST CONTROL: the same literal at a KERNEL String boundary (no import of the structural
+// declaration anywhere in the probe) keeps the host spelling. A repair that folded every string
+// literal would red here.
+test fn w_literal_at_kernel_string_boundary_still_emits_host_string() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.kernel_string_probe\nimport std.types { String }\nfn probe() -> String { \"hi\" }\n",
+    "src/test_claim_kernel_string_probe.rs",
+    ["\"hi\".to_string()"],
+    ["vec![104, 105]"]
+  )
+}
+
+// SYMBOL CONTROL: v2.std.node Symbol is host-backed (RustStdString row in
+// gunbc.rust_source_type_bindings) and carries NO homomorphism row; a literal at its boundary
+// stays the host string. This is the row a spelling-keyed decision cannot pass together with the
+// text rows above -- Symbol and text.String share closures, not representations.
+test fn w_literal_at_symbol_boundary_still_emits_host_string() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.symbol_literal_probe\nimport v2.std.node { Symbol }\nfn takes(identity: Symbol) -> Symbol { identity }\nfn probe() -> Symbol { takes(identity: \"x\") }\n",
+    "src/test_claim_symbol_literal_probe.rs",
+    ["\"x\".to_string()"],
+    ["vec![120]"]
+  )
+}
+
+// OP REALIZATION OVER THE STRUCTURAL CARRIER IS THE DECLARED BODIES: the emitted v2_std_text
+// module carries no host string method on the structural carrier -- the four name-keyed body
+// overrides (string_is_empty/string_head/string_tail/fold_source as .chars()/.is_empty() host
+// Rust) are deleted, so the declared bodies route to crate::v2_std_algebra and the .chars()
+// spelling cannot appear.
+test fn w_emitted_text_module_realizes_ops_by_declared_bodies_not_host_strings() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.text_ops_probe\nimport v2.std.text { String, string_is_empty }\nimport v2.std.logic { Bool }\nfn probe(s: String) -> Bool { string_is_empty(s: s) }\n",
+    "src/v2_std_text.rs",
+    ["pub fn string_is_empty", "crate::v2_std_algebra::is_empty"],
+    [".chars()", ".is_empty()"]
+  )
+}
