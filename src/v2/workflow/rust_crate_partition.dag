@@ -238,6 +238,7 @@ fn stage0_std_core_modules() -> List<String> {
       "std_occurrence_identity",
       "std_source_annotation",
       "std_target_representation",
+      "std_literal_elaboration",
       "v1_std_core"
     ])
 }
