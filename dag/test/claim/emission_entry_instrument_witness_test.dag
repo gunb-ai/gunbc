@@ -60,7 +60,7 @@ fn scanned_rows(lines: List<String>) -> List<String> {
 
 test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
   scanned_rows(lines: [artifact_line, e0308_line, build_finished_line])
-    == ["E0308\terror\tsrc/a.rs:12:7\tprobe diagnostic"]
+    == ["src/a.rs:12:7\tE0308\tprobe diagnostic"]
 }
 
 test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
@@ -78,7 +78,7 @@ test fn an_unreadable_primary_flag_refuses_rather_than_reading_as_not_primary() 
 
 test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -> Bool {
   scanned_rows(lines: [e0308_line_no_primary_span, build_finished_line])
-    == ["E0308\terror\t(no span)\tprobe diagnostic"]
+    == ["(no span)\tE0308\tprobe diagnostic"]
 }
 
 test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
@@ -441,6 +441,11 @@ data clean_specimen: EmissionMeasurement = EmissionMeasured {
   subject: specimen_subject,
   emitted_files: FilesEmitted { count: 177 },
   emit_diagnostics: [],
+  rustfmt_parse_observation: RustfmtParseObservation {
+    producer: "rustfmt --emit stdout --edition 2021",
+    files_observed: 1,
+    parse_errors: 0
+  },
   cargo_clean: true,
   cargo_diagnostics: [],
   cargo_lines_scanned: 4

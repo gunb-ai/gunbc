@@ -9,6 +9,7 @@ import extdeps.git.inspect
 import extdeps.cargo_build
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.crypto.hash { Digest }
+import extdeps.tools.rustfmt
 import std.measure { byte_size }
 import extdeps.tools.sha256sum {
   Sha256FileDigest,
@@ -245,6 +246,7 @@ type EmissionStage
   | StageEmitDecode
   | StageAssemble
   | StageManifest
+  | StageParse
   | StageCargo
   | StageCargoDecode
 
@@ -257,6 +259,7 @@ fn emission_stage_name(stage: EmissionStage) -> String {
     StageEmitDecode => "emit-decode"
     StageAssemble => "assemble"
     StageManifest => "manifest"
+    StageParse => "parse"
     StageCargo => "cargo"
     StageCargoDecode => "cargo-decode"
   }
@@ -301,10 +304,17 @@ type EmissionMeasurement
       subject: EmissionMeasurementSubject
       emitted_files: EmittedFileCount
       emit_diagnostics: List<GunbcDiagnostic>
+      rustfmt_parse_observation: RustfmtParseObservation
       cargo_clean: Bool
       cargo_diagnostics: List<RustcCodedDiagnostic>
       cargo_lines_scanned: Int
     }
+
+type RustfmtParseObservation {
+  producer: String
+  files_observed: Int
+  parse_errors: Int
+}
 
 // THE SUBJECT PROJECTION, and it lives here rather than in a consumer because this module owns the
 // coproduct's shape. A consumer that matched these five arms to reach the subject would hold a
@@ -330,6 +340,7 @@ fn emission_measurement_subject(m: EmissionMeasurement) -> EmissionSubjectCarrie
       subject: sub,
       emitted_files: _,
       emit_diagnostics: _,
+      rustfmt_parse_observation: _,
       cargo_clean: _,
       cargo_diagnostics: _,
       cargo_lines_scanned: _
@@ -347,7 +358,7 @@ fn emission_measurement_completed(m: EmissionMeasurement) -> Bool {
     EmissionUnreached { subject: _, stage: _, cause: _ } => false
     EmissionCargoUnreached { subject: _, stage: _, cause: _, emit_diagnostics: _, emitted_files: _ } => false
     EmissionEmitRefused { subject: _, exit_code: _, emit_diagnostics: _, emitted_files: _ } => true
-    EmissionMeasured { subject: _, emitted_files: _, emit_diagnostics: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
+    EmissionMeasured { subject: _, emitted_files: _, emit_diagnostics: _, rustfmt_parse_observation: _, cargo_clean: _, cargo_diagnostics: _, cargo_lines_scanned: _ } => true
   }
 }
 
@@ -494,11 +505,34 @@ fn measure_cargo_half(
           emitted_files: emitted_files
         }
       } else {
-        let build = cargo.Build.BuildManifestMessages(
+        let listed_rust = shell.Find.FilesByNameSorted(root: concat(out_dir, "/src"), name_glob: "*.rs" as NonEmptyStr)
+        if !listed_rust.success {
+          EmissionCargoUnreached {
+            subject: subject,
+            stage: StageParse,
+            cause: concat("could not enumerate emitted Rust inputs: ", listed_rust.stderr),
+            emit_diagnostics: emit_diagnostics,
+            emitted_files: emitted_files
+          }
+        } else {
+        let rust_files = split(s: listed_rust.stdout, sep: "\n") |> filter(path => path != "")
+        let parse_observation = fold(
+          rust_files,
+          init: RustfmtParseObservation { producer: "rustfmt --emit stdout --edition 2021" , files_observed: 0, parse_errors: 0 },
+          f: (observation, path) => {
+            let parsed = rustfmt.Parse.Files(workdir: out_dir, edition: "2021", files: [path])
+            RustfmtParseObservation {
+              producer: observation.producer,
+              files_observed: observation.files_observed + 1,
+              parse_errors: observation.parse_errors + if parsed.success { 0 } else { 1 }
+            }
+          }
+        )
+        let build = cargo.Build.CheckManifestMessages(
           workdir: out_dir,
           manifest_path: concat(out_dir, "/Cargo.toml"),
           target_dir: concat(out_dir, "/target"),
-          extra_args: ["--release", "--lib"]
+          extra_args: ["--lib"]
         )
         match cargo_scan_diagnostics(stdout: build.stdout) {
           CargoDiagnosticsRead { diagnostics: ds, lines_scanned: n, build_succeeded: ok, terminal_seen: _ } =>
@@ -506,6 +540,7 @@ fn measure_cargo_half(
               subject: subject,
               emitted_files: emitted_files,
               emit_diagnostics: emit_diagnostics,
+              rustfmt_parse_observation: parse_observation,
               cargo_clean: ok,
               cargo_diagnostics: ds,
               cargo_lines_scanned: n
@@ -521,6 +556,7 @@ fn measure_cargo_half(
               emit_diagnostics: emit_diagnostics,
               emitted_files: emitted_files
             }
+        }
         }
       }
     }
@@ -732,6 +768,7 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
       subject: subject,
       emitted_files: files,
       emit_diagnostics: ds,
+      rustfmt_parse_observation: parse,
       cargo_clean: clean,
       cargo_diagnostics: rs,
       cargo_lines_scanned: lines
@@ -742,7 +779,10 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
             emission_subject_rows(subject: subject),
             [
               concat("outcome\tmeasured\tcargo_clean\t", to_string(clean)),
-              concat("emitted_files\t", emitted_file_count_text(files: files))
+              concat("emitted_files\t", emitted_file_count_text(files: files)),
+              concat("rustfmt_parse_producer\t", parse.producer),
+              concat("rustfmt_parse_files\t", to_string(parse.files_observed)),
+              concat("rustfmt_parse_errors\t", to_string(parse.parse_errors))
             ]
           ),
           concat(

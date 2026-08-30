@@ -80,6 +80,22 @@ service cargo.Build {
     }
   }
 
+  // Cargo's structured `check` surface. This is distinct from BuildManifestMessages: check asks
+  // rustc for metadata and therefore reaches type checking and borrow checking without codegen.
+  operation CheckManifestMessages {
+    input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["env", "-C", "{workdir}", "CARGO_TARGET_DIR={target_dir}", "cargo", "check", "--message-format=json", "--manifest-path", "{manifest_path}", extra_args] }
+    exit {
+      0 => Unit
+      101 => String "Check failed"
+    }
+  }
+
   operation Test {
     input { extra_args: List<String> = [] }
     output {

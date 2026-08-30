@@ -82,6 +82,19 @@ test fn a_smaller_population_at_the_same_reached_phase_holds() -> Bool {
   }
 }
 
+// A count-only ratchet would accept this swap. Identity grain must refuse the newly introduced
+// diagnostic even though the reached-phase count did not change.
+test fn a_same_count_identity_swap_refuses_the_added_identity() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["a"]),
+    current: fixture_board(resolve_ids: [], typeck_ids: ["b"])
+  ) {
+    PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
+      ids == ["b"] && string_contains(s: why as String, pattern: "gained diagnostic identities")
+    verdict => false
+  }
+}
+
 test fn milestone_render_never_calls_an_unreached_phase_zero() -> Bool {
   render_phase_board(board: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]))
     == "parse PASSES / expand PASSES / resolve PASSES / typeck 2 remaining / borrowck not yet reached"

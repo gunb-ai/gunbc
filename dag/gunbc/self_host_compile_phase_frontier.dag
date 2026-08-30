@@ -28,6 +28,7 @@ import extdeps.languages.rust.compiler_phases {
 import tools.emission_entry_instrument {
   EmissionMeasurement,
   EmissionMeasured,
+  RustfmtParseObservation,
   measure_entry_emission
 }
 
@@ -54,10 +55,6 @@ type RustcPhaseBoard {
   furthest_phase_reached: RustcPhase
   furthest_phase_evidence: PhaseCountEvidence
   census_identity_digest: Fnv1a64Structural
-}
-
-type RustfmtParseObservation {
-  parse_errors: Int
 }
 
 type ParsePhaseEvidence
@@ -143,15 +140,19 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
 }
 
 fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
-  let unplaced = unplaced_identities(ds: ds)
+  let errors = ds |> filter(d => d.level == "error" && match d.identity {
+    RustcCoded { code: _ } => true
+    RustcUncoded => false
+  })
+  let unplaced = unplaced_identities(ds: errors)
   if count(unplaced) > 0 {
     PhaseBoardUnplacedDiagnostics { identities: unplaced }
   } else {
-    let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: ds) }
+    let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
     let furthest_order = rustc_phase_order(phase: furthest)
     let all_identities = concat(
       [concat("parse-errors:", to_string(parse_errors))],
-      deduplicate_identities(identities: ds |> map(d => rustc_diagnostic_row(d: d)))
+      deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
     )
     PhaseBoardDerived {
       board: RustcPhaseBoard {
@@ -161,10 +162,10 @@ fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> Rustc
             standing: PhaseCount { count: parse_errors, evidence: Observed },
             identities: if parse_errors > 0 { [concat("rustfmt-parse-errors:", to_string(parse_errors))] } else { [] }
           },
-          phase_row(ds: ds, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
-          phase_row(ds: ds, phase: Resolve, reached: furthest_order >= rustc_phase_order(phase: Resolve)),
-          phase_row(ds: ds, phase: Typeck, reached: furthest_order >= rustc_phase_order(phase: Typeck)),
-          phase_row(ds: ds, phase: Borrowck, reached: furthest_order >= rustc_phase_order(phase: Borrowck))
+          phase_row(ds: errors, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
+          phase_row(ds: errors, phase: Resolve, reached: furthest_order >= rustc_phase_order(phase: Resolve)),
+          phase_row(ds: errors, phase: Typeck, reached: furthest_order >= rustc_phase_order(phase: Typeck)),
+          phase_row(ds: errors, phase: Borrowck, reached: furthest_order >= rustc_phase_order(phase: Borrowck))
         ],
         furthest_phase_reached: furthest,
         furthest_phase_evidence: Observed,
@@ -174,19 +175,20 @@ fn cargo_phase_board(parse_errors: Int, ds: List<RustcCodedDiagnostic>) -> Rustc
   }
 }
 
-// parse_errors is the directly observed rustfmt parse-error count from the same emitted workspace.
-// The runner supplies it rather than deriving it from rustc codes: rustc issues uncoded parse
+// The directly observed rustfmt parse-error count travels from the same emitted workspace and the
+// same instrument invocation. It is never derived from rustc codes: rustc issues uncoded parse
 // diagnostics, while rustfmt's success/refusal is the stable parse oracle.
-fn self_host_compile_phase_frontier(entry: String, parse_observation: RustfmtParseObservation) -> RustcPhaseBoardRead {
+fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
   match measure_entry_emission(entry: entry) {
     EmissionMeasured {
       subject: _,
       emitted_files: _,
       emit_diagnostics: _,
+      rustfmt_parse_observation: parse,
       cargo_clean: _,
       cargo_diagnostics: ds,
       cargo_lines_scanned: _
-    } => cargo_phase_board(parse_errors: parse_observation.parse_errors, ds: ds)
+    } => cargo_phase_board(parse_errors: parse.parse_errors, ds: ds)
     measurement => PhaseBoardMeasurementUnreached
   }
 }
@@ -312,10 +314,10 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
             let added = now.identities |> filter(identity => !any(old.identities, prior => prior == identity))
             if old_count == 0 && now_count > 0 {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
-            } else if count(added) > 0 && rustc_phase_order(phase: old.phase) <= rustc_phase_order(phase: previous.furthest_phase_reached) {
-              PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached population gained diagnostic identities without a newly-exposed disposition" as NonEmptyStr }
             } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && now_count > old_count {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
+            } else if count(added) > 0 && rustc_phase_order(phase: old.phase) <= rustc_phase_order(phase: previous.furthest_phase_reached) {
+              PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached population gained diagnostic identities without a newly-exposed disposition" as NonEmptyStr }
             } else { PhaseRatchetHeld }
           }
         }

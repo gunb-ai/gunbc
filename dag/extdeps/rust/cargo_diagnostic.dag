@@ -501,13 +501,13 @@ fn rustc_diagnostic_location_text(d: RustcCodedDiagnostic) -> String {
   }
 }
 
-// ONE MEMBER, ONE LINE, IDENTITY FIRST. The rendering is deliberately joinable rather than pretty:
-// a consumer differencing two runs sorts and compares these lines, which a prose summary cannot
-// support and a bare count cannot support at all.
+// ONE MEMBER, ONE LINE, IN THE CENSUS IDENTITY ORDER: file:line:column, code, message. `level`
+// remains carried by RustcCodedDiagnostic but is not identity: this frontier compares rustc error
+// identities, and changing presentation severity must not silently create a different location.
 fn rustc_diagnostic_row(d: RustcCodedDiagnostic) -> String {
   concat(
-    concat(rustc_diagnostic_code_or_uncoded(d: d), concat("\t", d.level)),
-    concat(concat("\t", rustc_diagnostic_location_text(d: d)), concat("\t", d.message))
+    concat(rustc_diagnostic_location_text(d: d), concat("\t", rustc_diagnostic_code_or_uncoded(d: d))),
+    concat("\t", d.message)
   )
 }
 
