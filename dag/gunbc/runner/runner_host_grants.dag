@@ -38,7 +38,7 @@ import gunbc.fabric_cell_effect {
   CellAttemptWriterOwned,
   fabric_cell_slice_desired_directives,
 }
-import gunbc.runner_host_deploy { RunnerHostDeploy, srv1_runner_host_deploy, srv3_runner_host_deploy, srv4_runner_host_deploy }
+import gunbc.runner_host_deploy { RunnerHostDeploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_unit { runner_unit_name_of_registration }
 
@@ -243,44 +243,39 @@ fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
     ]
 }
 
-// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module that
-// defines the renderer AND the entry point that reproduces THIS host's file. It has now been wrong
-// twice, in two different ways, which is why it takes a parameter instead of a constant: it named
-// executor_privileged_operation.dag until the module split moved the function (review 55626), and
-// then named srv3's entry point for every host once srv1 and srv4 rendered through the same function
-// (review 55653) -- so srv1's installed file told a reader to reproduce it with srv3's command.
-// A constant cannot be right here: the reproducing entry point is a fact about the host, not about
-// the renderer, so it is supplied by the caller that knows which host it is rendering.
-fn runner_host_sudoers_header(entry_point: NonEmptyStr) -> String {
+// THE HEADER IS THE INSTALLED FILE'S ONLY POINTER BACK TO ITS AUTHORITY, so it names the module
+// that defines the renderer AND the repository path this host's bytes are rendered to. It has now
+// been wrong twice, in two different ways, which is why it is DERIVED rather than authored: it
+// named executor_privileged_operation.dag until the module split moved the function (review 55626),
+// and then named srv3's entry point for every host once srv1 and srv4 rendered through the same
+// function (review 55653) -- so srv1's installed file told a reader to reproduce it with srv3's
+// command. A hand-written entry-point string could be wrong for the host it described; the
+// artifact path cannot be, because the caller that supplies it IS the artifact whose bytes these
+// are (gunbc.generated_artifact RunnerHostSudoersArtifact, dispatched through
+// gunbc.generated_artifact_emit artifact_generate).
+fn runner_host_sudoers_header(artifact_path: String) -> String {
   join([
-    "# GENERATED from dag/gunbc/runner/runner_host_grants.dag ",
-    entry_point as String,
-    " — do not hand-edit\n"
+    "# GENERATED from dag/gunbc/runner/runner_host_grants.dag into ",
+    artifact_path,
+    " — do not hand-edit; regenerate through gunbc.generated_artifact_emit artifact_generate\n"
   ], "")
 }
 
-fn runner_host_sudoers_content(deploy: RunnerHostDeploy, entry_point: NonEmptyStr) -> String {
+// THE RENDERED ARTIFACT'S CONTENT, AND THE ONLY PRODUCER OF IT. Until this host's file was enrolled
+// as a gunbc.generated_artifact row it could be produced only by hand-writing an entry module per
+// host -- three near-identical wrappers whose whole content was a deploy row and a string naming
+// themselves -- so the one artifact an operator has to install had no path, no ignore rule and no
+// place in the artifact population that every other generated file is adjudicated through. The
+// enrollment is what deleted them: the registry maps this function over the deploy roster, so a
+// fifth executor host acquires its rendered sudoers file with no second edit here.
+fn runner_host_sudoers_content(deploy: RunnerHostDeploy, artifact_path: String) -> String {
   join([
-    runner_host_sudoers_header(entry_point: entry_point),
+    runner_host_sudoers_header(artifact_path: artifact_path),
     executor_privileged_operations_sudoers_body(
       grantee: deploy.job_user,
       ops: runner_host_privileged_operations(deploy: deploy),
     )
   ], "")
-}
-
-
-// THE RENDERED ARTIFACT, REACHABLE BY NAME. Without this the sudoers file can only be produced by
-// hand-writing an entry module, which makes the one artifact an operator has to install
-// unreproducible from the repository -- exactly the hand-authored host state this module exists to
-// avoid. Run it with:
-//   gunbc run --source-root dag --source-root src/v2 \
-//     --entry dag/gunbc/runner/runner_host_grants.dag --function srv3_runner_host_sudoers
-fn srv3_runner_host_sudoers() -> String {
-  runner_host_sudoers_content(
-    deploy: srv3_runner_host_deploy,
-    entry_point: "srv3_runner_host_sudoers" as NonEmptyStr,
-  )
 }
 
 // THE BOOTSTRAP PRINCIPAL, RECORDED BECAUSE IT WAS DISCOVERED THE EXPENSIVE WAY. A grantee cannot
@@ -319,21 +314,4 @@ fn bootstrap_principal_is_not_the_grantee(
   deploy: RunnerHostDeploy,
 ) -> Bool {
   bootstrap.login != deploy.job_user
-}
-
-// THE OTHER EXECUTOR HOSTS. Same derivation, different deploy row -- the population follows each
-// host's own slot roster and job user, so these are three call sites of one function rather than
-// three hand-maintained grant lists.
-fn srv1_runner_host_sudoers() -> String {
-  runner_host_sudoers_content(
-    deploy: srv1_runner_host_deploy,
-    entry_point: "srv1_runner_host_sudoers" as NonEmptyStr,
-  )
-}
-
-fn srv4_runner_host_sudoers() -> String {
-  runner_host_sudoers_content(
-    deploy: srv4_runner_host_deploy,
-    entry_point: "srv4_runner_host_sudoers" as NonEmptyStr,
-  )
 }
