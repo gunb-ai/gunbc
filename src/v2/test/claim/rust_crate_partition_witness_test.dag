@@ -40,6 +40,8 @@ import v2.workflow.rust_crate_partition {
   stage0_module_dag,
   stage0_module_dag_interface_grounding_is_debt,
   stage0_module_bearing_unit_count,
+  stage0_module_id,
+  stage0_v1_infer_modules,
   stage0_partition_fold_ok,
   stage0_partition_member_coverage_consistent,
   Stage0PartitionReceiptFoldRefused,
@@ -216,12 +218,38 @@ test fn witness_runtime_unit_members_holds() -> Bool {
   }
 }
 
+// THIS WAS `== 9` AND THE 9 WAS THE WHOLE ASSERTION, which is why it is not `== 10` now.
+// #9689 added three modules to stage0 and the v1-infer roster gained one of them
+// (gunbc_rust_source_type_bindings), so the literal went stale the moment the roster it
+// measures changed -- and the only available repair for a literal is to retype it, which
+// DESIGN section 5 names exactly: if automating the update collapses the assertion to
+// measure() == measure(), the manual update was the test's entire content.
+//
+// The join below is not that collapse, and the reason is which side each half comes from.
+// stage0_v1_infer_modules() is the DECLARED roster, a list in the partition authority.
+// unit.members is what came back through stage0_assign_modules_to_unit and then through
+// partition_fold_outcome -- the assignment map keyed by ModuleId, folded and grouped. So
+// this asserts the fold routed exactly the declared modules to this unit and invented,
+// dropped and misfiled none, which is a property of the plumbing rather than of the list.
+// It is honest about its blind spot: an error in the ROSTER ITSELF is invisible here, as it
+// was to the count, because both sides then move together. That class is the required build
+// lane's (gunbc.repo_self_build repo_self_build_partition_crates_command), where rustc is
+// the oracle.
+//
+// The sibling unit witnesses still carry count literals with the same defect. They are left
+// alone deliberately: this one is converted because this change broke it, and converting the
+// rest is a separate diff rather than a rider on an unbreak.
 test fn witness_v1_infer_unit_members_holds() -> Bool {
   match stage0_partition_receipt_outcome() {
     Stage0PartitionReceiptOk { units: units } =>
       match partition_unit_by_id(units: units, unit_id: stage0_unit_v1_infer) {
-        Present { value: unit } =>
-          (unit.members |> count) == 9
+        Present { value: unit } => {
+          let declared = stage0_v1_infer_modules()
+            |> map(basename => stage0_module_id(basename: basename))
+          (unit.members |> count) == (declared |> count)
+            && declared |> all(d => unit.members |> any(m => m == d))
+            && unit.members |> all(m => declared |> any(d => d == m))
+        }
         Absent => false
       }
     Stage0PartitionReceiptResolveRefused { cause: _ } => false
