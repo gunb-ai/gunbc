@@ -35941,12 +35941,28 @@ pub fn emit_generated_dispatch_match_arm(
     }
 }
 
-pub fn fresh_cli_dispatch_executor_name(
-    rows: Rc<Vec<Rc<CliSubcommandRow>>>,
-    candidate: String,
-) -> Option<String> {
-    {
-        let fields = Rc::new({
+pub fn cli_dispatch_executor_name_construction_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "One-consumer realization helper: only emit_gunbc_cli_dispatch_generated_for_rows consumes this spelling, and the spelling never enters CLI identity, build identity, receipts, cache keys, or product output. The blocked population is command plus the modeled pattern bindings: the complete value-binding population in the generated function before the executor is used. It is projected through modeled_subcommand_bound_fields, the same producer the pattern renderer consumes, rather than guessed from option spellings or a parallel field roster. Every numeric candidate is a legal non-keyword Rust value identifier. A population of length N produces N+1 candidates in fixed numeric order; duplicates may over-allocate but cannot change the first absent answer, and row order is irrelevant. The substrate has no nonempty-list carrier from which first can return String, so the helper honestly returns String?; its mathematically unreachable Absent arm emits a compile_error refusal and never fabricates an identifier. Dissolve this local helper into a general Rust value-identifier allocation authority when that authority exists and can consume the exact dispatch-local binding population; until then, keeping the construction here avoids minting an unconsumed framework.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn cli_dispatch_executor_binding_collision_rung() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a member of the blocked value-binding population, and its pigeonhole-unreachable Absent arm refuses through a located compile_error file instead of fabricating a name. Attainable ceiling: structural impossibility, expressed by a total signature in which no Absent arm can be written. Blocked on: the .dag substrate has no nonempty-list carrier whose first operation returns the element type; NonEmptyVec exists only in emitted Rust. Next-rung trigger: a substrate nonempty-list carrier consumable by fresh_cli_dispatch_executor_name. When that capability exists, return through it, make the signature total, and delete the Absent arm, its compile_error file, and this row together. The unreachable arm's permanent greenness is not evidence; the enrolled collision fixtures are the executing evidence for the current allocator wall.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn dispatch_local_binding_names(rows: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<Vec<String>> {
+    v1_rt::concat(
+        Rc::new(vec!["command".to_string()]),
+        Rc::new({
             let mut __result = Vec::new();
             for sub in rows.iter().cloned() {
                 __result.extend(
@@ -35956,24 +35972,50 @@ pub fn fresh_cli_dispatch_executor_name(
                 );
             }
             __result
+        }),
+    )
+}
+
+pub fn cli_dispatch_executor_candidate(index: i64) -> String {
+    v1_rt::concat(
+        "__gunbc_dispatch_executor_".to_string(),
+        crate::v1_compiler_emit_core_support::to_string(index.clone()),
+    )
+}
+
+pub fn fresh_cli_dispatch_executor_name(blocked: Rc<Vec<String>>) -> Option<String> {
+    {
+        let first_n = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                blocked
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(cli_dispatch_executor_candidate(pair.0.clone()));
+            }
+            __result
         });
-        let candidates = fields.iter().fold(
-            Rc::new(vec![candidate.clone()]),
-            |names: Rc<Vec<String>>, _| match names.clone().last().cloned() {
-                Some(prior) => v1_rt::concat(
-                    names.clone(),
-                    Rc::new(vec![v1_rt::concat(prior.clone(), "_".to_string())]),
-                ),
-                None => names.clone(),
-            },
+        let candidates = v1_rt::concat(
+            first_n.clone(),
+            Rc::new(vec![cli_dispatch_executor_candidate(
+                (blocked.clone().len() as i64),
+            )]),
         );
         Rc::new({
             let mut __result = Vec::new();
             for name in candidates.iter().cloned() {
                 if !{
                     let mut __found = false;
-                    for field in fields.iter().cloned() {
-                        if (field.clone() == name.clone()) {
+                    for local in blocked.iter().cloned() {
+                        if (local.clone() == name.clone()) {
                             __found = true;
                             break;
                         }
@@ -35990,18 +36032,12 @@ pub fn fresh_cli_dispatch_executor_name(
     }
 }
 
-pub fn emit_gunbc_cli_dispatch_generated_for_rows(
+pub fn emit_gunbc_cli_dispatch_generated_with_executor_name(
     crate_name: String,
     rows: Rc<Vec<Rc<CliSubcommandRow>>>,
+    executor_name: String,
 ) -> Rc<TextFile> {
     {
-        let executor_name = match fresh_cli_dispatch_executor_name(
-            rows.clone(),
-            "__gunbc_dispatch_executor".to_string(),
-        ) {
-            Some(name) => name.clone(),
-            None => "__gunbc_dispatch_executor_unreachable".to_string(),
-        };
         let variants = Rc::new({
             let mut __result = Vec::new();
             for sub in rows.iter().cloned() {
@@ -36045,6 +36081,19 @@ pub fn emit_gunbc_cli_dispatch_generated_for_rows(
     content: v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Authority: gunbc.cli_dispatch_surface.\n\n".to_string()), "use clap::{Parser, Subcommand};\n\n".to_string()), "#[derive(Parser)]\n#[command(name = \"gunbc\", about = \"A causal compiler: write .dag, get Rust/Python/Go.\", version = env!(\"GUNBC_BUILD_IDENTITY\"))]\n".to_string()), "pub struct Cli {\n    #[command(subcommand)]\n    pub command: Commands,\n    #[arg(long, global = true)]\n    pub dry_run: bool,\n}\n\n".to_string()), "#[derive(Subcommand)]\npub enum Commands {\n".to_string()), variants.clone()), "\n}\n\n".to_string()), "pub trait CliDispatchHost {\n".to_string()), host_methods.clone()), "}\n\n".to_string()), "pub fn dispatch<H: CliDispatchHost>(command: Commands, ".to_string()), executor_name.clone()), ": &H) -> ! {\n    match command {\n".to_string()), arms.clone()), "\n    }\n}\n".to_string()),
 })
     }
+}
+
+pub fn emit_gunbc_cli_dispatch_generated_for_rows(
+    crate_name: String,
+    rows: Rc<Vec<Rc<CliSubcommandRow>>>,
+) -> Rc<TextFile> {
+    match fresh_cli_dispatch_executor_name(dispatch_local_binding_names(rows.clone())) {
+    Some(executor_name) => emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name.clone(), rows.clone(), executor_name.clone()),
+    None => Rc::new(TextFile {
+    path: v1_rt::concat(v1_rt::concat(rust_source_root(), "gunbc_cli_dispatch_generated".to_string()), rust_source_ext()),
+    content: "compile_error!(\"REFUSED: generated CLI dispatch has no collision-free executor value binding\");\n".to_string(),
+}),
+}
 }
 
 pub fn emit_gunbc_cli_dispatch_generated(crate_name: String) -> Rc<TextFile> {
