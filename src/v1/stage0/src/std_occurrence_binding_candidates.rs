@@ -241,7 +241,7 @@ pub fn module_by_occurrence_fold_step(
                         row.occurrence.clone().value.clone(),
                         row.module_path.clone(),
                     ),
-                    refusal: None,
+                    refusal: std::option::Option::None,
                 }),
             }
         }
@@ -254,7 +254,7 @@ pub fn module_by_occurrence_build(
     rows.iter().cloned().fold(
         Rc::new(OccurrenceModulePathIndexBuild {
             module_by_occurrence: v1_rt::rc_empty_map::<i64, String>(),
-            refusal: None,
+            refusal: std::option::Option::None,
         }),
         |build: Rc<OccurrenceModulePathIndexBuild>, row: Rc<OccurrenceModulePathRow>| {
             module_by_occurrence_fold_step(build, row.clone())
@@ -355,7 +355,7 @@ pub fn occurrence_containment_parent_scope(
     {
         let __fm = v1_rt::reverse(ancestors.clone());
         if __fm.is_empty() {
-            None
+            std::option::Option::None
         } else {
             let parent_terminal = (*__fm)[0].clone();
             let parent_ancestors_reversed: Rc<Vec<_>> =
@@ -478,7 +478,7 @@ pub fn declaration_exposure_fold_step(
                     row.occurrence.clone().value.clone(),
                     row.exposure.clone(),
                 ),
-                refusal: None,
+                refusal: std::option::Option::None,
             }),
         },
     }
@@ -490,7 +490,7 @@ pub fn exposure_by_occurrence_build(
     rows.iter().cloned().fold(
         Rc::new(DeclarationExposureIndexBuild {
             exposure_by_occurrence: v1_rt::rc_empty_map::<i64, Rc<DeclarationExposure>>(),
-            refusal: None,
+            refusal: std::option::Option::None,
         }),
         |build: Rc<DeclarationExposureIndexBuild>, row: Rc<DeclarationExposureRow>| {
             declaration_exposure_fold_step(build, row.clone())
@@ -564,7 +564,7 @@ pub fn authored_order_fold_step(
                     row.occurrence.clone().value.clone(),
                     row.ordinal.clone(),
                 ),
-                refusal: None,
+                refusal: std::option::Option::None,
             }),
         },
     }
@@ -576,7 +576,7 @@ pub fn authored_order_by_occurrence_build(
     rows.iter().cloned().fold(
         Rc::new(AuthoredOrderIndexBuild {
             order_by_occurrence: v1_rt::rc_empty_map::<i64, AuthoredTokenOrdinal>(),
-            refusal: None,
+            refusal: std::option::Option::None,
         }),
         |build: Rc<AuthoredOrderIndexBuild>, row: Rc<AuthoredOrderRow>| {
             authored_order_fold_step(build, row.clone())
@@ -607,7 +607,7 @@ pub fn module_exposure_declaration_missing_path_refusal(
         &exposure_by_occurrence,
         declaration.occurrence.clone().value.clone(),
     ) {
-        None => None,
+        None => std::option::Option::None,
         Some(exposure) => match (*exposure.clone()).clone() {
             DeclarationExposure::ModuleExposure { module: _, .. } => match v1_rt::map_get(
                 &module_by_occurrence,
@@ -618,12 +618,12 @@ pub fn module_exposure_declaration_missing_path_refusal(
                         occurrence: declaration.occurrence.clone(),
                     },
                 )),
-                Some(_) => None,
+                Some(_) => std::option::Option::None,
             },
             DeclarationExposure::LexicalExposure {
                 exposing_scope: _, ..
-            } => None,
-            DeclarationExposure::RootExposure => None,
+            } => std::option::Option::None,
+            DeclarationExposure::RootExposure => std::option::Option::None,
         },
     }
 }
@@ -641,7 +641,7 @@ pub fn reference_missing_module_path_refusal(
                 occurrence: reference.occurrence.clone(),
             },
         )),
-        Some(_) => None,
+        Some(_) => std::option::Option::None,
     }
 }
 
@@ -652,7 +652,7 @@ pub fn module_paths_validate_transport(
 ) -> Option<Rc<OccurrenceModulePathIndexRefusal>> {
     {
         let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
-            None,
+            std::option::Option::None,
             |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
                 Some(_) => refusal.clone(),
                 None => module_exposure_declaration_missing_path_refusal(
@@ -665,7 +665,7 @@ pub fn module_paths_validate_transport(
         match declaration_refusal.clone() {
             Some(refusal) => Some(refusal.clone()),
             None => transport.references.clone().iter().cloned().fold(
-                None,
+                std::option::Option::None,
                 |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
                     Some(_) => refusal.clone(),
                     None => reference_missing_module_path_refusal(
@@ -690,14 +690,14 @@ pub fn exposure_validate_transport_declarations(
     exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
 ) -> Option<Rc<DeclarationExposureIndexRefusal>> {
     declarations.iter().cloned().fold(
-        None,
+        std::option::Option::None,
         |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
             Some(_) => refusal.clone(),
             None => match v1_rt::map_get(
                 &exposure_by_occurrence,
                 declaration.occurrence.clone().value.clone(),
             ) {
-                Some(_) => None,
+                Some(_) => std::option::Option::None,
                 None => Some(Rc::new(
                     DeclarationExposureIndexRefusal::MissingDeclarationExposure {
                         occurrence: declaration.occurrence.clone(),
@@ -713,7 +713,7 @@ pub fn authored_order_validate_transport_occurrence(
     occurrence: OccurrenceId,
 ) -> Option<Rc<AuthoredOrderIndexRefusal>> {
     match v1_rt::map_get(&order_by_occurrence, occurrence.value.clone()) {
-        Some(_) => None,
+        Some(_) => std::option::Option::None,
         None => Some(Rc::new(
             AuthoredOrderIndexRefusal::MissingAuthoredOrderRow {
                 occurrence: occurrence.clone(),
@@ -728,7 +728,7 @@ pub fn authored_order_validate_transport(
 ) -> Option<Rc<AuthoredOrderIndexRefusal>> {
     {
         let declaration_refusal = transport.declarations.clone().iter().cloned().fold(
-            None,
+            std::option::Option::None,
             |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal.clone() {
                 Some(_) => refusal.clone(),
                 None => authored_order_validate_transport_occurrence(
@@ -740,7 +740,7 @@ pub fn authored_order_validate_transport(
         match declaration_refusal.clone() {
             Some(refusal) => Some(refusal.clone()),
             None => transport.references.clone().iter().cloned().fold(
-                None,
+                std::option::Option::None,
                 |refusal: _, reference: Rc<ReferenceOccurrence>| match refusal.clone() {
                     Some(_) => refusal.clone(),
                     None => authored_order_validate_transport_occurrence(
@@ -1433,7 +1433,7 @@ pub fn bound_reference_population_from_projections(
         let build = projections.iter().cloned().fold(
             Rc::new(BoundReferencePopulationBuild {
                 providers_reversed: Rc::new(vec![]),
-                first_failure: None,
+                first_failure: std::option::Option::None,
                 more_failures_reversed: Rc::new(vec![]),
             }),
             |acc: Rc<BoundReferencePopulationBuild>, projection: Rc<ReferenceBindingProjection>| {
@@ -1574,7 +1574,7 @@ pub fn module_path_file_index_fold_step(
                         key.clone(),
                         row.file_path.clone(),
                     ),
-                    refusal: None,
+                    refusal: std::option::Option::None,
                 }),
                 Some(existing) => {
                     if (existing.clone() == row.file_path.clone()) {
@@ -1612,7 +1612,7 @@ pub fn module_path_file_index_from_rows(
         let build = rows.iter().cloned().fold(
             Rc::new(ModulePathFileIndexBuild {
                 entries: v1_rt::rc_empty_map::<String, String>(),
-                refusal: None,
+                refusal: std::option::Option::None,
             }),
             |acc: Rc<ModulePathFileIndexBuild>, row: Rc<ModulePathFileRow>| {
                 module_path_file_index_fold_step(acc, row.clone())
@@ -1801,7 +1801,7 @@ pub fn cross_file_binding_provenance_from_bound_population(
                 Rc::new(CrossFileBindingProvenanceBuild {
                     module_files: module_files.clone(),
                     provenances_reversed: Rc::new(vec![]),
-                    first_failure: None,
+                    first_failure: std::option::Option::None,
                     more_failures_reversed: Rc::new(vec![]),
                 }),
                 |acc: Rc<CrossFileBindingProvenanceBuild>, provider: Rc<BoundReferenceProvider>| {
@@ -3490,7 +3490,7 @@ pub fn section13_first_duplicate_law(
     rows: Rc<Vec<Rc<Section13PopulationLawRosterRow>>>,
 ) -> Option<Section13PopulationLawId> {
     rows.clone().iter().cloned().fold(
-        None,
+        std::option::Option::None,
         |found: _, row: Rc<Section13PopulationLawRosterRow>| match found.clone() {
             Some(_) => found.clone(),
             None => {
@@ -3506,7 +3506,7 @@ pub fn section13_first_duplicate_law(
                 {
                     Some(row.law.clone())
                 } else {
-                    None
+                    std::option::Option::None
                 }
             }
         },
@@ -3549,7 +3549,7 @@ pub fn section13_first_uncovered_law(
                         if !section13_roster_has_law(rows.clone(), Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse) {
                             Some(Section13PopulationLawId::Section13RepeatedDiscoverySameIdentityCollapse)
                         } else {
-                            None
+                            std::option::Option::None
                         }
                     }
                 }
@@ -3564,7 +3564,7 @@ pub fn section13_observation_joins_receipt(
     required_head: String,
 ) -> Option<bool> {
     observations.iter().cloned().fold(
-        None,
+        std::option::Option::None,
         |found: _, observation: Rc<Section13ExactHeadExecutionObservation>| match found.clone() {
             Some(_) => found.clone(),
             None => {
@@ -3575,7 +3575,7 @@ pub fn section13_observation_joins_receipt(
                 {
                     Some(observation.passed.clone())
                 } else {
-                    None
+                    std::option::Option::None
                 }
             }
         },

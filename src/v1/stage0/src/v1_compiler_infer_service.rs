@@ -91,10 +91,10 @@ pub fn extract_typed_service_name(
                         f.clone(),
                     ))
                 }
-                _ => None,
+                _ => std::option::Option::None,
             }
         }
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -233,7 +233,7 @@ pub fn item_callees_for(m: Rc<TypedModule>, item: Rc<Node>) -> Rc<ItemCallees> {
             m.type_env.clone().source_indices.clone(),
             item.clone(),
         );
-        let has_no_body = (item.body.clone() == None);
+        let has_no_body = (item.body.clone() == std::option::Option::None);
         if has_no_body.clone() {
             Rc::new(ItemCallees {
                 item_name: item_name.clone(),
@@ -386,11 +386,11 @@ pub fn check_service_field_access_node(
                 Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
                     path.clone(),
                 )),
-                None => None,
+                None => std::option::Option::None,
             }
         }
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -432,7 +432,7 @@ pub fn check_service_method_call_node(
                                     ),
                                     name: "".to_string(),
                                     span: crate::v1_std_core::no_span(),
-                                    ident_span: None,
+                                    ident_span: std::option::Option::None,
                                     children: Rc::new({
                                         let mut __result = Vec::new();
                                         for f in op.outputs.clone().iter().cloned() {
@@ -453,13 +453,13 @@ pub fn check_service_method_call_node(
                                                 })),
                                                 return_cardinality: Cardinality::Required,
                                                 uses: Rc::new(vec![]),
-                                                body: None,
-                                                transport: None,
+                                                body: std::option::Option::None,
+                                                transport: std::option::Option::None,
                                                 properties: Rc::new(vec![]),
-                                                type_annotation: None,
+                                                type_annotation: std::option::Option::None,
                                                 is_self_recursive: false,
                                                 has_non_tail_self_call: false,
-                                                match_pattern: None,
+                                                match_pattern: std::option::Option::None,
                                                 expr_data: Rc::new(ExprData::NoExprData),
                                                 ident: None,
                                             }));
@@ -468,16 +468,16 @@ pub fn check_service_method_call_node(
                                     }),
                                     connective: Connective::Conj,
                                     params: Rc::new(vec![]),
-                                    inferred: None,
+                                    inferred: std::option::Option::None,
                                     return_cardinality: Cardinality::Required,
                                     uses: Rc::new(vec![]),
-                                    body: None,
-                                    transport: None,
+                                    body: std::option::Option::None,
+                                    transport: std::option::Option::None,
                                     properties: Rc::new(vec![]),
-                                    type_annotation: None,
+                                    type_annotation: std::option::Option::None,
                                     is_self_recursive: false,
                                     has_non_tail_self_call: false,
-                                    match_pattern: None,
+                                    match_pattern: std::option::Option::None,
                                     expr_data: Rc::new(ExprData::NoExprData),
                                     ident: None,
                                 }),
@@ -485,13 +485,13 @@ pub fn check_service_method_call_node(
                             }))
                         }
                     }
-                    None => None,
+                    None => std::option::Option::None,
                 }
             }
-            None => None,
+            None => std::option::Option::None,
         }
     } else {
-        None
+        std::option::Option::None
     }
 }
 

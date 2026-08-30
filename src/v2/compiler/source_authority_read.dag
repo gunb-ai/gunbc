@@ -1,0 +1,252 @@
+module v2.compiler.source_authority_read
+
+import extdeps.filesystem.filesystem_io { Filesystem }
+import std.algebra { Empty }
+import std.content_hash {
+  ContentHash,
+  ContentHashEqual,
+  compare_content_hash,
+  content_hash_of_value,
+  serialize_content_hash
+}
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  SourceRef,
+  SourceRootIngest,
+  source_ref_for_storage_path,
+  source_root_for_storage_path
+}
+import extdeps.communication.medium { Lossless, Medium }
+import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.artifact { Artifact, SourceFile }
+import v2.std.collection { List }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  invariant_port_locus,
+  outcome_accepted,
+  outcome_rejected,
+  textual_whole_file_locus
+}
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// THE FILESYSTEM READ-THROUGH, SEGREGATED FROM THE SOURCE VOCABULARY IT READS INTO.
+//
+// Every declaration here is downstream of one host effect, Filesystem.Read, which has no
+// realization on a target the compiler emits itself to. v2.compiler.source_authority owns
+// the ingest and round-trip LAWS over SourceRef / DagSourceReadWitness, and the v2
+// compiler's import closure carries it for those; no compile path performs a read. But
+// emission is decided at MODULE grain, so the two read sites were emitted into the
+// compiler's own Rust crate as unrealized-seam refusals -- an effect the compiler cannot
+// perform, standing in it because its vocabulary neighbours were needed.
+//
+// The real consumers all sit outside that closure and are unchanged by the split: the
+// self-host closure-emit driver and frontier probe, the realization sweep, and the ingest
+// witnesses. What the split buys is that the absence is now provable by identity rather
+// than argued -- a compile-closure declaration that starts reading the filesystem drags
+// THIS module in and the seam reappears in the emitted crate at the same census grep.
+//
+// The read stays a read: content identity is verified against the ref's ContentHash before
+// the witness is minted, a missing or unreadable path refuses as a read failure rather
+// than a misclassified parse error, and both refusals carry the observed digest. Nothing
+// here widens on failure.
+fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
+  let read = Filesystem.Read(path: path)
+  SourceRef {
+    path: path,
+    source_root: source_root_for_storage_path(path: path),
+    content_hash: if read.success {
+      dag_source_content_hash_for_text(text: read.content)
+    } else {
+      content_hash_of_value(value: "filesystem-read-failed" as NonEmptyStr)
+    }
+  }
+}
+
+// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design (deleted) stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors.
+data source_ref_read_refused: Symbol = ^source_ref_read_refused
+
+data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
+
+fn source_ref_read_failed_diagnostic(ref: SourceRef, error: String) -> NonEmptyDiagnostics {
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: source_ref_read_refused,
+      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      Diagnostic {
+        reason: source_ref_read_refused,
+        at: invariant_port_locus(
+          port: symbol_intern_lexeme(lexeme: error),
+          invariant: source_ref_read_refused
+        ),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    ]
+  }
+}
+
+fn source_ref_content_hash_mismatch_diagnostic(
+  ref: SourceRef,
+  observed: ContentHash
+) -> NonEmptyDiagnostics {
+  let detail =
+    concat(
+      concat(
+        concat(
+          "expected=",
+          serialize_content_hash(hash: ref.content_hash) as String
+        ),
+        " observed="
+      ),
+      serialize_content_hash(hash: observed) as String
+    )
+  NonEmptyDiagnostics {
+    head: Diagnostic {
+      reason: source_ref_content_hash_mismatch,
+      at: textual_whole_file_locus(file: symbol_intern_lexeme(lexeme: ref.path)),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    },
+    tail: [
+      Diagnostic {
+        reason: source_ref_content_hash_mismatch,
+        at: invariant_port_locus(
+          port: symbol_intern_lexeme(lexeme: detail),
+          invariant: source_ref_content_hash_mismatch
+        ),
+        correction: Unavailable { reason: ExternalContractUnknown }
+      }
+    ]
+  }
+}
+
+type SourceRefReadResult
+  = SourceRefReadAccepted {
+      witness: DagSourceReadWitness,
+      observed_hash: ContentHash
+    }
+  | SourceRefFilesystemReadRefused { ref: SourceRef, error: String }
+  | SourceRefReadHashMismatch {
+      ref: SourceRef,
+      expected: ContentHash,
+      observed: ContentHash
+    }
+
+data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
+
+fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
+  let read = Filesystem.Read(path: ref.path)
+  if !read.success {
+    SourceRefFilesystemReadRefused { ref: ref, error: read.error }
+  } else {
+    let observed = dag_source_content_hash_for_text(text: read.content)
+    match compare_content_hash(left: ref.content_hash, right: observed) {
+      ContentHashEqual =>
+        SourceRefReadAccepted {
+          witness: DagSourceReadWitness {
+            source: Medium { carried: read.content, fidelity: Lossless },
+            artifact: Artifact {
+              kind: SourceFile,
+              id: symbol_intern_lexeme(lexeme: ref.path),
+              file_path: ref.path
+            },
+            compilation_unit: symbol_intern_lexeme(lexeme: ref.path),
+            source_root: ref.source_root
+          },
+          observed_hash: observed
+        }
+      _ =>
+        SourceRefReadHashMismatch {
+          ref: ref,
+          expected: ref.content_hash,
+          observed: observed
+        }
+    }
+  }
+}
+
+fn source_ref_read_result_to_outcome(result: SourceRefReadResult) -> Outcome<DagSourceReadWitness> {
+  match result {
+    SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
+      outcome_accepted(value: witness)
+    SourceRefFilesystemReadRefused { ref: ref, error: error } =>
+      outcome_rejected(
+        d: source_ref_read_failed_diagnostic(ref: ref, error: error)
+      )
+    SourceRefReadHashMismatch { ref: ref, expected: _, observed: observed } =>
+      outcome_rejected(
+        d: source_ref_content_hash_mismatch_diagnostic(
+          ref: ref,
+          observed: observed
+        )
+      )
+  }
+}
+
+fn dag_source_content_hash_for_text(text: String) -> ContentHash {
+  content_hash_of_value(value: text)
+}
+
+fn dag_source_read_witness_from_source_ref(ref: SourceRef) -> Outcome<DagSourceReadWitness> {
+  source_ref_read_result_to_outcome(result: dag_source_read_result_from_ref(ref: ref))
+}
+
+type SourceRootIngestBuild
+  = SourceRootIngestBuildOk { ingest: SourceRootIngest }
+  | SourceRootIngestBuildReadFailed { result: SourceRefReadResult }
+
+fn source_root_ingest_build_from_source_refs(
+  refs: List<SourceRef>
+) -> SourceRootIngestBuild {
+  match fold_list(
+    xs: refs,
+    empty: SourceRootIngestBuildOk { ingest: Empty },
+    cons: fn(acc, ref) {
+      match acc {
+        SourceRootIngestBuildReadFailed { result: _ } => acc
+        SourceRootIngestBuildOk { ingest: prior } =>
+          match dag_source_read_result_from_ref(ref: ref) {
+            SourceRefReadAccepted { witness: witness, observed_hash: _ } =>
+              SourceRootIngestBuildOk {
+                ingest: list_snoc_item(xs: prior, item: witness)
+              }
+            failed =>
+              SourceRootIngestBuildReadFailed { result: failed }
+          }
+      }
+    }
+  ) {
+    SourceRootIngestBuildReadFailed { result: r } =>
+      SourceRootIngestBuildReadFailed { result: r }
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      SourceRootIngestBuildOk { ingest: ingest }
+  }
+}
+
+fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceRootIngest> {
+  match source_root_ingest_build_from_source_refs(refs: refs) {
+    SourceRootIngestBuildReadFailed { result: r } =>
+      match source_ref_read_result_to_outcome(result: r) {
+        Rejected { diagnostics: d } => Rejected { diagnostics: d }
+        Accepted { value: _, diagnostics: _ } =>
+          outcome_rejected(
+            d: source_ref_read_failed_diagnostic(
+              ref: source_ref_for_storage_path(path: "source-root-ingest-build-impossible"),
+              error: "internal: read-through accepted without ingest row"
+            )
+          )
+      }
+    SourceRootIngestBuildOk { ingest: ingest } =>
+      outcome_accepted(value: ingest)
+  }
+}
+

@@ -18,6 +18,7 @@ import extdeps.languages.rust.derive_contracts {
 import v1.std.core {
   Node,
   NewlineIndex,
+  Resolved,
   authored_name_at,
   qualified_last_segment,
   generic_param_name_at,
@@ -1442,6 +1443,7 @@ fn v1_generic_params_needing_clone_bound(
       type_decl_items: type_decl_items,
       source_indices: source_indices
     )
+    || v1_generic_param_cloned_by_returned_closure(param_name: g, value_params: value_params, ret: ret, source_indices: source_indices)
     || (
       !v1_phantom_only_param_names_contains(names: phantom_only, param_name: g)
         && (
@@ -1465,6 +1467,36 @@ fn v1_generic_params_needing_clone_bound(
         )
     )
   )
+}
+
+// A function that RETURNS an arrow realizes as `Rc::new(move |x| ..)` over its arrow-typed
+// parameters, and that closure clones what it forwards (`f(x.clone())`, `g.clone()`), so every
+// generic parameter mentioned in an arrow-typed value parameter -- its domain or its codomain's
+// type arguments -- carries a `Clone` obligation the structural rules above cannot see: they read
+// what a value IS, and here the obligation comes from what the realization DOES with it. Gated on
+// the return being an arrow for the same reason the `'static` gate in v1.compiler.emit_rust
+// emit_rust_param_type is: the closure that creates the obligation exists exactly there.
+fn v1_generic_param_cloned_by_returned_closure(param_name: String, value_params: List<Node>, ret: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  (ret.params |> count) > 0
+    && value_params |> any(vp => v1_arrow_type_expr_mentions_param(param_name: param_name, type_expr: param_node_type_expr(n: vp), source_indices: source_indices))
+}
+
+fn v1_arrow_type_expr_mentions_param(param_name: String, type_expr: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if (type_expr.params |> count) == 0 { false }
+  else {
+    let in_domain = type_expr.params |> any(p =>
+      let pt = param_node_type_expr(n: p)
+      v1_type_expr_is_bare_param(param_name: param_name, type_expr: pt, source_indices: source_indices)
+        || pt.children |> any(c => v1_type_expr_is_bare_param(param_name: param_name, type_expr: c, source_indices: source_indices))
+    )
+    let in_codomain = match type_expr.inferred {
+      Present { value: Resolved { node: r } } =>
+        v1_type_expr_is_bare_param(param_name: param_name, type_expr: r, source_indices: source_indices)
+          || r.children |> any(c => v1_type_expr_is_bare_param(param_name: param_name, type_expr: c, source_indices: source_indices))
+      _ => false
+    }
+    in_domain || in_codomain
+  }
 }
 
 fn v1_field_type_expr_needs_clone_bound_for_param_narrow(
@@ -2176,22 +2208,32 @@ fn v1_emit_type_params_with_bounds(
 // remainder. It is a subtraction rather than a second fixpoint because propagation must still see
 // every OTHER item's seed -- OrderedClosedInterval earns its bound from its own bare `low: T`
 // field, and a WF-only fixpoint with no seeds anywhere would have nothing to propagate FROM.
+// THE FN-FIELD HEADER PRINTS THE WELL-FORMEDNESS BOUNDS, ASKED DIRECTLY. An fn-field item carries
+// a supplemental Clone impl, so the header owes no bound for CLONING a bare `expected: A` -- but it
+// still owes every bound a FIELD'S DECLARED TYPE demands to be nameable at all. The earlier form
+// subtracted the seed-needed parameters from the bounded set, which removed `A` from
+// `FalsificationReceipt<Subj, A>` even though its field `divergence: ValueDiff<A>` names a type
+// declared `<A: Clone>` (E0277 at v2.std.test_claim_falsification). Set difference conflated the
+// two obligations; the well-formedness predicate is the single authority for the header and is
+// asked per parameter.
 fn v1_item_wf_propagated_clone_bounded_param_names(
   item_name: String,
   item: Node,
   generic_param_names: List<String>,
   bounds: Map<String, Set<String>>,
+  type_decl_items: Map<String, Node>,
   source_indices: Map<String, NewlineIndex>
 ) -> List<String> {
-  let field_type_exprs = v1_item_field_type_exprs(item: item, source_indices: source_indices)
   v1_item_clone_bounded_param_names(
     item_name: item_name,
     generic_param_names: generic_param_names,
     bounds: bounds
   ) |> filter(g =>
-    !v1_item_type_param_needs_clone_bound_struct(
+    v1_item_param_wf_needs_clone(
       param_name: g,
-      field_type_exprs: field_type_exprs,
+      item: item,
+      bounds: bounds,
+      type_decl_items: type_decl_items,
       source_indices: source_indices
     )
   )

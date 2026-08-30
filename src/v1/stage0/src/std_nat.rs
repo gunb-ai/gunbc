@@ -42,11 +42,11 @@ pub fn nat_min(a: Nat, b: Nat) -> Nat {
     }
 }
 
-pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<Nat>> {
+pub fn nat_range_inclusive(lo: Nat, hi: Nat) -> Rc<Vec<i64>> {
     nat_range_accumulate(lo.clone(), hi.clone(), Rc::new(vec![]))
 }
 
-pub fn nat_range_accumulate(mut lo: Nat, mut hi: Nat, mut acc: Rc<Vec<Nat>>) -> Rc<Vec<Nat>> {
+pub fn nat_range_accumulate(mut lo: Nat, mut hi: Nat, mut acc: Rc<Vec<i64>>) -> Rc<Vec<i64>> {
     loop {
         if (lo.clone() > hi.clone()) {
             break acc;
