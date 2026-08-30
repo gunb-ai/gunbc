@@ -66,9 +66,6 @@ pub mod std_types;
 #[path = "../../stage0/src/std_unicode_types.rs"]
 pub mod std_unicode_types;
 #[rustfmt::skip]
-#[path = "../../stage0/src/std_lens_verdict.rs"]
-pub mod std_lens_verdict;
-#[rustfmt::skip]
 #[path = "../../stage0/src/std_algebra.rs"]
 pub mod std_algebra;
 #[rustfmt::skip]
@@ -125,6 +122,9 @@ pub mod std_occurrence_identity;
 #[rustfmt::skip]
 #[path = "../../stage0/src/std_source_annotation.rs"]
 pub mod std_source_annotation;
+#[rustfmt::skip]
+#[path = "../../stage0/src/std_target_representation.rs"]
+pub mod std_target_representation;
 #[rustfmt::skip]
 #[path = "../../stage0/src/v1_std_core.rs"]
 pub mod v1_std_core;

@@ -194,13 +194,26 @@ pub fn render_governor_hold_line_mirror(hold: &HoldReason, emoji: bool) -> Strin
 /// — the declared per-slot throttle line (field `memory_high`). This constant is a mirror, not
 /// an independent value: it may only move toward its authority row. Joined by
 /// `test.claim.seed_mirror_constant_lens_witness_test`.
+///
+/// IT IS NOT A BUDGET SOURCE, and that distinction is what `read_host_budget_bytes` erased
+/// until 2026-08-30. It declares what THIS fleet configures its own self-hosted runner slots
+/// to — true of the machines this repository provisions and of nothing else. Capping a
+/// host-shared MemAvailable reading at it turned it into a claim about an unmeasured third
+/// party's executor, and on BuildBuddy (whose slot exposes no cgroup limit file at all) the
+/// resulting budget got `main_wet` SIGKILLed at rc=137 with no diagnostic. A declared
+/// constant may bound a refusal; it may not stand in for a reading. Its remaining uses are
+/// fixtures that reason about the fleet's own slots.
+/// Authority: `gunbc.host_budget_source` `host_budget_declared_slot_is_not_a_reading_note`.
 pub const DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES: u64 = 16106127360;
 
 /// SEED MIRROR of `gunbc.runner_slot_allocation` `gunbc_floor_minimum_viable_armed_budget`
 /// — SCAFFOLD (§7 seed-retained HAND-RUST; doomed/success witness receipts in that module):
 /// arm-time floor refusal when the governor budget is below the measured minimum viable
-/// footprint — crowded uncapped hosts with low MemAvailable would otherwise start a doomed
-/// ~30min walk (runs 29834380839, 29845210061).
+/// footprint — a crowded slot whose cgroup limit is genuinely low would otherwise start a
+/// doomed ~30min walk (runs 29834380839, 29845210061). The witnesses behind it were taken
+/// when an uncapped host could still be admitted on a low MemAvailable reading; that arm is
+/// gone (such a host now refuses outright), so what this constant still guards is a small
+/// but READABLE bound — a tight cgroup limit or a low operator override.
 /// dissolve-on: v2 emit of stage0 host-budget constants from `gunbc.runner_slot_allocation`
 /// (self-host frontier row for `memory_governor` cgroup-budget readers); re-measure when
 /// bright-seal #6999 fill-deferral cuts mature index residency.
@@ -394,83 +407,188 @@ pub fn whole_corpus_compile_refusal_diagnostic(
     }
 }
 
-/// Cap an uncapped-host MemAvailable sample at the declared runner-slot throttle
-/// line. Returns `(budget, capped)` where `capped` is true when `avail` exceeded
-/// the declaration.
-pub fn uncapped_host_budget_from_mem_available(avail: u64) -> (u64, bool) {
-    if avail > DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES {
-        (DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, true)
-    } else {
-        (avail, false)
+/// The typed budget SOURCE — the seed mirror of `gunbc.host_budget_source`
+/// `HostBudgetSource`. It exists so consumers ask the discriminant rather than scanning the
+/// display label: `cli_run::entry_resolve::typed_module_cache_cap_derivation` decided
+/// "degraded" with `label.contains("memory.max") || label.contains("memory.high")`, which is
+/// one string doing two jobs — a reworded diagnostic silently moved the verdict, and it
+/// classified the operator's own env override as degraded.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostBudgetSource {
+    EnvOverride,
+    CgroupMemoryHigh { cgroup_dir: String },
+    CgroupMemoryMax { cgroup_dir: String },
+    DarwinPhysicalMemory,
+}
+
+impl HostBudgetSource {
+    /// Mirror of `host_budget_source_label`.
+    pub fn label(&self) -> String {
+        match self {
+            HostBudgetSource::EnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES".to_string(),
+            HostBudgetSource::CgroupMemoryHigh { cgroup_dir } => {
+                format!("cgroup memory.high ({cgroup_dir})")
+            }
+            HostBudgetSource::CgroupMemoryMax { cgroup_dir } => {
+                format!("cgroup memory.max ({cgroup_dir})")
+            }
+            HostBudgetSource::DarwinPhysicalMemory => "sysctl hw.memsize".to_string(),
+        }
+    }
+
+    /// Mirror of `host_budget_source_bounds_this_process` — true when the thing measured is
+    /// something THIS process cannot exceed, rather than a fact about the machine.
+    pub fn bounds_this_process(&self) -> bool {
+        match self {
+            HostBudgetSource::EnvOverride
+            | HostBudgetSource::CgroupMemoryHigh { .. }
+            | HostBudgetSource::CgroupMemoryMax { .. } => true,
+            HostBudgetSource::DarwinPhysicalMemory => false,
+        }
+    }
+
+    /// Mirror of `host_budget_source_is_degraded` — the complement of `bounds_this_process`,
+    /// asserted as a partition by `test.claim.host_budget_source_witness`.
+    pub fn is_degraded(&self) -> bool {
+        !self.bounds_this_process()
     }
 }
 
-/// The host memory budget in bytes to admit against: env override -> cgroup
-/// memory.high -> memory.max -> min(MemAvailable, declared runner-slot memory.high)
-/// -> MemTotal, with a readable source label. Single authority shared by the
-/// MemoryGovernor (which SCHEDULES against it) and the P4 realize advisory (which
-/// PREDICTS against it) — the advisory must price against the same budget the
-/// governor uses, never a partial re-read (§3 single authority).
-pub fn read_host_budget_bytes() -> (Option<u64>, String) {
-    if let Some(b) = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-    {
-        return (Some(b), "env GUNBC_MEMORY_BUDGET_BYTES".to_string());
+/// The seed mirror of `gunbc.host_budget_source` `HostBudgetResolution`. `Unreadable` is NOT
+/// a source: it carries a reason and no number, and no consumer may turn it into one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HostBudgetResolution {
+    Resolved {
+        source: HostBudgetSource,
+        bytes: u64,
+    },
+    Unreadable {
+        reason: String,
+    },
+}
+
+impl HostBudgetResolution {
+    /// Mirror of `host_budget_resolution_bytes`.
+    pub fn bytes(&self) -> Option<u64> {
+        match self {
+            HostBudgetResolution::Resolved { bytes, .. } => Some(*bytes),
+            HostBudgetResolution::Unreadable { .. } => None,
+        }
     }
-    if let Some(dir) = binding_high_cgroup_dir() {
-        return (
-            read_cgroup_u64(&dir, "memory.high"),
-            format!("cgroup memory.high ({})", dir.display()),
-        );
+
+    /// The line a human reads. For `Unreadable` this is the refusal reason, so a caller that
+    /// logs the label never fabricates a provenance for a read that did not happen.
+    pub fn label(&self) -> String {
+        match self {
+            HostBudgetResolution::Resolved { source, .. } => source.label(),
+            HostBudgetResolution::Unreadable { reason } => format!("unreadable: {reason}"),
+        }
     }
-    if let Some(dir) = binding_cap_cgroup_dir() {
-        return (
-            read_cgroup_u64(&dir, "memory.max"),
-            format!("cgroup memory.max ({})", dir.display()),
-        );
+
+    /// Degraded is a question about a SOURCE. An unreadable budget has no source, and the
+    /// only honest answer is that there is nothing to grade — callers refuse instead.
+    pub fn degraded_source(&self) -> Option<bool> {
+        match self {
+            HostBudgetResolution::Resolved { source, .. } => Some(source.is_degraded()),
+            HostBudgetResolution::Unreadable { .. } => None,
+        }
     }
-    if let Some(avail) = mem_available_bytes() {
-        let (budget, capped) = uncapped_host_budget_from_mem_available(avail);
-        let source = if capped {
-            format!(
-                "min(MemAvailable, declared runner-slot memory.high {} bytes)",
-                DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES
-            )
-        } else {
-            "/proc/meminfo MemAvailable".to_string()
-        };
-        return (Some(budget), source);
-    }
-    // Terminal arms. Authority for the source vocabulary and its rendering is
-    // `dag/gunbc/host/host_budget_source.dag` (`HostBudgetSource`); `dag/extdeps/linux/procfs.dag`
-    // carries why a Darwin host never reaches the meminfo arm.
-    //
-    // The meminfo arm used to be unconditional: `(mem_total_bytes(), "/proc/meminfo
-    // MemTotal".to_string())`, with the label composed beside a read that returns `None`
-    // whenever /proc/meminfo is absent — which on macOS is always. Every local run printed
-    // `source=/proc/meminfo MemTotal` on a machine with no /proc: a source attribution for
-    // a read that never happened. A reader could not tell "MemTotal said something we
-    // distrusted" from "there is no MemTotal here".
-    //
-    // The repair is not a better label for the absence. Darwin exposes total physical
-    // memory through sysctl hw.memsize, so it now gets a REAL read like any other platform
-    // (`BudgetSourceDarwinPhysicalMemory`). What remains `None` is a host where every
-    // modeled source refused, and that is a refusal rather than a source — see the caller,
-    // which must not turn it into a number.
-    if let Some(total) = mem_total_bytes() {
-        return (Some(total), "/proc/meminfo MemTotal".to_string());
-    }
-    if let Some(physical) = darwin_physical_memory_bytes() {
-        return (Some(physical), "sysctl hw.memsize".to_string());
-    }
-    (
-        None,
-        format!(
-            "unreadable: no modeled host memory source answered on this platform (target_os={})",
-            std::env::consts::OS
-        ),
+}
+
+/// The refusal reason. Mirror of `host_budget_unreadable_on_kernel`, and the whole remedy a
+/// stopped operator gets: what was unreadable, and the declaration that supplies the bound.
+pub fn host_budget_unreadable_reason() -> String {
+    format!(
+        "no cgroup memory.high or memory.max binds this process and GUNBC_MEMORY_BUDGET_BYTES \
+         is unset (target_os={}), so the admission bound is UNKNOWN. Refusing rather than \
+         admitting against the widest signal available: a host-shared reading is a number \
+         about the MACHINE, not about this slot, and admitting against one is the rc=137 \
+         SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
+         gunbc.host_budget_source host_budget_unreadable_cgroup_receipt_note). Declare this \
+         slot's bound with GUNBC_MEMORY_BUDGET_BYTES.",
+        std::env::consts::OS
     )
+}
+
+/// Resolve the host budget from OBSERVATIONS, so every arm — including the refusal — is
+/// reachable from a test on any machine. `read_host_budget_resolution` is this function
+/// applied to the real reads; nothing else composes the precedence.
+///
+/// Precedence: operator override -> cgroup memory.high -> cgroup memory.max -> Darwin
+/// physical memory -> refuse. There is no meminfo arm, and its absence is the change:
+/// MemAvailable and MemTotal describe a MACHINE, and on a kernel that can express a private
+/// limit, substituting one for the limit this process failed to read is DESIGN §5's
+/// absorbing fallback — the mechanism cannot compute its answer, so it answers with a
+/// superset. Authority: `gunbc.host_budget_source`
+/// `host_budget_source_admissible_as_bound_on_kernel`.
+pub fn resolve_host_budget(
+    env_override: Option<u64>,
+    cgroup_high: Option<(String, u64)>,
+    cgroup_max: Option<(String, u64)>,
+    darwin_physical: Option<u64>,
+) -> HostBudgetResolution {
+    if let Some(bytes) = env_override {
+        return HostBudgetResolution::Resolved {
+            source: HostBudgetSource::EnvOverride,
+            bytes,
+        };
+    }
+    if let Some((cgroup_dir, bytes)) = cgroup_high {
+        return HostBudgetResolution::Resolved {
+            source: HostBudgetSource::CgroupMemoryHigh { cgroup_dir },
+            bytes,
+        };
+    }
+    if let Some((cgroup_dir, bytes)) = cgroup_max {
+        return HostBudgetResolution::Resolved {
+            source: HostBudgetSource::CgroupMemoryMax { cgroup_dir },
+            bytes,
+        };
+    }
+    // Darwin only. `darwin_physical_memory_bytes` is `None` on every other target, so this
+    // arm cannot be reached on a kernel that has cgroups — which is precisely the wall
+    // `host_budget_source_admissible_as_bound_on_kernel` states: a host-shared reading may
+    // serve as the budget only where no private-limit mechanism exists.
+    if let Some(bytes) = darwin_physical {
+        return HostBudgetResolution::Resolved {
+            source: HostBudgetSource::DarwinPhysicalMemory,
+            bytes,
+        };
+    }
+    HostBudgetResolution::Unreadable {
+        reason: host_budget_unreadable_reason(),
+    }
+}
+
+/// The host memory budget to admit against, as a typed resolution. Single authority shared
+/// by the MemoryGovernor (which SCHEDULES against it), the typed-module cache cap (which
+/// BOUNDS resolution with it) and the P4 realize advisory (which PREDICTS against it) — no
+/// consumer may re-read a partial version of this precedence (§3 single authority).
+pub fn read_host_budget_resolution() -> HostBudgetResolution {
+    let env_override = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    let cgroup_high = binding_high_cgroup_dir().and_then(|dir| {
+        read_cgroup_u64(&dir, "memory.high").map(|v| (dir.display().to_string(), v))
+    });
+    let cgroup_max = binding_cap_cgroup_dir().and_then(|dir| {
+        read_cgroup_u64(&dir, "memory.max").map(|v| (dir.display().to_string(), v))
+    });
+    resolve_host_budget(
+        env_override,
+        cgroup_high,
+        cgroup_max,
+        darwin_physical_memory_bytes(),
+    )
+}
+
+/// `(budget, source label)` view of `read_host_budget_resolution` for the log lines and
+/// diagnostics that render the source as text. A consumer deciding anything about the
+/// SOURCE must use the resolution, never this label (§3: the label is a rendering, not a
+/// second representation of the discriminant).
+pub fn read_host_budget_bytes() -> (Option<u64>, String) {
+    let resolution = read_host_budget_resolution();
+    (resolution.bytes(), resolution.label())
 }
 
 /// leaf→root walk — the effective budget the OOM-killer enforces. `None` when unreadable
@@ -598,29 +716,6 @@ pub fn darwin_physical_memory_bytes() -> Option<u64> {
     None
 }
 
-/// Total physical RAM in bytes (`/proc/meminfo` MemTotal, kB→bytes) — the last-resort
-/// budget when no cgroup limit binds and MemAvailable is unreadable.
-pub fn mem_total_bytes() -> Option<u64> {
-    meminfo_field_bytes_in(&std::fs::read_to_string("/proc/meminfo").ok()?, "MemTotal")
-}
-
-/// The kernel's estimate of allocatable memory without swapping (`/proc/meminfo`
-/// MemAvailable, kB→bytes), sampled at arm time — the honest budget on uncapped hosts.
-pub fn mem_available_bytes() -> Option<u64> {
-    meminfo_field_bytes_in(
-        &std::fs::read_to_string("/proc/meminfo").ok()?,
-        "MemAvailable",
-    )
-}
-
-fn meminfo_field_bytes_in(meminfo: &str, key: &str) -> Option<u64> {
-    let line = meminfo
-        .lines()
-        .find(|l| l.strip_prefix(key).is_some_and(|r| r.starts_with(':')))?;
-    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
-    Some(kb.saturating_mul(1024))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -648,14 +743,117 @@ mod tests {
         );
     }
 
+    /// THE DISCRIMINATING RED for the 2026-08-30 BuildBuddy SIGKILL: every observation
+    /// absent — which is exactly what that runner presents, `/proc/self/cgroup` reading
+    /// `0::/` with no `memory.max` or `memory.high` anywhere under `/sys/fs/cgroup` — must
+    /// refuse and carry NO number. Before this change the same observations produced a
+    /// budget: MemAvailable (a reading about the host) capped at the fleet's own declared
+    /// slot line (a declaration about different machines).
+    ///
+    /// The refusal is asserted to name both halves of the remedy, because a stopped line
+    /// that does not say how to restart is a stop nobody can analyze: what was unreadable,
+    /// and the env var that supplies the bound.
     #[test]
-    fn uncapped_host_budget_caps_mem_available_at_declared_runner_slot_high() {
-        let (budget, capped) = uncapped_host_budget_from_mem_available(35_161_423_872);
-        assert_eq!(budget, DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES);
-        assert!(capped);
-        let (small, capped_small) = uncapped_host_budget_from_mem_available(8_000_000_000);
-        assert_eq!(small, 8_000_000_000);
-        assert!(!capped_small);
+    #[allow(non_snake_case)]
+    fn RED_no_readable_bound_refuses_and_carries_no_number() {
+        let refused = resolve_host_budget(None, None, None, None);
+        assert!(matches!(refused, HostBudgetResolution::Unreadable { .. }));
+        assert_eq!(refused.bytes(), None);
+        assert_eq!(refused.degraded_source(), None);
+        let label = refused.label();
+        assert!(label.contains("memory.high"), "{label}");
+        assert!(label.contains("memory.max"), "{label}");
+        assert!(label.contains("GUNBC_MEMORY_BUDGET_BYTES"), "{label}");
+    }
+
+    /// THE POSITIVE CONTROLS, without which the RED above is satisfied by a resolver that
+    /// refuses everything. Each readable bound is admitted, at its own value, attributed to
+    /// its own source — and the precedence is asserted rather than assumed: an operator
+    /// override outranks a cgroup limit, and `memory.high` (the throttle the kernel reclaims
+    /// at) outranks `memory.max` (the kill line).
+    #[test]
+    fn a_readable_bound_is_admitted_at_its_own_value_and_source() {
+        let env = resolve_host_budget(Some(10_737_418_240), None, None, None);
+        assert_eq!(env.bytes(), Some(10_737_418_240));
+        assert_eq!(env.degraded_source(), Some(false));
+        assert_eq!(env.label(), "env GUNBC_MEMORY_BUDGET_BYTES");
+
+        let high = resolve_host_budget(
+            None,
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 9_663_676_416)),
+            None,
+        );
+        assert_eq!(high.bytes(), Some(8_589_934_592));
+        assert_eq!(high.degraded_source(), Some(false));
+        assert!(high.label().contains("memory.high"));
+
+        let max = resolve_host_budget(
+            None,
+            None,
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 9_663_676_416)),
+            None,
+        );
+        assert_eq!(max.bytes(), Some(9_663_676_416));
+        assert!(max.label().contains("memory.max"));
+
+        // An override outranks a cgroup limit: the operator is declaring the bound the
+        // executor knows and this process cannot see, which is the BuildBuddy case.
+        let both = resolve_host_budget(
+            Some(10_737_418_240),
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
+            None,
+            None,
+        );
+        assert_eq!(both.bytes(), Some(10_737_418_240));
+    }
+
+    /// Darwin's physical-memory read stays a source and stays DEGRADED, and it is the only
+    /// arm that is both. It is reachable only where `darwin_physical_memory_bytes` answers,
+    /// i.e. only on a kernel with no cgroups — so a host-shared reading can serve as the
+    /// budget exactly where no private bound could have been expressed, and nowhere else.
+    #[test]
+    fn darwin_physical_memory_is_a_degraded_source_and_the_only_one() {
+        let darwin = resolve_host_budget(None, None, None, Some(17_179_869_184));
+        assert_eq!(darwin.bytes(), Some(17_179_869_184));
+        assert_eq!(darwin.degraded_source(), Some(true));
+        assert_eq!(darwin.label(), "sysctl hw.memsize");
+        assert!(!HostBudgetSource::DarwinPhysicalMemory.bounds_this_process());
+        for bounding in [
+            HostBudgetSource::EnvOverride,
+            HostBudgetSource::CgroupMemoryHigh {
+                cgroup_dir: "/sys/fs/cgroup".to_string(),
+            },
+            HostBudgetSource::CgroupMemoryMax {
+                cgroup_dir: "/sys/fs/cgroup".to_string(),
+            },
+        ] {
+            assert!(bounding.bounds_this_process(), "{bounding:?}");
+            assert!(!bounding.is_degraded(), "{bounding:?}");
+        }
+    }
+
+    /// No arm reports a `/proc` path it did not read. The fabricated-provenance bug this
+    /// mirrors (`(None, "/proc/meminfo MemTotal")` on a machine with no `/proc`) is now
+    /// unwritable rather than merely absent: the label is a total match on the discriminant,
+    /// and no discriminant names meminfo.
+    #[test]
+    fn no_source_label_names_a_file_the_resolver_did_not_read() {
+        for source in [
+            HostBudgetSource::EnvOverride,
+            HostBudgetSource::CgroupMemoryHigh {
+                cgroup_dir: "/sys/fs/cgroup".to_string(),
+            },
+            HostBudgetSource::CgroupMemoryMax {
+                cgroup_dir: "/sys/fs/cgroup".to_string(),
+            },
+            HostBudgetSource::DarwinPhysicalMemory,
+        ] {
+            assert!(!source.label().contains("/proc/meminfo"), "{source:?}");
+        }
+        assert!(!resolve_host_budget(None, None, None, None)
+            .label()
+            .contains("/proc/meminfo"));
     }
 
     /// The discriminating RED: the budget the BuildBuddy runner actually answered with on
@@ -677,15 +875,21 @@ mod tests {
     /// lockstep, and `runner_slot_refusal_note` there carries the full argument.
     #[test]
     fn whole_corpus_compile_refuses_the_budget_that_was_sigkilled_and_refuses_the_ci_runner() {
-        let doomed =
-            whole_corpus_compile_admission(Some(5_269_094_400), "/proc/meminfo MemAvailable");
+        // The SIGKILLed run's budget, carried under a label the resolver can still produce:
+        // `/proc/meminfo MemAvailable` was that run's attribution and is no longer an
+        // authorable source (see `resolve_host_budget`). The budget, which is what this arm
+        // judges, is unchanged.
+        let doomed = whole_corpus_compile_admission(
+            Some(5_269_094_400),
+            "cgroup memory.high (/sys/fs/cgroup/runner.slice)",
+        );
         assert!(matches!(
             doomed,
             WholeCorpusCompileAdmission::RefusedBudgetBelowMeasuredDemand { .. }
         ));
         let msg = whole_corpus_compile_refusal_diagnostic(&doomed).expect("refusal must diagnose");
         assert!(msg.contains("WholeCorpusCompileBudgetBelowMeasuredDemand"));
-        assert!(msg.contains("/proc/meminfo MemAvailable"));
+        assert!(msg.contains("cgroup memory.high (/sys/fs/cgroup/runner.slice)"));
         assert!(msg.contains("--entry"));
 
         let ci_slot = whole_corpus_compile_admission(

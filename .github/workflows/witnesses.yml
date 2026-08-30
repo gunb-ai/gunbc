@@ -50,6 +50,7 @@ jobs:
         id: build_witness_fold
         run: |
           cargo build --release -p v1-compiler --bins
+          cargo build --release -p v1-stage0-runtime -p v1-stage0-std-core -p v1-stage0-std-surface -p v1-stage0-extdeps-languages -p v1-stage0-v1-artifact -p v1-stage0-v1-infer -p v1-stage0-emit-core
       - name: Record the toolchain environment
         run: |
           echo "host=$(hostname) runner=${RUNNER_NAME:-unset}"

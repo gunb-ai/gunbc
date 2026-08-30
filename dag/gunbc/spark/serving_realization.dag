@@ -439,23 +439,15 @@ type SparkServingRetirementEffect
   | RemoveUserUnitFile
   | ReloadUserManagerAfterRemoval
 
-// THE ORDER IS THE INSTALL ORDER REVERSED, AND IT IS NOT DECORATION.
+// THE EFFECTS ARE A VOCABULARY, NOT A SEQUENCE, AND THE ORDER LIVES SOMEWHERE ELSE.
 //
-// Stop precedes disable precedes remove-file precedes reload. Every adjacent pair is load-bearing:
-// removing the unit file before stopping leaves a running process the manager can no longer name;
-// reloading before the file is gone re-reads a definition that still exists. The install schedule
-// derives its order from the resources' requires/establishes facts, and the retirement order is the
-// same relation read backwards -- an effect may not run until the effects that depend on what it
-// removes have already run.
-fn realization_retirement_effects(realization: SparkServingRealization) -> List<SparkServingRetirementEffect> {
-  match realization {
-    UserUnitRealization =>
-      [StopUserUnit, DisableUserUnit, RemoveUserUnitFile, ReloadUserManagerAfterRemoval]
-    SystemUnitRealization => []
-    RootlessContainerRealization => []
-  }
-}
-
+// This coproduct once had a sibling that authored the retirement ORDER as a fixed list, with a
+// comment claiming teardown was "the install order read backwards". gunbc.spark.serving_execution_schedule
+// established that the claim is false -- `systemctl disable` reads the unit file, so content cannot
+// be torn down first, and the reload is a barrier, which does not reverse -- and the frozen scheduler
+// now derives the order from declared teardown requirements. Keeping the list beside it would leave
+// two authorities for one order, one of them known to be wrong. So the list is gone: an effect is
+// what a remedy DOES, and which remedy runs when is the schedule's question.
 fn spark_serving_retirement_effect_wire(effect: SparkServingRetirementEffect) -> String {
   match effect {
     StopUserUnit => "stop-user-unit"

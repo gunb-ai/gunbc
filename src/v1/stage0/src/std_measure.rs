@@ -345,6 +345,21 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size((gibibyte_count(g.clone()) * gibibyte_scale_factor_bytes()))
 }
 
+pub fn kibibyte(count: Nat) -> Kibibyte {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn kibibyte_count(k: Kibibyte) -> Nat {
+    measure_count(k.clone())
+}
+
+pub fn kibibyte_to_byte_size(k: Kibibyte) -> ByteSize {
+    byte_size((kibibyte_count(k.clone()) * kibi_factor()))
+}
+
 pub type BitWidth = Rc<Measure<(), (), i64>>;
 
 pub fn bits_per_byte() -> Nat {
