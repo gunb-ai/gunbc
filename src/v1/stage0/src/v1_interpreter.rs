@@ -563,11 +563,12 @@ fn value_hash(v: &Value) -> u64 {
             hash_fields_commutative(fields).hash(&mut h);
         }
         Value::Variant {
+            type_name,
             variant_name,
             fields,
-            ..
         } => {
             7u8.hash(&mut h);
+            type_name.hash(&mut h);
             variant_name.hash(&mut h);
             hash_fields_commutative(fields).hash(&mut h);
         }
@@ -878,16 +879,16 @@ impl PartialEq for Value {
             (Value::Set(a), Value::Set(b)) => a == b,
             (
                 Value::Variant {
+                    type_name: at,
                     variant_name: a,
                     fields: af,
-                    ..
                 },
                 Value::Variant {
+                    type_name: bt,
                     variant_name: b,
                     fields: bf,
-                    ..
                 },
-            ) => a == b && af == bf,
+            ) => at == bt && a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
             (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
             (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
@@ -1325,7 +1326,7 @@ struct PureCallMemo {
     keepalive_fns: Vec<Rc<Node>>,
 }
 
-/// `Symbol`-free mirror of `Value`, used as the cross-claim memo's storage shape.
+/// Origin-free mirror of `Value`, used as the cross-claim memo's storage shape.
 ///
 /// Required-floor builds a FRESH `InterpContext` per claim by design (`cli_run.rs`
 /// `evaluation_frame`, "FRESH PER CLAIM"), while this memo survives across claims for one
@@ -1336,10 +1337,11 @@ struct PureCallMemo {
 /// origin-bound closures/functions.
 ///
 /// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
-/// prescribes: de-symbolize to `PortableValue` (raw strings) at store time, while the
-/// producing ctx is still alive, and re-intern into the CONSUMING ctx's own interner at
-/// load time. `Closure`/`Fn` are not portable this way (their `Env` chain isn't a content
-/// snapshot) and are refused rather than guessed at — `prepare_grammar` never returns them.
+/// prescribes: reify to `PortableValue` at store time while the producing ctx is still alive.
+/// Process-canonical `Symbol`s are themselves frame-independent, so the portable shape carries
+/// them directly and a served value does not walk a second global-interner path. `Closure`/`Fn`
+/// are not portable this way (their `Env` chain isn't a content snapshot) and are refused rather
+/// than guessed at — `prepare_grammar` never returns them.
 #[derive(Debug, Clone)]
 enum PortableValue {
     Null,
@@ -1352,13 +1354,13 @@ enum PortableValue {
     Map(Vec<(PortableValue, PortableValue)>),
     Set(Rc<OrdSet<String>>),
     Record {
-        type_name: String,
-        fields: Vec<(String, PortableValue)>,
+        type_name: Symbol,
+        fields: Vec<(Symbol, PortableValue)>,
     },
     Variant {
-        type_name: String,
-        variant_name: String,
-        fields: Vec<(String, PortableValue)>,
+        type_name: Symbol,
+        variant_name: Symbol,
+        fields: Vec<(Symbol, PortableValue)>,
     },
 }
 
@@ -1489,11 +1491,11 @@ fn portable_value_from_ctx_at(
         Value::Record { type_name, fields } => {
             let mut out = Vec::with_capacity(fields.len());
             for (k, v) in fields.iter() {
-                let name = ctx.resolve(*k).to_string();
-                out.push((name.clone(), descend!(format!(".{name}"), v)));
+                let name = ctx.resolve(*k);
+                out.push((*k, descend!(format!(".{name}"), v)));
             }
             PortableValue::Record {
-                type_name: ctx.resolve(*type_name).to_string(),
+                type_name: *type_name,
                 fields: out,
             }
         }
@@ -1504,12 +1506,12 @@ fn portable_value_from_ctx_at(
         } => {
             let mut out = Vec::with_capacity(fields.len());
             for (k, v) in fields.iter() {
-                let name = ctx.resolve(*k).to_string();
-                out.push((name.clone(), descend!(format!(".{name}"), v)));
+                let name = ctx.resolve(*k);
+                out.push((*k, descend!(format!(".{name}"), v)));
             }
             PortableValue::Variant {
-                type_name: ctx.resolve(*type_name).to_string(),
-                variant_name: ctx.resolve(*variant_name).to_string(),
+                type_name: *type_name,
+                variant_name: *variant_name,
                 fields: out,
             }
         }
@@ -1558,14 +1560,14 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
         }
         PortableValue::Set(members) => Value::Set(members.clone()),
         // Re-sort after reconstruction so the representation invariant stays local to this
-        // constructor. Symbol ordering is spelling-backed and therefore frame-independent;
-        // retaining the sort here keeps `fields_get`'s binary-search contract explicit.
+        // constructor. Symbols are already process-canonical; no consuming-frame re-interning
+        // is needed. Retaining the sort keeps `fields_get`'s binary-search contract explicit.
         PortableValue::Record { type_name, fields } => Value::Record {
-            type_name: ctx.sym(type_name),
+            type_name: *type_name,
             fields: Rc::new(sorted_fields(
                 fields
                     .iter()
-                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .map(|(k, v)| (*k, value_from_portable_ctx(ctx, v)))
                     .collect(),
             )),
         },
@@ -1574,13 +1576,13 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
             variant_name,
             fields,
         } => Value::Variant {
-            type_name: ctx.sym(type_name),
-            variant_name: ctx.sym(variant_name),
+            type_name: *type_name,
+            variant_name: *variant_name,
             // Sorted for the same reason as the Record arm above.
             fields: Rc::new(sorted_fields(
                 fields
                     .iter()
-                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .map(|(k, v)| (*k, value_from_portable_ctx(ctx, v)))
                     .collect(),
             )),
         },
@@ -1681,25 +1683,17 @@ fn portable_value_size_bytes(v: &PortableValue) -> usize {
                 .map(|(k, v)| portable_value_size_bytes(k) + portable_value_size_bytes(v))
                 .sum(),
             PortableValue::Set(s) => s.iter().map(|x| x.len() + size_of::<String>()).sum(),
-            PortableValue::Record { type_name, fields } => {
-                type_name.len()
-                    + fields
-                        .iter()
-                        .map(|(n, f)| n.len() + portable_value_size_bytes(f))
-                        .sum::<usize>()
-            }
-            PortableValue::Variant {
-                type_name,
-                variant_name,
-                fields,
-            } => {
-                type_name.len()
-                    + variant_name.len()
-                    + fields
-                        .iter()
-                        .map(|(n, f)| n.len() + portable_value_size_bytes(f))
-                        .sum::<usize>()
-            }
+            // Symbols point into the process-wide canonical table. Their pointer-sized slots
+            // are already included in the enum/Vec allocation; no spelling allocation is
+            // retained per portable entry.
+            PortableValue::Record { fields, .. } => fields
+                .iter()
+                .map(|(_, f)| portable_value_size_bytes(f))
+                .sum::<usize>(),
+            PortableValue::Variant { fields, .. } => fields
+                .iter()
+                .map(|(_, f)| portable_value_size_bytes(f))
+                .sum::<usize>(),
         }
 }
 
@@ -1898,10 +1892,9 @@ fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
 
 /// One content hash over ALL of a call's arguments (names and values). `None` when any
 /// argument is not content-hashable — such a call is never admitted to the cross-claim tier.
-/// The interner/hash-memo borrows must not outlive this function: they are immutable/local
-/// borrows of `ctx`, and `value_from_portable_ctx` at the caller interns symbols into `ctx`
-/// (a `borrow_mut()`) while reconstructing a stored value — holding `interner` across that
-/// call double-borrows.
+/// The interner/hash-memo borrows stay local to this function. Portable reconstruction now
+/// carries process-canonical symbols directly, but keeping these borrows narrow also keeps the
+/// hashing boundary explicit and independent from the caller's cache mutations.
 fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
@@ -2174,36 +2167,46 @@ mod cross_claim_memo_tests {
     }
 
     // Discriminating RED for the required-floor failure in
-    // `english_emit_add_ingest_round_trip_holds`: the emitter-produced diagnostics value can
-    // originate in a different evaluation frame from the literal `None` it is compared with.
-    // Encounter-order ordinals made the same coproduct arm unequal (or a different arm equal)
-    // across those frames.  Symbol identity is the spelling, so frame order is irrelevant.
+    // `english_emit_add_ingest_round_trip_holds`: three source spellings resolve to one declared
+    // arm and are evaluated in three fresh frames, while a fourth frame evaluates a distinct
+    // declaration with the same short arm name. Equality follows the resolved parent+arm, not
+    // encounter order and not the nickname used at the source site.
     #[test]
     fn structural_variant_equality_is_independent_of_evaluation_frame() {
-        let producer = fresh_ctx();
-        let _ = producer.sym("producer_decoy");
-        let produced_none = Value::Variant {
-            type_name: producer.sym("Diagnostics"),
-            variant_name: producer.sym("None"),
-            fields: Rc::new(vec![]),
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/diagnostic.dag".to_string(),
+                content: "module fixture.diagnostic\ntype Diagnostics = None | Some {}\nfn bare() -> Diagnostics { None }\nfn qualified() -> Diagnostics { Diagnostics.None {} }\n"
+                    .to_string(),
+            }),
+            Rc::new(SourceFile {
+                path: "fixture/imported.dag".to_string(),
+                content: "module fixture.imported\nimport fixture.diagnostic { Diagnostics, None }\nfn imported() -> Diagnostics { None }\n"
+                    .to_string(),
+            }),
+            Rc::new(SourceFile {
+                path: "fixture/other.dag".to_string(),
+                content: "module fixture.other\ntype Other = None | Present {}\nfn other_none() -> Other { None }\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let eval = |name| {
+            let ctx = InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            );
+            super::run_in_context(&ctx, name, false).expect(name)
         };
-
-        let consumer = fresh_ctx();
-        let _ = consumer.sym("consumer_decoy_one");
-        let _ = consumer.sym("consumer_decoy_two");
-        let literal_none = Value::Variant {
-            type_name: consumer.sym("Diagnostics"),
-            variant_name: consumer.sym("None"),
-            fields: Rc::new(vec![]),
-        };
-        let literal_other = Value::Variant {
-            type_name: consumer.sym("Diagnostics"),
-            variant_name: consumer.sym("Unavailable"),
-            fields: Rc::new(vec![]),
-        };
-
-        assert_eq!(produced_none, literal_none);
-        assert_ne!(produced_none, literal_other);
+        let bare = eval("bare");
+        let qualified = eval("qualified");
+        let imported = eval("imported");
+        let other = eval("other_none");
+        assert_eq!(bare, qualified);
+        assert_eq!(bare, imported);
+        assert_ne!(bare, other);
     }
 
     // The mirror-image defect is silent wrongness rather than a false negative: before symbols
@@ -2225,6 +2228,13 @@ mod cross_claim_memo_tests {
             fields: Rc::new(vec![]),
         };
         assert_ne!(left, right);
+
+        let same_arm_name_from_another_declaration = Value::Variant {
+            type_name: right_frame.sym("OtherDiagnostics"),
+            variant_name: right_frame.sym("None"),
+            fields: Rc::new(vec![]),
+        };
+        assert_ne!(left, same_arm_name_from_another_declaration);
     }
 
     // RED1 (operator ruling, 2026-08-29): a value carrying an origin-bound fn ANYWHERE
@@ -3564,10 +3574,10 @@ pub struct InterpContext {
     // memo-eligible; found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values already served from the cross-claim tier: reconstructing
-    /// a `PortableValue` re-interns and re-allocates the whole structure, so a hot producer
-    /// served on every call would pay that per CALL; this bounds it to once per frame. Keyed
-    /// identically to the global tier; lives and dies with the frame.
+    /// Per-context cache of values already served from the cross-claim tier: reconstruction
+    /// still rebuilds the value containers (but carries canonical symbols without re-interning),
+    /// so a hot producer served on every call would pay that per CALL; this bounds it to once
+    /// per frame. Keyed identically to the global tier; lives and dies with the frame.
     cross_claim_hit_cache: std::cell::RefCell<
         HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     >,
@@ -5122,9 +5132,6 @@ fn eval_var(
         }
     };
 
-    if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
-    }
     if ctx.sym_eq(sym, "true") {
         return Ok(Value::Bool(true));
     }
@@ -5142,6 +5149,14 @@ fn eval_var(
             variant_name: ctx.sym(vn.rsplit('.').next().unwrap_or(&vn)),
             fields: Rc::new(vec![]),
         });
+    }
+
+    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
+    // coproduct arm named `None` was handled above and retains its declaration identity
+    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
+    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
+        return Ok(Value::Null);
     }
 
     if let Some(val) = env.lookup(sym) {
