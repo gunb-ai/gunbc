@@ -1,12 +1,17 @@
 module v2.test.emit.produced_decl_support_preserved
 
+import v2.test.complexity_gate.table_fixture_add_subject_producer { table_fixture_add_decl_node }
 import v2.extdeps.languages.rust { rust_target_model }
 import v2.std.compilers.target_model {
   FixedToken,
   OwnershipAtFunctionReturn,
+  ProducedDeclRenderRows,
   ProducedDeclSupport,
   ProducedDeclUnwired,
   ProducedDeclWired,
+  ProducedSignatureFixed,
+  ValueProducing,
+  produced_decl_render_from_rows,
   ReferenceLayerOwned,
   TargetBodiedArrowStatementScaffold,
   TargetModel,
@@ -17,7 +22,7 @@ import v2.std.compilers.target_model {
   target_model_type_atom_node
 }
 import v2.std.collection { List, list_at_optional, Absent, Present }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
@@ -25,24 +30,24 @@ import v2.std.text { String }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data produced_decl_support_preserved_note: String = "Regression control for a defect the mechanical field addition introduced and the green corpus could not show: augmenters reconstruct a TargetModel field-by-field, and the inserted produced_decl_support was reset to ProducedDeclUnwired rather than copied from the source. With every target unwired the reset is a no-op, so nothing reds; the moment a target is WIRED an ordinary augmentation silently erases its rendering capability. Preservation is proven by EXECUTING the renderer after augmentation, because equality over function values is not available - a comparison could not have caught this. Both augmenters are driven with NONEMPTY input deliberately: each returns its argument unchanged on empty input, so an empty-input control would pass without ever reaching the reconstruction that carries the defect."
+data produced_decl_support_preserved_note: String = "Regression control for a defect the mechanical field addition introduced and the green corpus could not show: augmenters reconstruct a TargetModel field-by-field, and the inserted produced_decl_support was reset to ProducedDeclUnwired rather than copied from the source. With every target unwired the reset is a no-op, so nothing reds; the moment a target is WIRED an ordinary augmentation silently erases its rendering capability. Preservation is proven by EXECUTING the surviving rendering rows through the shared fold on a real declaration, not by comparing them: the rows are now data and would compare, but a comparison would prove only that bytes survived, while the defect this controls is the loss of a working rendering. Both augmenters are driven with NONEMPTY input deliberately: each returns its argument unchanged on empty input, so an empty-input control would pass without ever reaching the reconstruction that carries the defect."
 
 fn pdp_marker_token_class() -> Symbol {
   ^pdp_renderer_executed_marker
 }
 
-fn pdp_render(decl: Node) -> Outcome<TargetBodiedArrowStatementScaffold> {
-  outcome_accepted(
-    TargetBodiedArrowStatementScaffold {
-      prefix: [FixedToken { token_class: pdp_marker_token_class() }],
-      suffix: []
-    }
-  )
+data pdp_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRows {
+  signature: [ProducedSignatureFixed { token_class: ^pdp_renderer_executed_marker }],
+  param_layout: [],
+  param_separator: [],
+  type_ref_token_class: ^pdp_type_ident,
+  block_close: [],
+  block_evaluation_mode: ValueProducing
 }
 
 fn pdp_wired_support() -> ProducedDeclSupport {
   ProducedDeclWired {
-    render: pdp_render,
+    render_rows: pdp_render_rows,
     scaffold_relation_rule_name: ^pdp_relation_rule,
     scaffold_base_row: target_model_type_atom_node(identity: ^pdp_base_row)
   }
@@ -60,17 +65,25 @@ fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
   }
 }
 
-// Preservation is proven by EXECUTION: the surviving renderer is called and its
-// output inspected. A field comparison is unavailable over function values.
+// Preservation is proven by EXECUTION: the surviving rows are folded into a scaffold on
+// a real declaration and the result inspected. Comparing the rows would prove only that
+// bytes survived the reconstruction, not that the rendering still works.
+fn pdp_rendered_scaffold(rows: ProducedDeclRenderRows) -> Outcome<TargetBodiedArrowStatementScaffold> {
+  bind_outcome(
+    o: table_fixture_add_decl_node(fn_name: ^rust_binding_fn_add),
+    f: fn(decl) { produced_decl_render_from_rows(rows: rows, decl: decl) }
+  )
+}
+
 fn pdp_renderer_executes(target: TargetModel) -> Bool {
   match target.produced_decl_support {
     ProducedDeclUnwired => false
     ProducedDeclWired {
-      render: render,
+      render_rows: rows,
       scaffold_relation_rule_name: _,
       scaffold_base_row: _
     } =>
-      match render(target_model_type_atom_node(identity: ^pdp_decl)) {
+      match pdp_rendered_scaffold(rows: rows) {
         Accepted { value: scaffold, diagnostics: _ } =>
           match list_at_optional(xs: scaffold.prefix, index: 0) {
             Present { value: token } =>

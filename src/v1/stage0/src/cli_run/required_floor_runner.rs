@@ -811,7 +811,8 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
 pub(crate) struct ChangedWitnessProjectionRow {
     pub identity: String,
     /// Wire name of the `ChangedWitnessExecutionStanding` arm: `planned-and-passed`,
-    /// `planned-without-terminal-verdict`, `declined`, `missing-disposition`.
+    /// `planned-and-known-red-held`, `planned-without-terminal-verdict`, `declined`,
+    /// `missing-disposition`.
     pub standing: &'static str,
     /// The disposition receipt's label for the identity (`required_floor_disposition_label`),
     /// or `absent` when no row exists.
@@ -819,7 +820,7 @@ pub(crate) struct ChangedWitnessProjectionRow {
     /// The terminal ledger's outcome wire (`claim_disposition_wire`), `not_executed` for a row
     /// that never ran, `absent` when there is no disposition row to speak for it.
     pub outcome: String,
-    /// `changed_witness_standing_blocks` realized: exactly `planned-and-passed` is green.
+    /// `changed_witness_standing_blocks` realized: passed and known-red-held are green.
     pub blocks: bool,
 }
 
@@ -922,7 +923,7 @@ pub(crate) fn changed_witness_projection_rows(
                 // expected-red failing as enrolled (§4b keeps discriminating REDs enrolled, so
                 // touching one is sanctioned), and an enrolled row that passed (the stale
                 // roster reds the floor at its own grain with its own remedy).
-                let passed = matches!(
+                let green = matches!(
                     outcome,
                     Some(
                         ClaimDisposition::Passed
@@ -932,14 +933,18 @@ pub(crate) fn changed_witness_projection_rows(
                 );
                 ChangedWitnessProjectionRow {
                     identity: identity.clone(),
-                    standing: if passed {
-                        "planned-and-passed"
-                    } else {
-                        // "No terminal Passed verdict stands", deliberately covering a failed
-                        // or refused verdict too — each of those already reds the floor by its
-                        // own mechanism, and this projection reds it again at the changed-set
-                        // grain, naming the identity the change touched.
-                        "planned-without-terminal-verdict"
+                    standing: match outcome {
+                        Some(ClaimDisposition::KnownRedHeld) => "planned-and-known-red-held",
+                        Some(ClaimDisposition::Passed | ClaimDisposition::KnownRedNowPassing) => {
+                            "planned-and-passed"
+                        }
+                        _ => {
+                            // "No terminal Passed verdict stands", deliberately covering a failed
+                            // or refused verdict too — each of those already reds the floor by its
+                            // own mechanism, and this projection reds it again at the changed-set
+                            // grain, naming the identity the change touched.
+                            "planned-without-terminal-verdict"
+                        }
                     },
                     disposition: required_floor_disposition_label(dispositions[identity.as_str()])
                         .to_string(),
@@ -947,7 +952,7 @@ pub(crate) fn changed_witness_projection_rows(
                         .map(claim_disposition_wire)
                         .unwrap_or("not_executed")
                         .to_string(),
-                    blocks: !passed,
+                    blocks: !green,
                 }
             }
             Some(declined) => ChangedWitnessProjectionRow {
@@ -991,7 +996,8 @@ pub(crate) fn emit_changed_witness_projection(
                 "One row per ADDED/MODIFIED witness identity in this change, at the disposition \
                  receipt's own grain (qualified `module.function`). Standing vocabulary: \
                  `v2.workflow.floor_changed_witness.ChangedWitnessExecutionStanding`; every \
-                 standing except planned-and-passed reds the required floor.\n\n",
+                 standing except planned-and-passed and planned-and-known-red-held reds the \
+                 required floor.\n\n",
             );
             text.push_str("| identity | disposition | outcome | standing |\n|---|---|---|---|\n");
             for row in rows {
@@ -2451,22 +2457,30 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
         let producer_frame = &resolution_frames[&module];
         let warm_started = std::time::Instant::now();
         match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
-            Ok(stored) => {
-                // `stored=false` means the value was refused by the store (unportable,
-                // duplicate, cap) — the roster promised a servable producer, so a silent
-                // decline would relocate the fill onto the first toucher. Stop the line.
-                if !stored {
-                    let detail = match v1_interpreter::cross_claim_take_last_unportable() {
-                        Some((_, refusal)) => format!(
-                            "ServeCacheValueNotPortable path={} kind={}",
+            Ok(outcome) => {
+                // A NON-SERVABLE outcome means nothing is retained for later claims, so a
+                // silent decline would relocate the fill onto the first toucher: stop the
+                // line, naming the ONE cause rather than a disjunction of three. An
+                // `AlreadyPresent` outcome is servable and therefore not a refusal — a
+                // rostered producer reachable from an earlier rostered producer is stored
+                // by that traversal, and its own warm correctly finds the work done.
+                if !outcome.is_servable() {
+                    // The located detail comes from the OUTCOME, so a cause can only ever be
+                    // paired with its own evidence. Reading the retained slot here instead
+                    // would decorate a byte-budget or entry-cap refusal with a stale path
+                    // left by an earlier producer's unportable value (review 57554).
+                    let detail = match outcome.not_portable_detail() {
+                        Some(refusal) => format!(
+                            "{} path={} kind={}",
+                            outcome.cause(),
                             if refusal.path_into_value.is_empty() {
-                                "<root>".to_string()
+                                "<root>"
                             } else {
-                                refusal.path_into_value
+                                refusal.path_into_value.as_str()
                             },
                             refusal.encountered_kind
                         ),
-                        None => "duplicate key, entry cap, or byte budget".to_string(),
+                        None => outcome.cause().to_string(),
                     };
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
@@ -2476,7 +2490,8 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 }
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} wall_ms={}",
+                     producer={qualified} disposition={} wall_ms={}",
+                    outcome.cause(),
                     warm_started.elapsed().as_millis()
                 );
             }
@@ -5801,7 +5816,8 @@ pub fn run_required_floor(
     // the facts, and nothing projected them for the changed set. So: derive the ADDED/MODIFIED
     // test-declaration identities from the run's own diff observation, join each against the
     // disposition and terminal populations this function just published, print one line per
-    // CHANGED identity, and let any standing except planned-and-passed red the required context
+    // CHANGED identity, and let any standing except passed or enrolled-held red the required
+    // context
     // through `changed_witness_blocking` (read by `required_floor_outcome_is_clean`).
     //
     // ON CI THE OBSERVATION IS REQUIRED: a diff that cannot be observed means the floor cannot
@@ -6080,7 +6096,7 @@ mod changed_witness_projection_tests {
                 outcome: ClaimOutcome::Fail,
             }],
         );
-        assert_eq!(rows[0].standing, "planned-and-passed");
+        assert_eq!(rows[0].standing, "planned-and-known-red-held");
         assert_eq!(rows[0].outcome, "known-red-held");
         assert!(
             !rows[0].blocks,

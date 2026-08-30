@@ -15,7 +15,9 @@ import extdeps.languages.c.emit {
 import v2.extdeps.languages.c_decl {
   c_semantic_decl_emission_bundle_node
 }
-import std.algebra { Cons, Empty }
+import std.algebra {
+  Empty
+}
 import std.graph {
   CallGraph,
   GraphEdge,
@@ -29,7 +31,6 @@ import v2.std.collection {
   Map,
   Present,
   empty_map,
-  list_at_optional,
   map_insert
 }
 import v2.std.optional {
@@ -37,7 +38,10 @@ import v2.std.optional {
   Optional,
   Present
 }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
+import v2.std.algebra {
+  fold_list,
+  list_append
+}
 import v2.std.compilers.lexing {
   LexRule,
   LexRuleSet,
@@ -62,6 +66,13 @@ import v2.std.compilers.target_model {
   ProducedDeclSupport,
   ProducedDeclUnwired,
   ProducedDeclWired,
+  ProducedDeclRenderRows,
+  ProducedSignatureFixed,
+  ProducedSignatureDeclName,
+  ProducedSignatureParams,
+  ProducedSignatureReturnType,
+  ProducedParamName,
+  ProducedParamType,
   StatementSequenced,
   TargetBindLetShape,
   TargetBindingRefShape,
@@ -80,18 +91,17 @@ import v2.std.compilers.target_model {
   target_operator_realization_node,
   target_operator_realizations_catalog_node,
   value_expr_projection_bundle_node,
-  TargetBodiedArrowStatementScaffold,
   TargetModel,
   ConcreteSyntaxToken,
   FixedToken,
   BoundToken,
-  derive_bodied_arrow_scaffold,
   target_model_emit_transforms_empty,
   concrete_syntax_token_class,
   concrete_syntax_token_to_node
 }
-import v2.std.node_query { node_positional_child_targets }
 import v2.std.host_transport {
+  HostBuildEnvironment,
+  host_process_location_names,
   EmitHostRuntimeRow,
   EmittedWithSuffix,
   FixedText,
@@ -125,16 +135,6 @@ import v2.std.compilers.compilation_unit {
   type_definition_row_identity
 }
 import v2.std.logic { Bool }
-import v2.std.diagnostic {
-  Diagnostic,
-  ExternalContractUnknown,
-  Outcome,
-  Unavailable,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
 import v2.std.node {
   Arrow,
   Atom,
@@ -792,6 +792,7 @@ fn c_bool_literal_host_runtime_row(literal: String) -> TargetEmitHostRuntimeRow 
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: HostTransportDescriptor {
+        build_environment: c_host_build_environment(),
         identity: ^c_bool_literal_host_transport_identity,
         workspace: [
           WorkspaceFile {
@@ -1190,8 +1191,15 @@ fn c_emit_host_runtime_primitive_type_node() -> Node {
   }
 }
 
+// The ambient variables this target's emitted program may see; see v2.std.host_transport
+// HostBuildEnvironment. Toolchain LOCATIONS only -- no flag carrier.
+fn c_host_build_environment() -> HostBuildEnvironment {
+  HostBuildEnvironment { ambient_names: concat(host_process_location_names(), ["CC", "CXX", "AR", "LD_LIBRARY_PATH", "LIBRARY_PATH", "CPATH", "PKG_CONFIG_PATH", "SDKROOT", "MACOSX_DEPLOYMENT_TARGET"]) }
+}
+
 fn c_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: c_host_build_environment(),
     identity: ^c_host_transport_identity,
     workspace: [
       WorkspaceFile {
@@ -1239,6 +1247,7 @@ data c_emit_host_type_decl_main_suffix_dissolution_trigger: DissolutionCondition
 
 fn c_type_decl_host_transport_descriptor(main_suffix: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: c_host_build_environment(),
     identity: ^c_type_decl_host_transport_identity,
     workspace: [
       WorkspaceFile {
@@ -1291,185 +1300,37 @@ fn c_type_decl_target_model() -> TargetModel {
 }
 
 
-// C owns C's signature order here, and it is NOT Rust's: the return type comes
-// FIRST, each parameter is TYPE then NAME with no label separator, and there is no
-// return arrow. C is statement-sequenced, so the scaffold carries a return token
-// before the body and a terminator after it. The compiler is not edited to support
-// any of this -- C supplies its own renderer and its own spellings.
-fn c_produced_type_tokens(type_node: Node) -> Outcome<List<ConcreteSyntaxToken>> {
-  match type_node.kind {
-    TypeNode { connective: Atom { identity: id } } =>
-      outcome_accepted(value: [BoundToken { token_class: ^c_token_ident, binding: id }])
-    _ =>
-      outcome_rejected(
-        d: c_produced_decl_diagnostic(reason: ^c_produced_signature_type_unsupported, node: type_node)
-      )
-  }
-}
-
-fn c_produced_decl_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
-  Diagnostic {
-    reason: reason,
-    at: node_locus(node: node),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn c_produced_one_param_tokens(edge: Edge) -> Outcome<List<ConcreteSyntaxToken>> {
-  match edge.label {
-    Named { name: pname } =>
-      bind_outcome(
-        o: c_produced_type_tokens(type_node: edge.target),
-        f: fn(type_toks) {
-          outcome_accepted(
-            value: list_append(
-              left: type_toks,
-              right: [BoundToken { token_class: ^c_token_ident, binding: pname }]
-            )
-          )
-        }
-      )
-    Positional =>
-      outcome_rejected(
-        d: c_produced_decl_diagnostic(reason: ^c_produced_signature_param_unnamed, node: edge.target)
-      )
-  }
-}
-
-fn c_produced_params_tail_tokens(params: List<Edge>) -> Outcome<List<ConcreteSyntaxToken>> {
-  match params {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: e, tail: rest } =>
-      bind_outcome(
-        o: c_produced_one_param_tokens(edge: e),
-        f: fn(toks) {
-          bind_outcome(
-            o: c_produced_params_tail_tokens(params: rest),
-            f: fn(rest_toks) {
-              outcome_accepted(
-                value: list_append(
-                  left: list_append(left: [FixedToken { token_class: ^c_token_comma }], right: toks),
-                  right: rest_toks
-                )
-              )
-            }
-          )
-        }
-      )
-  }
-}
-
-fn c_produced_params_tokens(params: List<Edge>) -> Outcome<List<ConcreteSyntaxToken>> {
-  match params {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: e, tail: rest } =>
-      bind_outcome(
-        o: c_produced_one_param_tokens(edge: e),
-        f: fn(first_toks) {
-          bind_outcome(
-            o: c_produced_params_tail_tokens(params: rest),
-            f: fn(rest_toks) {
-              outcome_accepted(value: list_append(left: first_toks, right: rest_toks))
-            }
-          )
-        }
-      )
-  }
-}
-
-fn c_produced_signature_from_name_and_arrow(
-  fn_name: Symbol,
-  arrow: Node
-) -> Outcome<List<ConcreteSyntaxToken>> {
-  match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
-    Present { value: domain } =>
-      match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {
-        Present { value: codomain } =>
-          bind_outcome(
-            o: c_produced_type_tokens(type_node: codomain),
-            f: fn(ret_toks) {
-              bind_outcome(
-                o: c_produced_params_tokens(params: domain.children),
-                f: fn(param_toks) {
-                  outcome_accepted(
-                    value: list_append(
-                      left: list_append(
-                        left: ret_toks,
-                        right: [
-                          BoundToken { token_class: ^c_token_ident, binding: fn_name },
-                          FixedToken { token_class: ^c_token_lparen }
-                        ]
-                      ),
-                      right: list_append(
-                        left: param_toks,
-                        right: [
-                          FixedToken { token_class: ^c_token_rparen },
-                          FixedToken { token_class: ^c_token_lbrace }
-                        ]
-                      )
-                    )
-                  )
-                }
-              )
-            }
-          )
-        Absent =>
-          outcome_rejected(
-            d: c_produced_decl_diagnostic(reason: ^c_produced_signature_codomain_missing, node: arrow)
-          )
-      }
-    Absent =>
-      outcome_rejected(
-        d: c_produced_decl_diagnostic(reason: ^c_produced_signature_domain_missing, node: arrow)
-      )
-  }
-}
-
-fn c_produced_decl_render(decl: Node) -> Outcome<TargetBodiedArrowStatementScaffold> {
-  match decl.kind {
-    TypeNode { connective: Conj } =>
-      match list_at_optional(xs: decl.children, index: 0) {
-        Present { value: decl_edge } =>
-          match decl_edge.label {
-            Named { name: fn_name } =>
-              bind_outcome(
-                o: c_produced_signature_from_name_and_arrow(
-                  fn_name: fn_name,
-                  arrow: decl_edge.target
-                ),
-                f: fn(signature_with_open) {
-                  outcome_accepted(
-                    derive_bodied_arrow_scaffold(
-                      signature_with_open: signature_with_open,
-                      block_close: [FixedToken { token_class: ^c_token_rbrace }],
-                      mode: StatementSequenced {
-                        return_token: ^c_token_kw_return,
-                        statement_terminator: ^c_token_semicolon
-                      }
-                    )
-                  )
-                }
-              )
-            Positional =>
-              outcome_rejected(
-                d: c_produced_decl_diagnostic(reason: ^c_produced_decl_unnamed, node: decl)
-              )
-          }
-        Absent =>
-          outcome_rejected(
-            d: c_produced_decl_diagnostic(reason: ^c_produced_decl_empty, node: decl)
-          )
-      }
-    _ =>
-      outcome_rejected(
-        d: c_produced_decl_diagnostic(reason: ^c_produced_decl_not_conj, node: decl)
-      )
+// C OWNS C'S SIGNATURE ORDER, DECLARED AS ROWS, AND IT IS NOT RUST'S: the return type
+// comes FIRST, each parameter is TYPE then NAME with no label separator, and there is
+// no return arrow. C is statement-sequenced, so the rows carry a return token before
+// the body and a terminator after it. The compiler is not edited to support any of
+// this -- C declares its own rows and its own spellings, and the shared fold in
+// v2.std.compilers.target_model reads them with no C arm.
+data c_produced_decl_render_rows: ProducedDeclRenderRows = ProducedDeclRenderRows {
+  signature: [
+    ProducedSignatureReturnType,
+    ProducedSignatureDeclName { token_class: ^c_token_ident },
+    ProducedSignatureFixed { token_class: ^c_token_lparen },
+    ProducedSignatureParams,
+    ProducedSignatureFixed { token_class: ^c_token_rparen },
+    ProducedSignatureFixed { token_class: ^c_token_lbrace }
+  ],
+  param_layout: [
+    ProducedParamType,
+    ProducedParamName { token_class: ^c_token_ident }
+  ],
+  param_separator: [^c_token_comma],
+  type_ref_token_class: ^c_token_ident,
+  block_close: [FixedToken { token_class: ^c_token_rbrace }],
+  block_evaluation_mode: StatementSequenced {
+    return_token: ^c_token_kw_return,
+    statement_terminator: ^c_token_semicolon
   }
 }
 
 fn c_produced_decl_support() -> ProducedDeclSupport {
   ProducedDeclWired {
-    render: c_produced_decl_render,
+    render_rows: c_produced_decl_render_rows,
     scaffold_relation_rule_name: ^c_relation_rule_fn_add,
     scaffold_base_row: c_grammar_relation_row_node(row: c_grammar_relation_row())
   }

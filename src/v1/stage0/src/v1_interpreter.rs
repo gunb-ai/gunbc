@@ -1720,6 +1720,9 @@ pub fn clear_cross_claim_pure_memos() {
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
     CROSS_CLAIM_PURE_ROSTER.with(|r| r.borrow_mut().clear());
     CROSS_CLAIM_SHARE_OBSERVER.with(|o| *o.borrow_mut() = None);
+    // The retained refusal is tier state too: leaving it across a reset is how a stale path
+    // outlives the store that produced it (review 57554).
+    CROSS_CLAIM_LAST_UNPORTABLE.with(|c| *c.borrow_mut() = None);
 }
 
 /// Install the declared producer roster as RESOLVED fn nodes (the caller resolves each
@@ -1935,6 +1938,79 @@ fn try_cross_claim_pure_memo(
 /// reported to the ledger) by the guard's `Drop`, and only when the store actually lands —
 /// an overflow-refused store leaves the cost genuinely the caller's, because every later
 /// caller recomputes it too.
+/// What one cross-claim publication attempt did. A BOOLEAN CONFLATED TWO DIFFERENT FACTS
+/// and #9721 is the receipt: `AlreadyPresent` — the value is in the tier under this exact
+/// key with a structurally equal argument row — SATISFIES the warm's obligation, because
+/// the obligation is "later claims can serve this", not "this particular call is the one
+/// that put it there". A rostered producer reachable from an earlier rostered producer is
+/// stored by that traversal, so its own warm legitimately finds its work already done.
+/// The `Refused*` arms are the opposite: nothing is servable, so a warm that hits one
+/// would relocate its fill onto the first toucher and must stop the line. Reporting both
+/// as `stored=false` made the floor refuse a correctly populated tier and print a
+/// three-way disjunction ("duplicate key, entry cap, or byte budget") in place of the
+/// cause — the `diagnostic_name_mechanism_silent` failure mode, named in DESIGN.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CrossClaimStoreOutcome {
+    /// This call published the entry.
+    Stored,
+    /// An entry for this key with a structurally equal argument row was already retained.
+    /// Servable, and therefore not a refusal.
+    AlreadyPresent,
+    /// The producer is not on the installed roster (or its identity does not match).
+    NotAdmitted,
+    /// The argument row is not content-hashable, so no key exists to store under.
+    RefusedArgsNotHashable,
+    /// The argument row failed TOTAL reification.
+    RefusedArgsNotPortable,
+    /// The VALUE failed TOTAL reification. THE LOCATED REFUSAL IS CARRIED ON THE VARIANT,
+    /// not fetched from a side channel: review 57554 found that reading the retained
+    /// `CROSS_CLAIM_LAST_UNPORTABLE` slot for EVERY non-servable outcome would decorate a
+    /// byte-budget or entry-cap refusal with a stale path and kind left by some earlier
+    /// producer, since only this arm ever writes that slot and no reset clears it. Naming
+    /// one cause and then attaching another cause's evidence is the fabrication this type
+    /// exists to remove. Binding the detail to the arm that owns it makes the mismatch
+    /// UNCONSTRUCTIBLE rather than guarded (DESIGN section 5: construction over validation).
+    RefusedValueNotPortable(ServeCacheValueNotPortable),
+    /// The key population is at `CROSS_CLAIM_PURE_MEMO_ENTRY_CAP`.
+    RefusedEntryCap,
+    /// Landing the entry would push retention past `CROSS_CLAIM_PURE_MEMO_BYTE_BUDGET`.
+    RefusedByteBudget,
+}
+
+impl CrossClaimStoreOutcome {
+    /// Whether the value is retained and servable to later claims after this attempt —
+    /// true for a fresh store AND for one that found its entry already present.
+    pub fn is_servable(&self) -> bool {
+        matches!(
+            self,
+            CrossClaimStoreOutcome::Stored | CrossClaimStoreOutcome::AlreadyPresent
+        )
+    }
+
+    /// The located detail for the ONE arm that has any, so a caller cannot pair a cause with
+    /// another cause's evidence.
+    pub fn not_portable_detail(&self) -> Option<&ServeCacheValueNotPortable> {
+        match self {
+            CrossClaimStoreOutcome::RefusedValueNotPortable(refusal) => Some(refusal),
+            _ => None,
+        }
+    }
+
+    /// The cause, for a refusal's located line-stop message.
+    pub fn cause(&self) -> &'static str {
+        match self {
+            CrossClaimStoreOutcome::Stored => "Stored",
+            CrossClaimStoreOutcome::AlreadyPresent => "AlreadyPresent",
+            CrossClaimStoreOutcome::NotAdmitted => "NotAdmitted",
+            CrossClaimStoreOutcome::RefusedArgsNotHashable => "ArgumentRowNotHashable",
+            CrossClaimStoreOutcome::RefusedArgsNotPortable => "ArgumentRowNotPortable",
+            CrossClaimStoreOutcome::RefusedValueNotPortable(_) => "ServeCacheValueNotPortable",
+            CrossClaimStoreOutcome::RefusedEntryCap => "EntryCapReached",
+            CrossClaimStoreOutcome::RefusedByteBudget => "ByteBudgetExceeded",
+        }
+    }
+}
+
 fn store_cross_claim_pure_memo(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
@@ -1942,16 +2018,16 @@ fn store_cross_claim_pure_memo(
     args: &[(Option<String>, Value)],
     result: &Value,
     fill_guard: Option<&CrossClaimFillGuard>,
-) {
+) -> CrossClaimStoreOutcome {
     if !cross_claim_pure_admitted(fn_node, func_name) {
-        return;
+        return CrossClaimStoreOutcome::NotAdmitted;
     }
     let Some(args_hash) = cross_claim_args_hash(ctx, args) else {
-        return;
+        return CrossClaimStoreOutcome::RefusedArgsNotHashable;
     };
     let memo_key = (Rc::as_ptr(fn_node) as usize, args_hash);
     let Some(portable_args) = portable_args_from_ctx(ctx, args) else {
-        return;
+        return CrossClaimStoreOutcome::RefusedArgsNotPortable;
     };
     let portable = match portable_value_from_ctx_at(ctx, result, &mut String::new()) {
         Ok(p) => p,
@@ -1960,23 +2036,23 @@ fn store_cross_claim_pure_memo(
             // typed and located, and is retained so the warm path can stop the line with the
             // exact path instead of a bare "not stored".
             CROSS_CLAIM_LAST_UNPORTABLE
-                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal)));
+                .with(|c| *c.borrow_mut() = Some((func_name.to_string(), refusal.clone())));
             CROSS_CLAIM_PURE_MEMO.with(|m| m.borrow_mut().unportable_refusals += 1);
-            return;
+            return CrossClaimStoreOutcome::RefusedValueNotPortable(refusal);
         }
     };
-    let stored = CROSS_CLAIM_PURE_MEMO.with(|m| {
+    let outcome = CROSS_CLAIM_PURE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         if let Some(bucket) = m.map.get(&memo_key) {
             if bucket.iter().any(|(stored_args, _)| {
                 cross_claim_portable_args_match(stored_args, &portable_args)
             }) {
-                return false;
+                return CrossClaimStoreOutcome::AlreadyPresent;
             }
         }
         if m.map.len() >= CROSS_CLAIM_PURE_MEMO_ENTRY_CAP {
             m.overflow += 1;
-            return false;
+            return CrossClaimStoreOutcome::RefusedEntryCap;
         }
         // Byte budget on the retained representation, charged for the WHOLE entry —
         // argument row and value, collision-bucket entries included — before it lands.
@@ -1987,31 +2063,35 @@ fn store_cross_claim_pure_memo(
                 .sum::<usize>();
         if m.bytes.saturating_add(entry_bytes) > cross_claim_byte_budget() {
             m.overflow += 1;
-            return false;
+            return CrossClaimStoreOutcome::RefusedByteBudget;
         }
         m.bytes += entry_bytes;
         m.map
             .entry(memo_key)
             .or_default()
             .push((portable_args, portable));
-        true
+        CrossClaimStoreOutcome::Stored
     });
-    if stored {
+    // Only a FRESH store bills a fill: an already-present entry did no work to charge, and
+    // marking the guard would double-count the fill that actually landed the value.
+    if outcome == CrossClaimStoreOutcome::Stored {
         keep_cross_claim_fn(fn_node);
         if let Some(guard) = fill_guard {
             guard.mark_stored();
         }
     }
+    outcome
 }
 
 /// Evaluate one rostered NULLARY producer in `ctx` and seed the cross-claim tier with its
 /// value, running the same guard protocol a claim-forced fill runs — so a preparation warm
-/// lands in the ledger as an outside-fold fill rather than on the first claim. Returns
-/// whether the value was actually stored (`false`: unportable result, duplicate key, cap).
+/// lands in the ledger as an outside-fold fill rather than on the first claim. Returns the
+/// TYPED outcome, so the caller can tell a servable tier (`Stored`, `AlreadyPresent`) from
+/// each distinct refusal by name rather than from one boolean.
 pub fn warm_cross_claim_pure_producer(
     ctx: &InterpContext,
     qualified_fn: &str,
-) -> Result<bool, String> {
+) -> Result<CrossClaimStoreOutcome, String> {
     with_active_ctx(ctx, || {
         let fn_node = ctx
             .lookup_fn(qualified_fn)
@@ -2027,8 +2107,14 @@ pub fn warm_cross_claim_pure_producer(
         let env = Env::empty();
         let value = with_lexical_base_env(&env, || call_function(ctx, &fn_node, &[], &env))
             .map_err(|e| format!("{qualified_fn}: {e}"))?;
-        store_cross_claim_pure_memo(ctx, &fn_node, bare, &[], &value, Some(&guard));
-        Ok(guard.stored.get())
+        Ok(store_cross_claim_pure_memo(
+            ctx,
+            &fn_node,
+            bare,
+            &[],
+            &value,
+            Some(&guard),
+        ))
     })
 }
 
@@ -2236,6 +2322,188 @@ mod cross_claim_memo_tests {
             try_cross_claim_pure_memo(&ctx, &rostered, "tm_shared_name", &args).is_some(),
             "control: the resolved roster identity stores and serves"
         );
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (#9721): AN ALREADY-PRESENT ENTRY IS SERVABLE AND IS NOT A REFUSAL, and each
+    // decline names its OWN cause. The boolean this replaced reported a correctly
+    // populated tier as `stored=false`, which the required floor turned into
+    // "PureProducerShareWarmNotStored ... duplicate key, entry cap, or byte budget" —
+    // one line for three causes, and the wrong verdict for the fourth state. That is
+    // exactly what refused #9721's floor run: `rust_target_model_staging` is reachable
+    // from `rust_target_model`, so warming the first stored it and its own warm found
+    // the entry already there.
+    //
+    // The discriminating pair is the point: AlreadyPresent and RefusedByteBudget both
+    // decline to write, and the OLD boolean could not tell them apart. Here one is
+    // servable and one is not, so a regression that re-conflates them reds.
+    #[test]
+    fn an_already_present_entry_is_servable_while_a_declined_one_is_not() {
+        use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args = [(None, list_value(vec![Value::Int(7)]))];
+        let value = Value::Str(RcStr::from("shared"));
+
+        let first =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &value, None);
+        assert_eq!(first, CrossClaimStoreOutcome::Stored);
+        assert!(first.is_servable());
+
+        // The SECOND publication of the same key with a structurally equal argument row.
+        let second =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &value, None);
+        assert_eq!(
+            second,
+            CrossClaimStoreOutcome::AlreadyPresent,
+            "a duplicate must be named as already-present, not lumped with the refusals"
+        );
+        assert!(
+            second.is_servable(),
+            "the value IS retained, so the warm's obligation is satisfied"
+        );
+        let (_, overflow) = super::cross_claim_pure_memo_counts();
+        assert_eq!(overflow, 0, "an already-present entry is not an overflow");
+
+        // The discriminating half: a genuine decline is NOT servable and names its cause.
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(Some(512)));
+        let big_args = [(None, list_value(vec![Value::Int(8)]))];
+        let big = Value::Str(RcStr::from("x".repeat(4096)));
+        let refused =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args, &big, None);
+        assert_eq!(refused, CrossClaimStoreOutcome::RefusedByteBudget);
+        assert!(
+            !refused.is_servable(),
+            "nothing is retained, so a warm hitting this must stop the line"
+        );
+        assert_eq!(refused.cause(), "ByteBudgetExceeded");
+        assert_ne!(
+            refused.cause(),
+            second.cause(),
+            "the two declines must not report the same cause"
+        );
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (review 57554): A CAUSE MUST NEVER CARRY ANOTHER CAUSE'S EVIDENCE. The located
+    // path/kind lives on the RefusedValueNotPortable arm, so a later byte-budget or
+    // entry-cap refusal has no detail to borrow. The defect this controls was real and
+    // subtle: `CROSS_CLAIM_LAST_UNPORTABLE` is written ONLY by the unportable arm and was
+    // cleared by nothing, so a runner that read it for every non-servable outcome would
+    // print a stale `path=.produced_decl_support.render kind=OriginBoundNode` beside a
+    // ByteBudgetExceeded cause — naming one cause and proving another.
+    //
+    // The ORDER is the discriminator: the unportable refusal happens FIRST and leaves the
+    // slot populated, then the budget refusal must still report no detail.
+    #[test]
+    fn a_budget_refusal_after_an_unportable_one_carries_no_borrowed_detail() {
+        use super::{store_cross_claim_pure_memo, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+
+        // A fn-carrying record refuses reification and populates the retained slot.
+        let unportable = Value::Record {
+            type_name: ctx.sym("TargetModelish"),
+            fields: Rc::new(vec![(
+                ctx.sym("transform"),
+                Value::Fn {
+                    node: fn_node.clone(),
+                },
+            )]),
+        };
+        let first_args = [(None, list_value(vec![Value::Int(1)]))];
+        let first = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &first_args,
+            &unportable,
+            None,
+        );
+        assert_eq!(first.cause(), "ServeCacheValueNotPortable");
+        let carried = first
+            .not_portable_detail()
+            .expect("the unportable arm carries its own located refusal");
+        assert_eq!(carried.path_into_value, ".transform");
+        assert_eq!(carried.encountered_kind, "OriginBoundNode");
+
+        // Now a DIFFERENT refusal, with the slot still populated by the one above.
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(Some(512)));
+        let big_args = [(None, list_value(vec![Value::Int(2)]))];
+        let big = Value::Str(RcStr::from("x".repeat(4096)));
+        let second =
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &big_args, &big, None);
+        assert_eq!(second, CrossClaimStoreOutcome::RefusedByteBudget);
+        assert_eq!(second.cause(), "ByteBudgetExceeded");
+        assert!(
+            second.not_portable_detail().is_none(),
+            "a byte-budget refusal must not borrow the unportable arm's path and kind"
+        );
+        super::CROSS_CLAIM_BYTE_BUDGET_TEST_OVERRIDE.with(|c| c.set(None));
+        super::clear_cross_claim_pure_memos();
+    }
+
+    // RED (#9721): an already-present publication must not bill a second fill. The guard
+    // marks stored only on a FRESH write, so the value's cost is charged once, to the
+    // call that actually did the work.
+    #[test]
+    fn an_already_present_publication_bills_no_second_fill() {
+        use super::{store_cross_claim_pure_memo, CrossClaimFillGuard, CrossClaimStoreOutcome};
+        super::clear_cross_claim_pure_memos();
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic),
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            no_span(),
+        );
+        let args = [(None, list_value(vec![Value::Int(9)]))];
+        let value = Value::Str(RcStr::from("once"));
+
+        let first_guard = CrossClaimFillGuard::enter("prepare_grammar");
+        let first = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &args,
+            &value,
+            Some(&first_guard),
+        );
+        assert_eq!(first, CrossClaimStoreOutcome::Stored);
+        assert!(first_guard.stored.get(), "the fresh store bills its fill");
+        drop(first_guard);
+
+        let second_guard = CrossClaimFillGuard::enter("prepare_grammar");
+        let second = store_cross_claim_pure_memo(
+            &ctx,
+            &fn_node,
+            "prepare_grammar",
+            &args,
+            &value,
+            Some(&second_guard),
+        );
+        assert_eq!(second, CrossClaimStoreOutcome::AlreadyPresent);
+        assert!(
+            !second_guard.stored.get(),
+            "an already-present entry did no work, so it must not bill a fill"
+        );
+        drop(second_guard);
         super::clear_cross_claim_pure_memos();
     }
 
@@ -6468,7 +6736,17 @@ fn eval_pure_named_call(
         let result = call_function(ctx, fn_node, args, env);
         if let Ok(v) = &result {
             if ctx.effect_dispatch_count.get() == effects_before {
-                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+                // The ordinary call path publishes opportunistically: every outcome,
+                // servable or refused, is already counted inside the store, and this
+                // call recomputes on a refusal exactly as if never enrolled.
+                let _ = store_cross_claim_pure_memo(
+                    ctx,
+                    fn_node,
+                    func_name,
+                    args,
+                    v,
+                    fill_guard.as_ref(),
+                );
             }
         }
         return result;
@@ -6502,7 +6780,8 @@ fn eval_pure_named_call(
     let result = call_function(ctx, fn_node, args, env);
     if let Ok(v) = &result {
         if ctx.effect_dispatch_count.get() == effects_before {
-            store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
+            let _ =
+                store_cross_claim_pure_memo(ctx, fn_node, func_name, args, v, fill_guard.as_ref());
         }
     }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
@@ -13208,11 +13487,29 @@ fn eval_emit_host_run_transport_builtin(
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
     run_arg: Option<&Value>,
+    environment_arg: Option<&Value>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     require_permitted_transport(admission_arg, ctx, "emit_host_run_transport")?;
+    let admitted_names: Vec<String> = {
+        let val = environment_arg.ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport requires an `environment` argument: the target's HostTransportDescriptor.build_environment.ambient_names (v2.std.host_transport HostBuildEnvironment)"),
+        })?;
+        let items = free_monoid_to_vec(val).ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport: environment must be a List<String> of admitted variable names"),
+        })?;
+        items
+            .iter()
+            .map(|v| {
+                free_monoid_to_string(v).ok_or_else(|| InterpError::TypeError {
+                    msg: format!("emit_host_run_transport: environment entries must be Strings"),
+                })
+            })
+            .collect::<InterpResult<Vec<String>>>()?
+    };
+    let build_environment = emit_host_constructed_build_environment(&admitted_names);
 
     let files_val = files_arg.ok_or_else(|| InterpError::TypeError {
         msg: "emit_host_run_transport requires (files, build, run) arguments".to_string(),
@@ -13318,6 +13615,7 @@ fn eval_emit_host_run_transport_builtin(
         &workspace_files,
         &build_argvs,
         &run_argv,
+        &build_environment,
         ctx,
     );
     if let Err(cleanup) = std::fs::remove_dir_all(&workspace) {
@@ -13416,11 +13714,30 @@ fn eval_emit_host_run_transport_cached_builtin(
     files_arg: Option<&Value>,
     build_arg: Option<&Value>,
     run_arg: Option<&Value>,
+    environment_arg: Option<&Value>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     ctx.effect_dispatch_count
         .set(ctx.effect_dispatch_count.get().wrapping_add(1));
     require_permitted_transport(admission_arg, ctx, "emit_host_run_transport_cached")?;
+    let admitted_names: Vec<String> = {
+        let val = environment_arg.ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached requires an `environment` argument: the target's HostTransportDescriptor.build_environment.ambient_names (v2.std.host_transport HostBuildEnvironment)"),
+        })?;
+        let items = free_monoid_to_vec(val).ok_or_else(|| InterpError::TypeError {
+            msg: format!("emit_host_run_transport_cached: environment must be a List<String> of admitted variable names"),
+        })?;
+        items
+            .iter()
+            .map(|v| {
+                free_monoid_to_string(v).ok_or_else(|| InterpError::TypeError {
+                    msg: format!(
+                        "emit_host_run_transport_cached: environment entries must be Strings"
+                    ),
+                })
+            })
+            .collect::<InterpResult<Vec<String>>>()?
+    };
 
     let workspace_dir = free_monoid_to_string(workspace_dir_arg.ok_or_else(|| {
         InterpError::TypeError {
@@ -13531,6 +13848,7 @@ fn eval_emit_host_run_transport_cached_builtin(
         &build_argvs,
         &run_argv,
         false,
+        &admitted_names,
     )
 }
 
@@ -13543,6 +13861,7 @@ pub fn run_native_bundle_process_cached(
     workspace_files: &[(String, String)],
     build_argvs: &[Vec<String>],
     run_argv: &[String],
+    admitted_names: &[String],
 ) -> InterpResult<Value> {
     if !ctx.execution_mode.is_wet_dispatch() {
         return Err(InterpError::TypeError {
@@ -13561,6 +13880,7 @@ pub fn run_native_bundle_process_cached(
         build_argvs,
         run_argv,
         true,
+        &admitted_names,
     )
 }
 
@@ -13571,6 +13891,7 @@ fn run_cached_process_spec(
     build_argvs: &[Vec<String>],
     run_argv: &[String],
     require_transition_timing: bool,
+    admitted_names: &[String],
 ) -> InterpResult<Value> {
     let workspace_dir = native_cache_rebase_workspace_dir(workspace_dir);
     let realization_workspace = std::path::PathBuf::from(&workspace_dir);
@@ -13578,7 +13899,7 @@ fn run_cached_process_spec(
         msg: format!("emit_host_run_transport_cached: workspace create failed: {e}"),
     })?;
     emit_host_materialize_workspace_files(&realization_workspace, &workspace_files)?;
-    let build_environment = emit_host_constructed_build_environment();
+    let build_environment = emit_host_constructed_build_environment(admitted_names);
     let resolved_build_context_identity = emit_host_resolved_build_context_identity(
         &build_argvs,
         &realization_workspace,
@@ -13711,56 +14032,29 @@ struct EmitHostBuildEnvironment {
 /// Construct the complete environment admitted to build and run subprocesses.
 /// Commands use env_clear() and receive exactly these rows, so an undeclared
 /// ambient variable cannot affect an artifact outside the realization identity.
-fn emit_host_constructed_build_environment() -> EmitHostBuildEnvironment {
+///
+/// THE ADMITTED NAMES ARE A DECLARED ROW, NOT A RUST PREFIX TABLE. `admitted_names` is the
+/// target's `HostTransportDescriptor.build_environment.ambient_names`
+/// (`v2.std.host_transport HostBuildEnvironment`), passed by every transport call; this
+/// function admits a variable only if its exact name is in that list. It used to
+/// admit every `RUST*` / `CARGO_*` / `*FLAGS` variable by prefix, which let the required
+/// floor's seed-build policy (`RUSTFLAGS=-D warnings`, exported for compiling the seed)
+/// reach the EMITTED program's build: four emit_host expected-red rows built clean on every
+/// flagless runner and were `RunFailed` only in CI, on `-D dead-code` (gunbc#9727). A build
+/// flag is policy; the emitted program's build environment is realization; the seed does not
+/// get to smuggle one into the other through a prefix (DESIGN §3).
+fn emit_host_constructed_build_environment(admitted_names: &[String]) -> EmitHostBuildEnvironment {
     use std::os::unix::ffi::OsStrExt;
-
-    fn admitted(name: &str) -> bool {
-        const EXACT: &[&str] = &[
-            "PATH",
-            "HOME",
-            "TMPDIR",
-            "CC",
-            "CXX",
-            "AR",
-            "LD_LIBRARY_PATH",
-            "LIBRARY_PATH",
-            "CPATH",
-            "PKG_CONFIG_PATH",
-            "SDKROOT",
-            "MACOSX_DEPLOYMENT_TARGET",
-        ];
-        const PREFIXES: &[&str] = &[
-            "CARGO_",
-            "RUST",
-            "CC_",
-            "CXX_",
-            "AR_",
-            "CFLAGS",
-            "CXXFLAGS",
-            "CPPFLAGS",
-            "LDFLAGS",
-            "PKG_CONFIG_",
-            "GO",
-            "NODE_",
-            "NPM_",
-            "PYTHON",
-        ];
-        if matches!(
-            name,
-            "CARGO_TARGET_DIR" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER"
-        ) {
-            return false;
-        }
-        EXACT.contains(&name) || PREFIXES.iter().any(|prefix| name.starts_with(prefix))
-    }
-
+    // No seed-side veto: the row is the whole policy. CARGO_TARGET_DIR is constructed at the
+    // realization boundary below (the workspace's own target dir), and a wrapper variable is
+    // admitted iff a row names it.
+    let admitted = |name: &str| -> bool { admitted_names.iter().any(|n| n == name) };
     let mut entries: Vec<_> = std::env::vars_os()
         .filter(|(name, _)| name.to_str().map(admitted).unwrap_or(false))
         .collect();
     entries.sort_by(|(a, _), (b, _)| a.as_bytes().cmp(b.as_bytes()));
-
     let mut digest =
-        v1_rt::atom_identity_hash("emit-host-constructed-build-environment-v1".to_string());
+        v1_rt::atom_identity_hash("emit-host-constructed-build-environment-v2".to_string());
     for (name, value) in &entries {
         digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(name.as_bytes()));
         digest = v1_rt::hash_combine(digest, v1_rt::bytes_identity_hash(value.as_bytes()));
@@ -13851,8 +14145,8 @@ fn emit_host_cargo_configuration_digest(
 ///
 /// Cargo is a driver, not the compiler identity. Its observation is therefore
 /// paired with the rustc selected by the same process environment. The transport
-/// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
-/// intentionally not part of this identity.
+/// runs under the target's declared build environment, in which no shipped row names
+/// RUSTC_WRAPPER or RUSTC_WORKSPACE_WRAPPER, so wrappers are not part of this identity.
 #[derive(Debug, Clone)]
 struct ObservedToolIdentity {
     tool_name: String,
@@ -14193,6 +14487,7 @@ fn emit_host_run_transport_in_workspace(
     files: &[(String, String)],
     build_argvs: &[Vec<String>],
     run_argv: &[String],
+    build_environment: &EmitHostBuildEnvironment,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     use std::path::Component;
@@ -14224,12 +14519,14 @@ fn emit_host_run_transport_in_workspace(
     let target_dir = workspace.join("target");
     let run_command = |argv: &[String]| -> InterpResult<std::process::Output> {
         let program = resolve_host_tool_program(&argv[0])?;
-        std::process::Command::new(&program)
+        let mut command = std::process::Command::new(&program);
+        // The uncached transport inherited the WHOLE ambient environment until gunbc#9727;
+        // it now receives exactly the declared admitted rows, as the cached transport does.
+        emit_host_apply_build_environment(&mut command, build_environment);
+        command
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
-            .env_remove("RUSTC_WRAPPER")
-            .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };
@@ -14924,6 +15221,7 @@ macro_rules! v1_builtin_arms {
                 $positional.get(1).copied(),
                 $positional.get(2).copied(),
                 $positional.get(3).copied(),
+                $positional.get(4).copied(),
                 $ctx,
             )?)),
 
@@ -14933,6 +15231,7 @@ macro_rules! v1_builtin_arms {
                 $positional.get(2).copied(),
                 $positional.get(3).copied(),
                 $positional.get(4).copied(),
+                $positional.get(5).copied(),
                 $ctx,
             )?)),
 

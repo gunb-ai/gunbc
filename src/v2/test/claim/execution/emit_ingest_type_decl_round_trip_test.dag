@@ -20,7 +20,7 @@ import v2.extdeps.languages.dag {
 import std.algebra { Empty }
 import v2.std.algebra { fold_list, list_append }
 import v2.std.collection { List }
-import v2.std.compilers.lexing { Token, token_stream_all }
+import v2.std.compilers.lexing { Token, symbol_intern_lexeme, token_stream_all }
 import v2.std.compilers.target_model {
   BoundToken,
   ConcreteSyntaxToken,
@@ -67,7 +67,7 @@ fn type_decl_target() -> TargetModel {
 }
 
 fn type_decl_interned_symbol(spelling: String) -> Symbol {
-  spelling
+  symbol_intern_lexeme(lexeme: spelling)
 }
 
 fn type_decl_qualified_name_emitted(name: Symbol) -> Node {
@@ -224,7 +224,7 @@ fn type_decl_emit_source_text_with_rules(emitted: Node, rules: Node) -> Outcome<
 
 fn type_decl_lexer_token_to_concrete(token: Token) -> ConcreteSyntaxToken {
   if token.class == ^dag_token_ident {
-    BoundToken { token_class: ^dag_token_ident, binding: token.lexeme }
+    BoundToken { token_class: ^dag_token_ident, binding: symbol_intern_lexeme(lexeme: token.lexeme) }
   } else {
     FixedToken { token_class: token.class }
   }
