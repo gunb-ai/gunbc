@@ -225,3 +225,63 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
     concat(concat(regen_round_total_line(receipt: receipt), "\n"), concat(regen_round_changed_paths_line(receipt: receipt), "\n"))
   )
 }
+
+// ---------------------------------------------------------------------------------------------
+// AFFECTED-SET SCOPING: which mirrors does ONE edit change, and is that set derivable today?
+//
+// Question (operator, 2026-08-30): does the emitted mirror for module M depend only on M's .dag
+// transitive import closure, or also on cross-module emitter state? Method: a planted
+// single-module edit, then the regen's own drift answer (`changed_paths`, identity grain)
+// compared against the reverse import closure computed from `import` lines over dag/, src/v1
+// and src/v2, restricted to modules whose mirror is in the compared population.
+// ---------------------------------------------------------------------------------------------
+
+type AffectedSetDisposition
+  = DerivableNow { from: String, residual: String }
+  | BlockedOn { fact: String }
+
+// Two planted edits, both measured by `claim_executor --regen-round-cost` on the tree named.
+//
+// (1) v1.compiler.runtime_rust (the runtime template): reverse import closure predicts nine
+//     mirrors; the drift set was {v1_compiler_runtime_rust.rs, v1_rt.rs}. v1_rt.rs is NOT a
+//     module's mirror and is NOT in the predicted set -- it is the template's product, emitted
+//     from the string baked into the EMITTING SEED's own v1_compiler_runtime_rust.rs mirror.
+//     That is the one cross-module state found: the emitter is compiled from the previous
+//     generation's mirrors, so the bytes it emits for the runtime depend on the seed binary,
+//     not on the closure. It is why a template edit needs two rounds (round 1 on srv1 and
+//     BuildBuddy, tree 0fe2c517: the stale seed emitted the OLD v1_rt.rs over the hand-synced
+//     one and rebuild-from-installed refused; round 2, tree 75bc5007, reached the fixed point).
+// (2) std.content_hash (an unreferenced data row): reverse import closure predicts 72 mirrors;
+//     the drift set was exactly {std_content_hash.rs} on BuildBuddy (tree 677988a2) and on
+//     srv1 (same tree). Contained, with a 71-mirror over-approximation.
+//
+// Both drift sets are contained in (reverse import closure) ∪ {runtime template products}, so
+// an affected-set regen is DERIVABLE NOW from the modeled import graph as an upper bound. The
+// closure authority already in the seed is `cli_run` `regen_input_sources_over_roots`
+// (`extend_sources_to_both_closure_fixpoint`: imports PLUS dotted PLUS bare references), which
+// is strictly wider than `import` lines and therefore contains every measured dependent.
+//
+// WHAT THE MEASUREMENT DOES NOT SHOW, stated so the bound is not over-read: `v1.compiler.emit_rust`
+// `reference_derived_use_lines` takes closure-wide arguments (registry, export_sets,
+// typed_modules, module_index, shared_types), so an edit that changes what M EXPORTS can change
+// the synthesized `use` lines of M's importers. Those importers are in M's reverse closure, so
+// the bound holds; what does not hold is the converse -- "unchanged importers" is not
+// derivable from the graph alone, only from emitting them. The affected set is therefore a
+// correct over-approximation (DESIGN section 5: a structural over-approximation computed AS
+// the answer), not an exact set.
+data regen_affected_set_disposition: AffectedSetDisposition = DerivableNow {
+  from: "the .dag dependency closure the regen already builds: cli_run regen_input_sources_over_roots / extend_sources_to_both_closure_fixpoint (imports, dotted and bare references), read in reverse from the edited module, restricted to the compared mirror population, plus the runtime template products (v1_rt.rs) whenever v1.compiler.runtime_rust is in the set",
+  residual: "the emitting seed's own baked mirrors are a generation-level input to every emitted byte (the two-round bootstrap); the reverse closure over-approximates -- 72 predicted against 1 changed for a std.content_hash data row -- and exactness needs the per-module emit itself"
+}
+
+// WHERE THE ROUND'S TIME GOES, read from the instrument on 2026-08-30 (producer: this module's
+// receipt; hosts srv1 and BuildBuddy runner 192.168.241.2; trees 75bc5007 and 677988a2). The
+// numbers live in the receipts those runs printed and are not restated here; the SHAPE is:
+// every phase runs at CPU ~= wall except the two cargo builds, so the regen process is one core
+// end to end; emit is the largest regen phase at roughly half the regen process and a fifth of
+// a round with a real edit; the two cargo builds of the seed (before the round, and
+// rebuild-from-installed) are the majority of such a round even for a one-mirror change,
+// because every mirror compiles into one crate and cargo recompiles that crate whole; the
+// corpus is read twice (corpus_load then corpus_reload, the second inside compile_stage0) and
+// rustfmt normalizes the whole population three times (mirror_write, adjudicate, digest).
+data regen_round_cost_shape_note: String = "The instrument, not the number: re-run `claim_executor --regen-round-cost --source-root dag --source-root src/v2` on a tree and read its receipt (target/stage0-regen-round-cost.txt). A change-denominated regen is bounded above by the reverse closure (regen_affected_set_disposition); a change-denominated REBUILD is bounded below by one whole-crate compile until the stage0 partition (gunbc.stage0_crate_partition_generated) carries the mirrors, which is the larger of the two costs on every measured host."
