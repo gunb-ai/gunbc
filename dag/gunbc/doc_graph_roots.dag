@@ -706,7 +706,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "layering-imports-reference-repoint-design",
     primary_work: DeclarationRef { module_path: "v2.std.layer", decl_name: "LayerImportFact", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "v2.lens.layer_import_scan", decl_name: "layer_import_facts_live", field: WholeDeclaration },
+      DeclarationRef { module_path: "v2.std.layer_import_scan", decl_name: "layer_import_facts_live", field: WholeDeclaration },
       DeclarationRef { module_path: "v2.std.cross_tree.resolution", decl_name: "layer_prefix_from_dotted_qualified_name", field: WholeDeclaration },
     ],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject LayerImportFact describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },

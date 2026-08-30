@@ -1,4 +1,4 @@
-module v2.lens.layer_import_scan
+module v2.std.layer_import_scan
 
 import v2.std.collection { List }
 import v2.std.layer { LayerImportFact }
@@ -24,6 +24,15 @@ import v2.std.text { String }
 // is imported only by lenses and their witnesses, so a compile-closure declaration that
 // starts scanning the tree drags THIS module in and the seam reappears in the emitted
 // crate at the same grep the closure census reads.
+//
+// IT LIVES IN std/ AND NOT IN lens/, and that is a correction rather than a preference. It
+// was first homed at v2.lens.layer_import_scan because its only consumers are two lenses,
+// which put a NON-LENS module inside the population v2.lens.enforcement.lens_module_gate
+// reads as the lens registry's subject -- so the live gate refused it as an unenrolled lens,
+// correctly. A producer consumed by lenses is not itself a lens; closure membership is
+// decided by REFERENCE and not by directory (DESIGN section 3: paths are discriminators, not
+// gospel), so the seam stays out of the compile closure from either home and only the lens
+// registry's population is sensitive to which one.
 fn layer_import_facts_live(
   std_roots: List<String>,
   extdeps_roots: List<String>

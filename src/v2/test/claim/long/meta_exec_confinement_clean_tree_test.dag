@@ -8,7 +8,7 @@ import v2.lens.meta_exec_confinement {
   meta_exec_roster_sound,
   meta_exec_roster_stale_count_live
 }
-import v2.lens.layer_import_scan { layer_import_facts_live }
+import v2.std.layer_import_scan { layer_import_facts_live }
 import v2.std.algebra { is_empty, list_append }
 import v2.std.collection { List }
 import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }

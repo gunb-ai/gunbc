@@ -1,5 +1,7 @@
 module v2.test.generated.cross_representation_equality
 
+import v2.std.node_reflection { coproduct_arm_keys }
+
 
 fn reference_cross_representation_equality_anchor() -> GeneratedAnchorKey {
   cross_representation_equality_anchor(
