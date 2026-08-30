@@ -68,7 +68,6 @@ import extdeps.ssh.session { ssh_session_exec_portable_words, SshSessionExecResu
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
-import gunbc.fleet_reach_endpoint { fleet_probe_endpoint_for }
 import gunbc.fleet_known_hosts_anchor {
   FleetSshExecutionContext,
   fleet_ssh_execution_context_of,
