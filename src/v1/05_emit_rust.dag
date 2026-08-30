@@ -23,7 +23,7 @@ import v1.std.core {
   param_node_default_value, authored_name_at, NewlineIndex, find_child_named, tuple_type_name,
   qualified_last_segment, expr_var_name_at, expr_call_func_at, field_access_field_at,
   param_node_name_at, resource_use_name_at, field_binding_name_at, field_node_name_at,
-  field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprError,
+  field_node_type_expr, generic_param_name_at, ExprData, NoExprData, ExprLiteral, ExprElaboratedLiteral, ExprError,
   ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall, ExprMatch, ExprIf, ExprLet,
   ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
   ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprReturn, make_expr_node, FieldSummary,
@@ -13644,6 +13644,15 @@ fn emit_data_def_body(type_node: Node, value: Node, registry: Map<String, ItemIn
           "            })")
       _ => "            compile_error!(\"BoundedLattice data must be a record\")"
     }
+  } else if match value.expr_data { ExprElaboratedLiteral { value: _, elaboration: _ } => true _ => false } {
+    // AN ELABORATED LITERAL'S IMAGE IS ORDINARY CONSTRUCTOR NODES OF THE DESTINATION and renders
+    // through the same typed-expression emitter as every other position -- the JSON mock route
+    // below serializes VALUES of nested-record types and has no spelling for the image (its
+    // wildcard refused with `unsupported mock expression`, measured at every structural-text data
+    // row: the elaboration fired and the cached-data template then discarded it). The image is
+    // already carrier-wrapped by its own emission (the list-literal realization), so no wrap
+    // decision is repeated here.
+    concat("            ", emit_typed_expr(texpr: value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024))
   } else if has_nested_records_node(n: type_node, source_indices: scope.type_env.source_indices) && !data_value_has_cross_refs(value: value) {
     match emit_data_value_json(value: value, source_indices: scope.type_env.source_indices) {
       Refused { reason: r } => concat("            compile_error!(\"", escape_string_literal_body(s: r), "\")")
