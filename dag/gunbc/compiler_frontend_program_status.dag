@@ -57,11 +57,12 @@ import gunbc.namespace_cut_stage {
   namespace_cut_stages,
   namespace_cut_stage_label,
   stage_prerequisites,
-  stage_milestone_prerequisites,
-  ActivationReceiptKind,
-  RehearsalFailureRosterDigest,
-  ReferenceGraphDigest,
-  activation_receipt_kind_outstanding,
+  act0_release_milestones,
+  StageDeliveryEvidenceKind,
+  RehearsalInstrumentDelivered,
+  ReferenceGraphInstrumentDelivered,
+  stage_delivery_kind_outstanding,
+  held_stage_delivery_receipts,
   activation_receipts_outstanding,
   held_activation_receipts,
 }
@@ -69,7 +70,6 @@ import gunbc.namespace_cut_subject_roster {
   subjects_deleted_at,
   subject_probe_list,
   probe_render,
-  unobservable_probe_renders,
 }
 
 // WHY THIS IS A SEPARATE MODULE FROM THE INTERLOCK IT READS. The interlock carries a RELATION --
@@ -161,6 +161,8 @@ type MissingInstrument
   | RatchetGateEnrolmentFact
   | PersistedLegacyBaselineObservation
   | DeclaringIdentitySpellingCensus
+  | CarrierOriginRosterProducer
+  | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
 
@@ -171,6 +173,8 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     RatchetGateEnrolmentFact => "the ratchet's merge-blocking enrolment as a fact distinct from its cadence"
     PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
     DeclaringIdentitySpellingCensus => "a census of occurrences not spelled at their declaring identity (XL-3's population)"
+    CarrierOriginRosterProducer => "a carrier-origin roster producer: emitting module x imported target or member x producer origin, over one base, before any disposition is asked (XL-0's population)"
+    ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
   }
@@ -252,6 +256,8 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     RatchetGateEnrolmentFact => NotBuilt
     PersistedLegacyBaselineObservation => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
+    CarrierOriginRosterProducer => NotBuilt
+    ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
   }
@@ -461,12 +467,10 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
           }
       }
     NamespaceFirstSemanticWave =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "namespace: first semantic wave -- the import-name universe subjects, deleted under the wall" as NonEmptyStr,
-          outstanding: stage_subject_outstanding(stage: StageXL5Waves)
-        )
-      )
+      NotDerivable {
+        why: "a wave is an EXACT CORPUS REWRITE while the legacy semantic root still exists, so its population is the occurrence and import-declaration residual an XL-2 rehearsal produces -- not a root-authority probe. gunbc.namespace_cut_subject_roster deliberately assigns no subject to XL-5 for that reason, and deriving this milestone from that empty set would fold to CLEAR and report a wave nobody has run as complete. Derivable once the rehearsal residual has a producer this module can read." as NonEmptyStr,
+        cause: needs(i: ExactOccurrenceResidualCensus)
+      }
     NamespaceFixForwardComplete =>
       standing_from_evidence(
         e: observe_outstanding(
@@ -680,6 +684,8 @@ data all_missing_instruments: List<MissingInstrument> = [
   RatchetGateEnrolmentFact,
   PersistedLegacyBaselineObservation,
   DeclaringIdentitySpellingCensus,
+  CarrierOriginRosterProducer,
+  ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
 ]
@@ -784,6 +790,73 @@ fn milestone_report_line(m: ProgramMilestone) -> String {
 //   ACT-0  -- the full required-receipt set (all four kinds outstanding today).
 //   XL-5/6/7 -- delegation to the three deletion milestones.
 // ---------------------------------------------------------------------------------------------
+// ACT-0'S TWO FACTS, AND THIS FUNCTION DERIVES ONLY THE SECOND.
+//
+// "May begin collecting activation evidence" is STARTABILITY, and it is the chain edge from XL-4
+// alone -- see stage_startability, which no longer reads any milestone. "May RELEASE the waves"
+// is this: the interlock triple clear AND every activation receipt held against the pinned base.
+// The gate used to state the triple as a PREREQUISITE, which made collecting evidence unstartable
+// until the whole self-host interlock cleared; that is a stricter chain than the ruling, and a
+// stricter chain is not a safer one -- it stalls the stage whose output the gate needs.
+//
+// A NOT-DERIVABLE MILESTONE IN THE TRIPLE MAKES THE GATE NOT-DERIVABLE, NOT OUTSTANDING. Folding
+// an unanswerable milestone's name into an outstanding list would report an unknown as ordinary
+// pending work, which is the state-space conflation the startability classifier above exists to
+// prevent -- committed at standing grain instead. So the unanswerable half is checked first and
+// carries the union of the causes, and the receipts are only reached once the triple can answer.
+fn act0_release_milestone_names(want: MilestoneStandingClass) -> List<String> {
+  fold(act0_release_milestones, init: [], f: fn(acc, m) {
+    if standing_class_label(c: standing_class(s: milestone_status(m: m)))
+       == standing_class_label(c: want) {
+      concat(acc, [milestone_label(m: m) as String])
+    } else {
+      acc
+    }
+  })
+}
+
+fn act0_release_instruments() -> List<MissingInstrument> {
+  fold(act0_release_milestones, init: [], f: fn(acc, m) {
+    concat(acc, match milestone_status(m: m) {
+      Clear { evidence: _ } => []
+      Outstanding { evidence: _ } => []
+      NotDerivable { why: _, cause } => underivability_instruments(u: cause)
+    })
+  })
+}
+
+fn act0_release_standing() -> MilestoneStanding {
+  let unanswerable = act0_release_milestone_names(want: ClassNotDerivable)
+  match unanswerable |> first {
+    Present { value: _ } =>
+      match act0_release_instruments() |> first {
+        Present { value: i } =>
+          NotDerivable {
+            why: concat(
+              "ACT-0 may not be judged releasable: a release milestone is itself unanswerable -- ",
+              concat(join_names(names: unanswerable),
+              ". The activation receipts are not reached, because a gate cannot be reported as merely awaiting receipts while one of its release conditions has no producer.")
+            ) as NonEmptyStr,
+            cause: MissingInstruments { first: i, rest: [] }
+          }
+        Absent =>
+          NotDerivable {
+            why: "ACT-0 may not be judged releasable: a release milestone is unanswerable through its own prerequisites, which name no instrument of their own." as NonEmptyStr,
+            cause: DerivableOnlyViaPrerequisites
+          }
+      }
+    Absent =>
+      standing_from_evidence(
+        e: observe_outstanding(
+          subject: "ACT-0 RELEASE: the interlock triple clear and every activation receipt held against the pinned base" as NonEmptyStr,
+          outstanding: concat(
+            act0_release_milestone_names(want: ClassOutstanding),
+            activation_receipts_outstanding(held: held_activation_receipts))
+        )
+      )
+  }
+}
+
 fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
   match s {
     StageF0 =>
@@ -794,18 +867,22 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
         )
       )
     StageXL0Denominator =>
+      NotDerivable {
+        why: "XL-0 is the CARRIER-ORIGIN DENOMINATOR -- emitting module x imported target or member x producer origin, over one base, recording which source carriers existed BEFORE any disposition was asked. Nothing in this tree produces that population. The arm that used to stand here read gunbc.namespace_cut_subject_roster's unobservable host probes instead, which answered a different question entirely: the subject roster is the cut's ROOT-AUTHORITY denominator, one row per family, and probe observability is a property of the instrument rather than a measure of the denominator's completeness. Deriving XL-0 from it let a join repair (see the roster's host probes, now joined) read as the denominator being produced. Derivable once a carrier-origin roster producer exists." as NonEmptyStr,
+        cause: needs(i: CarrierOriginRosterProducer)
+      }
+    StageXL1BaselineCapture =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "XL-0: every deletion subject's observation rule realized" as NonEmptyStr,
-          outstanding: unobservable_probe_renders()
+          subject: "XL-1: the capture-and-disposition transaction is CAPABLE of succeeding" as NonEmptyStr,
+          outstanding: capture_blocked_reason(c: legacy_baseline_capture_capability())
         )
       )
-    StageXL1BaselineCapture => milestone_status(m: NamespaceBaselineObservationComplete)
     StageXL2RootDeletionRehearsal =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "XL-2: the rehearsal executed and its failure roster digested" as NonEmptyStr,
-          outstanding: activation_receipt_kind_outstanding(kind: RehearsalFailureRosterDigest, held: held_activation_receipts)
+          subject: "XL-2: the rehearsal instrument delivered and discriminated once" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts)
         )
       )
     StageXL3DeclaringIdentitySpelling =>
@@ -816,17 +893,11 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
     StageXL4ReferenceDerivedGraph =>
       standing_from_evidence(
         e: observe_outstanding(
-          subject: "XL-4: the reference-derived dependency graph measured and digested" as NonEmptyStr,
-          outstanding: activation_receipt_kind_outstanding(kind: ReferenceGraphDigest, held: held_activation_receipts)
+          subject: "XL-4: the reference-graph instrument delivered and discriminated once" as NonEmptyStr,
+          outstanding: stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: held_stage_delivery_receipts)
         )
       )
-    StageAct0ActivationGate =>
-      standing_from_evidence(
-        e: observe_outstanding(
-          subject: "ACT-0: every required activation receipt held against a pinned base" as NonEmptyStr,
-          outstanding: activation_receipts_outstanding(held: held_activation_receipts)
-        )
-      )
+    StageAct0ActivationGate => act0_release_standing()
     StageXL5Waves => milestone_status(m: NamespaceFirstSemanticWave)
     StageXL6AtomicCutover => milestone_status(m: NamespaceFixForwardComplete)
     StageXL7GrammarDeletion => milestone_status(m: NamespaceGrammarRetired)
@@ -853,28 +924,22 @@ fn stages_awaiting(i: MissingInstrument) -> List<String> {
   })
 }
 
-// Startability over BOTH edge kinds a stage carries: its chain predecessor and, where the
-// operator ruled one, its interlock milestone prerequisites. Same fail-closed law as the
-// milestone classifier, through the same startability_from_populations.
+// STARTABILITY IS THE CHAIN EDGE, AND ONLY THE CHAIN EDGE. It used to union a stage's chain
+// predecessors with interlock milestone prerequisites, which existed for exactly one stage --
+// ACT-0 -- and made "may begin collecting activation evidence" wait on the whole self-host
+// interlock. That conflated ACT-0's two facts; the release condition now lives in
+// act0_release_standing above, at STANDING grain where it belongs, and this fold reads one edge
+// kind. Same fail-closed law as the milestone classifier, through the same
+// startability_from_populations.
 fn stage_prerequisite_names_by_class(s: NamespaceCutStage, want: MilestoneStandingClass) -> List<String> {
-  concat(
-    fold(stage_prerequisites(s: s), init: [], f: fn(acc, p) {
-      if standing_class_label(c: standing_class(s: stage_status(s: p)))
-         == standing_class_label(c: want) {
-        concat(acc, [namespace_cut_stage_label(s: p) as String])
-      } else {
-        acc
-      }
-    }),
-    fold(stage_milestone_prerequisites(s: s), init: [], f: fn(acc, m) {
-      if standing_class_label(c: standing_class(s: milestone_status(m: m)))
-         == standing_class_label(c: want) {
-        concat(acc, [milestone_label(m: m) as String])
-      } else {
-        acc
-      }
-    })
-  )
+  fold(stage_prerequisites(s: s), init: [], f: fn(acc, p) {
+    if standing_class_label(c: standing_class(s: stage_status(s: p)))
+       == standing_class_label(c: want) {
+      concat(acc, [namespace_cut_stage_label(s: p) as String])
+    } else {
+      acc
+    }
+  })
 }
 
 fn stage_startability(s: NamespaceCutStage) -> Startability {

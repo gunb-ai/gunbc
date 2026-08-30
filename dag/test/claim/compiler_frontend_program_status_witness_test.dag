@@ -37,9 +37,23 @@ import gunbc.namespace_cut_stage {
   ActivationReceiptKind,
   RehearsalFailureRosterDigest,
   activation_receipts_outstanding,
-  activation_receipt_kind_outstanding,
   activation_receipt_kind_label,
   required_activation_receipt_kinds,
+  StageDeliveryReceipt,
+  StageDeliveryEvidenceKind,
+  RehearsalInstrumentDelivered,
+  ReferenceGraphInstrumentDelivered,
+  stage_delivery_evidence_label,
+  stage_delivery_outstanding,
+  stage_delivery_kind_outstanding,
+  required_stage_delivery_evidence_kinds,
+  held_stage_delivery_receipts,
+  StageXL0Denominator,
+  StageXL1BaselineCapture,
+  StageXL2RootDeletionRehearsal,
+  StageXL4ReferenceDerivedGraph,
+  StageAct0ActivationGate,
+  stage_prerequisites,
 }
 import gunbc.namespace_cut_subject_roster {
   subjects_deleted_at,
@@ -64,6 +78,8 @@ import gunbc.compiler_frontend_program_status {
   WholeCorpusEmissionBoard,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
+  CarrierOriginRosterProducer,
+  ExactOccurrenceResidualCensus,
   all_missing_instruments,
   conditionally_awaited_instruments,
   stages_awaiting,
@@ -466,14 +482,104 @@ fn expected_stage_subjects(stage: NamespaceCutStage) -> List<String> {
 
 test fn the_deletion_milestones_are_wired_to_their_stage_subjects() -> Bool {
   standing_agrees_with_population(
-    s: milestone_status(m: NamespaceFirstSemanticWave),
-    expected: expected_stage_subjects(stage: StageXL5Waves))
-    && standing_agrees_with_population(
-         s: milestone_status(m: NamespaceFixForwardComplete),
-         expected: expected_stage_subjects(stage: StageXL6AtomicCutover))
+    s: milestone_status(m: NamespaceFixForwardComplete),
+    expected: expected_stage_subjects(stage: StageXL6AtomicCutover))
     && standing_agrees_with_population(
          s: milestone_status(m: NamespaceGrammarRetired),
          expected: expected_stage_subjects(stage: StageXL7GrammarDeletion))
+}
+
+// F4 -- NO SUBJECT IS ASSIGNED TO XL-5, AND THIS IS THE RULE THAT REDS IF ONE IS.
+//
+// Every subject in the roster is a ROOT AUTHORITY whose deletion changes what live resolution and
+// closure answer; that motion is the atomic cutover's, not a wave's. The waves are exact corpus
+// rewrites over the XL-2 residual, which is not a root-authority probe and therefore has no row in
+// the roster at all. So the rule is structural rather than a matter of taste, and it has a
+// discriminating RED that costs one line to author: reassign ResolverImportNameUniverse (or any
+// other subject) to StageXL5Waves in subject_deleted_at_stage and this arm goes red.
+//
+// THE SECOND HALF IS WHAT STOPS THE EMPTY SET FROM READING AS SUCCESS. An XL-5 derived from its
+// subjects would fold zero rows to CLEAR and report a wave nobody has run as complete -- the rung
+// inflation DESIGN section 4b calls worse than sitting low. So the milestone must be NOT-DERIVABLE
+// and must name the residual census, and both halves are asserted together: dropping either one
+// alone restores the defect.
+test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_empty_set() -> Bool {
+  count(subjects_deleted_at(stage: StageXL5Waves)) == 0
+    && standing_is(want: ClassNotDerivable, s: milestone_status(m: NamespaceFirstSemanticWave))
+    && any(milestones_awaiting(i: ExactOccurrenceResidualCensus),
+         l => l == milestone_label(m: NamespaceFirstSemanticWave))
+    && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL5Waves))
+}
+
+// F1 -- XL-0 IS THE CARRIER-ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
+//
+// The arm this replaced read the subject roster's unobservable host probes, so making every host
+// probe observable would have flipped XL-0 to CLEAR while no carrier-origin roster had ever been
+// produced. That is the falsifier stated as a rule: XL-0's standing may not be a function of probe
+// observability at all. Asserting NOT-DERIVABLE with this exact cause holds it, because a rewiring
+// back onto any observable population would have to abandon the cause to change the standing.
+test fn xl0_is_not_derivable_and_awaits_the_carrier_origin_producer() -> Bool {
+  standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
+    && any(stages_awaiting(i: CarrierOriginRosterProducer),
+         l => l == namespace_cut_stage_label(s: StageXL0Denominator))
+    && count(milestones_awaiting(i: CarrierOriginRosterProducer)) == 0
+}
+
+// F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT
+// THE SAME QUESTION. XL-1 used to delegate to NamespaceBaselineObservationComplete outright, which
+// made "the capture transaction can succeed" and "a capture has been taken against THIS base" one
+// row. They separate exactly on the CaptureAvailable arm: the stage clears (its deliverable is the
+// capability) while the milestone becomes NOT-DERIVABLE (no persisted observation against the
+// current base). This arm asserts the contract on whichever arm is live, so it does not red when
+// the capability legitimately becomes available -- it reds if the two are re-fused.
+test fn xl1_follows_the_capability_while_the_baseline_milestone_follows_the_base() -> Bool {
+  match legacy_baseline_capture_capability() {
+    CaptureBlocked { phase: p, cause: c } =>
+      standing_agrees_with_population(
+        s: stage_status(s: StageXL1BaselineCapture),
+        expected: capture_blocked_reason(c: CaptureBlocked { phase: p, cause: c }))
+    CaptureAvailable =>
+      standing_is(want: ClassClear, s: stage_status(s: StageXL1BaselineCapture))
+        && standing_is(want: ClassNotDerivable, s: milestone_status(m: NamespaceBaselineObservationComplete))
+  }
+}
+
+// F3 -- XL-2 AND XL-4 CLEAR ON DELIVERY, NOT ON ACTIVATION, AND ACT-0 IS NOT THEIR PREREQUISITE.
+//
+// The circularity this closes was structural: the two stages read ACT-0's receipts, ACT-0 runs
+// after XL-4, so neither could ever clear. The rule that forbids its return is that each stage's
+// population is its OWN delivery kind -- checked here at fixture grain in both directions -- and
+// that ACT-0 is downstream of XL-4 in the chain rather than upstream of either.
+test fn xl2_and_xl4_read_delivery_evidence_and_act0_is_downstream_of_them() -> Bool {
+  let both_delivered = [
+    StageDeliveryReceipt { kind: RehearsalInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
+    StageDeliveryReceipt { kind: ReferenceGraphInstrumentDelivered, producer: "fixture" as NonEmptyStr, discriminated_by: "fixture" as NonEmptyStr },
+  ]
+  count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: both_delivered)) == 0
+    && count(stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: both_delivered)) == 0
+    && count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: [])) == 1
+    && standing_agrees_with_population(
+         s: stage_status(s: StageXL2RootDeletionRehearsal),
+         expected: stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: held_stage_delivery_receipts))
+    && standing_agrees_with_population(
+         s: stage_status(s: StageXL4ReferenceDerivedGraph),
+         expected: stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: held_stage_delivery_receipts))
+    && any(stage_prerequisites(s: StageAct0ActivationGate),
+         pre => namespace_cut_stage_label(s: pre) == namespace_cut_stage_label(s: StageXL4ReferenceDerivedGraph))
+}
+
+// ACT-0'S STARTABILITY IS THE CHAIN EDGE ALONE, WHICH IS THE OTHER HALF OF THE SPLIT. Its release
+// conditions -- the interlock triple and the base digests -- are its STANDING, so no milestone may
+// appear in its startability population. If the milestone edge were restored, ACT-0's startability
+// would name interlock milestones and this arm would red.
+test fn act0_startability_names_only_chain_stages() -> Bool {
+  let stage_labels = namespace_cut_stages |> map(s => namespace_cut_stage_label(s: s) as String)
+  all(concat(
+        stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassNotDerivable),
+        concat(
+          stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassOutstanding),
+          stage_prerequisite_names_by_class(s: StageAct0ActivationGate, want: ClassClear))),
+      n => any(stage_labels, l => l == n))
 }
 
 // THE WAVE-ADMISSION ENROLMENT FOLD ANSWERS BOTH WAYS AT FIXTURE GRAIN -- the RED the live
@@ -523,7 +629,27 @@ test fn the_activation_receipt_fold_is_keyed_on_receipt_identity() -> Bool {
          k => any(empty_outstanding, o => o == activation_receipt_kind_label(k: k)))
     && count(rehearsal_held) + 1 == count(required_activation_receipt_kinds)
     && !any(rehearsal_held, o => o == activation_receipt_kind_label(k: RehearsalFailureRosterDigest))
-    && count(activation_receipt_kind_outstanding(kind: RehearsalFailureRosterDigest, held: [])) == 1
+}
+
+// THE DELIVERY-EVIDENCE FOLD, THE SAME WAY, AND THE POINT IS THAT IT IS A DIFFERENT FOLD. Stage
+// delivery evidence carries no base; activation evidence does. Holding one delivery receipt clears
+// exactly its own stage's kind and touches no activation receipt -- which is the property that
+// makes XL-2 and XL-4 clearable before ACT-0 runs instead of after it.
+test fn the_delivery_receipt_fold_is_keyed_on_kind_and_is_not_an_activation_receipt() -> Bool {
+  let rehearsal_held = [
+    StageDeliveryReceipt {
+      kind: RehearsalInstrumentDelivered,
+      producer: "fixture-producer" as NonEmptyStr,
+      discriminated_by: "fixture-red" as NonEmptyStr,
+    }
+  ]
+  let outstanding = stage_delivery_outstanding(held: rehearsal_held)
+  count(stage_delivery_outstanding(held: [])) == count(required_stage_delivery_evidence_kinds)
+    && count(outstanding) + 1 == count(required_stage_delivery_evidence_kinds)
+    && !any(outstanding, o => o == stage_delivery_evidence_label(k: RehearsalInstrumentDelivered))
+    && count(stage_delivery_kind_outstanding(kind: RehearsalInstrumentDelivered, held: rehearsal_held)) == 0
+    && count(stage_delivery_kind_outstanding(kind: ReferenceGraphInstrumentDelivered, held: rehearsal_held)) == 1
+    && count(activation_receipts_outstanding(held: [])) == count(required_activation_receipt_kinds)
 }
 
 // STAGE STARTABILITY AGREES WITH ITS PREREQUISITE STANDINGS, over the whole chain, re-derived
