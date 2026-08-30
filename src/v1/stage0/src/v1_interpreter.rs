@@ -11438,6 +11438,28 @@ fn dispatch_shell(
             }
             None
         }
+        Some(Value::Record { type_name, fields })
+            if ctx.resolve(*type_name).as_str() == "BoundedTail" =>
+        {
+            let bytes = fields
+                .iter()
+                .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                .and_then(|(_, value)| match value {
+                    Value::Int(n) => Some(*n),
+                    _ => None,
+                })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires an integer bytes field"
+                        .to_string(),
+                })?;
+            if bytes < 0 {
+                return Err(InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative"
+                        .to_string(),
+                });
+            }
+            None
+        }
         Some(other) => {
             return Err(InterpError::TypeError {
                 msg: format!("unknown WitnessStderrCapturePolicy value: {other}"),
@@ -11455,6 +11477,21 @@ fn dispatch_shell(
                 fields,
                 ..
             }) if ctx.resolve(*variant_name).as_str() == "BoundedTail" => {
+                let bytes = fields
+                    .iter()
+                    .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                    .and_then(|(_, value)| match value {
+                        Value::Int(n) => Some(*n as usize),
+                        _ => None,
+                    })
+                    .unwrap_or(bounded_shell_host_drain::DEFAULT_SHELL_STDERR_TAIL_BYTES);
+                bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
+                    max_tail_bytes: bytes,
+                }
+            }
+            Some(Value::Record { type_name, fields })
+                if ctx.resolve(*type_name).as_str() == "BoundedTail" =>
+            {
                 let bytes = fields
                     .iter()
                     .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
