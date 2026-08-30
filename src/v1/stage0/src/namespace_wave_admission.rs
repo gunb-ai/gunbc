@@ -431,7 +431,42 @@ pub struct TransitionAdmission {
 /// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
 /// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
 /// Removed by the roster's own rule before the PR merged, so the rows never reached main.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// FOURTH TRANSITION, SAME RULE (2026-08-30). Two rows for the SPARK-PAIR-0 P0-C3a cut, where
+/// `spark_serving_linger_probe_words` stops being declared inside `gunbc.spark.serving_converge_slice_wet`
+/// and is imported from `gunbc.spark.serving_observe`, which already owned the probe words the
+/// observation path uses.
+///
+/// WHY THE REBIND IS THE POINT AND NOT A SIDE EFFECT. The argv was authored twice — one spelling on
+/// the context path and an identical one on the HostEffectTransport path — which is DESIGN §3's fork:
+/// the same fact with two homes, free to drift the first time `loginctl`'s interface moves. Removing
+/// the second home is what moves the binding, so the delta is the consolidation itself, reported at
+/// exactly the grain that makes it reviewable: two named declarations, one spelling, one old target,
+/// one new target.
+///
+/// DISSOLUTION. Both rows go stale the moment this lands on main, because base and head will then
+/// carry the same single authority and no run can produce the delta. They are removed by that
+/// trigger, in the shrink this roster's rule requires — not left standing to refuse unrelated
+/// changes, which is the cost the first 53 rows recorded above.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_converge_slice_wet",
+            in_declaration: "spark_serving_probe_linger",
+            spelling: "spark_serving_linger_probe_words",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_durability_transaction",
+            in_declaration: "spark_serving_observe_linger_enabled",
+            spelling: "spark_serving_linger_probe_words",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
