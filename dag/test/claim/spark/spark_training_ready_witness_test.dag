@@ -43,16 +43,27 @@ data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness
 // job on its own witness, and the repair is the right one -- a fixture now assembles the same
 // probe captures a real run would, so these claims exercise the decode path rather than asserting
 // past it.
-fn w_endpoint_absent_capture() -> SparkServingProbeCapture {
-  ProbeFailed { exit_code: 7, stderr: "connection refused" }
-}
-
+// EACH AXIS IS HANDED THE EVIDENCE ITS OWN TOOL PRODUCES, WHICH THE FIRST DRAFT DID NOT DO.
+//
+// One helper built every axis from `ProbeFailed { exit_code: 7 }`, which is curl's vocabulary and
+// nothing else's. pgrep exits 1 to mean nothing matched, the unit query proves absence by ANSWERING
+// `not-found`, and the endpoint enumerates. So the shared fixture was asserting a retirement out of
+// three captures only one of which its decoder could read -- and the positive control was FAILING
+// while the file reported green, because it had not been re-run after the decoder was made
+// discriminating. A fixture that speaks one tool's language for three tools is the same conflation
+// the decoder itself was repaired for.
 fn w_process_absent_capture() -> SparkServingProbeCapture {
   ProbeFailed { exit_code: 1, stderr: "" }
 }
 
 fn w_unit_absent_capture() -> SparkServingProbeCapture {
   ProbeAnswered { stdout: "not-found" }
+}
+
+// THE ENDPOINT AXIS IS ABSENT WHEN THE ENUMERATION COMPLETED AND FOUND NOTHING, which is a
+// successful answer carrying an empty population -- not a dial that failed to connect.
+fn w_endpoint_absent_capture() -> SparkServingProbeCapture {
+  ProbeAnswered { stdout: "" }
 }
 
 fn w_retired(host: HostIdentity) -> SparkServingRetirementObservation {
@@ -161,7 +172,7 @@ test fn w_a_still_serving_endpoint_refuses() -> Bool {
   !w_readiness(
     retirement: spark_serving_retirement_observation_from_probes(
       host: operator_host_srv6,
-      endpoint_capture: ProbeAnswered { stdout: "0.12.11" },
+      endpoint_capture: ProbeAnswered { stdout: "LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:*" },
       process_capture: w_process_absent_capture(),
       unit_capture: w_unit_absent_capture(),
     ),
@@ -200,11 +211,14 @@ test fn w_a_pool_number_without_a_read_is_refused() -> Bool {
   }
 }
 
-// A NONZERO EXIT IS NOT ABSENCE, AND THIS IS THE CLAIM THE PREVIOUS DECODER FAILED.
+// A CONNECT FAILURE IS NOT ABSENCE, AND THIS IS THE CLAIM THE PREVIOUS EVIDENCE FAILED.
 //
-// Its earlier shape mapped every ProbeFailed to ServingAbsent, so a permission denial proved a
-// retirement. Exit 7 is curl's "failed to connect" and is the only status that establishes nothing
-// is listening; 77 (a real curl code, for an unreadable CA bundle) is a failure and must not.
+// The endpoint axis read curl exit 7 as proof that nothing was listening. curl(1) documents 7 as
+// "failed to connect to host or proxy" -- it does not separate a refused port from an unreachable
+// host, an intervening proxy, or any other connect failure. So the axis now enumerates listening
+// sockets, and these claims pin both halves: a completed enumeration with no rows establishes
+// absence, and nothing else does. Every input below was ACCEPTED as absence by the previous
+// evidence, so this claim is red against it.
 fn w_absence_established(a: SparkServingAbsence) -> Bool {
   match spark_serving_absence_refusal(a: a) {
     Absent => true
@@ -220,16 +234,25 @@ fn w_endpoint_absence(capture: SparkServingProbeCapture) -> SparkServingAbsence 
   )
 }
 
-test fn w_only_the_documented_no_listener_exit_establishes_endpoint_absence() -> Bool {
-  w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "connection refused" }))
-    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 77, stderr: "error setting certificate file" }))
-    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 6, stderr: "could not resolve host" }))
-    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 28, stderr: "operation timed out" }))
+test fn w_only_a_completed_empty_enumeration_establishes_endpoint_absence() -> Bool {
+  w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "" }))
+    && w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "  \n " }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "LISTEN 0 4096 127.0.0.1:11434 0.0.0.0:*" }))
 }
 
-test fn w_a_probe_that_never_ran_or_answered_never_establishes_endpoint_absence() -> Bool {
+// THE CONNECT-FAILURE CODES ESTABLISH NOTHING, INCLUDING THE ONE THAT USED TO MEAN ABSENCE.
+//
+// 7 is listed first deliberately: under the superseded evidence it was the single code that PROVED
+// retirement, and it now proves no more than 6 or 28 do.
+test fn w_a_connect_failure_never_establishes_endpoint_absence() -> Bool {
+  !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "failed to connect to host" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 6, stderr: "could not resolve host" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 28, stderr: "operation timed out" }))
+    && !w_absence_established(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 1, stderr: "enumeration failed" }))
+}
+
+test fn w_an_enumeration_that_never_ran_establishes_no_endpoint_absence() -> Bool {
   !w_absence_established(a: w_endpoint_absence(capture: ProbeNeverRan { cause: "host unreachable" as NonEmptyStr }))
-    && !w_absence_established(a: w_endpoint_absence(capture: ProbeAnswered { stdout: "0.12.11" }))
 }
 
 // THE UNIT AXIS PROVES ABSENCE BY ANSWERING, WHICH IS WHY ONE RULE COULD NOT COVER ALL THREE.
@@ -254,7 +277,7 @@ test fn w_the_unit_axis_establishes_absence_by_answering_not_by_failing() -> Boo
 // THE REFUSAL NAMES EVERY UNSATISFIED AXIS, NOT THE FIRST. An operator deciding whether to re-probe
 // or re-run the retirement needs all of them.
 test fn w_the_refusal_carries_a_cause_rather_than_a_bare_negative() -> Bool {
-  match spark_serving_absence_refusal(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 77, stderr: "error setting certificate file" })) {
+  match spark_serving_absence_refusal(a: w_endpoint_absence(capture: ProbeFailed { exit_code: 7, stderr: "failed to connect to host" })) {
     Present { value: c } => length(c as String) > 0
     Absent => false
   }
