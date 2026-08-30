@@ -575,3 +575,16 @@ test fn w_violates_at_a_record_field_takes_the_fields_declared_carrier() -> Bool
     ["Witness::<RecW>::Violates", "Witness::<Rc<RecW>>::Violates"]
   )
 }
+
+// A native-realized alias (`std.nat.Nat` = i64) as a type ARGUMENT inside a generic record field:
+// the field's type expression carries no resolved inference, so the declaring module must be
+// read from the env binding, never from the reference's own file -- otherwise the argument
+// renders as the shared carrier `Rc<Nat>` while every signature renders it `i64`.
+test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scalar() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nat_type_arg_probe\nimport std.nat { Nat }\ntype Box2<Q, M> { count: M }\ntype Holder<S> { size: Box2<S, Nat> }\nfn holder_size<S>(h: Holder<S>) -> Box2<S, Nat> { h.size }\n",
+    "src/test_claim_nat_type_arg_probe.rs",
+    ["pub size: Rc<Box2<S, i64>>,"],
+    ["Box2<S, Rc<Nat>>", "Box2<S, Nat>"]
+  )
+}
