@@ -18,9 +18,9 @@ data rustfmt_cli_tool: CliTool = CliTool {
   installable_via: [SourceRustup],
 }
 
+data rustfmt_parse_files_note: String = "--emit stdout makes this a parse observation rather than a formatting gate: parseable input may be reformatted in stdout, while the source workspace remains untouched."
+
 service rustfmt.Parse {
-  // `--emit stdout` makes this a parse observation rather than a formatting gate: parseable input
-  // may be reformatted in stdout, while the source workspace remains untouched.
   operation Files {
     input { workdir: FilePath, edition: String, files: List<String> }
     output {

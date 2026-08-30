@@ -23,6 +23,8 @@ fn cargo_nextest_build_jobs_flag(count: Int) -> List<String> {
   ["--build-jobs", to_string(count)]
 }
 
+data cargo_check_manifest_messages_note: String = "Cargo's structured check surface is distinct from BuildManifestMessages: check asks rustc for metadata and therefore reaches type checking and borrow checking without codegen."
+
 service cargo.Build {
   operation Build {
     input { extra_args: List<String> = [], env: Map<String, String> = cargo_compile_env, build_jobs_args: List<String> = [] }
@@ -80,8 +82,6 @@ service cargo.Build {
     }
   }
 
-  // Cargo's structured `check` surface. This is distinct from BuildManifestMessages: check asks
-  // rustc for metadata and therefore reaches type checking and borrow checking without codegen.
   operation CheckManifestMessages {
     input { workdir: FilePath, manifest_path: FilePath, target_dir: FilePath, extra_args: List<String> = [] }
     output {

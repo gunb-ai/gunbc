@@ -85,6 +85,11 @@ type RustcPhaseBoardRead
   = PhaseBoardDerived { board: RustcPhaseBoard, unplaced_identities: List<String> }
   | PhaseBoardMeasurementUnreached
 
+type PersistedPhaseBoardFold {
+  board: RustcPhaseBoard
+  unplaced_identities: List<String>
+}
+
 fn diagnostic_phase(d: RustcCodedDiagnostic) -> RustcErrorCodePhase {
   match d.identity {
     RustcCoded { code: c } => rustc_error_code_phase(code: c)
@@ -141,6 +146,18 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
   else { Borrowck }
 }
 
+fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> Fnv1a64Structural {
+  content_hash_atom(
+    value: (concat(
+      ["self-host-compile-phase-census-v1"],
+      concat(
+        parse_refused_files |> map(path => concat("rustfmt-refused\t", path)),
+        raw_identities
+      )
+    ) |> join(separator: "\n")) as NonEmptyStr
+  )
+}
+
 fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
   let errors = ds |> filter(d => d.level == "error" && match d.identity {
     RustcCoded { code: _ } => true
@@ -150,13 +167,7 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
   let parse_errors = count(parse_observation.refused_files)
   let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
   let furthest_order = rustc_phase_order(phase: furthest)
-  let all_identities = concat(
-    ["self-host-compile-phase-census-v1"],
-    concat(
-      parse_observation.refused_files |> map(path => concat("rustfmt-refused\t", path)),
-      deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
-    )
-  )
+  let raw_identities = deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
   PhaseBoardDerived {
     board: RustcPhaseBoard {
         rows: [
@@ -172,7 +183,7 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
         ],
         furthest_phase_reached: furthest,
       furthest_phase_evidence: Observed,
-      census_identity_digest: content_hash_atom(value: (all_identities |> join(separator: "\n")) as NonEmptyStr),
+      census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
       partition_complete: count(unplaced) == 0
     },
     unplaced_identities: unplaced
@@ -198,6 +209,73 @@ fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
   }
 }
 
+fn census_identity_code(identity: String) -> String? {
+  get(xs: split(s: identity, sep: "\t"), index: 3)
+}
+
+fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
+  match census_identity_code(identity: identity) {
+    Absent => ErrorCodeUnplaced { code: "malformed-census-identity", index: extdeps.languages.rust.compiler_phases.rustc_error_index_authority }
+    Present { value: code } => rustc_error_code_phase(code: code)
+  }
+}
+
+fn census_identities_for_phase(identities: List<String>, phase: RustcPhase) -> List<String> {
+  deduplicate_identities(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
+    ErrorCodePlaced { phase: placed, authority: _ } => rustc_phase_order(phase: placed) == rustc_phase_order(phase: phase)
+    ErrorCodeUnplaced { code: _, index: _ } => false
+  }))
+}
+
+fn census_unplaced_identities(identities: List<String>) -> List<String> {
+  deduplicate_identities(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
+    ErrorCodePlaced { phase: _, authority: _ } => false
+    ErrorCodeUnplaced { code: _, index: _ } => true
+  }))
+}
+
+// Persisted receipts are folded from the raw identity rows emitted by the same instrument. This
+// function is the only route from those rows to a board; no receipt authors a phase count.
+fn phase_board_from_census_identities(
+  parse_observation: RustfmtParseObservation,
+  raw_identities: List<String>
+) -> PersistedPhaseBoardFold {
+  let resolve_ids = census_identities_for_phase(identities: raw_identities, phase: Resolve)
+  let typeck_ids = census_identities_for_phase(identities: raw_identities, phase: Typeck)
+  let borrowck_ids = census_identities_for_phase(identities: raw_identities, phase: Borrowck)
+  let unplaced = census_unplaced_identities(identities: raw_identities)
+  let parse_errors = count(parse_observation.refused_files)
+  let furthest = if parse_errors > 0 { Parse }
+    else if count(resolve_ids) > 0 { Resolve }
+    else if count(typeck_ids) > 0 { Typeck }
+    else { Borrowck }
+  let furthest_order = rustc_phase_order(phase: furthest)
+  PersistedPhaseBoardFold {
+    board: RustcPhaseBoard {
+      rows: [
+        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: Observed }, identities: parse_observation.refused_files },
+        if furthest_order >= rustc_phase_order(phase: Expand) {
+          RustcPhaseBoardRow { phase: Expand, standing: PhaseCount { count: 0, evidence: DerivedFromRustcErrorIndex }, identities: [] }
+        } else { RustcPhaseBoardRow { phase: Expand, standing: PhaseNotYetReached, identities: [] } },
+        if furthest_order >= rustc_phase_order(phase: Resolve) {
+          RustcPhaseBoardRow { phase: Resolve, standing: PhaseCount { count: count(resolve_ids), evidence: DerivedFromRustcErrorIndex }, identities: resolve_ids }
+        } else { RustcPhaseBoardRow { phase: Resolve, standing: PhaseNotYetReached, identities: [] } },
+        if furthest_order >= rustc_phase_order(phase: Typeck) {
+          RustcPhaseBoardRow { phase: Typeck, standing: PhaseCount { count: count(typeck_ids), evidence: DerivedFromRustcErrorIndex }, identities: typeck_ids }
+        } else { RustcPhaseBoardRow { phase: Typeck, standing: PhaseNotYetReached, identities: [] } },
+        if furthest_order >= rustc_phase_order(phase: Borrowck) {
+          RustcPhaseBoardRow { phase: Borrowck, standing: PhaseCount { count: count(borrowck_ids), evidence: DerivedFromRustcErrorIndex }, identities: borrowck_ids }
+        } else { RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] } }
+      ],
+      furthest_phase_reached: furthest,
+      furthest_phase_evidence: Observed,
+      census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
+      partition_complete: count(unplaced) == 0
+    },
+    unplaced_identities: unplaced
+  }
+}
+
 type PhaseBoardProducer {
   module_path: String
   function: String
@@ -210,6 +288,7 @@ type PhaseBoardSeriesPosition
 
 type CompilePhaseFrontierReceipt {
   sequence: Int
+  observed_at: NonEmptyStr
   subject: CompilePhaseReceiptSubject
   invocation: NonEmptyStr
   position: PhaseBoardSeriesPosition
@@ -242,6 +321,11 @@ type PhaseBoardSeriesVerdict
   = PhaseBoardSeriesHeld
   | PhaseBoardSeriesEmptyBaselinePermitted
   | PhaseBoardSeriesRefused { invocation: String, reason: NonEmptyStr }
+
+type CompilePhaseFrontierStanding
+  = CompilePhaseFrontierEmpty
+  | CompilePhaseFrontierValidated { latest: CompilePhaseFrontierReceipt }
+  | CompilePhaseFrontierInvalid { reason: NonEmptyStr }
 
 type PhaseBoardSeriesFold
   = SeriesFoldEmpty
@@ -306,6 +390,7 @@ fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Stru
     value: join([
       receipt_subject_key(receipt: receipt),
       to_string(receipt.sequence),
+      receipt.observed_at as String,
       receipt.invocation as String,
       receipt_position_text(position: receipt.position),
       parse_evidence_rows(evidence: receipt.parse_evidence) |> join(separator: "\t"),
@@ -336,6 +421,7 @@ fn expected_prefix_digest(previous: Fnv1a64Structural?, identity: Fnv1a64Structu
 
 fn seal_compile_phase_receipt(
   sequence: Int,
+  observed_at: NonEmptyStr,
   subject: CompilePhaseReceiptSubject,
   invocation: NonEmptyStr,
   position: PhaseBoardSeriesPosition,
@@ -351,6 +437,7 @@ fn seal_compile_phase_receipt(
   let placeholder = content_hash_atom(value: "unsealed-compile-phase-receipt" as NonEmptyStr)
   let unsealed = CompilePhaseFrontierReceipt {
     sequence: sequence,
+    observed_at: observed_at,
     subject: subject,
     invocation: invocation,
     position: position,
@@ -368,6 +455,7 @@ fn seal_compile_phase_receipt(
   let identity = receipt_payload_identity(receipt: unsealed)
   CompilePhaseFrontierReceipt {
     sequence: sequence,
+    observed_at: observed_at,
     subject: subject,
     invocation: invocation,
     position: position,
@@ -466,6 +554,9 @@ fn phase_ratchet_with_dispositions(
   }
 }
 
+// A toolchain or classification-policy change starts a new epoch. When the producer also
+// reclassifies the prior raw population under the new policy, the ordinary ratchet remains
+// meaningful and executes against that typed board; otherwise no cross-policy count is made.
 fn receipt_pair_ratchet(
   previous: CompilePhaseFrontierReceipt,
   current: CompilePhaseFrontierReceipt
@@ -484,9 +575,6 @@ fn receipt_pair_ratchet(
       )
     }
   } else {
-    // A toolchain or classification-policy change starts a new epoch. When the producer also
-    // reclassifies the prior raw population under the new policy, the ordinary ratchet remains
-    // meaningful and executes against that typed board; otherwise no cross-policy count is made.
     match current.reclassified_predecessor_board {
       Absent => PhaseRatchetHeld
       Present { value: reclassified } => phase_ratchet_with_dispositions(
@@ -507,6 +595,22 @@ fn comparison_inputs_same(a: CompilePhaseReceiptSubject, b: CompilePhaseReceiptS
     && a.invocation.features == b.invocation.features
 }
 
+fn receipt_population_coherent(receipt: CompilePhaseFrontierReceipt) -> Bool {
+  match receipt.parse_evidence {
+    ParseReached { evidence: parse } => {
+      let derived = phase_board_from_census_identities(
+      parse_observation: parse,
+      raw_identities: receipt.raw_coded_diagnostic_identities
+      )
+      derived.board.census_identity_digest == receipt.board.census_identity_digest
+        && derived.board.furthest_phase_reached == receipt.board.furthest_phase_reached
+        && derived.board.rows == receipt.board.rows
+        && derived.board.partition_complete == receipt.board.partition_complete
+        && derived.unplaced_identities == receipt.unplaced_identities
+    }
+  }
+}
+
 fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> PhaseBoardSeriesVerdict {
   let folded = fold(
     series,
@@ -515,7 +619,7 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
       SeriesFoldRefused { invocation: i, reason: why } => SeriesFoldRefused { invocation: i, reason: why }
       SeriesFoldEmpty => match receipt.position {
         PhaseBoardBaseline =>
-          if receipt.sequence != 0 || receipt.previous_prefix_digest != none || receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: none, identity: receipt.receipt_identity) {
+          if !receipt_population_coherent(receipt: receipt) || receipt.sequence != 0 || receipt.previous_prefix_digest != none || receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: none, identity: receipt.receipt_identity) {
             SeriesFoldRefused { invocation: receipt.invocation as String, reason: "genesis receipt identity, sequence, or prefix link is invalid" as NonEmptyStr }
           } else {
             SeriesFoldHeld { previous: receipt, seen_subjects: [receipt_subject_key(receipt: receipt)] }
@@ -533,10 +637,14 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board successor names a different predecessor" as NonEmptyStr }
               } else if receipt.sequence != previous.sequence + 1 {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt sequence is not chronological" as NonEmptyStr }
+              } else if receipt.observed_at <= previous.observed_at {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt observation time is not strictly chronological" as NonEmptyStr }
               } else if receipt.previous_prefix_digest != Present { value: previous.prefix_digest } {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt does not link the preceding prefix digest" as NonEmptyStr }
               } else if receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: receipt.previous_prefix_digest, identity: receipt.receipt_identity) {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board receipt or prefix digest does not match its payload" as NonEmptyStr }
+              } else if !receipt_population_coherent(receipt: receipt) {
+                SeriesFoldRefused { invocation: receipt.invocation as String, reason: "board counts, identities, unplaced rows, or digest were not derived from the raw census payload" as NonEmptyStr }
               } else if any(seen, key => key == receipt_subject_key(receipt: receipt)) {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "the same tree and full observation subject appears twice" as NonEmptyStr }
               } else if (previous.subject.comparison_epoch == receipt.subject.comparison_epoch) != comparison_inputs_same(a: previous.subject, b: receipt.subject) {
@@ -558,6 +666,19 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
     SeriesFoldEmpty => PhaseBoardSeriesEmptyBaselinePermitted
     SeriesFoldHeld { previous: _, seen_subjects: _ } => PhaseBoardSeriesHeld
     SeriesFoldRefused { invocation: i, reason: why } => PhaseBoardSeriesRefused { invocation: i, reason: why }
+  }
+}
+
+fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) -> CompilePhaseFrontierStanding {
+  match phase_board_series_ratchet(series: series) {
+    PhaseBoardSeriesEmptyBaselinePermitted => CompilePhaseFrontierEmpty
+    PhaseBoardSeriesRefused { invocation: i, reason: why } => CompilePhaseFrontierInvalid {
+      reason: concat(concat(i, ": "), why as String) as NonEmptyStr
+    }
+    PhaseBoardSeriesHeld => match reverse(series) |> first {
+      Absent => CompilePhaseFrontierInvalid { reason: "held ledger had no latest receipt" as NonEmptyStr }
+      Present { value: latest } => CompilePhaseFrontierValidated { latest: latest }
+    }
   }
 }
 

@@ -64,6 +64,8 @@ import tools.emission_entry_instrument {
   StageEmitDecode,
   StageAssemble,
   StageManifest,
+  StageArtifactIdentity,
+  StageParse,
   StageCargo,
   StageCargoDecode,
   emission_stage_name
@@ -752,6 +754,8 @@ fn not_evaluated_cause_for_stage(stage: EmissionStage, cause: String) -> EmitNot
     StageEmitDecode => PopulationUnreadable { stage: stage, cause: cause }
     StageAssemble => PopulationUnreadable { stage: stage, cause: cause }
     StageManifest => PopulationUnreadable { stage: stage, cause: cause }
+    StageArtifactIdentity => PopulationUnreadable { stage: stage, cause: cause }
+    StageParse => PopulationUnreadable { stage: stage, cause: cause }
     StageCargo => PopulationUnreadable { stage: stage, cause: cause }
     StageCargoDecode => PopulationUnreadable { stage: stage, cause: cause }
   }

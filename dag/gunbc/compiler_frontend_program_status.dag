@@ -156,7 +156,7 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 // cargo. DeclaringIdentitySpellingCensus is awaited by the stage chain (XL-3), not by any
 // milestone -- stages_awaiting joins it.
 type MissingInstrument
-  = WholeCorpusCompilePhaseFrontier
+  = WholeCorpusEmissionBoard
   | PhaseCargoExecutionFact
   | RatchetGateEnrolmentFact
   | PersistedLegacyBaselineObservation
@@ -168,7 +168,7 @@ type MissingInstrument
 
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
-    WholeCorpusCompilePhaseFrontier => "a persisted whole-corpus emission measurement at identity grain"
+    WholeCorpusEmissionBoard => "a persisted whole-corpus emission measurement at identity grain"
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
     RatchetGateEnrolmentFact => "the ratchet's merge-blocking enrolment as a fact distinct from its cadence"
     PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
@@ -222,7 +222,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
 // being written by someone who had not checked which (retracted and corrected 2026-08-26, the
 // correction found by the lane that took the timing measurement).
 // A THIRD ARM, ADDED 2026-08-28 BECAUSE THE SECOND ONE BECAME FALSE AND THE FIRST WOULD HAVE HIDDEN
-// THAT. The WholeCorpusCompilePhaseFrontier row asserted a refusal and named the one thing that would
+// THAT. The WholeCorpusEmissionBoard row asserted a refusal and named the one thing that would
 // settle it: "it has not been attempted on one whose budget it admits ... THE FALSIFICATION MUST
 // RECORD EXIT STATUS AND PEAK RESIDENT SET TOGETHER". That falsification has now been performed and
 // the refusal did not hold. Collapsing the row to NotBuilt would have been correct about the remedy
@@ -233,7 +233,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
 //
 // THIS ARM MUST NOT BE READ AS PROGRESS TOWARD THE MILESTONE. Falsifying an obstacle removes an
 // EXPLANATION; it does not produce a board. The milestone stays NotDerivable and its cause stays
-// needs(WholeCorpusCompilePhaseFrontier) -- which is exactly why the obstacle axis and the standing axis
+// needs(WholeCorpusEmissionBoard) -- which is exactly why the obstacle axis and the standing axis
 // are separate. A carrier where clearing an obstacle moved a milestone would let the removal of an
 // excuse render as the delivery of an instrument, which is the rung inflation DESIGN section 4b
 // names as worse than sitting low.
@@ -244,7 +244,7 @@ type InstrumentObstacle
 
 fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
-    WholeCorpusCompilePhaseFrontier =>
+    WholeCorpusEmissionBoard =>
       NotBuiltRefusalFalsified {
         authority: decl_ref(
           module_path: "gunbc.whole_corpus_compile_admission",
@@ -425,7 +425,7 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
     SelfHostWholeCorpusPopulationDerived =>
       NotDerivable {
         why: "no persisted whole-corpus emission board exists. tools.emission_entry_instrument measure_entry_emission answers PER ENTRY, and the union of per-entry closures is not the corpus. Derivable once a whole-corpus run's typed measurement is persisted in a carrier this module can read." as NonEmptyStr,
-        cause: needs(i: WholeCorpusCompilePhaseFrontier)
+        cause: needs(i: WholeCorpusEmissionBoard)
       }
     SelfHostCargoPhaseEnrolled =>
       NotDerivable {
@@ -442,7 +442,7 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
     SelfHostRatchetGateEnrolled =>
       NotDerivable {
         why: "a gate is meaningless without the identity-grain population it gates against, and S2's population has no producer. The cadence row that answers S4a cannot answer this one: it cannot distinguish an observation from a merge-blocking gate. Derivable once S2's population is persisted AND the ratchet's merge-blocking enrolment is a fact distinct from its cadence." as NonEmptyStr,
-        cause: MissingInstruments { first: WholeCorpusCompilePhaseFrontier, rest: [RatchetGateEnrolmentFact] }
+        cause: MissingInstruments { first: WholeCorpusEmissionBoard, rest: [RatchetGateEnrolmentFact] }
       }
     NamespaceWaveAdmissionEnrolled =>
       standing_from_evidence(
@@ -488,7 +488,7 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
     SelfHostCorpusEmitsCleanly =>
       NotDerivable {
         why: "this is S2's population driven to zero, and S2 has no producer. Any figure quoted for the current rustc population today is unsourced -- the 2026-08-24 measurement bankruptcy deleted the boards and the instrument was restored without one. Derivable exactly when S2 is." as NonEmptyStr,
-        cause: needs(i: WholeCorpusCompilePhaseFrontier)
+        cause: needs(i: WholeCorpusEmissionBoard)
       }
     SelfHostBehavioralEquivalenceReestablished =>
       NotDerivable {
@@ -679,7 +679,7 @@ fn join_names(names: List<String>) -> String {
 // and is deliberately not built here rather than approximated by this count.
 // ---------------------------------------------------------------------------------------------
 data all_missing_instruments: List<MissingInstrument> = [
-  WholeCorpusCompilePhaseFrontier,
+  WholeCorpusEmissionBoard,
   PhaseCargoExecutionFact,
   RatchetGateEnrolmentFact,
   PersistedLegacyBaselineObservation,
