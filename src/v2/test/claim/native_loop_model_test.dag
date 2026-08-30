@@ -26,6 +26,7 @@ import v2.compiler.native_loop {
   TestRosterIdentity,
 }
 import v2.std.optional { Absent }
+import v2.std.logic { bool_node }
 
 fn fixture_execute_request() -> NativeRequest {
   ExecuteRequest { source_roots: [SourceRootIdentity { value: "src/v2" }], entry: EntryIdentity { value: "fixture.entry" }, inputs: Empty }
@@ -71,9 +72,7 @@ test fn native_loop_test_response_schema_is_typed() -> Bool {
 }
 
 test fn native_loop_execute_response_schema_is_typed() -> Bool {
-  let accepted: NativeResponse = NativeExecuteResponse { response: ExecuteAccepted { value: Empty } }
+  let accepted: NativeResponse = NativeExecuteResponse { response: ExecuteAccepted { value: bool_node() } }
   let refused: NativeResponse = NativeExecuteResponse { response: ExecuteRefused }
   match accepted { NativeExecuteResponse { response: ExecuteAccepted { value: _ } } => match refused { NativeExecuteResponse { response: ExecuteRefused } => true _ => false } _ => false }
 }
-
-data native_loop_schema_only_test_note: String = "These controls execute only the request/response/decode schema. They deliberately do not simulate entry, source, build, roster, selected-test, effect, generation, or PATH admission. Those falsifiers cannot honestly execute until the decision consumes XL-1's single effect-demand authority."

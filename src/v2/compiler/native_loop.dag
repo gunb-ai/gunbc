@@ -7,8 +7,10 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.node { Node }
 import v2.std.optional { Optional }
 
-data native_loop_scope_note: String = "XL-2 SCHEMA ONLY. This module declares the typed request, response, and decode boundary of the minimal native compile/test/execute loop. It is deliberately not a CLI: there are no flags, argv policy, clap concepts, claim_batch or claim_executor compatibility, caching, remote execution, or PATH lookup. JSON is the wire realization of NativeRequest, never a second request authority. Admission and realization are absent until XL-1's v2.compiler.effect_demand authority can be consumed directly; this module owns no effect-operation identity, effect evidence, or caller-authorable admission arm."
-
+// XL-2 schema only: the typed request, response, and decode boundary of the
+// minimal native compile/test/execute loop. Admission and realization are
+// deliberately absent; this module owns no effect-operation identity, effect
+// evidence, or caller-authorable admission arm.
 type SourceRootIdentity { value: NonEmptyStr }
 type EntryIdentity { value: NonEmptyStr }
 type TestRosterIdentity { value: NonEmptyStr }
@@ -33,5 +35,3 @@ type NativeResponse
   = NativeCompileResponse { response: CompileResponse }
   | NativeTestResponse { response: TestResponse }
   | NativeExecuteResponse { response: ExecuteResponse }
-
-data native_loop_deferred_admission_note: String = "The semantic refusal reasons and the decision that produces these response variants land only by consuming XL-1 EffectDemandEvidenceAdmission and its realization receipt. The nine XL-2 falsifiers remain required-gate obligations, but this schema slice claims no executing evidence for them. Build ordering, derived test discovery, compiler generation identity comparison, process-exit projection, and the src/v1-absent exit gate likewise remain outside this carrier-only slice."
