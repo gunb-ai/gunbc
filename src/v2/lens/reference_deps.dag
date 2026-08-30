@@ -3,9 +3,11 @@ module v2.lens.reference_deps
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.measure { ClockBasis, WallClock, Millisecond, millisecond }
 
-import v2.extdeps.languages.dag { dag_language_model, qualified_name_from_module_node }
+import v2.extdeps.languages.dag { dag_language_model, parse_production_emitted_identity_optional, qualified_name_from_module_node }
 import v2.lens.module_graph { map_lookup_where_rejected_unreachable, no_paths, module_graph_exclude_substrings }
-import v2.std.algebra { contains }
+import v2.std.algebra { contains, fold_list, list_reverse }
+import std.algebra { Cons, Empty, FreeMonoid }
+import v2.compiler.name_resolve { Admission, Import, ImportVisible, ResolutionSubject, resolve_diagnostics }
 
 
 type ReferenceResolutionFact {
@@ -954,3 +956,68 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 }
 
 data reference_deps_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the namespace terminal step lands and reference edges come from the containment authority rather than this segment-prefix match over parsed-tree qualified-name use sites (namespace-resolution-design section 8)")
+
+fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node> {
+  let here = match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_import_decl {
+        Cons { head: n, tail: acc }
+      } else {
+        acc
+      }
+    Absent => acc
+  }
+  fold(n.children, init: here, f: fn(a, e) {
+    collect_import_decl_nodes(n: e.target, acc: a)
+  })
+}
+
+type ImportRowsState
+  = ImportRowsFailed { reason: Symbol }
+  | ImportRowsOk { rows: List<Import> }
+
+fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
+  let gathered = fold_list(
+    xs: list_reverse(xs: collect_import_decl_nodes(n: root, acc: Empty)),
+    empty: ImportRowsOk { rows: Empty },
+    cons: fn(state, import_node) {
+      match state {
+        ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
+        ImportRowsOk { rows: prior } =>
+          match reference_qn_from_import_decl_strict(node: import_node, module_root: root) {
+            Rejected { diagnostics: d } => ImportRowsFailed { reason: d.head.reason }
+            Accepted { value: target_qn, diagnostics: _ } =>
+              ImportRowsOk {
+                rows: Cons {
+                  head: Import { target: target_qn, visibility: ImportVisible },
+                  tail: prior
+                }
+              }
+          }
+      }
+    }
+  )
+  match gathered {
+    ImportRowsFailed { reason: r } => ImportRowsFailed { reason: r }
+    ImportRowsOk { rows: rev } => ImportRowsOk { rows: list_reverse(xs: rev) }
+  }
+}
+
+fn admission_from_module_root(root: Node) -> Outcome<Admission> {
+  match qualified_name_from_module_node(root: root) {
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+    Accepted { value: subject_qn, diagnostics: _ } =>
+      match import_rows_from_parsed_module(root: root) {
+        ImportRowsFailed { reason: r } =>
+          Rejected { diagnostics: resolve_diagnostics(reason: r) }
+        ImportRowsOk { rows: rows } =>
+          Accepted {
+            value: Admission {
+              subject: ResolutionSubject { name: subject_qn },
+              imports: rows
+            },
+            diagnostics: None
+          }
+      }
+  }
+}

@@ -423,6 +423,32 @@ test fn w_generic_forwarded_by_a_returned_closure_carries_clone() -> Bool {
   )
 }
 
+// ONE STORAGE REPRESENTATION FOR A KEYED COLLECTION, AT THE ALIAS POSITION. A `Map<K, V>` field or
+// parameter lowers to the host template `Rc<HashMap<K, V>>`; the alias RHS lowered the authored
+// base instead, so `type Slots = Map<Int, Slot>` became `Rc<crate::std_types::Map<..>>` -- the
+// algebra struct, a second representation of the same carrier, refused by rustc wherever a Slots
+// met a HashMap parameter. The positive control is the field position on the same fixture.
+test fn w_alias_of_a_keyed_collection_renders_the_host_map_template() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_alias_probe\nimport v2.std.collection { Map }\ntype Slot\ntype Slots = Map<Int, Slot>\ntype Holder { slots: Slots, direct: Map<Int, Slot> }\n",
+    "src/test_claim_map_alias_probe.rs",
+    ["pub type Slots = Rc<HashMap<i64, ", "pub direct: Rc<HashMap<i64, "],
+    ["crate::std_types::Map<", "FinitelySupportedFunction<"]
+  )
+}
+
+// A GENERIC IN KEY POSITION CARRIES THE HOST KEY BOUNDS. The HashMap bridges declare
+// `K: Eq + Hash`; a fn generic over a Map key that emitted `K: Clone` alone refused at every bridge
+// call (E0277, three sites in v2_std_collection). The bound is read from the signature.
+test fn w_generic_map_key_parameter_carries_the_host_key_bounds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_key_bound_probe\nimport v2.std.collection { Map, map_lookup }\nimport v2.std.optional { Optional }\nfn probe<K, V>(m: Map<K, V>, key: K) -> Optional<V> {\n  map_lookup(m: m, key: key)\n}\n",
+    "src/test_claim_map_key_bound_probe.rs",
+    ["pub fn probe<K: Clone + std::cmp::Eq + std::hash::Hash, V"],
+    ["pub fn probe<K: Clone, V", "pub fn probe<K, V"]
+  )
+}
+
 // SERVICE OP WITHOUT A REALIZATION, THE DISCRIMINATING RED. `Filesystem.Read(path:)` inside a fn
 // the signature authority judged service-free emitted `filesystem.read(path).await?` -- an unbound
 // name in a non-async fn, the only `.await?` in the whole closure. It is a host seam with no
