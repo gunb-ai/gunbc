@@ -14312,7 +14312,7 @@ fn emit_generated_dispatch_match_arm(sub: CliSubcommandRow, crate_name: String, 
   }
 }
 
-data cli_dispatch_executor_name_construction_note: String = "One-consumer realization helper: only emit_gunbc_cli_dispatch_generated_for_rows consumes this spelling, and the spelling never enters CLI identity, build identity, receipts, cache keys, or product output. The blocked population is command plus the modeled pattern bindings: the complete value-binding population in the generated function before the executor is used. It is projected through modeled_subcommand_bound_fields, the same producer the pattern renderer consumes, rather than guessed from option spellings or a parallel field roster. Every numeric candidate is a legal non-keyword Rust value identifier. A population of length N produces N+1 candidates in fixed numeric order; duplicates may over-allocate but cannot change the first absent answer, and row order is irrelevant. Dissolve this local helper into a general Rust value-identifier allocation authority when that authority exists and can consume the exact dispatch-local binding population; until then, keeping the construction here avoids minting an unconsumed framework."
+data cli_dispatch_executor_name_construction_note: String = "One-consumer realization helper: only emit_gunbc_cli_dispatch_generated_for_rows consumes this spelling, and the spelling never enters CLI identity, build identity, receipts, cache keys, or product output. The blocked population is command plus the modeled pattern bindings: the complete value-binding population in the generated function before the executor is used. It is projected through modeled_subcommand_bound_fields, the same producer the pattern renderer consumes, rather than guessed from option spellings or a parallel field roster. Every numeric candidate is a legal non-keyword Rust value identifier. A population of length N produces N+1 candidates in fixed numeric order; duplicates may over-allocate but cannot change the first absent answer, and row order is irrelevant. The substrate has no nonempty-list carrier from which first can return String, so the helper honestly returns String?; its mathematically unreachable Absent arm emits a compile_error refusal and never fabricates an identifier. Dissolve this local helper into a general Rust value-identifier allocation authority when that authority exists and can consume the exact dispatch-local binding population; until then, keeping the construction here avoids minting an unconsumed framework."
 
 fn dispatch_local_binding_names(rows: List<CliSubcommandRow>) -> List<String> {
   concat(["command"], rows |> flat_map(sub => modeled_subcommand_bound_fields(sub: sub)))
@@ -14328,11 +14328,7 @@ fn fresh_cli_dispatch_executor_name(blocked: List<String>) -> String? {
   candidates |> filter(name => !(blocked |> any(local => local == name))) |> first
 }
 
-fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<CliSubcommandRow>) -> TextFile {
-  let executor_name = match fresh_cli_dispatch_executor_name(blocked: dispatch_local_binding_names(rows: rows)) {
-    Present { value: name } => name
-    Absent => "__gunbc_dispatch_executor_unreachable"
-  }
+fn emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name: String, rows: List<CliSubcommandRow>, executor_name: String) -> TextFile {
   let variants = rows |> map(sub => emit_modeled_subcommand_variant(sub: sub, depth: 0)) |> join(separator: "\n")
   let host_methods = rows |> flat_map(sub => match cli_dispatch_host_method_name(sub: sub) {
     Present { value: method } => [emit_cli_dispatch_host_method(sub: sub, method: method)]
@@ -14351,6 +14347,20 @@ fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<Cli
       "pub trait CliDispatchHost {\n", host_methods, "}\n\n",
       "pub fn dispatch<H: CliDispatchHost>(command: Commands, ", executor_name, ": &H) -> ! {\n    match command {\n",
       arms, "\n    }\n}\n")
+  }
+}
+
+fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<CliSubcommandRow>) -> TextFile {
+  match fresh_cli_dispatch_executor_name(blocked: dispatch_local_binding_names(rows: rows)) {
+    Present { value: executor_name } => emit_gunbc_cli_dispatch_generated_with_executor_name(
+      crate_name: crate_name,
+      rows: rows,
+      executor_name: executor_name
+    )
+    Absent => TextFile {
+      path: concat(rust_source_root(), "gunbc_cli_dispatch_generated", rust_source_ext()),
+      content: "compile_error!(\"REFUSED: generated CLI dispatch has no collision-free executor value binding\");\n",
+    }
   }
 }
 
