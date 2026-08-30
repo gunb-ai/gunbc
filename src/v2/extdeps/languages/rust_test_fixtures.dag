@@ -7,6 +7,7 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.extdeps.languages.dag { dag_bind_arrow_with_body_fixture }
 
 import v2.extdeps.languages.rust {
+  rust_host_build_environment,
   rust_add_declared_inhabitants_root,
   rust_binding_spellings,
   rust_collection_realization_catalog_node,
@@ -545,6 +546,7 @@ data rust_call_emit_host_helper_suffix: String = "\n\nfn helper(a: i32, b: i32) 
 
 fn rust_call_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_call_identity,
     workspace: [
       WorkspaceFile {
@@ -662,6 +664,7 @@ data rust_match_emit_host_main_suffix: String = "\n\nfn main() { let value = one
 
 fn rust_match_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_match_identity,
     workspace: [
       WorkspaceFile {
@@ -960,6 +963,7 @@ data rust_loop_emit_host_main_suffix: String = "\n\nfn main() { let value = one(
 
 fn rust_loop_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_loop_identity,
     workspace: [
       WorkspaceFile {
@@ -1014,6 +1018,7 @@ data rust_classical_not_ingested_emit_host_main_suffix: String = "\n\nfn main() 
 
 fn rust_classical_not_ingested_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_classical_not_ingested_identity,
     workspace: [
       WorkspaceFile {
@@ -1384,6 +1389,7 @@ data rust_field_access_emit_host_main_suffix: String = "\n\nfn main() { let valu
 
 fn rust_field_access_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_field_access_identity,
     workspace: [
       WorkspaceFile {
@@ -1702,6 +1708,7 @@ data rust_variant_construct_emit_host_main_suffix: String = "\n\nuse Coproduct::
 
 fn rust_variant_construct_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_variant_construct_identity,
     workspace: [
       WorkspaceFile {
@@ -2008,6 +2015,7 @@ data rust_logic_complement_emit_host_main_suffix: String = "\n\nuse Bool::*;\n\n
 
 fn rust_logic_complement_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_logic_complement_identity,
     workspace: [
       WorkspaceFile {
@@ -2275,6 +2283,7 @@ fn rust_bool_fn_host_runtime_row_with_width(
   HostRuntimeRowPresent {
     row: EmitHostRuntimeRow {
       transport: HostTransportDescriptor {
+        build_environment: rust_host_build_environment(),
         identity: host_identity_sym,
         workspace: [
           WorkspaceFile {
@@ -2652,6 +2661,7 @@ fn rust_match_loop_fold_family_dispatch_members() -> List<RustEmitHostFamilyMemb
 
 fn rust_match_loop_fold_family_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_match_loop_fold_family_identity,
     workspace: [
       WorkspaceFile {
@@ -3202,6 +3212,7 @@ data rust_rec_nine_emit_host_suffix: String = "\n\nstruct Rec { v: i32 }\n\nfn m
 
 fn rust_rec_nine_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_rec_nine_identity,
     workspace: [
       WorkspaceFile {
@@ -3523,6 +3534,7 @@ data rust_fold_call_emit_host_suffix: String = "\n\nfn fold_call_callee(xs: i32,
 
 fn rust_fold_call_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_fold_call_identity,
     workspace: [
       WorkspaceFile {
@@ -4169,6 +4181,7 @@ fn rust_filesystem_read_family_dispatch_members() -> List<RustEmitHostFamilyMemb
 
 fn rust_filesystem_read_family_host_transport_descriptor(fixture_content: String) -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_filesystem_read_family_identity,
     workspace: [
       WorkspaceFile {
@@ -4277,6 +4290,7 @@ fn rust_shell_exec_run_family_dispatch_members() -> List<RustEmitHostFamilyMembe
 
 fn rust_shell_exec_run_family_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_shell_exec_run_family_identity,
     workspace: [
       WorkspaceFile {
