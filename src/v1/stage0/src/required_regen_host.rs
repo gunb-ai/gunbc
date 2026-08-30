@@ -2196,9 +2196,15 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
     Ok(CargoBuildObservation { compiled_crates })
 }
 
+/// The seed binary ON DISK at the path this process was started from. After a cargo build
+/// replaces that file, Linux reports the running image as `<path> (deleted)`; the digest is
+/// taken from the path itself so the comparison is "what is installed there now" against "what
+/// was installed there before the build", which is the question the refusal asks.
 fn current_exe_digest() -> Result<String, String> {
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let bytes = fs::read(&exe).map_err(|e| format!("read {}: {e}", exe.display()))?;
+    let shown = exe.to_string_lossy().into_owned();
+    let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    let bytes = fs::read(&on_disk).map_err(|e| format!("read {}: {e}", on_disk.display()))?;
     Ok(v1_rt::bytes_identity_hash(&bytes))
 }
 
