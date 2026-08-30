@@ -95,6 +95,7 @@ import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_intege
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
   coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
+  decl_file_declares_structurally,
   rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding,
   declaration_realizes_natively_on_rust
 }
@@ -348,7 +349,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     if type_node_has_unbound_type_variable(n: n, generic_param_names: emit_info.fn_generic_param_names, source_indices: source_indices) {
       "_"
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
-      rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+      rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(n: n, shared_types: shared_types))
     } else {
       render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
@@ -416,9 +417,16 @@ fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>
 fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ">")
 }
-fn render_rust_text_carrier(shared_types: Set<String>) -> String {
-  render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
+fn render_rust_text_carrier(n: Node, shared_types: Set<String>) -> String {
+  let decl_file = type_reference_decl_file(n: n)
+  if decl_file != "" && !decl_file_declares_structurally(dag_name: "String", decl_file: decl_file) {
+    "std::string::String"
+  } else {
+    render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
+  }
 }
+
+data render_rust_text_carrier_identity_note: String = "The rendered spelling for a host-text type position is chosen by DECLARATION IDENTITY, not by the authored spelling alone. A module can carry both a kernel-String data row (bare String resolving to the kernel declaration) and a generated `pub use crate::v2_std_text::{String};` line introduced by a transitively referenced structural v2.std.text signature; in that module the bare spelling String is SHADOWED to the structural carrier, so every kernel row rendered bare inherits the wrong realization silently. A reference whose decl_file is known and NOT in structural_declaration_modules_for(String) therefore renders the grounding spelling std::string::String, which no use line can shadow. A reference resolving to a structural String declaration, or one whose identity is UNKNOWN (empty decl_file), keeps the bare reference spelling -- unknown identity yields no realization change, per type_reference_identity_note, so the residue of unknown-identity sites is the same counted bypass lookup_checkpoint's first arm already declares, never a new guess."
 
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
   host_expr
@@ -1255,7 +1263,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
-        rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+        rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(n: n, shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
@@ -1349,7 +1357,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
     Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
-    rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+    rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(n: n, shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decl_file: type_reference_decl_file(n: n)) {
     render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
