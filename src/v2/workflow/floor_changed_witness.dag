@@ -38,6 +38,7 @@ import v2.std.text { String }
 // in no new vocabulary: the `Declined` arm CARRIES the disposition rather than renaming it.
 type ChangedWitnessExecutionStanding =
     PlannedAndPassed
+  | PlannedAndKnownRedHeld
   | PlannedWithoutTerminalVerdict
   | Declined { disposition: RequiredFloorDisposition }
   | MissingDisposition
@@ -58,13 +59,14 @@ type ChangedWitnessDispositionReading =
     }
   | NoDispositionRow
 
-// THE FOLD. Four standings from two receipt facts, and every red is one of the three the ruling
+// THE FOLD. Five standings from two receipt facts, and every red is one of the three the ruling
 // names: declined, missing, nonterminal.
 //
-// `PlannedAndPassed` MEANS "executed to a terminal verdict the run holds as this witness's own
-// green": an ordinary Pass, an enrolled expected-red failing exactly as enrolled
-// (`KnownRedHeld` — DESIGN §4b(4) keeps discriminating REDs enrolled, so adding or editing one
-// is a sanctioned move this projection must not veto), and an enrolled row that passed
+// `PlannedAndPassed` MEANS an ordinary Pass. `PlannedAndKnownRedHeld` carries the distinct
+// terminal fact that an enrolled expected-red failed exactly as enrolled (DESIGN §4b(4) keeps
+// discriminating REDs enrolled, so adding or editing one is a sanctioned move this projection
+// must not veto). Keeping that fact in the standing prevents a held RED from being described as
+// passed even though both arms are green at this projection's grain. An enrolled row that passed
 // (`KnownRedNowPassing` — the witness itself is green; the STALE roster row reds the floor at
 // its own grain, `stale_quarantine`, with its own remedy, and a second red here would tell the
 // author to fix a witness that is not broken).
@@ -90,7 +92,7 @@ fn changed_witness_execution_standing(
               match o {
                 Passed => PlannedAndPassed {}
                 Failed => PlannedWithoutTerminalVerdict {}
-                KnownRedHeld => PlannedAndPassed {}
+                KnownRedHeld => PlannedAndKnownRedHeld {}
                 KnownRedNowPassing => PlannedAndPassed {}
                 BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
                 PassedOverBudget => PlannedWithoutTerminalVerdict {}
@@ -110,7 +112,7 @@ fn changed_witness_execution_standing(
               match o {
                 Passed => PlannedAndPassed {}
                 Failed => PlannedWithoutTerminalVerdict {}
-                KnownRedHeld => PlannedAndPassed {}
+                KnownRedHeld => PlannedAndKnownRedHeld {}
                 KnownRedNowPassing => PlannedAndPassed {}
                 BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
                 PassedOverBudget => PlannedWithoutTerminalVerdict {}
@@ -133,14 +135,15 @@ fn changed_witness_execution_standing(
   }
 }
 
-// THE BLOCKING POLARITY, STATED ONCE. Exactly one standing is green, and it is the one that
-// required execution: a changed witness identity that did not run to a passing verdict — for
-// any reason, including a decline that is perfectly lawful for the STANDING population — is a
-// red at the changed-set grain, because the change is precisely the moment its author is
+// THE BLOCKING POLARITY, STATED ONCE. Exactly two standings are green, and both required
+// execution: a changed witness identity that did not run to a passing or enrolled-held verdict
+// — for any reason, including a decline that is perfectly lawful for the STANDING population —
+// is a red at the changed-set grain, because the change is precisely the moment its author is
 // present to route it, rename it into the gate, or remove it deliberately.
 fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) -> Bool {
   match standing {
     PlannedAndPassed => false
+    PlannedAndKnownRedHeld => false
     PlannedWithoutTerminalVerdict => true
     Declined { disposition: _ } => true
     MissingDisposition => true
