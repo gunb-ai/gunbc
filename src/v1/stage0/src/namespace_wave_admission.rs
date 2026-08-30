@@ -427,16 +427,6 @@ pub struct TransitionAdmission {
 /// authored with, in the first PR cut from the main that carries the move. The roster is
 /// EMPTY again and empty is not permissive: a run carrying a real namespace delta still
 /// refuses it as UNADJUDICATED until its author adds a row here.
-/// SEVENTH POPULATION AND ITS SHRINK, SAME RULE (2026-08-30, gunbc#9690). Thirty-one
-/// `TargetChanged` rows were authored for the first cut of the network-boot and
-/// firmware-transition standings out of `gunbc.os_install_mechanism` into
-/// `gunbc.boot_artifact_delivery`. Ruling 3 made the FINAL cut instead — the standings now live
-/// in `gunbc.network_boot_delivery` and `gunbc.bmc_firmware_transition`, and the legacy
-/// projection no longer binds them at all — so the required run on cdbf4611bb reported
-/// `0 unadjudicated delta(s), 31 stale admission(s)`: every remaining binding of those
-/// spellings is an authored reference in a rewritten module (auto-admitted) and no row
-/// matched a delta. Removed by the roster's own rule before the PR merged, so the rows never
-/// reached main to refuse unrelated PRs.
 /// THIRD TRANSITION: `admission_from_module_root` moved home. #9710 relocated
 /// `admission_from_module_root` (with `import_rows_from_parsed_module`, `collect_import_decl_nodes`
 /// and `ImportRowsState`) from `v2.compiler.name_resolve` to `v2.lens.reference_deps`, the layer
@@ -467,12 +457,22 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: this stack merging. Base and head then both carry the relocations, no run can
 /// produce these deltas, all 56 report stale, and they are removed by that trigger exactly as
 /// every shrink above was -- a stale row here refuses every unrelated PR in the repository.
-/// EIGHTH SHRINK, SAME RULE (2026-08-30, gunbc#9690). The 58 rows above for #9710's
-/// `admission_from_module_root` relocation and A1-R's three host seams merged to main on
-/// 6221198b9f; the required run on dddcaae38e reported `0 unadjudicated delta(s), 58 stale
-/// admission(s)` — base and head both carry the relocations, so no run can produce those
-/// deltas and every row refused this unrelated PR, exactly the trigger the rows named. Removed
-/// by that trigger. The roster is EMPTY and empty is not permissive.
+/// SIXTH DISSOLUTION (2026-08-30). The A1-R relocation stack (#9724 and its neighbours) merged;
+/// base and head both carry the relocations, no run can produce those deltas, and ALL 58 rows
+/// reported stale on every open PR (measured on gunbc#9746 run 33312973854 and gunbc#9743 run
+/// 33313128325, and independently on session/calm-pike-248 run 33313218281: `0 unadjudicated
+/// delta(s), 58 stale admission(s)`) while main's own push builds stayed green (NoSubject) -- the
+/// PR-only-but-universal block this ledger has now recorded five times, which is again the reason
+/// the shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger
+/// they were authored with. The roster is EMPTY and empty is not permissive: a run carrying a
+/// real namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
+/// A SHRINK IN PARALLEL, SAME RULE (2026-08-30, gunbc#9690). Thirty-one `TargetChanged` rows
+/// were authored for the first cut of the network-boot and firmware-transition standings out of
+/// `gunbc.os_install_mechanism` into `gunbc.boot_artifact_delivery`. Ruling 3 made the FINAL cut
+/// instead — the standings now live in `gunbc.network_boot_delivery` and
+/// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
+/// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
+/// Removed by the roster's own rule before the PR merged, so the rows never reached main.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5). A run that cannot say what it covered is
