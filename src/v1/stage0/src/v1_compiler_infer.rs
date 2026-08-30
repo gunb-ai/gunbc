@@ -3576,6 +3576,30 @@ pub fn equality_leaf_admission(
     }
 }
 
+pub fn equality_ambiguous_candidate_by_identity(
+    cs: Rc<Vec<Rc<GlobalBareCandidate>>>,
+    ident: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    cs.iter().cloned().fold(
+        std::option::Option::None,
+        |acc: _, c: Rc<GlobalBareCandidate>| match acc.clone() {
+            Some(_) => acc.clone(),
+            std::option::Option::None => {
+                if (node_declaration_identity(
+                    c.binding.clone().resolved.clone(),
+                    source_indices.clone(),
+                ) == ident.clone())
+                {
+                    Some(c.binding.clone().resolved.clone())
+                } else {
+                    std::option::Option::None
+                }
+            }
+        },
+    )
+}
+
 pub fn equality_unresolved_leaf_admission(
     peeled: Rc<Node>,
     name: String,
@@ -3606,7 +3630,31 @@ pub fn equality_unresolved_leaf_admission(
                 depth.clone(),
             )
         }
-        _ => equality_exposure_refusal(
+        Some(GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates: cs, .. }) => {
+            match equality_ambiguous_candidate_by_identity(
+                cs.clone(),
+                type_reference_identity(
+                    peeled.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ),
+                scope.type_env.clone().source_indices.clone(),
+            ) {
+                Some(rt) => equality_resolved_declaration_admission(
+                    rt.clone(),
+                    peeled.clone(),
+                    name.clone(),
+                    scope.clone(),
+                    visited.clone(),
+                    depth.clone(),
+                ),
+                std::option::Option::None => equality_exposure_refusal(
+                    expected_type_head_exposure(peeled.clone(), scope.clone()),
+                    name.clone(),
+                    (depth.clone() == 0),
+                ),
+            }
+        }
+        std::option::Option::None => equality_exposure_refusal(
             expected_type_head_exposure(peeled.clone(), scope.clone()),
             name.clone(),
             (depth.clone() == 0),
@@ -3687,11 +3735,28 @@ pub fn equality_resolved_declaration_structure(
                     },
                 )
             } else {
-                equality_exposure_refusal(
-                    expected_type_head_exposure(peeled.clone(), scope.clone()),
-                    name.clone(),
-                    (depth.clone() == 0),
-                )
+                if (((rt.children.clone().len() as i64) > 0)
+                    || (type_reference_identity(
+                        rt.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) != type_reference_identity(
+                        peeled.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    )))
+                {
+                    equality_operand_admission(
+                        rt.clone(),
+                        scope.clone(),
+                        visited.clone(),
+                        (depth.clone() + 1),
+                    )
+                } else {
+                    equality_exposure_refusal(
+                        expected_type_head_exposure(peeled.clone(), scope.clone()),
+                        name.clone(),
+                        (depth.clone() == 0),
+                    )
+                }
             }
         }
     }
