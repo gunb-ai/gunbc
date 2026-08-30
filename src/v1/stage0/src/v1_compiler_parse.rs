@@ -12391,6 +12391,8 @@ pub fn parse_expr_loop(
                                                                     op: binop.clone(),
                                                                     algebra_field:
                                                                         std::option::Option::None,
+                                                                    operand:
+                                                                        std::option::Option::None,
                                                                 }),
                                                                 Rc::new(vec![
                                                                     lhs.clone(),
@@ -14260,6 +14262,8 @@ pub fn parse_expr_loop_no_brace(
                                                                 Rc::new(ExprData::ExprBinOp {
                                                                     op: binop.clone(),
                                                                     algebra_field:
+                                                                        std::option::Option::None,
+                                                                    operand:
                                                                         std::option::Option::None,
                                                                 }),
                                                                 Rc::new(vec![

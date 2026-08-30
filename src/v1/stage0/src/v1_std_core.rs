@@ -29,6 +29,7 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
+pub use crate::std_literal_elaboration::LiteralElaboration;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
@@ -43,6 +44,7 @@ pub use crate::std_occurrence_identity::{
     AuthoredTokenOrdinalSpace, NodeOccurrenceIdentity, OccurrenceIdAllocator,
     OccurrenceTransportRefusal,
 };
+pub use crate::std_operator_realization::OperandDeclaration;
 pub use crate::std_source_annotation::AnnotationAttachmentRefusal;
 use crate::std_source_annotation::AnnotationAttachmentRefusal::*;
 pub use crate::std_source_annotation::{
@@ -300,6 +302,10 @@ pub enum ExprData {
     ExprLiteral {
         value: Rc<LiteralValue>,
     },
+    ExprElaboratedLiteral {
+        value: Rc<LiteralValue>,
+        elaboration: Rc<LiteralElaboration>,
+    },
     ExprError {
         kind: ExprErrorKind,
         message: String,
@@ -327,6 +333,7 @@ pub enum ExprData {
     ExprBinOp {
         op: BinOp,
         algebra_field: Option<AlgebraFieldKind>,
+        operand: Option<Rc<OperandDeclaration>>,
     },
     ExprUnaryOp {
         op: UnaryOpKind,
@@ -2859,6 +2866,10 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
                 LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
                 _ => std::option::Option::None,
             },
+            ExprData::ExprElaboratedLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
+                _ => std::option::Option::None,
+            },
             ExprData::ExprUnaryOp {
                 op: UnaryOpKind::Neg,
                 ..
@@ -2902,6 +2913,9 @@ pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
                     break true;
                 }
             },
+            ExprData::ExprElaboratedLiteral { .. } => {
+                break true;
+            }
             ExprData::ExprUnaryOp {
                 op: UnaryOpKind::Neg,
                 ..
@@ -3369,6 +3383,7 @@ pub fn expr_has_non_tail_self_call(
                 binding_kind: _, ..
             } => false,
             ExprData::ExprLiteral { value: _, .. } => false,
+            ExprData::ExprElaboratedLiteral { .. } => false,
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {

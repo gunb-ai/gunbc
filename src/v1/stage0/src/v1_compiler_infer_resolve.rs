@@ -29,9 +29,10 @@ use crate::v1_std_core::CompilerDiagnostic::{
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
-    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::ExprErrorKind::SemanticExprError;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -2381,6 +2382,10 @@ pub fn resolve_expr_types(
                 expr: texpr.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
+            ExprData::ExprElaboratedLiteral { .. } => Rc::new(ExprResolveResult {
+                expr: texpr.clone(),
+                diagnostics: Rc::new(vec![]),
+            }),
             ExprData::ExprError { kind, message, .. } => Rc::new(ExprResolveResult {
                 expr: crate::v1_std_core::make_expr_error_node(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -2975,6 +2980,7 @@ pub fn resolve_expr_types(
             ExprData::ExprBinOp {
                 op,
                 algebra_field: af,
+                operand: od,
                 ..
             } => {
                 let ch = texpr.children.clone();
@@ -2998,6 +3004,7 @@ pub fn resolve_expr_types(
                         Rc::new(ExprData::ExprBinOp {
                             op: op.clone(),
                             algebra_field: af.clone(),
+                            operand: od.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),
