@@ -1,0 +1,63 @@
+module v2.test.claim.gpt_oss_120b_resolution
+
+import std.types { Bool, String, List, NonEmptyStr }
+import extdeps.ollama.capability {
+  ollama_gpt_oss_20b_model_ref,
+  ollama_gpt_oss_120b_model_ref,
+  ollama_model_ref_eq,
+  ollama_model_support_catalog,
+}
+import gunbc.ollama_model_resolution {
+  gpt_oss_120b_blob_closure,
+  gpt_oss_120b_blob_closure_count,
+  gpt_oss_20b_blob_closure,
+  gpt_oss_120b_manifest_digest_2026_08_30,
+  gpt_oss_20b_manifest_digest_2026_08_19,
+}
+import std.content_hash { Sha256Digest }
+
+data gpt_oss_120b_resolution_witness_note: String = "SPARK-PAIR-0 P1. The discriminating evidence for the 120b identity and closure. Under v2.test.* because the required floor executes that prefix; the claims are over digest strings and reference rows and reach no fleet planner." as String
+
+// THE TWO SIZES ARE DIFFERENT BYTES, WHICH IS THE WHOLE REASON THE TAG IS RESOLVED RATHER THAN TRUSTED.
+test fn w_the_two_gpt_oss_sizes_resolve_to_different_identities() -> Bool {
+  (gpt_oss_120b_manifest_digest_2026_08_30.hex as String)
+    != (gpt_oss_20b_manifest_digest_2026_08_19.hex as String)
+}
+
+test fn w_the_120b_reference_is_not_the_20b_reference() -> Bool {
+  !ollama_model_ref_eq(a: ollama_gpt_oss_120b_model_ref, b: ollama_gpt_oss_20b_model_ref)
+    && (ollama_gpt_oss_120b_model_ref.tag as String) == "120b"
+    && (ollama_gpt_oss_120b_model_ref.name as String) == (ollama_gpt_oss_20b_model_ref.name as String)
+}
+
+// THE CLOSURE IS FROZEN AT FIVE ENTRIES, SO A MANIFEST THAT GREW ONE CANNOT PASS UNNOTICED.
+test fn w_the_120b_closure_is_the_five_blobs_the_manifest_named() -> Bool {
+  gpt_oss_120b_blob_closure_count() == 5
+}
+
+// THE SHARED AUXILIARY BLOBS ARE SHARED BY MEASUREMENT, NOT BY ASSUMPTION.
+//
+// Three of the five entries are byte-identical to the 20b closure. This claim pins that as an
+// observed coincidence of the two manifests rather than a structural guarantee: if upstream
+// republishes either tag with a different template, this reds and the closures diverge honestly.
+test fn w_the_two_closures_share_their_auxiliary_blobs() -> Bool {
+  let shared = filter(gpt_oss_120b_blob_closure, b =>
+    any(gpt_oss_20b_blob_closure, o => (o.hex as String) == (b.hex as String)))
+  length(shared) == 3
+}
+
+// THE MODEL LAYER IS NOT SHARED, WHICH IS WHAT MAKES THEM DIFFERENT MODELS.
+test fn w_the_model_layers_are_not_shared() -> Bool {
+  let model_layers = filter(gpt_oss_120b_blob_closure, b =>
+    (b.media_type as String) == "application/vnd.ollama.image.model")
+  length(model_layers) == 1
+    && !any(model_layers, m =>
+         any(gpt_oss_20b_blob_closure, o => (o.hex as String) == (m.hex as String)))
+}
+
+// THE SUPPORT CATALOGUE ADMITS BOTH SIZES, SO A 120b DESIRED STATE IS NOT UNCATALOGUED.
+test fn w_the_support_catalogue_carries_both_sizes() -> Bool {
+  length(ollama_model_support_catalog) == 2
+    && any(ollama_model_support_catalog, r => ollama_model_ref_eq(a: r.model, b: ollama_gpt_oss_120b_model_ref))
+    && any(ollama_model_support_catalog, r => ollama_model_ref_eq(a: r.model, b: ollama_gpt_oss_20b_model_ref))
+}
