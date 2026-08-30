@@ -91,12 +91,29 @@ import std.types { NonEmptyStr }
 // rounding error on a nearby count.
 type RequiredFloorDisposition =
     Planned
+  | PlannedAsChangedWitness
   | DeclinedLongModule { matched_prefix: String }
   | DeclinedFixtureMember { matched_prefix: String }
   | DeclinedOutsideRequiredGate
   | DeclinedOutsideGateClosure
   | DeclinedDiscoveryExcluded { matched_substring: String }
   | DeclinedCostDebt
+
+// The changed-witness sublane is a second selector over the SAME identity-grain disposition,
+// not a widening of `required_gate_prefixes` and not a terminal row beside a decline. Selection
+// therefore replaces the static gate's answer with one planned arm before execution; every
+// identity still has exactly one disposition and the ordinary answer is preserved unchanged for
+// the standing population.
+fn required_floor_disposition_with_changed_selection(
+  ordinary: RequiredFloorDisposition,
+  selected_as_changed_witness: Bool,
+) -> RequiredFloorDisposition {
+  if selected_as_changed_witness {
+    PlannedAsChangedWitness {}
+  } else {
+    ordinary
+  }
+}
 
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
 //
