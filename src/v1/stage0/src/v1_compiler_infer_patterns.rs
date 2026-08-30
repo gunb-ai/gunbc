@@ -93,7 +93,7 @@ pub fn expand_scrut_from_decl(
 ) -> Rc<Node> {
     {
         let decl_is_disj = (decl.connective.clone() == Connective::Disj);
-        let has_inferred_alias = (((decl.inferred.clone() != None)
+        let has_inferred_alias = (((decl.inferred.clone() != std::option::Option::None)
             && (decl.connective.clone() == Connective::NoConnective))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj.clone() {
@@ -181,7 +181,8 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                 } else {
                     {
                         let def_is_disj = (decl.connective.clone() == Connective::Disj);
-                        let has_inferred_body = ((decl.inferred.clone() != None)
+                        let has_inferred_body = ((decl.inferred.clone()
+                            != std::option::Option::None)
                             && (decl.connective.clone() == Connective::NoConnective));
                         if def_is_disj.clone() {
                             decl.clone()
@@ -311,13 +312,13 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -329,16 +330,16 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -365,13 +366,13 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -383,16 +384,16 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -409,16 +410,16 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -435,13 +436,13 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -453,16 +454,16 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![diagnostic_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -488,7 +489,7 @@ pub fn pattern_subject_preserving_outer_optional(
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_error = if (n.inferred.clone() != None) {
+        let is_error = if (n.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
@@ -498,7 +499,7 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
         } else {
             if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
-                && (n.inferred.clone() != None))
+                && (n.inferred.clone() != std::option::Option::None))
             {
                 match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {

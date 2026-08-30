@@ -111,7 +111,7 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
         .cloned()
         {
             Some(name) => Some(name.clone()),
-            None => None,
+            None => std::option::Option::None,
         }
     }
 }
@@ -185,7 +185,7 @@ impl From<Bool> for bool {
 
 pub type Json = serde_json::Value;
 
-pub type Bytes = Vec<u8>;
+pub type Bytes = std::vec::Vec<u8>;
 
 pub type Char = i64;
 
@@ -240,9 +240,9 @@ pub type Port = i64;
 
 pub type GistId = String;
 
-pub type Secret = String;
+pub type Secret = std::string::String;
 
-pub type SecretValue = String;
+pub type SecretValue = std::string::String;
 
 pub type SemVer = String;
 

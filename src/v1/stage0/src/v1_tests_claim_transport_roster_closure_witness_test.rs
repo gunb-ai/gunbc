@@ -39,7 +39,7 @@ pub fn str_expr(s: String) -> Rc<Node> {
             value: Rc::new(LiteralValue::LitStr { value: s.clone() }),
         }),
         Rc::new(vec![]),
-        None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )
 }
@@ -63,11 +63,11 @@ pub fn rest_transport_classifies_as_rest() -> bool {
         str_expr("https://example.invalid".to_string()),
         Rc::new(vec![]),
         Rc::new(vec![]),
-        None,
-        None,
-        None,
-        None,
-        None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )) == "rest".to_string())
 }
@@ -77,7 +77,7 @@ pub fn shell_transport_classifies_as_shell() -> bool {
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         Rc::new(vec![str_expr("ls".to_string())]),
         Rc::new(vec![]),
-        None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )) == "shell".to_string())
 }
@@ -86,7 +86,7 @@ pub fn file_transport_classifies_as_file() -> bool {
     (kind_name(crate::v1_std_core::file_transport_node(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         str_expr("/tmp/x".to_string()),
-        None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )) == "file".to_string())
 }
@@ -109,7 +109,7 @@ pub fn keyless_transport() -> Rc<Node> {
             crate::v1_std_core::no_span(),
         )]),
         Rc::new(vec![]),
-        None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )
 }
@@ -155,7 +155,7 @@ pub fn rest_wins_over_a_file_key_on_the_same_transport() -> bool {
             ),
         ]),
         Rc::new(vec![]),
-        None,
+        std::option::Option::None,
         crate::v1_std_core::no_span(),
     )) == "rest".to_string())
 }

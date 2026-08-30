@@ -1213,7 +1213,7 @@ pub fn hex_digit_value(cp: i64) -> Option<i64> {
             if ((cp.clone() >= 65) && (cp.clone() <= 70)) {
                 Some((cp.clone() - 55))
             } else {
-                None
+                std::option::Option::None
             }
         }
     }
@@ -1223,9 +1223,9 @@ pub fn hex_escape_char(hi: i64, lo: i64) -> Option<i64> {
     match hex_digit_value(hi.clone()) {
         Some(h) => match hex_digit_value(lo.clone()) {
             Some(l) => Some(((h.clone() * 16) + l.clone())),
-            None => None,
+            None => std::option::Option::None,
         },
-        None => None,
+        None => std::option::Option::None,
     }
 }
 
@@ -1243,7 +1243,7 @@ pub fn unicode_escape_at(
 ) -> Option<UnicodeEscape> {
     loop {
         if (pos.clone() >= (source.clone().len() as i64)) {
-            break None;
+            break std::option::Option::None;
         } else {
             let ch = code_point_at(source.clone(), pos.clone());
             if (ch.clone() == 125) {
@@ -1255,11 +1255,11 @@ pub fn unicode_escape_at(
                         next_pos: (pos.clone() + 1),
                     });
                 } else {
-                    break None;
+                    break std::option::Option::None;
                 }
             } else {
                 if (digit_count.clone() >= 6) {
-                    break None;
+                    break std::option::Option::None;
                 } else {
                     match hex_digit_value(ch.clone()) {
                         Some(digit) => {
@@ -1272,7 +1272,7 @@ pub fn unicode_escape_at(
                             continue;
                         }
                         None => {
-                            break None;
+                            break std::option::Option::None;
                         }
                     }
                 }
@@ -1358,7 +1358,7 @@ pub fn process_escapes_loop(
                                                         if (next.clone() == 125) {
                                                             Some(125)
                                                         } else {
-                                                            None
+                                                            std::option::Option::None
                                                         }
                                                     }
                                                 }

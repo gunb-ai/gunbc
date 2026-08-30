@@ -170,11 +170,11 @@ pub fn record_use(
             Some(usage) => usage.clone(),
             None => Rc::new(BindingUsage {
                 name: name.clone(),
-                binding_kind: None,
+                binding_kind: std::option::Option::None,
                 consumers: Rc::new(vec![]),
             }),
         };
-        let effective_kind = if (existing.binding_kind.clone() != None) {
+        let effective_kind = if (existing.binding_kind.clone() != std::option::Option::None) {
             existing.binding_kind.clone()
         } else {
             binding_kind.clone()
@@ -618,7 +618,7 @@ pub fn walk_expr(
                                 usage.name.clone(),
                                 EdgeKind::Read,
                                 "lambda-capture".to_string(),
-                                None,
+                                std::option::Option::None,
                                 0,
                             )
                         },
@@ -648,7 +648,7 @@ pub fn walk_expr(
                                 usage.name.clone(),
                                 EdgeKind::Read,
                                 "foreach-capture".to_string(),
-                                None,
+                                std::option::Option::None,
                                 0,
                             )
                         },
@@ -1329,7 +1329,7 @@ pub fn analyze_ownership(
                                 p_name.clone(),
                                 Rc::new(BindingUsage {
                                     name: p_name.clone(),
-                                    binding_kind: None,
+                                    binding_kind: std::option::Option::None,
                                     consumers: Rc::new(vec![]),
                                 }),
                             ),

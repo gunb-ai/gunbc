@@ -73,6 +73,20 @@ pub fn uri_is_url(uri: Rc<Uri>) -> bool {
     uri_scheme_is_http(uri.scheme.clone())
 }
 
+pub fn uri_scheme_inhabitants() -> Rc<Vec<UriScheme>> {
+    Rc::new(vec![
+        UriScheme::Http,
+        UriScheme::Https,
+        UriScheme::Tftp,
+        UriScheme::File,
+        UriScheme::Ftp,
+        UriScheme::Javascript,
+        UriScheme::Data,
+        UriScheme::Vbscript,
+        UriScheme::Mailto,
+    ])
+}
+
 pub fn uri_scheme_wire(s: UriScheme) -> String {
     match s.clone() {
         UriScheme::Http => "http://".to_string(),

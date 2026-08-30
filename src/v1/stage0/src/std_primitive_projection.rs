@@ -325,7 +325,7 @@ pub fn primitive_projection_row_for_declaration(
     declaration: Rc<DeclarationRef>,
 ) -> Option<Rc<PrimitiveProjection>> {
     primitive_projection_roster().iter().cloned().fold(
-        None,
+        std::option::Option::None,
         |acc: _, row: Rc<PrimitiveProjection>| match acc.clone() {
             Some(_) => acc.clone(),
             None => {
