@@ -184,6 +184,7 @@ jobs:
       - name: clippy, all targets
         id: rust_clippy_all_targets
         run: |
+          # dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.
           cargo clippy --all-targets -- -D warnings
   witnesses:
     runs-on: [self-hosted, linux, arm64]

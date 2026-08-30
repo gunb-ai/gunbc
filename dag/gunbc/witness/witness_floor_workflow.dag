@@ -18,6 +18,7 @@ import v2.std.algebra { list_map }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import v2.workflow.ci_workflow_run_emit { ci_toolchain_homes_isolated_or_refuse_command }
+import std.dissolution { DissolutionCondition, unbound_dissolution, dissolution_description }
 import gunbc.toolchain_home_standing {
   admit_workflow_toolchain_homes,
   WorkflowToolchainHomesAdmitted,
@@ -1254,11 +1255,16 @@ fn rust_unit_tests_step() -> Step {
 // integration-test and example targets were compiled by nobody -- which is how twelve of them
 // sat red on main (2026-08-30) behind a green required run. Ordered after the unit tests so a
 // red test verdict is never hidden behind a lint verdict in the same job.
+data rust_clippy_all_targets_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rust_clippy_all_targets_step -- hand-shell `run:` carrier for the one cargo clippy invocation gunbc.repo_self_build repo_self_clippy_command names; the argv is modeled, the step body is a foreign-executor shell line. DISSOLVES WHEN the orchestration-to-shell bash emission (v2.workflow.ci_workflow_run_emit ci_workflow_run_emit_pipeline) renders a modeled cargo Pipeline step for this command, the same capability ci_pin_rustup_default_script waits on -- at which point this data row and the concat below delete together.")
+
 fn rust_clippy_all_targets_step() -> Step {
   RunStep {
     name: Present { value: "clippy, all targets" },
     id: Present { value: "rust_clippy_all_targets" },
-    run: concat(repo_self_clippy_command(), "\n"),
+    run: concat(
+      concat("# ", concat(dissolution_description(condition: rust_clippy_all_targets_shell_emit_dissolution_trigger), "\n")),
+      concat(repo_self_clippy_command(), "\n")
+    ),
     shell: none,
     env: none,
     working_directory: none,
