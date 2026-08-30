@@ -168,6 +168,18 @@ data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMod
   evidence: [],
 }
 
+data meaning_fork: RecurringFailureMode = RecurringFailureMode {
+  identity: "meaning_fork" as NonEmptyStr,
+  authored: "**meaning fork** (one name carries materially different semantic contracts under hidden state. Recognition rule: hold the name and declared effective version constant and vary the hidden state; if obligations, quality floor, refusal behavior, billing consequence, or remedy change without a distinct variant name, the name has forked. This is the one-name/two-meanings dual of nicknaming.)",
+  evidence: [],
+}
+
+data externalized_degradation: RecurringFailureMode = RecurringFailureMode {
+  identity: "externalized_degradation" as NonEmptyStr,
+  authored: "**externalized degradation** (an actor paid, trusted, or assigned to absorb a risk or cost silently shifts it to a counterparty while preserving the apparent name, price, or contract. Recognition rule: identify the risk receipt or assigned responsibility, trigger the adverse state, and follow who bears the marginal burden; if the counterparty's burden rises while the firm neither absorbs it through its reserve, refusal, or remedy path nor exposes a separately named and priced transfer, the risk was re-exported. The honest arms are absorb-and-reserve or separately name-and-price the transfer.)",
+  evidence: [],
+}
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   hollow_alias,
   state_space_conflation,
@@ -189,4 +201,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   remediation_mutated_view,
   diagnostic_name_mechanism_silent,
   identity_absent_graph_traversal,
+  meaning_fork,
+  externalized_degradation,
 ]
