@@ -74,9 +74,9 @@ pub use crate::v1_compiler_parse::{ParserCallIdentity, ParserResultWitness};
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda,
-    ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprUnaryOp,
-    ExprVar,
+    ExprBinOp, ExprBlock, ExprCall, ExprElaboratedLiteral, ExprError, ExprFieldAccess, ExprForEach,
+    ExprIf, ExprLambda, ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn,
+    ExprUnaryOp, ExprVar,
 };
 use crate::v1_std_core::MatchPattern::{Bind, VariantPattern};
 use crate::v1_std_core::MethodSemantics::{
@@ -9125,6 +9125,16 @@ pub fn cost_of_expr(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: _, .. } => Rc::new(SummaryResult {
+                summary: Rc::new(ComplexitySummary {
+                    work: Rc::new(CostExpr::CostConst { value: 1 }),
+                    span: Rc::new(CostExpr::CostConst { value: 1 }),
+                    output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
+                    certainty: Certainty::Proven,
+                    peak_space: None,
+                }),
+                table: table.clone(),
+            }),
+            ExprData::ExprElaboratedLiteral { .. } => Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
                     work: Rc::new(CostExpr::CostConst { value: 1 }),
                     span: Rc::new(CostExpr::CostConst { value: 1 }),
