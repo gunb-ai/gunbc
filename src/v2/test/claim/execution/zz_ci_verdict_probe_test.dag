@@ -1,0 +1,159 @@
+module v2.test.execution.zz_ci_verdict_probe
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn ciprobe_variant_ok_verdict() -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  emit_variant_construct_eval_run(tree: emit_variant_construct_eval_tree).verdict
+}
+
+test fn ciprobe_variant_ok_is_pass() -> Bool {
+  match ciprobe_variant_ok_verdict() {
+    Pass => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_ok_is_mismatch() -> Bool {
+  match ciprobe_variant_ok_verdict() {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_ok_is_build_failed() -> Bool {
+  match ciprobe_variant_ok_verdict() {
+    BuildFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_ok_is_run_failed() -> Bool {
+  match ciprobe_variant_ok_verdict() {
+    RunFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_ok_is_deferred() -> Bool {
+  match ciprobe_variant_ok_verdict() {
+    Deferred { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+fn ciprobe_variant_wrong_verdict() -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  emit_variant_construct_eval_run(tree: emit_variant_construct_eval_wrong_value_tree).verdict
+}
+
+test fn ciprobe_variant_wrong_is_pass() -> Bool {
+  match ciprobe_variant_wrong_verdict() {
+    Pass => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_wrong_is_mismatch() -> Bool {
+  match ciprobe_variant_wrong_verdict() {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_wrong_is_build_failed() -> Bool {
+  match ciprobe_variant_wrong_verdict() {
+    BuildFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_wrong_is_run_failed() -> Bool {
+  match ciprobe_variant_wrong_verdict() {
+    RunFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_variant_wrong_is_deferred() -> Bool {
+  match ciprobe_variant_wrong_verdict() {
+    Deferred { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+fn ciprobe_meet_ok_verdict() -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  meet_join_eval_run(root: dag_meet_arrow_with_body_fixture, target: rust_logic_meet_target_model_staging(), subgraph: dag_meet_eval_subgraph_fixture).verdict
+}
+
+test fn ciprobe_meet_ok_is_pass() -> Bool {
+  match ciprobe_meet_ok_verdict() {
+    Pass => true
+    _ => false
+  }
+}
+
+test fn ciprobe_meet_ok_is_mismatch() -> Bool {
+  match ciprobe_meet_ok_verdict() {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_meet_ok_is_build_failed() -> Bool {
+  match ciprobe_meet_ok_verdict() {
+    BuildFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_meet_ok_is_run_failed() -> Bool {
+  match ciprobe_meet_ok_verdict() {
+    RunFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_meet_ok_is_deferred() -> Bool {
+  match ciprobe_meet_ok_verdict() {
+    Deferred { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+fn ciprobe_complement_wrong_verdict() -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
+  emit_complement_eval_run(tree: emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)).verdict
+}
+
+test fn ciprobe_complement_wrong_is_pass() -> Bool {
+  match ciprobe_complement_wrong_verdict() {
+    Pass => true
+    _ => false
+  }
+}
+
+test fn ciprobe_complement_wrong_is_mismatch() -> Bool {
+  match ciprobe_complement_wrong_verdict() {
+    SemanticMismatch { actual: _, falsification: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_complement_wrong_is_build_failed() -> Bool {
+  match ciprobe_complement_wrong_verdict() {
+    BuildFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_complement_wrong_is_run_failed() -> Bool {
+  match ciprobe_complement_wrong_verdict() {
+    RunFailed { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}
+
+test fn ciprobe_complement_wrong_is_deferred() -> Bool {
+  match ciprobe_complement_wrong_verdict() {
+    Deferred { actual: _, diagnostic: _ } => true
+    _ => false
+  }
+}

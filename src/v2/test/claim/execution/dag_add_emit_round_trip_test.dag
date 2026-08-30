@@ -12,6 +12,8 @@ import v2.compiler.translate {
 import v2.extdeps.languages.dag {
   dag_inhabitant_atom,
   dag_arrow_domain_conj_node,
+  dag_int_type_binding,
+  dag_type_atom_node,
   dag_fixture_emitted_add_fn,
   dag_fixture_int_inhabitant,
   dag_target_model
@@ -102,6 +104,20 @@ fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
       )
     }
   } else if node == dag_inhabitant_atom(id: ^dag_surface_spelling_int) {
+    Holds {
+      value: dag_add_canonical_grounding(
+        node: node,
+        algebra: dag_fixture_int_inhabitant
+      )
+    }
+  } else if node == dag_arrow_domain_conj_node() {
+    Holds {
+      value: dag_add_canonical_grounding(
+        node: node,
+        algebra: node
+      )
+    }
+  } else if node == dag_type_atom_node(identity: dag_int_type_binding()) {
     Holds {
       value: dag_add_canonical_grounding(
         node: node,
