@@ -47,6 +47,7 @@ import gunbc.spark.serving_observed_members {
 import gunbc.spark.serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
 
 import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 
 data subject_host: HostIdentity = "srv6" as HostIdentity
 
@@ -98,6 +99,14 @@ fn subject_release() -> SparkServingRelease? {
 // reconcile emits no MemberAction for the slot, so no pull operation exists to suppress.
 //
 // This is the claim that was false while everything else was green.
+fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
+  SparkServingObservationProvenance {
+    host: host,
+    attempt: "witness-attempt" as NonEmptyStr,
+    locus: "witness-locus" as NonEmptyStr,
+  }
+}
+
 test fn an_exact_store_carries_the_desired_identity() -> Bool {
   match subject_release() {
     Absent => false
@@ -313,6 +322,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
     Absent => false
     Present { value: r } => {
       let with_store = spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
         host: subject_host,
         runtime: complete_runtime_stub(),
         store: ModelStoreComplete {
@@ -325,6 +335,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
         linger: LingerObservedEnabled,
       )
       let without = spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
         host: subject_host,
         runtime: complete_runtime_stub(),
         store: ModelStoreObservationRefused { cause: "leg did not run" as NonEmptyStr },

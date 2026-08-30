@@ -23,6 +23,7 @@ import gunbc.spark.serving_execution_schedule {
   ScheduledRows,
   SparkServingAxisDisposition,
   SparkServingAxisPlanned,
+  spark_serving_bound_axis_plan,
   SparkServingAxisRefused,
   SparkServingAxisNotApplicable,
   SparkServingAxisUnobserved,
@@ -511,9 +512,13 @@ fn spark_serving_scheduled_rows_for_release(
           SparkServingTypedActionsProjected { rows: spark_rows } =>
             SparkServingScheduledRowsReady {
               axis: SparkServingAxisPlanned {
-                host: host as HostIdentity,
-                observed_members: observed_members,
-                rows: spark_rows,
+                plan: spark_serving_bound_axis_plan(
+                  host: host as HostIdentity,
+                  attempt: projection.provenance.attempt,
+                  locus: projection.provenance.locus,
+                  observed_members: observed_members,
+                  rows: spark_rows,
+                ),
               },
               plan: full_plan,
             }
@@ -593,7 +598,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
           SparkServingPlanArtifactRefused {
             cause: join(["spark axis refused on host ", h as String, ": ", why], ""),
           }
-        SparkServingAxisPlanned { host: _, observed_members: ms, rows: rows } =>
+        SparkServingAxisPlanned { plan: bound } =>
           SparkServingPlanArtifactReady {
             artifact: spark_serving_fleet_converge_plan_artifact_from_rows(
               host: host,
@@ -601,8 +606,8 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
               observed_timers: observed_timers,
               observed_caps: observed_caps,
               spark_plan: full_plan,
-              spark_rows: rows,
-              observed_spark: ms,
+              spark_rows: bound.rows,
+              observed_spark: bound.observed_members,
               observed_slots: [],
               observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
             ),

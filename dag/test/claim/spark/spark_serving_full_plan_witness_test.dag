@@ -2,6 +2,7 @@ module test.claim.spark_serving_full_plan_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 import gunbc.membership_reconcile {
   MembershipPlan,
   membership_write_count,
@@ -161,7 +162,7 @@ fn project(
   activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
-  spark_serving_observed_members(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger)
+  spark_serving_observed_members(host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, activity: activity, linger: linger, provenance: witness_provenance(host: host))
 }
 
 fn bare_runtime() -> RuntimeMaterializationObservation {
@@ -252,6 +253,14 @@ fn full_plan_refuses(
 
 // The declared desired population is four members. This is the denominator every claim below divides
 // by, asserted rather than assumed.
+fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
+  SparkServingObservationProvenance {
+    host: host,
+    attempt: "witness-attempt" as NonEmptyStr,
+    locus: "witness-locus" as NonEmptyStr,
+  }
+}
+
 test fn the_declared_desired_population_is_seven_members() -> Bool {
   match subject_release() {
     Absent => false
@@ -431,6 +440,7 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 // roster full of drift-detection claims is satisfied by a projection that reports drift always.
 fn observed_exactly_desired(r: SparkServingRelease) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
     host: subject_host,
     runtime: complete_required_runtime(),
     store: complete_required_store(),
@@ -481,6 +491,7 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
           host: subject_host,
           store: complete_required_store(),
           runtime: RuntimeMaterializationIncomplete {
@@ -1280,6 +1291,7 @@ fn c3_projection(
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
     host: subject_host,
     store: complete_required_store(),
     runtime: RuntimeMaterializationAbsent,

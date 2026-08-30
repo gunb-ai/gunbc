@@ -2,6 +2,7 @@ module gunbc.spark.serving_observed_members
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 import gunbc.ownership { Owned, Ensured }
 import gunbc.spark.serving_release {
   SparkServingObservation,
@@ -92,7 +93,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool, provenance: SparkServingObservationProvenance }
 
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -273,8 +274,10 @@ fn spark_serving_reached_host_members(
   enablement: SparkServingUnitManagerState,
   activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
+  provenance: SparkServingObservationProvenance,
 ) -> SparkServingObservedMemberProjection {
   SparkServingObservedMembers {
+    provenance: provenance,
     members: concat(
       concat(
         spark_serving_observed_runtime_members(host: host, runtime: runtime),

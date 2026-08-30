@@ -73,6 +73,7 @@ import gunbc.spark.serving_observed_members {
   spark_serving_observed_members,
 }
 import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 import gunbc.spark.serving_converge_slice_wet {
   render_observed_linger,
   spark_serving_slice_verdict_is_converged,
@@ -108,6 +109,14 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data witness_host_srv5: NonEmptyStr = "srv5" as NonEmptyStr
+
+fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
+  SparkServingObservationProvenance {
+    host: host,
+    attempt: "witness-attempt" as NonEmptyStr,
+    locus: "witness-locus" as NonEmptyStr,
+  }
+}
 
 test fn linger_slice_noop_when_linger_already_enabled() -> Bool {
   spark_serving_linger_slice_noop_when_converged(linger_enabled: true)
@@ -188,6 +197,7 @@ fn slice_release() -> SparkServingRelease? {
 
 fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
     host: witness_host_srv5 as HostIdentity,
     runtime: RuntimeMaterializationComplete {
       identity: ollama_runtime_materialization_identity_for_required_release(),

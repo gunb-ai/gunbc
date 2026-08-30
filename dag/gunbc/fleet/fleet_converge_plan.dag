@@ -2394,10 +2394,13 @@ fn fleet_converge_plan_artifact(
           observed_activation_readiness: observed_activation_readiness,
         )
       }
-    SparkServingAxisPlanned { host: ah, observed_members: ms, rows: rows } =>
-      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+    SparkServingAxisPlanned { plan: bound } =>
+      if !host_identity_eq(a: bound.host, b: host as HostIdentity) {
         FleetConvergePlanArtifactRefused {
-          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+          refusal: SparkAxisSubjectHostMismatch {
+            axis_host: bound.host,
+            subject_host: host as HostIdentity,
+          },
         }
       } else {
         fleet_converge_plan_artifact_assembled(
@@ -2405,8 +2408,8 @@ fn fleet_converge_plan_artifact(
           prior_generation: prior_generation,
           observed_timers: observed_timers,
           observed_caps: observed_caps,
-          observed_spark: ms,
-          spark_rows: rows,
+          observed_spark: bound.observed_members,
+          spark_rows: bound.rows,
           observed_slots: observed_slots,
           observed_fabric_cells: observed_fabric_cells,
           observed_activation_readiness: observed_activation_readiness,

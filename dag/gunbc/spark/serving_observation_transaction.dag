@@ -107,6 +107,20 @@ type SparkServingObservationTransaction sole_constructor {
   captures: List<SparkServingProbeLegCapture>
 }
 
+// PROVENANCE SURVIVES THE PROJECTION, OR THE CARRIER BOUGHT NOTHING.
+//
+// A transaction that pins one host, one attempt and one locus during acquisition, and then hands
+// back a value that has forgotten all three, has moved the problem rather than solved it: two
+// observations of one host from two attempts are again indistinguishable downstream, and "which
+// credential path produced this" is again unanswerable from the value. So the derived observation
+// carries the identity of the transaction it came from, and consumers that join facts across
+// attempts can be caught doing it.
+type SparkServingObservationProvenance sole_constructor {
+  host: HostIdentity
+  attempt: NonEmptyStr
+  locus: NonEmptyStr
+}
+
 fn spark_serving_transaction_capture(
   txn: SparkServingObservationTransaction,
   leg: SparkServingProbeLeg,

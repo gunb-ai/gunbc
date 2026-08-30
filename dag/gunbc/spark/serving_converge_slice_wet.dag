@@ -62,6 +62,7 @@ import gunbc.spark.serving_observe {
   spark_serving_observe_residency,
   spark_serving_observe_host_via_locus,
   spark_serving_observed_facts_via_locus,
+  SparkServingObservationProvenance,
   SparkServingObservedFactsReady,
   SparkServingObservedFactsRefused,
   spark_serving_observed_members_for_unit,
@@ -318,7 +319,7 @@ fn spark_serving_replan_rows(
   match spark_serving_observed_facts_via_locus(context: context, host: host) {
     SparkServingObservedFactsRefused { cause: why } =>
       SparkServingReplanRowsRefused { cause: why as String }
-    SparkServingObservedFactsReady { runtime: rt, store: st, observed_unit: ou } =>
+    SparkServingObservedFactsReady { runtime: rt, store: st, observed_unit: ou, linger: _, provenance: prov } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: host as NonEmptyStr,
     prior_generation: 0,
@@ -330,6 +331,7 @@ fn spark_serving_replan_rows(
       store: st,
       observed_unit: ou,
       linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
+      provenance: prov,
     ),
   ) {
     SparkServingPlanArtifactRefused { cause: why } =>
@@ -502,7 +504,7 @@ fn spark_serving_converge_slice_wet_host_report(
       store: st,
       observed_unit: ou,
       linger: observed_linger,
-      provenance: _,
+      provenance: prov,
     } =>
       match observed_linger {
         LingerUnobservedState =>
@@ -517,11 +519,13 @@ fn spark_serving_converge_slice_wet_host_report(
           )
         LingerObservedEnabled => spark_serving_slice_report_for(
           context: context, host: host, endpoint: endpoint, execute_apply: execute_apply,
-          transport: transport, runtime: rt, store: st, observed_unit: ou, linger_enabled: true,
+          transport: transport, runtime: rt, store: st, observed_unit: ou, provenance: prov,
+          linger_enabled: true,
         )
         LingerObservedDisabled => spark_serving_slice_report_for(
           context: context, host: host, endpoint: endpoint, execute_apply: execute_apply,
-          transport: transport, runtime: rt, store: st, observed_unit: ou, linger_enabled: false,
+          transport: transport, runtime: rt, store: st, observed_unit: ou, provenance: prov,
+          linger_enabled: false,
         )
       }
   }
@@ -542,6 +546,7 @@ fn spark_serving_slice_report_for(
   runtime: RuntimeMaterializationObservation,
   store: ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
+  provenance: SparkServingObservationProvenance,
   linger_enabled: Bool,
 ) -> SparkServingSliceHostReport {
   match spark_serving_fleet_converge_plan_artifact(
@@ -554,6 +559,7 @@ fn spark_serving_slice_report_for(
                 runtime: runtime,
                 store: store,
                 observed_unit: observed_unit,
+                provenance: provenance,
                 linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
               ),
             ) {

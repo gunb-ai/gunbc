@@ -2,6 +2,7 @@ module test.claim.spark.spark_cell_role_retirement_witness_test
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 import gunbc.fleet_intent_network { operator_host_srv5, operator_host_srv6 }
 import gunbc.spark.cell_role {
   SparkCellRole,
@@ -172,6 +173,14 @@ fn w_retirement_effects(address: SparkServingResourceAddress) -> List<SparkServi
 // A cell holding both roles has no constructor, so this claim cannot be about that -- it is about
 // the ASSIGNMENT, where the same host appearing in both rosters is still writable. It is the
 // assignment, not the type, that this checks.
+fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
+  SparkServingObservationProvenance {
+    host: host,
+    attempt: "witness-attempt" as NonEmptyStr,
+    locus: "witness-locus" as NonEmptyStr,
+  }
+}
+
 test fn w_spark_roles_are_disjoint_over_the_assignment() -> Bool {
   length(spark_serving_cell_hosts()) == 1
     && length(spark_training_cell_hosts()) == 1
@@ -555,6 +564,7 @@ fn w_complete_store() -> ModelStoreObservation {
 
 fn w_observed_serving_projection(host: HostIdentity) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
+    provenance: witness_provenance(host: host),
     host: host,
     runtime: RuntimeMaterializationComplete {
       identity: ollama_runtime_materialization_identity_for_required_release(),

@@ -723,15 +723,49 @@ fn scheduled_rows_from_frozen_schedule<Row>(
 //
 // It is generic in the row for the same reason ScheduledRows is: the row type is declared upstream
 // in the plan layer, and naming it here would close an import cycle.
+// THE PLANNED PAYLOAD IS OPAQUE, SO A PLAN CANNOT BE ASSEMBLED OUT OF ARBITRARY PARTS.
+//
+// SparkServingAxisPlanned used to carry host, observed_members and rows as three public fields, so
+// anything could author one: srv3's identity beside srv5's members beside rows from a third place,
+// and the artifact's host join would happily accept it because all three agreed with each other by
+// the author's arrangement rather than by provenance. The host guard was a real mechanical wall, but
+// it walled the wrong thing -- it checked that two supplied values matched, not that either was
+// obtained by observing anything.
+//
+// BoundSparkServingAxisPlan is sole_constructor and lives here, so the only mint is the row producer
+// that consumed a transaction. Everything in it -- the host, the members, the rows, and the attempt
+// and locus they were read under -- is a projection of ONE producer's output rather than a record
+// somebody filled in. The artifact may project members and rows back out of it precisely because it
+// can no longer have been assembled from independent arguments.
+type BoundSparkServingAxisPlan<Row> sole_constructor {
+  host: HostIdentity
+  attempt: NonEmptyStr
+  locus: NonEmptyStr
+  observed_members: List<SparkServingMember>
+  rows: ScheduledRows<Row>
+}
+
+fn spark_serving_bound_axis_plan<Row>(
+  host: HostIdentity,
+  attempt: NonEmptyStr,
+  locus: NonEmptyStr,
+  observed_members: List<SparkServingMember>,
+  rows: ScheduledRows<Row>,
+) -> BoundSparkServingAxisPlan<Row> {
+  BoundSparkServingAxisPlan {
+    host: host,
+    attempt: attempt,
+    locus: locus,
+    observed_members: observed_members,
+    rows: rows,
+  }
+}
+
 type SparkServingAxisDisposition<Row>
   = SparkServingAxisNotApplicable { host: HostIdentity }
   | SparkServingAxisUnobserved { host: HostIdentity }
   | SparkServingAxisRefused { host: HostIdentity, cause: String }
-  | SparkServingAxisPlanned {
-      host: HostIdentity
-      observed_members: List<SparkServingMember>
-      rows: ScheduledRows<Row>
-    }
+  | SparkServingAxisPlanned { plan: BoundSparkServingAxisPlan<Row> }
 
 // The members the artifact's observed baseline must fingerprint. A refusal contributes none -- and
 // that is not the same as an observed-empty population, which is why the caller must consult the
@@ -741,7 +775,7 @@ fn spark_serving_axis_host<Row>(a: SparkServingAxisDisposition<Row>) -> HostIden
     SparkServingAxisNotApplicable { host: h } => h
     SparkServingAxisUnobserved { host: h } => h
     SparkServingAxisRefused { host: h, cause: _ } => h
-    SparkServingAxisPlanned { host: h, observed_members: _, rows: _ } => h
+    SparkServingAxisPlanned { plan: p } => p.host
   }
 }
 

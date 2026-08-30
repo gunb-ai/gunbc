@@ -130,6 +130,7 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_probe_leg_capture_of,
   spark_serving_observation_transaction_of,
   spark_serving_transaction_result,
+  SparkServingObservationProvenance,
   ProbeLoadState, ProbeIsActive, ProbeVersion, ProbeTags, ProbeNvidiaDriver,
   ProbeRuntimeReceipt, ProbeActiveEnter, ProbeDefaultTargetEnter, ProbeUptime,
   ProbeGrants, ProbePasswd, ProbeAuthorizedKeys, ProbeLinger,
@@ -523,20 +524,6 @@ fn spark_serving_account_line(host: HostIdentity, account: SparkManagedAccountOb
 // below DERIVES the observation from the readback rather than accepting it. The disagreeing state
 // now has no constructor, which is why the coverage join can read readback.host and be reading the
 // only host there is.
-// PROVENANCE SURVIVES THE PROJECTION, OR THE CARRIER BOUGHT NOTHING.
-//
-// A transaction that pins one host, one attempt and one locus during acquisition, and then hands
-// back a value that has forgotten all three, has moved the problem rather than solved it: two
-// observations of one host from two attempts are again indistinguishable downstream, and "which
-// credential path produced this" is again unanswerable from the value. So the derived observation
-// carries the identity of the transaction it came from, and consumers that join facts across
-// attempts can be caught doing it.
-type SparkServingObservationProvenance sole_constructor {
-  host: HostIdentity
-  attempt: NonEmptyStr
-  locus: NonEmptyStr
-}
-
 type SparkServingHostObservation sole_constructor {
   readback: SparkServingReadback
   observation: SparkServingObservation
@@ -600,6 +587,7 @@ fn spark_serving_host_observation(
       store: store,
       observed_unit: observed_unit,
       linger: linger,
+      provenance: provenance,
     ),
     provenance: provenance,
   }
@@ -2622,8 +2610,10 @@ fn spark_serving_observed_members_for_unit(
   store: ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
+  provenance: SparkServingObservationProvenance,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
+    provenance: provenance,
     host: host,
     runtime: runtime,
     store: store,
