@@ -2419,8 +2419,17 @@ pub fn run_regen_round_cost(
         v1_rt::trace_mark("round.install.begin".to_string());
         install_candidate_paths(&candidate_src, &stage0_src, &drifted)?;
         v1_rt::trace_mark("round.install.done".to_string());
-        let rebuild = seed_cargo_build(&workspace, "round.rebuild_from_installed")?;
-        rebuild_compiled_crates = rebuild.compiled_crates;
+        // A REBUILD THAT FAILS IS A MEASURED FACT ABOUT THE ROUND, NOT A REFUSAL OF THE
+        // MEASUREMENT: every phase before it was priced, and the receipt is the only record of
+        // that. Measured on 2026-08-30 (srv1 and BuildBuddy, same tree): the emitting seed was
+        // built with the OLD runtime template baked into its emitter mirror, so its emit
+        // installed the old `v1_rt.rs` over the hand-synced one and the rebuild refused --
+        // exactly the two-round bootstrap the merge-driver recipe's step 3 exists for. The
+        // receipt still renders; the failure is carried beside it and fails the exit code.
+        match seed_cargo_build(&workspace, "round.rebuild_from_installed") {
+            Ok(rebuild) => rebuild_compiled_crates = rebuild.compiled_crates,
+            Err(failure) => round_failures.push(format!("rebuild_from_installed: {failure}")),
+        }
         v1_rt::trace_mark("round.diff.begin".to_string());
         changed_paths = git_changed_stage0_paths(&workspace)?;
         v1_rt::trace_mark("round.diff.done".to_string());
