@@ -4924,6 +4924,14 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
+        // THE ELABORATED LITERAL EVALUATES AS ITS SOURCE LITERAL IN THE INTERPRETER: the
+        // interpreter realizes the structural destinations natively by its own grounding
+        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
+        // under that grounding IS the literal, and evaluating the constructor tree instead would
+        // route a natively-realized Bool through variant patterns that have no runtime form here.
+        // The structural image is consumed by emission, which is where the destination is
+        // structural; the emitted-bytes witnesses exercise that path.
+        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
@@ -9922,6 +9930,7 @@ pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
     match expr_data {
         ExprData::NoExprData => "NoExprData",
         ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprElaboratedLiteral { .. } => "ExprElaboratedLiteral",
         ExprData::ExprError { .. } => "ExprError",
         ExprData::ExprVar { .. } => "ExprVar",
         ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
@@ -16535,6 +16544,7 @@ fn expr_variant_index(d: &ExprData) -> usize {
         ExprData::ExprIndex => 19,
         ExprData::ExprSlice => 20,
         ExprData::ExprReturn => 21,
+        ExprData::ExprElaboratedLiteral { .. } => 22,
     }
 }
 
@@ -16562,6 +16572,7 @@ pub fn expr_variant_name(i: usize) -> &'static str {
         "ExprIndex",
         "ExprSlice",
         "ExprReturn",
+        "ExprElaboratedLiteral",
     ];
     NAMES.get(i).copied().unwrap_or("?")
 }

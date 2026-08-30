@@ -372,6 +372,22 @@ pub fn rust_exact_realization_decision(
 }
 }
 
+pub fn declaration_realizes_natively_on_rust(
+    declaration: Rc<DeclarationRef>,
+    decl_file: String,
+) -> bool {
+    match (*rust_exact_realization_decision(Some(declaration.clone()))).clone() {
+        TypeRealizationDecision::Realized { checkpoint: _, .. } => true,
+        _ => {
+            (lookup_checkpoint(
+                RenderTarget::Rust,
+                declaration.decl_name.clone(),
+                decl_file.clone(),
+            ) != std::option::Option::None)
+        }
+    }
+}
+
 pub fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> bool {
     if (dag_name.clone() == "".to_string()) {
         false
