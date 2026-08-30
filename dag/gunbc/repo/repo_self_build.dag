@@ -91,7 +91,7 @@ fn repo_self_test_command() -> String {
 // targets too, and a lint gate scoped to one package would re-open exactly the blind spot the
 // partition-crates command below closes for the build.
 fn repo_self_clippy_command() -> String {
-  "cargo clippy --all-targets -- -D warnings"
+  join(["cargo clippy", "--all-targets", "--", "-D", "warnings"], " ")
 }
 
 // THE DERIVED STAGE0 PARTITION CRATES, WHICH THE PACKAGE-AS-DATA DECISION ABOVE DOES NOT REACH.
