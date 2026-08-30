@@ -228,10 +228,6 @@ fn compare_qualification_subject(admitted: QualificationSubject, observed: Quali
   }
 }
 
-fn qualification_subject_is_current(admitted: QualificationSubject, observed: QualificationSubject) -> Bool {
-  compare_qualification_subject(admitted: admitted, observed: observed) == SubjectCurrent
-}
-
 type IntakeAttemptId = NonEmptyStr where brand("IntakeAttemptId")
 
 // What every receipt identifies: the exact subject plus the attempt that
@@ -259,10 +255,3 @@ type PhysicalDimmLabelBinding {
   observed_at: EpochMs
 }
 
-fn dimm_label_is_electronically_bound(binding: PhysicalDimmLabelBinding) -> Bool {
-  match binding.spd_serial {
-    SpdSerialRead { serial: _ } => true
-    SpdSerialAbsent => false
-    SpdSerialDuplicated { serial: _ } => false
-  }
-}

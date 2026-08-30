@@ -19,6 +19,7 @@ import gunbc.machine_intake_subject {
   HostSmbios,
   PhysicalDimmLabelBinding,
   SpdSerialAbsent,
+  SpdSerialDuplicated,
   SpdSerialRead,
   SubjectCurrent,
   SubjectStale,
@@ -28,8 +29,6 @@ import gunbc.machine_intake_subject {
   UnitKeyRefused,
   bind_unit_key,
   compare_qualification_subject,
-  dimm_label_is_electronically_bound,
-  qualification_subject_is_current,
   qualification_subject_of,
 }
 
@@ -94,7 +93,7 @@ test fn changed_dimm_manifest_invalidates_prior_subject() -> Bool {
 test fn unchanged_manifests_are_current() -> Bool {
   let admitted = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
   let observed = qualification_subject_of(unit_key: serial_a as UnitKey, assembly: assembly_before, firmware: firmware_v1)
-  qualification_subject_is_current(admitted: admitted, observed: observed)
+  compare_qualification_subject(admitted: admitted, observed: observed) == SubjectCurrent
 }
 
 test fn changed_bios_version_is_a_new_firmware_subject() -> Bool {
@@ -161,5 +160,15 @@ test fn board_serial_already_keying_another_unit_refuses() -> Bool {
 test fn dimm_label_without_spd_serial_is_not_electronically_bound() -> Bool {
   let unbound = PhysicalDimmLabelBinding { operator_label: "stick-3", spd_serial: SpdSerialAbsent, part_number: "M386A4G40DM0-CPB", observed_slot: "A1", observed_at: 1788000000000 }
   let bound = PhysicalDimmLabelBinding { operator_label: "stick-3", spd_serial: SpdSerialRead { serial: "SPD-A1-OLD" }, part_number: "M386A4G40DM0-CPB", observed_slot: "A1", observed_at: 1788000000000 }
-  dimm_label_is_electronically_bound(binding: unbound) == false && dimm_label_is_electronically_bound(binding: bound)
+  let unbound_electronic = match unbound.spd_serial {
+    SpdSerialRead { serial: _ } => true
+    SpdSerialAbsent => false
+    SpdSerialDuplicated { serial: _ } => false
+  }
+  let bound_electronic = match bound.spd_serial {
+    SpdSerialRead { serial: _ } => true
+    SpdSerialAbsent => false
+    SpdSerialDuplicated { serial: _ } => false
+  }
+  unbound_electronic == false && bound_electronic
 }

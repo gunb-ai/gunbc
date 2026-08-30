@@ -37,7 +37,10 @@ import extdeps.bmc.redfish_virtual_media {
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.boards.types { AmpereMtCollins, AsrockRackAltrad8ud1l2t, BaseboardModel }
 import extdeps.bmc.access_profile {
+  AccessProfileAmbiguous,
+  AccessProfileIdentityMismatch,
   AccessProfileKnown,
+  AccessProfileNotLookedUp,
   AccessProfileUncatalogued,
   BmcAccessObservation,
   BmcAccessObservationStanding,
@@ -74,7 +77,6 @@ import gunbc.boot_artifact_delivery {
   CandidateLiveSurfaceUnobserved,
   CandidateNetworkBootUnestablished,
   CandidateOpenBmcNbdProxyWebsocket,
-  CandidateParamsAbsent,
   CandidatePxeChainBoot,
   CandidateRedfishVirtualMedia,
   DeliveryNoBootSourceOverride,
@@ -410,12 +412,14 @@ test fn established_configfs_path_selects_usb_gadget_delivery() -> Bool {
   }
 }
 
-// ...and the frozen legacy projection can never bind the staging-side params
-// a transport needs, so even with the surface live-observed it refuses with
-// the virtual-media-unestablished cause whose considered set shows
-// CandidateParamsAbsent — the executed reason X is frozen and its consumers
-// must read BootDeliverySolution directly.
-test fn legacy_projection_never_binds_staging_params() -> Bool {
+// ...and the frozen legacy projection carries no access profile: a capability
+// row is not a profile, and the ruling forbids seeding one from memory, so even
+// with the surface live-observed the projection refuses with the
+// virtual-media-unestablished cause whose considered set shows the Redfish
+// candidate stopped at the profile step, standing AccessProfileNotLookedUp —
+// the executed reason X is frozen and its consumers must read
+// BootDeliverySolution directly.
+test fn legacy_projection_never_establishes_an_access_profile() -> Bool {
   match solve_delivery_from_capability_row(
     row: megarac_vm_row,
     catalog: [megarac_vm_row],
@@ -426,7 +430,17 @@ test fn legacy_projection_never_binds_staging_params() -> Bool {
     OsInstallMechanismRefused { cause: c } =>
       match c {
         InstallVirtualMediaLiveSurfaceUnestablished { firmware: _, considered: considered } =>
-          boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) == CandidateParamsAbsent
+          match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
+            CandidateProfileUnestablished { standing: s } =>
+              match s {
+                AccessProfileNotLookedUp { endpoint: _ } => true
+                AccessProfileKnown { profile: _, provenance: _ } => false
+                AccessProfileUncatalogued { observed_identity: _ } => false
+                AccessProfileAmbiguous { observed_identity: _, count: _ } => false
+                AccessProfileIdentityMismatch { profile: _, observed: _ } => false
+              }
+            _ => false
+          }
         _ => false
       }
     OsInstallMechanismSelected { mechanism: _ } => false

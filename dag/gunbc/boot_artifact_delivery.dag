@@ -40,7 +40,7 @@ import extdeps.bmc.access_profile {
   SurfaceRedfishVirtualMedia,
   bmc_surface_eligibility,
 }
-import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbe, redfish_virtual_media_probe_admits_plan }
+import extdeps.bmc.redfish_virtual_media { RedfishVirtualMediaProbe }
 import gunbc.install_transport_qualification {
   ConfigfsTransportRequirement,
   ReinstallPathEstablished,
@@ -374,10 +374,16 @@ fn surface_candidate_standing(
 fn redfish_probe_standing(live_access: BmcAccessObservationStanding) -> BootDeliveryCandidateStanding {
   match live_access {
     BmcAccessObserved { observation: o } =>
-      if redfish_virtual_media_probe_admits_plan(probe: o.redfish_virtual_media_probe) {
-        CandidateEligible
-      } else {
-        CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+      match o.redfish_virtual_media_probe {
+        ProbeUnreached => CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+        ObservedAbsent => CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+        CollectionDiscovered => CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+        ResourceReadable => CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+        InsertMediaActionAdvertised => CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
+        TransferProtocolAdmitted { protocol: _ } => CandidateEligible
+        InsertSucceeded => CandidateEligible
+        EjectSucceededAndDetached => CandidateEligible
+        OperationRefused => CandidateRedfishProbeBelowPlanFloor { probe: o.redfish_virtual_media_probe }
       }
     BmcAccessUnobserved { endpoint: e } => CandidateLiveSurfaceUnobserved { endpoint: e }
   }

@@ -191,11 +191,3 @@ fn bmc_surface_eligibility(
     SurfaceEligible
   }
 }
-
-fn bmc_surface_is_eligible(
-  profile: BmcAccessProfile,
-  observation: BmcAccessObservation,
-  surface: BmcAccessSurface,
-) -> Bool {
-  bmc_surface_eligibility(profile: profile, observation: observation, surface: surface) == SurfaceEligible
-}

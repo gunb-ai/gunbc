@@ -157,20 +157,6 @@ type RedfishVirtualMediaProbe
   | EjectSucceededAndDetached
   | OperationRefused
 
-fn redfish_virtual_media_probe_admits_plan(probe: RedfishVirtualMediaProbe) -> Bool {
-  match probe {
-    ProbeUnreached => false
-    ObservedAbsent => false
-    CollectionDiscovered => false
-    ResourceReadable => false
-    InsertMediaActionAdvertised => false
-    TransferProtocolAdmitted { protocol: _ } => true
-    InsertSucceeded => true
-    EjectSucceededAndDetached => true
-    OperationRefused => false
-  }
-}
-
 // ComputerSystem.Boot.HttpBootUri — the UEFI HTTP boot target's artifact
 // address. It is a Boot property, not a VirtualMedia one, and is modeled beside
 // the media shapes because the machine-intake ruling treats it as a peer

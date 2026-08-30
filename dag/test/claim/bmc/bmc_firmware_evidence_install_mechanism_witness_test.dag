@@ -42,7 +42,7 @@ import gunbc.fleet_bmc_firmware_evidence {
 import gunbc.boot_artifact_delivery {
   BootDeliveryCandidateVerdict,
   CandidateCapabilityAbsent,
-  CandidateLiveSurfaceUnobserved,
+  CandidateProfileUnestablished,
   CandidateOpenBmcNbdProxyWebsocket,
   FirmwareTransitionEstablished,
   FirmwareTransitionStanding,
@@ -59,7 +59,14 @@ import gunbc.boot_artifact_delivery {
   NetworkBootServingInfrastructure,
   boot_delivery_candidate_standing_of,
 }
-import extdeps.bmc.access_profile { BmcAccessUnobserved }
+import extdeps.bmc.access_profile {
+  AccessProfileAmbiguous,
+  AccessProfileIdentityMismatch,
+  AccessProfileKnown,
+  AccessProfileNotLookedUp,
+  AccessProfileUncatalogued,
+  BmcAccessUnobserved,
+}
 import gunbc.os_install_mechanism {
   FirmwareUpdateThenVirtualMedia,
   InstallDeliveryOutsideLegacyMechanism,
@@ -222,24 +229,33 @@ test fn legacy_board_default_row_no_longer_agrees_with_evidence() -> Bool {
 // fact about a firmware release; selecting a transport from it without a live
 // observation that THIS endpoint serves the nbd-proxy WebSocket is the
 // establishment-by-catalog the ruling forbids, and nothing on the install
-// path observes served surfaces. So both hosts now refuse, the cause names the
-// virtual-media-but-unobserved-surface state as its own arm (not "no virtual
-// media"), and the considered set shows the nbd-proxy candidate blocked by an
-// UNOBSERVED live surface — not by an absent capability. The row's capability
-// is still read correctly; what changed is what a capability alone may prove.
-test fn attested_srv1_srv2_refuse_for_want_of_a_live_surface_observation() -> Bool {
-  srv_solution_refuses_on_unobserved_nbd_surface(solution: srv1_install_mechanism_solution)
-    && srv_solution_refuses_on_unobserved_nbd_surface(solution: srv2_install_mechanism_solution)
+// path observes served surfaces or looks up an access profile. So both hosts
+// now refuse, the cause names the virtual-media-but-unestablished-surface state
+// as its own arm (not "no virtual media"), and the considered set shows the
+// nbd-proxy candidate stopped at the profile step with AccessProfileNotLookedUp
+// — the frozen projection never manufactures a profile from a catalog row. The
+// row's capability is still read correctly; what changed is what a capability
+// alone may prove.
+test fn attested_srv1_srv2_refuse_for_want_of_an_access_profile() -> Bool {
+  srv_solution_refuses_on_profile_not_looked_up(solution: srv1_install_mechanism_solution)
+    && srv_solution_refuses_on_profile_not_looked_up(solution: srv2_install_mechanism_solution)
 }
 
-fn srv_solution_refuses_on_unobserved_nbd_surface(solution: OsInstallMechanismSolution) -> Bool {
+fn srv_solution_refuses_on_profile_not_looked_up(solution: OsInstallMechanismSolution) -> Bool {
   match solution {
     OsInstallMechanismRefused { cause: c } =>
       match c {
         InstallVirtualMediaLiveSurfaceUnestablished { firmware: fw, considered: considered } =>
           fw.version.major == 2 && fw.version.minor == 7
             && match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcNbdProxyWebsocket) {
-                 CandidateLiveSurfaceUnobserved { endpoint: _ } => true
+                 CandidateProfileUnestablished { standing: s } =>
+                   match s {
+                     AccessProfileNotLookedUp { endpoint: _ } => true
+                     AccessProfileKnown { profile: _, provenance: _ } => false
+                     AccessProfileUncatalogued { observed_identity: _ } => false
+                     AccessProfileAmbiguous { observed_identity: _, count: _ } => false
+                     AccessProfileIdentityMismatch { profile: _, observed: _ } => false
+                   }
                  _ => false
                }
         _ => false
