@@ -1,10 +1,14 @@
 module extdeps.bmc.megarac
 
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { String, NonEmptyStr, List }
 import std.credentials { FactoryLogin }
 import extdeps.bmc.endpoint { BmcProtocol, Ipmi }
-import extdeps.external_authority { ExternalAuthority }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.vendor.ami { ami }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -22,6 +26,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // here. The REST operation rows below are the SP-X interface shape as executed on that build - the
 // one place a single-build execution grounds a family-grain row - and carry that provenance
 // explicitly.
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.bmc.megarac",
+      decl_name: "megarac_api_operations",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data megarac_vendor: Vendor<Hardware> = ami
+
 
 // The family answer is the PUBLISHED default - which is what FactoryLogin's
 // published_password field means - admin/admin being AMI's widely published MegaRAC
@@ -105,3 +123,29 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_stop,
   megarac_op_media_status,
 ]
+
+// THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29).
+// export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia
+// retry to mount (images listing goes from refusal to listing); POST start-media WITH
+// image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts
+// available without any screen: the NFS server's read counter (bulk reads then quiet = image
+// loaded), the configurations row (redirection_status/session_index), and the boot CPU's power
+// rails rising while the second socket idles.
+
+// THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
+// says the body MUST carry image_redirection:1 or the firmware refuses with opaque codes;
+// a profile for a MegaRAC build therefore carries this as a typed route fact, and a
+// remote-media binding can only be constructed from the Enabled arm
+// (extdeps.bmc.virtual_media MegaRacRemoteMediaParams.image_redirection).
+type MegaRacImageRedirection
+  = MegaRacImageRedirectionEnabled
+  | MegaRacImageRedirectionUnset
+
+type MegaRacImageRedirectionRequired
+  = | MegaRacImageRedirectionOn
+
+fn megarac_image_redirection_wire(r: MegaRacImageRedirectionRequired) -> NonEmptyStr {
+  match r {
+    MegaRacImageRedirectionOn => "1"
+  }
+}

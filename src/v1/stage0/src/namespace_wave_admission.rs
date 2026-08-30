@@ -424,6 +424,13 @@ pub struct TransitionAdmission {
 /// the shrink cannot wait for a PR that would otherwise touch this file. Removed by the trigger
 /// they were authored with. The roster is EMPTY and empty is not permissive: a run carrying a
 /// real namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
+/// A SHRINK IN PARALLEL, SAME RULE (2026-08-30, gunbc#9690). Thirty-one `TargetChanged` rows
+/// were authored for the first cut of the network-boot and firmware-transition standings out of
+/// `gunbc.os_install_mechanism` into `gunbc.boot_artifact_delivery`. Ruling 3 made the FINAL cut
+/// instead — the standings now live in `gunbc.network_boot_delivery` and
+/// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
+/// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
+/// Removed by the roster's own rule before the PR merged, so the rows never reached main.
 /// XL-0N (`node://adhoc-aec65f93-b00`, gunbc#9719): ONE relocation, rostered by its author under
 /// the rule this ledger states -- "a run carrying a real namespace delta still refuses it as
 /// UNADJUDICATED until its author adds a row here". The operand's declaration must be read where

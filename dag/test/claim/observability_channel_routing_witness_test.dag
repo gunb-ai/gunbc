@@ -1,5 +1,11 @@
 module test.claim.observability_channel_routing
 
+import std.types { Bool }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.observability { ChannelCannotObserve, InBand, NetworkInventory, OutOfBand, ProcessorInventory, RoutedTo, StorageInventory, route_observation }
+import extdeps.bmc.endpoint { AmiMegaRac, OpenBmc }
+import extdeps.bmc.openbmc { HostStorageBlind, HostStorageEnumerable }
+import gunbc.bmc_implementation_dispatch { bmc_firmware_host_storage_visibility }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -48,4 +54,10 @@ test fn out_of_band_storage_blindness_grounded_in_openbmc_finding() -> Bool {
       }
     HostStorageEnumerable => false
   }
+}
+
+// The MegaRAC family-floor answer is blind (Redfish is per ODM build), from
+// the dispatch module, not inherited from the OpenBMC row by fall-through.
+test fn megarac_storage_visibility_floor_is_blind() -> Bool {
+  bmc_firmware_host_storage_visibility(family: AmiMegaRac) == HostStorageBlind
 }

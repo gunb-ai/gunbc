@@ -6,7 +6,6 @@ import gunbc.os_install {
   srv3_os_install_plan_standing,
   srv3_seeded_os_install_plan_standing,
   srv3_os_install_plan_autoinstall,
-  fleet_install_server_specs,
 }
 import gunbc.srv3_seeded_install_media_artifact { srv3_seeded_ubuntu_install_media_install_path }
 import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
@@ -17,7 +16,6 @@ import gunbc.os_install_mechanism {
   OsInstallMechanismSelected,
   PxeHttpInstall,
   VirtualMediaInstall,
-  FirmwareUpdateThenVirtualMedia,
   srv3_install_mechanism_solution,
 }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, NoCloudLocal }
@@ -33,7 +31,6 @@ data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
 data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
 
 type AutoinstallSeedDeliveryRefusal {
-  install_server_count: Int
   seed_url: NonEmptyStr
   refusal: NonEmptyStr
 }
@@ -42,7 +39,6 @@ fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
   match srv3_install_mechanism_solution {
     OsInstallMechanismRefused { cause: _ } => none
     OsInstallMechanismSelected { mechanism: NbdProxyVirtualMediaInstall } =>
-      if fleet_install_server_specs.length() == 0 {
         match srv3_os_install_plan_standing {
           OsInstallPlanRefused { cause: _ } => none
           OsInstallPlanReady { plan: p } =>
@@ -50,20 +46,15 @@ fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
           NoCloudNet { seed_url: url } =>
             Present {
               value: AutoinstallSeedDeliveryRefusal {
-                install_server_count: fleet_install_server_specs.length(),
                 seed_url: uri_wire(uri: url),
-                refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — fleet_install_server_specs empty; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as NonEmptyStr,
+                refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — no install server serves the nbd-proxy path; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as NonEmptyStr,
               }
             }
           NoCloudLocal => none
         }
         }
-      } else {
-        none
-      }
     OsInstallMechanismSelected { mechanism: VirtualMediaInstall } => none
     OsInstallMechanismSelected { mechanism: PxeHttpInstall } => none
-    OsInstallMechanismSelected { mechanism: FirmwareUpdateThenVirtualMedia } => none
   }
 }
 
