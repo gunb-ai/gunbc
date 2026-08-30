@@ -4,7 +4,7 @@ import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, Yaml
 import gunbc.roadmap_execution_contract {
   CargoCapability, RustcCapability, RustfmtCapability, RustupCapability,
 }
-import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_test_command }
+import gunbc.repo_self_build { repo_self_build_command, repo_self_build_all_bins_command, repo_self_build_partition_crates_command, repo_self_test_command }
 import gunbc.workflow_capability_closure {
   CapabilityAnnotatedStep,
   StepCapabilityRole,
@@ -376,8 +376,25 @@ fn witness_floor_build_script() -> String {
   repo_self_build_command(bins: witness_floor_required_bins)
 }
 
+// TWO INVOCATIONS, BECAUSE THEY BUILD DISJOINT PACKAGE SETS AND NEITHER SUBSUMES THE OTHER.
+// The first is every declared bin target of the v1-compiler package. The second is the seven
+// sibling packages of the derived stage0 partition, whose roster gunbc.repo_self_build reads
+// from the partition authority itself. Before this pair the build lane covered only the first,
+// which is how #9689 left main's whole-workspace build red on E0432 in v1-stage0-v1-infer while
+// every required context stayed green -- the partition crates are the ONLY consumers that
+// compile a stage0 module through a per-crate reexport closure, so a roster short of a module is
+// invisible to the monolith and fatal to them.
+//
+// THE SECOND COMMAND IS THE EXECUTING FORM OF A WALL THAT HAS NO HERMETIC WITNESS. Its refusal
+// is rustc's: a module missing from a roster reds E0432 naming the module and the referring
+// module, a roster entry naming no file reds E0583 naming the entry. gunbc.repo_self_build
+// carries why a joining witness is not available instead, and names the modeled Rust module
+// dependency graph as the trigger for climbing off the compiler as oracle.
 fn build_lane_build_script() -> String {
-  repo_self_build_all_bins_command()
+  join(
+    [repo_self_build_all_bins_command(), repo_self_build_partition_crates_command()],
+    "\n"
+  )
 }
 
 fn witness_floor_build_step(build_script: String) -> Step {

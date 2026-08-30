@@ -5,7 +5,7 @@ import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import gunbc.replacement_cut { EvidenceDisposition, ReenrollAgainstY, ReplaceEvidence, RetireEvidence }
 import v2.workflow.required_floor {
-  RequiredFloorDisposition, Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate,
+  RequiredFloorDisposition, Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedOutsideRequiredGate,
   DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded, DeclinedCostDebt,
   DeclinedRoutedToWetLane
 }
@@ -92,6 +92,7 @@ type V1ClaimCutoverRow {
 fn floor_standing_is_fixture_member(s: RequiredFloorDisposition) -> Bool {
   match s {
     Planned => false
+    PlannedAsChangedWitness => false
     DeclinedLongModule { matched_prefix: _ } => false
     DeclinedFixtureMember { matched_prefix: _ } => true
     DeclinedOutsideRequiredGate => false

@@ -12,7 +12,7 @@ import gunbc.build_target {
 }
 import v2.workflow.required_floor {
   RequiredFloorDisposition,
-  Planned, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
+  Planned, PlannedAsChangedWitness, DeclinedLongModule, DeclinedFixtureMember, DeclinedCostDebt,
   DeclinedOutsideRequiredGate, DeclinedOutsideGateClosure, DeclinedDiscoveryExcluded,
   DeclinedRoutedToWetLane,
   required_floor_site_disposition,
@@ -253,6 +253,7 @@ type CensusPartition {
 fn census_partition_step(acc: CensusPartition, row: CensusRow) -> CensusPartition {
   match row.disposition {
     Planned => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
+    PlannedAsChangedWitness => CensusPartition { planned: concat([row], acc.planned), declined: acc.declined }
     DeclinedLongModule { matched_prefix: _ } =>
       CensusPartition { planned: acc.planned, declined: concat([row], acc.declined) }
     DeclinedFixtureMember { matched_prefix: _ } =>
@@ -360,6 +361,18 @@ fn census_counts_zero() -> CensusCounts {
 fn census_counts_add(counts: CensusCounts, d: RequiredFloorDisposition) -> CensusCounts {
   match d {
     Planned =>
+      CensusCounts {
+        offered: counts.offered + 1,
+        planned: counts.planned + 1,
+        declined_long_module: counts.declined_long_module,
+        declined_fixture_member: counts.declined_fixture_member,
+        declined_cost_debt: counts.declined_cost_debt,
+        declined_outside_required_gate: counts.declined_outside_required_gate,
+        declined_outside_gate_closure: counts.declined_outside_gate_closure,
+        declined_discovery_excluded: counts.declined_discovery_excluded,
+        declined_routed_to_wet_lane: counts.declined_routed_to_wet_lane
+      }
+    PlannedAsChangedWitness =>
       CensusCounts {
         offered: counts.offered + 1,
         planned: counts.planned + 1,

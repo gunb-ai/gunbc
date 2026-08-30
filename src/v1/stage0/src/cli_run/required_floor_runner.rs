@@ -1650,6 +1650,11 @@ pub(crate) struct ChangedWitnessProjectionRow {
 /// the declarations whose lines the diff reached. An observation or attribution failure
 /// REFUSES — it never widens to "no changed witnesses".
 pub(crate) fn changed_witness_identities(source_roots: &[String]) -> Result<Vec<String>, String> {
+    let index = process_shared_index(source_roots);
+    changed_witness_identities_with_index(&index)
+}
+
+fn changed_witness_identities_with_index(index: &MultiEntryIndex) -> Result<Vec<String>, String> {
     let diff_text = floor_git_diff_range()?;
     let (changed_paths, departed_paths) = floor_git_diff_name_status_range()?;
     let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
@@ -1658,9 +1663,8 @@ pub(crate) fn changed_witness_identities(source_roots: &[String]) -> Result<Vec<
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let added_paths = parse_unified_diff_added_paths(&diff_text);
-    let index = process_shared_index(source_roots);
     let edits = floor_diff_edits_from_line_ranges(
-        &index,
+        index,
         &line_ranges_by_file,
         &changed_new_lines_by_file,
         &departed_paths,
@@ -1728,7 +1732,10 @@ pub(crate) fn changed_witness_projection_rows(
                 outcome: "absent".to_string(),
                 blocks: true,
             },
-            Some(RequiredFloorDisposition::Planned) => {
+            Some(
+                RequiredFloorDisposition::Planned
+                | RequiredFloorDisposition::PlannedAsChangedWitness,
+            ) => {
                 let outcome = outcomes.get(identity.as_str()).copied();
                 // The green set mirrors the .dag fold exactly: an ordinary Pass, an enrolled
                 // expected-red failing as enrolled (§4b keeps discriminating REDs enrolled, so
@@ -1753,7 +1760,8 @@ pub(crate) fn changed_witness_projection_rows(
                         // grain, naming the identity the change touched.
                         "planned-without-terminal-verdict"
                     },
-                    disposition: "planned".to_string(),
+                    disposition: required_floor_disposition_label(dispositions[identity.as_str()])
+                        .to_string(),
                     outcome: outcome
                         .map(claim_disposition_wire)
                         .unwrap_or("not_executed")
@@ -3470,6 +3478,40 @@ pub fn run_required_floor(
     // 4,260-module corpus, measured 2026-08-29), so it is built once here and lent to the
     // policy-closure prepare and the gate-closure prepare alike.
     let gate_entry_index = build_multi_entry_index(source_roots);
+    // ONE DERIVATION, CONSUMED TWICE. #9717's changed-witness identity producer supplies both
+    // the closure seeds that make these modules executable and the tail projection that judges
+    // their terminal rows. Re-observing the diff after execution would create two authorities
+    // over which identities this run promised to execute.
+    let changed_witnesses = match changed_witness_identities_with_index(&gate_entry_index) {
+        Ok(changed) => Some(changed),
+        Err(e) if commit != "local" && !commit.is_empty() => {
+            return Err(format!(
+                "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
+                 changed-witness execution sublane could not observe or attribute the CI diff"
+            ));
+        }
+        Err(e) => {
+            eprintln!(
+                "[changed-witness] EXECUTION SUBLANE NOT EVALUATED (no CI diff baseline on a local run): {e}"
+            );
+            None
+        }
+    };
+    let changed_witness_set: HashSet<String> = changed_witnesses
+        .iter()
+        .flat_map(|rows| rows.iter().cloned())
+        .collect();
+    let changed_module_seeds: BTreeSet<String> = changed_witnesses
+        .iter()
+        .flat_map(|rows| rows.iter())
+        .map(|identity| {
+            identity
+                .rsplit_once('.')
+                .map(|(module, _)| module)
+                .unwrap_or(identity.as_str())
+                .to_string()
+        })
+        .collect();
     let required_gate_prefixes = {
         let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
         let (policy_prepared, _) = prepare_repository_closure(
@@ -3511,6 +3553,7 @@ pub fn run_required_floor(
                 .iter()
                 .map(|m| m.to_string()),
         )
+        .chain(changed_module_seeds.iter().cloned())
         .collect();
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
@@ -4408,7 +4451,9 @@ pub fn run_required_floor(
     };
     let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
         let before = roster.len();
-        roster.retain(|identity| !cost_debt_roster.contains(identity));
+        roster.retain(|identity| {
+            changed_witness_set.contains(identity) || !cost_debt_roster.contains(identity)
+        });
         let suppressed = before - roster.len();
         if suppressed > 0 {
             eprintln!(
@@ -4418,7 +4463,9 @@ pub fn run_required_floor(
             );
         }
         let before = roster.len();
-        roster.retain(|identity| identity_inside_required_gate(identity));
+        roster.retain(|identity| {
+            changed_witness_set.contains(identity) || identity_inside_required_gate(identity)
+        });
         let outside_gate = before - roster.len();
         if outside_gate > 0 {
             eprintln!(
@@ -4478,6 +4525,16 @@ pub fn run_required_floor(
                      carry more than one disposition; a witness identity names exactly one site"
                 ));
             }
+            let selected_as_changed_witness = changed_witness_set.contains(&identity);
+            if selected_as_changed_witness && !prepared_module_paths.contains(&file.module_path) {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessOutsidePreparedSubject \
+                     identity={identity} module={} — the changed-witness sublane selected this \
+                     exact identity, but its module closure was not prepared, so execution \
+                     cannot be represented as a decline",
+                    file.module_path
+                ));
+            }
             if !prepared_module_paths.contains(&file.module_path) {
                 let disposition = match discovery_exclusions.get(&file.module_path) {
                     Some(matched_substring) => {
@@ -4498,6 +4555,29 @@ pub fn run_required_floor(
                 identity: identity.clone(),
                 agreement: storage_agreement,
             });
+            // A CHANGED WET-ROUTED IDENTITY IS NOT PLANNED INTO THE HERMETIC SUBLANE: its
+            // subject is a real host-effect chain the hermetic route refuses by construction
+            // (v2.workflow.floor_wet_route), so planning it here would manufacture a
+            // route-gap red. It keeps its routed decline and is judged at the changed-set
+            // grain by the candidate-exact receipt admission instead — the .dag selector
+            // (required_floor_disposition_with_changed_selection) preserves the same arm.
+            if selected_as_changed_witness && !wet_route_roster.contains(&identity) {
+                planned_identities.insert(identity.clone());
+                disposition_rows.push(RequiredFloorDispositionRow {
+                    identity: identity.clone(),
+                    disposition: RequiredFloorDisposition::PlannedAsChangedWitness,
+                });
+                claims.push(RequiredFloorClaim {
+                    qualified: identity,
+                    module_path: file.module_path.clone(),
+                    function: function.clone(),
+                    execution_mode: v1_interpreter::ExecutionMode::Hermetic,
+                    cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
+                    wall_safety_limit_ms: claim_wall_safety_limit_ms,
+                    cost_line_ms: claim_cost_line_ms,
+                });
+                continue;
+            }
             if long_home {
                 disposition_rows.push(RequiredFloorDispositionRow {
                     identity,
@@ -4661,6 +4741,39 @@ pub fn run_required_floor(
             sample(&declared_without_disposition),
             sample(&dispositioned_without_declaration),
             sample(&disposition_duplicated),
+        ));
+    }
+    // EXACTNESS OF THE SUBLANE, as an identity join rather than a count. The left side is the
+    // single #9717 diff derivation captured before preparation; the right side is what this site
+    // projection actually marked for changed execution. A missing, foreign, or duplicated row
+    // cannot be repaired by the aggregate counts coincidentally agreeing.
+    let changed_disposition_set: HashSet<String> = disposition_rows
+        .iter()
+        .filter(|row| {
+            matches!(
+                row.disposition,
+                RequiredFloorDisposition::PlannedAsChangedWitness
+            )
+        })
+        .map(|row| row.identity.clone())
+        .collect();
+    if changed_disposition_set != changed_witness_set {
+        let mut selected_without_disposition: Vec<&str> = changed_witness_set
+            .difference(&changed_disposition_set)
+            .map(String::as_str)
+            .collect();
+        let mut disposition_without_selection: Vec<&str> = changed_disposition_set
+            .difference(&changed_witness_set)
+            .map(String::as_str)
+            .collect();
+        selected_without_disposition.sort();
+        disposition_without_selection.sort();
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessSublaneJoinInexact \
+             selected_without_disposition=[{}] disposition_without_selection=[{}] — the \
+             changed-witness execution sublane must execute exactly the one derived identity set",
+            selected_without_disposition.join(", "),
+            disposition_without_selection.join(", ")
         ));
     }
     // ONE PRODUCER FOR THE COUNTS: the joined row population, folded once per arm.
@@ -6831,38 +6944,20 @@ pub fn run_required_floor(
     // closes — refusing is the only arm that does not widen. A local run (no GITHUB_SHA, so no
     // CI diff baseline to resolve) reports the projection NOT EVALUATED, loudly, rather than
     // fabricating an empty changed set.
-    {
-        let ci_run = commit != "local" && !commit.is_empty();
-        match changed_witness_identities(source_roots) {
-            Ok(changed) => {
-                let rows = changed_witness_projection_rows(
-                    &changed,
-                    &outcome.required_floor_disposition,
-                    &terminal_rows,
-                    wet_route_candidate_exact,
-                );
-                emit_changed_witness_projection(&rows)?;
-                outcome.changed_witness_rows = rows.len();
-                outcome.changed_witness_blocking = rows
-                    .iter()
-                    .filter(|r| r.blocks)
-                    .map(|r| r.identity.clone())
-                    .collect();
-            }
-            Err(e) if ci_run => {
-                return Err(format!(
-                    "REQUIRED-FLOOR REFUSAL cause=ChangedWitnessObservationFailed {e} — the \
-                     changed-witness projection could not observe or attribute the diff on a CI \
-                     run, so the floor cannot state the execution standing of the identities \
-                     this change touched"
-                ));
-            }
-            Err(e) => {
-                eprintln!(
-                    "[changed-witness] NOT EVALUATED (no CI diff baseline on a local run): {e}"
-                );
-            }
-        }
+    if let Some(changed_witnesses) = changed_witnesses {
+        let rows = changed_witness_projection_rows(
+            &changed_witnesses,
+            &outcome.required_floor_disposition,
+            &terminal_rows,
+            wet_route_candidate_exact,
+        );
+        emit_changed_witness_projection(&rows)?;
+        outcome.changed_witness_rows = rows.len();
+        outcome.changed_witness_blocking = rows
+            .iter()
+            .filter(|r| r.blocks)
+            .map(|r| r.identity.clone())
+            .collect();
     }
     Ok(outcome)
 }
@@ -6872,6 +6967,7 @@ pub(crate) fn required_floor_disposition_label(
 ) -> &'static str {
     match disposition {
         RequiredFloorDisposition::Planned => "planned",
+        RequiredFloorDisposition::PlannedAsChangedWitness => "planned_as_changed_witness",
         RequiredFloorDisposition::DeclinedLongModule { .. } => "declined_long_module",
         RequiredFloorDisposition::DeclinedFixtureMember { .. } => "declined_fixture_member",
         RequiredFloorDisposition::DeclinedOutsideRequiredGate => "declined_outside_required_gate",
@@ -6897,6 +6993,7 @@ pub(crate) fn required_floor_disposition_matched_prefix(
             matched_substring
         }
         RequiredFloorDisposition::Planned
+        | RequiredFloorDisposition::PlannedAsChangedWitness
         | RequiredFloorDisposition::DeclinedOutsideRequiredGate
         | RequiredFloorDisposition::DeclinedOutsideGateClosure
         | RequiredFloorDisposition::DeclinedCostDebt
@@ -7031,6 +7128,23 @@ mod changed_witness_projection_tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].standing, "planned-and-passed");
         assert!(!rows[0].blocks, "planned-and-passed must not block");
+    }
+
+    #[test]
+    fn changed_sublane_pass_is_green_and_keeps_its_selector_disposition() {
+        let rows = changed_witness_projection_rows(
+            &["m.a".to_string()],
+            &[disposition(
+                "m.a",
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &[terminal("m.a", ClaimOutcome::Pass)],
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].standing, "planned-and-passed");
+        assert_eq!(rows[0].disposition, "planned_as_changed_witness");
+        assert_eq!(rows[0].outcome, "passed");
+        assert!(!rows[0].blocks);
     }
 
     /// THE INCIDENT ARM: a changed identity whose module name is outside the gate closure is

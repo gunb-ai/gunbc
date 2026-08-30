@@ -1,6 +1,6 @@
 module extdeps.procps.pgrep
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Int }
 
 data pgrep_authority_note: String = "pgrep(1) from procps-ng, cited to the upstream manual's EXIT STATUS section. Only the codes this repository reads are modelled."
 
@@ -10,12 +10,6 @@ data pgrep_authority_note: String = "pgrep(1) from procps-ng, cited to the upstr
 // the command line; 3 fatal error. So 1 is the observation "this process is not running" and is
 // exactly the evidence a retirement wants -- while 2 and 3 mean the question was never answered.
 // Reading any nonzero as absence would let a malformed pattern or an internal failure prove that a
-// server had stopped.
-data pgrep_exit_matched: Int = 0
+// server had stopped. Only 1 is minted: the other three are documented here because they are the
+// reason this row is narrow, not because anything consumes them.
 data pgrep_exit_no_match: Int = 1
-data pgrep_exit_syntax_error: Int = 2
-data pgrep_exit_fatal: Int = 3
-
-fn pgrep_exit_proves_no_process(exit_code: Int) -> Bool {
-  exit_code == pgrep_exit_no_match
-}
