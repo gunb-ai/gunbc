@@ -14,7 +14,7 @@ import std.types { Bool, Int, String }
 //
 // THE MEASUREMENT THAT JUSTIFIES THE INSTRUMENT (swift-badger-524, by hand across 73 open PRs,
 // 2026-08-27): exactly one live contradiction --
-// the `duplicate_definition_binding_probe` expected-red identity,
+// the `duplicate_definition_binding_probe_test` expected-red identity,
 // net-ADDED by #9569 and net-REMOVED by both #9589 and #9591, the removals because the row now
 // passes. If #9569 lands after either, it re-enrols a passing row and the floor reports a stale
 // quarantine. Merge-order-dependent, invisible from every diff involved.
