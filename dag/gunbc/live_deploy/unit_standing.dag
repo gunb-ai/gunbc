@@ -250,16 +250,9 @@ fn exec_start_argv_of_show_value(value: String) -> ExecStartRead {
   if list_length(items: parts) < 2 {
     ExecStartUnparseable { value: value }
   } else {
-    match list_head(xs: reverse(parts)) {
-      HeadAbsent => ExecStartUnparseable { value: value }
-      HeadFound { value: tail } => {
-        let segs = tail.split(" ; ")
-        match list_head(xs: segs) {
-          HeadAbsent => ExecStartUnparseable { value: value }
-          HeadFound { value: argv_text } => ExecStartArgv { argv_text: trim(s: argv_text) }
-        }
-      }
-    }
+    let tail = fold(parts, init: "", f: fn(_, seg) { seg })
+    let argv_text = fold(split(s: tail, delimiter: " ; "), init: "", f: fn(acc, seg) { if acc == "" { seg } else { acc } })
+    if argv_text == "" { ExecStartUnparseable { value: value } } else { ExecStartArgv { argv_text: trim(s: argv_text) } }
   }
 }
 
