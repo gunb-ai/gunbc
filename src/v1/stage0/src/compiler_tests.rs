@@ -1873,6 +1873,10 @@ mod compiler_tests {
             "bool"
         );
         assert_eq!(
+            coerce_primitive_type(RenderTarget::Rust, "Symbol".into(), "".into()),
+            "String"
+        );
+        assert_eq!(
             coerce_primitive_type(RenderTarget::Rust, "Unit".into(), "".into()),
             "()"
         );
@@ -2093,6 +2097,10 @@ mod compiler_tests {
         assert_eq!(
             is_copy(RenderTarget::Rust, "Bool".into(), "".into()),
             Some(true)
+        );
+        assert_eq!(
+            is_copy(RenderTarget::Rust, "Symbol".into(), "".into()),
+            Some(false)
         );
         assert_eq!(
             is_copy(RenderTarget::Rust, "Unit".into(), "".into()),
