@@ -143,7 +143,10 @@ fn scheduling_disposition_for_primary_cadence(
     SubstrateLongLane =>
       disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
     OfflineLocalRecipe =>
-      disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
+      match primary {
+        OfflineLocalRecipe => SchedulingEnrolled
+        _ => SchedulingExcluded
+      }
     ScheduledFalsifier =>
       scheduled_falsifier_scheduling_disposition(primary: primary)
   }

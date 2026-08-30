@@ -412,6 +412,21 @@ data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "node://adhoc-a3b0e05f-374 lands: the operation-argv binding wall materializes the controlled previously-unbindable operation"
 }
 
+// `None` is no longer in this population: eval_var now consults VariantValueBinding first, and
+// only an explicitly unresolved None reaches the legacy Null shorthand. `true` and `false` still
+// precede binding dispatch, while `Zero` is spelling-dispatched inside the resolved-variant arm.
+// Bool and Nat have intentional native representations, but the evaluator receives only a parent
+// spelling here, not a declaration identity sufficient to distinguish the grounded authorities
+// from a same-spelled user coproduct. Guessing by parent spelling would reproduce this class.
+data resolved_binding_lexeme_shorthand_stall: GuaranteeStall = GuaranteeStall {
+  subject: "resolved bindings cannot be reinterpreted by evaluator lexeme shorthands",
+  current: MechanicallyPreventable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "eval_var true-to-Bool", tail: Cons { head: "eval_var false-to-Bool", tail: Cons { head: "eval_var Zero-to-Int(0)", tail: Empty {} } } } },
+  next_rung_trigger: "host literals and intentional primitive representations are typed parser/resolver constructions and eval_var contains no raw-spelling branch capable of overriding a resolved binding identity"
+}
+
 // REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
 // The direct byte-equality witness and its aggregate both returned false: one underlying fact,
 // namely that the committed .gitattributes no longer equals its emitting authority. This is real
@@ -498,6 +513,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   self_host_candidate_generation_add_slice_stall,
   non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
+  resolved_binding_lexeme_shorthand_stall,
   gitattributes_committed_emit_drift_stall,
   wall_deadline_shared_fill_attribution_stall
 ]
