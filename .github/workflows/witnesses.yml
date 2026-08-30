@@ -215,7 +215,7 @@ jobs:
         run: |
           bash tools/fabric_ci_evidence_calibration.sh
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
-        timeout-minutes: 20
+        timeout-minutes: 55
   witnesses:
     runs-on: [self-hosted, linux, arm64]
     needs: [required-witnesses-build, required-witnesses-floor, fabric-evidence]

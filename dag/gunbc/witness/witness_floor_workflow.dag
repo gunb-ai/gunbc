@@ -658,6 +658,10 @@ fn build_lane_run_step() -> Step {
 // The shell is the manager-approved
 // sequencing carrier; its dissolve-on is modeled lifecycle actuation sufficient to sequence a
 // wet gate from .dag. Fabric facts remain ProcessExit assertions and named Filesystem.Write values.
+// The 55-minute step bound is derived from the executed 13-row roster and the worst observed
+// per-row wall interval of 169 seconds: 13 * 169 * 1.5 = 3295.5 seconds, rounded up. Distinct
+// gunbc host processes are the process-edge subject, so reducing their count would remove the
+// boundary rather than reduce the cost of observing it.
 fn fabric_ci_evidence_calibration_step() -> Step {
   RunStep {
     name: Present { value: "Calibrate fabric CI evidence boundary" },
@@ -668,7 +672,7 @@ fn fabric_ci_evidence_calibration_step() -> Step {
     working_directory: none,
     if_condition: Present { value: witness_floor_precondition() },
     continue_on_error: none,
-    timeout_minutes: Present { value: 20 }
+    timeout_minutes: Present { value: 55 }
   }
 }
 
