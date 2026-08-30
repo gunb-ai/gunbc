@@ -45,9 +45,15 @@ fn host_multiplicity(hosts: List<HostIdentity>, host: HostIdentity) -> Int {
 // which is not empty, so nothing fired while the one host that mattered was missing. A count cannot
 // distinguish "every expected host answered" from "some other host answered instead".
 //
-// Keeping both the count guard and this join would be two authorities for one question, so this
-// subsumes it: a covered observation is one where the observed keys are exactly the expected keys, each
-// exactly once. Missing, foreign and duplicated are carried SEPARATELY because they are different
+// Keeping both the count guard and this join would be two authorities for one question, so this is
+// built to REPLACE it: a covered observation is one where the observed keys are exactly the expected
+// keys, each exactly once. THAT REPLACEMENT HAS NOT HAPPENED YET, and saying otherwise here would be
+// the same overstatement this module exists to correct -- serving_observe still refuses on the count
+// and does not consume a coverage value. Until the observer's report is built from this join, the two
+// authorities genuinely coexist and the narrowed-roster case is caught by the claims below rather than
+// by the production path. The cutover is the remaining P0-C obligation, and it is named rather than
+// implied because a comment describing a finished migration is how a half-done one stops being
+// visible. Missing, foreign and duplicated are carried SEPARATELY because they are different
 // defects with different causes -- a missing host is an unprobed machine, a foreign host is a scope
 // disagreement, a duplicate is a roster that counted one machine twice.
 type SparkObservationCoverage
