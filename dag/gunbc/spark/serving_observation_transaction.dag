@@ -1,0 +1,164 @@
+module gunbc.spark.serving_observation_transaction
+
+import std.types { Bool, List, NonEmptyStr, String, Int }
+import product.placement_supply { HostIdentity, host_identity_eq }
+import extdeps.ssh.session { SshSessionExecResult }
+
+// ONE HOST, ONE ATTEMPT, ONE LOCUS, ONE CAPTURE PER LEG.
+//
+// Before this carrier existed the observation was a pile of independent SSH legs whose only
+// relationship was that the same expression happened to pass the same `host` to each of them. Three
+// consequences, all of them live:
+//
+//   1. `spark_serving_active_probe_words()` was executed TWICE per host -- once for the readback's
+//      is_active field and again inside the user-unit pair observer -- so one host could report
+//      active in the readback and inactive in the unit, from two different instants, and nothing in
+//      the value said they were different instants.
+//   2. `spark_serving_observe_host_via_locus` ran its own legs through the locus transport but then
+//      called the model-store, user-unit and runtime observers, each of which reached for the OTHER
+//      adapter. A caller that asked for a locus observation silently got a mixture of two credential
+//      paths, and the value it received could not be asked which.
+//   3. Every derivation could reach for another leg, so "how many times did we touch this host" was
+//      not answerable from any value -- only by reading every function transitively.
+//
+// The carrier makes the captures the subject. Acquisition happens once, in one place, through one
+// transport; every derivation afterwards is a pure read of a captured result. A derivation that
+// wants a fact nobody captured cannot invent a leg for it -- there is no transport in scope -- so it
+// refuses, which is how a missing leg becomes visible instead of becoming an extra round trip.
+type SparkServingProbeLeg
+  = ProbeLoadState
+  | ProbeIsActive
+  | ProbeVersion
+  | ProbeTags
+  | ProbeNvidiaDriver
+  | ProbeRuntimeReceipt
+  | ProbeActiveEnter
+  | ProbeDefaultTargetEnter
+  | ProbeUptime
+  | ProbeGrants
+  | ProbePasswd
+  | ProbeAuthorizedKeys
+  | ProbeLinger
+  | ProbeModelManifest
+  | ProbeModelBlobsListing
+  | ProbeModelManifestDigest
+  | ProbeModelBlobDigests
+  | ProbeUserUnitRead
+  | ProbeUserUnitIsEnabled
+  | ProbeRuntimeRoot
+  | ProbeRuntimeExecutable
+  | ProbeRuntimeExecutableBit
+  | ProbeRuntimeRootListing
+
+fn spark_serving_probe_leg_key(leg: SparkServingProbeLeg) -> NonEmptyStr {
+  match leg {
+    ProbeLoadState => "load_state" as NonEmptyStr
+    ProbeIsActive => "is_active" as NonEmptyStr
+    ProbeVersion => "version" as NonEmptyStr
+    ProbeTags => "tags" as NonEmptyStr
+    ProbeNvidiaDriver => "nvidia_driver" as NonEmptyStr
+    ProbeRuntimeReceipt => "runtime_receipt" as NonEmptyStr
+    ProbeActiveEnter => "active_enter" as NonEmptyStr
+    ProbeDefaultTargetEnter => "default_target_enter" as NonEmptyStr
+    ProbeUptime => "uptime" as NonEmptyStr
+    ProbeGrants => "grants" as NonEmptyStr
+    ProbePasswd => "passwd" as NonEmptyStr
+    ProbeAuthorizedKeys => "authorized_keys" as NonEmptyStr
+    ProbeLinger => "linger" as NonEmptyStr
+    ProbeModelManifest => "model_manifest" as NonEmptyStr
+    ProbeModelBlobsListing => "model_blobs_listing" as NonEmptyStr
+    ProbeModelManifestDigest => "model_manifest_digest" as NonEmptyStr
+    ProbeModelBlobDigests => "model_blob_digests" as NonEmptyStr
+    ProbeUserUnitRead => "user_unit_read" as NonEmptyStr
+    ProbeUserUnitIsEnabled => "user_unit_is_enabled" as NonEmptyStr
+    ProbeRuntimeRoot => "runtime_root" as NonEmptyStr
+    ProbeRuntimeExecutable => "runtime_executable" as NonEmptyStr
+    ProbeRuntimeExecutableBit => "runtime_executable_bit" as NonEmptyStr
+    ProbeRuntimeRootListing => "runtime_root_listing" as NonEmptyStr
+  }
+}
+
+fn spark_serving_probe_leg_eq(a: SparkServingProbeLeg, b: SparkServingProbeLeg) -> Bool {
+  spark_serving_probe_leg_key(leg: a) == spark_serving_probe_leg_key(leg: b)
+}
+
+// THE CAPTURE CARRIES THE ARGV IT RAN, NOT JUST THE ANSWER.
+//
+// A result with no argv beside it cannot be audited: two legs that differ only in their arguments
+// -- the blob-digest leg is literally one of them, its argv derived from an earlier capture -- would
+// be indistinguishable receipts. The argv is what makes the capture a receipt of a specific act
+// rather than an opaque string that arrived from somewhere.
+type SparkServingProbeCapture sole_constructor {
+  leg: SparkServingProbeLeg
+  argv: List<String>
+  result: SshSessionExecResult
+}
+
+// THE TRANSACTION IS sole_constructor SO A DERIVED OBSERVATION CANNOT BE ASSEMBLED FROM NOWHERE.
+//
+// attempt is the identity of THIS acquisition. It is not decoration: two transactions for one host
+// are two different instants, and a consumer that joins facts across them is doing the thing this
+// carrier exists to stop. locus is the single credential path every capture came through, so a value
+// derived from this transaction can state which credential path produced it.
+type SparkServingObservationTransaction sole_constructor {
+  host: HostIdentity
+  attempt: NonEmptyStr
+  locus: NonEmptyStr
+  captures: List<SparkServingProbeCapture>
+}
+
+fn spark_serving_transaction_capture(
+  txn: SparkServingObservationTransaction,
+  leg: SparkServingProbeLeg,
+) -> SparkServingProbeCapture? {
+  filter(txn.captures, c => spark_serving_probe_leg_eq(a: c.leg, b: leg)) |> first
+}
+
+fn spark_serving_transaction_result(
+  txn: SparkServingObservationTransaction,
+  leg: SparkServingProbeLeg,
+) -> SshSessionExecResult? {
+  match spark_serving_transaction_capture(txn: txn, leg: leg) {
+    Absent => none
+    Present { value: c } => Present { value: c.result }
+  }
+}
+
+// A LEG CAPTURED TWICE IS A DEFECT IN THE ACQUISITION, NOT A TIE TO BREAK.
+//
+// spark_serving_transaction_capture takes the first match, which would silently pick a winner if a
+// leg were ever captured twice -- exactly the duplicate-read class this carrier was built to end,
+// reintroduced one layer down. So duplication is a REFUSAL the acquirer must pass, not a preference
+// the reader applies.
+fn spark_serving_transaction_duplicated_legs(
+  txn: SparkServingObservationTransaction,
+) -> List<NonEmptyStr> {
+  filter(
+    map(txn.captures, c => spark_serving_probe_leg_key(leg: c.leg)),
+    k => length(filter(txn.captures, c2 => spark_serving_probe_leg_key(leg: c2.leg) == k)) > 1,
+  )
+}
+
+type SparkServingTransactionAdmission
+  = SparkServingTransactionAdmitted { txn: SparkServingObservationTransaction }
+  | SparkServingTransactionRefused { cause: NonEmptyStr }
+
+fn spark_serving_admit_transaction(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingTransactionAdmission {
+  if length(spark_serving_transaction_duplicated_legs(txn: txn)) > 0 {
+    SparkServingTransactionRefused {
+      cause: join([
+        "observation transaction for host ",
+        txn.host as String,
+        " attempt ",
+        txn.attempt as String,
+        " captured a leg more than once, so one of the two readings would be discarded by whichever",
+        " consumer read it first: ",
+        join(map(spark_serving_transaction_duplicated_legs(txn: txn), k => k as String), ", "),
+      ], "") as NonEmptyStr,
+    }
+  } else {
+    SparkServingTransactionAdmitted { txn: txn }
+  }
+}
