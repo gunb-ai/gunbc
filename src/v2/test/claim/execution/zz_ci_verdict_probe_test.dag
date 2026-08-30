@@ -1109,3 +1109,559 @@ test fn ciprobe_english_receipt_diags_none() -> Bool {
     Rejected { diagnostics: _ } => false
   }
 }
+
+test fn ciprobe_variant_ok_stderr_has_unnecessary_parens() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 110, 101, 99, 101, 115, 115, 97, 114, 121, 32, 112, 97, 114, 101, 110, 116, 104, 101, 115, 101, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unused_variable() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 32, 118, 97, 114, 105, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unreachable_pattern() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 114, 101, 97, 99, 104, 97, 98, 108, 101, 32, 112, 97, 116, 116, 101, 114, 110])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_never_used() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [110, 101, 118, 101, 114, 32, 117, 115, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_never_read() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [110, 101, 118, 101, 114, 32, 114, 101, 97, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_dead_code() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 97, 100, 95, 99, 111, 100, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unused_import() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 32, 105, 109, 112, 111, 114, 116])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_previous_error() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [112, 114, 101, 118, 105, 111, 117, 115, 32, 101, 114, 114, 111, 114])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_d_warnings() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [45, 68, 32, 119, 97, 114, 110, 105, 110, 103, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unused_mut() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 111, 101, 115, 32, 110, 111, 116, 32, 110, 101, 101, 100, 32, 116, 111, 32, 98, 101, 32, 109, 117, 116, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_irrefutable() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [105, 114, 114, 101, 102, 117, 116, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_non_snake() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [115, 110, 97, 107, 101, 32, 99, 97, 115, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_non_camel() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 97, 109, 101, 108, 32, 99, 97, 115, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unused_parens_lint() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 112, 97, 114, 101, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unreachable_lint() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 114, 101, 97, 99, 104, 97, 98, 108, 101, 95, 112, 97, 116, 116, 101, 114, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_dead_lint() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 97, 100, 95, 99, 111, 100, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_unused_variables_lint() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 118, 97, 114, 105, 97, 98, 108, 101, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_mismatched() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [109, 105, 115, 109, 97, 116, 99, 104, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_cannot_find() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 97, 110, 110, 111, 116, 32, 102, 105, 110, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_e0() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [69, 48])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_variant_ok_stderr_has_deny_lint() -> Bool {
+  match ciprobe_variant_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 110, 121, 40])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unnecessary_parens() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 110, 101, 99, 101, 115, 115, 97, 114, 121, 32, 112, 97, 114, 101, 110, 116, 104, 101, 115, 101, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unused_variable() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 32, 118, 97, 114, 105, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unreachable_pattern() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 114, 101, 97, 99, 104, 97, 98, 108, 101, 32, 112, 97, 116, 116, 101, 114, 110])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_never_used() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [110, 101, 118, 101, 114, 32, 117, 115, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_never_read() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [110, 101, 118, 101, 114, 32, 114, 101, 97, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_dead_code() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 97, 100, 95, 99, 111, 100, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unused_import() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 32, 105, 109, 112, 111, 114, 116])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_previous_error() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [112, 114, 101, 118, 105, 111, 117, 115, 32, 101, 114, 114, 111, 114])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_d_warnings() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [45, 68, 32, 119, 97, 114, 110, 105, 110, 103, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unused_mut() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 111, 101, 115, 32, 110, 111, 116, 32, 110, 101, 101, 100, 32, 116, 111, 32, 98, 101, 32, 109, 117, 116, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_irrefutable() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [105, 114, 114, 101, 102, 117, 116, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_non_snake() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [115, 110, 97, 107, 101, 32, 99, 97, 115, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_non_camel() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 97, 109, 101, 108, 32, 99, 97, 115, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unused_parens_lint() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 112, 97, 114, 101, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unreachable_lint() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 114, 101, 97, 99, 104, 97, 98, 108, 101, 95, 112, 97, 116, 116, 101, 114, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_dead_lint() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 97, 100, 95, 99, 111, 100, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_unused_variables_lint() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 118, 97, 114, 105, 97, 98, 108, 101, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_mismatched() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [109, 105, 115, 109, 97, 116, 99, 104, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_cannot_find() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 97, 110, 110, 111, 116, 32, 102, 105, 110, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_e0() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [69, 48])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_meet_ok_stderr_has_deny_lint() -> Bool {
+  match ciprobe_meet_ok_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 110, 121, 40])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+fn ciprobe_complement_wrong_receipt() -> Outcome<EmitHostRunReceipt> {
+  match emit(tree: emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture), target: rust_logic_complement_target_model_staging()) {
+    Accepted { value: source, diagnostics: _ } =>
+      run_emit_host(target: rust_logic_complement_target_model_staging(), source: source, fixture_inputs: inputs_root_only(root: dag_complement_eval_subgraph_fixture))
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unnecessary_parens() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 110, 101, 99, 101, 115, 115, 97, 114, 121, 32, 112, 97, 114, 101, 110, 116, 104, 101, 115, 101, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unused_variable() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 32, 118, 97, 114, 105, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unreachable_pattern() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 114, 101, 97, 99, 104, 97, 98, 108, 101, 32, 112, 97, 116, 116, 101, 114, 110])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_never_used() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [110, 101, 118, 101, 114, 32, 117, 115, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_never_read() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [110, 101, 118, 101, 114, 32, 114, 101, 97, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_dead_code() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 97, 100, 95, 99, 111, 100, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unused_import() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 32, 105, 109, 112, 111, 114, 116])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_previous_error() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [112, 114, 101, 118, 105, 111, 117, 115, 32, 101, 114, 114, 111, 114])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_d_warnings() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [45, 68, 32, 119, 97, 114, 110, 105, 110, 103, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unused_mut() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 111, 101, 115, 32, 110, 111, 116, 32, 110, 101, 101, 100, 32, 116, 111, 32, 98, 101, 32, 109, 117, 116, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_irrefutable() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [105, 114, 114, 101, 102, 117, 116, 97, 98, 108, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_non_snake() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [115, 110, 97, 107, 101, 32, 99, 97, 115, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_non_camel() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 97, 109, 101, 108, 32, 99, 97, 115, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unused_parens_lint() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 112, 97, 114, 101, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unreachable_lint() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 114, 101, 97, 99, 104, 97, 98, 108, 101, 95, 112, 97, 116, 116, 101, 114, 110, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_dead_lint() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 97, 100, 95, 99, 111, 100, 101])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_unused_variables_lint() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [117, 110, 117, 115, 101, 100, 95, 118, 97, 114, 105, 97, 98, 108, 101, 115])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_mismatched() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [109, 105, 115, 109, 97, 116, 99, 104, 101, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_cannot_find() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [99, 97, 110, 110, 111, 116, 32, 102, 105, 110, 100])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_e0() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [69, 48])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_complement_wrong_stderr_has_deny_lint() -> Bool {
+  match ciprobe_complement_wrong_receipt() {
+    Accepted { value: rc, diagnostics: _ } => ciprobe_bytes_contain(bs: rc.stderr_bytes, pattern: [100, 101, 110, 121, 40])
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+
+test fn ciprobe_english_same_frame_original() -> Bool {
+  let o = english_emit_add_ingest_round_trip_holds()
+  let c = ciprobe_english_witness_copy()
+  o
+}
+
+test fn ciprobe_english_same_frame_copy() -> Bool {
+  let o = english_emit_add_ingest_round_trip_holds()
+  let c = ciprobe_english_witness_copy()
+  c
+}
+
+test fn ciprobe_english_same_frame_copy_first_original() -> Bool {
+  let c = ciprobe_english_witness_copy()
+  let o = english_emit_add_ingest_round_trip_holds()
+  o
+}
+
+test fn ciprobe_english_receipt_diag_is_realize_advisory() -> Bool {
+  match english_emit_add_receipt {
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } => symbol_lexeme(sym: ds.head.reason) == "emit_realize_advisory"
+    _ => false
+  }
+}
+
+test fn ciprobe_english_serialize_direct_no_diags() -> Bool {
+  match target_serialize_source_from_model(target: english_emit_add_target_model, emitted: english_emit_add_emitted_root) {
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_english_emit_fresh_no_diags() -> Bool {
+  match emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model) {
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn ciprobe_english_emit_fresh_equals_receipt() -> Bool {
+  emit(tree: english_emit_add_inferred_tree, target: english_emit_add_target_model) == english_emit_add_receipt
+}
