@@ -20,7 +20,15 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data roster_registry_lens_note: String = "Group-of-units standard-representation lens (operator ruling 2026-07-22, roadmap group 5a): every registration in gunbc.roster_registry must carry standard membership provenance — ByContainment (positional), ByDerivation (computed relation), or DeclaredFrontier with a nonempty reason AND a nonempty dissolve_on trigger. A DeclaredFrontier row with an empty reason or trigger is the NICKNAME class (asserted, string-keyed, no trigger) and reds. Scope honesty: this lens checks ENROLLED registrations only — unregistered bare lists are invisible to it and are caught at review by the 5a rule until the enforcement-intent thread absorbs the registry (see roster_registry_visibility_note and roster_registry_enforcement_intent_convergence_note on the carrier)."
+// Group-of-units standard-representation lens (operator ruling 2026-07-22, roadmap group 5a): every
+// registration in gunbc.roster_registry must carry standard membership provenance — ByContainment
+// (positional), ByDerivation (computed relation), or DeclaredFrontier with a nonempty reason AND a
+// nonempty dissolve_on trigger. A DeclaredFrontier row with an empty reason or trigger is the
+// NICKNAME class (asserted, string-keyed, no trigger) and reds. Scope honesty: this lens checks
+// ENROLLED registrations only — unregistered bare lists are invisible to it and are caught at
+// review by the 5a rule until the enforcement-intent thread absorbs the registry (see
+// roster_registry_visibility_note and roster_registry_enforcement_intent_convergence_note on the
+// carrier).
 
 type NonStandardRegistration {
   roster_module_path: String
@@ -66,7 +74,19 @@ fn roster_registry_standard_holds() -> Bool {
   roster_registry_nonstandard_count() == 0
 }
 
-data roster_registry_declaration_refs_note: String = "WHY THIS PROJECTION EXISTS: a registration is built out of typed DeclarationRefs — the roster it names, and, for a ByDerivation row, the predicate it claims computes membership. Nothing resolved either of them, so a registration could name a declaration that had been deleted and stay green forever, and one did: gunbc.stage0_emit_plan_generated generated_stage0_files was registered ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan long after that module was deleted, so the registry reported the DERIVED rung over a roster that had become hand-maintained in fact. The registration passed registration_membership_is_standard because that check reads the membership SHAPE and never asks whether the shape's payload names anything real. This projection is the population that closes it: v2.lens.cited_symbol_resolution folds these refs into the enrolled cited-symbol resolution census, which is exactly the widening that lens's own law names as its next step (enrollment widens to every structural DeclarationRef carrier). A ByDerivation row contributes BOTH refs deliberately — the predicate is the half that rotted, and a projection carrying only the roster would have left the defect it was written for undetected."
+// WHY THIS PROJECTION EXISTS: a registration is built out of typed DeclarationRefs — the roster it
+// names, and, for a ByDerivation row, the predicate it claims computes membership. Nothing resolved
+// either of them, so a registration could name a declaration that had been deleted and stay green
+// forever, and one did: gunbc.stage0_emit_plan_generated generated_stage0_files was registered
+// ByDerivation from gunbc.stage0_emit_plan generated_stage0_files_from_emission_plan long after
+// that module was deleted, so the registry reported the DERIVED rung over a roster that had become
+// hand-maintained in fact. The registration passed registration_membership_is_standard because that
+// check reads the membership SHAPE and never asks whether the shape's payload names anything real.
+// This projection is the population that closes it: v2.lens.cited_symbol_resolution folds these
+// refs into the enrolled cited-symbol resolution census, which is exactly the widening that lens's
+// own law names as its next step (enrollment widens to every structural DeclarationRef carrier). A
+// ByDerivation row contributes BOTH refs deliberately — the predicate is the half that rotted, and
+// a projection carrying only the roster would have left the defect it was written for undetected.
 
 data empty_declaration_refs: List<DeclarationRef> = []
 

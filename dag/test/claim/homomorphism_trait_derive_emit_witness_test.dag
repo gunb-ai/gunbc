@@ -4,7 +4,12 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data homomorphism_trait_derive_emit_witness_note: String = "Discriminating controls for trait_derive_emit item-own generic parameters used as type-application heads. Homomorphism<C, Source, Target> applies C to Source and Target; C is the declaring item's own type parameter, not a declared type in scope, so v1_type_expr_clone_undecided_head must recurse through C<Source> instead of refusing at C. Positive: emission succeeds without trait_derive_emit / compile_error! refusal. Negative: genuinely unknown heads still refuse with a located name."
+// Discriminating controls for trait_derive_emit item-own generic parameters used as
+// type-application heads. Homomorphism<C, Source, Target> applies C to Source and Target; C is the
+// declaring item's own type parameter, not a declared type in scope, so
+// v1_type_expr_clone_undecided_head must recurse through C<Source> instead of refusing at C.
+// Positive: emission succeeds without trait_derive_emit / compile_error! refusal. Negative:
+// genuinely unknown heads still refuse with a located name.
 
 fn w_item_own_generic_param_applied_type_emits() -> Bool {
   compile_dag_rust_emit_check(

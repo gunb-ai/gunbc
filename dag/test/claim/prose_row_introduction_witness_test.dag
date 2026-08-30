@@ -6,7 +6,7 @@ import gunbc.prose_row_frontier {
   ProseRowRef,
   ProseRowDiffObservation, ProseRowsObserved, ProseRowDiffUnreadable,
   prose_row_diff_observation, prose_rows_introduced,
-  prose_rows_refused, prose_rows_out_of_scope, prose_rows_render,
+  prose_rows_render,
   prose_row_decl_name,
 }
 import tools.prose_row_introduction_gate { prose_row_introduction_verdict }
@@ -35,11 +35,11 @@ fn removed_line(name: String) -> String {
   concat("-data ", concat(name, ": String = \"prose\"\n"))
 }
 
-data in_scope_path: String = "dag/extdeps/auth/probe.dag"
+data probe_path: String = "dag/extdeps/auth/probe.dag"
 
-data other_in_scope_path: String = "dag/extdeps/auth/moved_probe.dag"
+data other_probe_path: String = "dag/extdeps/auth/moved_probe.dag"
 
-data out_of_scope_path: String = "dag/gunbc/probe.dag"
+data far_probe_path: String = "dag/gunbc/probe.dag"
 
 fn observe(diff_text: String) -> ProseRowDiffObservation {
   prose_row_diff_observation(diff_text: diff_text)
@@ -49,15 +49,7 @@ fn refused_of(diff_text: String) -> List<ProseRowRef> {
   match observe(diff_text: diff_text) {
     ProseRowDiffUnreadable { reason: _ } => []
     ProseRowsObserved { added: added, removed: removed } =>
-      prose_rows_refused(introduced: prose_rows_introduced(added: added, removed: removed))
-  }
-}
-
-fn residue_of(diff_text: String) -> List<ProseRowRef> {
-  match observe(diff_text: diff_text) {
-    ProseRowDiffUnreadable { reason: _ } => []
-    ProseRowsObserved { added: added, removed: removed } =>
-      prose_rows_out_of_scope(introduced: prose_rows_introduced(added: added, removed: removed))
+      prose_rows_introduced(added: added, removed: removed)
   }
 }
 
@@ -71,9 +63,9 @@ fn verdict_refuses(diff_text: String) -> Bool {
 // Rendering rather than counting, for the same reason the M1A attachment witness renders its rows: a
 // count admits a wrong row that preserves cardinality, and the failure this fold could plausibly
 // produce is a row attributed to the wrong path.
-data introduction_diff: String = concat(diff_header(path: in_scope_path), added_line(name: "probe_note"))
+data introduction_diff: String = concat(diff_header(path: probe_path), added_line(name: "probe_note"))
 
-test fn prose_row_introduced_in_scope_is_refused() -> Bool {
+test fn prose_row_introduced_is_refused() -> Bool {
   prose_rows_render(rows: refused_of(diff_text: introduction_diff)) == "dag/extdeps/auth/probe.dag probe_note"
     && verdict_refuses(diff_text: introduction_diff)
 }
@@ -82,7 +74,7 @@ test fn prose_row_introduced_in_scope_is_refused() -> Bool {
 // exactly how an ordinary in-place edit of an existing prose row appears in a unified diff. It must
 // pass, or this wall taxes every change that touches prose it did not introduce.
 data edit_diff: String = concat(
-  diff_header(path: in_scope_path),
+  diff_header(path: probe_path),
   concat(removed_line(name: "probe_note"), added_line(name: "probe_note"))
 )
 
@@ -95,8 +87,8 @@ test fn prose_row_edited_in_place_is_not_an_introduction() -> Bool {
 // split. Keying introduction on the declaration NAME is what makes this pass; keying on the added line
 // or on the path would refuse every reorganisation of already-existing prose.
 data move_diff: String = concat(
-  concat(diff_header(path: in_scope_path), removed_line(name: "probe_note")),
-  concat(diff_header(path: other_in_scope_path), added_line(name: "probe_note"))
+  concat(diff_header(path: probe_path), removed_line(name: "probe_note")),
+  concat(diff_header(path: other_probe_path), added_line(name: "probe_note"))
 )
 
 test fn prose_row_moved_between_files_is_not_an_introduction() -> Bool {
@@ -104,23 +96,20 @@ test fn prose_row_moved_between_files_is_not_an_introduction() -> Bool {
     && !verdict_refuses(diff_text: move_diff)
 }
 
-// THE SCOPE BOUNDARY, ASSERTED IN BOTH DIRECTIONS. An identical introduction outside the migrated
-// paths must NOT refuse and must still be COUNTED. Asserting only the first half would be satisfied by
-// a kernel that dropped the row entirely, which is precisely the silent residue DESIGN 5 forbids a
-// bounded scope from producing.
-data out_of_scope_diff: String = concat(diff_header(path: out_of_scope_path), added_line(name: "probe_note"))
+// NO PATH IS OUT OF SCOPE. The wall used to be path-scoped and counted a residue outside its roster;
+// the roster dissolved when the corpus-wide sweep landed, so an identical introduction anywhere refuses.
+data far_diff: String = concat(diff_header(path: far_probe_path), added_line(name: "probe_note"))
 
-test fn prose_row_introduced_out_of_scope_is_counted_not_refused() -> Bool {
-  (refused_of(diff_text: out_of_scope_diff) |> count) == 0
-    && !verdict_refuses(diff_text: out_of_scope_diff)
-    && prose_rows_render(rows: residue_of(diff_text: out_of_scope_diff)) == "dag/gunbc/probe.dag probe_note"
+test fn prose_row_introduced_anywhere_is_refused() -> Bool {
+  prose_rows_render(rows: refused_of(diff_text: far_diff)) == "dag/gunbc/probe.dag probe_note"
+    && verdict_refuses(diff_text: far_diff)
 }
 
 // A RENAME READS AS AN INTRODUCTION, and that is the declared answer rather than an accident of the
 // name key: the old name leaves and a new one arrives, so nothing distinguishes it from a fresh row.
 // A prose row being renamed is a prose row being touched by someone who could migrate it instead.
 data rename_diff: String = concat(
-  diff_header(path: in_scope_path),
+  diff_header(path: probe_path),
   concat(removed_line(name: "old_probe_note"), added_line(name: "new_probe_note"))
 )
 

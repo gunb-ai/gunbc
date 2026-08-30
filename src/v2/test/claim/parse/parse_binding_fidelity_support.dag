@@ -56,7 +56,10 @@ import v2.compiler.namespace_graft { module_header_containment_graft }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data parse_binding_fidelity_support_note: String = "Shared parse-binding helpers for long-lane + body_lowering consumers (review 43128: not a *_test.dag — module-local orphan hygiene would false-red cross-module-only helpers). Dead `pbf_tree_contains_atom_identity` deleted (review 43356 — was self-recursive only, not a shared consumer). Fast-lane tests stay in parse_binding_fidelity_test.dag."
+// Shared parse-binding helpers for long-lane + body_lowering consumers (review 43128: not a
+// *_test.dag — module-local orphan hygiene would false-red cross-module-only helpers). Dead
+// `pbf_tree_contains_atom_identity` deleted (review 43356 — was self-recursive only, not a shared
+// consumer). Fast-lane tests stay in parse_binding_fidelity_test.dag.
 
 fn pbf_tokenize() -> Outcome<TokenStream> {
   let lm = dag_language_model()

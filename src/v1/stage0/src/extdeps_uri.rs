@@ -201,15 +201,6 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     }
 }
 
-pub fn uri_component_encode_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]

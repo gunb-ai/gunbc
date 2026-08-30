@@ -2,10 +2,10 @@
 
 Measured 2026-08-29 on this repository at `dda42363639` (main, immediately after
 gunbc#9666), single host, arm64, `--release`. **Instrumentation was a throwaway patch to
-the emitted mirror; nothing here was landed, and no instrument in the tree re-derives
-these figures.** They are reproducible only by re-instrumenting, by the method below.
-This document is the specimen record for the `identity_absent_graph_traversal` row in
-`gunbc.recurring_failure_mode`; that row carries the class, this file carries the numbers.
+the emitted mirror; nothing was landed, and no instrument in the tree re-derives these
+figures** — they are reproducible only by re-instrumenting per the method below. This is
+the specimen record for the `identity_absent_graph_traversal` row in
+`gunbc.recurring_failure_mode`: that row carries the class, this file the numbers.
 
 ## Reproduction
 
@@ -64,7 +64,7 @@ so the cost is the re-traversal itself, not the work at each node.
 
 ## Two falsified hypotheses
 
-Recorded because both are the first guesses, and neither is cheap to re-falsify.
+Recorded because both are the first guesses and neither is cheap to re-falsify.
 
 - **List-copy lowering.** `flat_map` lowers to `__result.extend((*x).iter().cloned())` and
   `rc_list_concat` uses `extend`, so every tree level copies its subtree's list with a
@@ -77,5 +77,5 @@ Recorded because both are the first guesses, and neither is cheap to re-falsify.
 ## What is not claimed
 
 One seam, one corpus, one date. 315x is not a base rate for any other traversal. The
-figures are not enrolled and nothing re-derives them; treat a stale number here as stale
-rather than as a measurement of the current tree, and re-run the method above.
+figures are not enrolled and nothing re-derives them; treat a stale number as stale, not
+as a measurement of the current tree, and re-run the method above.

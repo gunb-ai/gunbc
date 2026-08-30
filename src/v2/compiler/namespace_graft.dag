@@ -39,14 +39,26 @@ import v2.extdeps.languages.dag {
   qualified_name_from_module_node
 }
 
-data namespace_graft_qn_reader_home_note: String = "The QN readers (qualified_name_from_module_node — graft-aware, single authority — plus the graft-spine walk cluster) live in v2.extdeps.languages.dag: the grafted module shape is a fact of the dag language surface, and homing the spine walk beside the header readers keeps one collapsed reader with no compiler-layer import (the former qualified_name_from_module_node_graft_aware Scaffold and its extdeps-coupling sibling dissolved to that SingleAuthority). This module keeps only the graft TRANSFORM (pre-graft tree -> containment spine) and its edge dispositions."
+// The QN readers (qualified_name_from_module_node — graft-aware, single authority — plus the
+// graft-spine walk cluster) live in v2.extdeps.languages.dag: the grafted module shape is a fact of
+// the dag language surface, and homing the spine walk beside the header readers keeps one collapsed
+// reader with no compiler-layer import (the former qualified_name_from_module_node_graft_aware
+// Scaffold and its extdeps-coupling sibling dissolved to that SingleAuthority). This module keeps
+// only the graft TRANSFORM (pre-graft tree -> containment spine) and its edge dispositions.
 
 type ModuleRootEdgeDisposition
   = ModuleRootEdgeDissolve
   | ModuleRootEdgeGraftBody
   | ModuleRootEdgeRehomeProvenance
 
-data namespace_graft_edge_disposition_note: String = "Module-root edge census (pre-graft working tree; none silently dropped): dag_surface_module_header + dag_surface_module_header_qualified_name → DISSOLVE (metadata; QN read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never an export subset)."
+// Module-root edge census (pre-graft working tree; none silently dropped):
+// dag_surface_module_header + dag_surface_module_header_qualified_name → DISSOLVE (metadata; QN
+// read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell
+// (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE
+// (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item
+// shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other
+// non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never
+// an export subset).
 
 fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeDisposition {
   if dag_surface_module_header_metadata_edge(name: name) {

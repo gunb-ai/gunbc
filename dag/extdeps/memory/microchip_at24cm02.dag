@@ -16,7 +16,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data at24cm02_note: String = "THE DOCUMENT EXISTS AND ITS GEOMETRY IS NOT TRANSCRIBED, AND THIS ROW CARRIES ONLY THE FIRST OF THOSE. Datasheet DS20006197 is served at the recorded locator and publishes recommended land patterns beside its package outlines, so the facts this row owes are published rather than unobtainable. Nothing about the part's capacity, interface or package is recorded here, because recording any of it would mean supplying it from expectation. WHY THIS ROW IS NOT A SELECTION: Ampere's Mt. Jade reference names this part for a firmware EEPROM role, which is a reference-design precedent — a relation between a part and a particular board, and therefore a product-layer fact that belongs with the board that consumes it. An upstream module knows nothing about our board and must not carry a justification for it."
+// THE DOCUMENT EXISTS AND ITS GEOMETRY IS NOT TRANSCRIBED, AND THIS ROW CARRIES ONLY THE FIRST OF
+// THOSE. Datasheet DS20006197 is served at the recorded locator and publishes recommended land
+// patterns beside its package outlines, so the facts this row owes are published rather than
+// unobtainable. Nothing about the part's capacity, interface or package is recorded here, because
+// recording any of it would mean supplying it from expectation. WHY THIS ROW IS NOT A SELECTION:
+// Ampere's Mt. Jade reference names this part for a firmware EEPROM role, which is a
+// reference-design precedent — a relation between a part and a particular board, and therefore a
+// product-layer fact that belongs with the board that consumes it. An upstream module knows nothing
+// about our board and must not carry a justification for it.
 
 data at24cm02: CatalogPartIdentity = CatalogPartIdentity {
   ordering_part_number: "AT24CM02",

@@ -2,19 +2,19 @@
 
 **Status: planning worksheet under review. No review-system implementation edits follow until the
 rows are agreed — this document and its temporary doc-graph registration are the only changes.**
-Deliberately not a `.dag` roster — landing a permanent registry with no consumer is the error this map
-exists to catch, and is already in the tree (finding 1).
+Deliberately not a `.dag` roster — a permanent registry with no consumer is the error this map exists
+to catch, already in the tree (finding 1).
 
 **Dissolve-on:** delete this file when every row has either been deleted, consumed by a named live
 edge, or transferred to a typed roadmap obligation with an owner and acceptance.
 
 Module grain decides nothing: `gunbc.review_verdict` alone spans external-artifact ingestion, prose
 findings, a workflow recommendation, and merge-readiness tallying. Every cell below was established by
-search against the current tree, not by reading a module's description of itself.
+search against the current tree, not a module's self-description.
 
 ## Liveness grain
 
-The phrase "real producer/consumer" caused the inaccurate rows in the first revision. Four levels,
+The phrase "real producer/consumer" caused the first revision's inaccurate rows. Four levels,
 worksheet-only vocabulary:
 
 | Level | Meaning |
@@ -25,12 +25,11 @@ worksheet-only vocabulary:
 | `LiveObserved` | Observed executing on a scheduled or production path. |
 
 "Could run", "is called by another domain function", and "has been observed executing" are three
-different facts. Conflating them is what produced the previous revision's `MergeReadinessTally` row.
+different facts; conflating them produced the previous revision's `MergeReadinessTally` row.
 
-**Known weakness:** `FixtureExercised` and `SemanticEdge` are cumulative rather than exclusive — a
-declaration can have a call-graph consumer *and* execute only in fixtures. The liveness cell records
-the **highest** level reached and appends the execution qualifier (e.g. "`SemanticEdge`, fixture-only
-execution").
+**Known weakness:** `FixtureExercised` and `SemanticEdge` are cumulative, not exclusive — a declaration
+can have a call-graph consumer *and* execute only in fixtures. The liveness cell records the **highest**
+level reached plus the execution qualifier (e.g. "`SemanticEdge`, fixture-only execution").
 
 ---
 
@@ -63,28 +62,28 @@ execution").
 ## Findings
 
 **1. A false registry exemption.** `v2.lens.registry.completeness` exempts `v2.lens.grounding_ledger`
-from distinct lens enrollment because it is "vocabulary/support types consumed by `v2.lens.grounding`
-(`GroundingVerdict`, `LedgerEntry`)". `v2.lens.grounding` references neither symbol. The exemption is
-justified by an edge that does not exist, and the module it protects has no consumer. Repair by
-deleting the module so the row disappears; any surviving row must name an exact live consumer.
+from distinct lens enrollment as "vocabulary/support types consumed by `v2.lens.grounding`
+(`GroundingVerdict`, `LedgerEntry`)". `v2.lens.grounding` references neither symbol: the exemption
+cites an edge that does not exist, and the module it protects has no consumer. Repair by deleting the
+module so the row disappears; any surviving row must name an exact live consumer.
 
 **2. Gaps run in both directions, and none is a live failure.** `grounding_ledger` has a producer and
 no consumer. `MergeReadinessTally` has a dormant semantic consumer and no producer. `ReviewVerdictReport`
 has neither. **Correction to the previous revision:** none of this shows a live merge process accepting
 bad data — `code_change_workflow`'s kernel has no in-tree driver, so the repository does not establish
-that today's merge decision passes through it at all. Consequential semantically, not operationally.
+that today's merge decision passes through it. Consequential semantically, not operationally.
 
 **3a. The exclusive proposition space is NOT established.** The constraint section below describes
 grounding as choosing among `Reference{authority}` / `ReferenceUri` / `ReferencePath` / `Role` /
 `StayString` / `GenuineProse`. That population comes from the inert `grounding_ledger`, and nothing
-establishes that its arms are mutually exclusive or complete: `ReferenceUri` and `ReferencePath` look
-like particular *reference targets*, while `GenuineProse` looks like a *reason for retaining a leaf
-string* — different axes, with no construction proving they cannot overlap. **Do not carry that
-coproduct forward merely because the ledger is being deleted.** A likely minimal outer partition is
+establishes its arms as mutually exclusive or complete: `ReferenceUri` and `ReferencePath` look like
+particular *reference targets*, `GenuineProse` like a *reason for retaining a leaf string* — different
+axes, with no construction proving they cannot overlap. **Do not carry that coproduct forward merely
+because the ledger is being deleted.** A likely minimal outer partition is
 `GroundTo { authority: DeclarationRef } | RetainLeaf { reason: GroundingRetentionReason }`, where URI,
-path, role, prose, open registry, parse input and cited identifier may turn out to be exact authorities
-or retention reasons rather than peer top-level verdicts — a hypothesis for the DFS, not a ruling to
-encode. The proposition space is defined by GROUNDING-DECIDE-0, not by the population repair.
+path, role, prose, open registry, parse input and cited identifier may be exact authorities or
+retention reasons rather than peer top-level verdicts — a hypothesis for the DFS, not a ruling. The
+proposition space is defined by GROUNDING-DECIDE-0, not by the population repair.
 
 **3b. Grounding cannot yet feed an exclusive-candidate review.** `ConceptByName` can carry multiple
 `QualifiedConcept`s under one name, but `first_coincident_target` folds to the **first** non-self match

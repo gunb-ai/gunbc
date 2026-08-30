@@ -1,8 +1,8 @@
 # Licensing — plain language
 
 gunbc is released under the [Business Source License 1.1](LICENSE) with an
-Additional Use Grant. This page explains what that means; the [LICENSE](LICENSE)
-file is the actual agreement and controls wherever the two differ.
+Additional Use Grant. This page is a plain-language summary; the [LICENSE](LICENSE)
+file is the agreement and controls wherever the two differ.
 
 ## The short version
 
@@ -26,19 +26,17 @@ clause, no royalty on output, and no obligation to contribute anything back.
 
 ## Is this open source?
 
-Not yet, and we would rather say so than blur it. While a release is inside its
-two-year window it is **source-available**: you can read it, modify it,
-redistribute it, and use it under the terms above, but the Open Source
-Initiative would not call it open source. Two years after a release ships, that
-release is plain MIT — genuinely open source, forever.
+Not yet. Inside its two-year window a release is **source-available**: you can
+read, modify, redistribute and use it under the terms above, but the Open Source
+Initiative would not call it open source. Two years after it ships, that release
+is plain MIT — open source, forever.
 
 ## Why this shape
 
 The paid boundary is the distance between the current frontier and the free
-trailing edge, and that distance exists only while the project is actively
-developed. If development stops, the trailing edge catches up and the
-commercial boundary disappears on its own — no adjudication, no argument about
-whether the maintainers still deserve it. The clock decides.
+trailing edge, which exists only while the project is actively developed. If
+development stops, the trailing edge catches up and the commercial boundary
+disappears on its own — no adjudication. The clock decides.
 
 ## Do I owe anything?
 
@@ -53,15 +51,14 @@ Work through it in order:
 4. Otherwise → production use needs a commercial license. Get in touch.
 
 "Corporate group" means the entities consolidated in your group's own financial
-statements — we use the accounting definition your auditor already applies
-rather than inventing one. If a contractor runs gunbc on your behalf, that is
-your use. If you merely consume someone else's product or output that happened
-to be built with gunbc, that is not your use at all.
+statements — the accounting definition your auditor already applies. A
+contractor running gunbc on your behalf is your use. Consuming someone else's
+product or output built with gunbc is not your use at all.
 
 ## History
 
 Releases made before this transition remain under the MIT license they shipped
-under; that grant is irrevocable and nothing here withdraws it.
+under; that grant is irrevocable.
 
 ## Contact
 

@@ -9,9 +9,98 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // the obligation it declares, rather than inside gunbc.seed_growth_admission, which owns the
 // ROSTER and the join and would otherwise accumulate every lane's rows in the module that
 // adjudicates them.
-data emitted_closure_compile_seed_growth_note: String = "Seed-growth obligation for the host behind the required emit-compile phase.\n\nWHAT THE CHANGE IS. The v2-emission phase emits one entry's closure and stops at the emitter. Its own header in cli_run.rs enumerates what it therefore cannot see, and the first item is 'a rustc error in the emitted tree (nothing here compiles the emission)'. DESIGN's Building-&-checks section carries a declared rung drop headed 'A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN INDEFINITELY WITH NO REQUIRED PHASE THAT FAILS', whose restoration trigger reads: this row retires when a required phase EMITS over a closure that reaches call sites -- the compile re-add on the queue the floor cut created. This host is that phase: same producer (compile_entry_emission), the emitted files written as a crate, cargo run over it.\n\nWHY IT IS NOT A SECOND EMITTER. The phase calls the SAME transaction the emission phase calls and adds one stage after it. A green there and a green here cannot be two facts about two emissions, which is exactly the property a separately-authored probe would have given up.\n\nWHY THE MANIFEST IS DERIVED AND NOT AUTHORED. The corpus already carries a hand-concatenated probe manifest (tools.self_host_curated_seed_linked_harness cssl_v1_compiled_probe_lib_cargo_toml), marked scaffold debt in its own module for being concat-authored TOML. Consuming it from a merge-blocking gate would have pinned that debt open on the required path, and authoring a second one would have been new scaffolding the operator declined on 2026-08-25. The manifest here is rendered from the modeled cargo authorities instead -- extdeps.rust.version render_cargo_package_header_prefix for the package header, v1.compiler.stage0_crates stage0_foundation_runtime_dependencies for the seed's own runtime dependency set, and render_stage0_crate_dep per row -- so no new markup is authored at all.\n\nNO IMPL BLOCK, AND THAT IS DELIBERATE. Every item in the file is a free function, a type, or the one private MODULE that carries the mutation subject's privacy boundary, because an impl method has no DeclarationRef spelling -- std.decl_ref offers WholeDeclaration or NamedField and neither names a method on an impl block -- so methods would have grown the class gunbc.seed_growth_admission reports as seed_growth_uncitable_item_keys. v1_compiler.declaration_index took the same route for the same reason. Uncitable items added by this change: ZERO.\n\nTHE ONE `mod` ITEM, DISPOSITIONED RATHER THAN GLOSSED. `entry_own_subject` is a private module and is the only item in this file that is neither a free function nor a type. It exists because Rust privacy is MODULE-scoped: a private field on a struct declared beside its constructor is a wall against other modules and mere convention within the declaring one, so the carrier and its single constructor sit inside a submodule and everything else in the file is outside that boundary. Without it, `MutationSubject { rust_module: ... }` compiles anywhere in the file and the shared-core substitution this phase exists to prevent is unwritable only by agreement. IT IS CITABLE and it is enumerated: a module is a whole declaration, so `WholeDeclaration` names it and the uncitable-item count stays ZERO. Its members are enumerated beside it -- the type, the constructor, and the accessor -- which is why the accessor is a free function inside the boundary rather than an impl method.\n\nHAND-ITEM DELTA: enumerated below rather than counted. src/v1/stage0/src/cli_run.rs adds no declaration -- one #[path] mod line and one re-export list -- and src/v1/stage0/src/bin/claim_executor.rs adds one variant to an existing exhaustive enum and one phase body inside an existing function; both dispositions are ExistingSeedItemModified, and listing them would net a modification into an addition census.\n\nWHY THIS ROSTER DRIFTED ONCE, RECORDED SO IT IS NOT REPEATED. Review 56685 found it citing PROBE_PACKAGE_NAME, which resolves to nothing: an earlier revision carried a package-name CONSTANT, the cargo-fingerprint-aliasing repair replaced it with the per-entry function probe_package_name, and the receipt was not updated with the code. An audit of the whole roster then found 1 stale name and 16 unaccounted declarations -- every one of the 16 added by a LATER repair in this same PR (probe_root, the selection digests, retention, the probe-line attribution fix, two tests), each of which grew the file without growing its receipt. That is the exact failure the carrier exists to catch, committed inside the carrier. The roster is now exact against the file: 55 rows, 55 declarations, zero stale, zero unaccounted. THE CENSUS COUNTS EVERY ITEM KIND AT EVERY INDENT -- const, static, fn, struct, enum, type and mod -- with exactly one stated exclusion, the `#[cfg(test)] mod tests` harness itself, whose member tests ARE enumerated individually. The exclusion is written down because an unstated narrowing is how the two preceding defects survived: a scan of only column-0 and 4-space indents could not see an impl method, and a scan omitting `mod` could not see the privacy boundary. THE STANDING HAZARD IS THAT IT IS A HAND ROSTER BESIDE ITS SUBJECT, so it can only be re-verified, never trusted: it drifts silently on the next declaration added, and nothing in the required run compares the two. Its dissolution is the same v1-hand-queue-drain lane this obligation already names.\n\nWHAT THE EXECUTED EVIDENCE IS, because the seed's own unit tests are not it. The Rust suite was removed from CI on 2026-07-11, so nothing under #[cfg(test)] executes on the merge path and none of it may be cited as coverage. The executed evidence is the phase itself: establish_discriminating_red injects one type error into one emitted file on EVERY required run, requires it to fail alone, restores the bytes and requires the green back -- and a mutation that fails to go red is a PHASE FAILURE, not a note. That is DESIGN 4b's authorable-RED question answered by execution rather than by inspection, and it is why a green from this phase carries information that a bare cargo-exit-status phase would not."
+// Seed-growth obligation for the host behind the required emit-compile phase.
+//
+// WHAT THE CHANGE IS. The v2-emission phase emits one entry's closure and stops at the emitter. Its
+// own header in cli_run.rs enumerates what it therefore cannot see, and the first item is 'a rustc
+// error in the emitted tree (nothing here compiles the emission)'. DESIGN's Building-&-checks
+// section carries a declared rung drop headed 'A BLOCKING EMIT-STAGE DIAGNOSTIC CAN SIT ON MAIN
+// INDEFINITELY WITH NO REQUIRED PHASE THAT FAILS', whose restoration trigger reads: this row
+// retires when a required phase EMITS over a closure that reaches call sites -- the compile re-add
+// on the queue the floor cut created. This host is that phase: same producer
+// (compile_entry_emission), the emitted files written as a crate, cargo run over it.
+//
+// WHY IT IS NOT A SECOND EMITTER. The phase calls the SAME transaction the emission phase calls and
+// adds one stage after it. A green there and a green here cannot be two facts about two emissions,
+// which is exactly the property a separately-authored probe would have given up.
+//
+// WHY THE MANIFEST IS DERIVED AND NOT AUTHORED. The corpus already carries a hand-concatenated
+// probe manifest (tools.self_host_curated_seed_linked_harness
+// cssl_v1_compiled_probe_lib_cargo_toml), marked scaffold debt in its own module for being
+// concat-authored TOML. Consuming it from a merge-blocking gate would have pinned that debt open on
+// the required path, and authoring a second one would have been new scaffolding the operator
+// declined on 2026-08-25. The manifest here is rendered from the modeled cargo authorities instead
+// -- extdeps.rust.version render_cargo_package_header_prefix for the package header,
+// v1.compiler.stage0_crates stage0_foundation_runtime_dependencies for the seed's own runtime
+// dependency set, and render_stage0_crate_dep per row -- so no new markup is authored at all.
+//
+// NO IMPL BLOCK, AND THAT IS DELIBERATE. Every item in the file is a free function, a type, or the
+// one private MODULE that carries the mutation subject's privacy boundary, because an impl method
+// has no DeclarationRef spelling -- std.decl_ref offers WholeDeclaration or NamedField and neither
+// names a method on an impl block -- so methods would have grown the class
+// gunbc.seed_growth_admission reports as seed_growth_uncitable_item_keys.
+// v1_compiler.declaration_index took the same route for the same reason. Uncitable items added by
+// this change: ZERO.
+//
+// THE ONE `mod` ITEM, DISPOSITIONED RATHER THAN GLOSSED. `entry_own_subject` is a private module
+// and is the only item in this file that is neither a free function nor a type. It exists because
+// Rust privacy is MODULE-scoped: a private field on a struct declared beside its constructor is a
+// wall against other modules and mere convention within the declaring one, so the carrier and its
+// single constructor sit inside a submodule and everything else in the file is outside that
+// boundary. Without it, `MutationSubject { rust_module: ... }` compiles anywhere in the file and
+// the shared-core substitution this phase exists to prevent is unwritable only by agreement. IT IS
+// CITABLE and it is enumerated: a module is a whole declaration, so `WholeDeclaration` names it and
+// the uncitable-item count stays ZERO. Its members are enumerated beside it -- the type, the
+// constructor, and the accessor -- which is why the accessor is a free function inside the boundary
+// rather than an impl method.
+//
+// HAND-ITEM DELTA: enumerated below rather than counted. src/v1/stage0/src/cli_run.rs adds no
+// declaration -- one #[path] mod line and one re-export list -- and
+// src/v1/stage0/src/bin/claim_executor.rs adds one variant to an existing exhaustive enum and one
+// phase body inside an existing function; both dispositions are ExistingSeedItemModified, and
+// listing them would net a modification into an addition census.
+//
+// WHY THIS ROSTER DRIFTED ONCE, RECORDED SO IT IS NOT REPEATED. Review 56685 found it citing
+// PROBE_PACKAGE_NAME, which resolves to nothing: an earlier revision carried a package-name
+// CONSTANT, the cargo-fingerprint-aliasing repair replaced it with the per-entry function
+// probe_package_name, and the receipt was not updated with the code. An audit of the whole roster
+// then found 1 stale name and 16 unaccounted declarations -- every one of the 16 added by a LATER
+// repair in this same PR (probe_root, the selection digests, retention, the probe-line attribution
+// fix, two tests), each of which grew the file without growing its receipt. That is the exact
+// failure the carrier exists to catch, committed inside the carrier. The roster is now exact
+// against the file: 55 rows, 55 declarations, zero stale, zero unaccounted. THE CENSUS COUNTS EVERY
+// ITEM KIND AT EVERY INDENT -- const, static, fn, struct, enum, type and mod -- with exactly one
+// stated exclusion, the `#[cfg(test)] mod tests` harness itself, whose member tests ARE enumerated
+// individually. The exclusion is written down because an unstated narrowing is how the two
+// preceding defects survived: a scan of only column-0 and 4-space indents could not see an impl
+// method, and a scan omitting `mod` could not see the privacy boundary. THE STANDING HAZARD IS THAT
+// IT IS A HAND ROSTER BESIDE ITS SUBJECT, so it can only be re-verified, never trusted: it drifts
+// silently on the next declaration added, and nothing in the required run compares the two. Its
+// dissolution is the same v1-hand-queue-drain lane this obligation already names.
+//
+// WHAT THE EXECUTED EVIDENCE IS, because the seed's own unit tests are not it. The Rust suite was
+// removed from CI on 2026-07-11, so nothing under #[cfg(test)] executes on the merge path and none
+// of it may be cited as coverage. The executed evidence is the phase itself:
+// establish_discriminating_red injects one type error into one emitted file on EVERY required run,
+// requires it to fail alone, restores the bytes and requires the green back -- and a mutation that
+// fails to go red is a PHASE FAILURE, not a note. That is DESIGN 4b's authorable-RED question
+// answered by execution rather than by inspection, and it is why a green from this phase carries
+// information that a bare cargo-exit-status phase would not.
 
-data probe_root_selection_seed_growth_delta_note: String = "HAND-RUST RECEIPT FOR THE REQUIRED-PATH ROOT CORRECTION. Additions: PROBE_ROOT_DIR_NAME, required_ci_probe_root_from_runner_temp, required_ci_emit_compile_probe_root, local_emit_compile_probe_root, and the_probe_root_does_not_exist_without_runner_temp -- five exact declarations, all enumerated in emitted_closure_compile_seed_growth_justification below. Deletion: probe_root, whose environment-dependent fallback mixed the required and standalone policies. Existing items probe_crate_dir, write_probe_crate, run_emit_compile_entry, emit_compile_report, run_required_emit_compile, the cli_run re-export, and the two claim_executor call sites are modified rather than added. Hand-Rust line delta against this PR's session/deep-gull-307 base: +79/-31 in emitted_closure_compile_host.rs, +9/-3 in claim_executor.rs, and +2/-1 in cli_run.rs. WHY RUST IS STILL NEEDED, owning lane, deletion trigger, and current boundary are unchanged from emitted_closure_compile_seed_growth_justification: the root choice feeds the same host filesystem and cargo-actuation boundary; owning_dissolution_lane remains v1-hand-queue-drain, and the whole selection surface deletes when those two effects are modeled and actuated."
+// HAND-RUST RECEIPT FOR THE REQUIRED-PATH ROOT CORRECTION. Additions: PROBE_ROOT_DIR_NAME,
+// required_ci_probe_root_from_runner_temp, required_ci_emit_compile_probe_root,
+// local_emit_compile_probe_root, and the_probe_root_does_not_exist_without_runner_temp -- five
+// exact declarations, all enumerated in emitted_closure_compile_seed_growth_justification below.
+// Deletion: probe_root, whose environment-dependent fallback mixed the required and standalone
+// policies. Existing items probe_crate_dir, write_probe_crate, run_emit_compile_entry,
+// emit_compile_report, run_required_emit_compile, the cli_run re-export, and the two claim_executor
+// call sites are modified rather than added. Hand-Rust line delta against this PR's
+// session/deep-gull-307 base: +79/-31 in emitted_closure_compile_host.rs, +9/-3 in
+// claim_executor.rs, and +2/-1 in cli_run.rs. WHY RUST IS STILL NEEDED, owning lane, deletion
+// trigger, and current boundary are unchanged from
+// emitted_closure_compile_seed_growth_justification: the root choice feeds the same host filesystem
+// and cargo-actuation boundary; owning_dissolution_lane remains v1-hand-queue-drain, and the whole
+// selection surface deletes when those two effects are modeled and actuated.
 
 data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [

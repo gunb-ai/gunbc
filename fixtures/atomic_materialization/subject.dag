@@ -1,12 +1,11 @@
 module fixture.atomic_materialization.subject
 
 
-// A WELL-FORMED file-transport operation: renderable path, product output shape, and only
-// modeled output channels. It is well-formed deliberately -- `file_binding_refusal` must find
-// NOTHING wrong with it, so that the only thing separating a clean emission from a refusal is
-// the TARGET GATE (`target_renders_file_transport`: Rust true, Python/Go/Dag false). That is
-// what makes this fixture a discriminating pair rather than a broken module: Rust completes,
-// Go refuses, and the refusal is `FileTargetNotModeled` rather than an unrelated defect.
+// A WELL-FORMED file-transport operation: renderable path, product output shape, only modeled
+// output channels. `file_binding_refusal` must find NOTHING wrong with it, so the only thing
+// separating a clean emission from a refusal is the TARGET GATE (`target_renders_file_transport`:
+// Rust true, Python/Go/Dag false). That makes it a discriminating pair rather than a broken module:
+// Rust completes, Go refuses, and the refusal is `FileTargetNotModeled`, not an unrelated defect.
 service AtomicFixture {
 
   operation Read {

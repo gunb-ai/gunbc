@@ -7,10 +7,10 @@
 Fleet convergence reported hosts converged while they served no traffic. srv1 held **50 slot
 directories and 5 running services**; srv3 went from 8 directories to 21 while its running count
 stayed at 5. Nothing in the pipeline could notice, because the convergence object is filesystem
-membership and the subject anyone actually cares about is **service capacity**.
+membership and the subject that matters is **service capacity**.
 
-Filesystem convergence is a legitimate *subordinate* family. The defect is that it was read as though
-it implied serving capacity.
+Filesystem convergence is a legitimate *subordinate* family; the defect is that it was read as
+implying serving capacity.
 
 ## The incident chain, in order, each blocker masking the next
 
@@ -23,7 +23,7 @@ it implied serving capacity.
 6. release replaced with v2.336.0      -> serving capacity finally rose
 ```
 
-The privilege work was necessary and could never have been sufficient: it proved the host could
+The privilege work was necessary and could never be sufficient: it proved the host could
 execute the installer, never that the provider would accept what was installed.
 
 ## Three defects, all still open
@@ -34,7 +34,7 @@ execute the installer, never that the provider would accept what was installed.
 path are the same member, so a release bump repairs nothing that already exists.
 
 **The receipt:** 29 slot directories were deleted by hand across srv1 and srv3 to force
-re-provisioning. Replacement could only be induced by turning an existing member into an absence.
+re-provisioning — replacement could only be induced by turning an existing member into an absence.
 
 `LocalRunnerSlotIncarnation` carries slot, unit, unit_active and registration_name -- not the
 installed artifact -- so it cannot express *same slot, same unit, same registration, different
@@ -44,7 +44,7 @@ release*, which is exactly the state that hurt.
 
 The emitted `apply.sh` carried `daemon-reload` and `disable`. Enable count 0, start count 0.
 
-And the two are separate transitions that must not be re-fused: `enable` is durable boot intent,
+The two are separate transitions that must not be re-fused: `enable` is durable boot intent,
 `start` is immediate activity. Both consume the activation admission, because enabling authorizes a
 future reboot to start the broker under readiness conditions that may no longer hold.
 
@@ -55,35 +55,34 @@ sudoers grant and the executed command are one argv, and the fused `enable --now
 has no grant on any executor host. `fleet_converge_plan` carries an activation family beside the
 slot family, with its own line in `plan.txt` and its own refusal count.
 
-**What did NOT change, and this is the part to read before quoting a green apply as converged
-capacity.** The admission is unreachable in production, and two blockers sit **in series**:
-first, no host observation transaction exists, so every production caller supplies
-`ActivationReadinessUnobserved` and the admission is never asked; behind that,
-`admit_runner_activation` requires a `HostCompilePoolReady` whose producer answers
-`PoolNotDeclaredInTopology` fleet-wide under `CompilePoolInRunnerSlots`. Flipping the placement
-changes nothing observable while the first stands — the pool receipt is a field *inside* a readiness
-value that is never `Observed`. So both transitions refuse on every host today, `apply.sh` prints a
-typed located refusal for each, and serving capacity still does not rise from apply alone.
+**What did NOT change — read this before quoting a green apply as converged capacity.** The
+admission is unreachable in production; two blockers sit **in series**: no host observation
+transaction exists, so every production caller supplies `ActivationReadinessUnobserved` and the
+admission is never asked; behind that, `admit_runner_activation` requires a `HostCompilePoolReady`
+whose producer answers `PoolNotDeclaredInTopology` fleet-wide under `CompilePoolInRunnerSlots`.
+Flipping the placement changes nothing observable while the first stands — the pool receipt is a
+field *inside* a readiness value that is never `Observed`. So both transitions refuse on every host
+today, `apply.sh` prints a typed located refusal for each, and serving capacity does not rise from
+apply alone.
 
-That state is declared as a typed `GuaranteeStall` row — `runner_activation_reachable_green_stall`
-— rather than left in prose, for the reason §4b gives: a gate whose only reachable state is refusal
-has to say so, or a reader cannot tell a permanent structural refusal from a transient one. The row
-names the observation transaction as the immediate blocker and the placement behind it, in that
-order, because naming only the second produces a plan that does the fleet-wide topology work and
-measures no change.
+That state is a typed `GuaranteeStall` row — `runner_activation_reachable_green_stall` — not
+prose, per §4b: a gate whose only reachable state is refusal must say so, or a reader cannot tell a
+permanent structural refusal from a transient one. The row names the observation transaction as
+the immediate blocker and the placement behind it, in that order, because naming only the second
+yields a plan that does fleet-wide topology work and measures no change.
 
 **Unreachable in production is not inert.** §4b judges reachability against what a *fixture* may
 author, and `test.claim.runner_service_activation` authors `ActivationReadinessObserved` and drives
 the admitted enable/start path with it — so the emission has an authorable, exercised RED at the
 fixture boundary.
 
-**What the item actually bought,** stated without inflation: an invisible hand loop became a named,
+**What the item bought,** without inflation: an invisible hand loop became a named,
 counted, located refusal. `enable count 0` was indistinguishable from a host with no activation
 work; `activation-refusals=2` with its cause is not.
 
 **The host boundary is mitigated, not structural, and the safety row says so.** The grants install
 the raw `systemctl enable <unit>` / `systemctl start <unit>` verbs for `ghrunner`, so the grantee can
-run them directly, outside the admission entirely. Three claims must be kept apart: *enable and start
+run them directly, outside the admission. Three claims must be kept apart: *enable and start
 are separately authorized* is structural (no derived sudoers line matches `enable --now`); *this
 emitter cannot activate without readiness* is structural inside the modeled call graph; *the host
 cannot activate without readiness* is **false**. `runner_activation_safety_guarantee` records
@@ -91,11 +90,10 @@ cannot activate without readiness* is **false**. `runner_activation_safety_guara
 helper that validates a receipt or a root-owned convergence service. A narrower sudoers match cannot
 climb it: any grant that lets the sanctioned path run the command lets the grantee run it too.
 
-**Next.** The host observation transaction — the shared blocker this document already names — and
-only then the placement flip, with a width decision attached and re-derived per host from live
-`nproc`/`MemTotal` rather than from `gunbc_jobserver_token_override_note`, which is stale for srv1.
-Until both land, capacity increases remain manual, and the refusal in `apply.sh` is the place that
-says so.
+**Next.** The host observation transaction — the shared blocker named below — and only then the
+placement flip, with a width decision re-derived per host from live `nproc`/`MemTotal` rather than
+from `gunbc_jobserver_token_override_note`, which is stale for srv1. Until both land, capacity
+increases stay manual, and the refusal in `apply.sh` says so.
 
 ### 3. Provider admissibility is unmodeled
 
@@ -113,7 +111,7 @@ An exact digest proved we faithfully installed the wrong operational version.
 
 ## Serving vs restartable capacity
 
-The distinction the incident exposed, and the one worth carrying as a number rather than prose:
+The distinction the incident exposed, worth carrying as a number rather than prose:
 
 ```
 serving_count      members providing capacity now
@@ -176,8 +174,8 @@ Scope it per `release x architecture x scope` with a bounded validity age -- not
 
 ## Do not make "latest" the authority
 
-That trades reproducibility for churn and is wrong during a progressive rollout or a bad release. The
-policy is a reviewed pinned candidate plus a compatibility receipt plus a declared maximum
+That trades reproducibility for churn and is wrong during a progressive rollout or a bad release.
+Policy: a reviewed pinned candidate plus a compatibility receipt plus a declared maximum
 observation age. A new upstream release creates an *obligation* -- test, review the pin change, plan a
 rolling replacement -- never an automatic fleet mutation.
 
@@ -186,7 +184,7 @@ rolling replacement -- never an automatic fleet mutation.
 When the desired artifact changes, per slot: stage the correct artifact, drain the old broker, replace
 the incarnation, start the new broker, prove fresh provider acceptance, then continue.
 
-**Do not restart the old runners first.** In this incident restart was precisely what converted latent
+**Do not restart the old runners first.** In this incident restart was exactly what converted latent
 old capacity into visible failure.
 
 ## Sequencing

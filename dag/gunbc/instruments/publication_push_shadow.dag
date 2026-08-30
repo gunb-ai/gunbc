@@ -18,7 +18,10 @@ import tools.publication_publisher {
   admit_public_write,
 }
 
-data publication_push_shadow_note: String = "Slice-1 shadow witness: read-only stopped-line-audit observer replaying observed public pushes through the modeled admission stack. Reports typed, located, counted refusals; does not green, gate, or mutate live push paths. Ordinary sessions still reach the public remote in this slice — the ledger sizes the enforcement stage."
+// Slice-1 shadow witness: read-only stopped-line-audit observer replaying observed public pushes
+// through the modeled admission stack. Reports typed, located, counted refusals; does not green,
+// gate, or mutate live push paths. Ordinary sessions still reach the public remote in this slice —
+// the ledger sizes the enforcement stage.
 
 type ObservedPublicPush {
   session: ModeledSessionId
