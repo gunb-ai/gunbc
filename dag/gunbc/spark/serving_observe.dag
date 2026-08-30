@@ -1032,7 +1032,11 @@ fn spark_serving_observed_facts_via_locus(
         linger: spark_serving_observed_linger_from_probe(
           result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
         ),
-        provenance: spark_serving_transaction_provenance(txn: txn, fleet_attempt: fleet_attempt, phase: phase),
+        provenance: spark_serving_transaction_provenance(
+          txn: txn,
+          fleet_attempt: context.attempt as NonEmptyStr,
+          phase: phase,
+        ),
       }
   }
 }
