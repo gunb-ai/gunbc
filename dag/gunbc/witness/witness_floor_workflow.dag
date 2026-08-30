@@ -1391,6 +1391,34 @@ fn wet_receipts_pr_script() -> String {
   )
 }
 
+// THE ARTIFACT UPLOAD RUNS ON EVERY EVENT AND THE COMMIT ONLY ON MAIN. A workflow_dispatch on
+// a branch is how a receipt is seeded or refreshed for an in-flight change (the changed-witness
+// remedy, and how this lane's own first receipt was produced): the dispatching author downloads
+// the artifact and commits it on their branch, so no lane run ever pushes to a ref it does not
+// own. The BuildBuddy remote executors cannot produce this receipt at all — the first attempt
+// was OOM-killed at a ~0.9 GiB availability floor against the ~5 GiB the wet chain resides at —
+// which is why the lane is pinned to the repository's own runners and no local fallback is
+// documented.
+fn wet_receipts_artifact_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload the receipt artifact" },
+    id: none,
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: "wet-lane-receipt")),
+        kv(key: "path", value: yaml_string(s: floor_wet_route_receipt_rel_path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 14)),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped'" },
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn wet_receipts_pr_step() -> Step {
   RunStep {
     name: Present { value: "Commit the receipt and open its pull request" },
@@ -1399,7 +1427,7 @@ fn wet_receipts_pr_step() -> Step {
     shell: none,
     env: Present { value: [kv(key: "GH_TOKEN", value: yaml_string(s: "${{ github.token }}"))] },
     working_directory: none,
-    if_condition: Present { value: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped'" },
+    if_condition: Present { value: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped' && github.ref == 'refs/heads/main'" },
     continue_on_error: none,
     timeout_minutes: none
   }
@@ -1413,6 +1441,11 @@ fn wet_receipts_bound_steps() -> List<WitnessFloorBoundStep> {
         step: wet_receipts_run_step(),
         role: consumes_only(capabilities: [CargoCapability, RustcCapability]),
         step_name: "Wet receipts lane (rows named by the run, not by this label)",
+      },
+      WitnessFloorBoundStep {
+        step: wet_receipts_artifact_step(),
+        role: capability_neutral,
+        step_name: "Upload the receipt artifact",
       },
       WitnessFloorBoundStep {
         step: wet_receipts_pr_step(),
