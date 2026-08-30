@@ -50,6 +50,10 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_transaction_duplicated_legs,
   spark_serving_transaction_missing_legs,
   spark_serving_required_probe_legs,
+  spark_serving_observation_attempt_of,
+  SparkServingPlanObservation,
+  SparkServingPostApplyObservation,
+  SparkServingReportObservation,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -257,4 +261,41 @@ test fn the_transaction_names_its_host_attempt_and_locus() -> Bool {
         && t.attempt == ("witness-attempt" as NonEmptyStr)
         && t.locus == ("witness-locus" as NonEmptyStr)
   }
+}
+
+// PRE-PLAN AND POST-APPLY ARE DIFFERENT OBSERVATIONS OF ONE HOST INSIDE ONE SSH ATTEMPT.
+//
+// A fleet attempt identifies an invocation, not an observation. The converge slice observes to plan,
+// actuates, and observes again to verify -- all under one attempt -- so an identity derived from the
+// attempt alone makes the before and after readings indistinguishable, which is precisely the join
+// the carrier exists to prevent. The first cut was worse still: every acquisition passed the same
+// constant, so no two observations anywhere differed.
+test fn observations_of_one_host_in_one_attempt_differ_by_phase() -> Bool {
+  let a = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
+  )
+  let b = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingPostApplyObservation,
+  )
+  let c = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingReportObservation,
+  )
+  !(a == b) && !(b == c) && !(a == c)
+}
+
+// And the same phase on two hosts, or two attempts, is likewise distinct -- so the identity is a
+// join of all three facts rather than a phase label that happens to differ.
+test fn the_observation_attempt_is_a_join_of_fleet_attempt_host_and_phase() -> Bool {
+  let here = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
+  )
+  let other_host = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-7" as NonEmptyStr,
+    host: "srv6" as HostIdentity,
+    phase: SparkServingPlanObservation,
+  )
+  let other_run = spark_serving_observation_attempt_of(
+    fleet_attempt: "run-8" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
+  )
+  !(here == other_host) && !(here == other_run)
 }
