@@ -328,82 +328,92 @@ fn produced_decl_param_layout_tokens(
   edge: Edge,
   layout: List<ProducedDeclParamSegment>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match layout {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: segment, tail: rest } =>
+  fold_list(
+    xs: layout,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, segment) {
       bind_outcome(
-        o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment),
-        f: fn(toks) {
+        o: acc,
+        f: fn(so_far) {
           bind_outcome(
-            o: produced_decl_param_layout_tokens(rows: rows, edge: edge, layout: rest),
-            f: fn(rest_toks) {
-              outcome_accepted(value: list_append(left: toks, right: rest_toks))
+            o: produced_decl_param_segment_tokens(rows: rows, edge: edge, segment: segment),
+            f: fn(toks) {
+              outcome_accepted(value: list_append(left: so_far, right: toks))
             }
           )
         }
       )
-  }
+    }
+  )
 }
 
 fn produced_decl_separator_tokens(separator: List<Symbol>) -> List<ConcreteSyntaxToken> {
-  match separator {
-    Empty => Empty
-    Cons { head: tc, tail: rest } =>
-      list_append(
-        left: [FixedToken { token_class: tc }],
-        right: produced_decl_separator_tokens(separator: rest)
-      )
-  }
+  fold_list(
+    xs: separator,
+    empty: Empty,
+    cons: fn(acc, tc) {
+      list_snoc_item(xs: acc, item: FixedToken { token_class: tc })
+    }
+  )
 }
 
-fn produced_decl_params_tail_tokens(
-  rows: ProducedDeclRenderRows,
-  params: List<Edge>
-) -> Outcome<List<ConcreteSyntaxToken>> {
-  match params {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: e, tail: rest } =>
-      bind_outcome(
-        o: produced_decl_param_layout_tokens(rows: rows, edge: e, layout: rows.param_layout),
-        f: fn(toks) {
-          bind_outcome(
-            o: produced_decl_params_tail_tokens(rows: rows, params: rest),
-            f: fn(rest_toks) {
-              outcome_accepted(
-                value: list_append(
-                  left: list_append(
-                    left: produced_decl_separator_tokens(separator: rows.param_separator),
-                    right: toks
-                  ),
-                  right: rest_toks
-                )
-              )
-            }
-          )
-        }
-      )
-  }
+// The separator is written BETWEEN parameters, so the fold carries whether anything has
+// been emitted yet rather than splitting into a first-element function and a near-identical
+// tail function. `any_written` is the fold's own state and not a test on the accumulated
+// token list: a layout that renders a parameter to zero tokens would make an emptiness test
+// silently drop that parameter's separator.
+type ProducedDeclParamsFold {
+  any_written: Bool
+  tokens: List<ConcreteSyntaxToken>
 }
 
 fn produced_decl_params_tokens(
   rows: ProducedDeclRenderRows,
   params: List<Edge>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match params {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: e, tail: rest } =>
-      bind_outcome(
-        o: produced_decl_param_layout_tokens(rows: rows, edge: e, layout: rows.param_layout),
-        f: fn(first_toks) {
-          bind_outcome(
-            o: produced_decl_params_tail_tokens(rows: rows, params: rest),
-            f: fn(rest_toks) {
-              outcome_accepted(value: list_append(left: first_toks, right: rest_toks))
-            }
-          )
-        }
-      )
-  }
+  bind_outcome(
+    o: fold_list(
+      xs: params,
+      empty: outcome_accepted(
+        value: ProducedDeclParamsFold { any_written: false, tokens: Empty }
+      ),
+      cons: fn(acc, edge) {
+        bind_outcome(
+          o: acc,
+          f: fn(so_far) {
+            bind_outcome(
+              o: produced_decl_param_layout_tokens(
+                rows: rows,
+                edge: edge,
+                layout: rows.param_layout
+              ),
+              f: fn(toks) {
+                outcome_accepted(
+                  value: ProducedDeclParamsFold {
+                    any_written: true,
+                    tokens: list_append(
+                      left: so_far.tokens,
+                      right: match so_far.any_written {
+                        true =>
+                          list_append(
+                            left: produced_decl_separator_tokens(
+                              separator: rows.param_separator
+                            ),
+                            right: toks
+                          )
+                        false => toks
+                      }
+                    )
+                  }
+                )
+              }
+            )
+          }
+        )
+      }
+    ),
+    f: fn(folded) { outcome_accepted(value: folded.tokens) }
+  )
 }
 
 fn produced_decl_signature_segment_tokens(
@@ -431,29 +441,27 @@ fn produced_decl_signature_segments_tokens(
   subject: ProducedDeclSignatureSubject,
   segments: List<ProducedDeclSignatureSegment>
 ) -> Outcome<List<ConcreteSyntaxToken>> {
-  match segments {
-    Empty => outcome_accepted(value: Empty)
-    Cons { head: segment, tail: rest } =>
+  fold_list(
+    xs: segments,
+    empty: outcome_accepted(value: Empty),
+    cons: fn(acc, segment) {
       bind_outcome(
-        o: produced_decl_signature_segment_tokens(
-          rows: rows,
-          subject: subject,
-          segment: segment
-        ),
-        f: fn(toks) {
+        o: acc,
+        f: fn(so_far) {
           bind_outcome(
-            o: produced_decl_signature_segments_tokens(
+            o: produced_decl_signature_segment_tokens(
               rows: rows,
               subject: subject,
-              segments: rest
+              segment: segment
             ),
-            f: fn(rest_toks) {
-              outcome_accepted(value: list_append(left: toks, right: rest_toks))
+            f: fn(toks) {
+              outcome_accepted(value: list_append(left: so_far, right: toks))
             }
           )
         }
       )
-  }
+    }
+  )
 }
 
 fn produced_decl_subject_from_name_and_arrow(
