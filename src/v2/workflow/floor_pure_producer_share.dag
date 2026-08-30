@@ -1,0 +1,104 @@
+module v2.workflow.floor_pure_producer_share
+
+import v2.std.collection { List }
+import v2.std.text { String }
+
+// THE CROSS-CLAIM PURE-PRODUCER SHARE ROSTER — which pure functions the required floor may
+// serve from one evaluation across claims.
+//
+// THE DEFECT THIS CLOSES. The floor builds a fresh evaluation frame per claim (deliberately —
+// one witness must not contaminate the next), so the eval-frame memo dies at every claim
+// boundary and every claim that reaches the emit path rebuilds the same target models from
+// scratch. Measured on the post-#9680 tree (claim_batch, arm64 session host, 2026-08-29):
+// `rust_target_model_staging()` alone is ~125ms of pure re-derivation per claim, a one-word
+// bash serialization carries ~110ms of word-independent fixed cost per claim, and main's floor
+// receipts carry a ~280-340ms fixed base on every `v2.test.emit.*` row (run 33263972922,
+// `required_floor_claim_cost.tsv`) against the operator's 500ms per-claim CPU ceiling — a
+// runner-variance-sized margin, which is how main run 33258845841 refused. The producers below
+// are pure functions of program content, so re-deriving them per claim is DESIGN §2 redundant
+// work, and the repair is "stop recomputing", never "raise the line".
+//
+// WHAT ENROLLMENT ASSERTS. A rostered producer's value depends only on the prepared subject's
+// content: it is a pure function (no effect uses — the seed's admission path only reaches
+// pure calls), its arguments are content-hashable, and its value passes TOTAL reification —
+// a positive portable shape (scalars, strings, lists, maps, sets, records and variants of
+// those, re-interned in the consuming frame), with the first origin-bound child (a fn, a
+// closure, any evaluator-node reference) refusing the whole store as a typed, located
+// ServeCacheValueNotPortable at publication time, never discovered at retrieval. The seed
+// realization (`v1_interpreter` cross-claim tier) keys every entry on fn-node identity plus
+// a content hash of the full argument row, serves only after the stored argument row
+// verifies structurally equal in portable form (a hash collision degrades to recompute,
+// never to a wrong value), refuses to store any call that dispatched an effect, and bounds
+// retention twice with counted refusals: an entry-count cap on the key population and a
+// byte budget on the reified portable representation (arguments and values, measured at
+// publication — reification is total, so the size is always computable before a store
+// lands). An over-budget producer recomputes per claim exactly as if never enrolled.
+//
+// TWO LISTS BECAUSE TWO FILL DISPOSITIONS (the well-posed split the floor-cost-debt carrier
+// names): a WARM row is nullary and preparation-forceable — the floor evaluates it once during
+// strict preparation and the fill lands outside the fold, billed to preparation like the edge
+// index warms; a CLAIM-FORCED row has claim-shaped arguments, so its fills happen inside the
+// fold on first touch, and the seed nets the fill from the paying claim's charged clocks and
+// reports it through the `[floor-shared-fill]` ledger under cache=cross_claim_pure_share.
+// A warm row that fails to evaluate or refuses to store STOPS THE LINE — a roster row whose
+// warm silently failed would relocate its fill onto the first toucher, which is exactly the
+// nondeterministic charge this roster exists to delete.
+//
+// ADMISSION IS BY RESOLVED DECLARATION IDENTITY. Preparation resolves each qualified
+// spelling below to its declaration's fn node and the seed admits by that node set — a
+// bare-name homonym in a non-rostered module is a different declaration and is never
+// eligible, and a row whose module or declaration the subject cannot resolve stops the
+// line as a stale row. Stored values are additionally keyed on fn-node identity, so even
+// the built-in prepare_grammar arm never cross-serves between distinct declarations.
+//
+// HOW A ROW EARNS ITS PLACE: a measured per-claim recompute of a pure producer — cite the
+// instrument (claim_batch + GUNBC_INTERP_PROFILE staging, or a floor cost receipt), not a
+// transcribed number. HOW A ROW LEAVES: delete its line; the floor then recomputes it per
+// claim and the cost receipt says what that costs. Dissolve-on:
+// gunbc.roadmap_authority five_minute_ci_gate_program_note's generic cross-claim pure memo —
+// when admission no longer needs a declared roster because every pure content-hashable call
+// is safely servable within a byte-bounded store, this roster and its seed consumer delete
+// together.
+
+// The warm rows are the constant halves of the bash fold's per-claim fixed cost, measured
+// through claim_batch + GUNBC_INTERP_PROFILE (2026-08-29, this lane); on the first enrolled
+// floor run each was read by 35-44 later claims (run 33269961629, [floor-shared-fill]).
+//
+// THE TWO RUST TARGET MODELS ARE DELIBERATELY NOT HERE, and the absence is a measured,
+// located fact rather than an oversight: rust_target_model_staging() and rust_target_model()
+// are ~125ms of pure re-derivation per claim (58 and 75 consumer claims on the same run),
+// but their value carries a fn at `.produced_decl_support.render` — an origin-bound
+// evaluator reference the serve tier refuses by ruling (ServeCacheValueNotPortable,
+// kind=OriginBoundNode; publication is checked totally at store time). Re-enrol them when
+// the produced-decl render transform is carried as declared rows the model layer can reify
+// rather than as a fn value — that modeling change is the named trigger, and until it lands
+// every emit claim keeps paying the ~125ms recompute this roster exists to delete.
+data floor_cross_claim_pure_producers_warm: List<String> = [
+  "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
+  "v2.extdeps.languages.bash_command_fold.bash_fold_lex"
+]
+
+// The claim-forced rows carry claim-independent ARGUMENTS in practice (a production
+// catalog node, a production identity) but are not nullary, so they fill on first touch
+// and later claims hit on the content-hashed, fully-verified argument row. Measured owners
+// of the bash emit path's word-independent fixed cost (recompute trace over a two-word
+// serialize: grammar_relation_row_for_emitted ~30ms/call,
+// formal_productions_from_catalog_node ~22ms, bash_fold_relation_row_witness ~13ms);
+// enrolling them measured a one-word bash serialize claim at 105ms -> 65ms wall in a
+// fresh consuming frame, and run 33269961629 measured real cross-claim reuse for each
+// (150 fills/175 consumer claims, 16/45, 49/36 respectively).
+//
+// formal_production_for_lhs_exact was enrolled here and REMOVED by the same run's evidence:
+// 1,635 fills for 113 consumer claims — per-argument keys with almost no reuse. A row earns
+// its place by measured recompute AND measured sharing; a non-sharing producer is cache
+// population, not a saving.
+// bash_fold_serialize_node is the cross-WITNESS dedupe row (lane 2, clever-fox-24's
+// live_deploy measurement): 21 apply witnesses rebuild one byte-identical script 21 times
+// (~3.4s each) because the eval-frame memo dies at the claim boundary; serving the
+// per-statement serialization from this tier makes the 20 repeats hits on one fill.
+data floor_cross_claim_pure_producers_claim_forced: List<String> = [
+  "v2.workflow.bash_command_fold_serialize.bash_fold_serialize_node",
+  "v2.compiler.translate.grammar_relation_row_for_emitted",
+  "v2.std.grammar.formal_productions_from_catalog_node",
+  "v2.extdeps.languages.bash_command_fold.bash_fold_relation_row_witness"
+]

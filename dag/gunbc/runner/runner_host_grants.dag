@@ -7,7 +7,7 @@ module gunbc.runner_host_grants
 // cycle -- and acyclicity is the one structural law the import graph has (DESIGN §3). Operations
 // know nothing about hosts; this module joins the two.
 
-import std.types { String, NonEmptyStr, List }
+import std.types { String, NonEmptyStr, List, list_length }
 import extdeps.github.actions_runner { actions_runner_base_dir, actions_runner_cache_dir }
 import gunbc.executor_privileged_operation {
   ExecutorPrivilegedOperation,
@@ -15,9 +15,28 @@ import gunbc.executor_privileged_operation {
   SystemdDaemonReload,
   SystemdEnableUnit,
   SystemdStartUnit,
+  SystemdSetUnitProperty,
   executor_managed_directory_mode,
   executor_privileged_operations_sudoers_body,
   runner_slot_privileged_operations,
+}
+import extdeps.systemd.unit_file { SystemdSliceDirective, systemd_slice_directive_line }
+import gunbc.build_cache_instance { RunnerSlotIdentity }
+import gunbc.runner_slot_allocation { fabric_execution_slot_identities }
+import gunbc.fabric_cell_converge {
+  fabric_cell_base_dir,
+  fabric_cell_root_path,
+  fabric_cell_attempt_root_path,
+  fabric_cell_slice_name,
+}
+import gunbc.fabric_cell_effect {
+  FabricCellEffect,
+  FabricCellDirectoryEnsure,
+  FabricCellSliceEnsure,
+  FabricCellSubstrateOwner,
+  CellSubstrateRootOwned,
+  CellAttemptWriterOwned,
+  fabric_cell_slice_desired_directives,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy, srv1_runner_host_deploy, srv3_runner_host_deploy, srv4_runner_host_deploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
@@ -44,7 +63,10 @@ data gunbc_fleet_converge_state_dir: NonEmptyStr = "/var/lib/gunbc/fleet-converg
 // carries no activation grant: srv3-06 is a reserved compute-fabric identity, it is not a desired
 // runner member, so it contributes neither a directory pair nor a transition pair. srv3 therefore
 // derives one fewer of each than srv4, and the difference is the carve doing its job rather than an
-// omission.
+// omission. The fabric cell's OWN grants -- its substrate directories and its slice boundary --
+// enter through fabric_cell_privileged_operations below, derived from the fabric identity
+// authority; the slice start granted there activates a cgroup boundary, not an actions-runner
+// unit, so this activation carve stays exact.
 fn runner_slot_activation_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   flat_map(
     desired_runner_slot_members(deploy: deploy),
@@ -59,11 +81,145 @@ fn runner_slot_activation_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
 // srv-specific: a host's slot roster, job user and runner user decide its grants, so adding a slot
 // or retargeting an account changes the authorization with no second edit. This is the function the
 // emitted sudoers artifact is rendered from.
+// THE FABRIC CELL SUBSTRATE'S PRINCIPALS, RESOLVED IN EXACTLY ONE PLACE. The cell substrate --
+// base directory and cell root -- is ROOT-OWNED, and that is a parent ruling (warm-seal-35,
+// 2026-08-29) rather than an inheritance from the GitHub slot family: a job-user-owned cell root
+// would let any CI job mutate or delete the persistent cell, and FCI-1's
+// release-does-not-mutate-the-substrate control would become unfalsifiable. The job user is
+// delegated exactly one writable directory, the attempt root beneath the cell.
+data fabric_cell_substrate_root_principal: NonEmptyStr = "root" as NonEmptyStr
+
+fn fabric_cell_substrate_owner_principal(
+  owner: FabricCellSubstrateOwner,
+  job_user: NonEmptyStr,
+) -> NonEmptyStr {
+  match owner {
+    CellSubstrateRootOwned => fabric_cell_substrate_root_principal
+    CellAttemptWriterOwned => job_user
+  }
+}
+
+// ONE CONSTRUCTOR PER EFFECT SHAPE, CONSUMED BY BOTH RENDERINGS. The sudoers grant below and the
+// apply-shell command gunbc.fleet_converge_plan emits are DERIVED from the same operation values
+// these functions return, so the executed argv and its authorization cannot drift -- the same seam
+// runner_slot_provision established for the GitHub family, extended to the fabric one.
+fn fabric_cell_directory_operation(
+  path: String,
+  owner: FabricCellSubstrateOwner,
+  job_user: NonEmptyStr,
+) -> ExecutorPrivilegedOperation {
+  let principal = fabric_cell_substrate_owner_principal(owner: owner, job_user: job_user)
+  EnsureOwnedDirectory {
+    path: path as NonEmptyStr,
+    owner: principal,
+    group: principal,
+    mode: executor_managed_directory_mode,
+  }
+}
+
+// THE BOUNDARY CROSSES THE PRIVILEGE SEAM AS TYPED WORDS, NEVER AS FILE BYTES. Each directive
+// renders one `systemctl set-property <slice> <Property>=<value>` operation -- systemd persists
+// its own drop-in under root's authority -- followed by one start, which applies the directives to
+// the live cgroup (starting an already-active slice re-applies directives and kills nothing;
+// stopping or restarting a slice kills every process in it, so neither is granted).
+fn fabric_cell_slice_property_operations(
+  unit: NonEmptyStr,
+  directives: List<SystemdSliceDirective>,
+) -> List<ExecutorPrivilegedOperation> {
+  concat(
+    map(
+      directives,
+      d => SystemdSetUnitProperty {
+        unit: unit,
+        assignment: systemd_slice_directive_line(directive: d) as NonEmptyStr,
+      },
+    ),
+    [SystemdStartUnit { unit: unit }],
+  )
+}
+
+fn fabric_cell_slice_operations(slot: RunnerSlotIdentity) -> List<ExecutorPrivilegedOperation> {
+  fabric_cell_slice_property_operations(
+    unit: fabric_cell_slice_name(slot: slot) as NonEmptyStr,
+    directives: fabric_cell_slice_desired_directives(),
+  )
+}
+
+// THE EFFECT-TO-OPERATION PROJECTION THE APPLY SHELL CONSUMES. gunbc.fleet_converge_plan renders
+// its executable fabric lines from THESE operations, and the sudoers roster above is derived from
+// the same constructors over the same authorities -- so the command apply runs and the grant that
+// authorizes it are one value rendered twice, never two authorings kept in step (the exact defect
+// executor_privileged_operation exists to close, measured on srv3 2026-08-24).
+fn fabric_cell_effect_operations(
+  effect: FabricCellEffect,
+  job_user: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  match effect {
+    FabricCellDirectoryEnsure { path: p, owner: o } =>
+      [fabric_cell_directory_operation(path: p as String, owner: o, job_user: job_user)]
+    FabricCellSliceEnsure { slice_unit: u, directives: ds } =>
+      fabric_cell_slice_property_operations(unit: u, directives: ds)
+  }
+}
+
+fn fabric_cell_slot_privileged_operations(
+  slot: RunnerSlotIdentity,
+  job_user: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  concat(
+    [
+      fabric_cell_directory_operation(
+        path: fabric_cell_root_path(slot: slot),
+        owner: CellSubstrateRootOwned,
+        job_user: job_user,
+      ),
+      fabric_cell_directory_operation(
+        path: fabric_cell_attempt_root_path(slot: slot),
+        owner: CellAttemptWriterOwned,
+        job_user: job_user,
+      ),
+    ],
+    fabric_cell_slice_operations(slot: slot),
+  )
+}
+
+// THE FABRIC CONTRIBUTION IS DERIVED FROM THE SAME EXACT-IDENTITY AUTHORITY THE DESIRED MEMBERSHIP
+// READS (gunbc.runner_slot_allocation fabric_execution_slot_identities), so a second fabric cell
+// admitted there acquires its grants here with no second edit -- and a host with no fabric slot
+// contributes no fabric grants, including the base directory's.
+fn fabric_cell_host_slots(deploy: RunnerHostDeploy) -> List<RunnerSlotIdentity> {
+  fold(
+    fabric_execution_slot_identities(),
+    init: [],
+    f: (acc, s) =>
+      if (s.host as String) == (deploy.host_label as String) { concat(acc, [s]) } else { acc },
+  )
+}
+
+fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  let slots = fabric_cell_host_slots(deploy: deploy)
+  if list_length(items: slots) == 0 {
+    []
+  } else {
+    concat(
+      [
+        fabric_cell_directory_operation(
+          path: fabric_cell_base_dir,
+          owner: CellSubstrateRootOwned,
+          job_user: deploy.job_user,
+        ),
+      ],
+      flat_map(slots, s => fabric_cell_slot_privileged_operations(slot: s, job_user: deploy.job_user)),
+    )
+  }
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
   runner_slot_privileged_operations(slot_dirs: slot_dirs, slot_owner: job)
     + runner_slot_activation_operations(deploy: deploy)
+    + fabric_cell_privileged_operations(deploy: deploy)
     + [
       EnsureOwnedDirectory {
         path: gunbc_fleet_converge_state_dir,

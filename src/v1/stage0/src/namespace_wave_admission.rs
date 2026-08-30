@@ -367,15 +367,39 @@ pub struct TransitionAdmission {
 /// the shape the paragraph above records for the first 53. Removed by the trigger they were
 /// authored with. The roster is EMPTY and empty is not permissive: a run carrying a real
 /// namespace delta still refuses it as UNADJUDICATED until its author adds a row here.
-/// FOURTH POPULATION, SAME RULE (2026-08-29). Two rows for #9698's `RequiredCiLane` move:
+/// FOURTH TRANSITION (2026-08-29, gunbc#9665 / issue #9664). `DeclaredCallableIdentity` moved
+/// from `v1.compiler.infer_sigs` to `v1.std.core`, so every binding of that spelling inside
+/// `v1.compiler.infer_lookup` reports `TargetChanged`. The move is not cosmetic and not
+/// avoidable by re-spelling: `v1.std.core`'s own `CallTargetIdentity` now CARRIES a
+/// `DeclaredCallableIdentity` on its `RuntimePrimitiveCall` arm -- the declaration a runtime
+/// target was projected from, which is what lets Rust emission fall back to the declaration
+/// when its registry has no bridge for the primitive instead of inventing `v1_rt::length`.
+/// `v1.compiler.infer_sigs` imports `v1.std.core`, so the type could not stay where it was
+/// without a cycle, and re-declaring the pair in `v1.std.core` beside the original is the
+/// second-representation defect DESIGN §3 forbids -- the type's own note already says so, and
+/// that note travelled with the declaration.
+///
+/// FOUR ROWS, ONE PER BINDING SITE, and they are enumerated rather than matched by a module
+/// pattern because the roster's own rule is that its population is an enumeration and never a
+/// predicate. The two `membership` deltas this change also produces
+/// (`v1.compiler.emit_rust -> std.decl_ref` and `-> std.primitive_projection`) are
+/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent here.
+///
+/// DISSOLVE-ON: this PR merging. Once `DeclaredCallableIdentity` is declared in `v1.std.core`
+/// on main, the merge base and head both carry it, no run can produce these deltas, and all
+/// four report stale -- which refuses every unrelated PR in the repository, exactly the shape
+/// the three shrinks above record. Remove them by that trigger, not by reinterpreting it.
+/// FOURTH SHRINK, SAME RULE (2026-08-30). #9665 merged, so the six rows above went stale by
+/// their own trigger and are removed here, in the first merge of main that carried the hoist
+/// on both sides.
+/// FIFTH POPULATION, SAME RULE (2026-08-29, #9698). Two rows for the `RequiredCiLane` move:
 /// `BuildLane` and `WitnessesLane` moved (not duplicated) from
-/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` —
-/// which the census itself named as its next rung — so the census's
+/// `gunbc.required_ci_host_verdict_census` to the new `gunbc.required_ci_phase_roster` --
+/// which the census itself named as its next rung -- so the census's
 /// `required_ci_host_verdict_rows` now binds those spellings through the roster.
 /// `TargetChanged` firing on a deliberate declaration move is the wall working; these rows
 /// adjudicate exactly those two subjects and nothing else. They go STALE the moment #9698
-/// merges (both sides of every later comparison carry the move) and MUST be removed then,
-/// exactly as the three shrinks above were.
+/// merges and MUST be removed then, exactly as the shrinks above were.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
         label: "required-ci lane vocabulary moved to its declared next-rung authority (#9698)",
