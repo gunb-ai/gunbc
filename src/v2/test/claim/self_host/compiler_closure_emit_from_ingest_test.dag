@@ -9,18 +9,20 @@ import v2.compiler.self_host.closure_witness_layer_roots {
 }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
-  SourceRootIngestBuildOk,
-  SourceRootIngestBuildReadFailed,
   SourceRootCoverageComplete,
   SourceRootManifestAbsent,
   SourceRootManifestElided,
-  SourceRootRowsMissing,
   SourceRootProvenanceCoverageReceipt,
+  SourceRootRowsMissing,
   manifest_inline_list_max,
   source_root_closure_ref_transport_complete,
   source_root_coverage_is_complete,
-  source_root_ingest_build_from_source_refs,
   source_root_overflow_never_empty_population_holds
+}
+import v2.compiler.source_authority_read {
+  SourceRootIngestBuildOk,
+  SourceRootIngestBuildReadFailed,
+  source_root_ingest_build_from_source_refs
 }
 import v2.compiler.self_host.compiler_closure_emit_driver {
   ClosureEmitPopulationAdmitted,
