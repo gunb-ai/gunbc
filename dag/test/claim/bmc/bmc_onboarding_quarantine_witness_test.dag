@@ -1,27 +1,333 @@
 module test.claim.bmc_onboarding_quarantine_witness_test
 
-import std.types { Bool, List }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.bmc_onboarding { BmcLifecycleState, FabricJoined, bmc_factory_state, bmc_onboard_to_steady_state }
-import gunbc.machine_intake_receipt { LedgerEmpty, LedgerRefused, LedgerValidated, validate_intake_receipt_ledger }
+import std.types { Bool, Int, List, String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.node { Node }
+import v2.lens.effect_reach { atom_identities_in_node }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// THE QUARANTINE, EXECUTED (machine-intake ruling 2026-08-29, answer (b)). The
-// legacy lifecycle advances to FabricJoined from the factory state with no
-// receipt producer consumed at all — that is exactly why it may not stand in
-// for intake. The only input fleet admission accepts is a validated receipt
-// ledger, and the steady state produces none: with zero receipts there is no
-// ledger to validate, so the steady-state machine satisfies zero intake phases.
-// There is deliberately no function from BmcLifecycleState to any intake
-// carrier for this witness to call; what it executes is that reaching the
-// legacy terminal contributes nothing an admission derivation can read.
-test fn onboarding_steady_state_satisfies_zero_intake_phases() -> Bool {
-  let steady = bmc_onboard_to_steady_state(s: bmc_factory_state())
-  let legacy_terminal_reached = steady.phase == FabricJoined
-  let no_ledger = match validate_intake_receipt_ledger(receipts: []) {
-    LedgerRefused { cause: c } => c == LedgerEmpty
-    LedgerValidated { ledger: _ } => false
+// THE QUARANTINE AS A DEPENDENCY/PRODUCER WALL (machine-intake ruling 3, merge-gate item 7).
+// The witness this replaces proved two independent facts - the legacy lifecycle reaches
+// FabricJoined, and an empty receipt list does not validate - and a fn converting FabricJoined
+// into an intake receipt would have left both green. This one DERIVES the two populations the
+// ruling names and requires each empty:
+//
+//   consumers of the onboarding lifecycle inside gunbc.machine_intake_*         = []
+//   declarations bridging the onboarding lifecycle to an intake carrier         = []
+//
+// INSTRUMENT. v2.std.decl_index.decl_facts, the parse-only declaration census, over the two
+// directories that hold the subjects: dag/gunbc/machine_intake (every gunbc.machine_intake_*
+// module) and dag/gunbc/bmc (gunbc.bmc_onboarding and its siblings). Each fn row carries its
+// body SKELETON - callee atoms and record-constructor spellings - and each type row its
+// field-type atoms; atoms are read with v2.lens.effect_reach.atom_identities_in_node, the
+// reader the live-read classifier uses. Vocabularies are derived, not listed: every name
+// declared under gunbc.bmc_onboarding is the onboarding vocabulary, every name declared under
+// gunbc.machine_intake is the intake vocabulary, and a declaration is a hit when an atom of
+// it spells a vocabulary name. onboarding_and_intake_vocabularies_share_no_spelling executes
+// that the lexeme grain is unambiguous today; were a spelling ever declared on both sides the
+// wall would go red there rather than silently attribute it.
+//
+// THE RED IS AUTHORED AND ENROLLED. dag/test/fixture/onboarding_quarantine/machine_intake_probe.dag
+// is the forbidden program, parsed by the same census as the live pool: a type joining
+// BmcOnboardingPhase to IntakeLedgerValidation (consumer AND bridge), a type holding
+// BmcLifecycleState (consumer), and a fn whose body is the call bmc_factory_state()
+// (consumer). The fixture controls require each derivation to find those three declarations
+// BY IDENTITY, so a census that stopped seeing field-type atoms, top-level callee atoms, or
+// the fixture directory goes red before the live wall could go vacuously green. Moving any of
+// them into dag/gunbc/machine_intake or dag/gunbc/bmc turns the live wall red - that is the
+// authorable RED the ruling asks for.
+//
+// DECLARED REACH AND ITS TRIGGERS, so the rung is honest (DESIGN 4b). The grain was MEASURED
+// on the live pool (onboarding_quarantine_report renders it), not assumed. What the parse-only
+// census carries: every field-type atom of a type declaration (BmcLifecycleState renders
+// BmcOnboardingPhase,BmcCredentialPosture,Int,Bool), and the callee or constructor spelling of
+// a fn body only when it is the TOP-LEVEL body expression (bmc_factory_state renders
+// BmcLifecycleState; bmc_plan_steady_state_phase renders bmc_onboard_to_steady). What it does
+// not carry: any call or construction nested under match, let or a block (bmc_onboarding_next_phase
+// and bmc_install_step render no atom at all), a bare nullary-variant read, a data row's
+// initializer for an unloaded module, and the parameter TYPES of a fn - the only parse-only
+// signature census, export_signature_facts, refuses over any pool holding an optional-typed
+// parameter (marshal_type_expr_ref "empty authored type name" on
+// extdeps.shell.credentials.env_credential_token corpus-wide and on
+// gunbc.machine_intake_receipt.receipt_previous_atom inside this very pool), and
+// v2.std.fn_index carries parameter names only. So this wall makes two shapes unwritable in
+// the pool - a CARRIER joining or holding the legacy lifecycle, and a declaration whose body
+// IS a legacy call - and does not see a fn that takes BmcOnboardingPhase and consumes it under
+// a match. That fn-grain half of the ruling's line is outside every reflection instrument in
+// the tree today; its trigger is fn-body reflection with resolved binding kinds (the same
+// #5364 corridor named at v2.lens.enforcement.receipts.fn_body_reflection_blocker) or
+// export_signature_facts marshaling `T?` parameter types, either of which turns the fixture
+// into a fourth executed control rather than a new witness. The POPULATION is the two subject
+// directories, not the corpus: the first revision walked dag and src/v2 and measured 47s cpu /
+// 75s wall per witness evaluation in a 5.2 GiB process, unaffordable per PR; a carrier
+// authored elsewhere is the declared residue, and its trigger is a cached per-module
+// declaration index reachable from .dag (the parse sweep gunbc.declaration_index_seed_growth
+// describes already builds one per required run).
+
+type OnboardingQuarantinePopulation
+  = EveryDeclaration
+  | DeclarationsUnder { prefix: String }
+
+type OnboardingQuarantineSubject {
+  onboarding_module: String
+  intake_module_prefix: String
+  consumer_population: OnboardingQuarantinePopulation
+  bridging_population: OnboardingQuarantinePopulation
+}
+
+type OnboardingQuarantineFinding {
+  declaration: String
+  onboarding_hits: List<String>
+  intake_hits: List<String>
+}
+
+type OnboardingQuarantineWall {
+  onboarding_vocabulary: List<String>
+  intake_vocabulary: List<String>
+  shared_spellings: List<String>
+  declarations_examined: Int
+  intake_consumers_of_onboarding: List<OnboardingQuarantineFinding>
+  bridging_declarations: List<OnboardingQuarantineFinding>
+}
+
+type OnboardingQuarantineFoldState {
+  declarations_examined: Int
+  consumers: List<OnboardingQuarantineFinding>
+  bridges: List<OnboardingQuarantineFinding>
+}
+
+data onboarding_quarantine_live_pool_roots: List<String> = ["dag/gunbc/machine_intake", "dag/gunbc/bmc"]
+
+data onboarding_quarantine_fixture_pool_root: String = "dag/test/fixture/onboarding_quarantine"
+
+data onboarding_quarantine_control_pool_roots: List<String> = ["dag/gunbc/machine_intake", "dag/gunbc/bmc", onboarding_quarantine_fixture_pool_root]
+
+data onboarding_quarantine_live_facts: List<DeclFact> = decl_facts(pool_roots: onboarding_quarantine_live_pool_roots)
+
+data onboarding_quarantine_control_facts: List<DeclFact> = decl_facts(pool_roots: onboarding_quarantine_control_pool_roots)
+
+data onboarding_quarantine_fixture_prefix: String = "test.fixture.onboarding_quarantine."
+
+data live_subject: OnboardingQuarantineSubject = OnboardingQuarantineSubject {
+  onboarding_module: "gunbc.bmc_onboarding",
+  intake_module_prefix: "gunbc.machine_intake",
+  consumer_population: DeclarationsUnder { prefix: "gunbc.machine_intake" },
+  bridging_population: EveryDeclaration
+}
+
+data fixture_control_subject: OnboardingQuarantineSubject = OnboardingQuarantineSubject {
+  onboarding_module: "gunbc.bmc_onboarding",
+  intake_module_prefix: "gunbc.machine_intake",
+  consumer_population: DeclarationsUnder { prefix: onboarding_quarantine_fixture_prefix },
+  bridging_population: DeclarationsUnder { prefix: onboarding_quarantine_fixture_prefix }
+}
+
+data onboarding_quarantine_no_strings: List<String> = []
+
+data onboarding_quarantine_no_findings: List<OnboardingQuarantineFinding> = []
+
+fn onboarding_quarantine_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn onboarding_quarantine_fact_under(fact: DeclFact, prefix: String) -> Bool {
+  fact.qualified_name.starts_with(prefix: prefix)
+}
+
+fn onboarding_quarantine_in_population(fact: DeclFact, population: OnboardingQuarantinePopulation) -> Bool {
+  match population {
+    EveryDeclaration => true
+    DeclarationsUnder { prefix: p } => onboarding_quarantine_fact_under(fact: fact, prefix: p)
   }
-  legacy_terminal_reached && no_ledger
+}
+
+fn onboarding_quarantine_vocabulary(facts: List<DeclFact>, prefix: String) -> List<String> {
+  fold(facts, init: onboarding_quarantine_no_strings, f: fn(acc, fact) {
+    if onboarding_quarantine_fact_under(fact: fact, prefix: prefix) {
+      if contains(xs: acc, item: fact.name, eq: onboarding_quarantine_string_eq) {
+        acc
+      } else {
+        concat(acc, [fact.name])
+      }
+    } else {
+      acc
+    }
+  })
+}
+
+fn onboarding_quarantine_shared_spellings(a: List<String>, b: List<String>) -> List<String> {
+  filter(a, predicate: fn(s) { contains(xs: b, item: s, eq: onboarding_quarantine_string_eq) })
+}
+
+fn onboarding_quarantine_lexemes(node: Node) -> List<String> {
+  fold(atom_identities_in_node(node: node), init: onboarding_quarantine_no_strings, f: fn(acc, sym) {
+    concat(acc, [sym as String])
+  })
+}
+
+fn onboarding_quarantine_hits(lexemes: List<String>, vocabulary: List<String>) -> List<String> {
+  filter(vocabulary, predicate: fn(v) { contains(xs: lexemes, item: v, eq: onboarding_quarantine_string_eq) })
+}
+
+fn onboarding_quarantine_examine(
+  fact: DeclFact,
+  subject: OnboardingQuarantineSubject,
+  onboarding_vocabulary: List<String>,
+  intake_vocabulary: List<String>,
+  state: OnboardingQuarantineFoldState
+) -> OnboardingQuarantineFoldState {
+  let in_consumer_population = onboarding_quarantine_in_population(fact: fact, population: subject.consumer_population)
+  let in_bridging_population = onboarding_quarantine_in_population(fact: fact, population: subject.bridging_population)
+  if in_consumer_population || in_bridging_population {
+    let lexemes = onboarding_quarantine_lexemes(node: fact.node)
+    let onboarding_hits = onboarding_quarantine_hits(lexemes: lexemes, vocabulary: onboarding_vocabulary)
+    let intake_hits = onboarding_quarantine_hits(lexemes: lexemes, vocabulary: intake_vocabulary)
+    let finding = OnboardingQuarantineFinding {
+      declaration: fact.qualified_name,
+      onboarding_hits: onboarding_hits,
+      intake_hits: intake_hits
+    }
+    let consumes = length(xs: onboarding_hits) > 0
+    let bridges = consumes && length(xs: intake_hits) > 0
+    OnboardingQuarantineFoldState {
+      declarations_examined: state.declarations_examined + 1,
+      consumers: if in_consumer_population && consumes { concat(state.consumers, [finding]) } else { state.consumers },
+      bridges: if in_bridging_population && bridges { concat(state.bridges, [finding]) } else { state.bridges }
+    }
+  } else {
+    OnboardingQuarantineFoldState {
+      declarations_examined: state.declarations_examined + 1,
+      consumers: state.consumers,
+      bridges: state.bridges
+    }
+  }
+}
+
+fn onboarding_quarantine_wall(subject: OnboardingQuarantineSubject, facts: List<DeclFact>) -> OnboardingQuarantineWall {
+  let onboarding_vocabulary = onboarding_quarantine_vocabulary(facts: facts, prefix: concat(subject.onboarding_module, "."))
+  let intake_vocabulary = onboarding_quarantine_vocabulary(facts: facts, prefix: subject.intake_module_prefix)
+  let start = OnboardingQuarantineFoldState {
+    declarations_examined: 0,
+    consumers: onboarding_quarantine_no_findings,
+    bridges: onboarding_quarantine_no_findings
+  }
+  let end = fold(facts, init: start, f: fn(acc, fact) {
+    onboarding_quarantine_examine(
+      fact: fact,
+      subject: subject,
+      onboarding_vocabulary: onboarding_vocabulary,
+      intake_vocabulary: intake_vocabulary,
+      state: acc
+    )
+  })
+  OnboardingQuarantineWall {
+    onboarding_vocabulary: onboarding_vocabulary,
+    intake_vocabulary: intake_vocabulary,
+    shared_spellings: onboarding_quarantine_shared_spellings(a: onboarding_vocabulary, b: intake_vocabulary),
+    declarations_examined: end.declarations_examined,
+    intake_consumers_of_onboarding: end.consumers,
+    bridging_declarations: end.bridges
+  }
+}
+
+data live_wall: OnboardingQuarantineWall = onboarding_quarantine_wall(subject: live_subject, facts: onboarding_quarantine_live_facts)
+
+data fixture_control_wall: OnboardingQuarantineWall = onboarding_quarantine_wall(subject: fixture_control_subject, facts: onboarding_quarantine_control_facts)
+
+fn onboarding_quarantine_finding_named(findings: List<OnboardingQuarantineFinding>, declaration: String) -> Bool {
+  any(findings, predicate: fn(f) { f.declaration == declaration })
+}
+
+fn onboarding_quarantine_finding_hits(findings: List<OnboardingQuarantineFinding>, declaration: String, want: String) -> Bool {
+  any(findings, predicate: fn(f) {
+    f.declaration == declaration && contains(xs: f.onboarding_hits, item: want, eq: onboarding_quarantine_string_eq)
+  })
+}
+
+fn onboarding_quarantine_render_finding(f: OnboardingQuarantineFinding) -> String {
+  let onboarding = fold(f.onboarding_hits, init: "", f: fn(acc, h) { concat(acc, h, ",") })
+  let intake = fold(f.intake_hits, init: "", f: fn(acc, h) { concat(acc, h, ",") })
+  "  {f.declaration} onboarding={onboarding} intake={intake}\n"
+}
+
+fn onboarding_quarantine_render_findings(findings: List<OnboardingQuarantineFinding>) -> String {
+  fold(findings, init: "", f: fn(acc, f) { concat(acc, onboarding_quarantine_render_finding(f: f)) })
+}
+
+fn onboarding_quarantine_report() -> String {
+  let examined = live_wall.declarations_examined
+  let onboarding_count = length(xs: live_wall.onboarding_vocabulary)
+  let intake_count = length(xs: live_wall.intake_vocabulary)
+  let shared_count = length(xs: live_wall.shared_spellings)
+  concat(
+    "onboarding quarantine wall: {examined} declarations examined; onboarding vocabulary {onboarding_count}, intake vocabulary {intake_count}, shared spellings {shared_count}\n",
+    "intake consumers of onboarding:\n", onboarding_quarantine_render_findings(findings: live_wall.intake_consumers_of_onboarding),
+    "bridging declarations:\n", onboarding_quarantine_render_findings(findings: live_wall.bridging_declarations),
+    "fixture control consumers:\n", onboarding_quarantine_render_findings(findings: fixture_control_wall.intake_consumers_of_onboarding),
+    "fixture control bridges:\n", onboarding_quarantine_render_findings(findings: fixture_control_wall.bridging_declarations),
+    "fixture declarations seen by the control census:\n", onboarding_quarantine_render_fixture_rows()
+  )
+}
+
+fn onboarding_quarantine_render_fixture_rows() -> String {
+  fold(onboarding_quarantine_control_facts, init: "", f: fn(acc, fact) {
+    if ends_with(fact.rel_path, "machine_intake_probe.dag") || ends_with(fact.rel_path, "bmc_onboarding.dag") || ends_with(fact.rel_path, "receipt.dag") {
+      let lexemes = fold(onboarding_quarantine_lexemes(node: fact.node), init: "", f: fn(a, l) { concat(a, l, ",") })
+      concat(acc, "  {fact.qualified_name} [{fact.rel_path}] atoms={lexemes}\n")
+    } else {
+      acc
+    }
+  })
+}
+
+// POSITIVE CONTROL ON THE INSTRUMENT: the census sees both subjects. A wall whose
+// vocabularies were empty would be green over nothing.
+test fn onboarding_quarantine_census_sees_both_subjects() -> Bool {
+  contains(xs: live_wall.onboarding_vocabulary, item: "BmcOnboardingPhase", eq: onboarding_quarantine_string_eq)
+    && contains(xs: live_wall.onboarding_vocabulary, item: "BmcLifecycleState", eq: onboarding_quarantine_string_eq)
+    && contains(xs: live_wall.onboarding_vocabulary, item: "bmc_factory_state", eq: onboarding_quarantine_string_eq)
+    && contains(xs: live_wall.intake_vocabulary, item: "validate_intake_receipt_ledger", eq: onboarding_quarantine_string_eq)
+    && live_wall.declarations_examined == length(xs: onboarding_quarantine_live_facts)
+}
+
+test fn onboarding_and_intake_vocabularies_share_no_spelling() -> Bool {
+  length(xs: live_wall.shared_spellings) == 0
+}
+
+// THE WALL, HALF ONE: consumers of the onboarding lifecycle in gunbc.machine_intake_* = [].
+test fn no_intake_declaration_consumes_the_onboarding_lifecycle() -> Bool {
+  length(xs: live_wall.intake_consumers_of_onboarding) == 0
+}
+
+// THE WALL, HALF TWO: declarations bridging the onboarding lifecycle to an intake name = [],
+// over every declaration in the live pool, gunbc.bmc_onboarding itself included.
+test fn no_declaration_bridges_onboarding_lifecycle_to_intake() -> Bool {
+  length(xs: live_wall.bridging_declarations) == 0
+}
+
+// THE RED, EXECUTED. Same census, same derivations, population re-pointed at the fixture.
+data fixture_bridge_type: String = "test.fixture.onboarding_quarantine.machine_intake_probe.OnboardingQuarantineProbeBridge"
+
+data fixture_carrier_type: String = "test.fixture.onboarding_quarantine.machine_intake_probe.OnboardingQuarantineProbeCarrier"
+
+data fixture_body_fn: String = "test.fixture.onboarding_quarantine.machine_intake_probe.onboarding_quarantine_probe_factory_state"
+
+test fn fixture_bridge_type_is_found_by_identity_on_both_fields() -> Bool {
+  onboarding_quarantine_finding_hits(findings: fixture_control_wall.intake_consumers_of_onboarding, declaration: fixture_bridge_type, want: "BmcOnboardingPhase")
+    && any(fixture_control_wall.bridging_declarations, predicate: fn(f) {
+      f.declaration == fixture_bridge_type && contains(xs: f.intake_hits, item: "IntakeLedgerValidation", eq: onboarding_quarantine_string_eq)
+    })
+}
+
+test fn fixture_carrier_type_is_found_and_is_not_a_bridge() -> Bool {
+  onboarding_quarantine_finding_hits(findings: fixture_control_wall.intake_consumers_of_onboarding, declaration: fixture_carrier_type, want: "BmcLifecycleState")
+    && (onboarding_quarantine_finding_named(findings: fixture_control_wall.bridging_declarations, declaration: fixture_carrier_type) == false)
+}
+
+test fn fixture_top_level_callee_is_found_and_the_control_counts_are_exact() -> Bool {
+  onboarding_quarantine_finding_hits(findings: fixture_control_wall.intake_consumers_of_onboarding, declaration: fixture_body_fn, want: "bmc_factory_state")
+    && length(xs: fixture_control_wall.bridging_declarations) == 1
+    && length(xs: fixture_control_wall.intake_consumers_of_onboarding) == 3
 }

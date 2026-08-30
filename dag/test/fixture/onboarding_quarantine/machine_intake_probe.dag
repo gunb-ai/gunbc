@@ -1,0 +1,28 @@
+module test.fixture.onboarding_quarantine.machine_intake_probe
+
+import std.types { String }
+import gunbc.bmc_onboarding { BmcOnboardingPhase, BmcLifecycleState, bmc_factory_state }
+import gunbc.machine_intake_receipt { IntakeLedgerValidation }
+
+// THE AUTHORED RED FOR test.claim.bmc_onboarding_quarantine_witness_test. This module is
+// exactly what the quarantine forbids: a carrier that joins the legacy BmcOnboardingPhase
+// to an intake carrier, a carrier that holds the legacy lifecycle state, and a declaration
+// whose body is a call into the legacy lifecycle. It is NOT under dag/gunbc/machine_intake
+// or dag/gunbc/bmc, so the live wall over those pools stays green while the fixture stands;
+// the witness reads this module through the same parse-only declaration census as the live
+// pool and requires each derivation to fire on it by identity. Moving any declaration here
+// into dag/gunbc/machine_intake or dag/gunbc/bmc is the edit that turns the live wall red.
+data onboarding_quarantine_probe_note: String = "Positive control for the onboarding quarantine wall, one specimen per grain the parse-only census carries: a type whose fields join an onboarding type to an intake type (bridge), a type with an onboarding field only (consumer), and a fn whose top-level body expression is an onboarding callee (consumer). Not production; outside the live pool by its directory, which the witness declares."
+
+type OnboardingQuarantineProbeBridge {
+  phase: BmcOnboardingPhase
+  ledger: IntakeLedgerValidation
+}
+
+type OnboardingQuarantineProbeCarrier {
+  state: BmcLifecycleState
+}
+
+fn onboarding_quarantine_probe_factory_state() -> BmcLifecycleState {
+  bmc_factory_state()
+}
