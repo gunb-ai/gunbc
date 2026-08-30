@@ -118,9 +118,9 @@ test fn floor_join_witness_an_unreached_entry_is_excluded_not_refused() -> Bool 
 
 test fn floor_join_witness_standing_is_the_floors_own_rule() -> Bool {
   let j = probe_join()
-  probe_disposition_of(join: j, identity: "v2.test.probe_a.t_a", expected: fn(d) { match d { Planned => true, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
-    && probe_disposition_of(join: j, identity: "v2.test.long.probe_c.t_c", expected: fn(d) { match d { Planned => false, DeclinedLongModule { matched_prefix } => matched_prefix == "v2.test.long.", DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
-    && probe_disposition_of(join: j, identity: "test.claim.probe_d.t_d", expected: fn(d) { match d { Planned => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => true, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
+  probe_disposition_of(join: j, identity: "v2.test.probe_a.t_a", expected: fn(d) { match d { Planned => true, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
+    && probe_disposition_of(join: j, identity: "v2.test.long.probe_c.t_c", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => matched_prefix == "v2.test.long.", DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
+    && probe_disposition_of(join: j, identity: "test.claim.probe_d.t_d", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => true, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
 }
 
 test fn floor_join_witness_cost_debt_arm_is_reached_from_the_policy_roster() -> Bool {
@@ -130,7 +130,7 @@ test fn floor_join_witness_cost_debt_arm_is_reached_from_the_policy_roster() -> 
   probe_disposition_of(
     join: effect_demand_floor_join(discovered: rows, nodes: nodes, edges: edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0),
     identity: "test.claim.belt_tick_receipt_home_witness.the_belt_member_bootstraps_its_own_receipts_directory",
-    expected: fn(d) { match d { Planned => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => true } }
+    expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => true } }
   )
 }
 
@@ -175,7 +175,7 @@ test fn floor_join_witness_counts_partition_the_rows() -> Bool {
     FloorStandingJoinRefused { cause } => false,
     FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } =>
       counts.offered == length(xs: rows)
-        && counts.offered == counts.planned + counts.declined_long_module + counts.declined_fixture_member + counts.declined_outside_required_gate + counts.declined_outside_gate_closure + counts.declined_discovery_excluded + counts.declined_cost_debt
+        && counts.offered == counts.planned + counts.planned_as_changed_witness + counts.declined_long_module + counts.declined_fixture_member + counts.declined_outside_required_gate + counts.declined_outside_gate_closure + counts.declined_discovery_excluded + counts.declined_cost_debt
         && counts.planned == 1 && counts.declined_long_module == 1 && counts.declined_outside_required_gate == 1
   }
 }
