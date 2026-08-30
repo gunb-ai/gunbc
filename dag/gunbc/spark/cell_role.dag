@@ -127,14 +127,16 @@ fn spark_training_cell_hosts() -> List<HostIdentity> {
   spark_hosts_with_role(role: SparkTrainingCell)
 }
 
-// A HOST WHOSE ROLE IS SERVING IS UNAVAILABLE TO THE TRAINING FABRIC BY CONSTRUCTION, and this is
-// the predicate the later offer roster consumes rather than re-deriving. It is stated here, beside
-// the assignment, so that "srv5 never enters the offer roster" is a fact about the role authority
-// and not a filter somebody remembered to write in the supply module.
-fn spark_host_offerable_for_training(host: HostIdentity) -> Bool {
-  match spark_cell_role_of(host: host) {
-    SparkCellRoleAbsent => false
-    SparkCellRoleAmbiguous { assignments: _ } => false
-    SparkCellRoleUnique { role: r } => spark_cell_role_eq(a: r, b: SparkTrainingCell)
-  }
-}
+// THE OFFER ROSTER IS `spark_training_cell_hosts`, AND THERE IS NO PREDICATE BESIDE IT.
+//
+// A `spark_host_offerable_for_training(host) -> Bool` stood here, matching the lookup sum into
+// true/false. It had exactly one caller: its own claim. The justification offered for keeping it was
+// that P3's supply module would consume it -- which is the authored-ahead-of-its-consumer shape
+// trimmed from the curl, pgrep and ss rows earlier in this same stack, and it is no better for being
+// a function rather than a constant.
+//
+// The roster above is the canonical surface and answers the same question without a second
+// vocabulary: a host is offerable exactly when it appears in `spark_training_cell_hosts()`, which
+// already excludes serving cells, unassigned hosts, and hosts the roster cannot decide. When P3
+// needs the offer population it takes the list; if it then needs membership of one host, that
+// question gets its answer when a caller actually exists to ask it.

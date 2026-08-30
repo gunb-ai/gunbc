@@ -15,7 +15,6 @@ import gunbc.spark.cell_role {
   spark_cell_role_eq,
   spark_serving_cell_hosts,
   spark_training_cell_hosts,
-  spark_host_offerable_for_training,
 }
 import gunbc.spark.serving_desired {
   SparkServingDesiredAdmitted,
@@ -202,10 +201,20 @@ test fn w_serving_desired_hosts_are_the_serving_cells() -> Bool {
     && !any(spark_serving_desired_hosts, h => h as String == operator_host_srv6 as String)
 }
 
+// THE OFFER ROSTER EXCLUDES THE SERVING CELL, ASSERTED OVER THE ROSTER ITSELF.
+//
+// This asked a `spark_host_offerable_for_training` predicate, which existed only to be asked by this
+// claim -- a claim whose whole subject is a function nothing else calls measures its own fixture. The
+// subject that matters is the roster P3's supply module will consume, so the claim reads that: srv5
+// is absent from it because it serves, srv6 is present because it trains, and an unassigned host is
+// in neither roster because it is not a Spark cell.
 test fn w_serving_cell_is_not_offerable_to_the_training_fabric() -> Bool {
-  !spark_host_offerable_for_training(host: operator_host_srv5)
-    && spark_host_offerable_for_training(host: operator_host_srv6)
-    && !spark_host_offerable_for_training(host: "srv1" as HostIdentity)
+  let trainable = spark_training_cell_hosts()
+  length(trainable) == 1
+    && any(trainable, h => h as String == operator_host_srv6 as String)
+    && !any(trainable, h => h as String == operator_host_srv5 as String)
+    && !any(trainable, h => h as String == "srv1")
+    && !any(spark_serving_cell_hosts(), h => h as String == "srv1")
 }
 
 // THE FOUR SERVICE ADDRESSES RETIRE; THE THREE BASELINE ADDRESSES REFUSE.

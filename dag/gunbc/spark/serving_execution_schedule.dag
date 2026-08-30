@@ -265,43 +265,64 @@ type SparkServingPlanDirection
   | SparkServingPlanMixed { install_count: Int, removal_count: Int }
   | SparkServingPlanCarriesRefusals { refusal_count: Int }
 
+// WHAT AN ACTION IS, ASKED ONCE.
+//
+// The shape this replaces enumerated MemberAction three times -- once to filter removals, once for
+// installs, once for refusals -- and walked the plan three times to do it. Three enumerations of one
+// coproduct is three places to edit when a variant lands and only one of them fails to compile if
+// the others are forgotten, which is the single-authority problem stated at the smallest possible
+// scale. The classification happens here, in the one exhaustive match, and every population is
+// derived from its answer.
+type SparkServingActionClass
+  = SparkServingActionInstalls
+  | SparkServingActionRemoves
+  | SparkServingActionRefuses
+
+fn spark_serving_action_class(
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+) -> SparkServingActionClass {
+  match action {
+    MemberAdded { at: _, to: _ } => SparkServingActionInstalls
+    MemberChanged { at: _, from: _, to: _ } => SparkServingActionInstalls
+    MemberRemoved { at: _, from: _ } => SparkServingActionRemoves
+    MemberRemovalRefused { from: _, cause: _ } => SparkServingActionRefuses
+    MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => SparkServingActionRefuses
+  }
+}
+
+// THE CENSUS IS ONE FOLD, so the three counts cannot describe different traversals of one plan.
+type SparkServingActionCensus {
+  installs: Int
+  removals: Int
+  refusals: Int
+}
+
+fn spark_serving_action_census(
+  actions: List<MemberAction<SparkServingMember, SparkServingMemberAt>>,
+) -> SparkServingActionCensus {
+  fold(actions, init: SparkServingActionCensus { installs: 0, removals: 0, refusals: 0 }, f: fn(acc, a) {
+    match spark_serving_action_class(action: a) {
+      SparkServingActionInstalls =>
+        SparkServingActionCensus { installs: acc.installs + 1, removals: acc.removals, refusals: acc.refusals }
+      SparkServingActionRemoves =>
+        SparkServingActionCensus { installs: acc.installs, removals: acc.removals + 1, refusals: acc.refusals }
+      SparkServingActionRefuses =>
+        SparkServingActionCensus { installs: acc.installs, removals: acc.removals, refusals: acc.refusals + 1 }
+    }
+  })
+}
+
 fn spark_serving_plan_direction(
   plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
 ) -> SparkServingPlanDirection {
-  let removals = filter(plan.actions, a =>
-    match a {
-      MemberAdded { at: _, to: _ } => false
-      MemberChanged { at: _, from: _, to: _ } => false
-      MemberRemoved { at: _, from: _ } => true
-      MemberRemovalRefused { from: _, cause: _ } => false
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
-    }
-  )
-  let installs = filter(plan.actions, a =>
-    match a {
-      MemberAdded { at: _, to: _ } => true
-      MemberChanged { at: _, from: _, to: _ } => true
-      MemberRemoved { at: _, from: _ } => false
-      MemberRemovalRefused { from: _, cause: _ } => false
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
-    }
-  )
-  let refusals = filter(plan.actions, a =>
-    match a {
-      MemberAdded { at: _, to: _ } => false
-      MemberChanged { at: _, from: _, to: _ } => false
-      MemberRemoved { at: _, from: _ } => false
-      MemberRemovalRefused { from: _, cause: _ } => true
-      MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => true
-    }
-  )
-  if length(refusals) > 0 {
-    SparkServingPlanCarriesRefusals { refusal_count: length(refusals) }
-  } else if length(removals) > 0 && length(installs) > 0 {
-    SparkServingPlanMixed { install_count: length(installs), removal_count: length(removals) }
-  } else if length(removals) > 0 {
+  let census = spark_serving_action_census(actions: plan.actions)
+  if census.refusals > 0 {
+    SparkServingPlanCarriesRefusals { refusal_count: census.refusals }
+  } else if census.removals > 0 && census.installs > 0 {
+    SparkServingPlanMixed { install_count: census.installs, removal_count: census.removals }
+  } else if census.removals > 0 {
     SparkServingPlanTeardown
-  } else if length(installs) > 0 {
+  } else if census.installs > 0 {
     SparkServingPlanInstalls
   } else {
     SparkServingPlanEmpty
