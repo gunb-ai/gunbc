@@ -989,17 +989,25 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
 /// lifetime (a run-start fact, never re-read per insert). On first call, if
-/// the budget source is degraded (no private cgroup limit found), emits a
-/// typed, counted `[floor-drain] degraded_budget_source` diagnostic — an
-/// honesty arm, not a widened failure: the cap still derives from whatever
-/// source was found, it is simply named so the degraded case is observable
-/// and prioritizable rather than silent.
+/// the budget source is degraded — a real reading, but of the MACHINE rather
+/// than of a bound on this process — emits a typed, counted
+/// `[floor-drain] degraded_budget_source` diagnostic. An honesty arm, not a
+/// widened failure: the cap derives from a source the platform genuinely has,
+/// it is simply named so the degraded case is observable and prioritizable
+/// rather than silent.
+///
+/// Since the meminfo arms were deleted this is reachable only where the kernel
+/// has no private-limit mechanism at all (Darwin, `sysctl hw.memsize`). On a
+/// kernel that HAS cgroups, a missing limit is a missing bound and the
+/// derivation refuses instead of degrading — that path used to answer with the
+/// host's MemAvailable and got `main_wet` SIGKILLed at rc=137.
 pub(crate) fn typed_module_cache_cap(index: &MultiEntryIndex) -> usize {
     *index.typed_module_cache_cap.get_or_init(|| {
         let (cap, source, degraded) = typed_module_cache_cap_derivation();
         if degraded {
             eprintln!(
-                "[floor-drain] degraded_budget_source: cap={cap} source={source} (no private cgroup memory.max/memory.high found)"
+                "[floor-drain] degraded_budget_source: cap={cap} source={source} \
+                 (this kernel has no private-limit mechanism, so the reading is host-shared)"
             );
         }
         cap
