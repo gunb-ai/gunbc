@@ -13491,7 +13491,7 @@ fn eval_emit_host_run_transport_builtin(
     require_permitted_transport(admission_arg, ctx, "emit_host_run_transport")?;
     let admitted_names: Vec<String> = {
         let val = environment_arg.ok_or_else(|| InterpError::TypeError {
-            msg: format!("emit_host_run_transport requires an `environment` argument: the declared admitted-name row (v2.std.host_transport host_build_environment_admitted_names)"),
+            msg: format!("emit_host_run_transport requires an `environment` argument: the target's HostTransportDescriptor.build_environment.ambient_names (v2.std.host_transport HostBuildEnvironment)"),
         })?;
         let items = free_monoid_to_vec(val).ok_or_else(|| InterpError::TypeError {
             msg: format!("emit_host_run_transport: environment must be a List<String> of admitted variable names"),
@@ -13718,7 +13718,7 @@ fn eval_emit_host_run_transport_cached_builtin(
     require_permitted_transport(admission_arg, ctx, "emit_host_run_transport_cached")?;
     let admitted_names: Vec<String> = {
         let val = environment_arg.ok_or_else(|| InterpError::TypeError {
-            msg: format!("emit_host_run_transport_cached requires an `environment` argument: the declared admitted-name row (v2.std.host_transport host_build_environment_admitted_names)"),
+            msg: format!("emit_host_run_transport_cached requires an `environment` argument: the target's HostTransportDescriptor.build_environment.ambient_names (v2.std.host_transport HostBuildEnvironment)"),
         })?;
         let items = free_monoid_to_vec(val).ok_or_else(|| InterpError::TypeError {
             msg: format!("emit_host_run_transport_cached: environment must be a List<String> of admitted variable names"),
@@ -14029,9 +14029,10 @@ struct EmitHostBuildEnvironment {
 /// Commands use env_clear() and receive exactly these rows, so an undeclared
 /// ambient variable cannot affect an artifact outside the realization identity.
 ///
-/// THE ADMITTED NAMES ARE A DECLARED ROW, NOT A RUST PREFIX TABLE. `admitted_names` is
-/// `v2.std.host_transport host_build_environment_admitted_names`, passed by every transport
-/// call; this function admits a variable only if its exact name is in that list. It used to
+/// THE ADMITTED NAMES ARE A DECLARED ROW, NOT A RUST PREFIX TABLE. `admitted_names` is the
+/// target's `HostTransportDescriptor.build_environment.ambient_names`
+/// (`v2.std.host_transport HostBuildEnvironment`), passed by every transport call; this
+/// function admits a variable only if its exact name is in that list. It used to
 /// admit every `RUST*` / `CARGO_*` / `*FLAGS` variable by prefix, which let the required
 /// floor's seed-build policy (`RUSTFLAGS=-D warnings`, exported for compiling the seed)
 /// reach the EMITTED program's build: four emit_host expected-red rows built clean on every
@@ -14040,15 +14041,10 @@ struct EmitHostBuildEnvironment {
 /// get to smuggle one into the other through a prefix (DESIGN §3).
 fn emit_host_constructed_build_environment(admitted_names: &[String]) -> EmitHostBuildEnvironment {
     use std::os::unix::ffi::OsStrExt;
-    let admitted = |name: &str| -> bool {
-        if matches!(
-            name,
-            "CARGO_TARGET_DIR" | "RUSTC_WRAPPER" | "RUSTC_WORKSPACE_WRAPPER"
-        ) {
-            return false;
-        }
-        admitted_names.iter().any(|n| n == name)
-    };
+    // No seed-side veto: the row is the whole policy. CARGO_TARGET_DIR is constructed at the
+    // realization boundary below (the workspace's own target dir), and a wrapper variable is
+    // admitted iff a row names it.
+    let admitted = |name: &str| -> bool { admitted_names.iter().any(|n| n == name) };
     let mut entries: Vec<_> = std::env::vars_os()
         .filter(|(name, _)| name.to_str().map(admitted).unwrap_or(false))
         .collect();
@@ -14145,8 +14141,8 @@ fn emit_host_cargo_configuration_digest(
 ///
 /// Cargo is a driver, not the compiler identity. Its observation is therefore
 /// paired with the rustc selected by the same process environment. The transport
-/// removes RUSTC_WRAPPER and RUSTC_WORKSPACE_WRAPPER when building, so wrappers are
-/// intentionally not part of this identity.
+/// runs under the target's declared build environment, in which no shipped row names
+/// RUSTC_WRAPPER or RUSTC_WORKSPACE_WRAPPER, so wrappers are not part of this identity.
 #[derive(Debug, Clone)]
 struct ObservedToolIdentity {
     tool_name: String,
@@ -14527,8 +14523,6 @@ fn emit_host_run_transport_in_workspace(
             .args(&argv[1..])
             .current_dir(workspace)
             .env("CARGO_TARGET_DIR", &target_dir)
-            .env_remove("RUSTC_WRAPPER")
-            .env_remove("RUSTC_WORKSPACE_WRAPPER")
             .output()
             .map_err(|e| host_tool_spawn_failure("emit_host_run_transport", &argv[0], &program, &e))
     };

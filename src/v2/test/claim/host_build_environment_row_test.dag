@@ -1,6 +1,10 @@
 module v2.test.claim.host_build_environment_row
 
-import v2.std.host_transport { host_build_environment_admitted_names }
+import v2.std.host_transport { HostBuildEnvironment, HostTransportDescriptor }
+import v2.extdeps.languages.rust { rust_host_transport_descriptor, rust_host_build_environment }
+import v2.extdeps.languages.python { python_host_transport_descriptor }
+import v2.extdeps.languages.go { go_host_transport_descriptor }
+import v2.extdeps.languages.typescript { ts_host_transport_descriptor }
 import v2.std.algebra { any, contains, fold_list }
 import v2.std.logic { Bool }
 import v2.std.collection { List }
@@ -8,40 +12,83 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn host_build_environment_admits(name: String) -> Bool {
-  contains(xs: host_build_environment_admitted_names, item: name, eq: fn(a, b) { a == b })
+// CONTROLS FOR THE PER-TARGET BUILD ENVIRONMENT (gunbc#9727 ruling). The emitted program's
+// build sees env_clear() plus exactly its target row, so the ruled controls read as:
+// (a)/(b) no shipped row carries a flag-bearing name, so an ambient RUSTFLAGS cannot enter
+// any emitted build nor the build-context identity (measured by execution on the required
+// floor, whose seed build exports RUSTFLAGS=-D warnings: the four emit_host rows build there
+// identically to the flagless remote frame); (d) the Rust row names no Python or Go state and
+// vice versa, so a PYTHONPATH change is outside a Rust realization's identity by
+// construction; (e) both transports receive transport.build_environment from the one
+// run_host_process_admitted site; (f) build_environment is a required field of
+// HostTransportDescriptor -- a descriptor without an environment decision is unconstructible.
+// (c) -- admitting RUSTFLAGS on the Rust row changes the identity and reproduces the
+// dead-code failure -- has no frame-independent oracle until the receipt carries the
+// build-context identity; it is measured in this PR's two frames, not enrolled, and that
+// carrier is its trigger.
+
+fn row_names(d: HostTransportDescriptor) -> List<String> {
+  d.build_environment.ambient_names
 }
 
-// POSITIVE CONTROL: the toolchain-location variables the transport needs to resolve cargo,
-// rustc and cc still reach the emitted program's build. If this goes red the allowlist has
-// been narrowed past the point where any emit_host row can build at all.
-test fn host_build_environment_admits_toolchain_locations() -> Bool {
-  host_build_environment_admits(name: "PATH")
-    && host_build_environment_admits(name: "HOME")
-    && host_build_environment_admits(name: "CARGO_HOME")
-    && host_build_environment_admits(name: "RUSTUP_HOME")
+fn names_admit(names: List<String>, name: String) -> Bool {
+  contains(xs: names, item: name, eq: fn(a, b) { a == b })
 }
 
-// REGRESSION CONTROL for the class gunbc#9727 repaired: a flag-bearing variable admitted
-// from the ambient environment. The wall is the allowlist itself (admission by exact name);
-// this row is the executing evidence that nobody has re-admitted a policy carrier by name.
-test fn host_build_environment_admits_no_flag_carrier() -> Bool {
-  !any(
-    xs: host_build_environment_admitted_names,
-    predicate: fn(name) { string_contains(name, "FLAGS") }
-  )
+fn names_carry_a_flag(names: List<String>) -> Bool {
+  any(xs: names, predicate: fn(name) { string_contains(name, "FLAGS") })
 }
 
-test fn host_build_environment_row_has_no_duplicates() -> Bool {
+fn names_have_no_duplicates(names: List<String>) -> Bool {
   fold_list(
-    xs: host_build_environment_admitted_names,
+    xs: names,
     empty: true,
     cons: fn(acc, name) {
       acc && (fold_list(
-        xs: host_build_environment_admitted_names,
+        xs: names,
         empty: 0,
         cons: fn(n, other) { if other == name { n + 1 } else { n } }
       ) == 1)
     }
   )
+}
+
+fn row_is_well_formed(names: List<String>) -> Bool {
+  !names_carry_a_flag(names: names)
+    && !names_admit(names: names, name: "CARGO_TARGET_DIR")
+    && !names_admit(names: names, name: "RUSTC_WRAPPER")
+    && !names_admit(names: names, name: "RUSTC_WORKSPACE_WRAPPER")
+    && names_have_no_duplicates(names: names)
+}
+
+test fn rust_row_admits_toolchain_locations() -> Bool {
+  let names = row_names(d: rust_host_transport_descriptor())
+  names_admit(names: names, name: "PATH")
+    && names_admit(names: names, name: "HOME")
+    && names_admit(names: names, name: "CARGO_HOME")
+    && names_admit(names: names, name: "RUSTUP_HOME")
+}
+
+test fn no_shipped_row_carries_a_flag_or_a_constructed_name() -> Bool {
+  row_is_well_formed(names: row_names(d: rust_host_transport_descriptor()))
+    && row_is_well_formed(names: row_names(d: python_host_transport_descriptor()))
+    && row_is_well_formed(names: row_names(d: go_host_transport_descriptor()))
+    && row_is_well_formed(names: row_names(d: ts_host_transport_descriptor()))
+}
+
+test fn rust_row_is_disjoint_from_other_targets_state() -> Bool {
+  let rust = row_names(d: rust_host_transport_descriptor())
+  !names_admit(names: rust, name: "PYTHONPATH")
+    && !names_admit(names: rust, name: "GOROOT")
+    && !names_admit(names: rust, name: "NODE_PATH")
+    && !names_admit(names: row_names(d: python_host_transport_descriptor()), name: "CARGO_HOME")
+    && !names_admit(names: row_names(d: go_host_transport_descriptor()), name: "CARGO_HOME")
+}
+
+test fn rust_fixture_descriptors_consume_the_rust_row() -> Bool {
+  row_names(d: rust_host_transport_descriptor()) == rust_host_build_environment().ambient_names
+}
+
+test fn a_flag_bearing_row_is_refused_by_the_control() -> Bool {
+  !row_is_well_formed(names: ["PATH", "RUSTFLAGS"])
 }

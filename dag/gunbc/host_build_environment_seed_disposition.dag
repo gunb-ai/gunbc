@@ -8,7 +8,7 @@ import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedIt
 // SEED CHANGE RECEIPT for the host build-environment allowlist (gunbc#9727). Every item here
 // is an EXISTING hand-Rust declaration MODIFIED, not added: the seed's prefix table
 // (RUST*/CARGO_*/*FLAGS) is replaced by exact-name admission against the .dag row
-// v2.std.host_transport host_build_environment_admitted_names, which the two transport
+// v2.std.host_transport HostBuildEnvironment carried per target by HostTransportDescriptor.build_environment, which the two transport
 // builtins now receive as an argument; the uncached transport, which inherited the whole
 // ambient environment, now applies the same constructed environment as the cached one.
 // No capability is new: the seed could already build and run an emitted program; it now does
@@ -22,7 +22,7 @@ import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedIt
 fn host_build_environment_dag_authority() -> DeclarationRef {
   DeclarationRef {
     module_path: "v2.std.host_transport",
-    decl_name: "host_build_environment_admitted_names",
+    decl_name: "HostBuildEnvironment",
     field: WholeDeclaration
   }
 }
@@ -32,30 +32,30 @@ data host_build_environment_seed_dispositions: List<SeedGrowthChangeDisposition>
     item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "emit_host_constructed_build_environment", field: WholeDeclaration },
     dag_authority: host_build_environment_dag_authority(),
     capability_origin: NoNewCapability,
-    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes host_build_environment_admitted_names to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list and both transports apply it under env_clear"
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
   },
   ExistingSeedItemModified {
     item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_emit_host_run_transport_builtin", field: WholeDeclaration },
     dag_authority: host_build_environment_dag_authority(),
     capability_origin: NoNewCapability,
-    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes host_build_environment_admitted_names to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list and both transports apply it under env_clear"
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
   },
   ExistingSeedItemModified {
     item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "eval_emit_host_run_transport_cached_builtin", field: WholeDeclaration },
     dag_authority: host_build_environment_dag_authority(),
     capability_origin: NoNewCapability,
-    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes host_build_environment_admitted_names to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list and both transports apply it under env_clear"
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
   },
   ExistingSeedItemModified {
     item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "emit_host_run_transport_in_workspace", field: WholeDeclaration },
     dag_authority: host_build_environment_dag_authority(),
     capability_origin: NoNewCapability,
-    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes host_build_environment_admitted_names to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list and both transports apply it under env_clear"
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
   },
   ExistingSeedItemModified {
     item: DeclarationRef { module_path: "v1_compiler.v1_interpreter", decl_name: "run_cached_process_spec", field: WholeDeclaration },
     dag_authority: host_build_environment_dag_authority(),
     capability_origin: NoNewCapability,
-    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes host_build_environment_admitted_names to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list and both transports apply it under env_clear"
+    current_boundary: "v2.compiler.emit_host run_host_process_admitted passes transport.build_environment.ambient_names (each target's own HostTransportDescriptor row) to emit_host_run_transport / emit_host_run_transport_cached; v1_compiler.v1_interpreter emit_host_constructed_build_environment admits ambient variables by exact name from that list with no seed-side veto, both transports apply it under env_clear, and CARGO_TARGET_DIR is constructed at the realization boundary"
   }
 ]

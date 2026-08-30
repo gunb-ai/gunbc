@@ -330,6 +330,8 @@ import v2.std.cardinality {
   Never
 }
 import v2.std.host_transport {
+  HostBuildEnvironment,
+  host_process_location_names,
   EmitHostRuntimeRow,
   TargetEmitHostRuntimeRow,
   HostRuntimeRowPresent,
@@ -2055,8 +2057,15 @@ data rust_emit_host_cargo_manifest: String = "[package]\nname = \"gunbc_emit_hos
 
 data rust_emit_host_main_suffix: String = "\n\nfn main() { let value = add(2, 3); let bytes = [0u8, (value & 0xff) as u8, ((value >> 8) & 0xff) as u8, ((value >> 16) & 0xff) as u8, ((value >> 24) & 0xff) as u8]; let _ = std::io::Write::write_all(&mut std::io::stdout(), &bytes); }\n"
 
+// The ambient variables this target's emitted program may see; see v2.std.host_transport
+// HostBuildEnvironment. Toolchain LOCATIONS only -- no flag carrier.
+fn rust_host_build_environment() -> HostBuildEnvironment {
+  HostBuildEnvironment { ambient_names: concat(host_process_location_names(), ["CARGO_HOME", "RUSTUP_HOME", "RUSTUP_TOOLCHAIN"]) }
+}
+
 fn rust_host_transport_descriptor() -> HostTransportDescriptor {
   HostTransportDescriptor {
+    build_environment: rust_host_build_environment(),
     identity: ^rust_host_transport_identity,
     workspace: [
       WorkspaceFile {
