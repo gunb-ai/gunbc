@@ -48,6 +48,8 @@ import gunbc.emit_diagnostic_observation {
 }
 import extdeps.cargo_diagnostic {
   RustcCodedDiagnostic,
+  RustcCoded,
+  RustcUncoded,
   CargoDiagnosticScan,
   CargoDiagnosticsRead,
   cargo_scan_diagnostics,
@@ -61,7 +63,7 @@ import extdeps.cargo_diagnostic {
 // BANKRUPTCY DELETED A CAPABILITY, NOT ONLY ARTIFACTS". It states the temporary state plainly --
 // no executable route to a per-entry emission board measurement exists, so a board figure quoted
 // from the tree names nothing that can produce it -- and it names its own restoration trigger: a
-// `.dag` entry point that emits, assembles and compiles ONE entry and returns the coded-diagnostic
+// `.dag` entry point that emits, assembles and compiles ONE entry and returns the error-diagnostic
 // population, cited by name wherever a board figure is quoted. This module is that entry point.
 // It is the INSTRUMENT, not a board: it produces the numbers and stores none of them.
 //
@@ -222,6 +224,40 @@ fn emit_population_rows(ds: List<GunbcDiagnostic>, files: EmittedFileCount) -> L
     ),
     concat("emit_population_extent\t", emit_population_extent_text(extent: emit_population_extent_of(files: files)))
   ]
+}
+
+fn unique_diagnostic_rows(rows: List<String>) -> List<String> {
+  rows |> fold(init: [], f: (unique, row) =>
+    if any(unique, prior => prior == row) { unique } else { append(unique, items: [row]) }
+  )
+}
+
+fn cargo_error_identity_rows(ds: List<RustcCodedDiagnostic>) -> List<String> {
+  unique_diagnostic_rows(
+    rows: ds |> filter(d => d.level == "error") |> map(d => rustc_diagnostic_row(d: d))
+  )
+}
+
+fn cargo_coded_error_identity_rows(ds: List<RustcCodedDiagnostic>) -> List<String> {
+  unique_diagnostic_rows(
+    rows: ds
+      |> filter(d => d.level == "error" && match d.identity {
+        RustcCoded { code: _ } => true
+        RustcUncoded => false
+      })
+      |> map(d => rustc_diagnostic_row(d: d))
+  )
+}
+
+fn cargo_codeless_error_identity_rows(ds: List<RustcCodedDiagnostic>) -> List<String> {
+  unique_diagnostic_rows(
+    rows: ds
+      |> filter(d => d.level == "error" && match d.identity {
+        RustcCoded { code: _ } => false
+        RustcUncoded => true
+      })
+      |> map(d => rustc_diagnostic_row(d: d))
+  )
 }
 
 fn emission_subject_rows(subject: EmissionMeasurementSubject) -> List<String> {
@@ -831,6 +867,9 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
       cargo_diagnostics: rs,
       cargo_lines_scanned: lines
     } =>
+      let error_rows = cargo_error_identity_rows(ds: rs)
+      let coded_error_rows = cargo_coded_error_identity_rows(ds: rs)
+      let codeless_error_rows = cargo_codeless_error_identity_rows(ds: rs)
       concat(
         concat(
           concat(
@@ -850,6 +889,16 @@ fn emission_report_rows(m: EmissionMeasurement) -> List<String> {
               concat(
                 concat("cargo_population\t", to_string(count(rs))),
                 concat("\tcargo_message_lines\t", to_string(lines))
+              ),
+              concat(
+                concat(
+                  concat(
+                    concat("cargo_error_population\t", to_string(count(error_rows))),
+                    concat("\tcoded\t", to_string(count(coded_error_rows)))
+                  ),
+                  concat("\tcodeless\t", to_string(count(codeless_error_rows)))
+                ),
+                "\treconciliation\tcoded+codeless=total"
               )
             ]
           )

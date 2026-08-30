@@ -15,6 +15,7 @@ import gunbc.self_host_compile_phase_frontier {
   PhaseRatchetRefused,
   phase_ratchet,
   phase_ratchet_with_dispositions,
+  phase_board_error_population_reconciles,
   NewlyExposedDiagnostic,
   ExposedByPhaseAdvance,
   PhaseBoardSeriesHeld,
@@ -35,8 +36,31 @@ fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
     furthest_phase_reached: Borrowck,
     furthest_phase_evidence: Observed,
     census_identity_digest: content_hash_atom(value: "fixture-borrow-board" as NonEmptyStr),
+    total_error_diagnostics: count(borrow_ids),
+    coded_error_diagnostics: count(borrow_ids),
+    codeless_error_diagnostics: 0,
     partition_complete: true
   }
+}
+
+test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool {
+  let malformed = RustcPhaseBoard {
+    rows: [
+      row_parse(n: 0, identities: []),
+      row_derived(phase: Expand, n: 0, identities: []),
+      row_derived(phase: Resolve, n: 0, identities: []),
+      row_derived(phase: Typeck, n: 1, identities: ["src/a.rs:1:1\tE0308\tmismatch"]),
+      RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] }
+    ],
+    furthest_phase_reached: Typeck,
+    furthest_phase_evidence: Observed,
+    census_identity_digest: content_hash_atom(value: "malformed-error-population" as NonEmptyStr),
+    total_error_diagnostics: 1,
+    coded_error_diagnostics: 1,
+    codeless_error_diagnostics: 1,
+    partition_complete: false
+  }
+  !phase_board_error_population_reconciles(board: malformed)
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -65,6 +89,9 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
     furthest_phase_reached: if count(resolve_ids) > 0 { Resolve } else { Typeck },
     furthest_phase_evidence: Observed,
     census_identity_digest: content_hash_atom(value: "fixture-board" as NonEmptyStr),
+    total_error_diagnostics: count(resolve_ids) + count(typeck_ids),
+    coded_error_diagnostics: count(resolve_ids) + count(typeck_ids),
+    codeless_error_diagnostics: 0,
     partition_complete: true
   }
 }

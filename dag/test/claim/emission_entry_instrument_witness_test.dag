@@ -469,6 +469,10 @@ test fn an_unreached_report_names_the_stage_and_carries_no_counts() -> Bool {
 test fn a_measured_report_states_both_populations() -> Bool {
   string_contains(s: emission_report_text(m: clean_specimen), pattern: "emit_population\t0")
     && string_contains(s: emission_report_text(m: clean_specimen), pattern: "cargo_population\t0")
+    && string_contains(
+      s: emission_report_text(m: clean_specimen),
+      pattern: "cargo_error_population\t0\tcoded\t0\tcodeless\t0\treconciliation\tcoded+codeless=total"
+    )
 }
 
 // PROVENANCE, ASSERTED RATHER THAN CLAIMED IN PROSE. A population is attributable only if the

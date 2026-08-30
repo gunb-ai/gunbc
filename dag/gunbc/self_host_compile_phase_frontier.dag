@@ -58,6 +58,9 @@ type RustcPhaseBoard {
   furthest_phase_reached: RustcPhase
   furthest_phase_evidence: PhaseCountEvidence
   census_identity_digest: Fnv1a64Structural
+  total_error_diagnostics: Int
+  coded_error_diagnostics: Int
+  codeless_error_diagnostics: Int
   partition_complete: Bool
 }
 
@@ -161,10 +164,17 @@ fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<S
 }
 
 fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
-  let errors = ds |> filter(d => d.level == "error" && match d.identity {
+  let errors = ds |> filter(d => d.level == "error")
+  let coded_errors = errors |> filter(d => match d.identity {
     RustcCoded { code: _ } => true
     RustcUncoded => false
   })
+  let codeless_errors = errors |> filter(d => match d.identity {
+    RustcCoded { code: _ } => false
+    RustcUncoded => true
+  })
+  let coded_identities = deduplicate_identities(identities: coded_errors |> map(d => rustc_diagnostic_row(d: d)))
+  let codeless_identities = deduplicate_identities(identities: codeless_errors |> map(d => rustc_diagnostic_row(d: d)))
   let unplaced = unplaced_identities(ds: errors)
   let parse_errors = count(parse_observation.refused_files)
   let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
@@ -186,6 +196,9 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
         furthest_phase_reached: furthest,
       furthest_phase_evidence: Observed,
       census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
+      total_error_diagnostics: count(errors),
+      coded_error_diagnostics: count(coded_identities),
+      codeless_error_diagnostics: count(codeless_identities),
       partition_complete: count(unplaced) == 0
     },
     unplaced_identities: unplaced
@@ -236,6 +249,13 @@ fn census_unplaced_identities(identities: List<String>) -> List<String> {
   }))
 }
 
+fn census_codeless_identities(identities: List<String>) -> List<String> {
+  deduplicate_identities(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
+    Present { value: code } => code == "uncoded"
+    Absent => false
+  }))
+}
+
 // Persisted receipts are folded from the raw identity rows emitted by the same instrument. This
 // function is the only route from those rows to a board; no receipt authors a phase count.
 fn phase_board_from_census_identities(
@@ -246,6 +266,8 @@ fn phase_board_from_census_identities(
   let typeck_ids = census_identities_for_phase(identities: raw_identities, phase: Typeck)
   let borrowck_ids = census_identities_for_phase(identities: raw_identities, phase: Borrowck)
   let unplaced = census_unplaced_identities(identities: raw_identities)
+  let codeless = census_codeless_identities(identities: raw_identities)
+  let unique_errors = deduplicate_identities(identities: raw_identities)
   let parse_errors = count(parse_observation.refused_files)
   let furthest = if parse_errors > 0 { Parse }
     else if count(resolve_ids) > 0 { Resolve }
@@ -272,6 +294,9 @@ fn phase_board_from_census_identities(
       furthest_phase_reached: furthest,
       furthest_phase_evidence: Observed,
       census_identity_digest: phase_census_digest(parse_refused_files: parse_observation.refused_files, raw_identities: raw_identities),
+      total_error_diagnostics: count(unique_errors),
+      coded_error_diagnostics: count(unique_errors) - count(codeless),
+      codeless_error_diagnostics: count(codeless),
       partition_complete: count(unplaced) == 0
     },
     unplaced_identities: unplaced
@@ -299,7 +324,7 @@ type CompilePhaseFrontierReceipt {
   prefix_digest: Fnv1a64Structural
   parse_evidence: ParsePhaseEvidence
   board: RustcPhaseBoard
-  raw_coded_diagnostic_identities: List<String>
+  raw_error_diagnostic_identities: List<String>
   unplaced_identities: List<String>
   newly_exposed: List<NewlyExposedDiagnostic>
   reclassified_predecessor_board: RustcPhaseBoard?
@@ -419,7 +444,7 @@ fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Stru
       receipt.invocation as String,
       receipt_position_text(position: receipt.position),
       parse_evidence_rows(evidence: receipt.parse_evidence) |> join(separator: "\t"),
-      receipt.raw_coded_diagnostic_identities |> join(separator: "\n"),
+      receipt.raw_error_diagnostic_identities |> join(separator: "\n"),
       receipt.unplaced_identities |> join(separator: "\n"),
       receipt.newly_exposed |> map(row => newly_exposed_row(row: row)) |> join(separator: "\n"),
       optional_reclassified_digest(board: receipt.reclassified_predecessor_board),
@@ -453,7 +478,7 @@ fn seal_compile_phase_receipt(
   previous_prefix_digest: Fnv1a64Structural?,
   parse_evidence: ParsePhaseEvidence,
   board: RustcPhaseBoard,
-  raw_coded_diagnostic_identities: List<String>,
+  raw_error_diagnostic_identities: List<String>,
   unplaced_identities: List<String>,
   newly_exposed: List<NewlyExposedDiagnostic>,
   reclassified_predecessor_board: RustcPhaseBoard?,
@@ -471,7 +496,7 @@ fn seal_compile_phase_receipt(
     prefix_digest: placeholder,
     parse_evidence: parse_evidence,
     board: board,
-    raw_coded_diagnostic_identities: raw_coded_diagnostic_identities,
+    raw_error_diagnostic_identities: raw_error_diagnostic_identities,
     unplaced_identities: unplaced_identities,
     newly_exposed: newly_exposed,
     reclassified_predecessor_board: reclassified_predecessor_board,
@@ -489,7 +514,7 @@ fn seal_compile_phase_receipt(
     prefix_digest: expected_prefix_digest(previous: previous_prefix_digest, identity: identity),
     parse_evidence: parse_evidence,
     board: board,
-    raw_coded_diagnostic_identities: raw_coded_diagnostic_identities,
+    raw_error_diagnostic_identities: raw_error_diagnostic_identities,
     unplaced_identities: unplaced_identities,
     newly_exposed: newly_exposed,
     reclassified_predecessor_board: reclassified_predecessor_board,
@@ -620,16 +645,25 @@ fn comparison_inputs_same(a: CompilePhaseReceiptSubject, b: CompilePhaseReceiptS
     && a.invocation.features == b.invocation.features
 }
 
+fn phase_board_error_population_reconciles(board: RustcPhaseBoard) -> Bool {
+  board.coded_error_diagnostics + board.codeless_error_diagnostics == board.total_error_diagnostics
+}
+
 fn receipt_population_coherent(receipt: CompilePhaseFrontierReceipt) -> Bool {
   match receipt.parse_evidence {
     ParseReached { evidence: parse } => {
       let derived = phase_board_from_census_identities(
       parse_observation: parse,
-      raw_identities: receipt.raw_coded_diagnostic_identities
+      raw_identities: receipt.raw_error_diagnostic_identities
       )
       derived.board.census_identity_digest == receipt.board.census_identity_digest
         && derived.board.furthest_phase_reached == receipt.board.furthest_phase_reached
         && derived.board.rows == receipt.board.rows
+        && phase_board_error_population_reconciles(board: receipt.board)
+        && receipt.board.total_error_diagnostics == count(receipt.raw_error_diagnostic_identities)
+        && derived.board.total_error_diagnostics == receipt.board.total_error_diagnostics
+        && derived.board.coded_error_diagnostics == receipt.board.coded_error_diagnostics
+        && derived.board.codeless_error_diagnostics == receipt.board.codeless_error_diagnostics
         && derived.board.partition_complete == receipt.board.partition_complete
         && derived.unplaced_identities == receipt.unplaced_identities
     }
@@ -718,7 +752,7 @@ fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
 fn render_phase_board(board: RustcPhaseBoard) -> String {
   board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
 }
-data genesis_5006ddc6_raw_coded_diagnostic_identities: List<String> = [
+data genesis_5006ddc6_raw_error_diagnostic_identities: List<String> = [
   "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",
   "src/v2_std_cross_tree_resolution.rs:103:17	E0599	no associated function or constant named `Empty` found for struct `im::Vector<A>` in the current scope",
   "src/v2_std_cross_tree_resolution.rs:104:5	E0223	ambiguous associated type",
@@ -956,7 +990,7 @@ data genesis_5006ddc6_raw_coded_diagnostic_identities: List<String> = [
 
 data genesis_5006ddc6_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
   parse_observation: genesis_5006ddc6_parse_observation,
-  raw_identities: genesis_5006ddc6_raw_coded_diagnostic_identities
+  raw_identities: genesis_5006ddc6_raw_error_diagnostic_identities
 )
 
 fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
@@ -984,7 +1018,7 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
     previous_prefix_digest: none,
     parse_evidence: ParseReached { evidence: genesis_5006ddc6_parse_observation },
     board: genesis_5006ddc6_phase_board_fold.board,
-    raw_coded_diagnostic_identities: genesis_5006ddc6_raw_coded_diagnostic_identities,
+    raw_error_diagnostic_identities: genesis_5006ddc6_raw_error_diagnostic_identities,
     unplaced_identities: genesis_5006ddc6_phase_board_fold.unplaced_identities,
     newly_exposed: [],
     reclassified_predecessor_board: none,

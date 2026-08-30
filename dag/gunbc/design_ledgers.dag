@@ -92,6 +92,19 @@ fn compile_phase_frontier_blocks() -> List<MarkdownBlock> {
       p(text: concat("Tree: `", concat(floor_discovery_tree_identity(tree: latest.subject.git_tree_object), "`"))),
       p(text: concat("Invocation: `", concat(latest.invocation as String, "`"))),
       p(text: concat("Census identity digest: `", concat(latest.board.census_identity_digest.digest as String, "`"))),
+      p(text: concat(
+        "Error identities: ",
+        concat(
+          to_string(latest.board.total_error_diagnostics),
+          concat(
+            " total = ",
+            concat(
+              to_string(latest.board.coded_error_diagnostics),
+              concat(" coded + ", concat(to_string(latest.board.codeless_error_diagnostics), " codeless"))
+            )
+          )
+        )
+      )),
       p(text: concat("Producer: `", concat(latest.producer.module_path, concat("::", concat(latest.producer.function, "`"))))),
     ]
   }
