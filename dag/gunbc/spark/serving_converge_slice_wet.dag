@@ -547,7 +547,6 @@ fn spark_serving_converge_slice_wet_host_report(
                 store: st,
                 observed_unit: ou,
                 linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
-            }
               ),
             ) {
               SparkServingPlanArtifactRefused { cause: why } =>
@@ -616,6 +615,7 @@ fn spark_serving_converge_slice_wet_host_report(
                         )
                     }
                 }
+            }
             }
         }
       }
