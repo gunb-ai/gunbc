@@ -33,12 +33,10 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   node_locus,
-  invariant_port_locus,
   Diagnostic,
   ExternalContractUnknown,
   Unavailable,
-  None,
-  AmbiguousIntent
+  None
 }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -91,7 +89,7 @@ import v2.std.runtime {
   runtime_reject_match_arm,
   runtime_value_resolved_type
 }
-import v2.std.witness { Violates, Witness }
+import v2.std.optional { Optional, optional_absent }
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
   core: ModelCore
@@ -161,14 +159,8 @@ fn v2_eval_runtime_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^v2_eval_binding_miss,
-      at: invariant_port_locus(port: ^v2_eval_binding_lookup_port, invariant: ^v2_eval_binding_miss),
-      correction: Unavailable { reason: AmbiguousIntent }
-    }
-  }
+fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Optional<RuntimeValue> {
+  optional_absent()
 }
 
 fn v2_eval_empty_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
