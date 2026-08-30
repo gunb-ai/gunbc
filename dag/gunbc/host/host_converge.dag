@@ -534,6 +534,13 @@ fn codex_runtime_bundle_knobs(host: HostIdentity) -> List<ConvergeKnob> {
 // PerSlotUnitProperty/value_raw in favour of the HostAxisBundle P3 lane that owns it. This rider
 // does not pre-empt that rename; it is the third value to arrive at a field still named
 // bytes_value, which strengthens the case that lane already carries rather than adding a new one.
+//
+// THE DisjointCpuSet ARM EMITS NOTHING, AND THAT IS THE HONEST ANSWER RATHER THAN A SILENT HOLE. No
+// producer constructs it, and extdeps.systemd carries no AllowedCPUs= property to render it with, so
+// a fleet that adopted the pinning contract would be claiming a boundary this emitter cannot write.
+// The arm says so by producing no knob rather than by degrading to the quota it never promised.
+// NEXT-RUNG TRIGGER: an AllowedCPUs directive in extdeps.systemd plus a producer that assigns
+// pairwise-disjoint sets.
 fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<ConvergeKnob> {
   match h.per_runner_cpu_boundary {
     CapacityQuota { threads: t } =>
@@ -550,12 +557,6 @@ fn runner_cpu_boundary_knobs(h: RunnerHostDeployment, glob: String) -> List<Conv
           }
         ),
       ]
-    // UNREACHABLE TODAY AND EMITTING NOTHING IS THE HONEST ARM, not a silent hole: no producer
-    // constructs DisjointCpuSet, and extdeps.systemd carries no AllowedCPUs= property to render it
-    // with. NEXT-RUNG TRIGGER: an AllowedCPUs directive in extdeps.systemd plus a producer that
-    // assigns pairwise-disjoint sets. Until both exist, a fleet that adopted the pinning contract
-    // would be claiming a boundary this emitter cannot write, so the arm states that by producing
-    // no knob rather than by degrading to the quota it did not promise.
     DisjointCpuSet { cpus: _ } => []
   }
 }

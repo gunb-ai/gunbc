@@ -41,6 +41,11 @@ import gunbc.runner_slot_allocation {
   gunbc_committed_runner_slot_allocations,
   host_memory_admitted_width,
   gunbc_runner_slots_per_host,
+  runner_slot_shape_standing,
+  RunnerSlotShapeAdmitted,
+  RunnerSlotShapeRefusedZeroMemoryMax,
+  RunnerSlotDesired,
+  RunnerSlotLabels,
   host_disk_admitted_width,
   DiskWidthUnconstrained,
   DiskAdmitsWidth,
@@ -939,3 +944,40 @@ test fn an_unmeasured_control_plane_refuses_on_every_host_including_the_roomy_on
   )
 }
 
+// THE ZERO-MEMORY SLOT SHAPE, AUTHORED RATHER THAN ARGUED. This pair is the executing evidence for a
+// refusal that used to be carried by accident: gunbc.fleet_host_budget declared_runner_count_for
+// divided the declared slice cap by the per-slot cap, and measure_fit_count_floor answers ZERO when
+// its divisor is zero, so a zero-memory slot shape reached a zero width through arithmetic written
+// for another purpose entirely. Deleting that round trip -- correct, since slots * k / k returns its
+// own input for every k > 0 -- removed the refusal with it. The width producer now states it.
+//
+// THE RED IS AUTHORABLE HERE AND NOWHERE ELSE ON THIS PATH. gunbc_runner_slot_desired() is a fixed
+// declaration, so no witness can make the live fleet carry a zero ceiling; the standing is therefore
+// taken as a parameter, which is what lets this fixture express the state the accepted corpus cannot.
+// Without that, the check would be permanently green by construction and would be cited as coverage
+// while proving nothing (DESIGN 4b: ask whether the RED is authorable before writing the check).
+fn zero_memory_slot_shape() -> RunnerSlotDesired {
+  RunnerSlotDesired {
+    memory_max: byte_size(0),
+    memory_swap_max: byte_size(0),
+    memory_high: byte_size(0),
+    tasks_max: 16384,
+    cpu_weight: 100,
+    labels: RunnerSlotLabels { github_labels: ["self-hosted", "linux", "arm64", "gunbc-heavy"] },
+  }
+}
+
+test fn w_zero_memory_slot_shape_admits_no_runners() -> Bool {
+  match runner_slot_shape_standing(d: zero_memory_slot_shape()) {
+    RunnerSlotShapeRefusedZeroMemoryMax => true
+    RunnerSlotShapeAdmitted => false
+  }
+}
+
+// THE POSITIVE CONTROL, so the refusal above is known to discriminate rather than to be unconditional.
+test fn w_live_slot_shape_is_admitted() -> Bool {
+  match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
+    RunnerSlotShapeAdmitted => true
+    RunnerSlotShapeRefusedZeroMemoryMax => false
+  }
+}

@@ -377,10 +377,45 @@ fn host_held_runner_width(host: HostIdentity) -> Int? {
   }
 }
 
+// A ZERO-MEMORY SLOT SHAPE ADMITS NO RUNNERS, AND THE HELD ARM MUST NOT OUTRANK THAT.
+//
+// This refusal was previously carried by ACCIDENT, in a function whose deletion is the point of the
+// change that added this one. gunbc.fleet_host_budget declared_runner_count_for computed
+// measure_fit_count_floor(slots * memory_max, memory_max), and that projection returns ZERO when its
+// divisor is zero rather than dividing -- so a zero-memory slot shape reached a zero width through
+// arithmetic nobody wrote for that purpose. The identity slots * k / k = slots holds only for k > 0,
+// so the deletion of that round trip was behaviour-preserving on the current tree and NOT on every
+// tree the source can express.
+//
+// The derived path would still refuse without this: cores_per_slot ceilings memory_max against the
+// surveyed memory-per-vCPU convention, so a zero ceiling yields zero cores per slot, and
+// host_cpu_admitted_width returns zero rather than dividing. THE HELD PATH WOULD NOT. It is consulted
+// first and answers with an authored number that never consults the slot shape at all, so srv2's held
+// five would survive a slot shape admitting nothing -- committing five runners on a ceiling of zero
+// bytes. That is the one place the accidental refusal was load-bearing, and it is why the standing is
+// checked BEFORE the held arm rather than inside the derivation.
+//
+// Zero reaches ZeroRunnerWidth in gunbc.ci_runner_placement, so the host refuses rather than deploys.
+type RunnerSlotShapeStanding
+  = RunnerSlotShapeAdmitted
+  | RunnerSlotShapeRefusedZeroMemoryMax
+
+fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
+  if byte_size_count(b: d.memory_max) == 0 {
+    RunnerSlotShapeRefusedZeroMemoryMax
+  } else {
+    RunnerSlotShapeAdmitted
+  }
+}
+
 fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
-  match host_held_runner_width(host: host) {
-    Present { value: held } => held
-    Absent => gunbc_derived_runner_slots_per_host(host: host)
+  match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
+    RunnerSlotShapeRefusedZeroMemoryMax => 0
+    RunnerSlotShapeAdmitted =>
+      match host_held_runner_width(host: host) {
+        Present { value: held } => held
+        Absent => gunbc_derived_runner_slots_per_host(host: host)
+      }
   }
 }
 
