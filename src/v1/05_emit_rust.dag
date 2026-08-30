@@ -1512,7 +1512,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
+    match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: exact } => exact
       Absent =>
     match rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file(n: n)) {
