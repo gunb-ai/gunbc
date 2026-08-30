@@ -562,4 +562,3 @@ func fleet_converge_apply_wet() -> ProcessExit
     }
   }
   }
-}
