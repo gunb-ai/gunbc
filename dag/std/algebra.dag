@@ -617,17 +617,28 @@ fn carrier_container_arity_rows() -> Map<String, Int> {
 // power) cannot answer extensional equality at all -- the agreement set is not enumerable -- so
 // generic equality on it is refused, never approximated. The rows are per-profile because the
 // support axis is a fact about the algebra, not about any spelling that resolves to it.
-fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
+type AlgebraSupportAxis
+  = FiniteSupport
+  | OpenSupport
+
+fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
   match profile {
-    OrderedRingProfile => true
-    ApproximateFieldProfile => true
-    BooleanAlgebraProfile => true
-    FinitePowerSetProfile => true
-    PointwisePowerCollectionProfile => false
-    FreeMonoidScalarProfile => true
-    FreeMonoidCollectionProfile => true
-    PartialFunctionProfile => false
-    FinitelySupportedFunctionProfile => true
+    OrderedRingProfile => FiniteSupport
+    ApproximateFieldProfile => FiniteSupport
+    BooleanAlgebraProfile => FiniteSupport
+    FinitePowerSetProfile => FiniteSupport
+    PointwisePowerCollectionProfile => OpenSupport
+    FreeMonoidScalarProfile => FiniteSupport
+    FreeMonoidCollectionProfile => FiniteSupport
+    PartialFunctionProfile => OpenSupport
+    FinitelySupportedFunctionProfile => FiniteSupport
+  }
+}
+
+fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
+  match algebra_profile_support(profile: profile) {
+    FiniteSupport => true
+    OpenSupport => false
   }
 }
 

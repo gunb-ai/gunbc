@@ -2,6 +2,7 @@
 // Source module: std.algebra
 
 use self::AlgebraProfile::*;
+use self::AlgebraSupportAxis::*;
 use self::AlgebraTypeTemplate::*;
 use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
@@ -804,17 +805,33 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
     )
 }
 
-pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum AlgebraSupportAxis {
+    FiniteSupport,
+    OpenSupport,
+}
+
+pub fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
     match profile.clone() {
-        AlgebraProfile::OrderedRingProfile => true,
-        AlgebraProfile::ApproximateFieldProfile => true,
-        AlgebraProfile::BooleanAlgebraProfile => true,
-        AlgebraProfile::FinitePowerSetProfile => true,
-        AlgebraProfile::PointwisePowerCollectionProfile => false,
-        AlgebraProfile::FreeMonoidScalarProfile => true,
-        AlgebraProfile::FreeMonoidCollectionProfile => true,
-        AlgebraProfile::PartialFunctionProfile => false,
-        AlgebraProfile::FinitelySupportedFunctionProfile => true,
+        AlgebraProfile::OrderedRingProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::ApproximateFieldProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::BooleanAlgebraProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::FinitePowerSetProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::PointwisePowerCollectionProfile => AlgebraSupportAxis::OpenSupport,
+        AlgebraProfile::FreeMonoidScalarProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::FreeMonoidCollectionProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::PartialFunctionProfile => AlgebraSupportAxis::OpenSupport,
+        AlgebraProfile::FinitelySupportedFunctionProfile => AlgebraSupportAxis::FiniteSupport,
+    }
+}
+
+pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
+    match algebra_profile_support(profile.clone()) {
+        AlgebraSupportAxis::FiniteSupport => true,
+        AlgebraSupportAxis::OpenSupport => false,
     }
 }
 
@@ -2173,3 +2190,7 @@ pub struct ShapeLinearScan;
 pub struct ShapeIterateBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShapeSortBody;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FiniteSupport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OpenSupport;

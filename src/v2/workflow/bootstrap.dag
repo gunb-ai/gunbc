@@ -537,10 +537,10 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
 
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
-    && (inputs.snapshot.language_model == seed_capability_language_model())
+    && (inputs.snapshot.language_model.language_identity == seed_capability_language_model().language_identity)
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
     && (inputs.target_model == rust_target_model())
-    && (inputs.runtime_model == v2_evaluator_runtime())
+    && v4_evaluator_runtime_models_equal(a: inputs.runtime_model, b: v2_evaluator_runtime())
 }
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {
