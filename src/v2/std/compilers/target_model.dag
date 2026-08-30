@@ -9982,7 +9982,7 @@ fn target_representation_parameter_slots_from_node(
           match acc {
             Rejected { diagnostics: r } => Rejected { diagnostics: r }
             Accepted { value: slots, diagnostics: _ } =>
-              match slots.lookup(parameter) {
+              match map_lookup(m: slots, key: parameter) {
                 Present { value: _ } =>
                   outcome_rejected(
                     target_derive_supplemental_generic_bound_contract_choice_malformed_diagnostic(

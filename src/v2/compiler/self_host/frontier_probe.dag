@@ -9,7 +9,6 @@ import v2.compiler.name_resolve {
   Import,
   ModuleRootMissing,
   ResolutionSubject,
-  admission_from_module_root,
   module_root_lookup,
   resolve_diagnostics,
   validate_module_roots
@@ -76,7 +75,7 @@ import v2.compiler.source_authority {
 }
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.lens.reference_deps { reference_deps_ingest_source_text }
+import v2.lens.reference_deps { admission_from_module_root, reference_deps_ingest_source_text }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.content_hash {
   ContentHash,

@@ -76,6 +76,7 @@ fn primitive_projection_roster() -> List<PrimitiveProjection> {
     primitive_projection_row(primitive: primitive_concept_decl_facts, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_concept_decl_facts_live, module_path: "v2.std.concept_index", decl_name: "concept_decl_facts_live", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_empty_map, module_path: "v2.std.collection", decl_name: "empty_map_primitive_delegate", fidelity: HostRealizedSeam),
+    primitive_projection_row(primitive: primitive_map_insert, module_path: "v2.std.collection", decl_name: "map_insert_primitive_delegate", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_symbol_lexeme, module_path: "v2.std.compilers.lexing", decl_name: "symbol_lexeme", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_symbol_intern_lexeme, module_path: "v2.std.compilers.lexing", decl_name: "symbol_intern_lexeme", fidelity: HostRealizedSeam),
     primitive_projection_row(primitive: primitive_length, module_path: "v2.std.algebra", decl_name: "length", fidelity: ModeledProjection),
