@@ -599,3 +599,14 @@ test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
     ["a.partial_cmp(b)"]
   )
 }
+
+// An arrow type as a type ARGUMENT (a Map's value type at a record field) renders as the callable
+// carrier, never as the arrow's resolved return type.
+test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.arrow_map_field_probe\nimport std.types { String }\nimport v2.std.collection { Map }\nimport v2.std.node { Symbol }\ntype Xf { transforms: Map<Symbol, fn(String) -> String> }\n",
+    "src/test_claim_arrow_map_field_probe.rs",
+    ["Rc<HashMap<Symbol, Rc<dyn Fn(String) -> String>>>"],
+    ["HashMap<Symbol, String>"]
+  )
+}

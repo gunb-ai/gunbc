@@ -259,12 +259,21 @@ fn rust_type_node_is_arrow(n: Node) -> Bool {
 }
 
 fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  render_rust_arrow_type_in_scope(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+}
+
+// The arrow renderer keyed on the SCOPE it renders in rather than on EmitGraphInfo, so the
+// type-argument position -- which carries the scope's parts but no EmitGraphInfo -- asks the same
+// renderer instead of falling through: `Map<Symbol, fn(String) -> String>` at a record field
+// rendered its value type by the arrow's RESOLVED inference, i.e. the return type, as
+// `HashMap<Symbol, String>` (E0277 x2 at v2.std.compilers.target_model apply_emit_spelling_transform).
+fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let repr = target_callable(target: Rust)
-  let param_strs = n.params |> map(p => render_rust_arrow_position(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+  let param_strs = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
   let param_str = param_strs |> join(separator: repr.param_separator)
   let spec = language_spec(target: Rust)
   let ret_str = match n.inferred {
-    Present { value: Resolved { node: rt } } => render_rust_arrow_position(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     _ => spec.void_type
   }
   match spec.callable_type_template {
@@ -1097,7 +1106,9 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+  if rust_type_node_is_arrow(n: n) {
+    render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  } else if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
     "_"
