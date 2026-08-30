@@ -43,6 +43,7 @@ import gunbc.roadmap_launch_admission {
   launch_admission, launch_admission_label, launch_admission_reason, launch_refusal_label, launch_refusal_reason,
   launch_refusal_exemplars, launch_host_unobserved_static_render,
   launch_gate_names, launch_admission_contract_text, launch_admission_contract_digest_hex,
+  LaunchGateRow, LaunchGateStage, PreSessionGate, SessionGate, launch_gate_template, launch_contract_text_of_rows,
 }
 import gunbc.roadmap_launch_canary {
   roadmap_launch_canary_child_identity,
@@ -787,4 +788,25 @@ test fn witness_pending_sessions_completed_admits_ready_parent() -> Bool {
 
 test fn witness_pending_sessions_reaching_full_decision_refuses_live_gate() -> Bool {
   refused_as(a: decide(cause: Operator, standing: launch_fixture_standing_pending(mode: ManualReady), g: graph(), node_id: parent_id()), label: "gate_not_evaluated")
+}
+
+data stage_boundary_mutation_note: String = "Review 5060354380 mutation control: the session-observation boundary in the frozen contract is a projection of the typed LaunchGateRow.stage marks over the canonical row roster, so reclassifying one row across the boundary, or reordering the roster, changes the serialized contract (and therefore the digest). A literal could not fail this."
+
+fn flip_stage(row: LaunchGateRow) -> LaunchGateRow {
+  LaunchGateRow {
+    gate: row.gate,
+    stage: (match row.stage { PreSessionGate => SessionGate SessionGate => PreSessionGate }),
+    verdict: row.verdict,
+  }
+}
+
+test fn witness_contract_binds_the_session_boundary() -> Bool {
+  let rows = launch_gate_template()
+  let canonical = launch_contract_text_of_rows(rows: rows)
+  let reclassified = launch_contract_text_of_rows(rows: rows |> map(row => if row.gate == "dependencies" { flip_stage(row: row) } else { row }))
+  let reordered = launch_contract_text_of_rows(rows: concat(rows.skip(n: 1), rows.take(n: 1)))
+  canonical == launch_admission_contract_text()
+    && string_contains(s: canonical, pattern: ";pre_session=instance,transition,revision,node,contract,dependencies;session=live,capacity,cause")
+    && reclassified != canonical
+    && reordered != canonical
 }

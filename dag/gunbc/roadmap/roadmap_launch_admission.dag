@@ -355,8 +355,46 @@ type LaunchGateLedger {
   identity: LaunchIdentity?
 }
 
+data launch_gate_template_note: String = "THE CANONICAL ROW ROSTER, read once from the one place rows are authored (launch_ledger_rows) over a ledger in which no gate has been evaluated. Every roster the contract serializes -- the gate order and the session-observation boundary -- is a projection of these rows and their typed LaunchGateRow.stage marks; nothing about the order or the partition is spelled a second time (review 5060354380: an authored `host_stages=` literal beside the typed marks left the frozen digest silent under a reclassification)."
+
+fn launch_gate_template() -> List<LaunchGateRow> {
+  launch_ledger_rows(l: LaunchGateLedger {
+    instance: GateNotReached,
+    transition: GateNotReached,
+    revision: GateNotReached,
+    node: GateNotReached,
+    contract: GateNotReached,
+    dependencies: GateNotReached,
+    live: GateNotReached,
+    capacity: GateNotReached,
+    cause: GateNotReached,
+    identity: none,
+  })
+}
+
 fn launch_gate_names() -> List<String> {
-  ["instance", "transition", "revision", "node", "contract", "dependencies", "live", "capacity", "cause"]
+  launch_gate_template() |> map(row => row.gate)
+}
+
+fn launch_rows_stages(rows: List<LaunchGateRow>) -> LaunchLedgerStages {
+  fold(rows, init: LaunchLedgerStages { pre_session: [], session: [] }, f: (acc, row) => match row.stage {
+    PreSessionGate => LaunchLedgerStages { pre_session: concat(acc.pre_session, [row]), session: acc.session }
+    SessionGate => LaunchLedgerStages { pre_session: acc.pre_session, session: concat(acc.session, [row]) }
+  })
+}
+
+fn launch_contract_text_of_rows(rows: List<LaunchGateRow>) -> String {
+  let stages = launch_rows_stages(rows: rows)
+  join([
+    "gates=", join(rows |> map(row => row.gate), ">"),
+    ";refusals=", join(map(launch_refusal_exemplars(), r => launch_refusal_label(r: r)), ","),
+    ";modes=", join(map([Paused, ManualReady, AutomaticReady], m => spawn_mode_label(m: m)), ","),
+    ";causes=", join(map([Operator, Timer], c => launch_cause_label(c: c)), ","),
+    ";identity=node_id,cause,mode,instance_id,revision",
+    ";occupancy=running+unobserved",
+    ";pre_session=", join(stages.pre_session |> map(row => row.gate), ","),
+    ";session=", join(stages.session |> map(row => row.gate), ","),
+  ], "")
 }
 
 type LaunchGateStage
@@ -753,10 +791,7 @@ type LaunchLedgerStages {
 }
 
 fn launch_ledger_stages(l: LaunchGateLedger) -> LaunchLedgerStages {
-  fold(launch_ledger_rows(l: l), init: LaunchLedgerStages { pre_session: [], session: [] }, f: (acc, row) => match row.stage {
-    PreSessionGate => LaunchLedgerStages { pre_session: concat(acc.pre_session, [row]), session: acc.session }
-    SessionGate => LaunchLedgerStages { pre_session: acc.pre_session, session: concat(acc.session, [row]) }
-  })
+  launch_rows_stages(rows: launch_ledger_rows(l: l))
 }
 
 fn launch_admission_staged(
@@ -804,15 +839,7 @@ fn launch_admission_reason(a: LaunchAdmission) -> String {
 data launch_admission_contract_note: String = "THE FROZEN JOIN (plan section 3, RLM-1 exit): `admission contract digest + deployed revision containing it`. The contract is the gate order and the closed refusal vocabulary -- exactly the two facts a successor gate binds when it says `the admission that decided this attempt was THIS one`. It is derived from the same rosters the fold and the label authority read (launch_gate_names, launch_refusal_exemplars through launch_refusal_label), so a gate added, reordered, or a refusal renamed changes the digest; prose cannot. Producer: `gunbc run --entry dag/gunbc/roadmap/roadmap_launch_admission.dag --function launch_admission_contract_digest_hex` (it refuses a String return and prints it, which is the read-out)."
 
 fn launch_admission_contract_text() -> String {
-  join([
-    "gates=", join(launch_gate_names(), ">"),
-    ";refusals=", join(map(launch_refusal_exemplars(), r => launch_refusal_label(r: r)), ","),
-    ";modes=", join(map([Paused, ManualReady, AutomaticReady], m => spawn_mode_label(m: m)), ","),
-    ";causes=", join(map([Operator, Timer], c => launch_cause_label(c: c)), ","),
-    ";identity=node_id,cause,mode,instance_id,revision",
-    ";occupancy=running+unobserved",
-    ";host_stages=instance,transition,revision,node,contract,dependencies,sessions",
-  ], "")
+  launch_contract_text_of_rows(rows: launch_gate_template())
 }
 
 fn launch_admission_contract_digest() -> Fnv1a64Structural {
