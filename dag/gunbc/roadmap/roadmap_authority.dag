@@ -316,15 +316,6 @@ fn v1_interpreter_primitive_dispatch_authority_execution_contract() -> WorkItemE
   )
 }
 
-data scm_p1_proof_kernel_contract_note: String = "THE SCM P1 CLOSING DISCRIMINATOR, authored only after the first P1 carrier made the node's whole completion condition executable. The validation is deliberately RED: its closed capability population is the roadmap node's own bar, and this first slice supplies only the bounded candidate-generation model check. Missing behavior is derived set difference, never a hand-maintained progress count; duplicate passing rows cannot erase it, and a false row remains missing. The contract therefore cannot green on zero progress and cannot confuse a modeled carrier with an executed proof kernel. It is enrolled QuarantineProbeExpectRed in gunbc.ci_layer_roots. Each later P1 slice adds an executing scenario check without weakening the aggregate. When the final capability greens, that same change removes the expect-red enrollment and promotes the witness to ordinary discovery ratchet."
-
-fn scm_p1_proof_kernel_execution_contract() -> WorkItemExecutionContract {
-  gunbc_claim_execution_contract(
-    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag" as FilePath,
-    function: "witness_p1_proof_kernel_acceptance_contract_holds" as NonEmptyStr,
-  )
-}
-
 data roadmap_with_execution_note: String = "The per-node execution binding, shaped as a COMBINATOR rather than a parameter on every constructor (the `sign` twin below is the precedent, and it already carries `execution: rn.execution` through untouched). Threading an execution argument through active/active_small/active_large/authored/derivable/ticket_row would edit seven constructors and every one of their ~46 call sites to express a fact that today holds for exactly one node — the churn a combinator avoids, and the reason `sign` is a combinator too. A node without this wrapper keeps ExecutionContractUnspecified, which is the fail-closed refusal roadmap_execution_contract_frontier_note declares, not a default anyone chose."
 
 data v1_lane_binding_survey_note: String = "A BINDING NAMES THE VALIDATION THAT CLOSES A NODE, so it can only be authored once that validation exists. A node without one stays ExecutionContractUnspecified, which is the honest fail-closed state rather than a gap: dispatch refuses with a typed diagnostic instead of admitting an environment for work whose completion nothing can check. Fabricating contracts to make a lane look dispatchable produces exactly the coverage-by-illusion tier — every node clickable, every Verify vacuous. The closing validation is written as part of the node's first slice; the contract follows the witness, never precedes it.\n\nTHE ROSTER IS NOT TRANSCRIBED HERE. This row previously carried a hand survey — 'two of six startable roots are bindable' plus the four names and why each lacked a validation — and it rotted exactly as a hand-maintained count must: two of the four it named (v1-test-hygiene-producer-retirement, pderive-typesafe-nullary-reflection) were accepted while the sentence still listed them as unbound, and the leading count was edited twice by unrelated changes. startable_nodes_missing_closing_contract() computes the same set from the nodes themselves, so read it there and delete nothing by hand. What stays here is the RULE, which does not change when the roster does.\n\nv1-test-migration records both sides of that rule: its false-green deletion-guard contract was removed, then a behavior-grain validation that can fail on zero progress was authored and bound. See v1_test_migration_binding_history_note for that history and v1_test_migration_contract_note for the current completion authority."
@@ -553,57 +544,6 @@ fn seed_growth_fields(j: SeedGrowthJustification) -> TicketFields {
 fn declared_roadmap_nodes() -> List<RoadmapNode> {
   concat([
     active_sized(
-      identity: "rn_44VKSHNX2ZNTDRCPGGNSFJWCWN",
-      id: "2-scm-git-upstream-model",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Write down how Git really stores things",
-        boundary: "Describe Git on its own terms: files, folders, commits, tags, file permissions, symlinks, links to other repositories, and how it names and finds them. Prove it by reading a small repository and writing it back unchanged.",
-        displaced_cost: "If we invent a one-size-fits-all model first, it quietly drops things like executable permissions and symlinks — and every tool built on top inherits the loss.",
-        first_slice: "Finish the storage description, then read one small repository and write it back unchanged.",
-        red_control: "A plain file, an executable file, a symlink, a link to another repository, and a tag all stay distinguishable; writing against an out-of-date starting point refuses instead of overwriting; a missing object never reads as empty.",
-        out_of_scope: "No shared source-control interface, no hosting or server work, and no guessing that a renamed file is the same file.",
-        handback: "The model with citations to Git's own docs, the read/write-back receipts, the refusal receipt, and a list of anything we still cannot represent."
-      )
-    ),
-    active_sized(
-      identity: "rn_5JX128MQ9XYR760B5CFC3VECTN",
-      id: "2-scm-mercurial-upstream-model",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Write down how Mercurial really works, in its own words",
-        boundary: "Describe Mercurial from its own documentation: its permanent change IDs versus the numbers local to one copy, its branches, bookmarks, tags, and its draft/published states. Use no Git vocabulary.",
-        displaced_cost: "Mercurial's ideas are not Git's. Renaming them into Git words loses the differences, and a later shared design would be built on a mistranslation.",
-        first_slice: "Write the description and read one small repository back out, leaving anything we cannot safely write marked unavailable.",
-        red_control: "A copy-local revision number can change while the permanent change ID does not; draft, published, and hidden stay three different things; a bookmark, a named branch, and a branch tip cannot collapse into one idea.",
-        out_of_scope: "No Mercurial support in the product, no shared source-control interface, and no faking missing facts from timestamps.",
-        handback: "The description with citations, the read-back receipt, an explicit list of what we cannot do yet, and the differences that must survive into any later shared design."
-      )
-    ),
-    active_sized(
-      identity: "rn_5MGS40RC9NE9HPFA4V5M2VVR19",
-      id: "2-scm-pijul-upstream-model",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Write down how Pijul really works, in its own words",
-        boundary: "Describe Pijul from its own documentation: individual changes that carry their own identity, what each change depends on, and how a channel is a set of changes rather than a pointer to the newest one.",
-        displaced_cost: "Pijul does not have a 'latest commit'. Modelling it as if it does erases the thing that makes it different, and a third viewpoint is what stops us from mistaking Git's habits for universal truth.",
-        first_slice: "Write the description, then apply a small set of changes, read them back, and try them in a different order.",
-        red_control: "A channel cannot be reduced to one newest commit; one change keeps the same identity in two channels; applying a change whose prerequisites are missing refuses instead of applying an empty change.",
-        out_of_scope: "No Pijul support in the product, no adopting its conflict rules as ours, and no shared source-control interface.",
-        handback: "The description with citations, the round-trip and out-of-order receipts, and an explicit list of what we cannot do yet."
-      )
-    ),
-    active_sized(
       identity: "rn_629P2SF909R5C71V2HPCK4TJMD",
       id: "2-claim-indexed-evidence",
       owner: "deduction",
@@ -620,55 +560,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
         handback: "The shared model, receipts from all three features, the supports/contradicts/both/neither cases, and anything the substrate still cannot express."
       )
     ),
-    active_sized(identity: "rnfx_DQV1HD42VR40BA8WBP1Y", id: "2-scm-compatibility-shape",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Extract the compatibility realization shape from three upstream receipts",
-        boundary: "Consume the independently executing Git, Mercurial, and Pijul R0 boundaries and extract only their demonstrated roles: opaque target/generation handles, an independently required fidelity disposition for each retained or lost capture axis, projection/read-back identity, and modeled-or-unavailable conditional-advance capability. Native receipts retain every upstream-specific fact; dispatch is a generic handler value, never ScmKind or a vendor switch.",
-        displaced_cost: "Lets the native edit → submit → outcome contract project through plural SCMs without forcing users into Git mechanics or erasing Mercurial/Pijul distinctions into a first-adapter abstraction.",
-        first_slice: "Bind each R0 fixture through its native decoder and read-back assessment, replace C0's optional Git projection slot with realization-indexed receipts, and execute one fixed C0 proposal through Git, Mercurial, Pijul, and a synthetic fourth handler.",
-        red_control: "C0 proposal identity, transition, and primary outcome stay unchanged across all realizations; missing or differently grounded conditional advance refuses; a read-back mismatch refuses; the fourth handler requires no primary-contract or kernel edit.",
-        out_of_scope: "No semantic candidate space, admission policy, repair capability, executed transition, Applied receipt, universal commit/ref/channel type, hosted service, writable Mercurial/Pijul target, or central realization enum.",
-        handback: "Return the shared role carrier, three native adapter receipts, fidelity/capability matrix, realization-indexed C0 projection with idempotent replacement identity, and the exact distinctions deliberately left native."
-      )
-    ),
-    active_sized(
-      identity: "rn_026DCFC306A7B44B061483AA71",
-      id: "2-scm-p0-landing-spine",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeMedium,
-      t: fields(
-        headline: "Make submit → landed the default source-control journey",
-        boundary: "Model one submitted change through result finding, permission checks, committing, independent read-back, and compatibility projection. The normal user sees only landed, one concrete choice, or a plain reason the change could not land; synchronization and unfinished investigation stay inside the system.",
-        displaced_cost: "Without the complete spine, each later solver or storage slice can leak its own vocabulary and repair ritual into the interface. This fixes the product boundary before the proof kernel and write transport make it expensive to change.",
-        first_slice: "Carry the proposal contract, full-claim P−1 readiness receipts, all seven semantic closure receipts, zero/one/many/unclosed result space, admission, transition, projection status, 50-agent/10-overlap stress profile, and timestamp non-authority through one executing scenario corpus.",
-        red_control: "Removing any closure receipt leaves the operation running inside the system; blocking evidence does not become a user question; both displayed answers resume automatically; unauthorized, self-amending, exhausted-bound, and permanent-effect cases retain typed refusals and plain explanations; a stale target retries internally; projection failure after a committed and independently read-back transition stays landed; primary messages contain neither internal theory words nor manual Git repair commands; an ordinary Git compatibility projection remains attached.",
-        out_of_scope: "No P1 proof kernel, source parser or edit lens, effect transport, command-line product, hosted service, writable Mercurial/Pijul target, or claim that a modeled transition has executed.",
-        handback: "Return the layered landing-spine carrier, the tightened two-or-more-option continuation contract, twenty-two executing journey witnesses, the R1 compatibility projection edge, and the exact P1/P2/P3 work still deliberately absent."
-      )
-    ),
-    with_execution(active_sized(
-      identity: "rn_D33CBEADA91C3E8C10D8515CC4",
-      id: "2-scm-p1-proof-kernel",
-      owner: "source-intent",
-      path: "docs/plans/dag-scm-design.md",
-      intricacy: IntricacyHigh,
-      volume: VolumeLarge,
-      t: fields(
-        headline: "Prove one bounded reconciliation rule works for directly authored changes",
-        boundary: "Model one public bounded fold that composes directly authored transformations over a declared decidable program fragment. Domains contribute facts, claims, procedures, invariants, and checkable certificates as data; the kernel never grows feature-pair branches and every refusal stays typed, located, and counted.",
-        displaced_cost: "Without one general fold, every new invariant or overlapping feature adds another pairwise case, hides order dependence, and lets pairwise agreement masquerade as n-way safety. That cost compounds across every later authoring and write realization.",
-        first_slice: "Declare the bounded fragment and carry occurrence-ID deduplication, context validity and transport, commuting squares, batch-partition invariance, grounded frame-preserving deltas, n-way invariants, order honesty, and all seven semantic closure certificates through one executing scenario corpus. Adding an invariant as data must change a later outcome without editing the fold.",
-        red_control: "Two observations of one occurrence enter once while distinct occurrence IDs never collapse; invalid or untransportable context refuses; pairwise-commuting transformations that fail together do not pass as n-way safe; changing batch partitions cannot change the result; ungrounded or out-of-frame deltas refuse; non-commuting order and unsupported order claims stay explicit; removing any of the seven closure certificates leaves the result unclosed; adding an invariant requires no feature-pair kernel arm.",
-        out_of_scope: "No source parser, quotient-delta edit lens, effect transport, executed target transition, writable SCM realization, command-line product, hosted service, arbitrary synthesis, unbounded proof search, or P2/P3 roadmap node.",
-        handback: "Return the modeled bounded fragment, one public reconciliation fold, data-driven invariant and certificate carriers, the executing discriminating scenario corpus, the closing validation bound and green, and the exact P2 capture and P3 effect work still absent."
-      )
-    ), e: scm_p1_proof_kernel_execution_contract()),
 
     active(
       identity: "rn_52ZXVWC7S94RYF4YJHZCN00GCS",
@@ -2388,12 +2279,6 @@ fn declared_roadmap_nodes() -> List<RoadmapNode> {
 
 fn declared_roadmap_edges() -> List<RoadmapEdge> {
   concat([
-    edge(child: "2-scm-compatibility-shape", parent: "2-scm-git-upstream-model"),
-    edge(child: "2-scm-compatibility-shape", parent: "2-scm-mercurial-upstream-model"),
-    edge(child: "2-scm-compatibility-shape", parent: "2-scm-pijul-upstream-model"),
-    edge(child: "2-scm-p0-landing-spine", parent: "2-scm-compatibility-shape"),
-    edge(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence"),
-    edge(child: "2-scm-p1-proof-kernel", parent: "2-scm-p0-landing-spine"),
 
     edge(child: "namespace-binding-kernel", parent: "namespace-occurrence-transport"),
     edge(child: "namespace-reference-derived-closure", parent: "namespace-binding-kernel"),
@@ -2547,10 +2432,6 @@ data namespace_pool_independence_lane_brief_note: String = "N3-C (namespace-pool
 data false_verification_incident_mapping_note: String = "FIVE WAYS THE BUILD REPORTED A RESULT NOBODY EARNED, mapped to their exact homes rather than gathered under an umbrella node (consolidation ruling, 2026-08-08 — the parallel authority branch proposed one observation-verification-integrity node covering all five; a coarse identity over mechanisms this graph already decomposes would be the §3 second authority, so the incident record ports and the node does not). The mapping, one row each: a remote build that exits zero while its output never comes back is compute-artifact-return-and-materialization's first refusal; a stale local binary compared against itself is the same row's manifest-content refusal plus ci-remote-build-containment's stale-artefact refusal; a re-run that replays a combination computed when the change was opened is ci-owned-execution's fresh-combination control; no checks at all treated as satisfied, and a cancelled job rendered as a generic failure, are both ci-check-projection's typed endings — unobserved and cancelled each a distinct answer, never absorbed into pass or fail. Every future incident of this family files against exactly one of those homes; a sixth mechanism with no home is a finding about the graph, not a reason to mint the umbrella."
 
 data namespace_closure_prerequisite_cut_note: String = "THE SIX CAPABILITIES INSIDE namespace-reference-derived-closure ARE NOT SIX NODES, and this cut adds exactly three rows in front of it rather than decomposing it (2026-08-04). Its closing contract, namespace_reference_derived_closure_contract, is a set-difference frontier over six capabilities under three triggers, and every row read Unavailable while the node itself was the only dispatchable thing in the lane. That is a single startable row standing for three separable pieces of work with different substrates, which is the coarse-node hazard namespace_node_recut_note already priced once.\n\nTHE CUT FOLLOWS THE TRIGGERS, because the triggers already record which work each capability waits on. namespace-structural-observations owns the four capabilities under P2aStructuralCandidateProducer7515 — same-parse-tree rules, whose substrate is the merged occurrence-binding parser walk. namespace-cross-file-provenance owns the one under P2aReferenceDependencyProjection7515. namespace-pool-independence owns the one under P2aPoolIndependentDependencyProjection7515.\n\nTHE FIRST TWO ARE PARALLEL, NOT SEQUENTIAL. No dependency runs from the same-file rules to the cross-file projection; they share only the contract they feed. Sequencing them would have idled one worker for no modeled reason. Pool independence DOES depend on cross-file provenance, because a differential needs a projector to perturb.\n\nWHY THE CROSS-FILE ROW IS THE LARGE ONE. The merged parser walk resolves nothing across a file boundary — its own authority note scopes it to authored source through parse_with_table, with transport and module path from the parser. So cross-file target realization sits INSIDE that row rather than upstream of it, and the trigger being named after a merged PR does not mean the capability is discharged.\n\nNO NEW IDENTITY WAS MINTED FOR THE INTEGRATION OR FOR THE CENSUS. namespace-reference-derived-closure keeps its durable identity and now denotes the aggregate handback — all six observations admitted, the expecting-red enrolment retired, its existing check green — so its first_slice moved to say so while its boundary, which still covers all six, did not. namespace-ambiguity-discharge likewise keeps its identity and its existing dependency on the closure node; the census it owns is authoritative only once all six close, never after the same-file rows alone, because a census taken before cross-file answers exist undercounts exactly the candidates that cross a file boundary and inherits the pool coincidence pool-independence exists to remove.\n\nTHE THREE NEW ROWS ARE DELIBERATELY UNBOUND. Each first_slice names authoring its own closing check as its first act, per v1_lane_binding_survey_note: the contract follows the witness, never precedes it. Authoring contracts here to make the rows look startable is the coverage-by-illusion tier that note forbids, and pool-independence could not honestly carry one at all — its differential compares an output shape its own prerequisite has not yet produced."
-
-data scm_prerequisite_acceptance_note: String = "The operator explicitly accepted the three independent R0 models and the separate P−1 evidence carrier, then accepted R1 after merging its three-realization compatibility extraction, and accepted P0 after its layered landing spine and twenty-two executing journey witnesses landed. R1 depends only on the three R0 receipts; P0 consumes both accepted R1 and accepted P−1. These receipts preserve every prerequisite and handback as durable facts. Replacing accepted rows with their child would erase history and violate roadmap_acceptance_receipt_note."
-
-data scm_p0_acceptance_evidence_note: String = "P0 acceptance maps the roadmap clauses through test.claim.source_integration_landing_spine_witness witness_p0_roadmap_acceptance_contract_holds: all seven removed closure receipts stay machine-owned; evidence support/challenge/neither/conflict and terminal blocking do not become a preference question; both material alternatives resume by structural position; authorization, self-amendment, exhausted-bound, and permanent-effect failures keep their typed internal refusal and plain terminal projection; stale-parent work retries internally; a committed independently read-back transition stays Landed through projection failure; the audience projection excludes internal theory and manual Git-repair vocabulary; and the successful path retains its ordinary Git compatibility receipt. The same aggregate executes the explicit 50-agent/10-overlap/30-minute stress profile and timestamp non-authority. Handback remains bounded exactly at P0: gunbc.source_integration_landing_spine names the absent P1 proof kernel, P2 capture/edit lens, and P3 effect transport; none is claimed or activated by this receipt."
 
 data v1_interpreter_primitive_roster_acceptance_note: String = "ACCEPTED AT THE NARROWED BAR, WITH ONE HANDBACK CLAUSE GENUINELY AMENDED RATHER THAN REWORDED -- read the digest move as a real change to the bar, which is exactly the check criteria_digest_reword_note asks a reviewer to perform. The clause as #7558 landed it demanded 'witnesses asserting exact values rather than lower bounds'. Those witnesses no longer exist on main: #7615 deleted the five that pinned live-population counts (7 dispatch sites, 183 derived rows, 2 declared rows, 174 arm identities, 161 authored spellings) because DESIGN.md 5 rules that a measurement copied from the same current tree is not an oracle -- and those five had already behaved exactly as that rule predicts, as a change detector that redded main twice (#7575 landed one derived arm short, #7614 repaired, #7615 removed the class). Accepting against the original wording would have required either restoring a forbidden oracle or calling a clause satisfied that plainly was not.\n\nWHAT REPLACED IT IS STRONGER, WHICH IS WHY THIS IS NOT A LOWERED BAR. The deleted clause existed so that a silently dropped arm stays detectable, which a lower-bound witness cannot do. Every exact assertion grounded in a NAMED identity or a controlled fixture survived #7615 untouched: free_call_shadowing_is_exactly_the_two_inert_lens_bridges and method_call_shadowing_is_exactly_the_known_lookup_case assert exact shadow sets by member name (CITATION CORRECTION, 2026-08-11: the first of those no longer exists under that name. The inert-lens census, its two host builtins and the v2.lens.inert_lens module were deleted whole, so the free-call shadow set emptied and the witness became free_call_carries_no_shadowed_spelling, an exact set assertion over an empty set rather than over two named members. That is a genuinely weaker witness than the one this note cites as surviving evidence -- an empty-set claim cannot discriminate a detector that never reports -- and the discrimination is carried instead by the planted-duplicate controls and by method_call_shadowing_is_exactly_the_known_lookup_case, which still pins a named member. Recorded here rather than silently reworded, because the sentence was cited as evidence and the evidence changed); the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pair pins both identities; the_declared_residue_is_exactly_the_two_non_match_arm_sites is a two-directional set equality by name rather than a count. Only the tree-copied census literals went, which is precisely the line DESIGN.md 5 draws when it says the rule rejects tree-copied census pins while preserving exact-count fixture tests. The three denominators were NOT deleted: dispatch_site_count, distinct_arm_identity_count and authored_spelling_count all remain derived from the roster rather than pinned as literals, which is what this node's handback asks for. AN EARLIER DRAFT OF THIS NOTE OVERCLAIMED WHAT CONSUMES THEM, and the correction is recorded here rather than quietly edited because it is the same failure this repository keeps paying for -- a sentence that reads well while the evidence it cites does not establish it (caught in review 46995). That draft said all three 'gained a live consumer at D1' which 'joins census to roster by identity'. Neither half was true. What test.claim.primitive_identity_join_witness w_interpreter_census_consumes_roster_authority actually executes is distinct_arm_identity_count, authored_spelling_count and v1_interpreter_row_count: it asserts the ordering relation the deleted witness used to pin, plus primitive_d0_interpreter_census_matches_roster, which is primitive_d0_interpreter_surface_row_count() == v1_interpreter_row_count() -- a COUNT EQUALITY between two independent derivations of the same population, not an identity join. That is a legitimate cross-derivation reconciliation and it is not a tree-copied census literal, but DESIGN.md 5 is explicit that completeness is an identity join rather than a count equality, so it must not be described as one. And dispatch_site_count has NO external consumer at all: the only mention outside its own carrier is this note. That is named here as residue rather than counted as delivered. DISSOLVE-ON: the D0 identity join reaching arm grain, at which point the census and the roster reconcile by row identity and the count equality is replaced rather than supplemented.\n\nEVIDENCE, DERIVED BY EXECUTION. Digest 581758f45921b40a was produced by running node_criteria_digest against the live amended node on this tree, not transcribed or hand-computed; the discriminating control for the pin itself is that two earlier wordings of the same row yield different values -- d2e455ab49e472e2 before any amendment, f0f450f4ddc82fe9 before the review-46995 correction to the denominator clause -- so the stored digest demonstrably tracks the criteria text rather than merely existing, and each correction to the bar has been re-derived rather than carried forward. All 19 witnesses in test.claim.v1_interpreter_primitive_surface_witness_test executed green on a binary REBUILT AT THIS HEAD, which matters more here than in most acceptances: the roster derives from macro token lists compiled INTO the binary, so a stale target answers about a tree that no longer exists, and that is exactly how #7575's shortfall stayed invisible to local runs. The named red_control is shadow_detector_catches_a_planted_duplicate, the planted-defect RED discharging this row's second red_control arm, paired with shadow_detector_admits_a_real_alias_pair so that a detector refusing legitimate aliases would fail too.\n\nWHAT THIS RECEIPT DOES NOT CLAIM. The first red_control arm -- an arm without a row and a row without an arm are both unwritable -- is discharged BY CONSTRUCTION, one macro token list expanding both, and therefore has no executing witness by design; the node's own first_slice already states it is mechanically preventive for the sites it covers and explicitly not structural, because a whole new dispatch site can still be added in Rust unnoticed. Closing that is v1-interpreter-primitive-dispatch-authority, which is NOT implemented and NOT accepted here -- and the record needs one correction, because a rollup briefly read it as landed: PR #7624 carried the title 'Lane B: interpreter roster R1 -- invert dispatch authority from Rust to the .dag roster', but its entire merged diff is two lines adding `import std.types { NonEmptyStr }` to this carrier. It inverted no authority, generated no dispatch, and deleted no Rust-side denominator; it is a harmless missing-import repair whose title described work that was never written (operator correction, 2026-08-02). R1 is unstarted, so accepting R0 here advances the frontier to an unimplemented successor rather than past it. The third arm -- a roster able to represent an arm carrying no semantic primitive identity -- holds STRUCTURALLY, because InterpreterPrimitiveDispatchArm carries an interpreter-local arm identity and no semantic-primitive-identity field at all, so every row already is such an arm and the closing contract shows the roster's operations are total over one. An earlier cut of that clause discharged it with D1's primitive_d0_derived_rows_missing_identity_count() > 0, which measures how far the semantic identity join has got rather than what the roster can carry, and would have gone red exactly when the join succeeded for every derived row -- legitimate downstream progress reddening an upstream node's acceptance check, the same defect class #7615 removed from the census witnesses relocated onto join state (caught in review 46974, corrected before merge). The seed-file reconciliation clause is delivered as a construction plus a named residue (every primitive arm now carries the token form arm \"identity\" { \"spelling\" } =>, so the residue is whatever stays bare) and is NOT asserted by an executing witness; that is a real limit of this handback, stated rather than implied."
 
@@ -2723,8 +2604,6 @@ fn ticket_red_control_of(n: RoadmapNode) -> String {
     Absent => "the node states no red control"
   }
 }
-
-data roadmap_identity_prefix_is_cosmetic_note: String = "DO NOT 'FIX' 2-scm-compatibility-shape's rnfx_ IDENTITY PREFIX. It reads as a test-fixture prefix where every other declared node uses rn_, and that asymmetry is real but it is COSMETIC: no witness asserts any prefix, and roadmap_node_identity_law constrains what may not be an identity INPUT (slug, title, criteria digest, containment position, dependency neighbourhood, declaration order, file position), never the alphabet of the minted value.\n\nRewriting it would be the actual violation. The law's whole persistence argument is that an identity must survive edits, reordering, regeneration and independent branches; mutating a live identity for tidiness is precisely the churn it exists to forbid, and it would silently break anything holding the old value. The prefix carries no meaning to any mechanism, so the honest disposition is to leave it and record why — which is what this row is for. A prefix convention worth enforcing would be enforced at MINT time by construction, not by editing identities already in the graph."
 
 fn startable_nodes_missing_closing_contract_for_accepted(accepted: List<RoadmapNodeId>) -> List<RoadmapNode> {
   declared_roadmap_nodes()

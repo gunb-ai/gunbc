@@ -191,14 +191,6 @@ data explicit_witness_admissions: List<ExplicitWitnessAdmission> = [
     dissolution: unbound_dissolution(description: "the traversal repair lands and BOTH rows for this entry delete in the same change — they are one obligation with one terminal construction and neither survives the other, so they are deliberately not split; the two witnesses stay as the permanent pair that keeps LocalRead, RuntimeRead and Refused distinguishable")
   ),
   known_red_probe(
-    entry: "dag/test/claim/source_integration_proof_kernel_acceptance_test.dag",
-    f: "witness_p1_proof_kernel_acceptance_contract_holds",
-    kind: CorpusWitnessKind,
-    budget: FastLaneEvalBudget,
-    reason: "the discriminating closing validation for roadmap node 2-scm-p1-proof-kernel, RED BY DESIGN while the derived KernelAcceptanceCapability frontier is nonzero. The first slice supplies the bounded candidate-generation model check; the one public fold, occurrence dedup, context transport, commuting squares, batch invariance, n-way safety, all seven closure certificates and data-only invariant extension stay missing until executing scenarios establish them. Bound directly by scm_p1_proof_kernel_execution_contract, so it cannot pass on zero progress.",
-    dissolution: unbound_dissolution(description: "every required KernelAcceptanceCapability has a passing executing scenario — this row deletes in the completing change, promoting the unchanged acceptance witness to ordinary DiscoverySelection as the permanent P1 regression wall")
-  ),
-  known_red_probe(
     entry: "dag/test/claim/namespace_reference_derived_closure_acceptance_test.dag",
     f: "witness_namespace_reference_derived_closure_closing_contract_holds",
     kind: CorpusWitnessKind,

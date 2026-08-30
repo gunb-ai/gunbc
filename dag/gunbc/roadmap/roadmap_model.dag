@@ -171,7 +171,20 @@ data acceptance_receipt_continuity_wall_note: String = "THE FAIL-OPEN roadmap_ac
 
 type AcceptanceNodeReopensActiveFrontier {}
 
-type AcceptanceRevocationDisposition = AcceptanceNodeReopensActiveFrontier
+// WITHDRAWAL IS NOT REOPENING, AND THE SECOND ARM EXISTS BECAUSE THE FIRST ONE LIED ABOUT IT.
+// AcceptanceNodeReopensActiveFrontier says the node returns to the active frontier because more
+// work is wanted on it. A node WITHDRAWN FROM PRODUCT SCOPE is the opposite disposition: the
+// acceptance stops being live, and the node does not come back -- its rows, carriers and
+// witnesses are deleted in the same transaction, so there is no frontier for it to reopen onto.
+// Recording a withdrawal as a reopening would leave the roadmap asserting that deleted work is
+// pending, which is the state DESIGN section 5 calls a fabricated plausible output rather than a
+// refusal. The prior AcceptanceRecorded lines are never edited: acceptance stays durable and the
+// history stays append-only, so what happened remains readable exactly as it happened.
+type AcceptanceNodeWithdrawnFromProgram {}
+
+type AcceptanceRevocationDisposition
+  = AcceptanceNodeReopensActiveFrontier
+  | AcceptanceNodeWithdrawnFromProgram
 
 type RoadmapAcceptanceEvent
   = AcceptanceRecorded { receipt: RoadmapAcceptanceReceipt }
@@ -293,6 +306,12 @@ fn acceptance_event_eq(a: RoadmapAcceptanceEvent, b: RoadmapAcceptanceEvent) -> 
               AcceptanceNodeReopensActiveFrontier {} =>
                 match bd {
                   AcceptanceNodeReopensActiveFrontier {} => true
+                  AcceptanceNodeWithdrawnFromProgram {} => false
+                }
+              AcceptanceNodeWithdrawnFromProgram {} =>
+                match bd {
+                  AcceptanceNodeReopensActiveFrontier {} => false
+                  AcceptanceNodeWithdrawnFromProgram {} => true
                 }
             }
             && ar == br
@@ -405,6 +424,11 @@ fn acceptance_revocation_disposition_digest(
       content_hash_tagged_structural(
         tag: "roadmap-acceptance-reopens-active-frontier-v1",
         payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+      )
+    AcceptanceNodeWithdrawnFromProgram {} =>
+      content_hash_tagged_structural(
+        tag: "roadmap-acceptance-withdrawn-from-program-v1",
+        payload: content_hash_atom(value: "AcceptanceNodeWithdrawnFromProgram" as NonEmptyStr),
       )
   }
 }

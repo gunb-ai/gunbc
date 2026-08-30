@@ -88,12 +88,7 @@ data accepted_node_pull_link_note: String = "The business join between a durable
 
 fn accepted_node_pull_links() -> List<AcceptedNodePullLink> {
   [
-    AcceptedNodePullLink { node: "2-scm-git-upstream-model", pull_number: 7405 },
-    AcceptedNodePullLink { node: "2-scm-mercurial-upstream-model", pull_number: 7405 },
-    AcceptedNodePullLink { node: "2-scm-pijul-upstream-model", pull_number: 7405 },
     AcceptedNodePullLink { node: "2-claim-indexed-evidence", pull_number: 7405 },
-    AcceptedNodePullLink { node: "2-scm-compatibility-shape", pull_number: 7431 },
-    AcceptedNodePullLink { node: "2-scm-p0-landing-spine", pull_number: 7542 },
     AcceptedNodePullLink { node: "namespace-occurrence-transport", pull_number: 7393 },
     AcceptedNodePullLink { node: "pderive-typesafe-nullary-reflection", pull_number: 7393 },
     AcceptedNodePullLink { node: "pderive-static-supplemental-contract", pull_number: 7429 },

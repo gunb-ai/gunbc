@@ -144,7 +144,6 @@ type CliArmRealization
 // that authority already answers.
 type CliOperandValue
   = CliAbsoluteLabelOperand {}
-  | CliScmReadVerbOperand {}
 
 // EXACTLY ONE, AND THE ARITY IS ITS OWN COPRODUCT RATHER THAN `CliOptionArity` REUSED.
 //
@@ -365,39 +364,6 @@ fn gunbc_cli_subcommands() -> List<CliSubcommandRow> {
         }
       ],
       realization: CliRefusesUnwired { successor: "gunbc.fleet_converge_apply" },
-      emission: AbsentFromEmitMainRs
-    },
-    CliSubcommandRow {
-      verb: "scm",
-      variant: "Scm",
-      doc: [
-        "Read a gunbc repository: `gunbc scm log` lists its commits,",
-        "`gunbc scm status` reports what is checked out and staged.",
-        "Both answer from the repository document alone and mutate nothing."
-      ],
-      operands: [
-        CliOperandRow {
-          field: "verb",
-          placeholder: "VERB",
-          value: CliScmReadVerbOperand {},
-          arity: CliExactlyOneOperand {},
-          doc: ["Which read to perform: `log` or `status`"],
-          emission: AbsentFromEmitMainRs
-        }
-      ],
-      options: [
-        CliOptionRow {
-          field: "path",
-          long: "path",
-          value: CliTextValue { text_default: none },
-          arity: CliRequired,
-          doc: ["Path to the repository document to read"],
-          emission: AbsentFromEmitMainRs
-        }
-      ],
-      realization: CliRefusesUnwired {
-        successor: "unwired: gunbc.cli_wire CliWireResponse has no host renderer bound. MEASURED, not assumed -- `gunbc run --entry dag/gunbc/scm/read_command.dag --function scm_read_log --arg path=<p>` binds its argument and READS THE FILE, then the host refuses with `returned ScmReadResult, not ProcessExit`, so the answer is computed and discarded. There is therefore NO route a user can invoke today that yields this answer, and naming one would be a dead end dressed as a redirect."
-      },
       emission: AbsentFromEmitMainRs
     },
     CliSubcommandRow {

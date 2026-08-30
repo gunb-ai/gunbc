@@ -225,9 +225,19 @@ data required_v2_emission_dissolution: DissolutionCondition = unbound_dissolutio
 // one `required-ci: emit-compile` line per entry carrying its own file count, baseline verdict
 // and mutation verdict, and `claim_executor --required-ci --required-lane build` re-derives
 // them. No figure from a run is transcribed here.
+// SEVEN MEMBERS, NOT EIGHT: gunbc.scm.load_standing left this roster as a DECLARED COVERAGE
+// DECISION, argued on its own terms as the note above requires, and NOT as a way to turn a
+// failing run green -- it was green. Its subject was WITHDRAWN FROM PRODUCT SCOPE by the
+// operator's MVP ruling, so there is no emission left to repair and no entry to keep: the whole
+// SCM program's rows, carriers and witnesses were deleted in one transaction. What the roster
+// loses is exactly that module's own emitted leaf and nothing else -- load_standing imported one
+// module (std.types), so every other file in its closure is already covered by the six remaining
+// members. NO REPLACEMENT WAS BACKFILLED, deliberately: admission is MEASURED, an entry may not
+// be added until its emitted closure has been measured clean, and picking one to restore the
+// count would be the arithmetic standing where the measurement belongs. The roster exists to be
+// grown, and widening it is a separate change that does that measurement first.
 data required_emit_compile_entries: List<String> = [
   "dag/gunbc/ci/ci_layer_roots.dag",
-  "dag/gunbc/scm/load_standing.dag",
   "dag/extdeps/uri.dag",
   "dag/std/measure.dag",
   "dag/std/node.dag",

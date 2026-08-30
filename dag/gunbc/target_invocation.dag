@@ -104,8 +104,7 @@ fn route_target_invocation(
 
 // HOW ONE INVOCATION ENDED, IN A VOCABULARY EVERY PRODUCER CLASSIFIES ITS OWN STANDING INTO.
 //
-// This is the hoist DESIGN records for `gunbc.scm.load_standing` rather than a match over any
-// producer's arms: each producer owns a total function from its native standing into these four
+// This is a hoist rather than a match over any producer's arms: each producer owns a total function from its native standing into these four
 // states, so a new producer is a new classifier and never a new arm in a consumer that would
 // otherwise collapse causes it does not distinguish. The four are kept apart because their
 // remedies are: repair the tree, wait for nothing (it held), give the producer a subject it can

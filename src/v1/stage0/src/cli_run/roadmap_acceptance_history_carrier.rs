@@ -31,6 +31,7 @@ enum JsonEvent {
 #[serde(tag = "variant", rename_all = "snake_case", deny_unknown_fields)]
 enum JsonAcceptanceRevocationDisposition {
     AcceptanceNodeReopensActiveFrontier,
+    AcceptanceNodeWithdrawnFromProgram,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -186,6 +187,13 @@ fn event_value(event: JsonEvent, ctx: &InterpContext) -> Result<Value, String> {
                         fields: Rc::new(Vec::new()),
                     }
                 }
+                JsonAcceptanceRevocationDisposition::AcceptanceNodeWithdrawnFromProgram => {
+                    Value::Variant {
+                        type_name: ctx.sym("AcceptanceRevocationDisposition"),
+                        variant_name: ctx.sym("AcceptanceNodeWithdrawnFromProgram"),
+                        fields: Rc::new(Vec::new()),
+                    }
+                }
             };
             Value::Variant {
                 type_name: ctx.sym("RoadmapAcceptanceEvent"),
@@ -329,6 +337,9 @@ fn event_to_json(value: &Value, ctx: &InterpContext) -> Result<JsonEvent, String
                 match variant_name(field_value(value, "disposition", ctx)?, ctx)?.as_str() {
                     "AcceptanceNodeReopensActiveFrontier" => {
                         JsonAcceptanceRevocationDisposition::AcceptanceNodeReopensActiveFrontier
+                    }
+                    "AcceptanceNodeWithdrawnFromProgram" => {
+                        JsonAcceptanceRevocationDisposition::AcceptanceNodeWithdrawnFromProgram
                     }
                     name => {
                         return Err(format!(

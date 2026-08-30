@@ -14,8 +14,10 @@ existing .dag authorities
   → commit-writer admission
 ```
 
-Git is a compatibility realization downstream of the native integration model
-(dag-scm-design.md), not the vocabulary the model derives from.
+Git is the operational realization this repository runs on, and the vocabulary
+below is Git's own. It is not derived from a native integration model: the SCM
+program that would have supplied one was withdrawn from product scope by the MVP
+ruling, and its plans and carriers were deleted. Git history is the quarry.
 
 ## The problem, with receipts
 

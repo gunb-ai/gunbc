@@ -1,13 +1,6 @@
 module test.claim.claim_indexed_evidence_witness
 
 import std.types { Bool, NonEmptyStr, RunKey }
-import std.algebra { Empty }
-import std.occurrence_binding {
-  ContainmentPath,
-  BindingOccurrence,
-  BindingCandidate,
-  OccurrenceBinding,
-}
 import std.claim_evidence {
   RecordedFactId,
   RecordedFact,
@@ -27,7 +20,6 @@ import std.claim_evidence {
   evidence_inference_insufficiencies,
 }
 import extdeps.external_authority { extdeps_external_authority_anchor }
-import extdeps.communication.medium { Lossless, Medium }
 import extdeps.llm.cli_lifecycle {
   ProviderInstance,
   ProviderInstanceFieldUnobserved,
@@ -37,7 +29,6 @@ import extdeps.llm.cli_lifecycle {
   ProviderAuthenticated,
   codex_cli_auth_external_authority,
 }
-import extdeps.languages.dag.syntax { dag_syntax_spec }
 import gunbc.provider_readiness_claim_evidence {
   ProviderReadinessObservation,
   ProviderLoginCredentialRecorded,
@@ -66,16 +57,7 @@ import gunbc.os_install_claim_evidence {
   os_install_completed_claim,
   os_install_kvm_attestation_inference,
 }
-import gunbc.source_integration_claim_evidence {
-  SourceBindingFact,
-  source_binding_captured_claim,
-  source_binding_admissible_claim,
-  source_binding_capture_inference,
-}
 import product.placement_supply { HostIdentity }
-import v2.compiler.source_authority { DagSourceReadWitness }
-import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DagTree }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -104,35 +86,6 @@ fn provider_evidence_fixture() -> ProviderInstance {
 
 data provider_evidence_bound: RunKey = "provider-attempt-1"
 data provider_other_evidence_bound: RunKey = "provider-attempt-2"
-
-data source_binding_fixture_read: DagSourceReadWitness = DagSourceReadWitness {
-  source: Medium {
-    carried: "module claim.evidence.source\nfn foo() -> Bool { true }\nfn caller() -> Bool { foo() }",
-    fidelity: Lossless,
-  },
-  artifact: Artifact {
-    kind: SourceFile,
-    id: ^source_binding_fixture_artifact,
-    file_path: "dag/test/claim/source_binding_fixture.dag",
-  },
-  compilation_unit: ^source_binding_fixture_compilation_unit,
-  source_root: DagTree,
-}
-
-data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId> = OccurrenceBinding {
-  occurrence: BindingOccurrence {
-    containment: ContainmentPath {
-      ancestors: Empty,
-      terminal: std.occurrence_identity.OccurrenceId { value: 2 },
-    },
-  },
-  candidate: BindingCandidate {
-    containment: ContainmentPath {
-      ancestors: Empty,
-      terminal: std.occurrence_identity.OccurrenceId { value: 1 },
-    },
-  },
-}
 
 fn provider_login_status_fact(
   id: RecordedFactId,
@@ -533,48 +486,6 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
     && !boot.challenge
     && !installed.support
     && !installed.challenge
-}
-
-test fn witness_source_capture_does_not_invent_admission() -> Bool {
-  let bound = "source-attempt-1" as RunKey
-  let fact = SourceBindingFact {
-    bound: bound,
-    source_read: source_binding_fixture_read,
-    binding: source_binding_fixture_binding,
-  }
-  let inference = source_binding_capture_inference(
-    fact_id: "source-binding-capture-fact",
-    fact: fact,
-  )
-  let captured_claim = source_binding_captured_claim(
-    fact: fact,
-  )
-  let admissible_claim = source_binding_admissible_claim(
-    fact: fact,
-  )
-  let captured = claim_information_state(
-    assessment: claim_assessment_from_links(
-      claim: captured_claim,
-      links: evidence_inference_links(inference: inference),
-    ),
-  )
-  let admissible = claim_information_state(
-    assessment: claim_assessment_from_links(
-      claim: admissible_claim,
-      links: evidence_inference_links(inference: inference),
-    ),
-  )
-  captured.support
-    && !captured.challenge
-    && !admissible.support
-    && !admissible.challenge
-    && all(
-      evidence_inference_links(inference: inference),
-      link =>
-        link.freshness.maximum_conclusion == captured_claim
-          && link.freshness.maximum_conclusion.bound == bound
-          && link.authority == dag_syntax_spec,
-    )
 }
 
 test fn witness_claim_evidence_roles_are_externally_grounded() -> Bool {
