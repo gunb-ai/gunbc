@@ -543,8 +543,8 @@ pub fn run_required_regen_scoped(
     // is the compared generated-Rust population and therefore cannot name these products.
     let emitted_artifact_paths = emitted
         .keys()
-        .map(|path| emit_path_basename(path).to_string())
-        .collect::<BTreeSet<_>>();
+        .map(|path| candidate_relative_emit_path(path))
+        .collect::<Result<BTreeSet<_>, _>>()?;
     let candidate_manifest = produce_candidate_manifest(
         &fresh_src,
         &selected_basenames,
@@ -1532,6 +1532,22 @@ fn verify_hand_maintained(
 /// the round does with it is install the drifted ones, and the drifted set is a subset of the
 /// selection by construction (`compare_generated_surfaces` is run over exactly this set). It is
 /// not a crate and is not offered as one.
+fn candidate_relative_emit_path(emitted_path: &str) -> Result<String, String> {
+    let path = Path::new(emitted_path);
+    let relative = path.strip_prefix("src").unwrap_or(path);
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "refusal: emitted artifact path {emitted_path} has no safe candidate-root-relative projection"
+        ));
+    }
+    Ok(relative.to_string_lossy().into_owned())
+}
+
 fn write_emitted_tree(
     formatter: &ResolvedFormatter,
     dest_src: &Path,
@@ -1548,12 +1564,17 @@ fn write_emitted_tree(
                 continue;
             }
         }
-        let out_path = dest_src.join(emit_path_basename(path));
+        let relative_path = candidate_relative_emit_path(path)?;
+        let out_path = dest_src.join(&relative_path);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create emitted parent {}: {e}", parent.display()))?;
+        }
         // Only `.rs` surfaces are the generated-Rust population this comparator reasons
         // about (see committed_generated_basenames / generated_basenames_from_emit); a
         // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
         // rustfmt-normalizable and is written through verbatim.
-        let normalized = if emit_path_basename(path).ends_with(".rs") {
+        let normalized = if relative_path.ends_with(".rs") {
             normalize_generated_source(formatter, content)
                 .map_err(|e| format!("normalize emitted {path}: {e}"))?
         } else {
@@ -5443,6 +5464,28 @@ mod regen_convergence_host_instrument_tests {
             emitted_artifact_manifest.surfaces[0].role,
             RegenCandidateManifestSurfaceRole::GeneratedSurface
         ));
+
+        // Relative-path identity is load-bearing: a nested file cannot borrow the generated role
+        // of an emitted root artifact merely because their basenames collide.
+        let (_, _, emitted_collision_candidate, _) = fixture_workspace();
+        fs::create_dir_all(emitted_collision_candidate.join("nested")).unwrap();
+        fs::write(
+            emitted_collision_candidate.join("nested/fixture-layout.artifact"),
+            "nested foreign bytes\n",
+        )
+        .unwrap();
+        assert!(produce_candidate_manifest(
+            &emitted_collision_candidate,
+            &[],
+            &["fixture-layout.artifact".to_string()]
+                .into_iter()
+                .collect(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-emitted-collision",
+        )
+        .unwrap_err()
+        .contains("CandidateManifestPopulationMismatch"));
 
         // Bootstrap-source mirrors inhabit the same immutable candidate artifact as generated
         // surfaces. Their role is bound by the manifest, and changing their bytes after
