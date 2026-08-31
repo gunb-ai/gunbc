@@ -40,7 +40,7 @@ import gunbc.fabric_cell_effect {
 }
 import gunbc.fabric_allocation_store_substrate {
   AllocationStoreEffect,
-  AllocationStoreDirectoryEnsure,
+  AllocationStoreDirectoryChainEnsure,
   fabric_allocation_store_ensure_effect,
 }
 import gunbc.runner_host_deploy { RunnerHostDeploy }
@@ -227,14 +227,13 @@ fn fabric_allocation_store_effect_operations(
   job_user: NonEmptyStr,
 ) -> List<ExecutorPrivilegedOperation> {
   match effect {
-    AllocationStoreDirectoryEnsure { spec: s } => {
-      let principal = fabric_cell_substrate_owner_principal(owner: s.owner, job_user: job_user)
-      [EnsureOwnedDirectory {
-        path: s.path,
-        owner: principal,
-        group: principal,
-        mode: s.mode,
-      }]
+    AllocationStoreDirectoryChainEnsure { spec: s } => {
+      let namespace_principal = fabric_cell_substrate_owner_principal(owner: s.namespace_owner, job_user: job_user)
+      let store_principal = fabric_cell_substrate_owner_principal(owner: s.owner, job_user: job_user)
+      [
+        EnsureOwnedDirectory { path: s.namespace_path, owner: namespace_principal, group: namespace_principal, mode: s.namespace_mode },
+        EnsureOwnedDirectory { path: s.path, owner: store_principal, group: store_principal, mode: s.mode },
+      ]
     }
   }
 }
