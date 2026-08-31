@@ -114,21 +114,21 @@ fn rust_value_binding_candidate(prefix: String, index: Int) -> String {
   concat(prefix, to_string(index))
 }
 
-fn cli_dispatch_executor_name_absent() -> String? {
+fn rust_value_binding_name_absent() -> String? {
   Absent
 }
 
-fn cli_dispatch_executor_name_present(candidate: String) -> String? {
+fn rust_value_binding_name_present(candidate: String) -> String? {
   Present { value: candidate }
 }
 
-fn cli_dispatch_executor_choose_unblocked(found: String?, candidate: String, blocked: List<String>) -> String? {
+fn rust_value_binding_choose_unblocked(found: String?, candidate: String, blocked: List<String>) -> String? {
   match found {
     Present { value: _ } => found
     Absent => if blocked |> any(local => local == candidate) {
-      cli_dispatch_executor_name_absent()
+      rust_value_binding_name_absent()
     } else {
-      cli_dispatch_executor_name_present(candidate: candidate)
+      rust_value_binding_name_present(candidate: candidate)
     }
   }
 }
@@ -140,7 +140,7 @@ fn fresh_rust_value_binding_name(blocked: List<String>, prefix: String) -> Strin
   let first_n = enumerate(blocked) |> map(pair => rust_value_binding_candidate(prefix: prefix, index: pair.first))
   let candidates = concat(first_n, [rust_value_binding_candidate(prefix: prefix, index: count(blocked))])
   fold(candidates, init: Absent, f: fn(found, candidate) {
-    cli_dispatch_executor_choose_unblocked(found: found, candidate: candidate, blocked: blocked)
+    rust_value_binding_choose_unblocked(found: found, candidate: candidate, blocked: blocked)
   })
 }
 

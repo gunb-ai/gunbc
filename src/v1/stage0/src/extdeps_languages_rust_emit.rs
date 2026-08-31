@@ -155,15 +155,15 @@ pub fn rust_value_binding_candidate(prefix: String, index: i64) -> String {
     v1_rt::concat(prefix.clone(), (index.clone()).to_string())
 }
 
-pub fn cli_dispatch_executor_name_absent() -> Option<String> {
+pub fn rust_value_binding_name_absent() -> Option<String> {
     None
 }
 
-pub fn cli_dispatch_executor_name_present(candidate: String) -> Option<String> {
+pub fn rust_value_binding_name_present(candidate: String) -> Option<String> {
     Some(candidate.clone())
 }
 
-pub fn cli_dispatch_executor_choose_unblocked(
+pub fn rust_value_binding_choose_unblocked(
     found: Option<String>,
     candidate: String,
     blocked: Rc<Vec<String>>,
@@ -181,9 +181,9 @@ pub fn cli_dispatch_executor_choose_unblocked(
                 }
                 __found
             } {
-                cli_dispatch_executor_name_absent()
+                rust_value_binding_name_absent()
             } else {
-                cli_dispatch_executor_name_present(candidate.clone())
+                rust_value_binding_name_present(candidate.clone())
             }
         }
     }
@@ -220,7 +220,7 @@ pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -
             .iter()
             .cloned()
             .fold(None, |found: _, candidate: String| {
-                cli_dispatch_executor_choose_unblocked(found, candidate.clone(), blocked.clone())
+                rust_value_binding_choose_unblocked(found, candidate.clone(), blocked.clone())
             })
     }
 }
