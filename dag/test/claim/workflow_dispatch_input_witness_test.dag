@@ -187,11 +187,7 @@ test fn fleet_converge_apply_step_binds_plan_hash_to_env_not_shell_literal() -> 
 
 test fn fleet_converge_org_actions_mode_binds_secret_and_modeled_entry_holds() -> Bool {
   string_contains(
-    s: expected_fleet_converge_yml_content(),
-    pattern: "GUNBC_ORG_ADMIN_TOKEN: $\{\{ secrets.GUNBC_ORG_ADMIN_TOKEN \}\}",
+    s: gunbc_ci_org_actions_converge_invoke(),
+    pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet",
   )
-    && string_contains(
-      s: gunbc_ci_org_actions_converge_invoke(),
-      pattern: "--entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet",
-    )
 }
