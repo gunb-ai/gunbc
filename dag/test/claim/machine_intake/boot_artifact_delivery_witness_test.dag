@@ -144,6 +144,7 @@ import gunbc.boot_artifact_delivery {
   BoundBootDeliveryEvidence,
   CandidateConfigfsUnestablished,
   CandidateEvidenceForOtherTarget,
+  CandidateIneligible,
   CandidateLiveSurfaceAbsent,
   CandidateNetworkBootUnestablished,
   CandidateOemParameterUnset,
@@ -584,7 +585,7 @@ test fn redfish_virtual_media_planned_from_bound_context_and_probe_receipt() -> 
 }
 
 // RED (ruling 3 §1) — the staged URI serves digest B while the request names
-// digest A: the Redfish candidate stops at CandidateStagedArtifactMismatch and
+// digest A: the Redfish candidate stops at CandidateIneligible { cause: CandidateStagedArtifactMismatch } and
 // nothing is planned.
 test fn staged_artifact_digest_mismatch_refuses_the_plan() -> Bool {
   match solve(profile: vm_profile, receipt: observed(surfaces: [SurfaceBootControl, SurfaceRedfishVirtualMedia], probe: Present { value: probe_https }), staging: staging_wrong_redfish_digest) {
@@ -592,7 +593,7 @@ test fn staged_artifact_digest_mismatch_refuses_the_plan() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateStagedArtifactMismatch { offered: _, requested: _ } => true
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateStagedArtifactMismatch { offered: _, requested: _ } => true _ => false }
             _ => false
           }
         _ => false
@@ -752,7 +753,7 @@ test fn offered_protocol_not_admitted_by_the_probe_refuses() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateRedfishProtocolNotAdmitted { offered: o, admitted: a } => o == TransferHttps && list_length(items: a) == 1
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProtocolNotAdmitted { offered: o, admitted: a } => o == TransferHttps && list_length(items: a) == 1 _ => false }
             _ => false
           }
         _ => false
@@ -769,7 +770,7 @@ test fn absent_probe_receipt_refuses_the_redfish_arm() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateRedfishProbeAbsent => true
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProbeAbsent => true _ => false }
             _ => false
           }
         _ => false
@@ -785,7 +786,7 @@ test fn redfish_collection_discovery_alone_does_not_plan() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateRedfishProbeBelowPlanFloor { progress: p } => p == CollectionDiscovered
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProbeBelowPlanFloor { progress: p } => p == CollectionDiscovered _ => false }
             _ => false
           }
         _ => false
@@ -803,7 +804,7 @@ fn refuses_as_probe_contradiction(s: BootDeliverySolution, expected: RedfishVirt
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateRedfishProbeContradictory { progress: p, admitted: a } => p == expected && list_length(items: a) == 1
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateRedfishProbeContradictory { progress: p, admitted: a } => p == expected && list_length(items: a) == 1 _ => false }
             _ => false
           }
         _ => false
@@ -827,7 +828,7 @@ test fn live_boot_control_absent_refuses_despite_catalog_capability_and_live_med
       match c {
         DeliveryBootControlSurfaceUnestablished { standing: s } =>
           match s {
-            CandidateLiveSurfaceAbsent { surface: sf } => sf == SurfaceBootControl
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateLiveSurfaceAbsent { surface: sf } => sf == SurfaceBootControl _ => false }
             _ => false
           }
         _ => false
@@ -916,7 +917,7 @@ test fn megarac_route_without_image_redirection_refuses() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateMegaRacRestRemoteMedia) {
-            CandidateOemParameterUnset { surface: s } => s == SurfaceOemRestRemoteMedia
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateOemParameterUnset { surface: s } => s == SurfaceOemRestRemoteMedia _ => false }
             _ => false
           }
         _ => false
@@ -933,7 +934,7 @@ test fn redfish_virtual_media_absent_from_live_observation_is_not_selected() -> 
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateRedfishVirtualMedia) {
-            CandidateLiveSurfaceAbsent { surface: s } => s == SurfaceRedfishVirtualMedia
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateLiveSurfaceAbsent { surface: s } => s == SurfaceRedfishVirtualMedia _ => false }
             _ => false
           }
         _ => false
@@ -1012,7 +1013,7 @@ test fn no_virtual_media_and_no_network_boot_evidence_refuses_without_pxe() -> B
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
-            CandidateNetworkBootUnestablished { missing: m } => list_length(items: m) == 4
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateNetworkBootUnestablished { missing: m } => list_length(items: m) == 4 _ => false }
             _ => false
           }
         _ => false
@@ -1068,7 +1069,7 @@ test fn empty_configfs_observation_population_does_not_establish() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcConfigfsUsbGadget) {
-            CandidateConfigfsUnestablished { missing: m } => list_length(items: m) == 8
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateConfigfsUnestablished { missing: m } => list_length(items: m) == 8 _ => false }
             _ => false
           }
         _ => false
@@ -1092,7 +1093,7 @@ test fn configfs_path_established_for_another_target_is_refused() -> Bool {
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidateOpenBmcConfigfsUsbGadget) {
-            CandidateEvidenceForOtherTarget { evidence_target: t } => (t.subject.attempt_id as NonEmptyStr) == (attempt_two as NonEmptyStr)
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => (t.subject.attempt_id as NonEmptyStr) == (attempt_two as NonEmptyStr) _ => false }
             _ => false
           }
         _ => false
@@ -1153,7 +1154,7 @@ test fn established_network_boot_naming_the_artifact_selects_pxe_and_another_dig
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
-            CandidateStagedArtifactMismatch { offered: _, requested: _ } => true
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateStagedArtifactMismatch { offered: _, requested: _ } => true _ => false }
             _ => false
           }
         _ => false
@@ -1170,7 +1171,7 @@ test fn established_network_boot_naming_the_artifact_selects_pxe_and_another_dig
       match c {
         DeliveryNoEligibleTransport { firmware: _, considered: considered } =>
           match boot_delivery_candidate_standing_of(verdicts: considered, candidate: CandidatePxeChainBoot) {
-            CandidateEvidenceForOtherTarget { evidence_target: t } => t.endpoint == other_controller
+            CandidateIneligible { cause: ineligibility } => match ineligibility { CandidateEvidenceForOtherTarget { evidence_target: t } => t.endpoint == other_controller _ => false }
             _ => false
           }
         _ => false
@@ -1242,7 +1243,7 @@ fn plan_selected_count(verdicts: List<BootDeliveryPlanCandidateVerdict>) -> Int 
     match v.disposition {
       PlanCandidateSelected => acc + 1
       PlanCandidateOutrankedBy { selected: _ } => acc
-      PlanCandidateIneligible { standing: _ } => acc
+      PlanCandidateIneligible { cause: _ } => acc
     }
   })
 }
@@ -1252,7 +1253,7 @@ fn plan_outranked_by_redfish_count(verdicts: List<BootDeliveryPlanCandidateVerdi
     match v.disposition {
       PlanCandidateSelected => acc
       PlanCandidateOutrankedBy { selected: sel } => if (sel == CandidateRedfishVirtualMedia) { acc + 1 } else { acc }
-      PlanCandidateIneligible { standing: _ } => acc
+      PlanCandidateIneligible { cause: _ } => acc
     }
   })
 }
@@ -1262,7 +1263,7 @@ fn plan_selected_is_redfish_count(verdicts: List<BootDeliveryPlanCandidateVerdic
     match v.disposition {
       PlanCandidateSelected => if (v.candidate == CandidateRedfishVirtualMedia) { acc + 1 } else { acc }
       PlanCandidateOutrankedBy { selected: _ } => acc
-      PlanCandidateIneligible { standing: _ } => acc
+      PlanCandidateIneligible { cause: _ } => acc
     }
   })
 }
