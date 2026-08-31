@@ -1,4 +1,4 @@
-module test.claim.undecidable_verdict_collapse_wall
+module v2.test.claim.undecidable_verdict_collapse_wall_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.undecidable_verdict_collapse {
@@ -33,6 +33,12 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The wall's subject: a match arm whose pattern names a rostered undecidable-verdict variant
 // (v2.std.runtime's RuntimeValueEqualityUnavailable) and whose body is a DECIDABLE LITERAL. That
 // arm answers a question the model declined to answer and discards the reason it computed.
+//
+// PLACEMENT IS LOAD-BEARING: this file lives under src/v2/test/claim so its module name matches
+// the `v2.test.` prefix in v2.workflow.required_floor required_gate_prefixes. In dag/test/claim it
+// would carry a `test.claim.undecidable_verdict_collapse_wall` name that no prefix matches, be
+// reported as declined_outside_required_gate, and never execute -- evidence that exists but does
+// not run, which is DESIGN 5's specification-without-execution.
 //
 // THE RED IS AUTHORABLE HERE DESPITE THE WITNESS CARVE-OUT. The lens exempts test.claim.* modules
 // so a fixture may build the escape hatch in order to test it. These fixtures therefore call the
