@@ -36419,6 +36419,124 @@ thread_local! {
     > = const { std::cell::RefCell::new(Vec::new()) };
 }
 
+thread_local! {
+    /// PER-SUBJECT ORDER INDEX for the scope precedence walk, keyed by the prepared subject's
+    /// digest exactly as its two neighbours are.
+    static SCOPE_ORDER_INDEXES: std::cell::RefCell<Vec<(String, Rc<ScopeOrderIndex>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// WHAT EACH MODULE REACHES, held once per prepared subject instead of rebuilt once per scope.
+///
+/// The precedence walk in `claim_scope_for` asks one question of every module it visits: what
+/// does this module reach — its reference targets, then the modules its own imports pulled in.
+/// The answer depends on the module and the prepared subject, never on which scope is asking,
+/// but it was recomputed per scope: `reference_targets_of` re-walks that module's reference set
+/// and re-runs longest-declared-prefix selection over the declarer index every time, and
+/// `parents_of` rebuilt a whole-subject map per scope to read one entry from it. On the floor
+/// that is 660 scopes x ~427 modules of identical recomputation, measured at 17.1s of the
+/// 56.5s scope-construction total (`[floor-scope-split]` `order_ms`).
+///
+/// WHAT IS NOT MEMOIZED, and must not be: the WALK. The order a scope visits these lists in is
+/// a function of its entry, and that order IS the scope's identity — it decides which module
+/// wins a colliding bare name and it is what `scope_identity` folds over. So the traversal, its
+/// `seen` set and its frontier stay per scope; only the per-module answer they consume is
+/// shared, and it is the same list, in the same sequence, that the unmemoized walk built.
+struct ScopeOrderIndex {
+    /// Module -> the names its `ResolvedFuncEnv.parents` carries, in the compiler's own
+    /// precedence sequence. Built eagerly in one pass: every scope needs the entry's row, and
+    /// the walk needs a row per module it visits.
+    parents_by_module: HashMap<String, Vec<String>>,
+    /// Module -> reference targets followed by parents, the exact concatenation the walk
+    /// consumed when it built both per visit. Filled on first visit.
+    reached_by_module: std::cell::RefCell<HashMap<String, Rc<Vec<String>>>>,
+}
+
+/// A fresh order index over one subject — no memo shared with anything. The equivalence
+/// control builds one per scope, which reproduces the pre-memo walk exactly: a module is
+/// visited at most once per scope (the `seen` set), so a scope-private memo never hits.
+fn build_scope_order_index(prepared: &PreparedRepository) -> Rc<ScopeOrderIndex> {
+    let parents_by_module: HashMap<String, Vec<String>> = prepared
+        .graph
+        .modules
+        .iter()
+        .map(|m| {
+            (
+                m.func_env.name.clone(),
+                m.func_env
+                    .parents
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect::<Vec<String>>(),
+            )
+        })
+        .collect();
+    Rc::new(ScopeOrderIndex {
+        parents_by_module,
+        reached_by_module: std::cell::RefCell::new(HashMap::new()),
+    })
+}
+
+fn scope_order_index(prepared: &PreparedRepository) -> Rc<ScopeOrderIndex> {
+    if let Some(existing) = SCOPE_ORDER_INDEXES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, index)| index.clone())
+    }) {
+        return existing;
+    }
+    let created = build_scope_order_index(prepared);
+    SCOPE_ORDER_INDEXES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), created.clone()))
+    });
+    created
+}
+
+/// How many modules each per-subject memo currently holds — (fragments, reached lists).
+/// Reads the live caches for the given subject; absent caches read as zero.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn scope_memo_population_for_test(prepared: &PreparedRepository) -> (usize, usize) {
+    let fragments = SCOPE_FRAGMENT_CACHES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, cache)| cache.borrow().len())
+            .unwrap_or(0)
+    });
+    let reached = SCOPE_ORDER_INDEXES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, index)| index.reached_by_module.borrow().len())
+            .unwrap_or(0)
+    });
+    (fragments, reached)
+}
+
+/// One module's reached list, memoized. The concatenation order — reference targets first,
+/// then parents — is the walk's own, preserved exactly.
+fn scope_order_reached(
+    order_index: &ScopeOrderIndex,
+    ref_index: &ReferenceClosureIndex,
+    module: &str,
+) -> Rc<Vec<String>> {
+    if let Some(hit) = order_index.reached_by_module.borrow().get(module) {
+        return hit.clone();
+    }
+    let mut reached: Vec<String> = reference_targets_of(ref_index, module);
+    if let Some(parents) = order_index.parents_by_module.get(module) {
+        reached.extend(parents.iter().cloned());
+    }
+    let built = Rc::new(reached);
+    order_index
+        .reached_by_module
+        .borrow_mut()
+        .insert(module.to_string(), built.clone());
+    built
+}
+
 /// The fragment memo for one prepared subject, created on first use.
 ///
 /// Not a refusal site: an unexpected third subject already refuses in
@@ -36660,26 +36778,38 @@ pub fn claim_scope_for(
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
     let fragments = scope_fragment_cache(prepared);
-    claim_scope_for_with_fragments(prepared, entry_module_path, Some(fragments.as_ref()))
+    let order_index = scope_order_index(prepared);
+    claim_scope_for_with_memos(
+        prepared,
+        entry_module_path,
+        Some(fragments.as_ref()),
+        order_index,
+    )
 }
 
-/// THE DISCRIMINATING CONTROL for the per-module fragment memo, and the only other caller:
-/// the same construction with the memo withheld. A scope built with `None` re-derives every
-/// module's contribution from the module itself, which is what every scope did before the
-/// memo existed — so an equivalence witness can build both and compare answers rather than
-/// argue about the cache key.
+/// THE DISCRIMINATING CONTROL for both per-subject memos, and the only other caller: the same
+/// construction with each withheld. It re-derives every module's scope contribution from the
+/// module itself AND walks the precedence order against a scope-private order index, which is
+/// what every scope did before either memo existed — so an equivalence witness can build both
+/// and compare answers, and identities, rather than argue about a cache key.
 #[cfg(any(test, feature = "interp_test_witness"))]
-pub fn claim_scope_for_without_fragment_memo(
+pub fn claim_scope_for_without_memos(
     prepared: &PreparedRepository,
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
-    claim_scope_for_with_fragments(prepared, entry_module_path, None)
+    claim_scope_for_with_memos(
+        prepared,
+        entry_module_path,
+        None,
+        build_scope_order_index(prepared),
+    )
 }
 
-fn claim_scope_for_with_fragments(
+fn claim_scope_for_with_memos(
     prepared: &PreparedRepository,
     entry_module_path: &str,
     fragments: Option<&v1_interpreter::ScopeFragmentCache>,
+    order_index: Rc<ScopeOrderIndex>,
 ) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
@@ -36748,22 +36878,13 @@ fn claim_scope_for_with_fragments(
     // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
     // `data` declaration in `gunbc.fleet_intent_network` that a module in its closure IMPORTS.
     // The definer was one edge away the whole time, across an edge this walk did not traverse.
-    let parents_of: HashMap<&str, &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>> = prepared
-        .graph
-        .modules
-        .iter()
-        .map(|m| (m.func_env.name.as_str(), &m.func_env))
-        .collect();
     let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
     while let Some(current) = frontier.pop() {
-        let mut reached: Vec<String> = reference_targets_of(&ref_index, &current);
-        if let Some(env) = parents_of.get(current.as_str()) {
-            reached.extend(env.parents.iter().map(|p| p.name.clone()));
-        }
-        for target in reached {
+        let reached = scope_order_reached(&order_index, &ref_index, &current);
+        for target in reached.iter() {
             if seen.insert(target.clone()) {
                 order.push(target.clone());
-                frontier.push(target);
+                frontier.push(target.clone());
             }
         }
     }

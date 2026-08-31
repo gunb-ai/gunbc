@@ -6226,8 +6226,7 @@ mod scope_fragment_memo_equivalence {
         let prepared = colliding_corpus();
         for entry in ["fixture.alpha", "fixture.beta", "fixture.shared"] {
             let memoized = claim_scope_for(&prepared, entry).expect("memoized scope");
-            let control =
-                claim_scope_for_without_fragment_memo(&prepared, entry).expect("control scope");
+            let control = claim_scope_for_without_memos(&prepared, entry).expect("control scope");
             assert_eq!(
                 memoized.scope_identity, control.scope_identity,
                 "{entry}: precedence identity diverged"
@@ -6273,6 +6272,28 @@ mod scope_fragment_memo_equivalence {
         );
     }
 
+    /// THE MEMOS ARE ACTUALLY REUSED ACROSS SCOPES, asserted rather than assumed. Without this
+    /// the equivalence test above could be green because the "memoized" path memoized nothing:
+    /// a per-scope cache would answer identically to the control and prove only that two
+    /// unmemoized folds agree.
+    #[test]
+    fn a_second_scope_of_one_subject_reuses_the_first_scopes_memos() {
+        let prepared = colliding_corpus();
+        claim_scope_for(&prepared, "fixture.alpha").expect("first scope");
+        let filled = crate::cli_run::scope_memo_population_for_test(&prepared);
+        assert!(
+            filled.0 > 0 && filled.1 > 0,
+            "the first scope must leave fragments and reached-lists behind: {filled:?}"
+        );
+        claim_scope_for(&prepared, "fixture.beta").expect("second scope");
+        let after = crate::cli_run::scope_memo_population_for_test(&prepared);
+        assert!(
+            after.0 >= filled.0 && after.1 >= filled.1,
+            "the second scope must add to the SAME memos, not start new ones: \
+             {filled:?} then {after:?}"
+        );
+    }
+
     /// The memo is keyed inside one prepared subject. Two subjects sharing a module NAME must
     /// not share its fragment: the declarations are different nodes, and serving one for the
     /// other is a silently wrong resolution rather than a slow one.
@@ -6291,8 +6312,7 @@ mod scope_fragment_memo_equivalence {
         ]);
         let from_first = claim_scope_for(&first, "fixture.alpha").expect("first subject scope");
         let from_second = claim_scope_for(&second, "fixture.alpha").expect("second subject scope");
-        let control =
-            claim_scope_for_without_fragment_memo(&second, "fixture.alpha").expect("control");
+        let control = claim_scope_for_without_memos(&second, "fixture.alpha").expect("control");
         assert_eq!(
             from_second.resolution_fingerprint(),
             control.resolution_fingerprint(),
