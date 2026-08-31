@@ -1007,20 +1007,6 @@ pub fn write(
             .map_err(|e| format!("failed to create cache dir {:?}: {}", parent, e))?;
     }
     let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
-    let payload_len = (encoded.graph_bytes.len() as u64)
-        .checked_add(encoded.indices_bytes.len() as u64)
-        .and_then(|n| n.checked_add(encoded.union_bytes.len() as u64))
-        .ok_or_else(|| "cache payload length overflow".to_string())?;
-    let artifact_len = payload_len
-        .checked_add(V3_HEADER_LEN as u64)
-        .ok_or_else(|| "cache artifact length overflow".to_string())?;
-    if artifact_len > resolved_graph_cache_cap_bytes() {
-        return Err(format!(
-            "resolved-graph cache artifact exceeds modeled capacity: cap_bytes={} \
-             observed_bytes={artifact_len}",
-            resolved_graph_cache_cap_bytes()
-        ));
-    }
     let payload_bytes = [
         encoded.graph_bytes.as_slice(),
         encoded.indices_bytes.as_slice(),
