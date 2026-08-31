@@ -1,0 +1,218 @@
+module v2.test.claim.effect_demand.effect_demand_floor_join_test
+
+import v2.compiler.effect_demand_floor_join {
+  DuplicateClaimIdentity,
+  EntryPathUndeclared,
+  FloorStandingJoin,
+  FloorStandingJoinRefusal,
+  FloorStandingJoinRow,
+  FloorStandingJoined,
+  FloorStandingJoinRefused,
+  JoinPopulationEmpty,
+  effect_demand_floor_join,
+  floor_join_seam_modules
+}
+import v2.compiler.effect_demand { effect_demand_seam_roster }
+import v2.lens.module_graph { ModuleDeclarationFact, ModuleDependencyEdge }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.std.algebra { Cons, Empty, any, length }
+import v2.std.collection { List }
+import v2.std.live_tree { SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.floor_discovery { FloorDiscoveryRow }
+import v2.workflow.required_floor {
+  DeclinedCostDebt,
+  DeclinedFixtureMember,
+  DeclinedLongModule,
+  DeclinedOutsideRequiredGate,
+  Planned,
+  RequiredFloorDisposition
+}
+
+// A CONTROLLED FIXTURE, NEVER THE LIVE TREE. Six declared modules, four discovered claims, one seam.
+// Entry A reaches the seam only transitively through B, so a walk that stopped at direct imports would
+// drop it; C reaches it and lives under a long-home prefix; D reaches it and lives outside the
+// required gate; N reaches nothing and must be absent without being a refusal. Standings are the real
+// required_floor_site_disposition over synthetic module paths chosen to land on named arms of the real
+// prefix rosters, so a witness here goes red if either the join or the floor's own rule moves.
+fn probe_node(module: String, path: String) -> ModuleDeclarationFact {
+  ModuleDeclarationFact { module: module, path: path }
+}
+
+fn probe_edge(path: String, target: String) -> ModuleDependencyEdge {
+  ModuleDependencyEdge { path: path, target_module: target, target_declared: true }
+}
+
+fn probe_row(entry: String, function: String) -> FloorDiscoveryRow {
+  FloorDiscoveryRow { label: concat(concat(entry, ":"), function), entry: entry, function: function, reads_live_tree: SubstrateInputsOnly }
+}
+
+data probe_seam_modules: List<String> = ["v2.std.probe_seam"]
+
+data probe_nodes: List<ModuleDeclarationFact> = [
+  probe_node(module: "v2.test.probe_a", path: "fx/a_test.dag"),
+  probe_node(module: "v2.test.probe_b", path: "fx/b.dag"),
+  probe_node(module: "v2.std.probe_seam", path: "fx/seam.dag"),
+  probe_node(module: "v2.test.long.probe_c", path: "fx/c_test.dag"),
+  probe_node(module: "test.claim.probe_d", path: "fx/d_test.dag"),
+  probe_node(module: "v2.test.probe_n", path: "fx/n_test.dag")
+]
+
+data probe_edges: List<ModuleDependencyEdge> = [
+  probe_edge(path: "fx/a_test.dag", target: "v2.test.probe_b"),
+  probe_edge(path: "fx/b.dag", target: "v2.std.probe_seam"),
+  probe_edge(path: "fx/c_test.dag", target: "v2.std.probe_seam"),
+  probe_edge(path: "fx/d_test.dag", target: "v2.std.probe_seam"),
+  probe_edge(path: "fx/n_test.dag", target: "v2.test.probe_b_absent")
+]
+
+data probe_rows: List<FloorDiscoveryRow> = [
+  probe_row(entry: "fx/a_test.dag", function: "t_a"),
+  probe_row(entry: "fx/c_test.dag", function: "t_c"),
+  probe_row(entry: "fx/d_test.dag", function: "t_d"),
+  probe_row(entry: "fx/n_test.dag", function: "t_n")
+]
+
+fn probe_join() -> FloorStandingJoin {
+  effect_demand_floor_join(discovered: probe_rows, nodes: probe_nodes, edges: probe_edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0)
+}
+
+fn probe_has_identity(join: FloorStandingJoin, identity: String) -> Bool {
+  match join {
+    FloorStandingJoinRefused { cause } => false,
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } =>
+      any(xs: rows, predicate: fn(row) { row.claim_identity == identity })
+  }
+}
+
+fn probe_disposition_of(join: FloorStandingJoin, identity: String, expected: fn(RequiredFloorDisposition) -> Bool) -> Bool {
+  match join {
+    FloorStandingJoinRefused { cause } => false,
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } =>
+      any(xs: rows, predicate: fn(row) { row.claim_identity == identity && expected(row.disposition) })
+  }
+}
+
+fn probe_digest(join: FloorStandingJoin) -> String {
+  match join {
+    FloorStandingJoinRefused { cause } => "",
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => digest
+  }
+}
+
+test fn floor_join_witness_control_joins_exactly_the_seam_reaching_claims() -> Bool {
+  let j = probe_join()
+  probe_has_identity(join: j, identity: "v2.test.probe_a.t_a")
+    && probe_has_identity(join: j, identity: "v2.test.long.probe_c.t_c")
+    && probe_has_identity(join: j, identity: "test.claim.probe_d.t_d")
+    && !probe_has_identity(join: j, identity: "v2.test.probe_n.t_n")
+}
+
+test fn floor_join_witness_transitive_reach_counts() -> Bool {
+  probe_has_identity(join: probe_join(), identity: "v2.test.probe_a.t_a")
+}
+
+test fn floor_join_witness_an_unreached_entry_is_excluded_not_refused() -> Bool {
+  match probe_join() {
+    FloorStandingJoinRefused { cause } => false,
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => length(xs: rows) == 3
+  }
+}
+
+test fn floor_join_witness_standing_is_the_floors_own_rule() -> Bool {
+  let j = probe_join()
+  probe_disposition_of(join: j, identity: "v2.test.probe_a.t_a", expected: fn(d) { match d { Planned => true, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
+    && probe_disposition_of(join: j, identity: "v2.test.long.probe_c.t_c", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => matched_prefix == "v2.test.long.", DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
+    && probe_disposition_of(join: j, identity: "test.claim.probe_d.t_d", expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => true, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => false } })
+}
+
+test fn floor_join_witness_cost_debt_arm_is_reached_from_the_policy_roster() -> Bool {
+  let nodes = Cons { head: probe_node(module: "test.claim.belt_tick_receipt_home_witness", path: "fx/belt_test.dag"), tail: probe_nodes }
+  let edges = Cons { head: probe_edge(path: "fx/belt_test.dag", target: "v2.std.probe_seam"), tail: probe_edges }
+  let rows = [probe_row(entry: "fx/belt_test.dag", function: "the_belt_member_bootstraps_its_own_receipts_directory")]
+  probe_disposition_of(
+    join: effect_demand_floor_join(discovered: rows, nodes: nodes, edges: edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0),
+    identity: "test.claim.belt_tick_receipt_home_witness.the_belt_member_bootstraps_its_own_receipts_directory",
+    expected: fn(d) { match d { Planned => false, PlannedAsChangedWitness => false, DeclinedLongModule { matched_prefix } => false, DeclinedFixtureMember { matched_prefix } => false, DeclinedOutsideRequiredGate => false, DeclinedOutsideGateClosure => false, DeclinedDiscoveryExcluded { matched_substring } => false, DeclinedCostDebt => true } }
+  )
+}
+
+test fn floor_join_witness_an_undeclared_entry_refuses() -> Bool {
+  match effect_demand_floor_join(discovered: [probe_row(entry: "fx/ghost_test.dag", function: "t_g")], nodes: probe_nodes, edges: probe_edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0) {
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => false,
+    FloorStandingJoinRefused { cause } => match cause {
+      EntryPathUndeclared { entry_path, function } => entry_path == "fx/ghost_test.dag",
+      DuplicateClaimIdentity { claim_identity } => false,
+      JoinPopulationEmpty => false,
+      DiscoveryRefused { reason } => false
+    }
+  }
+}
+
+test fn floor_join_witness_a_duplicate_identity_refuses() -> Bool {
+  match effect_demand_floor_join(discovered: [probe_row(entry: "fx/a_test.dag", function: "t_a"), probe_row(entry: "fx/a_test.dag", function: "t_a")], nodes: probe_nodes, edges: probe_edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0) {
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => false,
+    FloorStandingJoinRefused { cause } => match cause {
+      DuplicateClaimIdentity { claim_identity } => claim_identity == "v2.test.probe_a.t_a",
+      EntryPathUndeclared { entry_path, function } => false,
+      JoinPopulationEmpty => false,
+      DiscoveryRefused { reason } => false
+    }
+  }
+}
+
+test fn floor_join_witness_an_empty_population_refuses_rather_than_hashing_nothing() -> Bool {
+  match effect_demand_floor_join(discovered: [probe_row(entry: "fx/n_test.dag", function: "t_n")], nodes: probe_nodes, edges: probe_edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0) {
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } => false,
+    FloorStandingJoinRefused { cause } => match cause {
+      JoinPopulationEmpty => true,
+      DuplicateClaimIdentity { claim_identity } => false,
+      EntryPathUndeclared { entry_path, function } => false,
+      DiscoveryRefused { reason } => false
+    }
+  }
+}
+
+test fn floor_join_witness_counts_partition_the_rows() -> Bool {
+  match probe_join() {
+    FloorStandingJoinRefused { cause } => false,
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } =>
+      counts.offered == length(xs: rows)
+        && counts.offered == counts.planned + counts.planned_as_changed_witness + counts.declined_long_module + counts.declined_fixture_member + counts.declined_outside_required_gate + counts.declined_outside_gate_closure + counts.declined_discovery_excluded + counts.declined_cost_debt
+        && counts.planned == 1 && counts.declined_long_module == 1 && counts.declined_outside_required_gate == 1
+  }
+}
+
+test fn floor_join_witness_digest_is_a_function_of_identity_and_standing() -> Bool {
+  let same = probe_digest(join: probe_join()) == probe_digest(join: probe_join())
+  let relocated_c = [
+    probe_node(module: "v2.test.probe_a", path: "fx/a_test.dag"),
+    probe_node(module: "v2.test.probe_b", path: "fx/b.dag"),
+    probe_node(module: "v2.std.probe_seam", path: "fx/seam.dag"),
+    probe_node(module: "v2.test.probe_c", path: "fx/c_test.dag"),
+    probe_node(module: "test.claim.probe_d", path: "fx/d_test.dag"),
+    probe_node(module: "v2.test.probe_n", path: "fx/n_test.dag")
+  ]
+  let moved = effect_demand_floor_join(discovered: probe_rows, nodes: relocated_c, edges: probe_edges, seam_modules: probe_seam_modules, owned_data_records_supplied: 0)
+  same && (probe_digest(join: moved) != probe_digest(join: probe_join())) && (probe_digest(join: probe_join()) != "")
+}
+
+test fn floor_join_witness_live_seam_modules_are_the_fourteen_seams_homes() -> Bool {
+  let homes = floor_join_seam_modules(roster: effect_demand_seam_roster)
+  any(xs: homes, predicate: fn(m) { m == "v2.std.decl_index" })
+    && any(xs: homes, predicate: fn(m) { m == "v2.std.compilers.lexing" })
+    && !any(xs: homes, predicate: fn(m) { m == "" })
+}
+
+test fn floor_join_witness_the_dotted_identity_is_derived_from_the_declaration_ref() -> Bool {
+  match probe_join() {
+    FloorStandingJoinRefused { cause } => false,
+    FloorStandingJoined { rows, counts, digest, seam_modules, owned_data_records_supplied } =>
+      !any(xs: rows, predicate: fn(row) {
+        row.claim_identity != concat(concat(row.identity_ref.module_path, "."), row.identity_ref.decl_name)
+          || row.identity_ref.module_path != row.module_path
+          || row.identity_ref.decl_name != row.function
+      })
+  }
+}

@@ -2,7 +2,6 @@ module gunbc.fleet_converge_plan_manifest
 
 import std.types { String, Bool, Int, NonEmptyStr, List }
 import std.algebra { trim }
-import std.content_hash { Fnv1a64StructuralDigestHex, Fnv1a64Structural, Fnv1a64, content_hash_of_value }
 import v2.std.optional { Present, Absent }
 import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
 import gunbc.fleet_converge_plan {
@@ -21,6 +20,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_prior_generation_path,
   fleet_converge_plan_generation_path,
   fleet_converge_parse_nonneg_generation_text,
+  fleet_converge_plan_bundle_digest_hex,
 }
 
 // EVERY VALUE APPLY TRUSTS, JUDGED IN ONE PLACE AGAINST ONE RUN-BOUND ANCHOR.
@@ -49,21 +49,11 @@ import gunbc.fleet_converge_plan {
 // record carrying host, scope, fingerprint, baseline, generations, lease and terminal would be a
 // second representation of fields FleetConvergePlanReceipt already carries and already folds into
 // its identity hash, and two records of one subject drift in the ordinary direction -- someone adds
-// a field, one gets it. What this module adds is the half the receipt did not cover: path-tagged
-// digests over the payload bytes, and the total admission that judges the whole on-disk population
-// against the receipt in one decision rather than at six call sites that each chose what to check.
-
-// THE DIGEST IS TAGGED WITH THE PATH THE BYTES CAME FROM. The bundle digest combines its three
-// members positionally, which already refuses a straight swap -- but positional binding is a
-// property of the FOLD, not of the value, so anything that later reorders, extends or reuses that
-// combine loses it silently. Tagging the bytes with their own path makes the binding a property of
-// each digest, so plan.txt's bytes cannot be admitted as apply.sh's under any fold.
-fn path_tagged_digest(path: String, content: String) -> Fnv1a64StructuralDigestHex? {
-  match content_hash_of_value(value: join([path, " ", content], "") as NonEmptyStr) {
-    Fnv1a64(structural) => Present { value: structural.digest }
-    _ => Absent
-  }
-}
+// a field, one gets it. What this module adds is the half the receipt did not cover: a TOTAL
+// admission that judges the whole on-disk population against the receipt in one decision, rather
+// than at six call sites that each chose what to check -- including the recomputation of the bundle
+// digest over the actual bytes, so that a doctored plan body and a doctored hex file are two
+// different, separately named refusals instead of one covering for the other.
 
 // THE ON-DISK POPULATION APPLY READS, AS ONE VALUE.
 //
@@ -179,29 +169,46 @@ fn payload_generation_admits(
               on_disk_value: to_string(planned),
             }
           } else {
-            payload_digest_admits(payload: payload, routed: routed)
+            payload_digest_admits(receipt: receipt, payload: payload, routed: routed)
           }
       }
   }
 }
 
+// THE DIGEST STEP RECOMPUTES FROM THE BYTES, WHICH IS THE ONLY VERSION OF IT WORTH HAVING.
+//
+// An earlier cut of this function computed a path-tagged digest over each payload member and then
+// DISCARDED every value, matching only on whether the hash succeeded. That is specification without
+// execution inside the admission itself: the step looked load-bearing and its result went nowhere,
+// so the annotation beside it claimed a binding the code did not enforce (review 57966, and the
+// finding is correct). It also minted a SECOND digest scheme beside the bundle digest this
+// repository already owns -- two answers to "are these the planned bytes", which is the fork §3
+// forbids and which would drift the moment either side gained a member.
+//
+// So the tagged digest is gone and the real question is asked instead: recompute the canonical
+// bundle digest OVER THE ACTUAL BYTES and compare it to the hash the run-bound receipt minted. The
+// sidecar check above compares the on-disk plan_content.hex CLAIM to the receipt; this compares the
+// BYTES to the receipt. They are different failures -- a doctored hex file versus doctored plan or
+// apply bytes -- and collapsing them would let one cover for the other.
 fn payload_digest_admits(
+  receipt: FleetConvergePlanReceipt,
   payload: FleetConvergeApplyPayload,
   routed: FleetConvergeScope,
 ) -> FleetConvergeApplyPayloadAdmission {
-  match path_tagged_digest(path: fleet_converge_plan_body_path, content: payload.plan_body) {
+  match fleet_converge_plan_bundle_digest_hex(
+    plan_body: payload.plan_body,
+    apply_shell: payload.apply_shell,
+    spark_typed_actions_wire: payload.spark_typed_actions_wire,
+  ) {
     Absent => PayloadDigestUncomputable { path: fleet_converge_plan_body_path }
-    Present { value: _ } =>
-      match path_tagged_digest(path: fleet_converge_plan_apply_shell_path, content: payload.apply_shell) {
-        Absent => PayloadDigestUncomputable { path: fleet_converge_plan_apply_shell_path }
-        Present { value: _ } =>
-          match path_tagged_digest(
-            path: fleet_converge_plan_spark_typed_actions_wire_path,
-            content: payload.spark_typed_actions_wire,
-          ) {
-            Absent => PayloadDigestUncomputable { path: fleet_converge_plan_spark_typed_actions_wire_path }
-            Present { value: _ } => PayloadAdmitted { routed_scope: routed }
-          }
+    Present { value: computed } =>
+      if (computed as String) != receipt.plan_artifact_hash {
+        PayloadBundleDigestMismatch {
+          receipt_value: receipt.plan_artifact_hash,
+          on_disk_value: computed as String,
+        }
+      } else {
+        PayloadAdmitted { routed_scope: routed }
       }
   }
 }

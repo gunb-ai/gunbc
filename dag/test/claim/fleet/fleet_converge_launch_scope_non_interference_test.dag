@@ -23,6 +23,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_wire,
   fleet_converge_desired_caps,
 }
+import gunbc.spark.serving_execution_schedule { scheduled_rows_empty }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -99,22 +100,26 @@ fn artifact_signature(a: FleetConvergePlanArtifact) -> String {
 }
 
 fn signature_of(request: FleetConvergeRequest) -> String {
-  match fleet_converge_plan_artifact_of_request(request: request, prior_generation: 0) {
-    Present { value: a } => artifact_signature(a: a)
-    Absent => "ARTIFACT-ABSENT"
-  }
+  artifact_signature(
+    a: fleet_converge_plan_artifact_of_request(
+      request: request,
+      prior_generation: 0,
+      spark_rows: scheduled_rows_empty(),
+    ),
+  )
 }
 
-// A signature that failed to build would make every equality below trivially true, so it is
-// rejected explicitly rather than compared.
+// A signature that came back empty would make every equality below trivially true, so the clean
+// side is required to be substantial before any comparison is believed. The artifact fold is total,
+// so there is no absent arm to guard -- only vacuity.
 fn projections_identical(clean: FleetConvergeRequest, smuggled: FleetConvergeRequest) -> Bool {
   let s = signature_of(request: clean)
-  s != "ARTIFACT-ABSENT" && s == signature_of(request: smuggled)
+  string_contains(s: s, pattern: "# apply-terminal:") && s == signature_of(request: smuggled)
 }
 
 fn projections_differ(a: FleetConvergeRequest, b: FleetConvergeRequest) -> Bool {
   let sa = signature_of(request: a)
-  sa != "ARTIFACT-ABSENT" && signature_of(request: b) != "ARTIFACT-ABSENT" && sa != signature_of(request: b)
+  string_contains(s: sa, pattern: "# apply-terminal:") && sa != signature_of(request: b)
 }
 
 // Empty, but not visibly so before it is evaluated: a fold over an empty list is not a literal, so
@@ -231,21 +236,22 @@ test fn a_smuggled_refusing_fabric_observation_changes_nothing_in_the_launch_pro
 }
 
 test fn the_same_fabric_observation_refuses_where_it_is_owned() -> Bool {
-  match fleet_converge_plan_artifact_of_request(
-    request: FullHostConverge {
-      host: operator_host_srv3 as NonEmptyStr,
-      observed_timers: [],
-      observed_caps: [],
-      observed_spark: [],
-      observed_slots: [],
-      observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
-      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-    },
-    prior_generation: 0,
-  ) {
-    Absent => false
-    Present { value: a } => string_contains(s: a.plan_body, pattern: "REFUSED-OBSERVATION fabric-cell")
-  }
+  string_contains(
+    s: fleet_converge_plan_artifact_of_request(
+      request: FullHostConverge {
+        host: operator_host_srv3 as NonEmptyStr,
+        observed_timers: [],
+        observed_caps: [],
+        observed_spark: [],
+        observed_slots: [],
+        observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+      },
+      prior_generation: 0,
+      spark_rows: scheduled_rows_empty(),
+    ).plan_body,
+    pattern: "REFUSED-OBSERVATION fabric-cell",
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -285,11 +291,18 @@ test fn the_launch_terminal_stays_fully_applied_under_the_full_smuggled_populati
   }
 }
 
-// AND NO FOREIGN AXIS NAME APPEARS ANYWHERE IN THE PROJECTION. The equalities above prove the
-// smuggled value did not CHANGE the output; this proves the output never mentions those axes at
-// all, which is the property a reader of plan.txt or apply.sh depends on. It is asserted on the
-// SMUGGLED request, so it is not merely restating the clean fold.
-test fn the_smuggled_launch_projection_names_no_foreign_axis() -> Bool {
+// AND NO FOREIGN AXIS SECTION, COUNTER OR MEMBER IS EMITTED ANYWHERE IN THE PROJECTION. The
+// equalities above prove the smuggled value did not CHANGE the output; this proves the output never
+// carries those axes at all, which is the property a reader of plan.txt or apply.sh depends on. It
+// is asserted on the SMUGGLED request, so it is not merely restating the clean fold.
+//
+// THE PATTERNS ARE EMITTED SECTION MARKERS AND A SLOT MEMBER NAME, NOT BARE AXIS WORDS, and that is
+// a correction rather than a style choice. An earlier cut excluded the bare string "runner-slot" and
+// went red against this repository's OWN ANNOTATION: the launch apply script carries a preamble note
+// explaining which axes it deliberately does not act on, so the word appears in prose that is the
+// evidence of the exclusion rather than a violation of it. A witness that cannot tell an emitted
+// section from a sentence about one is measuring the wrong thing in both directions.
+test fn the_smuggled_launch_projection_emits_no_foreign_axis_section_or_counter() -> Bool {
   let s = signature_of(
     request: LaunchEnvironmentConverge {
       host: host_srv1,
@@ -300,11 +313,17 @@ test fn the_smuggled_launch_projection_names_no_foreign_axis() -> Bool {
       observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     },
   )
-  s != "ARTIFACT-ABSENT"
-    && !string_contains(s: s, pattern: "runner-slot")
-    && !string_contains(s: s, pattern: "cap-axis")
-    && !string_contains(s: s, pattern: "fabric-cell")
-    && !string_contains(s: s, pattern: "activation")
+  string_contains(s: s, pattern: "# apply-terminal:")
+    && !string_contains(s: s, pattern: "# runner-slot")
+    && !string_contains(s: s, pattern: "# runner-service-activation")
+    && !string_contains(s: s, pattern: "# cap-axis")
+    && !string_contains(s: s, pattern: "# fabric-cell")
+    && !string_contains(s: s, pattern: "# spark-serving-typed-actions:")
+    && !string_contains(s: s, pattern: "# slot-refusals=")
+    && !string_contains(s: s, pattern: "# activation-refusals=")
+    && !string_contains(s: s, pattern: "# cap-refusals=")
+    && !string_contains(s: s, pattern: "# fabric-cell-refusals=")
+    && !string_contains(s: s, pattern: "REFUSED-REMOVAL runner-slot")
     && !string_contains(s: s, pattern: "srv1-50")
 }
 
@@ -332,6 +351,14 @@ test fn the_smuggled_launch_projection_names_no_foreign_axis() -> Bool {
 // THE STATIC HALF lives in the compile-control matrix, where an excess initializer calling a
 // nowhere-declared function adds a blocking diagnostic naming that function while the field itself
 // draws none -- so the initializer is demonstrably ANALYSED and only the FIELD is discarded.
+//
+// THE MEASURED ANSWER, so that nobody has to re-derive it from a green: this row PASSES, and the
+// must-refuse cast therefore did not refuse. Excess-field initializers are semantically analysed --
+// name-resolved, typechecked, and refinement-checked on literals -- but are NOT runtime-evaluated,
+// and the resulting field values are absent from every launch-environment projection measured here.
+// That is the strongest of the two honest wordings, and it is the one the PR uses. It is NOT
+// inferred from unchanged plan bytes, which would be equally consistent with evaluate-then-discard;
+// it is this cast staying silent when evaluation would have made it shout.
 // ---------------------------------------------------------------------------
 test fn an_arbitrary_sentinel_excess_field_changes_nothing_in_the_launch_projection() -> Bool {
   projections_identical(

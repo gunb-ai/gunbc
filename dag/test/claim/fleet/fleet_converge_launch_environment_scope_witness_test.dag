@@ -38,9 +38,13 @@ import gunbc.fleet_converge_plan {
   fleet_converge_plan_subject,
   fleet_converge_launch_environment_plan_artifact,
   fleet_converge_plan_artifact,
+  FleetConvergePlanArtifactOutcome,
+  FleetConvergePlanArtifactReady,
+  FleetConvergePlanArtifactRefused,
   fleet_converge_desired_caps,
   timer_retirement_observed_legacy_srv1,
 }
+import gunbc.spark.serving_execution_schedule { scheduled_rows_empty, SparkServingAxisNotApplicable }
 import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
@@ -160,24 +164,21 @@ test fn the_launch_environment_scope_carries_a_real_timer_obligation() -> Bool {
     request: req,
     terminal: fleet_converge_apply_terminal(request: req),
   )
-  match fleet_converge_launch_environment_plan_artifact(
+  let artifact = fleet_converge_launch_environment_plan_artifact(
     host: witness_host_srv1,
     prior_generation: 0,
     observed_timers: timer_retirement_observed_legacy_srv1(),
-  ) {
-    Absent => false
-    Present { value: artifact } =>
-      string_contains(s: baseline, pattern: "timer:")
-        && string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
-        && string_contains(s: artifact.plan_body, pattern: "REMOVE timer-unit ")
-        && string_contains(s: shell, pattern: "systemctl")
-        && (serialize_content_hash(hash: fleet_converge_plan_subject(request: req).member_set_fingerprint) as String)
-             != (serialize_content_hash(
-                  hash: fleet_converge_plan_subject(
-                    request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },
-                  ).member_set_fingerprint,
-                ) as String)
-  }
+  )
+    string_contains(s: baseline, pattern: "timer:")
+      && string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
+      && string_contains(s: artifact.plan_body, pattern: "REMOVE timer-unit ")
+      && string_contains(s: shell, pattern: "systemctl")
+      && (serialize_content_hash(hash: fleet_converge_plan_subject(request: req).member_set_fingerprint) as String)
+           != (serialize_content_hash(
+                hash: fleet_converge_plan_subject(
+                  request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },
+                ).member_set_fingerprint,
+              ) as String)
 }
 
 // THE EXECUTED SCRIPT CARRIES NO FOREIGN AXIS. A terminal that omitted the axes while the script
@@ -207,23 +208,20 @@ test fn the_launch_environment_apply_script_emits_no_foreign_axis_work() -> Bool
 // as "nothing was refused on this axis", a claim about the host, where the truth is that the axis
 // was never this scope's obligation.
 test fn the_launch_environment_plan_body_carries_only_its_own_axis_counter() -> Bool {
-  match fleet_converge_launch_environment_plan_artifact(
+  let artifact = fleet_converge_launch_environment_plan_artifact(
     host: witness_unmodeled_host,
     prior_generation: 0,
     observed_timers: [],
-  ) {
-    Absent => false
-    Present { value: artifact } =>
-      string_contains(s: artifact.plan_body, pattern: "# scope=scope:launch-environment")
-        && string_contains(s: artifact.plan_body, pattern: "# timer-refusals=")
-        && !string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
-        && !string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
-        && !string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
-        && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
-        && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
-        && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
-        && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: FullyApplied")
-  }
+  )
+    string_contains(s: artifact.plan_body, pattern: "# scope=scope:launch-environment")
+      && string_contains(s: artifact.plan_body, pattern: "# timer-refusals=")
+      && !string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
+      && !string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
+      && !string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
+      && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
+      && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
+      && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
+      && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: FullyApplied")
 }
 
 // THE CONTROL THAT SEPARATES "the launch scope omits these axes" FROM "these axes were deleted".
@@ -233,13 +231,13 @@ test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters()
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    observed_spark: [],
+    spark_axis: SparkServingAxisNotApplicable { host: witness_unmodeled_host as HostIdentity },
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
-    Absent => false
-    Present { value: artifact } =>
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
+    FleetConvergePlanArtifactReady { artifact: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "# scope=scope:full-host")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
@@ -270,7 +268,7 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [drifted_cap()],
-    observed_spark: [],
+    spark_axis: SparkServingAxisNotApplicable { host: witness_host_srv1 as HostIdentity },
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
@@ -281,17 +279,15 @@ test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() 
     observed_timers: [],
   )
   match full_with_drift {
-    Absent => false
-    Present { value: fh } =>
-      match launch {
-        Absent => false
-        Present { value: le } =>
-          string_contains(s: fh.plan_body, pattern: "# cap-axis")
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
+    FleetConvergePlanArtifactReady { artifact: fh } => {
+      let le = launch
+      string_contains(s: fh.plan_body, pattern: "# cap-axis")
             && string_contains(s: fh.plan_body, pattern: gunbc_runner_per_slot_dropin_path)
             && !string_contains(s: le.plan_body, pattern: gunbc_runner_per_slot_dropin_path)
             && !string_contains(s: le.plan_body, pattern: "# cap-axis")
             && !string_contains(s: le.apply_shell, pattern: gunbc_runner_per_slot_dropin_path)
-      }
+    }
   }
 }
 
@@ -312,7 +308,7 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    observed_spark: [],
+    spark_axis: SparkServingAxisNotApplicable { host: operator_host_srv3 },
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
@@ -323,17 +319,15 @@ test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() 
     observed_timers: [],
   )
   match fh {
-    Absent => false
-    Present { value: f } =>
-      match le {
-        Absent => false
-        Present { value: l } =>
-          string_contains(s: f.plan_body, pattern: "REFUSED-OBSERVATION fabric-cell")
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
+    FleetConvergePlanArtifactReady { artifact: f } => {
+      let l = le
+      string_contains(s: f.plan_body, pattern: "REFUSED-OBSERVATION fabric-cell")
             && !string_contains(s: l.plan_body, pattern: "fabric-cell")
             && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
                  request: LaunchEnvironmentConverge { host: operator_host_srv3 as NonEmptyStr, observed_timers: [] },
                ))
-      }
+    }
   }
 }
 
@@ -534,13 +528,13 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
     prior_generation: 0,
     observed_timers: [],
     observed_caps: fleet_converge_desired_caps(),
-    observed_spark: [],
+    spark_axis: SparkServingAxisNotApplicable { host: witness_host_srv1 as HostIdentity },
     observed_slots: srv1_production_shaped_slots(),
     observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
     observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
-    Absent => false
-    Present { value: artifact } =>
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
+    FleetConvergePlanArtifactReady { artifact: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "REFUSED-REMOVAL runner-slot")
         && string_contains(s: artifact.plan_body, pattern: "OwnershipUnknown")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=31")

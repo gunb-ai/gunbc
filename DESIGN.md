@@ -33,6 +33,8 @@ Redundancy is removed along two directions — one move seen two ways:
 - **Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use. At the right layer there is nothing fundamentally different between scales, so the same concept spans nanosecond memoization and broad infra deployment. *e.g.* `dag/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows — one axis, not 10 types.
 - **Deep — every concept decomposed to grounded atoms.** Nothing is opaque that is not *genuinely* atomic. The move is `decompress → map → reduce`: reveal the structure the source names, map each part onto the concept that already exists (DFS the concept DAG first), reduce duplicates. A `String` leaf hiding named parts is anemic modeling. *e.g.* `"LGA4926"` → `CpuSocket { package: LandGridArray, contact_count: 4926 }`, where the number is a grounded `Int` rather than a fresh enum.
 
+**Minimize the demand graph before materializing its answers.** A repeated computation is first evidence about why the same semantic fact is demanded again, not yet a cache obligation. When several demands have a shared-state least common ancestor, the repetition is authored duplication: carry, rewire, or share the first value — caching a later request only makes redundant work cheap and suppresses the signal that would make it rank for deletion. One undeclared pure demand may recompute; isolated consumers, declared replay, or unbounded future siblings instead create one reuse obligation at their least common visible ancestor. One computation identity must join those demands to a provider whose scope reaches that ancestor, whose coverage includes the identity, whose key represents every declared input the result depends on, and whose retention spans the obligated lifetime; otherwise refuse with a typed cause. Demand minimization decides whether another production may exist, and cache purity decides whether a materialized value denotes the same fact. Only after both hold does §6 choose the economically optimal realization: unavoidable recurrence may explicitly recompute below the cost floor, and a provider is an optimization only when measured total serving cost is below recomputation. The structural authority is `std.materialization_ladder`; a cache may discharge unavoidable recurrence, and may never excuse authored duplication.
+
 The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is a failed decomposition.
 
 ## 3. Single authority (what keeps §2 from being undone)
@@ -200,6 +202,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `remediation_mutated_view`
 - `diagnostic_name_mechanism_silent`
 - `identity_absent_graph_traversal`
+- `resolved_reference_outside_execution_closure`
 - `surface_shorthand_preempts_resolved_identity`
 - `meaning_fork`
 - `externalized_degradation`

@@ -7,6 +7,7 @@ import std.dissolution { DissolutionCondition, dissolution_description, unbound_
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.content_hash {
+  content_hash_atom,
   content_hash_of_value,
   serialize_content_hash,
   Fnv1a64StructuralDigestHex,
@@ -122,7 +123,17 @@ import gunbc.fleet_posix_accounts {
   fleet_posix_ci_runner_principal, grounded_posix_principal_name,
   ci_runner_sudo_binary_path, SudoInstall, SudoSystemctl,
 }
-import gunbc.spark.serving_execution_schedule { ScheduledRows, scheduled_rows_empty, scheduled_rows_list }
+import gunbc.spark.serving_execution_schedule {
+  ScheduledRows,
+  scheduled_rows_empty,
+  scheduled_rows_list,
+  SparkServingAxisDisposition,
+  SparkServingAxisNotApplicable,
+  SparkServingAxisUnobserved,
+  SparkServingAxisRefused,
+  SparkServingAxisPlanned,
+}
+
 import gunbc.fleet_converge_timer {
   fleet_converge_service_unit_name,
   fleet_converge_timer_unit_name,
@@ -162,7 +173,7 @@ import extdeps.github.actions_runner {
   actions_runner_binary_artifact_for_arch,
 }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
-import product.placement_supply { HostIdentity }
+import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.runner_host_deploy {
   RunnerHostDeployFound,
   RunnerHostDeployUnmodeled,
@@ -2561,73 +2572,197 @@ fn fabric_cell_apply_executable_lines(
   }
 }
 
-// ONE ARTIFACT FOLD OVER THE REQUEST, AND THE SCOPED ENTRY POINTS ARE CONSTRUCTORS INTO IT. A
-// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody
-// adds a body row, one fold gets it -- and it would put a second answer beside the subject, the
-// lease and the bundle digest, which are the three things apply admits against.
-fn fleet_converge_plan_artifact_of_request(
-  request: FleetConvergeRequest,
-  prior_generation: Int,
-) -> FleetConvergePlanArtifact? {
-  let subject = fleet_converge_plan_subject(request: request)
-  let baseline = observed_baseline_text(request: request)
-  let planned_generation = prior_generation + 1
-  let body = join(
-    concat(
-      [
-        "# fleet-converge plan",
-        concat("subject_host:", subject.host as String),
-        concat(
-          "subject_member_set:",
-          serialize_content_hash(hash: subject.member_set_fingerprint) as String,
-        ),
-        concat("plan_generation:", to_string(planned_generation)),
-        concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
-        "observed_baseline:",
-        baseline,
-      ],
-      fleet_converge_plan_axis_lines(request: request),
-      fleet_converge_plan_refusal_counter_lines(request: request),
-      [fleet_converge_apply_terminal_line(terminal: fleet_converge_apply_terminal(request: request))],
-    ),
-    "\n",
-  )
-  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
-  let lease = fleet_converge_plan_held_lease(
-    subject: subject,
-    prior_generation: prior_generation,
-    owner_fingerprint: owner_fp,
-  )
-  let planned_terminal = fleet_converge_apply_terminal(request: request)
-  let apply_shell = fleet_converge_apply_shell(request: request, terminal: planned_terminal)
-  match content_hash_of_value(value: baseline as NonEmptyStr) {
-    Fnv1a64(structural) =>
-      Present {
-        value: FleetConvergePlanArtifact {
-          subject: subject,
-          prior_generation: prior_generation,
-          plan_lease: lease,
-          apply_terminal: planned_terminal,
-          observed_baseline_hex: structural.digest,
-          plan_body: body,
-          apply_shell: apply_shell,
-          spark_serving_typed_actions: scheduled_rows_empty(),
-        },
-      }
-    _ => Absent
+// THE ARTIFACT'S OPTIONAL CARRIED A FACT THAT CANNOT HAPPEN, so it is dissolved rather than reused.
+//
+// It answered `Absent` when `content_hash_of_value` did not return the Fnv1a64 arm -- an absorbing
+// arm in the narrowing direction, since a hash the match did not recognize became "there is no plan
+// artifact", which every caller reads as nothing to converge rather than as could-not-classify. The
+// Spark plan builder repaired exactly this in its own copy and this one was left behind.
+// `content_hash_atom` returns Fnv1a64Structural directly -- the same digest, since
+// `content_hash_of_value` is that function wrapped in the union -- so there is no union to match and
+// no arm to get wrong.
+//
+// The outcome stays a sum because assembling a plan IS refusable, and the Refused arm now has a real
+// producer: a SparkServingAxisRefused disposition propagates here instead of being laundered into an
+// empty schedule. An earlier revision made the artifact total and left this arm with nothing
+// constructing it -- a permanently-green arm carrying no information, which DESIGN §4b calls worse
+// than absent because it gets cited as coverage.
+type FleetConvergePlanArtifactOutcome
+  = FleetConvergePlanArtifactReady { artifact: FleetConvergePlanArtifact }
+  | FleetConvergePlanArtifactRefused { refusal: FleetConvergePlanArtifactRefusal }
+
+// THE REFUSAL IS A COPRODUCT BECAUSE A DOWNSTREAM CONSUMER CANNOT ASK PROSE WHICH THING WENT WRONG.
+//
+// Rendering all four non-success situations into one `cause: String` repeated the C2
+// producer-versus-renderer mistake one layer later: "the axis does not apply", "the axis applies but
+// nobody observed it", "planning ran and refused", and "this axis belongs to another host" are four
+// different facts with four different operator responses, and a string is a second, lossy naming
+// scheme for a distinction the disposition already carries. The CLI renders this to prose at its
+// receipt boundary, which is where rendering belongs.
+type FleetConvergePlanArtifactRefusal
+  = SparkAxisSubjectHostMismatch { axis_host: HostIdentity, subject_host: HostIdentity }
+  | SparkAxisUnobservedRefusal { host: HostIdentity }
+  | SparkAxisPlanningRefused { host: HostIdentity, cause: String }
+
+fn fleet_converge_plan_artifact_refusal_text(r: FleetConvergePlanArtifactRefusal) -> String {
+  match r {
+    SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: sh } =>
+      join([
+        "SparkAxisSubjectHostMismatch — the spark axis is tagged for host ",
+        ah as String,
+        " but the plan subject is ",
+        sh as String,
+        "; the plan would carry one host's serving rows under another host's baseline and lease",
+      ], "")
+    SparkAxisUnobservedRefusal { host: h } =>
+      join([
+        "SparkAxisUnobserved — ",
+        h as String,
+        " is an enrolled Spark and its serving axis was never observed, so a plan built here would",
+        " claim a completeness that was never measured",
+      ], "")
+    SparkAxisPlanningRefused { host: h, cause: why } =>
+      join(["SparkAxisPlanningRefused — on host ", h as String, ": ", why], "")
   }
 }
 
+// P0-C3: THE SPARK AXIS ARRIVES AS ONE ALREADY-PLANNED PRODUCT.
+//
+// THE MEMBERS AND THE ROWS ARE ONE PARAMETER BECAUSE THEY ARE ONE FACT. A first cut took
+// `observed_spark` and the schedule separately, so a caller could hand members from one observation
+// and rows planned from another. `observed_spark` feeds the observed BASELINE, and the baseline is
+// what apply re-checks to decide the plan still applies -- so that disagreement would have been
+// invisible at exactly the moment it mattered. SparkServingAxisProduct is sole_constructor and only
+// the row producer mints it, so the members that fingerprinted the baseline are the members the
+// schedule was planned from.
+//
+// `spark_serving_typed_actions: scheduled_rows_empty()` stood here unconditionally, so the
+// production full-host plan could not emit a Spark row even when handed a real observation. That is
+// one of two independent breaks that made P0-WET unreachable -- the other being that the CLI passed
+// `observed_spark: []` -- which is why repairing either alone changed nothing.
+//
+// THE ROWS ARE A PARAMETER AND NOT SOMETHING THIS FUNCTION PLANS. A first attempt had the artifact
+// call the Spark row producer directly, and the substrate refused it with a circular dependency:
+// gunbc.fleet_converge_plan -> gunbc.spark.serving_converge_apply -> gunbc.spark.serving_converge_plan
+// already runs the other way. That refusal was correct and load-bearing. Artifact assembly consumes
+// already-planned axis products -- timer plan, cap plan, slot plan, fabric plan, activation plan --
+// and the Spark schedule is one more of them, not an exception this module reaches down to compute.
+// THE AXIS CARRIES A HOST AND SO DOES THIS ARTIFACT, AND NOTHING JOINED THEM.
+//
+// Putting the host inside the disposition stopped it disagreeing with the OBSERVATION that produced
+// it. It did not stop it disagreeing with the SUBJECT being planned: an axis tagged srv6 could be
+// handed to an artifact whose subject is srv5, and the resulting plan would carry srv6's retirement
+// rows under srv5's baseline and lease. Third instance of the class #9754 opened -- a host carried
+// twice, joined by convention -- and this function refuses on the disagreement rather than making it
+// unrepresentable, because the two hosts are genuinely two facts until the comparison is made.
+// ONE EXHAUSTIVE MATCH ON THE AXIS, NOT THREE PROJECTIONS THAT AGREE BY CALLER ARRANGEMENT.
+//
+// The first cut asked the disposition three separate questions -- members, rows, refusal -- and was
+// safe only because the caller happened to consult the refusal before using the other two. Both
+// Unobserved and Refused projected to an empty member list and an empty schedule, so a caller that
+// forgot the third question would assemble a perfectly well-formed plan that actuates nothing on a
+// host nobody looked at. A refusal has no rows projection now: the arms that cannot be planned are
+// eliminated here and never reach the assembler, which takes members and rows as ordinary values.
+//
+// The subject-host join is part of the same match rather than a guard beside it: each arm binds the
+// host the axis is tagged for, so there is no second reading of it to disagree with.
 fn fleet_converge_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
   observed_caps: List<CapMember>,
-  observed_spark: List<SparkServingMember>,
+  spark_axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
   observed_slots: List<RunnerSlotMember>,
   observed_fabric_cells: FabricCellObservationDecision,
   observed_activation_readiness: RunnerActivationReadiness,
-) -> FleetConvergePlanArtifact? {
+) -> FleetConvergePlanArtifactOutcome {
+  match spark_axis {
+    SparkServingAxisUnobserved { host: ah } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactRefused { refusal: SparkAxisUnobservedRefusal { host: ah } }
+      }
+    SparkServingAxisRefused { host: ah, cause: why } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactRefused { refusal: SparkAxisPlanningRefused { host: ah, cause: why } }
+      }
+    SparkServingAxisNotApplicable { host: ah } =>
+      if !host_identity_eq(a: ah, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch { axis_host: ah, subject_host: host as HostIdentity },
+        }
+      } else {
+        FleetConvergePlanArtifactReady {
+          artifact: fleet_converge_plan_artifact_assembled(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: [],
+          spark_rows: scheduled_rows_empty(),
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+          observed_activation_readiness: observed_activation_readiness,
+          ),
+        }
+      }
+    SparkServingAxisPlanned { plan: bound } =>
+      if !host_identity_eq(a: bound.host, b: host as HostIdentity) {
+        FleetConvergePlanArtifactRefused {
+          refusal: SparkAxisSubjectHostMismatch {
+            axis_host: bound.host,
+            subject_host: host as HostIdentity,
+          },
+        }
+      } else {
+        FleetConvergePlanArtifactReady {
+          artifact: fleet_converge_plan_artifact_assembled(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          observed_spark: bound.observed_members,
+          spark_rows: bound.rows,
+          observed_slots: observed_slots,
+          observed_fabric_cells: observed_fabric_cells,
+          observed_activation_readiness: observed_activation_readiness,
+          ),
+        }
+      }
+  }
+}
+// THE ASSEMBLER IS NOW A CONSTRUCTOR INTO THE REQUEST FOLD, NOT A SECOND FOLD BESIDE IT.
+//
+// It used to build the plan body itself -- header, then one hardcoded section per axis, then the
+// counters, then the terminal -- with the FULL-HOST axis set written into its own concat. That was
+// the only shape available while the terminal took seven loose axis parameters, and it is what made
+// a narrower scope impossible to express: there was nowhere to say "this transaction has no
+// runner-slot position" except by passing an empty list, which is a claim that the host HAS no
+// slots rather than that they are not this transaction's business.
+//
+// So the body fold moved onto the REQUEST, whose arms carry exactly the axes their scope owns, and
+// this function became what it always was semantically: the full-host constructor. Everything added
+// around it on main -- the Spark axis eliminator, the refusal coproduct, the dissolved Optional --
+// is preserved above and unchanged; only the assembly step is now shared with every other scope
+// instead of duplicated once per entry point.
+fn fleet_converge_plan_artifact_assembled(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_timers: List<TimerRetirementMember>,
+  observed_caps: List<CapMember>,
+  observed_spark: List<SparkServingMember>,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+  observed_slots: List<RunnerSlotMember>,
+  observed_fabric_cells: FabricCellObservationDecision,
+  observed_activation_readiness: RunnerActivationReadiness,
+) -> FleetConvergePlanArtifact {
   fleet_converge_plan_artifact_of_request(
     request: FullHostConverge {
       host: host,
@@ -2639,8 +2774,154 @@ fn fleet_converge_plan_artifact(
       observed_activation_readiness: observed_activation_readiness,
     },
     prior_generation: prior_generation,
+    spark_rows: spark_rows,
   )
 }
+
+// THE SPARK AXIS IS ELIMINATED WHERE IT IS OWNED, WHICH IS THE FULL-HOST ARM AND NOWHERE ELSE.
+//
+// The Spark axis can refuse -- unobserved, planning-refused, or tagged for another host -- and those
+// refusals are real and must reach the operator. But they are refusals of an axis the narrower
+// scopes never took on: a launch-environment transaction has no Spark position, so routing its plan
+// through the Spark eliminator would let a Spark observation failure refuse a plan that does not
+// depend on it. That is precisely the coupling this PR exists to remove, one axis over. So the
+// eliminator runs on the full-host arm, and the other arms are Ready by construction.
+fn fleet_converge_plan_outcome_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifactOutcome {
+  match request {
+    FullHostConverge {
+      host: h,
+      observed_timers: t,
+      observed_caps: c,
+      observed_spark: _,
+      observed_slots: sl,
+      observed_fabric_cells: fc,
+      observed_activation_readiness: ar,
+    } =>
+      fleet_converge_plan_artifact(
+        host: h,
+        prior_generation: prior_generation,
+        observed_timers: t,
+        observed_caps: c,
+        spark_axis: spark_axis,
+        observed_slots: sl,
+        observed_fabric_cells: fc,
+        observed_activation_readiness: ar,
+      )
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
+      FleetConvergePlanArtifactReady {
+        artifact: fleet_converge_plan_artifact_of_request(
+          request: request,
+          prior_generation: prior_generation,
+          spark_rows: scheduled_rows_empty(),
+        ),
+      }
+  }
+}
+
+// THE SPARK WIRE IS AN AXIS ROW LIKE ANY OTHER, so it is emitted by the arm that owns the axis. It
+// rode the body unconditionally while the body was full-host-only; leaving it there would have put
+// an empty "# spark-serving-typed-actions:" line into a launch-environment plan, which reads as an
+// observed-and-empty Spark axis rather than as a scope that never took one on -- the same
+// empty-observation confusion the whole scope narrowing exists to remove.
+fn fleet_converge_plan_spark_wire_lines(
+  request: FleetConvergeRequest,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> List<String> {
+  match request {
+    FullHostConverge {
+      host: _, observed_timers: _, observed_caps: _, observed_spark: _,
+      observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _,
+    } => [
+      concat(
+        "# spark-serving-typed-actions:",
+        fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows)),
+      ),
+    ]
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => []
+    FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => []
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
+  }
+}
+
+// ONE ARTIFACT FOLD OVER THE REQUEST, AND EVERY SCOPED ENTRY POINT IS A CONSTRUCTOR INTO IT. A
+// second fold shaped like this one is how the two would drift on the ordinary axis -- somebody adds
+// a body row, one fold gets it -- and it would put a second answer beside the subject, the lease and
+// the bundle digest, which are the three things apply admits against.
+//
+// TOTAL, NOT OPTIONAL, and that is main's dissolution preserved rather than re-litigated: the Absent
+// arm answered "there is no plan artifact" when a hash did not match an expected union arm, which
+// every caller reads as nothing to converge rather than as could-not-classify. content_hash_atom
+// returns the structural digest directly, so there is no union to match and no arm to get wrong.
+fn fleet_converge_plan_artifact_of_request(
+  request: FleetConvergeRequest,
+  prior_generation: Int,
+  spark_rows: ScheduledRows<FleetConvergeSparkServingTypedAction>,
+) -> FleetConvergePlanArtifact {
+  let subject = fleet_converge_plan_subject(request: request)
+  let baseline = observed_baseline_text(request: request)
+  let planned_generation = prior_generation + 1
+  let planned_terminal = fleet_converge_apply_terminal(request: request)
+  let body = join(
+    concat(
+      concat(
+        [
+          "# fleet-converge plan",
+          concat("subject_host:", subject.host as String),
+          concat(
+            "subject_member_set:",
+            serialize_content_hash(hash: subject.member_set_fingerprint) as String,
+          ),
+          concat("plan_generation:", to_string(planned_generation)),
+          concat("lease_key:", fleet_converge_plan_lease_key(host: subject.host) as String),
+          "observed_baseline:",
+          baseline,
+        ],
+        fleet_converge_plan_axis_lines(request: request),
+        fleet_converge_plan_spark_wire_lines(request: request, spark_rows: spark_rows),
+      ),
+      fleet_converge_plan_refusal_counter_lines(request: request),
+      [fleet_converge_apply_terminal_line(terminal: planned_terminal)],
+    ),
+    "\n",
+  )
+  let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+  let lease = fleet_converge_plan_held_lease(
+    subject: subject,
+    prior_generation: prior_generation,
+    owner_fingerprint: owner_fp,
+  )
+  FleetConvergePlanArtifact {
+    subject: subject,
+    prior_generation: prior_generation,
+    plan_lease: lease,
+    apply_terminal: planned_terminal,
+    observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
+    plan_body: body,
+    apply_shell: fleet_converge_apply_shell(request: request, terminal: planned_terminal),
+    spark_serving_typed_actions: spark_rows,
+  }
+}
+
 
 // THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
 // to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
@@ -2653,10 +2934,11 @@ fn fleet_converge_launch_environment_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
-) -> FleetConvergePlanArtifact? {
+) -> FleetConvergePlanArtifact {
   fleet_converge_plan_artifact_of_request(
     request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
     prior_generation: prior_generation,
+    spark_rows: scheduled_rows_empty(),
   )
 }
 

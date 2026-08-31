@@ -127,13 +127,16 @@ fn canonical_identity_set(identities: List<String>) -> List<String> {
   deduplicate_identities(identities: identities) |> sort_by(identity => identity)
 }
 
-// Duplicate handling is a POPULATION fact, and the two populations answer it at different sites.
-// raw_identities is set-deduplicated by the live producer before the fold, and on the persisted
-// path a repeat makes the deduplicated total disagree with the raw count, which receipt coherence
-// refuses. parse_refused_files had neither wall: a path rustfmt refused twice would be counted
-// twice in the Parse row and kept twice in the digest, so the digest would answer about a multiset
-// while its name claims a set. Refusing is the right arm rather than deduplicating here, because
-// collapsing the repeat would hide the producer defect behind a well-formed-looking census.
+// A census population carries no repeats, and this predicate is where that is decided. Refusal is
+// the arm rather than collapsing the repeat: deduplicating here would make a duplicated population
+// indistinguishable from a clean one, hiding a producer defect behind a census that still looked
+// well-formed -- widening instead of refusing.
+//
+// It answers for BOTH populations reaching receipt coherence, and the refused-file population is
+// the reason it exists: a path refused twice would be counted twice in the Parse row and kept twice
+// in the digest, so the digest would answer about a multiset while its name claims a set.
+// The falsifier is enrolled: deleting either call in receipt_population_coherent must turn
+// a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence red.
 fn census_population_is_duplicate_free(identities: List<String>) -> Bool {
   count(deduplicate_identities(identities: identities)) == count(identities)
 }
@@ -178,20 +181,19 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
 // refuses a receipt whose census is in fact identical. The two populations stay separate segments:
 // canonicalizing them jointly would let a refused path and an identity trade places.
 //
-// EmissionOrderedV1 is retired and NO PRODUCER CONSTRUCTS IT. Its justification is NOT that it
-// labels a live value -- it does not. docs/design-ledgers.md published an emission-order digest
-// until this change, and regenerating that projection replaces it, so after this commit no
-// artifact in the tree carries one and the retired value survives only in git history.
+// EmissionOrderedV1 is retired and no producer constructs it. It is kept because an algorithm
+// identity with exactly ONE inhabitant distinguishes nothing: the field exists so two incompatible
+// digest meanings cannot hide behind one unlabeled hash, and that requires both meanings to be
+// nameable. Keeping the tag while deleting its only contrast is the worse of the two shapes, so the
+// fork is the arm AND the field together, never the arm alone. A second fold is then a row rather
+// than a migration.
 //
-// It is kept because an algorithm identity with exactly ONE inhabitant distinguishes nothing. The
-// field exists to stop two incompatible digest meanings hiding behind a single unlabeled hash, and
-// that requires both meanings to be nameable. So the honest fork is not "drop the arm" but "drop
-// the arm AND the field": a one-inhabitant tag is decoration, and keeping the tag while deleting
-// its only contrast is the worse of the two shapes.
-//
-// It is read by production -- census_identity_domain_separator matches it exhaustively -- and by a
-// witness asserting the two separators differ, so it is not an inert carrier under
-// v2.lens.inert_carrier, whose scope is carriers read by no production code.
+// The evidence that the arm is not decorative is the witness:
+// the_census_digest_carries_the_algorithm_that_produced_it asserts the two separators differ, so
+// unifying them goes red. Supporting that, census_identity_domain_separator must handle the arm in
+// an exhaustive match -- a compile-time read, not a runtime one, since nothing constructs the arm.
+// That forces an edit on deletion but does not by itself distinguish a live arm from an inert one,
+// which is true of every arm of every coproduct.
 type CensusIdentityAlgorithm
   = EmissionOrderedV1
   | CanonicalIdentitySetV1
@@ -210,6 +212,15 @@ type CensusIdentityDigest {
   digest: Fnv1a64Structural
 }
 
+// NEITHER SORT MAY BE REMOVED ON THE GROUNDS THAT A CALLER ALREADY CANONICALIZES. The PERSISTED
+// path calls this function with receipt.raw_error_diagnostic_identities directly, and that list
+// passes through no caller-side canonicalization at all -- so no property of any caller, present or
+// future, can substitute for these sorts. Delete either one and the live path stays correct while
+// the persisted path silently returns to being order-contaminated, which is the defect this fold
+// exists to close, reintroduced by a plausible cleanup.
+//
+// The falsifier is enrolled rather than described: removing a sort must turn
+// the_census_digest_is_invariant_under_reordering_of_either_population red.
 fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> CensusIdentityDigest {
   CensusIdentityDigest {
     algorithm: CanonicalIdentitySetV1,
@@ -402,6 +413,7 @@ type CompilePhaseFrontierReceipt {
 type NewlyExposedCause
   = ExposedByRemovedMaskingIdentity { removed_identity: String }
   | ExposedByPhaseAdvance { previous_phase: RustcPhase, reached_phase: RustcPhase }
+  | ExposedByNewEmittedModule { module: String }
 
 type NewlyExposedDiagnostic {
   identity: String
@@ -488,6 +500,7 @@ fn newly_exposed_row(row: NewlyExposedDiagnostic) -> String {
         "\tphase-advance\t",
         concat(rustc_phase_name(phase: old), concat("\t", rustc_phase_name(phase: reached)))
       )
+      ExposedByNewEmittedModule { module: file } => concat("\tnew-emitted-module\t", file)
     }
   )
 }
@@ -721,11 +734,14 @@ fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -
     |> filter(identity => !any(board_all_identities(board: previous), prior => prior == identity))
 }
 
+fn diagnostic_identity_file(identity: String) -> String {
+  let location = split(s: split(s: identity, delimiter: "\t")[0], delimiter: ":")
+  location.take(n: count(location) - 2) |> join(separator: ":")
+}
+
 fn diagnostic_semantic_key(identity: String) -> String {
   let fields = split(s: identity, delimiter: "\t")
-  let location = split(s: fields[0], delimiter: ":")
-  let file = location.take(n: count(location) - 2) |> join(separator: ":")
-  join([file, fields[1], fields[2]], "\t")
+  join([diagnostic_identity_file(identity: identity), fields[1], fields[2]], "\t")
 }
 
 fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
@@ -863,6 +879,7 @@ fn apply_regression_transition(
         PhaseRatchetRefused { phase: _, identities: ids, reason: _ } =>
           count(ids) > 0 && all(ids, identity =>
             any(unadmitted, row => row == identity)
+              || any(admitted, row => row == identity)
               || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
           )
       }
@@ -901,6 +918,9 @@ fn newly_exposed_identity_admitted(
       rustc_phase_order(phase: old) == rustc_phase_order(phase: previous.furthest_phase_reached)
         && rustc_phase_order(phase: reached) == rustc_phase_order(phase: current.furthest_phase_reached)
         && rustc_phase_order(phase: reached) > rustc_phase_order(phase: old)
+    ExposedByNewEmittedModule { module: file } =>
+      diagnostic_identity_file(identity: identity) == file
+        && !any(board_all_identities(board: previous), prior => diagnostic_identity_file(identity: prior) == file)
   })
 }
 
@@ -1370,6 +1390,245 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
   )
 }
 
+// Receipt 1 was produced by the same one-entry instrument (tools.emission_entry_instrument
+// measure_entry_emission) in BuildBuddy invocation 44d90e35-ccba-41d1-9a90-928a914b26a2, over the
+// merged main tree at eced9d24c599 -- the first tree carrying the #9828 + #9813 + #9829
+// composition. That composition was never branch-verified: main's own green required run at this
+// revision was its first joint test. THIS receipt is the attribution boundary for the
+// post-kernel-precedence corpus: no error identity absent from this receipt's census may be
+// attributed to any pre-boundary lane, and every later delta is measured against this census, not
+// against the genesis one. The 78-identity net reduction against genesis is credited to the
+// precedence/emission composition as a whole, not to any single successor lane. The four
+// v2_lens_undecidable_verdict_collapse.rs identities are not regressions: that module entered the
+// emitted closure after the genesis tree (it does not exist in tree 1c7c79fbc0), which is exactly
+// what ExposedByNewEmittedModule admits, checked against the predecessor board.
+data receipt_1_eced9d24_parse_observation: RustfmtParseObservation = RustfmtParseObservation {
+  producer: "rustfmt --emit stdout --edition 2021",
+  files_observed: 165,
+  refused_files: []
+}
+
+data receipt_1_eced9d24_raw_error_diagnostic_identities: List<String> = [
+  "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs:206:18	E0308	mismatched types",
+  "src/v2_std_cross_tree_resolution.rs:208:16	E0308	mismatched types",
+  "src/v2_std_text.rs:64:13	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_text.rs:72:22	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_text.rs:90:18	E0599	no method named `chars` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_collection.rs:94:5	E0560	struct `Rc<FinitelySupportedFunction<_, _>>` has no field named `lookup`",
+  "src/v2_std_collection.rs:93:13	E0308	mismatched types",
+  "src/v2_std_compilers_lexing.rs:182:72	E0282	type annotations needed",
+  "src/v2_std_compilers_lexing.rs:182:55	E0308	mismatched types",
+  "src/v2_std_integer.rs:1356:25	E0308	mismatched types",
+  "src/v2_std_integer.rs:1514:23	E0308	mismatched types",
+  "src/v2_compiler_tokenize.rs:700:13	E0308	mismatched types",
+  "/root/workspace/.home/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/im-15.1.0/src/vector/mod.rs:97:13	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:231:196	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:238:68	E0599	no method named `split` found for struct `Rc<im::Vector<i64>>` in the current scope",
+  "src/v2_std_qualified_name.rs:265:72	E0308	mismatched types",
+  "src/v2_std_qualified_name.rs:259:5	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:254:75	E0599	no method named `concat` found for struct `std::string::String` in the current scope",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2011:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2023:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2035:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2047:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2059:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2071:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2083:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2095:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2107:77	E0308	mismatched types",
+  "src/gunbc_v1_interpreter_primitive_surface.rs:2119:77	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:669:13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:736:48	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:2607:15	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:4007:13	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:7225:90	E0308	mismatched types",
+  "src/v2_std_compilers_target_model.rs:7982:13	E0308	mismatched types",
+  "src/v2_compiler_target_carriers.rs:106:90	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1172:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1197:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1199:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1201:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1203:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1205:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1207:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1209:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_llvm_ir.rs:1254:14	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:79:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:88:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:97:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:106:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:115:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:124:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:133:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:142:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:151:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:160:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:169:13	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:663:11	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:228	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:307	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:385	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:461	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:536	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:609	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:681	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:753	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:826	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:902	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:976	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1049	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1124	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1199	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1275	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1349	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1424	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1495	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1564	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1633	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1702	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1773	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1846	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1919	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:1989	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2059	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2128	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2198	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2270	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2339	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2409	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2476	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2546	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2616	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2684	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2753	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2824	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2895	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:2966	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3037	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3110	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3183	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3250	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3317	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3390	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:676:3474	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:168	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:243	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:315	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:386	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1629:458	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1652:28	E0308	mismatched types",
+  "src/v2_extdeps_languages_dag.rs:1707:1	E0308	arguments to this function are incorrect",
+  "src/v2_compiler_parse.rs:529:143	E0282	type annotations needed",
+  "src/v2_compiler_parse.rs:533:617	E0308	mismatched types",
+  "src/v2_compiler_parse.rs:653:67	E0308	mismatched types",
+  "src/v2_compiler_parse.rs:773:28	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:61:83	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:67:21	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:67:81	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:74:21	E0308	mismatched types",
+  "src/v2_lens_machine_shape.rs:74:86	E0308	mismatched types",
+  "src/v2_lens_mandatory_tag.rs:77:67	E0308	arguments to this function are incorrect",
+  "src/v2_lens_mandatory_tag.rs:81:67	E0308	arguments to this function are incorrect",
+  "src/v2_lens_mandatory_tag.rs:85:8	E0308	arguments to this function are incorrect",
+  "src/v2_lens_undecidable_verdict_collapse.rs:47:13	E0308	mismatched types",
+  "src/v2_lens_undecidable_verdict_collapse.rs:65:13	E0308	mismatched types",
+  "src/v2_lens_undecidable_verdict_collapse.rs:112:21	E0308	mismatched types",
+  "src/v2_lens_undecidable_verdict_collapse.rs:112:86	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs:2356:87	E0308	mismatched types",
+  "src/v2_compiler_body_lowering_fold.rs:2357:92	E0308	mismatched types",
+  "src/v2_lens_complexity_accumulator_copy_compile_gate.rs:35:13	E0308	mismatched types",
+  "src/v2_compiler_infer.rs:489:29	E0282	type annotations needed",
+  "src/v2_compiler_infer.rs:1323:12	E0308	mismatched types",
+  "src/v2_compiler_name_resolve.rs:150:177	E0308	mismatched types",
+  "src/v2_compiler_emit.rs:20:5	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:79:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:113:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:213:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:222:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:268:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:277:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:286:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:324:105	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:371:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:379:56	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:414:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:463:27	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:509:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:530:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:787:111	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:795:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:970:13	E0308	mismatched types",
+  "src/v2_compiler_source_authority.rs:1008:8	E0308	arguments to this function are incorrect",
+  "src/v2_compiler_program_assembly.rs:92:13	E0308	mismatched types",
+  "src/v2_compiler_compile.rs:185:13	E0308	mismatched types",
+  "src/v2_compiler_compile.rs:289:108	E0308	mismatched types",
+  "src/v2_compiler_compile.rs:333:5	E0308	mismatched types",
+]
+
+data receipt_1_eced9d24_phase_board_fold: PersistedPhaseBoardFold = phase_board_from_census_identities(
+  parse_observation: receipt_1_eced9d24_parse_observation,
+  raw_identities: receipt_1_eced9d24_raw_error_diagnostic_identities
+)
+
+fn receipt_1_eced9d24_receipt() -> CompilePhaseFrontierReceipt {
+  let genesis = genesis_5006ddc6_receipt()
+  seal_compile_phase_receipt(
+    sequence: 1,
+    observed_at: "2026-08-31T20:44:59Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "eced9d24c599b33f19442e0bd1eee57223f3d763" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "d424154bb6fb8c40b149be07f2ddd8d61e89108e" } }),
+      emitted_artifact_identity: sha256_digest(hex: "be548fca7285992bfe49466e66398cc67f22559b07b3b32b389822f89c13d0c7" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "a2d7425518eb23e7c723f1593d41d40417d230721118efdd62439525b3bfad29" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "b26a96dff0f232a8db97f60919e6ddc31d97e4baf0a293108b10bcc426d68d74" as NonEmptyStr),
+      cargo_identity: "cargo 1.93.0 (083ac5135 2025-12-15)" as NonEmptyStr,
+      rustc_identity: "rustc 1.93.0 (254b59607 2026-01-19); commit 254b59607d4417e9dffbc307138ae5c86280fe4c; host x86_64-unknown-linux-gnu; LLVM 21.1.8" as NonEmptyStr,
+      invocation: CompilePhaseInvocation {
+        target: "x86_64-unknown-linux-gnu",
+        profile: "check/dev",
+        features: []
+      },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "rustc-1.93.0-x86_64-check-dev-rustc-error-index-1.93.0" as NonEmptyStr
+    },
+    invocation: "buildbuddy-44d90e35-ccba-41d1-9a90-928a914b26a2" as NonEmptyStr,
+    position: PhaseBoardSuccessor { predecessor_invocation: "buildbuddy-b779daaf-cefa-4379-ab27-dbea5a8d2919" as NonEmptyStr },
+    previous_prefix_digest: Present { value: genesis.prefix_digest },
+    parse_evidence: ParseReached { evidence: receipt_1_eced9d24_parse_observation },
+    board: receipt_1_eced9d24_phase_board_fold.board,
+    raw_error_diagnostic_identities: receipt_1_eced9d24_raw_error_diagnostic_identities,
+    unplaced_identities: receipt_1_eced9d24_phase_board_fold.unplaced_identities,
+    newly_exposed: [
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:47:13	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    },
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:65:13	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    },
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:112:21	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    },
+    NewlyExposedDiagnostic {
+      identity: "src/v2_lens_undecidable_verdict_collapse.rs:112:86	E0308	mismatched types",
+      cause: ExposedByNewEmittedModule { module: "src/v2_lens_undecidable_verdict_collapse.rs" }
+    }
+    ],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "tools.emission_entry_instrument",
+      function: "measure_entry_emission",
+      entry: "src/v2/compiler/00_compile.dag"
+    }
+  )
+}
+
 data self_host_compile_phase_frontier_receipts: List<CompilePhaseFrontierReceipt> = [
-  genesis_5006ddc6_receipt()
+  genesis_5006ddc6_receipt(),
+  receipt_1_eced9d24_receipt()
 ]

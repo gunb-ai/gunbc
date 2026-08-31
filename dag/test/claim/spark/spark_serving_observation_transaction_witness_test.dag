@@ -1,0 +1,650 @@
+module test.claim.spark.spark_serving_observation_transaction_witness_test
+
+import std.types { Bool, List, NonEmptyStr, String }
+import product.placement_supply { HostIdentity }
+import extdeps.ssh.session { SshSessionExecResult }
+import std.content_hash { serialize_content_hash }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
+  fleet_ssh_attempt_identity,
+  fleet_ssh_credential_identity,
+}
+import gunbc.spark.serving_observe {
+  SparkServingHostObservation,
+  SparkServingObservationReport,
+  SparkServingObservationsProduced,
+  SparkServingObservedUnit,
+  ManagedAccountProbeRefused,
+  spark_serving_report_body_lines,
+  spark_serving_transaction_provenance,
+}
+import gunbc.spark.serving_observed_members {
+  UserUnitStateUnobserved,
+  UserUnitManagerUnobserved,
+  UnitActivityUnobserved,
+  LingerUnobservedState,
+}
+import gunbc.ollama_runtime_bundle { RuntimeMaterializationAbsent, ModelStoreAbsent }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
+  hermetic_fleet_attempt_raw,
+  hermetic_credential,
+  hermetic_capture,
+  hermetic_capture_of,
+  hermetic_every_request,
+  hermetic_complete_captures,
+  hermetic_admission,
+  hermetic_acquired_observation,
+  hermetic_request,
+  hermetic_fleet_attempt,
+  hermetic_host_observation,
+  hermetic_readback,
+}
+import gunbc.spark.serving_observation_transaction {
+  SparkServingObservationTransaction,
+  SparkServingProbeLegCapture,
+  SparkServingProbeRequest,
+  SparkServingProbeOutcome,
+  SparkServingProbeExecuted,
+  SparkServingProbeTransportRefused,
+  SparkServingProbePrerequisiteRefused,
+  SparkServingTransactionAdmission,
+  SparkServingTransactionAdmitted,
+  SparkServingTransactionRefused,
+  LoadStateRequest,
+  IsActiveRequest,
+  VersionRequest,
+  TagsRequest,
+  NvidiaDriverRequest,
+  RuntimeReceiptRequest,
+  ActiveEnterRequest,
+  DefaultTargetEnterRequest,
+  UptimeRequest,
+  GrantsRequest,
+  PasswdRequest,
+  AuthorizedKeysRequest,
+  LingerRequest,
+  ModelManifestRequest,
+  ModelBlobsListingRequest,
+  ModelManifestDigestRequest,
+  ModelBlobDigestsRequest,
+  UserUnitReadRequest,
+  UserUnitIsEnabledRequest,
+  RuntimeRootRequest,
+  RuntimeExecutableRequest,
+  RuntimeExecutableBitRequest,
+  RuntimeRootListingRequest,
+  ProbeIsActive,
+  ProbeLoadState,
+  ProbeModelBlobDigests,
+  spark_serving_probe_request_leg,
+  spark_serving_probe_leg_key,
+  spark_serving_capture_leg,
+  spark_serving_probe_leg_capture_of,
+  spark_serving_observation_transaction_of,
+  spark_serving_transaction_capture,
+  spark_serving_transaction_result,
+  spark_serving_transaction_duplicated_legs,
+  spark_serving_transaction_missing_legs,
+  spark_serving_required_probe_legs,
+  spark_serving_observation_attempt_of,
+  SparkServingObservationRequest,
+  SparkServingObservationAttemptIdentity,
+  spark_serving_hermetic_provenance_of,
+  spark_serving_provenance_host,
+  spark_serving_provenance_observation_attempt,
+  spark_serving_provenance_credential,
+  spark_serving_provenance_receipt_line,
+  SparkServingObservationPhase,
+  SparkServingPlanObservation,
+  SparkServingPostApplyObservation,
+  SparkServingReportObservation,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data subject_host: HostIdentity = "srv5" as HostIdentity
+
+fn capture(request: SparkServingProbeRequest, out: String) -> SparkServingProbeLegCapture {
+  hermetic_capture(request: request, out: out)
+}
+
+fn every_request() -> List<SparkServingProbeRequest> {
+  hermetic_every_request()
+}
+
+fn complete_captures() -> List<SparkServingProbeLegCapture> {
+  hermetic_complete_captures()
+}
+
+fn hermetic_capture_fixture(
+  request: SparkServingProbeRequest,
+  outcome: SparkServingProbeOutcome,
+) -> SparkServingProbeLegCapture {
+  hermetic_capture_of(request: request, outcome: outcome)
+}
+
+fn ok(out: String) -> SparkServingProbeOutcome {
+  SparkServingProbeExecuted {
+    result: SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" },
+  }
+}
+
+// The fixture answers Absent only when its OWN material could not be built, which is a broken
+// fixture rather than a transaction refusal. Every claim below distinguishes the two: an Absent
+// fixture fails the claim outright rather than passing as a refusal it did not measure.
+fn admission_at(
+  phase: SparkServingObservationPhase,
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingTransactionAdmission? {
+  hermetic_admission(host: subject_host, phase: phase, captures: captures)
+}
+
+fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission? {
+  admission_at(phase: SparkServingPlanObservation, captures: captures)
+}
+
+fn admission_refused(captures: List<SparkServingProbeLegCapture>) -> Bool {
+  match admission(captures: captures) {
+    Absent => false
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => true
+    Present { value: SparkServingTransactionAdmitted { txn: _ } } => false
+  }
+}
+
+fn admission_refusal_cause(captures: List<SparkServingProbeLegCapture>) -> NonEmptyStr? {
+  match admission(captures: captures) {
+    Absent => none
+    Present { value: SparkServingTransactionRefused { refusal: r } } => Present { value: r.cause }
+    Present { value: SparkServingTransactionAdmitted { txn: _ } } => none
+  }
+}
+
+fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservationTransaction? {
+  match admission(captures: captures) {
+    Absent => none
+    Present { value: SparkServingTransactionAdmitted { txn: t } } => Present { value: t }
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => none
+  }
+}
+
+// THE LEG IS PROJECTED FROM THE REQUEST, SO A MISLABELLED CAPTURE IS NOT WRITABLE.
+//
+// The previous version of this witness was itself the counterexample the review found: its capture
+// helper supplied ["systemctl","is-active"] as the argv for every leg it named, including
+// ProbeLoadState, and the transaction admitted that as a well-formed capture. There is no argv
+// parameter now and no leg parameter either -- one request goes in, and both the label and the
+// command are read off it -- so the mislabelling this claim used to demonstrate has no expression.
+test fn the_leg_is_projected_from_the_request_not_supplied_beside_it() -> Bool {
+  spark_serving_probe_leg_key(leg: spark_serving_probe_request_leg(request: IsActiveRequest))
+    == ("is_active" as NonEmptyStr)
+    && spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: capture(request: LoadStateRequest, out: "loaded")))
+      == ("load_state" as NonEmptyStr)
+}
+
+test fn a_captured_leg_is_readable_from_a_complete_transaction() -> Bool {
+  match txn_of(captures: complete_captures()) {
+    Absent => false
+    Present { value: t } =>
+      match spark_serving_transaction_result(txn: t, leg: ProbeIsActive) {
+        Absent => false
+        Present { value: r } => r.stdout == "fixture"
+      }
+  }
+}
+
+// A MISSING CAPTURE REFUSES, AND THE EMPTY TRANSACTION IS THE STRONGEST CASE OF IT.
+//
+// The first admission checked duplicates only, so an EMPTY transaction was admitted and this
+// witness used it as a positive fixture -- coverage enforced in one direction while the invariant
+// claimed both. Every downstream reader would have read Absent for every fact and honestly reported
+// unobserved, so the host would have looked measured-and-empty rather than never-acquired.
+test fn an_empty_transaction_cannot_be_admitted() -> Bool {
+  admission_refused(captures: [])
+}
+
+test fn dropping_one_required_capture_refuses_and_names_it() -> Bool {
+  let without_linger = filter(
+    complete_captures(),
+    c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("linger" as NonEmptyStr)),
+  )
+  match admission_refusal_cause(captures: without_linger) {
+    Absent => false
+    Present { value: why } =>
+      string_contains(s: why as String, pattern: "linger")
+        && length(without_linger) == (length(complete_captures()) - 1)
+  }
+}
+
+// The positive control for both directions: the complete roster admits, so the refusals above
+// discriminate on coverage rather than rejecting everything.
+test fn the_complete_roster_admits() -> Bool {
+  match txn_of(captures: complete_captures()) {
+    Absent => false
+    Present { value: t } =>
+      length(spark_serving_transaction_missing_legs(txn: t)) == 0
+        && length(spark_serving_transaction_duplicated_legs(txn: t)) == 0
+        && length(spark_serving_required_probe_legs()) == length(t.captures)
+  }
+}
+
+// THE DUPLICATE READ IS REFUSED, NOT TIE-BROKEN.
+//
+// is_active was genuinely executed twice per host before the carrier -- once for the readback and
+// again inside the user-unit observer -- so this is the regression control for that class, at the
+// grain where it is detectable rather than at the call sites where it was invisible.
+test fn a_leg_captured_twice_refuses_the_transaction() -> Bool {
+  admission_refused(
+    captures: concat(complete_captures(), [capture(request: IsActiveRequest, out: "again")]),
+  )
+}
+
+// A TRANSPORT REFUSAL IS NOT A REMOTE EXIT 127.
+//
+// The first cut manufactured an exec result with exit_code 127 when the transport refused, so "we
+// never reached the host" and "the host ran it and it exited 127" were one value. A reader asking
+// what happened got a number the far side never produced. The refusal arms read as no result at
+// all, which is what every unobserved arm downstream is built to receive.
+test fn a_transport_refusal_is_not_a_remote_exit_code() -> Bool {
+  let refused = hermetic_capture_fixture(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeTransportRefused { cause: "no route" as NonEmptyStr },
+  )
+  let exited_127 = hermetic_capture_fixture(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeExecuted {
+      result: SshSessionExecResult { exit_code: 127, success: false, stdout: "", stderr: "no such" },
+    },
+  )
+  match txn_of(captures: swap_is_active(with: refused)) {
+    Absent => false
+    Present { value: t_refused } =>
+      match txn_of(captures: swap_is_active(with: exited_127)) {
+        Absent => false
+        Present { value: t_127 } =>
+          match spark_serving_transaction_result(txn: t_refused, leg: ProbeIsActive) {
+            Present { value: _ } => false
+            Absent =>
+              match spark_serving_transaction_result(txn: t_127, leg: ProbeIsActive) {
+                Absent => false
+                Present { value: r } => r.exit_code == 127
+              }
+          }
+      }
+  }
+}
+
+fn swap_is_active(with: SparkServingProbeLegCapture) -> List<SparkServingProbeLegCapture> {
+  concat(
+    filter(
+      complete_captures(),
+      c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("is_active" as NonEmptyStr)),
+    ),
+    [with],
+  )
+}
+
+// A prerequisite refusal is its own arm: the blob-digest leg with no digests to verify never ran,
+// and it is not the same fact as a digest command that ran and failed.
+test fn a_prerequisite_refusal_reads_as_no_result() -> Bool {
+  let blocked = hermetic_capture_fixture(
+    request: ModelBlobDigestsRequest { digests: [] },
+    outcome: SparkServingProbePrerequisiteRefused { cause: "manifest named none" as NonEmptyStr },
+  )
+  let rest = filter(
+    complete_captures(),
+    c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c))
+      == ("model_blob_digests" as NonEmptyStr)),
+  )
+  match txn_of(captures: concat(rest, [blocked])) {
+    Absent => false
+    Present { value: t } =>
+      match spark_serving_transaction_result(txn: t, leg: ProbeModelBlobDigests) {
+        Absent => true
+        Present { value: _ } => false
+      }
+  }
+}
+
+// THE TRANSACTION CARRIES THE IDENTITY; IT DOES NOT RECEIVE IT ALONGSIDE.
+//
+// Host, fleet attempt, phase and sealed credential are fields, and the observation attempt is
+// DERIVED from the first three at the mint rather than supplied -- so a caller cannot claim an
+// attempt it did not run under, and every projector below takes only the transaction. This pins all
+// five, including the derivation, so a mint that stopped joining the phase in would go red here.
+test fn the_transaction_carries_its_full_acquisition_identity() -> Bool {
+  match txn_of(captures: complete_captures()) {
+    Absent => false
+    Present { value: t } =>
+      t.request.host == subject_host
+        && (t.request.fleet_attempt as String) == hermetic_fleet_attempt_raw
+        && (match t.request.phase {
+             SparkServingPlanObservation => true
+             SparkServingPostApplyObservation => false
+             SparkServingReportObservation => false
+           })
+        && (t.observation_attempt as String)
+          == concat(hermetic_fleet_attempt_raw, "/srv5/plan")
+        && (match hermetic_credential() {
+             Absent => false
+             Present { value: c } =>
+               serialize_content_hash(hash: fleet_ssh_credential_identity(binding: t.credential))
+                 == serialize_content_hash(hash: fleet_ssh_credential_identity(binding: c))
+           })
+  }
+}
+
+// AND THE PHASE THE MINT WAS GIVEN IS THE PHASE THE TRANSACTION REPORTS.
+//
+// Without this the claim above is satisfied by a mint that hard-codes the plan phase, which is the
+// exact defect the phase field exists to prevent: pre-apply and post-apply readings of one host in
+// one attempt would again be indistinguishable.
+test fn the_minted_phase_travels_into_the_transaction_identity() -> Bool {
+  match admission_at(phase: SparkServingPostApplyObservation, captures: complete_captures()) {
+    Absent => false
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => false
+    Present { value: SparkServingTransactionAdmitted { txn: t } } =>
+      (match t.request.phase {
+        SparkServingPostApplyObservation => true
+        SparkServingPlanObservation => false
+        SparkServingReportObservation => false
+      })
+        && (t.observation_attempt as String)
+          == concat(hermetic_fleet_attempt_raw, "/srv5/post-apply")
+  }
+}
+
+// PRE-PLAN AND POST-APPLY ARE DIFFERENT OBSERVATIONS OF ONE HOST INSIDE ONE SSH ATTEMPT.
+//
+// A fleet attempt identifies an invocation, not an observation. The converge slice observes to plan,
+// actuates, and observes again to verify -- all under one attempt -- so an identity derived from the
+// attempt alone makes the before and after readings indistinguishable, which is precisely the join
+// the carrier exists to prevent. The first cut was worse still: every acquisition passed the same
+// constant, so no two observations anywhere differed.
+// The request mint is sealed to acquisition and one fixture, so these distinctness claims build
+// their requests through the fixture rather than minting their own. Each varies exactly one of the
+// three components, which is what makes the result a JOIN claim rather than three separate ones.
+fn attempt_for(
+  host: HostIdentity,
+  fleet_attempt: FleetSshAttemptIdentity,
+  phase: SparkServingObservationPhase,
+) -> SparkServingObservationAttemptIdentity {
+  spark_serving_observation_attempt_of(
+    request: hermetic_request(host: host, fleet_attempt: fleet_attempt, phase: phase),
+  )
+}
+
+test fn observations_of_one_host_in_one_attempt_differ_by_phase() -> Bool {
+  match hermetic_fleet_attempt() {
+    Absent => false
+    Present { value: fa } => {
+      let a = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPlanObservation)
+      let b = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPostApplyObservation)
+      let c = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingReportObservation)
+      !(a == b) && !(b == c) && !(a == c)
+    }
+  }
+}
+
+// And the same phase on two hosts, or two attempts, is likewise distinct -- so the identity is a
+// join of all three facts rather than a phase label that happens to differ.
+test fn the_observation_attempt_is_a_join_of_fleet_attempt_host_and_phase() -> Bool {
+  match hermetic_fleet_attempt() {
+    Absent => false
+    Present { value: fa } =>
+      match fleet_ssh_attempt_identity(raw: "hermetic-acquisition-other-run") {
+        Absent => false
+        Present { value: other_fa } => {
+          let here = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPlanObservation)
+          let other_host = attempt_for(host: "srv6" as HostIdentity, fleet_attempt: fa, phase: SparkServingPlanObservation)
+          let other_run = attempt_for(host: subject_host, fleet_attempt: other_fa, phase: SparkServingPlanObservation)
+          !(here == other_host) && !(here == other_run)
+        }
+      }
+  }
+}
+
+// THE POST-APPLY READING IS A DIFFERENT OBSERVATION, NOT A SECOND LOOK AT THE SAME ONE.
+//
+// spark_serving_replan_rows used to take linger_enabled: Bool, acquire a transaction, and then
+// ignore that transaction's linger capture in favour of the Bool -- so a post-apply verdict planned
+// against a loginctl reading taken BEFORE the transaction, spliced into facts taken during it. The
+// parameter is deleted, so there is nowhere left to put an independently observed value, and the
+// phase now travels instead. This claim pins the two phases apart at the identity grain the receipt
+// will record.
+test fn the_post_apply_reading_carries_its_own_phase_identity() -> Bool {
+  match hermetic_fleet_attempt() {
+    Absent => false
+    Present { value: fa } =>
+      !(attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPlanObservation)
+        == attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPostApplyObservation))
+  }
+}
+
+// LINGER APPEARS ONCE PER PHASE, WHICH IS WHAT MAKES "READ IT TWICE" A COVERAGE ERROR RATHER THAN A
+// STYLE ONE. A second linger capture in one transaction is a duplicate and refuses; none at all is
+// missing and refuses. So each phase has exactly one, by construction rather than by discipline.
+test fn exactly_one_linger_capture_belongs_to_a_phase() -> Bool {
+  let doubled = concat(complete_captures(), [capture(request: LingerRequest, out: "again")])
+  let dropped = filter(
+    complete_captures(),
+    c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("linger" as NonEmptyStr)),
+  )
+  admission_refused(captures: doubled)
+    && admission_refused(captures: dropped)
+    && !admission_refused(captures: complete_captures())
+}
+
+// A REFUSED OR HERMETIC PROVENANCE IS NOT SOMETHING TO PLAN FROM.
+//
+// The post-apply verdict, the plan-time axis and the report all require an ACQUIRED observation.
+// This is the property that lets them: only the acquired arm answers with an observation attempt, so
+// a consumer that needs one cannot be handed a refusal wearing plausible strings -- which is exactly
+// what the old fabricated "unreached: ..." provenance was.
+test fn only_an_acquired_provenance_answers_with_an_observation_attempt() -> Bool {
+  let hermetic = spark_serving_hermetic_provenance_of(
+    host: subject_host,
+    fixture_identity: "witness" as NonEmptyStr,
+  )
+  match spark_serving_provenance_observation_attempt(p: hermetic) {
+    Present { value: _ } => false
+    Absent =>
+      match spark_serving_provenance_credential(p: hermetic) {
+        Present { value: _ } => false
+        Absent => spark_serving_provenance_host(p: hermetic) == subject_host
+      }
+  }
+}
+
+// THE RECEIPT DISTINGUISHES THE THREE PROVENANCE ARMS, BECAUSE A RENDERER THAT FLATTENED THEM WOULD
+// REINTRODUCE THE FABRICATION AT THE PRESENTATION LAYER.
+//
+// The deleted defect printed plausible attempt and locus strings for an observation that never
+// happened. A receipt that rendered acquired, refused and hermetic in one shape would do the same
+// thing one layer out: the canary reads these lines to establish that every fact in a report belongs
+// to one acquisition, so the line has to be able to say when it does not.
+test fn the_receipt_line_says_which_provenance_arm_it_is() -> Bool {
+  let hermetic = spark_serving_provenance_receipt_line(
+    p: spark_serving_hermetic_provenance_of(
+      host: subject_host,
+      fixture_identity: "witness" as NonEmptyStr,
+    ),
+  )
+  string_contains(s: hermetic, pattern: "hermetic-fixture=")
+    && !string_contains(s: hermetic, pattern: "acquired")
+    && !string_contains(s: hermetic, pattern: "observation-attempt=")
+}
+
+// The transaction receipt reports coverage and the per-outcome shape, not a single total: 23
+// captures is equally true of a transaction whose every leg the transport refused.
+test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
+  match txn_of(captures: complete_captures()) {
+    Absent => false
+    Present { value: t } => {
+      let line = spark_serving_provenance_receipt_line(
+        p: spark_serving_transaction_provenance(txn: t),
+      )
+      string_contains(s: line, pattern: "missing=0")
+        && string_contains(s: line, pattern: "duplicated=0")
+        && string_contains(s: line, pattern: "executed=23")
+        && string_contains(s: line, pattern: "transport-refused=0")
+        && string_contains(s: line, pattern: "prerequisite-refused=0")
+        && string_contains(s: line, pattern: concat("observation-attempt=", concat(hermetic_fleet_attempt_raw, "/srv5/plan")))
+        && (match hermetic_credential() {
+             Absent => false
+             Present { value: c } =>
+               string_contains(
+                 s: line,
+                 pattern: concat(
+                   "credential-identity=",
+                   serialize_content_hash(hash: fleet_ssh_credential_identity(binding: c)) as String,
+                 ),
+               )
+           })
+    }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE RECEIPT SUM.
+//
+// A hermetic observation measured nothing, so its line must carry no coverage at all. If the receipt
+// were a record beside the provenance rather than an arm of it, this is where "missing=0" would
+// appear on a value that probed nothing -- and missing=0 reads as measured-and-complete, which is
+// the fabricated-plausible-output failure in the receipt layer.
+test fn a_hermetic_observation_reports_no_coverage_at_all() -> Bool {
+  let line = spark_serving_provenance_receipt_line(
+    p: spark_serving_hermetic_provenance_of(
+      host: subject_host,
+      fixture_identity: "coverage-red" as NonEmptyStr,
+    ),
+  )
+  string_contains(s: line, pattern: "hermetic-fixture=coverage-red")
+    && !string_contains(s: line, pattern: "missing=")
+    && !string_contains(s: line, pattern: "captured=")
+    && !string_contains(s: line, pattern: "executed=")
+}
+
+// And the outcome counts move with the outcomes, so the line is a reading rather than a constant.
+test fn a_transport_refused_leg_moves_the_receipt_counts() -> Bool {
+  let refused = hermetic_capture_fixture(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeTransportRefused { cause: "no route" as NonEmptyStr },
+  )
+  match txn_of(captures: swap_is_active(with: refused)) {
+    Absent => false
+    Present { value: t } => {
+      let line = spark_serving_provenance_receipt_line(
+        p: spark_serving_transaction_provenance(txn: t),
+      )
+      string_contains(s: line, pattern: "executed=22")
+        && string_contains(s: line, pattern: "transport-refused=1")
+        && string_contains(s: line, pattern: "missing=0")
+    }
+  }
+}
+
+// ── THE RECEIPT IS PROVEN BY CONSUMPTION, NOT BY ITS RENDERER ──────────────────────────────────
+
+// A RENDERER TESTED DIRECTLY IS NOT A RENDERER THAT RUNS.
+//
+// The four claims below execute `spark_serving_report_body_lines` -- the function the CI observe
+// entry actually writes its receipt from -- rather than the line producer underneath it. The
+// distinction is the whole finding: the previous transaction renderer was green in its own witness,
+// imported by serving_observe, and called by nothing on the report path, so its coverage counts
+// never reached a receipt anybody reads.
+fn report_of(observations: List<SparkServingHostObservation>) -> SparkServingObservationReport {
+  SparkServingObservationsProduced {
+    first: observations.first(),
+    more: observations.skip(n: 1),
+  }
+}
+
+// The observation is the one the PRODUCTION transaction route builds -- provenance and facts from
+// the same transaction -- so a splice that agreed with the captures by hand is unwritable here.
+fn acquired_observation_body(captures: List<SparkServingProbeLegCapture>) -> String? {
+  match hermetic_acquired_observation(
+    host: subject_host,
+    phase: SparkServingPlanObservation,
+    captures: captures,
+  ) {
+    Absent => none
+    Present { value: o } =>
+      Present {
+        value: spark_serving_report_body_lines(report: report_of(observations: [o])),
+      }
+  }
+}
+
+// (1) Exactly one acquired line per acquired host, carrying its coverage, through the real report.
+test fn the_report_body_carries_the_acquisition_receipt_for_an_acquired_host() -> Bool {
+  match acquired_observation_body(captures: complete_captures()) {
+    Absent => false
+    Present { value: body } =>
+      string_contains(s: body, pattern: "spark-serving-provenance host=srv5 acquired")
+        && string_contains(s: body, pattern: "executed=23")
+        && string_contains(s: body, pattern: "missing=0")
+        && string_contains(s: body, pattern: "duplicated=0")
+  }
+}
+
+// (2) The line's observation attempt agrees with that host's acquired provenance -- so the receipt
+// is a projection of the observation rather than a second string assembled beside it.
+test fn the_report_line_attempt_agrees_with_the_hosts_acquired_provenance() -> Bool {
+  match acquired_observation_body(captures: complete_captures()) {
+    Absent => false
+    Present { value: body } =>
+      string_contains(
+        s: body,
+        pattern: concat(
+          "observation-attempt=",
+          concat(hermetic_fleet_attempt_raw, "/srv5/plan"),
+        ),
+      )
+  }
+}
+
+// (3) Changed capture outcomes move the line THE REAL REPORT PATH emits, so it is a reading rather
+// than a constant that happens to be printed near the right place.
+test fn changed_capture_outcomes_move_the_line_the_report_emits() -> Bool {
+  let refused = hermetic_capture_fixture(
+    request: IsActiveRequest,
+    outcome: SparkServingProbeTransportRefused { cause: "no route" as NonEmptyStr },
+  )
+  match acquired_observation_body(captures: swap_is_active(with: refused)) {
+    Absent => false
+    Present { value: body } =>
+      string_contains(s: body, pattern: "executed=22")
+        && string_contains(s: body, pattern: "transport-refused=1")
+        && !string_contains(s: body, pattern: "executed=23")
+  }
+}
+
+// (4) THE DISCRIMINATING RED: no acquired-looking line for a host that measured nothing.
+//
+// A hermetic host in the same report must not print coverage. If the receipt were a record beside
+// the provenance rather than an ARM of it, this is where a hermetic host would print "missing=0" --
+// which reads as measured-and-complete, in the receipt a canary is meant to trust.
+test fn a_hermetic_host_prints_no_acquired_line_in_the_same_report() -> Bool {
+  let body = spark_serving_report_body_lines(
+    report: report_of(
+      observations: [
+        hermetic_host_observation(
+          readback: hermetic_readback(host: subject_host),
+          account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+          runtime: RuntimeMaterializationAbsent,
+          store: ModelStoreAbsent,
+          observed_unit: SparkServingObservedUnit {
+            state: UserUnitStateUnobserved,
+            enablement: UserUnitManagerUnobserved,
+            activity: UnitActivityUnobserved,
+          },
+          linger: LingerUnobservedState,
+        ),
+      ],
+    ),
+  )
+  string_contains(s: body, pattern: "hermetic-fixture=hermetic-witness-fixture")
+    && !string_contains(s: body, pattern: "acquired")
+    && !string_contains(s: body, pattern: "missing=")
+    && !string_contains(s: body, pattern: "executed=")
+}

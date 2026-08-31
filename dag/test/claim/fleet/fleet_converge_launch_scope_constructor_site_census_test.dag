@@ -109,6 +109,14 @@ data production_roots: List<String> = ["dag", "src/v1", "src/v2"]
 // than once per row. A whole-corpus walk is the expensive part of every census in this repository.
 data production_facts: List<DeclFact> = decl_facts(pool_roots: production_roots)
 
+// THE WALK AND THE FOLD ARE BOTH HOISTED. decl_facts over the production corpus is the expensive
+// part of every census in this repository, and folding the skeleton of ~3000 modules is comparable;
+// computing either once per assertion rather than once per module triples a cost that is already
+// the dominant term. Measured on this tree: the first row pays ~120s for walk plus fold, and each
+// additional fold is ~50s -- so the difference is not cosmetic.
+data launch_constructor_sites: List<String> = sites_constructing(target: ^LaunchEnvironmentConverge)
+data launch_construction_total: Int = total_constructions(target: ^LaunchEnvironmentConverge)
+
 fn sites_constructing(target: Symbol) -> List<String> {
   fold(production_facts, init: [], f: fn(acc, fact) {
     if construction_count(n: fact.node, target: target) > 0 {
@@ -144,7 +152,7 @@ fn roster_is_exactly(found: List<String>, declared: List<String>) -> Bool {
 test fn the_production_corpus_walk_is_nonempty_and_sees_this_construction_shape() -> Bool {
   list_length(items: production_facts) > 0
     && total_constructions(target: ^FullHostConverge) > 0
-    && total_constructions(target: ^LaunchEnvironmentConverge) > 0
+    && launch_construction_total > 0
 }
 
 // THE WALL. Every production construction site of the launch-environment arm, at identity grain
@@ -152,7 +160,7 @@ test fn the_production_corpus_walk_is_nonempty_and_sees_this_construction_shape(
 // and another appearing.
 test fn every_production_launch_constructor_is_on_the_declared_roster() -> Bool {
   roster_is_exactly(
-    found: sites_constructing(target: ^LaunchEnvironmentConverge),
+    found: launch_constructor_sites,
     declared: rostered_launch_constructor_sites,
   )
 }
@@ -161,5 +169,5 @@ test fn every_production_launch_constructor_is_on_the_declared_roster() -> Bool 
 // second literal added inside one of the two rostered functions would leave it green. This pins the
 // occurrence count too, so the reviewed pair really is the whole population.
 test fn the_two_rostered_declarations_carry_exactly_two_constructions_between_them() -> Bool {
-  total_constructions(target: ^LaunchEnvironmentConverge) == 2
+  launch_construction_total == 2
 }
