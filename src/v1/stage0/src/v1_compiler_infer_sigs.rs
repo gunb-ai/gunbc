@@ -245,7 +245,7 @@ pub fn parent_closure_callable_candidates(
                     sig: sig.clone(),
                 })]),
             ),
-            std::option::Option::None => acc.clone(),
+            None => acc.clone(),
         },
     )
 }
@@ -278,7 +278,7 @@ pub fn decide_callable_candidates(candidates: Rc<Vec<Rc<CallableCandidate>>>) ->
                         primitive_name: _, ..
                     } => Rc::new(FuncSigLookup::FuncSigUnresolved),
                 },
-                std::option::Option::None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+                None => Rc::new(FuncSigLookup::FuncSigUnresolved),
             }
         }
         ModulePathBindingProjection::ModulePathBindingAmbiguous { owners: _, .. } => {
@@ -323,7 +323,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                         Some(p.name.clone())
                     },
                 }),
-                std::option::Option::None => acc.clone(),
+                None => acc.clone(),
             },
         );
         if ((scan.match_count.clone() >= 2) && (scan.sig.clone() != std::option::Option::None)) {
@@ -334,7 +334,7 @@ pub fn lookup_resolved_sig_with_telemetry(
                     scan.match_count.clone(),
                     chosen_parent.clone(),
                 ),
-                std::option::Option::None => {}
+                None => {}
             }
         }
         match scan.sig.clone() {
@@ -343,9 +343,9 @@ pub fn lookup_resolved_sig_with_telemetry(
                     sig: sig.clone(),
                     owner_module_path: owner.clone(),
                 })),
-                std::option::Option::None => std::option::Option::None,
+                None => std::option::Option::None,
             },
-            std::option::Option::None => std::option::Option::None,
+            None => std::option::Option::None,
         }
     }
 }
@@ -359,7 +359,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                 decl_name: name.clone(),
             }),
         }),
-        std::option::Option::None => {
+        None => {
             if v1_rt::name_resolution_policy_is_namespace_only() {
                 lookup_resolved_sig_unique_across_parents(env.clone(), name.clone())
             } else {
@@ -372,15 +372,13 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                             |acc: Option<Rc<ResolvedSigWithOwner>>, p: Rc<ResolvedFuncEnv>| {
                                 match acc.clone() {
                                     Some(found) => Some(found.clone()),
-                                    std::option::Option::None => {
-                                        match v1_rt::map_get(&p.local.clone(), name.clone()) {
-                                            Some(sig) => Some(Rc::new(ResolvedSigWithOwner {
-                                                sig: sig.clone(),
-                                                owner_module_path: p.name.clone(),
-                                            })),
-                                            std::option::Option::None => std::option::Option::None,
-                                        }
-                                    }
+                                    None => match v1_rt::map_get(&p.local.clone(), name.clone()) {
+                                        Some(sig) => Some(Rc::new(ResolvedSigWithOwner {
+                                            sig: sig.clone(),
+                                            owner_module_path: p.name.clone(),
+                                        })),
+                                        None => std::option::Option::None,
+                                    },
                                 }
                             },
                         )
@@ -393,7 +391,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
                                 decl_name: name.clone(),
                             }),
                         }),
-                        std::option::Option::None => Rc::new(FuncSigLookup::FuncSigUnresolved),
+                        None => Rc::new(FuncSigLookup::FuncSigUnresolved),
                     }
                 }
             }
@@ -402,7 +400,7 @@ pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Rc<FuncSig
 }
 
 pub fn none_resolved_sig_with_owner() -> Option<Rc<ResolvedSigWithOwner>> {
-    std::option::Option::None
+    None
 }
 
 pub fn collect_func_call_edges(
@@ -707,7 +705,7 @@ pub fn topo_resolve_loop(
                                 })
                             }
                         }
-                        std::option::Option::None => acc.clone(),
+                        None => acc.clone(),
                     },
                 );
                 let all_resolved = Rc::new(v1_rt::map_values(&declared_sigs))
@@ -777,7 +775,7 @@ pub fn topo_resolve_loop(
                         })
                     }
                 }
-                std::option::Option::None => acc.clone(),
+                None => acc.clone(),
             },
         );
         let ready_set = ready.iter().cloned().fold(

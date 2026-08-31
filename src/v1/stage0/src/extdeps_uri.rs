@@ -925,18 +925,18 @@ pub fn uri_percent_encode_outcomes_first_refusal(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
     outcomes.iter().cloned().fold(
-        std::option::Option::None,
+        None,
         |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
          outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
-            std::option::Option::None => match (*outcome.clone()).clone() {
+            None => match (*outcome.clone()).clone() {
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
                     cause: cause,
                     ..
                 } => Some(cause.clone()),
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded {
                     wire: _, ..
-                } => std::option::Option::None,
+                } => None,
             },
         },
     )
@@ -979,11 +979,9 @@ pub fn uri_percent_encode_code_points(code_points: Rc<Vec<i64>>) -> Rc<UriPercen
                 Some(cause) => Rc::new(UriPercentEncodeComponent::UriPercentComponentRefused {
                     cause: cause.clone(),
                 }),
-                std::option::Option::None => {
-                    Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
-                        uri_percent_encode_outcome_wires(outcomes.clone()).join(&"".to_string()),
-                    ))
-                }
+                None => Rc::new(UriPercentEncodeComponent::UriPercentComponentEncoded(
+                    uri_percent_encode_outcome_wires(outcomes.clone()).join(&"".to_string()),
+                )),
             }
         }
     }

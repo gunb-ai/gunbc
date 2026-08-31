@@ -17,7 +17,7 @@ pub fn rust_decl_type_container_overlay_is_admitted(
     {
         let has_applied_args = match applied_arg_count.clone() {
             Some(count) => (count.clone() > 0),
-            std::option::Option::None => false,
+            None => false,
         };
         ((authored_is_leaf.clone() && !closed_alias.clone())
             && (has_applied_args.clone() || (resolved_child_count.clone() > 0)))

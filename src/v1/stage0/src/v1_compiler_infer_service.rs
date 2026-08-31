@@ -62,7 +62,7 @@ pub fn is_typed_service_call_receiver(
                     .cloned()
                 {
                     Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
-                    std::option::Option::None => false,
+                    None => false,
                 },
                 _ => false,
             }
@@ -149,7 +149,7 @@ pub fn collect_typed_service_calls_into(
                                 })
                             }
                         }
-                        std::option::Option::None => acc.clone(),
+                        None => acc.clone(),
                     }
                 } else {
                     acc.clone()
@@ -287,7 +287,7 @@ if has_no_body.clone() {
                     let called = entry.called.clone();
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
-    std::option::Option::None => Rc::new(vec![]),
+    None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
 let merged = extra.iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
@@ -312,7 +312,7 @@ if same_count.clone() {
 }
             }
 },
-    std::option::Option::None => reg2.clone(),
+    None => reg2.clone(),
 }
 }))
 }
@@ -386,7 +386,7 @@ pub fn check_service_field_access_node(
                 Some(_) => Some(crate::v1_compiler_infer_types::nominal_type_ref(
                     path.clone(),
                 )),
-                std::option::Option::None => std::option::Option::None,
+                None => std::option::Option::None,
             }
         }
     } else {
@@ -485,10 +485,10 @@ pub fn check_service_method_call_node(
                             }))
                         }
                     }
-                    std::option::Option::None => std::option::Option::None,
+                    None => std::option::Option::None,
                 }
             }
-            std::option::Option::None => std::option::Option::None,
+            None => std::option::Option::None,
         }
     } else {
         std::option::Option::None

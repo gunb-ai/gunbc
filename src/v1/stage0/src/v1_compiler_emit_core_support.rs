@@ -122,7 +122,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                             })
                         }
                     }
-                    std::option::Option::None => Rc::new(ModuleFilenameOwners {
+                    None => Rc::new(ModuleFilenameOwners {
                         owners: v1_rt::rc_map_insert(
                             acc.owners.clone(),
                             filename.clone(),
@@ -240,7 +240,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             .cloned()
             {
                 Some(p) => p.1.clone(),
-                std::option::Option::None => "?".to_string(),
+                None => "?".to_string(),
             };
             {
                 let __tco_0 = rest.clone();
@@ -533,7 +533,7 @@ pub fn apply_named_template_nested(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
-            std::option::Option::None => template,
+            None => template,
             Some(key) => {
                 let rest = Rc::new(
                     keys.clone()
@@ -565,7 +565,7 @@ pub fn apply_named_template_nested(
                         });
                         processed.clone().join(&val.clone())
                     }
-                    std::option::Option::None => {
+                    None => {
                         v1_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key.clone())
                     }
                 }

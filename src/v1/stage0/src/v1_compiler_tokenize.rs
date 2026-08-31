@@ -35,7 +35,7 @@ use std::rc::Rc;
 pub fn is_keyword_text(text: String) -> bool {
     match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
         Some(_) => true,
-        std::option::Option::None => false,
+        None => false,
     }
 }
 
@@ -722,7 +722,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
                 1,
                 source.file.clone(),
             ),
-            std::option::Option::None => emit(
+            None => emit(
                 pos.clone(),
                 TokenShape::ShUnknown,
                 ch_text.clone(),
@@ -814,7 +814,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
         let parsed = v1_rt::parse_int(text.clone());
         let shape = match parsed.clone() {
             Some(_) => TokenShape::ShLitInt,
-            std::option::Option::None => TokenShape::ShUnknown,
+            None => TokenShape::ShUnknown,
         };
         let token = make_token(
             text.clone(),
@@ -1160,9 +1160,9 @@ pub fn hex_escape_char(hi: i64, lo: i64) -> Option<i64> {
     match hex_digit_value(hi.clone()) {
         Some(h) => match hex_digit_value(lo.clone()) {
             Some(l) => Some(((h.clone() * 16) + l.clone())),
-            std::option::Option::None => std::option::Option::None,
+            None => std::option::Option::None,
         },
-        std::option::Option::None => std::option::Option::None,
+        None => std::option::Option::None,
     }
 }
 
@@ -1208,7 +1208,7 @@ pub fn unicode_escape_at(
                             value = __tco_2;
                             continue;
                         }
-                        std::option::Option::None => {
+                        None => {
                             break std::option::Option::None;
                         }
                     }
@@ -1248,7 +1248,7 @@ pub fn process_escapes_loop(
                                 acc = __tco_1;
                                 continue;
                             }
-                            std::option::Option::None => {
+                            None => {
                                 break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
                             }
                         }
@@ -1266,7 +1266,7 @@ pub fn process_escapes_loop(
                                     acc = __tco_1;
                                     continue;
                                 }
-                                std::option::Option::None => {
+                                None => {
                                     break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
                                 }
                             }
@@ -1312,7 +1312,7 @@ pub fn process_escapes_loop(
                                     acc = __tco_1;
                                     continue;
                                 }
-                                std::option::Option::None => {
+                                None => {
                                     break Rc::new(EscapeProcessResult::EscapeProcessingRefused {});
                                 }
                             }

@@ -30,9 +30,7 @@ pub fn module_path_owner_binding_decide(
                     Some(owner) => Rc::new(ModulePathBindingProjection::ModulePathBindingHit {
                         owner: owner.clone(),
                     }),
-                    std::option::Option::None => {
-                        Rc::new(ModulePathBindingProjection::ModulePathBindingMiss)
-                    }
+                    None => Rc::new(ModulePathBindingProjection::ModulePathBindingMiss),
                 }
             } else {
                 Rc::new(ModulePathBindingProjection::ModulePathBindingAmbiguous {
