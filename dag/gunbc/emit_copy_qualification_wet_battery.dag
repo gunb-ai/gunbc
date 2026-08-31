@@ -23,6 +23,14 @@ import tools.emit_copy_qualification_transport {
 // requires: named modeled mutants that must produce specific typed refusals, proving the two
 // observation arms independent and the battery able to go red.
 // ── Clean shards: the qualification claim, one fn per carrier shard ──────────────────────────
+// FLOOR STANDING (why this is NOT a *_test.dag module): v2.workflow.floor_changed_witness
+// blocks any CHANGED witness identity without a terminal floor verdict, and these transactions
+// route-gap hermetically at the witness-binary readiness probe (IsExecutable, NoMockResponse) —
+// so wet-only witness identities cannot be introduced while their executing lane ships inert
+// per the ROOT-N division ruling. The battery therefore lands as plain claim functions run by
+// the emit-copy-qualification-battery job's claim_batch --functions invocation; converting this
+// module to floor-enrolled witnesses is part of the job's activation edit, alongside deleting
+// the inert standing row.
 fn ecq_wet_shard_copy_scalar_qualifies_holds() -> Bool {
   shard_all_qualified(verdicts: run_emit_copy_qualification_shard(c: CopyScalarControl, mutant: CleanSubject))
 }
@@ -96,12 +104,3 @@ fn ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds() -> Bool 
 fn ecq_emitted_prelude_grounds_structural_sequence_holds() -> Bool {
   emitted_prelude_grounds_structural_sequence()
 }
-
-// FLOOR STANDING (why this is NOT a *_test.dag module): v2.workflow.floor_changed_witness
-// blocks any CHANGED witness identity without a terminal floor verdict, and these transactions
-// route-gap hermetically at the witness-binary readiness probe (IsExecutable, NoMockResponse) —
-// so wet-only witness identities cannot be introduced while their executing lane ships inert
-// per the ROOT-N division ruling. The battery therefore lands as plain claim functions run by
-// the emit-copy-qualification-battery job's claim_batch --functions invocation; converting this
-// module to floor-enrolled witnesses is part of the job's activation edit, alongside deleting
-// the inert standing row.
