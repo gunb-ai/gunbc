@@ -618,47 +618,42 @@ test fn witness_route_change_during_window_is_incomplete_at_observation_window()
 
 // Review 5062738052 B3: tick freshness is a typed-arm object in the durable document -- the
 // observed age and the cadence-derived bound are recovered by JSON navigation, never from prose.
-test fn witness_receipt_document_freshness_is_machine_readable() -> Bool {
-  let fresh_doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts()))
+// Two witnesses (fresh doc, stale doc) so each stays inside the floor's 500ms CPU line: one
+// document build + parse each; the single two-document form was BUDGET-REFUSED on run 33358233304.
+fn rlm_doc_freshness(doc: String) -> JsonValue? {
+  match parse_json_document(s: doc) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: root } =>
+      match rlm_doc_member(doc: root, key: "facts") {
+        Absent => none
+        Present { value: facts } =>
+          match rlm_doc_member(doc: facts, key: "tick_standing") {
+            Absent => none
+            Present { value: tick } => rlm_doc_member(doc: tick, key: "freshness")
+          }
+      }
+  }
+}
+
+test fn witness_receipt_document_fresh_age_is_machine_readable() -> Bool {
+  let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts()))
+  match rlm_doc_freshness(doc: doc) {
+    Absent => false
+    Present { value: fr } => rlm_doc_string(doc: fr, key: "arm") == "fresh" && rlm_doc_string(doc: fr, key: "age_seconds") == "30"
+  }
+}
+
+test fn witness_receipt_document_stale_age_and_bound_are_machine_readable() -> Bool {
   let stale_tick = rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at)
-  let stale_doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(
+  let doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(
     subject: rlm_subject(),
     facts: with_tick(f: rlm_complete_facts(), t: TickObserved { receipt: stale_tick, freshness: TickStale { age_seconds: second(count: 540), bound_seconds: second(count: 180) } }),
   ))
-  let fresh_ok = match parse_json_document(s: fresh_doc) {
-    JsonDocumentUnreadable { gap: _ } => false
-    JsonDocumentParsed { value: root } =>
-      match rlm_doc_member(doc: root, key: "facts") {
-        Absent => false
-        Present { value: facts } =>
-          match rlm_doc_member(doc: facts, key: "tick_standing") {
-            Absent => false
-            Present { value: tick } =>
-              match rlm_doc_member(doc: tick, key: "freshness") {
-                Absent => false
-                Present { value: fr } => rlm_doc_string(doc: fr, key: "arm") == "fresh" && rlm_doc_string(doc: fr, key: "age_seconds") == "30"
-              }
-          }
-      }
+  match rlm_doc_freshness(doc: doc) {
+    Absent => false
+    Present { value: fr } =>
+      rlm_doc_string(doc: fr, key: "arm") == "stale"
+        && rlm_doc_string(doc: fr, key: "age_seconds") == "540"
+        && rlm_doc_string(doc: fr, key: "bound_seconds") == "180"
   }
-  let stale_ok = match parse_json_document(s: stale_doc) {
-    JsonDocumentUnreadable { gap: _ } => false
-    JsonDocumentParsed { value: root } =>
-      match rlm_doc_member(doc: root, key: "facts") {
-        Absent => false
-        Present { value: facts } =>
-          match rlm_doc_member(doc: facts, key: "tick_standing") {
-            Absent => false
-            Present { value: tick } =>
-              match rlm_doc_member(doc: tick, key: "freshness") {
-                Absent => false
-                Present { value: fr } =>
-                  rlm_doc_string(doc: fr, key: "arm") == "stale"
-                    && rlm_doc_string(doc: fr, key: "age_seconds") == "540"
-                    && rlm_doc_string(doc: fr, key: "bound_seconds") == "180"
-              }
-          }
-      }
-  }
-  fresh_ok && stale_ok
 }
