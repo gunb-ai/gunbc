@@ -3,7 +3,7 @@ module gunbc.plans.value_null_split
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
 
 // PHASE STANDING IS NOT A CHECKBOX, and this module used to prove why. Every phase below was
@@ -45,16 +45,26 @@ type ValueNullPhaseStanding
   = PhaseWitnessEnrolled { claim: NonEmptyStr }
   | PhaseUnwitnessed
 
-fn value_null_phase_eq(a: ValueNullPhase, b: ValueNullPhase) -> Bool {
-  match a {
-    PhaseCarrierWitnesses => match b { PhaseCarrierWitnesses => true _ => false }
-    PhaseStopProducingNull => match b { PhaseStopProducingNull => true _ => false }
-    PhaseDeleteNullBridges => match b { PhaseDeleteNullBridges => true _ => false }
-    PhaseNoneLiteralMigration => match b { PhaseNoneLiteralMigration => true _ => false }
-    PhaseCrossRepresentationEquality => match b { PhaseCrossRepresentationEquality => true _ => false }
-    PhaseArgumentCoercion => match b { PhaseArgumentCoercion => true _ => false }
-    PhasePrimitiveSignatureDenominator => match b { PhasePrimitiveSignatureDenominator => true _ => false }
+// Equality is DERIVED from one exhaustive projection rather than written as a 7x7 comparison,
+// following `std.fermi` `fermi_ordinal`. The first draft of this function matched `a` and then
+// matched `b` inside each arm with a `_ => false` wildcard, which the non-fold residue detector
+// correctly flagged: a wildcard over a CLOSED coproduct is un-migrated modeling, because adding an
+// eighth phase would silently take the `_` arm at seven sites instead of failing to compile. Here
+// a new arm makes `value_null_phase_ordinal` non-exhaustive and the compiler refuses.
+fn value_null_phase_ordinal(phase: ValueNullPhase) -> Int {
+  match phase {
+    PhaseCarrierWitnesses => 0
+    PhaseStopProducingNull => 1
+    PhaseDeleteNullBridges => 2
+    PhaseNoneLiteralMigration => 3
+    PhaseCrossRepresentationEquality => 4
+    PhaseArgumentCoercion => 5
+    PhasePrimitiveSignatureDenominator => 6
   }
+}
+
+fn value_null_phase_eq(a: ValueNullPhase, b: ValueNullPhase) -> Bool {
+  value_null_phase_ordinal(phase: a) == value_null_phase_ordinal(phase: b)
 }
 
 // One row per phase that has a discriminating witness enrolled today. Phase A's rows are the
