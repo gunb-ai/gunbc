@@ -533,14 +533,35 @@ fn phase_count_or_negative(row: RustcPhaseBoardRow) -> Int {
   }
 }
 
+fn first_closed_phase_regression(
+  previous: RustcPhaseBoard,
+  current: RustcPhaseBoard
+) -> RustcPhaseBoardRow? {
+  previous.rows
+    |> flat_map(old => match board_row(board: current, phase: old.phase) {
+      Present { value: now } =>
+        if phase_count_or_negative(row: old) == 0 && phase_count_or_negative(row: now) > 0 {
+          [now]
+        } else { [] }
+      Absent => []
+    })
+    |> first
+}
+
 fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRatchetVerdict {
-  if rustc_phase_order(phase: current.furthest_phase_reached) < rustc_phase_order(phase: previous.furthest_phase_reached) {
-    PhaseRatchetRefused {
-      phase: current.furthest_phase_reached,
-      identities: [],
-      reason: "furthest rustc phase regressed" as NonEmptyStr
+  match first_closed_phase_regression(previous: previous, current: current) {
+    Present { value: reopened } => PhaseRatchetRefused {
+      phase: reopened.phase,
+      identities: reopened.identities,
+      reason: "a closed phase regained diagnostic identities" as NonEmptyStr
     }
-  } else {
+    Absent => if rustc_phase_order(phase: current.furthest_phase_reached) < rustc_phase_order(phase: previous.furthest_phase_reached) {
+      PhaseRatchetRefused {
+        phase: current.furthest_phase_reached,
+        identities: [],
+        reason: "furthest rustc phase regressed" as NonEmptyStr
+      }
+    } else {
     fold(
       previous.rows,
       init: PhaseRatchetHeld,
@@ -563,6 +584,7 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
         }
       }
     )
+    }
   }
 }
 
