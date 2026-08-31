@@ -45,34 +45,66 @@ agree. So the entire match-scrutinee population was green on a divergence it is 
 to observe. **A witness whose RED is not authorable is a decoration**; for this class the
 match-scrutinee shape is exactly that, and the two shapes in the table are the ones that are not.
 
-## The census — 186 terminal `|> first` sites, 81 files, at identity grain
+## The census — a disposition roster, not a shape tally
 
-Population: every terminal `|> first` occurrence in `dag/**.dag` and `src/v2/**.dag` on `main`
-(`git ls-files`, pipeline-terminal form). The parent lane reported 187 across 82 files; the extra
-row is not on `main` and is most plausibly the known-red claim added on PR #9775's branch. The
-count is reported for reconciliation only — **the roster below, not the count, is the deliverable.**
+Population: every terminal `|> first` occurrence in `dag/**.dag` and `src/v2/**.dag` on `main`.
+186 occurrences resolve to **181 real sites over 81 files**, plus 5 that are not sites at all
+(4 inside `//` annotations, 1 inside a string literal that carries a probe program). The parent lane
+measured 187 across 82; that reconciles exactly as 186/81 plus PR #9775's own known-red row, which
+is not on `main`. **Cite this census as the producer of the roster; the count is not the
+deliverable and should not be transcribed.**
 
-The three shapes, and what each does with the result:
+Each site carries a DISPOSITION — whether the divergence actually harms it — not merely a shape.
+A shape says where the value goes; only the disposition says whether the two realizations answer
+differently on an input the corpus can reach.
 
-- **S1 — eliminated by `match` (143 sites).** `match xs |> first { Present { value: v } => .. }`,
-  including the `let x = .. |> first` then `match x` spelling. The compensating `match_pattern` arms
-  make interpreter and emitted AGREE here, for every element type that is not itself an `Optional`.
-  These sites are not victims; they are the regression population the repair must not break.
-- **S2 — returned directly as the enclosing function's `T?` (37 sites).** The divergence is
-  propagated, not resolved: the raw element leaves the function wearing the declared `Optional`
-  type. Each of these is a victim exactly when one of its callers is S3-shaped.
-- **S3 — flows into a value position (6 sites).** Compared, passed as an argument, or returned
-  where a NON-optional type is declared. These are the sites where the two realizations produce
-  different answers on inputs the corpus can actually reach.
+| disposition | sites | what it means |
+|---|---|---|
+| `AgreesUnderCompensation` | 142 | eliminated by `match`. The interpreter's raw-unwrap arms in `match_pattern` bind a `Present { value: v }` pattern to any value that is neither `Null` nor a `Present`/`Absent` variant, so interpreter and emitted agree for **every element type except `Optional` itself**. |
+| `Propagates` | 36 | returned onward as the enclosing function's declared `T?`. The declared type is honest; only its REPRESENTATION differs, so the disposition is the caller's. |
+| `HarmedNow` | 3 | the value reaches a position that reads the representation directly. |
+| `NotASite` | 5 | annotation or string-literal text. |
 
-The S2 and S3 rosters are below. S1 is not rostered individually: it is the complement, and its
-membership test is mechanical (the occurrence is a `match` scrutinee).
+**`AgreesUnderCompensation` is a measured disposition, not an assumption.** Its failure condition is
+an element type that is itself `Optional`, and the corpus declares exactly five list-of-optional
+carriers in total (`List<T?>` / `List<Optional<T>>`), all in witness tests, none of them reaching a
+`first`. So **zero** of the 142 are harmed today. That is precisely why this class stayed invisible:
+the shape that dominates the corpus is the one shape the compensation covers.
+
+**`Propagates` resolves the same way, one level out.** Following all 36 functions to their call
+sites: 72 callers eliminate by `match` (unharmed), 2 tail-propagate into another `T?`
+(`mercurial_first_changeset_cycle` / `_file_revision_cycle`), and 4 compare `== none`
+(`rust_representation_realization_for` in `self_host_symbol_identity_binding_witness_test`) — which
+AGREES, because a miss is `Null` on one side and `Absent` on the other and both compare equal to
+`none`. It agrees by the representation happening to line up on that one constructor: the same site
+spelled `== Present { value: .. }` is the parent lane's discriminator and diverges. **Zero harmed
+today, and the margin is one constructor wide.**
+
+`HarmedNow`, in full — this is the whole victim list for the pipeline spelling:
+
+- `dag/std/cache_interface.dag` · `cache_facts_for_id` — declares `-> CacheInterfaceFacts` and
+  returns `catalog |> filter(..) |> first()`, an `Optional<CacheInterfaceFacts>`. Its three callers
+  (`cache_reach_candidate_probe`, `cache_layer_cost_justified`,
+  `cache_layer_ids_respect_locality`) then read `.locality` and pass it to `read_latency_cost`.
+  Sibling defect in the same module: `cache_layer_plan_primary` / `cache_layer_plan_fallback` both
+  declare `-> CacheInterfaceId` over `.first()`.
+- `dag/test/claim/build_latency_actions_collect_witness_test.dag` ·
+  `witness_population_fold_groups_by_host_and_filters_job_name`, twice —
+  `measure_count(m: srv1.durations |> skip(n: 0) |> first)` passes an `Optional` into a required
+  parameter. The two realizations agree while the list is non-empty and diverge on empty, where the
+  emitted arm's `.expect(..)` stops and the interpreter carries `Value::Null` onward.
+
+**Three of 181.** Read alone that number argues the class is not worth repairing. It is the wrong
+denominator, and the next section is why.
 
 ## The finding that changes the shape of the repair
 
 The census does not stop at `|> first`. The METHOD-CALL spelling `.first()` / `.last()` is a
-separate and much larger population — 646 occurrences across 180 files in the same two trees — and
-its dominant idiom is the value position, not the match:
+separate and much larger population — 646 occurrences across 180 files in the same two trees by this
+census's filter, 655 across 178 by the parent lane's independent one. Same magnitude, different
+filter boundary; neither number should be transcribed, and the disagreement is itself the reason to
+name the producer rather than the figure. Its
+dominant idiom is the value position, not the match:
 
     parse_int(s: fields.first())
     trim(tokens.skip(n: 1).first())
@@ -164,7 +196,11 @@ decision, not something to improvise inside this repair.
 
 ## Roster
 
-### S2-returned-as-optional (37 sites)
+`HarmedNow` and `NotASite` are listed in full above. `Propagates` (36 sites) is rostered here at
+identity grain; `AgreesUnderCompensation` (142) is the complement and its membership test is
+mechanical — the occurrence is a `match` scrutinee, directly or through a `let` bound one line up.
+
+### Propagates — returned onward as the enclosing function's `T?`
 
 - `dag/extdeps/filesystem/linux.dag` · `linux_proc_mount_row_for_target`
 - `dag/extdeps/git/object_store.dag` · `git_find_stored_object`
@@ -193,7 +229,6 @@ decision, not something to improvise inside this repair.
 - `dag/gunbc/instruments/e0599_emitter_decision_census.dag` · `e0599_row_for_operation`
 - `dag/gunbc/live_deploy/repository_convergence.dag` · `convergence_ref_at`
 - `dag/gunbc/live_deploy/repository_convergence.dag` · `convergence_worktree_at`
-- `dag/gunbc/namespace/namespace_clause_e_projection_law.dag` · `<module>`
 - `dag/gunbc/roadmap/roadmap_belt_actuate.dag` · `belt_dispatch_result_for_label`
 - `dag/gunbc/roadmap/roadmap_closing_contract_authoring.dag` · `closing_contract_target_node`
 - `dag/gunbc/roadmap/roadmap_execution_contract.dag` · `dispatch_host_realization`
@@ -203,12 +238,3 @@ decision, not something to improvise inside this repair.
 - `dag/std/target_representation.dag` · `representation_spelling_for`
 - `dag/test/claim/algebra_carrier_roster_witness_test.dag` · `ascii_least`
 - `dag/test/claim/roadmap/roadmap_program_view_witness_test.dag` · `fx_line_view`
-
-### S3-value-position (6 sites)
-
-- `dag/gunbc/generated_artifact_observation.dag` · `observe_generated_artifact_with`
-- `dag/std/cache_interface.dag` · `cache_facts_for_id`
-- `dag/std/orthogonal_geometry.dag` · `any_nonadjacent_edges_touch`
-- `dag/test/claim/build_latency_actions_collect_witness_test.dag` · `witness_population_fold_groups_by_host_and_filters_job_name`
-- `dag/test/claim/build_latency_actions_collect_witness_test.dag` · `witness_population_fold_groups_by_host_and_filters_job_name`
-- `dag/test/claim/guarantee_probe_corpus_witness_test.dag` · `witness_harness_revision`
