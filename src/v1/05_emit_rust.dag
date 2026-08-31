@@ -3213,7 +3213,28 @@ fn module_reference_candidate_names(typed_module: TypedModule, ctx: EmitRustCont
     |> filter(name => !reference_is_host_realized_builtin(name: name))
 }
 
+// THE NECESSARY CONDITION, ASKED FIRST BECAUSE IT IS THE CHEAP ONE AND IT IS EXACT.
+//
+// A `use crate::<filename>::<name>` line exists only if `name` resolves through the item registry
+// to a module with that filename. So a registry carrying no such provider admits no such line,
+// whatever any module references -- this is an implication, not a heuristic, and answering `false`
+// here is answering the question rather than declining it.
+//
+// IT IS ALSO THE WHOLE COST OF THIS PREDICATE. Without it the reference half walks every module in
+// the closure through `repair_input_origin_candidates`, twice -- once per stub filename -- and that
+// walk MEASURED 288 s on the seed regen closure, taking compile.emit from 258 s to 546 s. The
+// modules it walks for are absent from the registry in every closure that is not a narrow one, so
+// the walk was paid in full to answer `false` on the common path. The instrument is
+// `claim_executor --regen-round-cost`, phase=compile.emit; the isolation was a probe that
+// short-circuited this predicate and left emitted bytes unchanged (changed_paths=0).
+fn registry_declares_module_filename(registry: Map<String, ItemInfo>, filename: String) -> Bool {
+  map_values(registry) |> any(info => module_to_filename(name: info.module_name) == filename)
+}
+
 fn closure_references_module_filename(typed: ResolvedGraph, ctx: EmitRustContext, filename: String) -> Bool {
+  if !registry_declares_module_filename(registry: ctx.registry, filename: filename) {
+    return false
+  }
   typed.modules |> any(tm =>
     module_reference_candidate_names(typed_module: tm, ctx: ctx) |> any(name =>
       match map_get(ctx.registry, name) {

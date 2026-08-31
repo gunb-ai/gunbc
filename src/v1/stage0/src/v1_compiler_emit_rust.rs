@@ -6433,39 +6433,62 @@ pub fn module_reference_candidate_names(
     }
 }
 
+pub fn registry_declares_module_filename(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    filename: String,
+) -> bool {
+    {
+        let mut __found = false;
+        for info in Rc::new(v1_rt::map_values(&registry)).iter().cloned() {
+            if (crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
+                == filename.clone())
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
 pub fn closure_references_module_filename(
     typed: Rc<ResolvedGraph>,
     ctx: Rc<EmitRustContext>,
     filename: String,
 ) -> bool {
     {
-        let mut __found = false;
-        for tm in typed.modules.clone().iter().cloned() {
-            if {
-                let mut __found = false;
-                for name in module_reference_candidate_names(tm.clone(), ctx.clone())
-                    .iter()
-                    .cloned()
-                {
-                    if match v1_rt::map_get(&ctx.registry.clone(), name.clone()) {
-                        Some(info) => {
-                            (crate::v1_compiler_emit_core_support::module_to_filename(
-                                info.module_name.clone(),
-                            ) == filename.clone())
-                        }
-                        None => false,
-                    } {
-                        __found = true;
-                        break;
-                    }
-                }
-                __found
-            } {
-                __found = true;
-                break;
-            }
+        if !registry_declares_module_filename(ctx.registry.clone(), filename.clone()) {
+            return false;
         }
-        __found
+        {
+            let mut __found = false;
+            for tm in typed.modules.clone().iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for name in module_reference_candidate_names(tm.clone(), ctx.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if match v1_rt::map_get(&ctx.registry.clone(), name.clone()) {
+                            Some(info) => {
+                                (crate::v1_compiler_emit_core_support::module_to_filename(
+                                    info.module_name.clone(),
+                                ) == filename.clone())
+                            }
+                            None => false,
+                        } {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
     }
 }
 
