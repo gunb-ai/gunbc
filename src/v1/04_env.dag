@@ -1342,9 +1342,90 @@ fn type_reference_declaration(n: Node, source_indices: Map<String, NewlineIndex>
   }
 }
 
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  match type_reference_declaration(n: n, source_indices: source_indices, env: env) {
-    Present { value: od } => Present { value: od.declaration }
+// A QUALIFIED AUTHORED NAME IS ITSELF AN IDENTITY, joined against the census rather than trusted:
+// the resolver qualifies borrowed type names with their owner module path
+// (qualify_borrowed_type_names), so a resolved reference spelled `v2.std.text.String` names its
+// declaring module in its own name. The census row for the bare segment must AGREE -- a prefix
+// with no census row of that module answers none, so nothing is minted from the spelling alone;
+// decl_file is the AGREEING declaration's own file, read from the census binding, never from the
+// reference. This is NOT the refuted by-name arm (which asked pool precedence to pick a homonym):
+// the module prefix is authored on the reference, so there is exactly one census row it can agree
+// with, and a bare (unqualified) spelling takes this arm nowhere -- it answers none.
+fn operand_declaration_from_qualified_name(qualified: String, env: TypeEnv) -> OperandDeclaration? {
+  let decl_name = qualified_last_segment(name: qualified)
+  let module_prefix = qualified_all_but_last(name: qualified)
+  if decl_name == "" || module_prefix == "" { return none }
+  match map_get(env.symbol_index.global_bare, decl_name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+      if mp == module_prefix {
+        match b.resolved.ident_span {
+          Present { value: ds } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: mp, decl_name: decl_name), decl_file: ds.file } }
+          Absent => none
+        }
+      } else { none }
+    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+      match cands |> filter(c => c.module_path == module_prefix) |> first {
+        Present { value: c } =>
+          match c.binding.resolved.ident_span {
+            Present { value: ds } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: c.module_path, decl_name: decl_name), decl_file: ds.file } }
+            Absent => none
+          }
+        Absent => none
+      }
     Absent => none
+  }
+}
+
+// THE LITERAL-DESTINATION READ keeps the pre-recut hop order (XL-0T): resolved node, then the
+// reference's scoped env binding, then the module-visible NAME binding, each answered only by a
+// census join (span agreement, or an authored QUALIFIED name whose module prefix the census row
+// must equal). The by-name hop is deliberately absent from type_reference_declaration above (the
+// operand read), where it was measured to confirm the wrong homonym for an operand; here it fires
+// only after both exact hops decline, and its answer still has to survive the same census join,
+// so a pool-precedence homonym with a non-agreeing span or prefix answers none rather than wrong.
+fn declaration_ref_of_type_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let authored = authored_name_at(source_indices: source_indices, node: rt)
+  let decl_name = qualified_last_segment(name: authored)
+  if decl_name == "" { return none }
+  let by_span = match rt.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
+  match by_span {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match operand_declaration_from_qualified_name(qualified: authored, env: env) {
+        Present { value: od } => Present { value: od.declaration }
+        Absent => none
+      }
+  }
+}
+
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let from_resolved = match n.inferred {
+    Present { value: Resolved { node: r } } => declaration_ref_of_type_node(rt: r, source_indices: source_indices, env: env)
+    _ => none
+  }
+  match from_resolved {
+    Present { value: d } => Present { value: d }
+    Absent =>
+      match lookup_type_for(env: env, node: n) {
+        Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
+        Absent =>
+          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+            Present { value: bound } => declaration_ref_of_type_node(rt: bound, source_indices: source_indices, env: env)
+            Absent => declaration_ref_of_type_node(rt: n, source_indices: source_indices, env: env)
+          }
+      }
   }
 }

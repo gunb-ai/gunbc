@@ -127,14 +127,19 @@ test fn w_nonliteral_kernel_string_at_text_boundary_is_presently_accepted_declar
 
 // OP REALIZATION OVER THE STRUCTURAL CARRIER IS THE DECLARED BODIES: the emitted v2_std_text
 // module carries no host string method on the structural carrier -- the four name-keyed body
-// overrides (string_is_empty/string_head/string_tail/fold_source as .chars()/.is_empty() host
-// Rust) are deleted, so the declared bodies route to crate::v2_std_algebra and the .chars()
-// spelling cannot appear.
+// overrides (string_is_empty/string_head/string_tail/fold_source as s.chars()/s.is_empty() host
+// Rust on the String-typed receiver) are deleted, so the declared bodies route to
+// crate::v2_std_algebra. The excludes pin the overrides' EXACT receiver forms rather than the bare
+// method substrings: the native FreeMonoid match lowering legitimately emits `__fm.is_empty()` --
+// Vec::is_empty on the structural Rc<Vec<i64>> carrier, a list realization, not a host string op --
+// and a bare `.is_empty()` exclude reds that structural lowering (the substring-oracle
+// over-match class). Each override body contained `s.chars()` / `s.is_empty()` verbatim, so the
+// narrowed excludes still go red if any name-keyed override returns.
 test fn w_emitted_text_module_realizes_ops_by_declared_bodies_not_host_strings() -> Bool {
   compile_dag_rust_emit_check(
     "module test.claim.text_ops_probe\nimport v2.std.text { String, string_is_empty }\nimport v2.std.logic { Bool }\nfn probe(s: String) -> Bool { string_is_empty(s: s) }\n",
     "src/v2_std_text.rs",
     ["pub fn string_is_empty", "crate::v2_std_algebra::is_empty"],
-    [".chars()", ".is_empty()"]
+    ["s.chars()", "s.is_empty()"]
   )
 }
