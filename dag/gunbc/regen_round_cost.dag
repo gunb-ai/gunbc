@@ -115,6 +115,9 @@ type RegenRoundCostReceipt {
   changed_paths: List<String>
   convergence_stage_receipt_ids: List<String>
   installed_mirrors: List<String>
+  rebuild_packages: List<String>
+  executable_digest: String
+  second_generation_candidate_digest: String
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
@@ -269,6 +272,22 @@ fn regen_round_partition_rebuild_line(receipt: RegenRoundCostReceipt) -> String 
   )
 }
 
+fn regen_round_execution_identity_line(receipt: RegenRoundCostReceipt) -> String {
+  let listed = fold(receipt.rebuild_packages, init: "", f: fn(acc, pkg) {
+    if acc == "" { pkg } else { concat(concat(acc, ", "), pkg) }
+  })
+  concat(
+    concat(
+      concat("regen-round-cost: execution-identity rebuild_packages=", to_string(count(receipt.rebuild_packages))),
+      concat(concat(" [", listed), "]")
+    ),
+    concat(
+      concat(" executable_digest=", receipt.executable_digest),
+      concat(" second_generation_candidate=", receipt.second_generation_candidate_digest)
+    )
+  )
+}
+
 // The whole receipt as the lines the host prints, in ledger order. Rendered here and read by
 // the host through the interpreter, so there is no Rust mirror of this format to drift.
 fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
@@ -283,7 +302,10 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
         concat(regen_round_changed_paths_line(receipt: receipt), "\n"),
         concat(
           concat(regen_round_convergence_stages_line(receipt: receipt), "\n"),
-          concat(regen_round_partition_rebuild_line(receipt: receipt), "\n")
+          concat(
+            concat(regen_round_partition_rebuild_line(receipt: receipt), "\n"),
+            concat(regen_round_execution_identity_line(receipt: receipt), "\n")
+          )
         )
       )
     )

@@ -2543,6 +2543,7 @@ const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
 
 struct CargoBuildObservation {
     compiled_crates: u64,
+    compiled_packages: Vec<String>,
 }
 
 const REGEN_CONVERGENCE_SCHEMA: &str = "gunbc.regen_convergence_transaction.v1";
@@ -2643,6 +2644,8 @@ struct RegenConvergenceStageReceipt {
     build_invocation: String,
     build_terminal: RegenConvergenceBuildTerminalReceipt,
     build_compiled_crates: u64,
+    build_packages: Vec<String>,
+    assembly_equivalence_authority: String,
     output_seed_digest: String,
     next_generation_receipt_id: String,
 }
@@ -3051,11 +3054,17 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
             tail.join("\n")
         ));
     }
-    let compiled_crates = stderr
+    let compiled_packages = stderr
         .lines()
-        .filter(|l| l.trim_start().starts_with("Compiling "))
-        .count() as u64;
-    Ok(CargoBuildObservation { compiled_crates })
+        .filter_map(|line| line.trim_start().strip_prefix("Compiling "))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .map(|name| name.to_string())
+        .collect::<Vec<_>>();
+    let compiled_crates = compiled_packages.len() as u64;
+    Ok(CargoBuildObservation {
+        compiled_crates,
+        compiled_packages,
+    })
 }
 
 /// The seed binary ON DISK at the path this process started from. After a cargo build replaces
@@ -3163,6 +3172,9 @@ fn render_round_cost_receipt(
     changed_paths: &[String],
     convergence_stage_receipt_ids: &[String],
     installed_mirrors: &[String],
+    rebuild_packages: &[String],
+    executable_digest: &str,
+    second_generation_candidate_digest: &str,
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -3266,6 +3278,21 @@ fn render_round_cost_receipt(
                 ctx.sym("installed_mirrors"),
                 Value::List(Rc::new(installed_values.into())),
             ),
+            (
+                ctx.sym("rebuild_packages"),
+                Value::List(Rc::new(
+                    rebuild_packages
+                        .iter()
+                        .map(str_value)
+                        .collect::<Vec<_>>()
+                        .into(),
+                )),
+            ),
+            (ctx.sym("executable_digest"), str_value(executable_digest)),
+            (
+                ctx.sym("second_generation_candidate_digest"),
+                str_value(second_generation_candidate_digest),
+            ),
         ]),
     };
     let args = vec![(Some("receipt".to_string()), receipt)];
@@ -3280,6 +3307,143 @@ fn render_round_cost_receipt(
             other.type_label_public()
         )),
     }
+}
+
+struct PartitionRebuildActuation {
+    actuatable: bool,
+    package_closure: Vec<String>,
+    excluded_packages: Vec<String>,
+    decision_line: String,
+}
+
+type ModelValue = crate::v1_interpreter::Value;
+
+fn model_string_list(xs: &[String]) -> ModelValue {
+    use crate::v1_interpreter::str_value;
+    ModelValue::List(Rc::new(
+        xs.iter().map(str_value).collect::<Vec<ModelValue>>().into(),
+    ))
+}
+
+fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<String>, String> {
+    match value {
+        ModelValue::List(items) => items
+            .iter()
+            .map(|item| match item {
+                ModelValue::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "refusal: {what} returned a {} where a String was expected",
+                    other.type_label_public()
+                )),
+            })
+            .collect(),
+        other => Err(format!(
+            "refusal: {what} returned {} where a List was expected",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn partition_rebuild_actuation(
+    source_roots: &[String],
+    installed_mirrors: &[String],
+) -> Result<PartitionRebuildActuation, String> {
+    use crate::v1_interpreter::{self, ExecutionMode};
+    let entry = round_cost_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let call = |function: &str| -> Result<ModelValue, String> {
+        let args = vec![
+            (
+                Some("changed_mirrors".to_string()),
+                model_string_list(installed_mirrors),
+            ),
+            (Some("unlocatable".to_string()), model_string_list(&[])),
+        ];
+        v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    };
+    let actuatable = match call("stage0_partition_rebuild_is_actuatable_today")? {
+        ModelValue::Bool(value) => value,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_is_actuatable_today returned {} instead of Bool",
+                other.type_label_public()
+            ))
+        }
+    };
+    let package_closure = model_value_to_string_list(
+        &call("stage0_partition_rebuild_packages_today")?,
+        "stage0_partition_rebuild_packages_today",
+    )?;
+    let excluded_packages = model_value_to_string_list(
+        &call("stage0_partition_rebuild_excluded_today")?,
+        "stage0_partition_rebuild_excluded_today",
+    )?;
+    let decision_line = match call("stage0_partition_rebuild_decision_line_today")? {
+        ModelValue::Str(value) => value.to_string(),
+        other => {
+            return Err(format!(
+            "refusal: stage0_partition_rebuild_decision_line_today returned {} instead of String",
+            other.type_label_public()
+        ))
+        }
+    };
+    Ok(PartitionRebuildActuation {
+        actuatable,
+        package_closure,
+        excluded_packages,
+        decision_line,
+    })
+}
+
+fn partitioned_rebuild_from_installed(
+    workspace: &Path,
+    actuation: &PartitionRebuildActuation,
+) -> Result<CargoBuildObservation, String> {
+    if !actuation.actuatable {
+        return Err(format!(
+            "StageSeedBuildRefused: no partitioned build was attempted and no full-build fallback ran -- {}",
+            actuation.decision_line
+        ));
+    }
+    if actuation.package_closure.is_empty() {
+        return Err(format!(
+            "StageSeedBuildRefused: actuation admitted an empty package closure -- {}",
+            actuation.decision_line
+        ));
+    }
+    let observation = seed_cargo_build(workspace, "round.rebuild_from_installed")?;
+    let widened = observation
+        .compiled_packages
+        .iter()
+        .filter(|package| actuation.excluded_packages.contains(package))
+        .collect::<Vec<_>>();
+    if !widened.is_empty() {
+        return Err(format!(
+            "StageSeedBuildRefused: compiled excluded packages {widened:?} -- {}",
+            actuation.decision_line
+        ));
+    }
+    Ok(observation)
+}
+
+fn next_pass_executable_digest(workspace: &Path) -> Result<String, String> {
+    let executable = workspace.join("target/release/claim_executor");
+    fs::read(&executable)
+        .map(|bytes| v1_rt::bytes_identity_hash(&bytes))
+        .map_err(|e| {
+            format!(
+                "StageOutputExecutableUnbound: read {}: {e}",
+                executable.display()
+            )
+        })
 }
 
 struct FirstGenerationConvergenceObservation {
@@ -3329,6 +3493,7 @@ fn run_built_seed_regen(
     receipt_rel: &str,
     source_roots: &[String],
     affected_scope: bool,
+    admitted_executable_digest: &str,
 ) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
@@ -3342,6 +3507,15 @@ fn run_built_seed_regen(
     let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
     let shown = exe.to_string_lossy().into_owned();
     let on_disk = PathBuf::from(shown.strip_suffix(" (deleted)").unwrap_or(&shown));
+    let observed_executable_digest = path_digest(&on_disk)?;
+    if observed_executable_digest != admitted_executable_digest {
+        return Err(format!(
+            "CandidateGeneratedByDifferentSeed: stage admitted executable {} but next generation would run {} at {}",
+            admitted_executable_digest,
+            observed_executable_digest,
+            on_disk.display()
+        ));
+    }
     let mut command = Command::new(&on_disk);
     command.arg("--required-regen");
     if affected_scope {
@@ -3908,6 +4082,7 @@ fn install_convergence_stage(
     dependency_closure_id: &str,
 ) -> Result<RegenConvergenceStageReceipt, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
+    let actuation = partition_rebuild_actuation(source_roots, basenames)?;
     install_convergence_stage_with_backend(
         source_roots,
         workspace,
@@ -3924,8 +4099,8 @@ fn install_convergence_stage(
         candidate_tree_digest,
         dependency_closure_id,
         &subject,
-        |workspace| seed_cargo_build(workspace, "round.rebuild_from_installed"),
-        current_exe_digest,
+        |workspace| partitioned_rebuild_from_installed(workspace, &actuation),
+        || next_pass_executable_digest(workspace),
     )
 }
 
@@ -4090,6 +4265,8 @@ where
         build_invocation: "cargo build --release --bin claim_executor".to_string(),
         build_terminal: RegenConvergenceBuildTerminalReceipt::Passed,
         build_compiled_crates: build.compiled_crates,
+        build_packages: build.compiled_packages,
+        assembly_equivalence_authority: "v2.compiler.self_host.stage0_executable_assembly;v2.test.claim.self_host.stage0_executable_assembly_test".to_string(),
         output_seed_digest: seed_after,
         next_generation_receipt_id: format!("generation-{}", ordinal + 1),
     })
@@ -4372,6 +4549,7 @@ pub fn run_regen_round_cost(
             receipt_rel,
             source_roots,
             affected_scope,
+            &current_seed_digest,
         );
         match next {
             Ok(next) => {
@@ -4441,6 +4619,15 @@ pub fn run_regen_round_cost(
         .into_iter()
         .collect::<Vec<_>>();
     let convergence_stage_receipt_ids = ordered_stage_receipt_ids;
+    let rebuild_packages = transaction_receipt
+        .stages
+        .iter()
+        .flat_map(|stage| stage.build_packages.iter().cloned())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let executable_digest = transaction_receipt.terminal_seed_digest.clone();
+    let second_generation_candidate_digest = transaction_receipt.terminal_surface_digest.clone();
 
     // The runtime's `Vec` is the persistent vector its emitted programs use; the receipt
     // renderer takes a slice, so the rows are collected once here.
@@ -4463,6 +4650,9 @@ pub fn run_regen_round_cost(
         &changed_paths,
         &convergence_stage_receipt_ids,
         &installed_mirrors,
+        &rebuild_packages,
+        &executable_digest,
+        &second_generation_candidate_digest,
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -4517,6 +4707,9 @@ mod regen_round_cost_tests {
             &["v1_rt.rs".to_string()],
             &["stage-1".to_string()],
             &["v1_rt.rs".to_string()],
+            &["v1-stage0-runtime".to_string()],
+            "sha256:claim-executor",
+            "sha256:g1-candidate-tree",
         )
         .expect("the model renders a host-built receipt");
         assert_eq!(
@@ -4534,7 +4727,8 @@ mod regen_round_cost_tests {
              package_closure=[v1-stage0-runtime, v1-stage0-std-core, v1-stage0-std-surface, \
              v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-v1-infer, \
              v1-stage0-emit-core] \
-             executable_assembly=unavailable trigger=PartitionedClaimExecutorAssembly\n"
+             executable_assembly=assembled packages=[v1-stage0-runtime] executable_digest=sha256:claim-executor\n\
+             partition-rebuild: second_generation_candidate_digest=sha256:g1-candidate-tree\n"
         );
     }
 
@@ -4727,7 +4921,12 @@ mod regen_convergence_host_instrument_tests {
             "manifest-0",
             "generation-input-cut",
             &subject,
-            |_| Ok(CargoBuildObservation { compiled_crates: 1 }),
+            |_| {
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
             || Ok("seed-1".to_string()),
         )
         .unwrap_err();
@@ -4790,7 +4989,12 @@ mod regen_convergence_host_instrument_tests {
             "manifest-p",
             "generation-input-cut",
             &subject,
-            |_| Ok(CargoBuildObservation { compiled_crates: 1 }),
+            |_| {
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
             || Ok("seed-1".to_string()),
         )
         .unwrap();
@@ -4830,7 +5034,13 @@ mod regen_convergence_host_instrument_tests {
                 {
                     return Err("compatibility cut incomplete".to_string());
                 }
-                Ok(CargoBuildObservation { compiled_crates: 2 })
+                Ok(CargoBuildObservation {
+                    compiled_crates: 2,
+                    compiled_packages: vec![
+                        "fixture-producer".to_string(),
+                        "fixture-seed".to_string(),
+                    ],
+                })
             },
             || Ok("seed-2".to_string()),
         )
@@ -4906,7 +5116,10 @@ mod regen_convergence_host_instrument_tests {
                     "// mutated\n",
                 )
                 .unwrap();
-                Ok(CargoBuildObservation { compiled_crates: 1 })
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
             },
             || Ok("seed-1".to_string()),
         )
