@@ -578,7 +578,7 @@ fn spark_serving_slice_report_for(
                   typed_row_count: 0,
                   apply_effect_count: 0,
                   apply_command_count: 0,
-                  verdict: fleet_converge_plan_artifact_refusal_text(refusal: r),
+                  verdict: fleet_converge_plan_artifact_refusal_text(r: r),
                 )
               FleetConvergePlanArtifactReady { artifact: artifact } =>
                 match fleet_converge_plan_artifact_hash(artifact: artifact) {
