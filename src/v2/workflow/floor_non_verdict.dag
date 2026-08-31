@@ -16,6 +16,14 @@ import v2.std.text { String }
 // assert anything. A diagnostic can describe evidence truthfully while the gate draws a false
 // conclusion from it; that happened on every run for a day.
 //
+// WHICH FIELD CARRIES THIS, because a reader arrives here having cited the wrong one. The property
+// "my enrolled known-reds are still discriminating" is carried by `non_verdict_unenrolled` in the
+// floor's terminal line, NOT by `known_red_now_passing`: a known-red that stops reaching its
+// assertion leaves the latter at 0, indistinguishable there from one still correctly red, and is
+// refused by the former. Citing `known_red_now_passing` alone for that property is a citation
+// defect and not a safety gap -- the adjacent counter gates -- but the two are read together often
+// enough that saying so here is cheaper than rediscovering it.
+//
 // THE RUNG, PER SEAM, because the governing rung is the minimum across them and stating only the
 // strongest is the inflation DESIGN section 4b(1) forbids: routing a thrown claim into its arm is
 // MITIGATABLE; printing the count is MITIGATABLE; printing `failed=0` without distinguishing

@@ -3,12 +3,109 @@ module gunbc.plans.value_null_split
 import std.dissolution { unbound_dissolution }
 import gunbc.plan { Plan, PlanRetirement, PlanRetiresWhen, PlanIsAuthorityOnly }
 import std.markdown { MarkdownBlock, TableBlock, AlignNone }
-import gunbc.plans.md_helpers { h2, p, li, ol, cell, row, task, tasks, Unchecked }
+import std.types { Bool, List, NonEmptyStr, String }
+import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
+
+// PHASE STANDING IS NOT A CHECKBOX, and this module used to prove why. Every phase below was
+// `task(state: Unchecked)` while Phase A had DEMONSTRABLY LANDED -- its witness module exists, runs
+// in the required floor, and one of its claims is enrolled and firing. The document stated the
+// right invariant in its own review bar ("every phase ships with a discriminating witness that goes
+// RED when the carrier regresses") and then tracked itself by hand anyway, so it went stale by a
+// full phase with nothing to notice. A hand-maintained status is the execution-provenance failure
+// applied to a plan: it reads identically whether the phase landed or nobody updated the line.
+//
+// So the status is DERIVED from the witness roster rather than typed. What that buys and what it
+// does not, stated so neither is overread: the roster below is HAND-AUTHORED, so a phase whose
+// witness is never declared here reads Unwitnessed exactly like a phase with no witness at all.
+// This is therefore a CITATION, one step above a checkbox because there is a single authority for
+// the answer instead of one per rendering, and one step below evidence.
+//
+// NEXT RUNG, naming the capability rather than an artifact: reading claim OUTCOMES at claim-identity
+// grain from inside `.dag`. The required floor already computes exactly that join -- its
+// `required-floor-disposition` output carries one row per claim identity with the outcome that
+// claim reached -- but it is an out-of-band run artifact, not something a `.dag` fold can consult,
+// so no declaration here can be green-by-execution about a phase. When that capability lands,
+// `value_null_phase_standing` reads the outcome instead of the roster and the citation becomes
+// evidence.
+type ValueNullPhase
+  = PhaseCarrierWitnesses
+  | PhaseStopProducingNull
+  | PhaseDeleteNullBridges
+  | PhaseNoneLiteralMigration
+  | PhaseCrossRepresentationEquality
+  | PhaseArgumentCoercion
+  | PhasePrimitiveSignatureDenominator
+
+type ValueNullPhaseWitness {
+  phase: ValueNullPhase
+  claim: NonEmptyStr
+}
+
+type ValueNullPhaseStanding
+  = PhaseWitnessEnrolled { claim: NonEmptyStr }
+  | PhaseUnwitnessed
+
+fn value_null_phase_eq(a: ValueNullPhase, b: ValueNullPhase) -> Bool {
+  match a {
+    PhaseCarrierWitnesses => match b { PhaseCarrierWitnesses => true _ => false }
+    PhaseStopProducingNull => match b { PhaseStopProducingNull => true _ => false }
+    PhaseDeleteNullBridges => match b { PhaseDeleteNullBridges => true _ => false }
+    PhaseNoneLiteralMigration => match b { PhaseNoneLiteralMigration => true _ => false }
+    PhaseCrossRepresentationEquality => match b { PhaseCrossRepresentationEquality => true _ => false }
+    PhaseArgumentCoercion => match b { PhaseArgumentCoercion => true _ => false }
+    PhasePrimitiveSignatureDenominator => match b { PhasePrimitiveSignatureDenominator => true _ => false }
+  }
+}
+
+// One row per phase that has a discriminating witness enrolled today. Phase A's rows are the
+// carrier-pinning claims in `v2.test.manual.value_null_split_witness`; Phase B's is the
+// construction claim added while Phase B was built (session still-swift-363, PR gunbc#9785, held).
+// A phase absent from this list has no enrolled discriminator, which is the honest reading of
+// "not started" and is NOT the same statement as "not landed".
+data value_null_phase_witnesses: List<ValueNullPhaseWitness> = [
+  ValueNullPhaseWitness {
+    phase: PhaseCarrierWitnesses,
+    claim: "v2.test.manual.value_null_split_witness.raw_get_miss_differs_from_optional_absent" as NonEmptyStr,
+  },
+  ValueNullPhaseWitness {
+    phase: PhaseCarrierWitnesses,
+    claim: "v2.test.manual.value_null_split_witness.map_get_miss_is_absent_not_present" as NonEmptyStr,
+  },
+  ValueNullPhaseWitness {
+    phase: PhaseStopProducingNull,
+    claim: "test.claim.first_optional_construction_witness.first_of_a_list_whose_head_is_an_absent_optional_is_present_of_absent" as NonEmptyStr,
+  },
+]
+
+fn value_null_phase_standing(phase: ValueNullPhase) -> ValueNullPhaseStanding {
+  fold(
+    value_null_phase_witnesses,
+    init: PhaseUnwitnessed,
+    f: fn(acc, w) {
+      match acc {
+        PhaseWitnessEnrolled { claim: _ } => acc
+        PhaseUnwitnessed =>
+          if value_null_phase_eq(a: w.phase, b: phase) {
+            PhaseWitnessEnrolled { claim: w.claim }
+          } else {
+            acc
+          }
+      }
+    }
+  )
+}
+
+fn value_null_phase_standing_label(phase: ValueNullPhase) -> String {
+  match value_null_phase_standing(phase: phase) {
+    PhaseWitnessEnrolled { claim: c } => concat("discriminator enrolled: `", concat(c as String, "`"))
+    PhaseUnwitnessed => "no discriminator enrolled"
+  }
+}
 
 fn value_null_split_body() -> List<MarkdownBlock> {
   [
-    p(text: "**Status:** lane opened (keen-ferret-250) · **Parent:** model↔realization fork §3.2 · **DESIGN.md open thread** · Linked from [model-realization-fork.md](model-realization-fork.md) and [fail-closed-lockdown.md](fail-closed-lockdown.md) §4 tier-1."),
-    p(text: "**Verified against the live tree 2026-07-26.** Census counts are receipts; re-check before acting."),
+    p(text: "**Ownership: none.** This plan was opened by a lane whose session no longer exists -- a `--to` addressed to it is refused as `recipient session not found`, and the name appears in no work item. A lane name written inside a document is a CITATION and rots exactly like a `file:line` or a merge-event trigger; absence from the live session graph is decidable, presence in this paragraph is not. Read the plan as an unowned authority to work AGAINST, never as a lane to defer to. **Parent:** model↔realization fork §3.2 · **DESIGN.md open thread** · Linked from [model-realization-fork.md](model-realization-fork.md) and [fail-closed-lockdown.md](fail-closed-lockdown.md) §4 tier-1."),
+    p(text: "**Census counts are receipts; re-check before acting.** Sections 0-3 were verified against the live tree on 2026-07-26 and have not been re-verified since. Sections 4, 4b and the phase standings were verified 2026-08-31, and the two dates are kept apart deliberately: a single freshness stamp over a document whose halves were measured five weeks apart is the same overclaim as a folded outcome column."),
     h2(text: "0. Problem — one native carrier, four meanings"),
     p(text: "`Value::Null` overloads four distinct semantics today: (1) the `None`/`none` literal and `LitNull`, (2) `Optional::Absent` (bridged in `match_pattern` at `v1_interpreter.rs:2830`), (3) `Witness::Violates` on map miss (bridged at `:2808` with a fabricated diagnostic), (4) untyped lookup miss (`raw_map_lookup`, `list_get_at_or_null`, `get` on map/list). A blanket `CrossRepresentationEquality` guard cannot close the Optional/Witness straddle — `present == None → false` is *legitimate* at ~218 corpus sites — so the fix is **splitting**, not grounding onto one sentinel."),
     h2(text: "1. Target carriers (construction authority)"),
@@ -45,12 +142,29 @@ fn value_null_split_body() -> List<MarkdownBlock> {
       li(text: "Existing witnesses: `witness_option_bridge_test.dag` (map_get → Present/Absent at model layer); `cross_representation_equality.dag` roster includes `Optional` × `native_value_null` straddle (target: remove when grounded)."),
     ]),
     h2(text: "4. Phased landing (construction-first)"),
-    tasks(items: [
-      task(state: Unchecked, text: "**Phase A (this lane):** plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness_test.dag`); emitter row table above is authority for S2 emit."),
-      task(state: Unchecked, text: "**Phase B:** stop *producing* `Null` where the return type is `Optional<T>` — route `map_get`/`get`+Optional context through `map_lookup_as_optional` (keep raw `get` returning bare value + `Null` miss for `map_lookup_dual_dispatch` until typed overload lands)."),
-      task(state: Unchecked, text: "**Phase C:** delete `match_pattern` `Null` bridges (`:2808–2834`) once no producer emits `Null` for Optional/Witness arms."),
-      task(state: Unchecked, text: "**Phase D:** type-directed `None` literal → `optional_absent()` where inhabiting `Optional<_>`; migrate `== None` sites (~218) to `match Absent` or `optional_is_absent` helper."),
-      task(state: Unchecked, text: "**Phase E:** cross-representation equality — ground `Optional` so `Absent` variant reconciles with narrowed `Null` *only* at the lookup-miss boundary; remove `Optional`×`native_value_null` from testgen roster; bundle `CrossRepresentationEquality` guard removal with this phase (fenced in model-realization-fork §3.1)."),
+    p(text: "**Standing is derived, never ticked.** Each row's standing is `value_null_phase_standing`, a fold over the enrolled-witness roster in this module -- see the note above it for exactly how far that goes (a citation, not evidence) and for the capability that would close the gap. An earlier revision of this section was a hand-checked task list in which every phase, INCLUDING the landed Phase A, read unchecked."),
+    TableBlock {
+      header: row(cells: [cell(text: "phase"), cell(text: "content"), cell(text: "standing")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "A"), cell(text: "plan + discriminating witnesses pinning carrier invariants (`value_null_split_witness_test.dag`); the emitter row table in section 2 is authority for S2 emit"), cell(text: value_null_phase_standing_label(phase: PhaseCarrierWitnesses))]),
+        row(cells: [cell(text: "B"), cell(text: "stop *producing* `Null` where the return type is `Optional<T>` -- route `map_get`/`get`+Optional context through `map_lookup_as_optional`. Extends to `first`/`last`/`lookup`, whose `std.algebra` rows declare `OptionalOf` and whose interpreter arms returned the raw element"), cell(text: value_null_phase_standing_label(phase: PhaseStopProducingNull))]),
+        row(cells: [cell(text: "C"), cell(text: "delete the `match_pattern` `Null` bridges once no producer emits `Null` for Optional/Witness arms"), cell(text: value_null_phase_standing_label(phase: PhaseDeleteNullBridges))]),
+        row(cells: [cell(text: "D"), cell(text: "type-directed `None` literal to `optional_absent()` where inhabiting `Optional<_>`; migrate the `== None` sites to `match Absent` or an `optional_is_absent` helper"), cell(text: value_null_phase_standing_label(phase: PhaseNoneLiteralMigration))]),
+        row(cells: [cell(text: "E"), cell(text: "cross-representation equality -- ground `Optional` so `Absent` reconciles with narrowed `Null` ONLY at the lookup-miss boundary; remove the `Optional`x`native_value_null` testgen straddle; bundle the `CrossRepresentationEquality` guard removal"), cell(text: value_null_phase_standing_label(phase: PhaseCrossRepresentationEquality))]),
+        row(cells: [cell(text: "F"), cell(text: "**NEW, discovered by building Phase B.** The interpreter gains the optional-into-required-parameter coercion the Rust emitter already has in `rust_call_arg_fail_closed_unwrap` -- unwrap `Present`, refuse typed and located on `Absent`. Phase B without this hands a `Present \{ .. \}` variant to every value-position call site"), cell(text: value_null_phase_standing_label(phase: PhaseArgumentCoercion))]),
+        row(cells: [cell(text: "G"), cell(text: "**NEW, and it gates F.** Close the language-primitive denominator so `SignatureNotGrounded` means \"not a language primitive\" rather than \"not modelled yet\". A builtin call never reaches the `.dag` call path, and `builtin_function_registry` carries a RETURN TYPE only, so argument cardinality cannot be derived for one"), cell(text: value_null_phase_standing_label(phase: PhasePrimitiveSignatureDenominator))]),
+      ],
+    },
+    h2(text: "4b. What Phase B costs, measured"),
+    p(text: "Phase B was built and measured on a held draft (session still-swift-363, gunbc#9785, not landed). The required-witnesses-floor result is the number this plan should carry, because it is the argument against anyone later proposing Phase B is small enough to land alone."),
+    ul(items: [
+      li(text: "`planned=3141 passed=2630 known_red_held=15 failed=442` against a baseline of ~0."),
+      li(text: "The summary's `failed` FOLDS two states. Read at claim-identity grain from the run's disposition output: **442 runtime-errored-before-verdict**, 6 failed assertions, 1 budget-refused, 47 route-gap, 15 known-red-held. The job log prints only the 6, which reads as a truncated log and is not."),
+      li(text: "**All 442 are `v2.test.*` and none is a `dag/test/claim` witness.** The cause is self-host coupling: v2 is `.dag` interpreted by the v1 seed, so changing the interpreter changes the v2 COMPILER's behaviour as it executes. Phase B's cost lands on the interpreted v2 compiler, not on corpus witnesses -- which is not what a reader of sections 0-3 would predict."),
+      li(text: "The 6 assertion failures are this plan's own `raw_get_miss_differs_from_optional_absent`, two `self_host_symbol_identity_binding_witness` claims comparing `== none`, `cargo_build_run_argv`, and two `emit_host_shell_exec_run_equals_eval` claims."),
+      li(text: "**The Phase A witness predicted its own flip in writing** -- its comment says `raw_get_miss_differs_from_optional_absent` \"flips RED in Phase B when get+Optional routes through `map_lookup_as_optional`\". It did. That is the enrolled signal that Phase B landed, so retiring its expected-red disposition is PART of Phase B and not a repair to it."),
+      li(text: "The `== none` reds are Phase D arriving early, and they confirm section 0's count from the other direction: `none` EVALUATES to `Value::Null` in the interpreter's variable evaluation, so a raw miss compares equal to `none` because it IS `Null`, while a constructed `Absent` variant does not compare equal at all."),
     ]),
     h2(text: "5. Review bar"),
     p(text: "No absorbing fallback: a miss must not widen to `Null` when the type is `Optional` or `Witness`. No new per-site `if matches!(v, Value::Null)` bridges without a counted dissolution trigger. Every phase ships with a discriminating witness that goes RED when the carrier regresses."),

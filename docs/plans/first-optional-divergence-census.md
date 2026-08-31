@@ -270,6 +270,39 @@ as flipping one witness, `bmc_capability_solve firmware_wire_version_is_parsed_b
 That claim's disposition is `declined_outside_gate_closure` / `not_executed` — the floor does not run
 it. The sample was not merely small; it was drawn from outside the population the floor measures.
 
+**Re-measured post-merge, against a trunk control.** At `79ac1aa` (run 33357314877) the artifact
+reports 426 `runtime-errored-before-verdict`, 6 `failed`, 15 `known-red-held`, 2619 `passed`. The
+same artifact on main at `b41d5648` (run 33356292996) reports **0 errored, 0 failed, 3065 passed**.
+The control is what makes the attribution a measurement: the whole population is caused by this
+branch and none of it is inherited. It also refuted an attribution this document would otherwise
+have carried — two of the six failures name `self_host_symbol_identity_binding_witness`, which is
+#9741 territory merged in from main the same hour, and the clean trunk says they are this branch's.
+A recently-merged neighbour is the most available explanation and therefore the one to control for.
+
+**The floor refuses through `non_verdict_unenrolled`, not through `known_red_now_passing`.** Five of
+main's 20 known-reds error under this branch instead of returning their known-red verdict. They do
+not appear in `known_red_now_passing`, which stays 0; they appear as
+`verdict_incomplete=5 non_verdict_unenrolled=5` in the floor's terminal line, and that is what turns
+the lane red. The wall is `v2.workflow.floor_non_verdict`, whose header already names this class and
+whose roster is `Empty{}` so any enrolled known-red that starts throwing refuses as unrostered debt.
+Recorded because the reading error is available and this lane made it: `known_red_now_passing` alone
+does not distinguish a still-discriminating known-red from one that has stopped reaching its
+assertion, so it is the wrong field to cite for that property — a citation defect, not a safety gap,
+because the adjacent counter gates.
+
+**A measured victim outside the floor: `main_wet`.** The generated-artifact actuator
+`tools.generated_artifact_gate main_wet` refuses under this branch's interpreter with
+`CallContractMismatch { callee: "outcome_accepted", detail: "an optional value flowed into
+non-optional parameter 1 ('value') (empty Optional at runtime)" }` — this branch's own coercion arm,
+firing. Evidence about scope rather than an incident: the affected population is wider than the
+floor's witness set and reaches the wet actuators. Consequence for this branch: the `DESIGN.md` and
+`docs/design-ledgers.md` projections cannot regenerate here, so they sit inconsistent with their
+`.dag` authority. That drift is **deliberately left**. It could be cleared by building the seed from
+main's Rust and running it over this tree, and that is precisely what must not happen: those bytes
+are what the *stock* interpreter computes, while the drift gate here executes *this* interpreter, so
+committing them would green the gate across a live divergence — fail-open wearing a green check. The
+drift needs no dissolution trigger of its own; it ends when the repair completes.
+
 **The class is Phase B of an already-open lane.** `gunbc.plans.value_null_split` (lane
 keen-ferret-250) models this whole class: `Value::Null` overloads four meanings — the `none`/`None`
 literal, `Optional::Absent`, `Witness::Violates` on map miss, and untyped lookup miss — and it lays
