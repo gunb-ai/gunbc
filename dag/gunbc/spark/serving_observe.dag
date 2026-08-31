@@ -134,7 +134,6 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_acquired_provenance_of,
   spark_serving_refused_provenance_of,
   spark_serving_provenance_receipt_line,
-  spark_serving_transaction_receipt_line,
   SparkServingObservationPhase,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,

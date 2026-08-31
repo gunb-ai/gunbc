@@ -4,7 +4,6 @@ import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
-  spark_serving_hermetic_provenance_of,
   spark_serving_provenance_host,
   spark_serving_provenance_observation_attempt,
 }

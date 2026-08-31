@@ -75,7 +75,6 @@ import gunbc.spark.serving_observed_members {
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
-  spark_serving_hermetic_provenance_of,
 }
 import gunbc.spark.serving_converge_slice_wet {
   render_observed_linger,
@@ -107,6 +106,7 @@ import gunbc.remote_operation { remote_operations_argv_only, remote_operation_co
 import gunbc.spark.serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark.serving_unit_identity { spark_serving_unit_name }
 import gunbc.spark.serving_realization { PlannedInstallEffect, EnableLingerForOwnAccount, ReloadUserManager, EnableUserUnit, RunContainerAsOwnUser }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_fixture_provenance }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -114,10 +114,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 data witness_host_srv5: NonEmptyStr = "srv5" as NonEmptyStr
 
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  spark_serving_hermetic_provenance_of(
-    host: host,
-    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
-  )
+  hermetic_fixture_provenance(host: host)
 }
 
 test fn linger_slice_noop_when_linger_already_enabled() -> Bool {

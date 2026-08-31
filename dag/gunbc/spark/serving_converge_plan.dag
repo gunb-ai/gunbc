@@ -593,7 +593,7 @@ fn spark_serving_axis_for_observation(
         ], ""),
       }
     SparkServingObservationAcquired {
-      host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _,
+      host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _, receipt: _,
     } =>
       if !host_identity_eq(
         a: h,

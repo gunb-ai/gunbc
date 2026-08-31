@@ -5,6 +5,7 @@ import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import std.content_hash { serialize_content_hash }
 import gunbc.fleet_known_hosts_anchor { fleet_ssh_credential_identity }
+import gunbc.spark.serving_observe { spark_serving_transaction_provenance }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
   hermetic_fleet_attempt_raw,
   hermetic_credential,
@@ -67,7 +68,6 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_provenance_observation_attempt,
   spark_serving_provenance_credential,
   spark_serving_provenance_receipt_line,
-  spark_serving_transaction_receipt_line,
   SparkServingObservationPhase,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,
@@ -445,7 +445,9 @@ test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
   match txn_of(captures: complete_captures()) {
     Absent => false
     Present { value: t } => {
-      let line = spark_serving_transaction_receipt_line(txn: t)
+      let line = spark_serving_provenance_receipt_line(
+        p: spark_serving_transaction_provenance(txn: t),
+      )
       string_contains(s: line, pattern: "missing=0")
         && string_contains(s: line, pattern: "duplicated=0")
         && string_contains(s: line, pattern: "executed=23")
@@ -467,6 +469,25 @@ test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
   }
 }
 
+// THE DISCRIMINATING RED FOR THE RECEIPT SUM.
+//
+// A hermetic observation measured nothing, so its line must carry no coverage at all. If the receipt
+// were a record beside the provenance rather than an arm of it, this is where "missing=0" would
+// appear on a value that probed nothing -- and missing=0 reads as measured-and-complete, which is
+// the fabricated-plausible-output failure in the receipt layer.
+test fn a_hermetic_observation_reports_no_coverage_at_all() -> Bool {
+  let line = spark_serving_provenance_receipt_line(
+    p: spark_serving_hermetic_provenance_of(
+      host: subject_host,
+      fixture_identity: "coverage-red" as NonEmptyStr,
+    ),
+  )
+  string_contains(s: line, pattern: "hermetic-fixture=coverage-red")
+    && !string_contains(s: line, pattern: "missing=")
+    && !string_contains(s: line, pattern: "captured=")
+    && !string_contains(s: line, pattern: "executed=")
+}
+
 // And the outcome counts move with the outcomes, so the line is a reading rather than a constant.
 test fn a_transport_refused_leg_moves_the_receipt_counts() -> Bool {
   let refused = hermetic_capture_fixture(
@@ -476,7 +497,9 @@ test fn a_transport_refused_leg_moves_the_receipt_counts() -> Bool {
   match txn_of(captures: swap_is_active(with: refused)) {
     Absent => false
     Present { value: t } => {
-      let line = spark_serving_transaction_receipt_line(txn: t)
+      let line = spark_serving_provenance_receipt_line(
+        p: spark_serving_transaction_provenance(txn: t),
+      )
       string_contains(s: line, pattern: "executed=22")
         && string_contains(s: line, pattern: "transport-refused=1")
         && string_contains(s: line, pattern: "missing=0")

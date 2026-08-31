@@ -297,6 +297,7 @@ type SparkServingObservationProvenance
       phase: SparkServingObservationPhase
       observation_attempt: NonEmptyStr
       credential: FleetSshCredentialBinding
+      receipt: SparkServingAcquisitionReceipt
     }
   | SparkServingObservationTransactionRefused {
       host: HostIdentity
@@ -308,6 +309,82 @@ type SparkServingObservationProvenance
       host: HostIdentity
       fixture_identity: NonEmptyStr
     }
+
+// THE ACQUISITION RECEIPT: COVERAGE AND OUTCOME SHAPE, CARRIED RATHER THAN RENDERED SEPARATELY.
+//
+// A standalone `spark_serving_transaction_receipt_line` stood here, and it was an ORPHANED RENDERER:
+// exercised directly by its witness and consumed by no production path, so the coverage facts it
+// described never reached a receipt anybody reads. A renderer with no final consumer is residue --
+// and worse than absent, because its witness reads as coverage for a fact the report never carries.
+//
+// It is now a VALUE with three arms, minted at the same moment the provenance is, and rendered by
+// `spark_serving_provenance_receipt_line` -- which the production per-host renderer already calls.
+// The three arms are the three arms of the provenance, so a hermetic or refused observation cannot
+// present coverage counts it never measured: there is no field to put them in.
+//
+// The counts are per outcome ARM rather than a single total, because "23 captures" is equally true
+// of a transaction whose every leg the transport refused. A reader needs the shape.
+type SparkServingAcquisitionReceipt
+  = AcquiredTransactionReceipt {
+      required: Int
+      captured: Int
+      missing: List<NonEmptyStr>
+      duplicated: List<NonEmptyStr>
+      executed: Int
+      transport_refused: Int
+      prerequisite_refused: Int
+    }
+  | TransactionRefusedReceipt { cause: NonEmptyStr }
+  | HermeticFixtureReceipt { fixture_identity: NonEmptyStr }
+
+fn spark_serving_capture_is_executed(c: SparkServingProbeLegCapture) -> Bool {
+  match c.outcome {
+    SparkServingProbeExecuted { result: _ } => true
+    SparkServingProbeTransportRefused { cause: _ } => false
+    SparkServingProbePrerequisiteRefused { cause: _ } => false
+  }
+}
+
+fn spark_serving_capture_is_transport_refused(c: SparkServingProbeLegCapture) -> Bool {
+  match c.outcome {
+    SparkServingProbeTransportRefused { cause: _ } => true
+    SparkServingProbeExecuted { result: _ } => false
+    SparkServingProbePrerequisiteRefused { cause: _ } => false
+  }
+}
+
+fn spark_serving_capture_is_prerequisite_refused(c: SparkServingProbeLegCapture) -> Bool {
+  match c.outcome {
+    SparkServingProbePrerequisiteRefused { cause: _ } => true
+    SparkServingProbeExecuted { result: _ } => false
+    SparkServingProbeTransportRefused { cause: _ } => false
+  }
+}
+
+// Sealed to the acquired-provenance mint, so a receipt claiming coverage cannot be authored beside a
+// transaction that did not produce it.
+fn spark_serving_acquisition_receipt_of(
+  txn: SparkServingObservationTransaction,
+) -> SparkServingAcquisitionReceipt
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_observation_transaction",
+      decl_name: "spark_serving_acquired_provenance_of",
+    ),
+  ]
+{
+  AcquiredTransactionReceipt {
+    required: length(spark_serving_required_probe_legs()),
+    captured: length(txn.captures),
+    missing: map(spark_serving_transaction_missing_legs(txn: txn), k => k),
+    duplicated: map(spark_serving_transaction_duplicated_legs(txn: txn), k => k),
+    executed: length(filter(txn.captures, c => spark_serving_capture_is_executed(c: c))),
+    transport_refused:
+      length(filter(txn.captures, c => spark_serving_capture_is_transport_refused(c: c))),
+    prerequisite_refused:
+      length(filter(txn.captures, c => spark_serving_capture_is_prerequisite_refused(c: c))),
+  }
+}
 
 fn spark_serving_acquired_provenance_of(
   txn: SparkServingObservationTransaction,
@@ -325,6 +402,7 @@ fn spark_serving_acquired_provenance_of(
     phase: txn.phase,
     observation_attempt: txn.observation_attempt,
     credential: txn.credential,
+    receipt: spark_serving_acquisition_receipt_of(txn: txn),
   }
 }
 
@@ -361,7 +439,7 @@ fn spark_serving_hermetic_provenance_of(
 
 fn spark_serving_provenance_host(p: SparkServingObservationProvenance) -> HostIdentity {
   match p {
-    SparkServingObservationAcquired { host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _ } => h
+    SparkServingObservationAcquired { host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _, receipt: _ } => h
     SparkServingObservationTransactionRefused { host: h, fleet_attempt: _, phase: _, cause: _ } => h
     SparkServingObservationHermeticFixture { host: h, fixture_identity: _ } => h
   }
@@ -373,7 +451,7 @@ fn spark_serving_provenance_observation_attempt(
   p: SparkServingObservationProvenance,
 ) -> NonEmptyStr? {
   match p {
-    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: a, credential: _ } =>
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: a, credential: _, receipt: _ } =>
       Present { value: a }
     SparkServingObservationTransactionRefused { host: _, fleet_attempt: _, phase: _, cause: _ } => none
     SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
@@ -384,7 +462,7 @@ fn spark_serving_provenance_credential(
   p: SparkServingObservationProvenance,
 ) -> FleetSshCredentialBinding? {
   match p {
-    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: _, credential: c } =>
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: _, observation_attempt: _, credential: c, receipt: _ } =>
       Present { value: c }
     SparkServingObservationTransactionRefused { host: _, fleet_attempt: _, phase: _, cause: _ } => none
     SparkServingObservationHermeticFixture { host: _, fixture_identity: _ } => none
@@ -395,7 +473,7 @@ fn spark_serving_provenance_phase(
   p: SparkServingObservationProvenance,
 ) -> SparkServingObservationPhase? {
   match p {
-    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: ph, observation_attempt: _, credential: _ } =>
+    SparkServingObservationAcquired { host: _, fleet_attempt: _, phase: ph, observation_attempt: _, credential: _, receipt: _ } =>
       Present { value: ph }
     SparkServingObservationTransactionRefused { host: _, fleet_attempt: _, phase: ph, cause: _ } =>
       Present { value: ph }
@@ -585,81 +663,29 @@ fn spark_serving_admit_transaction(
   }
 }
 
-// THE RECEIPT MUST BE ABLE TO SAY WHAT WAS ACQUIRED, NOT ONLY WHAT WAS CONCLUDED.
+// THE RECEIPT'S RENDERING, AND ITS ONLY CONSUMER IS THE PRODUCTION PER-HOST LINE.
 //
-// A per-host receipt that prints readback, observation and account lines describes the CONCLUSIONS
-// and says nothing about the acquisition they came from -- so a reader cannot tell a host observed
-// under one credential locus in one attempt from one assembled some other way, which is exactly the
-// distinction the carrier was built to make. These are the acquisition facts, rendered from the
-// transaction rather than restated beside it.
-//
-// The counts are per outcome ARM rather than a single total, because "23 captures" is true of a
-// transaction whose every leg was refused by the transport. A reader needs the shape.
-fn spark_serving_transaction_outcome_counts(
-  txn: SparkServingObservationTransaction,
-) -> String {
-  join([
-    " executed=",
-    to_string(
-      length(
-        filter(
-          txn.captures,
-          c => match c.outcome {
-            SparkServingProbeExecuted { result: _ } => true
-            SparkServingProbeTransportRefused { cause: _ } => false
-            SparkServingProbePrerequisiteRefused { cause: _ } => false
-          },
-        ),
-      ),
-    ),
-    " transport-refused=",
-    to_string(
-      length(
-        filter(
-          txn.captures,
-          c => match c.outcome {
-            SparkServingProbeTransportRefused { cause: _ } => true
-            SparkServingProbeExecuted { result: _ } => false
-            SparkServingProbePrerequisiteRefused { cause: _ } => false
-          },
-        ),
-      ),
-    ),
-    " prerequisite-refused=",
-    to_string(
-      length(
-        filter(
-          txn.captures,
-          c => match c.outcome {
-            SparkServingProbePrerequisiteRefused { cause: _ } => true
-            SparkServingProbeExecuted { result: _ } => false
-            SparkServingProbeTransportRefused { cause: _ } => false
-          },
-        ),
-      ),
-    ),
-  ], "")
-}
-
-fn spark_serving_transaction_receipt_line(txn: SparkServingObservationTransaction) -> String {
-  join([
-    "spark-serving-transaction host=",
-    txn.host as String,
-    " observation-attempt=",
-    txn.observation_attempt as String,
-    " credential-identity=",
-    serialize_content_hash(hash: fleet_ssh_credential_identity(binding: txn.credential)) as String,
-    " required=",
-    to_string(length(spark_serving_required_probe_legs())),
-    " captured=",
-    to_string(length(txn.captures)),
-    " missing=",
-    to_string(length(spark_serving_transaction_missing_legs(txn: txn))),
-    " duplicated=",
-    to_string(length(spark_serving_transaction_duplicated_legs(txn: txn))),
-    spark_serving_transaction_outcome_counts(txn: txn),
-    "\n",
-  ], "")
+// The refused and hermetic arms render nothing here, because their provenance line already says
+// which arm it is and neither has coverage to report. That is the point of the sum: there is no
+// shape in which a hermetic observation prints "missing=0", which reads as measured-and-complete.
+fn spark_serving_acquisition_receipt_text(receipt: SparkServingAcquisitionReceipt) -> String {
+  match receipt {
+    AcquiredTransactionReceipt {
+      required: req, captured: cap, missing: miss, duplicated: dup,
+      executed: ex, transport_refused: tr, prerequisite_refused: pr,
+    } =>
+      join([
+        " required=", to_string(req),
+        " captured=", to_string(cap),
+        " missing=", to_string(length(miss)),
+        " duplicated=", to_string(length(dup)),
+        " executed=", to_string(ex),
+        " transport-refused=", to_string(tr),
+        " prerequisite-refused=", to_string(pr),
+      ], "")
+    TransactionRefusedReceipt { cause: _ } => ""
+    HermeticFixtureReceipt { fixture_identity: _ } => ""
+  }
 }
 
 // The provenance line for a value that has already been projected out of its transaction. The three
@@ -669,7 +695,7 @@ fn spark_serving_transaction_receipt_line(txn: SparkServingObservationTransactio
 fn spark_serving_provenance_receipt_line(p: SparkServingObservationProvenance) -> String {
   match p {
     SparkServingObservationAcquired {
-      host: h, fleet_attempt: fa, phase: ph, observation_attempt: oa, credential: cr,
+      host: h, fleet_attempt: fa, phase: ph, observation_attempt: oa, credential: cr, receipt: rc,
     } =>
       join([
         "spark-serving-provenance host=", h as String,
@@ -678,6 +704,7 @@ fn spark_serving_provenance_receipt_line(p: SparkServingObservationProvenance) -
         " observation-attempt=", oa as String,
         " credential-identity=",
         serialize_content_hash(hash: fleet_ssh_credential_identity(binding: cr)) as String,
+        spark_serving_acquisition_receipt_text(receipt: rc),
         "\n",
       ], "")
     SparkServingObservationTransactionRefused { host: h, fleet_attempt: fa, phase: ph, cause: why } =>
