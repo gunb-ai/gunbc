@@ -1313,8 +1313,8 @@ fn c3_projection_at(
 fn c3_rows_count(v: SparkServingScheduledRowsVerdict) -> Int {
   match v {
     SparkServingScheduledRowsRefused { cause: _ } => 0 - 1
-    SparkServingScheduledRowsReady { axis: axis, plan: _ } =>
-      length(scheduled_rows_list(scheduled: axis_rows_or_empty(a: axis)))
+    SparkServingScheduledRowsReady { computed: computed, plan: _ } =>
+      length(scheduled_rows_list(scheduled: computed.rows))
   }
 }
 
@@ -1344,29 +1344,29 @@ test fn extraction_did_not_change_what_the_slice_artifact_plans() -> Bool {
   }
 }
 
+// THE GENERIC ARTIFACT CARRIES THE SCHEDULE IT IS HANDED.
+//
+// The axis now comes from `spark_serving_axis_for_observation` rather than from the row producer,
+// because the producer no longer makes one: it answers with a computation, and only the acquired
+// route binds that computation into an axis. So this claim compares what the generic artifact froze
+// against the rows of the axis it was actually given.
 test fn the_generic_artifact_carries_the_schedule_it_is_handed() -> Bool {
-  match spark_serving_scheduled_rows_for(
+  let axis = c3_axis(linger: LingerObservedEnabled)
+  match fleet_converge_plan_artifact(
     host: subject_host as NonEmptyStr,
-    projection: c3_projection(linger: LingerObservedEnabled),
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    spark_axis: axis,
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
-    SparkServingScheduledRowsRefused { cause: _ } => false
-    SparkServingScheduledRowsReady { axis: axis, plan: _ } =>
-      match fleet_converge_plan_artifact(
-        host: subject_host as NonEmptyStr,
-        prior_generation: 0,
-        observed_timers: [],
-        observed_caps: [],
-        spark_axis: axis,
-        observed_slots: [],
-        observed_fabric_cells: fabric_cell_observation_unobserved(host: subject_host),
-        observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-      ) {
-        FleetConvergePlanArtifactRefused { refusal: _ } => false
-        FleetConvergePlanArtifactReady { artifact: a } =>
-          length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
-            == length(scheduled_rows_list(scheduled: axis_rows_or_empty(a: axis)))
-            && length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) > 0
-      }
+    FleetConvergePlanArtifactRefused { refusal: _ } => false
+    FleetConvergePlanArtifactReady { artifact: a } =>
+      length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+        == length(scheduled_rows_list(scheduled: axis_rows_or_empty(a: axis)))
+        && length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions)) > 0
   }
 }
 
