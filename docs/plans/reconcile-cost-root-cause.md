@@ -153,12 +153,34 @@ A single record literal — `ProvisionBuildCacheOnHost { node: n, catalog_id: id
 costs **241 ms**. Both dominant kinds are places where a value is checked against a large
 coproduct's variant shapes, and neither involves callee lookup.
 
-**Current candidate, explicitly untested:** `global_variant_base` carries **14,309** entries (built
-from `symbol_index.global_bare`). If record-literal construction and call-argument unification
-consult it, both hot kinds share one mechanism: a corpus-sized population consulted for a local
-question. Stated as the next thing to measure, NOT as a finding: three candidates have been
-proposed for this same 259s (func-env walk, type size, variant base) and the first two measured
-false.
+**`global_variant_base` is refuted too (current-main measurement, 2026-08-31).** The measured
+subject was an explicit real importer of `gunbc.host_effect_realize`, resolved as a 720-module
+closure against a 3,716-module three-root name census. The instrument inferred the target three
+times in one process: a cold control, a timed warm control, and a timed warm arm whose locals map
+contained one non-colliding synthetic key for every real key. All three typed results were
+structurally equal. Doubling the population from 6,614 to 13,228 entries changed target inference
+from 7,725ms to 7,736ms: **+11ms, 0.14%**. The same-arm run before the padded arm prevents first-run
+warming from being attributed to population size. A corpus-sized variant population is therefore
+not the mechanism behind the historical 259s.
+
+The population and time are smaller than the 2026-08-16/17 receipt, and that difference is itself
+material: current `--required-floor` no longer recreates the old subject. It indexed 4,436 modules
+but reconciled a 99-module gate closure, never reaching `gunbc.host_effect_realize`; spelling the
+old command again would measure a different population. The explicit importer above was used so
+the target's presence was observed rather than inferred from the CLI flag. On current main the
+historical 246–253s target cost is no longer present in that real closure; it is 7.7s. This
+measurement refutes candidate #3. It does not assign the improvement to a particular intervening
+change.
+
+**The two apparent per-module copied-accumulator repairs are obsolete on current main.** Reading
+`merge_global_bare_variant_locals` and the immediately following
+`merge_kernel_variant_locals_low_priority` against the old flat-map realization suggests that
+`Rc::make_mut` copies the large base before the overlay. That premise stopped being true in
+`v1.runtime_rust` when the runtime container carrier migrated to persistent `im::HashMap`: a
+shared clone is O(1) structural sharing and an update copies one O(log n) node path. Rewriting
+either merge to scan and rebuild the global population would optimize a dissolved mechanism and
+can do strictly more work. No accumulator patch is landed; the carrier migration already removed
+the proposed copy class at its root.
 
 **Relation-level amplification is real but cheap where measured:** `sig_lookup` runs at amp 5.0-21.0
 (calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it just
