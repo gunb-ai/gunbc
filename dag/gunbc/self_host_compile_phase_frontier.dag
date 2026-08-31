@@ -11,7 +11,8 @@ import extdeps.cargo_diagnostic {
   RustcDiagnosticIdentity,
   RustcCoded,
   RustcUncoded,
-  rustc_diagnostic_row
+  rustc_diagnostic_row,
+  rustc_diagnostic_row_code
 }
 import extdeps.languages.rust.compiler_phases {
   RustcPhase,
@@ -224,8 +225,10 @@ fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
   }
 }
 
+// The row layout is owned by `rustc_diagnostic_row`, which produced these identities; this asks
+// that authority for the code rather than re-deriving a field index here.
 fn census_identity_code(identity: String) -> String? {
-  get(xs: split(s: identity, sep: "\t"), index: 3)
+  rustc_diagnostic_row_code(row: identity)
 }
 
 fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
@@ -327,6 +330,8 @@ type CompilePhaseFrontierReceipt {
   raw_error_diagnostic_identities: List<String>
   unplaced_identities: List<String>
   newly_exposed: List<NewlyExposedDiagnostic>
+  unadmitted_regressions: List<OpenUnadmittedRegression>
+  regression_repairs: List<ClosedUnadmittedRegression>
   reclassified_predecessor_board: RustcPhaseBoard?
   producer: PhaseBoardProducer
 }
@@ -338,6 +343,19 @@ type NewlyExposedCause
 type NewlyExposedDiagnostic {
   identity: String
   cause: NewlyExposedCause
+}
+
+// An unadmitted row is state, not an admission disposition. It keeps the frontier red until a
+// later receipt removes this exact identity and names the commit that repaired it.
+type OpenUnadmittedRegression {
+  identity: String
+  introduced_by: CommitSha
+}
+
+type ClosedUnadmittedRegression {
+  identity: String
+  repaired_by: CommitSha
+  observed_removed_at: CommitSha
 }
 
 type PhaseRatchetVerdict
@@ -379,7 +397,7 @@ data genesis_5006ddc6_parse_observation: RustfmtParseObservation = RustfmtParseO
 
 type PhaseBoardSeriesFold
   = SeriesFoldEmpty
-  | SeriesFoldHeld { previous: CompilePhaseFrontierReceipt, seen_subjects: List<String> }
+  | SeriesFoldHeld { previous: CompilePhaseFrontierReceipt, seen_subjects: List<String>, open_unadmitted: List<OpenUnadmittedRegression> }
   | SeriesFoldRefused { invocation: String, reason: NonEmptyStr }
 
 fn receipt_subject_key(receipt: CompilePhaseFrontierReceipt) -> String {
@@ -409,6 +427,20 @@ fn newly_exposed_row(row: NewlyExposedDiagnostic) -> String {
       )
     }
   )
+}
+
+fn open_regression_row(row: OpenUnadmittedRegression) -> String {
+  concat(row.identity, concat("\tintroduced-by\t", row.introduced_by as String))
+}
+
+fn closed_regression_row(row: ClosedUnadmittedRegression) -> String {
+  join([
+    row.identity,
+    "repaired-by",
+    row.repaired_by as String,
+    "observed-removed-at",
+    row.observed_removed_at as String
+  ], "\t")
 }
 
 fn receipt_position_text(position: PhaseBoardSeriesPosition) -> String {
@@ -447,6 +479,8 @@ fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Stru
       receipt.raw_error_diagnostic_identities |> join(separator: "\n"),
       receipt.unplaced_identities |> join(separator: "\n"),
       receipt.newly_exposed |> map(row => newly_exposed_row(row: row)) |> join(separator: "\n"),
+      receipt.unadmitted_regressions |> map(row => open_regression_row(row: row)) |> join(separator: "\n"),
+      receipt.regression_repairs |> map(row => closed_regression_row(row: row)) |> join(separator: "\n"),
       optional_reclassified_digest(board: receipt.reclassified_predecessor_board),
       receipt.producer.module_path,
       receipt.producer.function,
@@ -481,6 +515,8 @@ fn seal_compile_phase_receipt(
   raw_error_diagnostic_identities: List<String>,
   unplaced_identities: List<String>,
   newly_exposed: List<NewlyExposedDiagnostic>,
+  unadmitted_regressions: List<OpenUnadmittedRegression>,
+  regression_repairs: List<ClosedUnadmittedRegression>,
   reclassified_predecessor_board: RustcPhaseBoard?,
   producer: PhaseBoardProducer
 ) -> CompilePhaseFrontierReceipt {
@@ -499,6 +535,8 @@ fn seal_compile_phase_receipt(
     raw_error_diagnostic_identities: raw_error_diagnostic_identities,
     unplaced_identities: unplaced_identities,
     newly_exposed: newly_exposed,
+    unadmitted_regressions: unadmitted_regressions,
+    regression_repairs: regression_repairs,
     reclassified_predecessor_board: reclassified_predecessor_board,
     producer: producer
   }
@@ -517,6 +555,8 @@ fn seal_compile_phase_receipt(
     raw_error_diagnostic_identities: raw_error_diagnostic_identities,
     unplaced_identities: unplaced_identities,
     newly_exposed: newly_exposed,
+    unadmitted_regressions: unadmitted_regressions,
+    regression_repairs: regression_repairs,
     reclassified_predecessor_board: reclassified_predecessor_board,
     producer: producer
   }
@@ -596,7 +636,7 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
             if phase_closed_at_zero(row: old) && phase_reached_with_diagnostics(row: now) {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
             } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && phase_count_increased(old: old, now: now) {
-              PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
+              PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
             } else if count(added) > 0 {
               PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached population gained diagnostic identities without a newly-exposed disposition" as NonEmptyStr }
             } else { PhaseRatchetHeld }
@@ -604,6 +644,177 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
         }
       }
     )
+    }
+  }
+}
+
+type RegressionTransitionVerdict
+  = RegressionTransitionHeld { open_unadmitted: List<OpenUnadmittedRegression> }
+  | RegressionTransitionMalformed { reason: NonEmptyStr }
+
+fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
+  board_all_identities(board: current)
+    |> filter(identity => !any(board_all_identities(board: previous), prior => prior == identity))
+}
+
+fn diagnostic_semantic_key(identity: String) -> String {
+  let fields = split(s: identity, delimiter: "\t")
+  let location = split(s: fields[0], delimiter: ":")
+  let file = location.take(n: count(location) - 2) |> join(separator: ":")
+  join([file, fields[1], fields[2]], "\t")
+}
+
+fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
+  board_all_identities(board: previous)
+    |> filter(identity => !any(board_all_identities(board: current), now => now == identity))
+}
+
+type RegressionComparisonPredecessor
+  = RegressionComparisonAvailable { board: RustcPhaseBoard }
+  | RegressionComparisonUnavailable { reason: NonEmptyStr }
+
+// Identity recovery and the phase ratchet share one epoch boundary. A new policy/toolchain may
+// compare only after the producer has reclassified the old raw population into the new epoch;
+// otherwise even an apparently added or removed identity is not evidence of a source transition.
+fn regression_comparison_predecessor(
+  previous_epoch: NonEmptyStr,
+  current_epoch: NonEmptyStr,
+  previous_board: RustcPhaseBoard,
+  reclassified_predecessor: RustcPhaseBoard?
+) -> RegressionComparisonPredecessor {
+  if previous_epoch == current_epoch {
+    match reclassified_predecessor {
+      Absent => RegressionComparisonAvailable { board: previous_board }
+      Present { value: _ } => RegressionComparisonUnavailable {
+        reason: "a same-epoch regression transition carries an unnecessary reclassified predecessor" as NonEmptyStr
+      }
+    }
+  } else {
+    match reclassified_predecessor {
+      Present { value: board } => RegressionComparisonAvailable { board: board }
+      Absent => RegressionComparisonUnavailable {
+        reason: "an epoch-changing regression transition requires a reclassified predecessor population" as NonEmptyStr
+      }
+    }
+  }
+}
+
+fn identity_is_hop_relocation(
+  identity: String,
+  added: List<String>,
+  removed: List<String>
+) -> Bool {
+  let key = diagnostic_semantic_key(identity: identity)
+  let added_same = added |> filter(row => diagnostic_semantic_key(identity: row) == key) |> count
+  let removed_same = removed |> filter(row => diagnostic_semantic_key(identity: row) == key) |> count
+  removed_same > 0 && added_same <= removed_same
+}
+
+fn receipt_identity_removed(current: CompilePhaseFrontierReceipt, identity: String) -> Bool {
+  !any(board_all_identities(board: current.board), now => now == identity)
+}
+
+fn exact_open_rows(rows: List<OpenUnadmittedRegression>, identities: List<String>, revision: CommitSha) -> Bool {
+  count(rows) == count(identities)
+    && all(rows, row => row.introduced_by == revision && any(identities, identity => identity == row.identity))
+    && all(identities, identity => any(rows, row => row.identity == identity))
+}
+
+fn advance_open_unadmitted(
+  open: List<OpenUnadmittedRegression>,
+  current_identities: List<String>,
+  introduced: List<OpenUnadmittedRegression>,
+  repairs: List<ClosedUnadmittedRegression>,
+  revision: CommitSha
+) -> RegressionTransitionVerdict {
+  let repairs_valid = all(repairs, repair =>
+    repair.observed_removed_at == revision
+      && any(open, row => row.identity == repair.identity)
+      && !any(current_identities, now => now == repair.identity)
+      && !any(current_identities, now => diagnostic_semantic_key(identity: now) == diagnostic_semantic_key(identity: repair.identity))
+      && count(repairs |> filter(candidate => candidate.identity == repair.identity)) == 1
+  )
+  let repairs_complete = all(open, row =>
+    if !any(current_identities, now => now == row.identity) {
+      any(repairs, repair => repair.identity == row.identity)
+    } else { true }
+  )
+  if !repairs_valid || !repairs_complete {
+    RegressionTransitionMalformed { reason: "an open regression was removed without exact-identity repair provenance, or repair provenance names no removed open identity" as NonEmptyStr }
+  } else {
+    RegressionTransitionHeld {
+      open_unadmitted: concat(
+        open |> filter(row => !any(repairs, repair => repair.identity == row.identity)),
+        introduced
+      )
+    }
+  }
+}
+
+fn complete_open_unadmitted_series(open: List<OpenUnadmittedRegression>) -> PhaseBoardSeriesVerdict {
+  if count(open) == 0 {
+    PhaseBoardSeriesHeld
+  } else {
+    PhaseBoardSeriesRefused {
+      invocation: "open-unadmitted-regression",
+      reason: concat(
+        "compile-phase frontier carries open unadmitted identities: ",
+        open |> map(row => row.identity) |> join(separator: " | ")
+      ) as NonEmptyStr
+    }
+  }
+}
+
+fn apply_regression_transition(
+  previous: CompilePhaseFrontierReceipt,
+  current: CompilePhaseFrontierReceipt,
+  open: List<OpenUnadmittedRegression>
+) -> RegressionTransitionVerdict {
+  match regression_comparison_predecessor(
+    previous_epoch: previous.subject.comparison_epoch,
+    current_epoch: current.subject.comparison_epoch,
+    previous_board: previous.board,
+    reclassified_predecessor: current.reclassified_predecessor_board
+  ) {
+    RegressionComparisonUnavailable { reason: why } => RegressionTransitionMalformed { reason: why }
+    RegressionComparisonAvailable { board: comparable_previous } => {
+      let added = board_added_identities(previous: comparable_previous, current: current.board)
+      let removed = board_removed_identities(previous: comparable_previous, current: current.board)
+      let admitted = added |> filter(identity => newly_exposed_identity_admitted(
+        previous: comparable_previous,
+        current: current.board,
+        dispositions: current.newly_exposed,
+        identity: identity
+      ))
+      let unadmitted = added |> filter(identity =>
+        !any(admitted, row => row == identity)
+          && !identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+      )
+      let ratchet_recoverable = match phase_ratchet_with_dispositions(
+        previous: comparable_previous,
+        current: current.board,
+        dispositions: current.newly_exposed
+      ) {
+        PhaseRatchetHeld => true
+        PhaseRatchetRefused { phase: _, identities: ids, reason: _ } =>
+          count(ids) > 0 && all(ids, identity =>
+            any(unadmitted, row => row == identity)
+              || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+          )
+      }
+      if !ratchet_recoverable {
+        RegressionTransitionMalformed { reason: "phase rollback or an unrecorded identity regression is not recoverable" as NonEmptyStr }
+      } else if !exact_open_rows(rows: current.unadmitted_regressions, identities: unadmitted, revision: current.subject.source_revision) {
+        RegressionTransitionMalformed { reason: "added identities are neither newly exposed nor exactly recorded as open unadmitted regressions" as NonEmptyStr }
+      } else {
+        advance_open_unadmitted(
+          open: open,
+          current_identities: board_all_identities(board: current.board),
+          introduced: current.unadmitted_regressions,
+          repairs: current.regression_repairs,
+          revision: current.subject.source_revision
+        )
+      }
     }
   }
 }
@@ -668,7 +879,11 @@ fn receipt_pair_ratchet(
     }
   } else {
     match current.reclassified_predecessor_board {
-      Absent => PhaseRatchetHeld
+      Absent => PhaseRatchetRefused {
+        phase: current.board.furthest_phase_reached,
+        identities: [],
+        reason: "an epoch-changing phase comparison requires a reclassified predecessor population" as NonEmptyStr
+      }
       Present { value: reclassified } => phase_ratchet_with_dispositions(
         previous: reclassified,
         current: current.board,
@@ -723,14 +938,14 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
           if !receipt_population_coherent(receipt: receipt) || receipt.sequence != 0 || receipt.previous_prefix_digest != none || receipt.receipt_identity != receipt_payload_identity(receipt: receipt) || receipt.prefix_digest != expected_prefix_digest(previous: none, identity: receipt.receipt_identity) {
             SeriesFoldRefused { invocation: receipt.invocation as String, reason: "genesis receipt identity, sequence, or prefix link is invalid" as NonEmptyStr }
           } else {
-            SeriesFoldHeld { previous: receipt, seen_subjects: [receipt_subject_key(receipt: receipt)] }
+            SeriesFoldHeld { previous: receipt, seen_subjects: [receipt_subject_key(receipt: receipt)], open_unadmitted: [] }
           }
         PhaseBoardSuccessor { predecessor_invocation: _ } => SeriesFoldRefused {
           invocation: receipt.invocation as String,
           reason: "the first board receipt is not typed as the baseline" as NonEmptyStr
         }
       }
-      SeriesFoldHeld { previous: previous, seen_subjects: seen } => {
+      SeriesFoldHeld { previous: previous, seen_subjects: seen, open_unadmitted: open } => {
           match receipt.position {
             PhaseBoardBaseline => SeriesFoldRefused { invocation: receipt.invocation as String, reason: "a later board receipt is typed as another baseline" as NonEmptyStr }
             PhaseBoardSuccessor { predecessor_invocation: named } =>
@@ -751,11 +966,15 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
               } else if (previous.subject.comparison_epoch == receipt.subject.comparison_epoch) != comparison_inputs_same(a: previous.subject, b: receipt.subject) {
                 SeriesFoldRefused { invocation: receipt.invocation as String, reason: "comparison epoch does not change exactly when toolchain, policy, target, profile, or features change" as NonEmptyStr }
               } else {
-                match receipt_pair_ratchet(previous: previous, current: receipt) {
-                  PhaseRatchetHeld => SeriesFoldHeld { previous: receipt, seen_subjects: concat(seen, [receipt_subject_key(receipt: receipt)]) }
-                  PhaseRatchetRefused { phase: p, identities: ids, reason: why } => SeriesFoldRefused {
+                match apply_regression_transition(previous: previous, current: receipt, open: open) {
+                  RegressionTransitionHeld { open_unadmitted: next_open } => SeriesFoldHeld {
+                    previous: receipt,
+                    seen_subjects: concat(seen, [receipt_subject_key(receipt: receipt)]),
+                    open_unadmitted: next_open
+                  }
+                  RegressionTransitionMalformed { reason: why } => SeriesFoldRefused {
                     invocation: receipt.invocation as String,
-                    reason: concat(concat(rustc_phase_name(phase: p), concat(": ", why as String)), concat(" — identities: ", ids |> join(separator: " | "))) as NonEmptyStr
+                    reason: why
                   }
                 }
               }
@@ -765,7 +984,7 @@ fn phase_board_series_ratchet(series: List<CompilePhaseFrontierReceipt>) -> Phas
   )
   match folded {
     SeriesFoldEmpty => PhaseBoardSeriesEmptyBaselinePermitted
-    SeriesFoldHeld { previous: _, seen_subjects: _ } => PhaseBoardSeriesHeld
+    SeriesFoldHeld { previous: _, seen_subjects: _, open_unadmitted: open } => complete_open_unadmitted_series(open: open)
     SeriesFoldRefused { invocation: i, reason: why } => PhaseBoardSeriesRefused { invocation: i, reason: why }
   }
 }
@@ -783,16 +1002,27 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
   }
 }
 
-fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
+// PASSES is a claim about the phase, not about this row's arithmetic. A zero count means only that
+// no ATTRIBUTED identity landed in the phase, so while the census still holds identities no phase
+// row accounts for, every one of those unattributed identities is a candidate member of this phase
+// and the zero establishes nothing. Rendering PASSES there is the absorbing arm of DESIGN section
+// 5 pointed at the compiler's own self-description: a reader cannot tell "this phase passed" from
+// "the census could not be partitioned". The honest arm names the shortfall instead of hiding it.
+fn render_phase_standing(row: RustcPhaseBoardRow, partition_complete: Bool) -> String {
   match row.standing {
     PhaseNotYetReached => concat(rustc_phase_name(phase: row.phase), " not yet reached")
-    PhaseCount { count: 0, evidence: _ } => concat(rustc_phase_name(phase: row.phase), " PASSES")
+    PhaseCount { count: 0, evidence: _ } =>
+      if partition_complete {
+        concat(rustc_phase_name(phase: row.phase), " PASSES")
+      } else {
+        concat(rustc_phase_name(phase: row.phase), " 0 attributed (census partition incomplete)")
+      }
     PhaseCount { count: n, evidence: _ } => concat(concat(rustc_phase_name(phase: row.phase), " "), concat(to_string(n), " remaining"))
   }
 }
 
 fn render_phase_board(board: RustcPhaseBoard) -> String {
-  board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
+  board.rows |> map(r => render_phase_standing(row: r, partition_complete: board.partition_complete)) |> join(separator: " / ")
 }
 data genesis_5006ddc6_raw_error_diagnostic_identities: List<String> = [
   "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",
@@ -1063,6 +1293,8 @@ fn genesis_5006ddc6_receipt() -> CompilePhaseFrontierReceipt {
     raw_error_diagnostic_identities: genesis_5006ddc6_raw_error_diagnostic_identities,
     unplaced_identities: genesis_5006ddc6_phase_board_fold.unplaced_identities,
     newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
     reclassified_predecessor_board: none,
     producer: PhaseBoardProducer {
       module_path: "tools.emission_entry_instrument",
