@@ -686,15 +686,13 @@ func fci1_live_reserve_and_observe_available(
           wire: fabric_ci_evidence_wire(value: required_build_cell_lifetime_sample_wire(sample: sample) as NonEmptyStr),
         )
       }
-    }
+    } }
     NoCellAdmissible { considered: _, refused: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     BudgetRefused { slot_key: _, refusal: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     ReservationLost { slot_key: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     StoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     AttemptRefused { slot_key: _, detail: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
   }
-}
-
 }
 
 func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
