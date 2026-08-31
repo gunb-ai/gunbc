@@ -340,10 +340,17 @@ fn validate_intake_receipt_ledger(receipts: List<IntakeReceiptEnvelope>) -> Inta
 // handed where the secret token is expected, or vice versa.
 type IntakeAttemptNonce = NonEmptyStr where brand("IntakeAttemptNonce")
 
+// The issuance carries the ARCHITECTURE of the artifact it minted the nonce
+// for, not just its digest. Without it the receipt's `architecture` field was
+// carried and never compared, so an x86-64 agent booting against an AArch64
+// unit's issuance attested it — a wrong answer, silently. The architecture is
+// a fact ABOUT the issued artifact, so it lives beside the digest that names
+// that artifact rather than being re-derived from the receipt it checks.
 type IssuedAttemptNonce {
   attempt_id: IntakeAttemptId
   nonce: IntakeAttemptNonce
   artifact_digest: ContentHash
+  artifact_architecture: Architecture
   issued_at: EpochMs
 }
 
@@ -375,34 +382,56 @@ type BootAttestationRefusal
   = AgentReceiptAbsent { supporting: List<SupportingBootObservation> }
   | NonceMismatch
   | ArtifactDigestMismatch { expected: ContentHash, received: ContentHash }
+  | ArchitectureMismatch { expected: Architecture, received: Architecture }
   | BoardSerialMismatch { expected: NonEmptyStr, received: NonEmptyStr }
+  | DuplicateAgentCallback { received: Int }
 
 type DiagnosticBootAttestation
   = DiagnosticBootAttested { attempt_id: IntakeAttemptId, receipt: IntakeAgentBootReceipt }
   | DiagnosticBootNotAttested { cause: BootAttestationRefusal }
 
-// The boot is established when — and only when — the agent's receipt returns
-// the issued nonce, names the issued artifact digest, and repeats the unit's
-// board serial. Supporting observations ride along in the refusal so a
-// delivery session plus power activity WITHOUT a callback is reported as
-// exactly that, never as a boot.
+// The boot is established when — and only when — EXACTLY ONE callback arrived
+// for this issuance and that callback returns the issued nonce, names the
+// issued artifact digest, matches the issued artifact's architecture, and
+// repeats the unit's board serial. Supporting observations ride along in the
+// refusal so a delivery session plus power activity WITHOUT a callback is
+// reported as exactly that, never as a boot.
+//
+// WHY A LIST AND NOT AN OPTIONAL. The nonce is documented as a ONE-TIME
+// callback token, and an optional receipt cannot express the state that makes
+// it one-time: a second callback bearing the same nonce. Taking every callback
+// delivered to this issuance's endpoint makes the replay authorable, so it can
+// be refused. A duplicate is refused even when the two callbacks are
+// byte-identical: the endpoint's one-time-ness is the property being checked,
+// and choosing one of two callbacks to honour would be an absorbing fallback
+// (§5) — widening on ambiguity instead of stopping the line.
 fn attest_diagnostic_boot(
   issued: IssuedAttemptNonce,
   unit_key: UnitKey,
-  receipt: IntakeAgentBootReceipt?,
+  callbacks: List<IntakeAgentBootReceipt>,
   supporting: List<SupportingBootObservation>,
 ) -> DiagnosticBootAttestation {
-  match receipt {
-    Absent => DiagnosticBootNotAttested { cause: AgentReceiptAbsent { supporting: supporting } }
-    Present { value: r } =>
-      if (r.attempt_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
-        DiagnosticBootNotAttested { cause: NonceMismatch }
-      } else if content_hash_equal(left: issued.artifact_digest, right: r.artifact_digest) == false {
-        DiagnosticBootNotAttested { cause: ArtifactDigestMismatch { expected: issued.artifact_digest, received: r.artifact_digest } }
-      } else if r.board_serial != (unit_key as NonEmptyStr) {
-        DiagnosticBootNotAttested { cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial } }
-      } else {
-        DiagnosticBootAttested { attempt_id: issued.attempt_id, receipt: r }
-      }
+  let received = list_length(items: callbacks)
+  if received > 1 {
+    DiagnosticBootNotAttested { cause: DuplicateAgentCallback { received: received } }
+  } else {
+    match callbacks.first() {
+      Absent => DiagnosticBootNotAttested { cause: AgentReceiptAbsent { supporting: supporting } }
+      Present { value: r } => attest_single_callback(issued: issued, unit_key: unit_key, r: r)
+    }
+  }
+}
+
+fn attest_single_callback(issued: IssuedAttemptNonce, unit_key: UnitKey, r: IntakeAgentBootReceipt) -> DiagnosticBootAttestation {
+  if (r.attempt_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
+    DiagnosticBootNotAttested { cause: NonceMismatch }
+  } else if content_hash_equal(left: issued.artifact_digest, right: r.artifact_digest) == false {
+    DiagnosticBootNotAttested { cause: ArtifactDigestMismatch { expected: issued.artifact_digest, received: r.artifact_digest } }
+  } else if (r.architecture == issued.artifact_architecture) == false {
+    DiagnosticBootNotAttested { cause: ArchitectureMismatch { expected: issued.artifact_architecture, received: r.architecture } }
+  } else if r.board_serial != (unit_key as NonEmptyStr) {
+    DiagnosticBootNotAttested { cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial } }
+  } else {
+    DiagnosticBootAttested { attempt_id: issued.attempt_id, receipt: r }
   }
 }
