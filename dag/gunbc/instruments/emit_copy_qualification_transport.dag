@@ -23,7 +23,7 @@ import gunbc.emit_copy_qualification {
   StaticCloneObservation, NoRedundantCloneReported, RedundantCloneReported, StaticObservationUnavailable,
   RuntimeObservation, RuntimeRowsObserved, RuntimeObservationUnavailable,
   AllocObservationRow, EmitCopyQualification, QualificationRefusedObservationUnavailable,
-  judge_case, qualification_is_qualified, qualification_slug
+  judge_case, qualification_is_qualified, qualification_slug, qualification_case
 }
 import gunbc.emit_copy_qualification_fixture_gen {
   MutantPlan, CleanSubject, DisconnectCounter, mutant_plan_slug,
@@ -604,8 +604,7 @@ fn verdict_receipt_line(q: EmitCopyQualification) -> String {
   }
 }
 
-fn shard_receipt(c: CarrierRealization, mutant: MutantPlan) -> String {
-  let verdicts = run_emit_copy_qualification_shard(c: c, mutant: mutant)
+fn shard_receipt_text(c: CarrierRealization, mutant: MutantPlan, verdicts: List<EmitCopyQualification>) -> String {
   let body = verdicts |> fold(init: "", f: (acc, q) =>
     let line = verdict_receipt_line(q: q)
     if acc == "" { line } else { concat(acc, concat("\n", line)) }
@@ -615,6 +614,29 @@ fn shard_receipt(c: CarrierRealization, mutant: MutantPlan) -> String {
   concat("ecq shard=", concat(shard_slug(c: c, mutant: mutant),
   concat(" qualified=", concat(to_string(qualified),
   concat(" total=", concat(to_string(total), concat("\n", body)))))))
+}
+
+// One shard transaction plus a persisted receipt: the per-case verdict lines land in
+// target/emit_copy_qual/receipts/<shard>.txt so a failing Bool claim is diagnosable from the
+// run's own artifacts instead of a rerun. The receipt is a diagnostic channel — nothing gates
+// on the write, and the verdict list is returned unchanged either way.
+fn run_shard_with_receipt(c: CarrierRealization, mutant: MutantPlan) -> List<EmitCopyQualification> {
+  let verdicts = run_emit_copy_qualification_shard(c: c, mutant: mutant)
+  let top = git.Inspect.Toplevel()
+  let root = top.path.trim()
+  let dir = concat(root, "/target/emit_copy_qual/receipts")
+  let mk = shell.Mkdir.Parents(path: dir)
+  let wrote = Filesystem.Write(
+    path: concat(dir, concat("/", concat(shard_slug(c: c, mutant: mutant), ".txt"))),
+    content: shard_receipt_text(c: c, mutant: mutant, verdicts: verdicts)
+  )
+  if mk.success && wrote.success { verdicts }
+  else {
+    verdicts |> map(q => QualificationRefusedObservationUnavailable {
+      case: qualification_case(q: q),
+      cause: "shard receipt write failed"
+    })
+  }
 }
 
 // Emission-only grounding receipt for the DeepCloningSequence inapplicability derivation: emit

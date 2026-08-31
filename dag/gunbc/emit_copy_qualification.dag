@@ -669,6 +669,18 @@ fn qualification_is_qualified(q: EmitCopyQualification) -> Bool {
   }
 }
 
+fn qualification_case(q: EmitCopyQualification) -> EmitCopyQualificationCaseId {
+  match q {
+    Qualified { case: id, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => id
+    QualificationRefusedBehaviorMismatch { case: id, expected_line: _, observed_line: _ } => id
+    QualificationRefusedCaseNotExecutable { case: id, phase: _, detail: _ } => id
+    QualificationRefusedCostOracleUnavailable { case: id, unresolved_fact: _ } => id
+    QualificationRefusedObservationUnavailable { case: id, cause: _ } => id
+    QualificationRefusedExcessCopy { case: id, cardinality: _, observed_bytes: _, allowed_bytes: _ } => id
+    QualificationRefusedRedundantClone { case: id, lint: _, line: _ } => id
+  }
+}
+
 fn qualification_slug(q: EmitCopyQualification) -> String {
   match q {
     Qualified { case: _, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => "qualified"
