@@ -1,0 +1,173 @@
+module test.claim.machine_intake_mount_establishment_witness_test
+
+import std.types { Bool, EpochMs, Int, List, Milliseconds }
+import std.content_hash { ContentHash, content_hash_of_value }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.machine_intake_mount_establishment {
+  MediaImageAbsentFromListing,
+  MediaImageListed,
+  MountEstablished,
+  MountObservationContradictory,
+  MountPending,
+  MountRequested,
+  MountTimedOut,
+  EstablishedThenAbsent,
+  ObservationBeforeRequest,
+  ObservationOutOfOrder,
+  RemoteMediaListingObservation,
+  RemoteMediaMountWindow,
+  TimedOutThenListed,
+  mount_is_established,
+  remote_media_mount_standing,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data window: RemoteMediaMountWindow = RemoteMediaMountWindow {
+  requested_at: 1000,
+  budget: 5000,
+}
+
+data absent_bytes: ContentHash = content_hash_of_value(value: "images-listing-empty")
+data listed_bytes: ContentHash = content_hash_of_value(value: "images-listing-has-image")
+
+fn absent_at(at: EpochMs) -> RemoteMediaListingObservation {
+  RemoteMediaListingObservation { observed_at: at, listing: MediaImageAbsentFromListing, raw_response: absent_bytes }
+}
+
+fn listed_at(at: EpochMs) -> RemoteMediaListingObservation {
+  RemoteMediaListingObservation { observed_at: at, listing: MediaImageListed, raw_response: listed_bytes }
+}
+
+// POSITIVE CONTROL — the executed sequence. The daemon's retry interval elapses
+// with the image absent, then the listing carries it, INSIDE the declared
+// window. This is the asynchronous pending state that is legitimate, and it must
+// stay green or the model has banned the real behaviour rather than the unsafe
+// one.
+test fn a_listing_inside_the_window_establishes_the_mount() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [absent_at(at: 2000), absent_at(at: 3000), listed_at(at: 4000)]) {
+    MountEstablished { established_at: at, establishing_evidence: ev } => at == 4000 && ev == listed_bytes
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountObservationContradictory { cause: _ } => false
+  }
+}
+
+// A PENDING IS NOT A GREEN. Two absent polls inside the window leave the standing
+// pending and NOT established — a delivery phase reading mount_is_established
+// cannot proceed on a mount that has not been observed.
+test fn pending_inside_the_window_is_not_established() -> Bool {
+  let standing = remote_media_mount_standing(window: window, observations: [absent_at(at: 2000), absent_at(at: 3000)])
+  match standing {
+    MountPending { window: _, last_observed_at: last, observations: n } =>
+      last == 3000 && n == 2 && (mount_is_established(standing: standing) == false)
+    MountRequested { window: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountObservationContradictory { cause: _ } => false
+  }
+}
+
+// THE WINDOW CLOSES. Past the deadline an absent listing is TERMINAL, so
+// "pending forever" has no representation.
+test fn an_absent_listing_past_the_deadline_times_out() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [absent_at(at: 3000), absent_at(at: 9000)]) {
+    MountTimedOut { window: _, last_observed_at: last } => last == 9000
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountObservationContradictory { cause: _ } => false
+  }
+}
+
+// THE DECISIVE CONTROL FOR NO-FALLBACK-1: retry-until-green. The window expired
+// with the image absent, and a later poll says listed. Last-wins would call that
+// a success and proceed; this model calls it a contradiction, because a terminal
+// refusal is not discarded because a later observation agreed. Nothing here can
+// leave MountTimedOut for MountEstablished.
+test fn a_listing_after_the_timeout_is_a_contradiction_not_a_late_success() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [absent_at(at: 9000), listed_at(at: 11000)]) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        TimedOutThenListed { deadline: d, listed_at: at, listing_evidence: ev } => d == 6000 && at == 11000 && ev == listed_bytes
+        EstablishedThenAbsent { established_at: _, establishing_evidence: _, contradicted_at: _, contradicting_evidence: _ } => false
+        ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
+        ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
+      }
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+  }
+}
+
+// THE OTHER DIRECTION, which last-wins also gets wrong: an established mount
+// that a later poll no longer lists is a defect, not a return to pending and not
+// a reason to re-run the sequence. Both digests are carried so the contradiction
+// names the two observations it is between.
+test fn an_absence_after_establishment_is_a_contradiction_not_a_regression() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [listed_at(at: 2000), absent_at(at: 3000)]) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EstablishedThenAbsent { established_at: at, establishing_evidence: ev, contradicted_at: bad_at, contradicting_evidence: bad_ev } =>
+          at == 2000 && ev == listed_bytes && bad_at == 3000 && bad_ev == absent_bytes
+        TimedOutThenListed { deadline: _, listed_at: _, listing_evidence: _ } => false
+        ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
+        ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
+      }
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+  }
+}
+
+// A MOUNT NOBODY LOOKED AT IS NOT A MOUNT THAT WORKED. The empty observation
+// list is MountRequested, never established.
+test fn no_observations_is_requested_and_not_established() -> Bool {
+  let standing = remote_media_mount_standing(window: window, observations: [] as List<RemoteMediaListingObservation>)
+  match standing {
+    MountRequested { window: _ } => mount_is_established(standing: standing) == false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountObservationContradictory { cause: _ } => false
+  }
+}
+
+// OUT-OF-ORDER OBSERVATIONS ARE A DEFECT, not a newer reading. This is the
+// last-wins hazard at its root: a poll that arrives out of sequence must not be
+// allowed to overwrite what an earlier-timestamped one established.
+test fn an_out_of_order_observation_is_a_defect() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [absent_at(at: 3000), absent_at(at: 2000)]) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        ObservationOutOfOrder { previous_at: p, observed_at: at } => p == 3000 && at == 2000
+        EstablishedThenAbsent { established_at: _, establishing_evidence: _, contradicted_at: _, contradicting_evidence: _ } => false
+        TimedOutThenListed { deadline: _, listed_at: _, listing_evidence: _ } => false
+        ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
+      }
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+  }
+}
+
+// An observation timestamped before the request cannot be evidence about it.
+test fn an_observation_before_the_request_is_a_defect() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [listed_at(at: 500)]) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        ObservationBeforeRequest { requested_at: r, observed_at: at } => r == 1000 && at == 500
+        EstablishedThenAbsent { established_at: _, establishing_evidence: _, contradicted_at: _, contradicting_evidence: _ } => false
+        TimedOutThenListed { deadline: _, listed_at: _, listing_evidence: _ } => false
+        ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
+      }
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+  }
+}

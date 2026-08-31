@@ -1,0 +1,219 @@
+module gunbc.machine_intake_mount_establishment
+
+import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr }
+import std.content_hash { ContentHash }
+
+// REMOTE-MEDIA MOUNT IS AN ASYNCHRONOUS ESTABLISHMENT, AND THAT IS NOT A LICENCE
+// TO RETRY UNTIL GREEN (NO-FALLBACK-1). The executed MegaRAC sequence observes a
+// real pending phase: the media config is accepted, the daemon's own retry
+// interval elapses, and the images listing goes from refusing to listing the
+// image. A documented asynchronous PENDING state is legitimate. Repeating an
+// operation until an observation finally agrees is not, and the two look
+// identical in prose -- which is why the sequence used to be described only in
+// prose and this module exists to make the difference structural.
+//
+// The distinction the type enforces: pending is only representable INSIDE a
+// declared bounded window, and every exit from that window is TERMINAL. Nothing
+// here can return to pending, and no later observation can overwrite a terminal
+// standing -- a green after a timeout is a CONTRADICTION, not a success, because
+// discarding an earlier terminal refusal because a later poll agreed is exactly
+// the instability this model refuses. Last-wins is unwritable: the fold has no
+// arm that replaces a terminal standing with a newer observation.
+//
+// This is a workflow-layer carrier, not an extdeps one: an observation produced
+// by this repository is a receipt of OUR attempt, never a fact owned by the
+// observed upstream (DESIGN §3, external upstream decomposition). AMI owns the
+// operation contract in extdeps.bmc.megarac; what our polling saw is ours.
+
+type RemoteMediaListing
+  = MediaImageListed
+  | MediaImageAbsentFromListing
+
+// One look at the listing, with the bytes it was read from. There is no
+// observation without evidence: an unevidenced poll cannot move a standing.
+type RemoteMediaListingObservation {
+  observed_at: EpochMs
+  listing: RemoteMediaListing
+  raw_response: ContentHash
+}
+
+// THE BOUND IS DECLARED BEFORE THE FIRST POLL, not discovered by polling. A
+// window with no budget is unrepresentable, so "wait a bit longer" has nowhere
+// to live: the deadline is a function of the request, and every observation is
+// judged against it rather than against how patient the caller feels.
+type RemoteMediaMountWindow {
+  requested_at: EpochMs
+  budget: Milliseconds
+}
+
+fn mount_window_deadline(window: RemoteMediaMountWindow) -> Int {
+  window.requested_at + window.budget
+}
+
+type MountContradiction
+  = EstablishedThenAbsent {
+      established_at: EpochMs,
+      establishing_evidence: ContentHash,
+      contradicted_at: EpochMs,
+      contradicting_evidence: ContentHash
+    }
+  | TimedOutThenListed { deadline: Int, listed_at: EpochMs, listing_evidence: ContentHash }
+  | ObservationBeforeRequest { requested_at: EpochMs, observed_at: EpochMs }
+  | ObservationOutOfOrder { previous_at: EpochMs, observed_at: EpochMs }
+
+type RemoteMediaMountStanding
+  = MountRequested { window: RemoteMediaMountWindow }
+  | MountPending { window: RemoteMediaMountWindow, last_observed_at: EpochMs, observations: Int }
+  | MountEstablished { established_at: EpochMs, establishing_evidence: ContentHash }
+  | MountTimedOut { window: RemoteMediaMountWindow, last_observed_at: EpochMs }
+  | MountObservationContradictory { cause: MountContradiction }
+
+type MountFold {
+  standing: RemoteMediaMountStanding
+  previous_at: EpochMs?
+}
+
+fn mount_observation_is_out_of_order(previous_at: EpochMs?, observed_at: EpochMs) -> Bool {
+  match previous_at {
+    Absent => false
+    Present { value: p } => observed_at < p
+  }
+}
+
+// The one transition. Every arm is decided by the standing it is IN plus the
+// observation, so there is no path that reaches a terminal standing and then
+// leaves it.
+fn advance_mount_standing(
+  standing: RemoteMediaMountStanding,
+  window: RemoteMediaMountWindow,
+  observation: RemoteMediaListingObservation,
+) -> RemoteMediaMountStanding {
+  match standing {
+    MountObservationContradictory { cause: c } => MountObservationContradictory { cause: c }
+    MountEstablished { established_at: at, establishing_evidence: ev } =>
+      match observation.listing {
+        MediaImageListed => MountEstablished { established_at: at, establishing_evidence: ev }
+        MediaImageAbsentFromListing =>
+          MountObservationContradictory {
+            cause: EstablishedThenAbsent {
+              established_at: at,
+              establishing_evidence: ev,
+              contradicted_at: observation.observed_at,
+              contradicting_evidence: observation.raw_response,
+            },
+          }
+      }
+    MountTimedOut { window: w, last_observed_at: last } =>
+      match observation.listing {
+        MediaImageAbsentFromListing => MountTimedOut { window: w, last_observed_at: last }
+        MediaImageListed =>
+          MountObservationContradictory {
+            cause: TimedOutThenListed {
+              deadline: mount_window_deadline(window: w),
+              listed_at: observation.observed_at,
+              listing_evidence: observation.raw_response,
+            },
+          }
+      }
+    MountRequested { window: _ } => pending_or_terminal(window: window, observation: observation, observations: 0)
+    MountPending { window: _, last_observed_at: _, observations: n } =>
+      pending_or_terminal(window: window, observation: observation, observations: n)
+  }
+}
+
+// Inside the window a listing establishes and an absence stays pending; PAST the
+// deadline the window is closed and the standing is terminal, so a listing that
+// arrives late is a contradiction rather than a late success.
+fn pending_or_terminal(
+  window: RemoteMediaMountWindow,
+  observation: RemoteMediaListingObservation,
+  observations: Int,
+) -> RemoteMediaMountStanding {
+  if (observation.observed_at > mount_window_deadline(window: window)) {
+    match observation.listing {
+      MediaImageAbsentFromListing => MountTimedOut { window: window, last_observed_at: observation.observed_at }
+      MediaImageListed =>
+        MountObservationContradictory {
+          cause: TimedOutThenListed {
+            deadline: mount_window_deadline(window: window),
+            listed_at: observation.observed_at,
+            listing_evidence: observation.raw_response,
+          },
+        }
+    }
+  } else {
+    match observation.listing {
+      MediaImageListed =>
+        MountEstablished {
+          established_at: observation.observed_at,
+          establishing_evidence: observation.raw_response,
+        }
+      MediaImageAbsentFromListing =>
+        MountPending {
+          window: window,
+          last_observed_at: observation.observed_at,
+          observations: observations + 1,
+        }
+    }
+  }
+}
+
+fn mount_fold_step(
+  acc: MountFold,
+  window: RemoteMediaMountWindow,
+  observation: RemoteMediaListingObservation,
+) -> MountFold {
+  if (observation.observed_at < window.requested_at) {
+    MountFold {
+      standing: MountObservationContradictory {
+        cause: ObservationBeforeRequest { requested_at: window.requested_at, observed_at: observation.observed_at },
+      },
+      previous_at: Present { value: observation.observed_at },
+    }
+  } else if mount_observation_is_out_of_order(previous_at: acc.previous_at, observed_at: observation.observed_at) {
+    MountFold {
+      standing: MountObservationContradictory {
+        cause: ObservationOutOfOrder { previous_at: unwrap_previous(previous_at: acc.previous_at, fallback: observation.observed_at), observed_at: observation.observed_at },
+      },
+      previous_at: Present { value: observation.observed_at },
+    }
+  } else {
+    MountFold {
+      standing: advance_mount_standing(standing: acc.standing, window: window, observation: observation),
+      previous_at: Present { value: observation.observed_at },
+    }
+  }
+}
+
+fn unwrap_previous(previous_at: EpochMs?, fallback: EpochMs) -> EpochMs {
+  match previous_at {
+    Absent => fallback
+    Present { value: p } => p
+  }
+}
+
+// The standing of one mount attempt over the observations that were actually
+// taken. An empty observation list is MountRequested and NOT established: a
+// mount nobody looked at is not a mount that worked.
+fn remote_media_mount_standing(
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+) -> RemoteMediaMountStanding {
+  fold(
+    observations,
+    init: MountFold { standing: MountRequested { window: window }, previous_at: none },
+    f: fn(acc, o) { mount_fold_step(acc: acc, window: window, observation: o) },
+  ).standing
+}
+
+// The only standing a delivery phase may treat as established. Pending is not a
+// green, and neither timeout nor contradiction may be retried past.
+fn mount_is_established(standing: RemoteMediaMountStanding) -> Bool {
+  match standing {
+    MountEstablished { established_at: _, establishing_evidence: _ } => true
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountObservationContradictory { cause: _ } => false
+  }
+}
