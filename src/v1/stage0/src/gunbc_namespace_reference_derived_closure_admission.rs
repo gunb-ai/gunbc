@@ -138,7 +138,7 @@ pub fn binding_outcome_from_resolution(
             binding_outcome: binding_outcome,
             ..
         } => Some(binding_outcome.clone()),
-        _ => None,
+        _ => std::option::Option::None,
     }
 }
 
@@ -156,7 +156,7 @@ pub fn assess_reference_binding_observation(
             ..
         } => {
             match binding_outcome_from_resolution(resolution.clone()) {
-                None => refused(
+                std::option::Option::None => refused(
                     ReferenceDerivedClosureCapability::SameFileEarlierNeighbourVisible,
                     ReferenceDerivedClosureScenarioFailure::SameFileNeighbourMissing,
                 ),
@@ -211,7 +211,7 @@ pub fn assess_reference_binding_observation(
             ..
         } => {
             match binding_outcome_from_resolution(resolution.clone()) {
-                None => refused(
+                std::option::Option::None => refused(
                     ReferenceDerivedClosureCapability::SiblingDecisionBranchExcluded,
                     ReferenceDerivedClosureScenarioFailure::SiblingBranchLeaked,
                 ),
@@ -271,7 +271,7 @@ pub fn assess_reference_binding_observation(
         ),
         ReferenceBindingObservation::LaterDeclarationObservation { resolution, .. } => {
             match binding_outcome_from_resolution(resolution.clone()) {
-                None => refused(
+                std::option::Option::None => refused(
                     ReferenceDerivedClosureCapability::LaterDeclarationExcluded,
                     ReferenceDerivedClosureScenarioFailure::LaterDeclarationLeaked,
                 ),
@@ -308,7 +308,7 @@ pub fn assess_reference_binding_observation(
             resolution,
             ..
         } => match binding_outcome_from_resolution(resolution.clone()) {
-            None => refused(
+            std::option::Option::None => refused(
                 ReferenceDerivedClosureCapability::DistinctSameSpelledDeclarationsPreserved,
                 ReferenceDerivedClosureScenarioFailure::DistinctDeclarationCollapsed,
             ),

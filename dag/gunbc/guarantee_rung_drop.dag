@@ -544,3 +544,4 @@ fn stall_roster_size(ss: List<GuaranteeStall>) -> Int {
     cons: fn(acc, s) { acc + 1 },
   )
 }
+

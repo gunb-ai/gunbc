@@ -27,7 +27,7 @@ import v2.compiler.source_authority_read {
   source_root_ingest_build_from_source_refs
 }
 import v2.std.compilers.lexing { symbol_intern_lexeme, symbol_lexeme }
-import v2.std.integer { integer_nat_to_decimal_string }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.optional { Optional, Present, Absent }
 import v2.std.algebra { fold_list, length }
 import v2.std.collection { list_at_optional }
@@ -373,15 +373,15 @@ fn sweep_histogram_tsv(rows: List<RealizationSweepRow>) -> String {
       SweepHistogramState {
         prev: k,
         count: 1,
-        out: if st.out == "" { concat(st.prev, "\t", integer_nat_to_decimal_string(value: st.count)) } else { concat(st.out, "\n", st.prev, "\t", integer_nat_to_decimal_string(value: st.count)) }
+        out: if st.out == "" { concat(st.prev, "\t", integer_int_to_decimal_string(value: st.count)) } else { concat(st.out, "\n", st.prev, "\t", integer_int_to_decimal_string(value: st.count)) }
       }
     }
   })
   if folded.count == 0 {
     folded.out
   } else if folded.out == "" {
-    concat(folded.prev, "\t", integer_nat_to_decimal_string(value: folded.count))
+    concat(folded.prev, "\t", integer_int_to_decimal_string(value: folded.count))
   } else {
-    concat(folded.out, "\n", folded.prev, "\t", integer_nat_to_decimal_string(value: folded.count))
+    concat(folded.out, "\n", folded.prev, "\t", integer_int_to_decimal_string(value: folded.count))
   }
 }
