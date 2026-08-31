@@ -953,11 +953,11 @@ func fci1_canonical_cleanup_disposition(
   let before_decoded = decode_fabric_ci_evidence_wire(wire: before_wire)
   let observed = fci1_allocation_slot_observation(root: root)
   let observed_prestate = fci1_slot_observation_prestate(observed: observed)
-  let initial_disposition = match before_decoded {
+  let disposition = match before_decoded {
     FabricCiEvidenceUndecodable => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: root }, observed: observed }
     FabricCiEvidenceDecoded { value: before_value } => {
       let prestate = fci1_decode_allocation_prestate(wire: before_value as String)
-      if fci1_slot_prestate_equal(a: prestate, b: observed_prestate) {
+      let initial_disposition = if fci1_slot_prestate_equal(a: prestate, b: observed_prestate) {
         match prestate {
           AllocationSlotAbsent { path: _ } => NoCanonicalCommit { prestate: prestate, poststate: observed }
           AllocationSlotFree { path: _, generation: _ } => NoCanonicalCommit { prestate: prestate, poststate: observed }
@@ -992,8 +992,8 @@ func fci1_canonical_cleanup_disposition(
             }
           } else { CanonicalCleanupRefused { prestate: prestate, observed: observed } }
         Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: prestate, observed: observed }
-      }
-      let disposition = match initial_disposition {
+      } }
+      match initial_disposition {
         CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } =>
           match fci1_cleanup_authority_from_path(path: authority_path) {
             Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
@@ -1013,7 +1013,7 @@ func fci1_canonical_cleanup_disposition(
             Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed }
           }
         _ => initial_disposition
-      } }
+      }
     }
   }
 }
