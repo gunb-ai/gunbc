@@ -649,9 +649,9 @@ type RegressionTransitionVerdict
   = RegressionTransitionHeld { open_unadmitted: List<OpenUnadmittedRegression> }
   | RegressionTransitionMalformed { reason: NonEmptyStr }
 
-fn receipt_added_identities(previous: CompilePhaseFrontierReceipt, current: CompilePhaseFrontierReceipt) -> List<String> {
-  board_all_identities(board: current.board)
-    |> filter(identity => !any(board_all_identities(board: previous.board), prior => prior == identity))
+fn board_added_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
+  board_all_identities(board: current)
+    |> filter(identity => !any(board_all_identities(board: previous), prior => prior == identity))
 }
 
 fn diagnostic_semantic_key(identity: String) -> String {
@@ -661,9 +661,39 @@ fn diagnostic_semantic_key(identity: String) -> String {
   join([file, fields[1], fields[2]], "\t")
 }
 
-fn receipt_removed_identities(previous: CompilePhaseFrontierReceipt, current: CompilePhaseFrontierReceipt) -> List<String> {
-  board_all_identities(board: previous.board)
-    |> filter(identity => !any(board_all_identities(board: current.board), now => now == identity))
+fn board_removed_identities(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> List<String> {
+  board_all_identities(board: previous)
+    |> filter(identity => !any(board_all_identities(board: current), now => now == identity))
+}
+
+type RegressionComparisonPredecessor
+  = RegressionComparisonAvailable { board: RustcPhaseBoard }
+  | RegressionComparisonUnavailable { reason: NonEmptyStr }
+
+// Identity recovery and the phase ratchet share one epoch boundary. A new policy/toolchain may
+// compare only after the producer has reclassified the old raw population into the new epoch;
+// otherwise even an apparently added or removed identity is not evidence of a source transition.
+fn regression_comparison_predecessor(
+  previous_epoch: NonEmptyStr,
+  current_epoch: NonEmptyStr,
+  previous_board: RustcPhaseBoard,
+  reclassified_predecessor: RustcPhaseBoard?
+) -> RegressionComparisonPredecessor {
+  if previous_epoch == current_epoch {
+    match reclassified_predecessor {
+      Absent => RegressionComparisonAvailable { board: previous_board }
+      Present { value: _ } => RegressionComparisonUnavailable {
+        reason: "a same-epoch regression transition carries an unnecessary reclassified predecessor" as NonEmptyStr
+      }
+    }
+  } else {
+    match reclassified_predecessor {
+      Present { value: board } => RegressionComparisonAvailable { board: board }
+      Absent => RegressionComparisonUnavailable {
+        reason: "an epoch-changing regression transition requires a reclassified predecessor population" as NonEmptyStr
+      }
+    }
+  }
 }
 
 fn identity_is_hop_relocation(
@@ -737,38 +767,52 @@ fn apply_regression_transition(
   current: CompilePhaseFrontierReceipt,
   open: List<OpenUnadmittedRegression>
 ) -> RegressionTransitionVerdict {
-  let added = receipt_added_identities(previous: previous, current: current)
-  let removed = receipt_removed_identities(previous: previous, current: current)
-  let admitted = added |> filter(identity => newly_exposed_identity_admitted(
-    previous: previous.board,
-    current: current.board,
-    dispositions: current.newly_exposed,
-    identity: identity
-  ))
-  let unadmitted = added |> filter(identity =>
-    !any(admitted, row => row == identity)
-      && !identity_is_hop_relocation(identity: identity, added: added, removed: removed)
-  )
-  let ratchet_recoverable = match receipt_pair_ratchet(previous: previous, current: current) {
-    PhaseRatchetHeld => true
-    PhaseRatchetRefused { phase: _, identities: ids, reason: _ } =>
-      count(ids) > 0 && all(ids, identity =>
-        any(unadmitted, row => row == identity)
-          || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+  match regression_comparison_predecessor(
+    previous_epoch: previous.subject.comparison_epoch,
+    current_epoch: current.subject.comparison_epoch,
+    previous_board: previous.board,
+    reclassified_predecessor: current.reclassified_predecessor_board
+  ) {
+    RegressionComparisonUnavailable { reason: why } => RegressionTransitionMalformed { reason: why }
+    RegressionComparisonAvailable { board: comparable_previous } => {
+      let added = board_added_identities(previous: comparable_previous, current: current.board)
+      let removed = board_removed_identities(previous: comparable_previous, current: current.board)
+      let admitted = added |> filter(identity => newly_exposed_identity_admitted(
+        previous: comparable_previous,
+        current: current.board,
+        dispositions: current.newly_exposed,
+        identity: identity
+      ))
+      let unadmitted = added |> filter(identity =>
+        !any(admitted, row => row == identity)
+          && !identity_is_hop_relocation(identity: identity, added: added, removed: removed)
       )
-  }
-  if !ratchet_recoverable {
-    RegressionTransitionMalformed { reason: "phase rollback or an unrecorded identity regression is not recoverable" as NonEmptyStr }
-  } else if !exact_open_rows(rows: current.unadmitted_regressions, identities: unadmitted, revision: current.subject.source_revision) {
-    RegressionTransitionMalformed { reason: "added identities are neither newly exposed nor exactly recorded as open unadmitted regressions" as NonEmptyStr }
-  } else {
-    advance_open_unadmitted(
-      open: open,
-      current_identities: board_all_identities(board: current.board),
-      introduced: current.unadmitted_regressions,
-      repairs: current.regression_repairs,
-      revision: current.subject.source_revision
-    )
+      let ratchet_recoverable = match phase_ratchet_with_dispositions(
+        previous: comparable_previous,
+        current: current.board,
+        dispositions: current.newly_exposed
+      ) {
+        PhaseRatchetHeld => true
+        PhaseRatchetRefused { phase: _, identities: ids, reason: _ } =>
+          count(ids) > 0 && all(ids, identity =>
+            any(unadmitted, row => row == identity)
+              || identity_is_hop_relocation(identity: identity, added: added, removed: removed)
+          )
+      }
+      if !ratchet_recoverable {
+        RegressionTransitionMalformed { reason: "phase rollback or an unrecorded identity regression is not recoverable" as NonEmptyStr }
+      } else if !exact_open_rows(rows: current.unadmitted_regressions, identities: unadmitted, revision: current.subject.source_revision) {
+        RegressionTransitionMalformed { reason: "added identities are neither newly exposed nor exactly recorded as open unadmitted regressions" as NonEmptyStr }
+      } else {
+        advance_open_unadmitted(
+          open: open,
+          current_identities: board_all_identities(board: current.board),
+          introduced: current.unadmitted_regressions,
+          repairs: current.regression_repairs,
+          revision: current.subject.source_revision
+        )
+      }
+    }
   }
 }
 
@@ -832,7 +876,11 @@ fn receipt_pair_ratchet(
     }
   } else {
     match current.reclassified_predecessor_board {
-      Absent => PhaseRatchetHeld
+      Absent => PhaseRatchetRefused {
+        phase: current.board.furthest_phase_reached,
+        identities: [],
+        reason: "an epoch-changing phase comparison requires a reclassified predecessor population" as NonEmptyStr
+      }
       Present { value: reclassified } => phase_ratchet_with_dispositions(
         previous: reclassified,
         current: current.board,

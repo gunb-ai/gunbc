@@ -22,6 +22,9 @@ import gunbc.self_host_compile_phase_frontier {
   ClosedUnadmittedRegression,
   RegressionTransitionHeld,
   RegressionTransitionMalformed,
+  RegressionComparisonAvailable,
+  RegressionComparisonUnavailable,
+  regression_comparison_predecessor,
   advance_open_unadmitted,
   complete_open_unadmitted_series,
   PhaseBoardSeriesRefused,
@@ -30,6 +33,33 @@ import gunbc.self_host_compile_phase_frontier {
   phase_board_series_ratchet,
   self_host_compile_phase_frontier_receipts,
   render_phase_board
+}
+
+test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regressions() -> Bool {
+  match regression_comparison_predecessor(
+    previous_epoch: "rustc-old" as NonEmptyStr,
+    current_epoch: "rustc-new" as NonEmptyStr,
+    previous_board: fixture_board(resolve_ids: [], typeck_ids: ["old-only"]),
+    reclassified_predecessor: none
+  ) {
+    RegressionComparisonUnavailable { reason: why } =>
+      string_contains(s: why as String, pattern: "requires a reclassified predecessor")
+    verdict => false
+  }
+}
+
+test fn an_epoch_change_compares_identity_transitions_to_the_reclassified_predecessor() -> Bool {
+  let raw_old = fixture_board(resolve_ids: [], typeck_ids: ["old-policy-spelling"])
+  let reclassified = fixture_board(resolve_ids: [], typeck_ids: ["new-policy-spelling"])
+  match regression_comparison_predecessor(
+    previous_epoch: "rustc-old" as NonEmptyStr,
+    current_epoch: "rustc-new" as NonEmptyStr,
+    previous_board: raw_old,
+    reclassified_predecessor: Present { value: reclassified }
+  ) {
+    RegressionComparisonAvailable { board: comparable } => comparable == reclassified
+    verdict => false
+  }
 }
 
 fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
