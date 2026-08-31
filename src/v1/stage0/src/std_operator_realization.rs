@@ -150,25 +150,6 @@ pub fn ordering_test_for(op: BinOp) -> Option<Rc<OrderingTest>> {
     }
 }
 
-pub fn binop_is_equality(op: BinOp) -> bool {
-    match op.clone() {
-        BinOp::Eq => true,
-        BinOp::Ne => true,
-        BinOp::Add => false,
-        BinOp::Sub => false,
-        BinOp::Mul => false,
-        BinOp::Div => false,
-        BinOp::Mod => false,
-        BinOp::Lt => false,
-        BinOp::Gt => false,
-        BinOp::Le => false,
-        BinOp::Ge => false,
-        BinOp::And => false,
-        BinOp::Or => false,
-        BinOp::NullCoalesce => false,
-    }
-}
-
 pub fn binop_is_ordering(op: BinOp) -> bool {
     (ordering_test_for(op.clone()) != std::option::Option::None)
 }
