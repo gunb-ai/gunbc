@@ -393,12 +393,22 @@ type SupportingBootObservation
 // complete, and nothing here establishes that. The variant returns with the
 // endpoint producer that can close an acquisition -- as a refusal derived from a
 // closed population, not as a reading of a list's length.
+// TWO NONCE FAILURES, TWO CAUSES. One constructor was answering for both a
+// population presented against an issuance it was not observed for -- an
+// acquisition or binding splice, whose producer is whoever assembled the input --
+// and a callback INSIDE a correctly bound population returning the wrong nonce,
+// which is an agent-content failure. Different producers, different evidence
+// locations, different remedies; one name loses exactly the information the
+// refusal exists to preserve. Neither carries the nonce: it is a secret with no
+// place in durable output, so the cause names WHICH comparison failed and the
+// wrapper's population_evidence locates where to look.
 type BootAttestationRefusal
-  = NonceMismatch
+  = CallbackPopulationForOtherIssuance
+  | AgentCallbackNonceMismatch
   | ArtifactDigestMismatch { expected: ContentHash, received: ContentHash }
   | ArchitectureMismatch { expected: Architecture, received: Architecture }
   | BoardSerialMismatch { expected: NonEmptyStr, received: NonEmptyStr }
-  | DuplicateAgentCallback { received: Int, acquisition_evidence: EvidenceRef }
+  | DuplicateAgentCallback { received: Int }
 
 // NAMED FOR WHAT IT IS, NOT FOR WHAT WE WANT IT TO BE. This was called a sealed
 // delivery batch, and the name was doing work the type does not do.
@@ -461,7 +471,10 @@ type DiagnosticBootAttestation
       receipt: IntakeAgentBootReceipt,
       population_evidence: EvidenceRef,
     }
-  | DiagnosticBootNotAttested { cause: BootAttestationRefusal }
+  | DiagnosticBootNotAttested {
+      cause: BootAttestationRefusal,
+      population_evidence: EvidenceRef,
+    }
   | DiagnosticBootCompletenessUnestablished {
       observed_callbacks: Int,
       population_evidence: EvidenceRef,
@@ -521,7 +534,10 @@ fn attest_diagnostic_boot(
   supporting: List<SupportingBootObservation>,
 ) -> DiagnosticBootAttestation {
   if (observed.issuance_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
-    DiagnosticBootNotAttested { cause: NonceMismatch }
+    DiagnosticBootNotAttested {
+      cause: CallbackPopulationForOtherIssuance,
+      population_evidence: observed.acquisition_evidence,
+    }
   } else {
     adjudicate_observed_population(issued: issued, unit_key: unit_key, observed: observed, supporting: supporting)
   }
@@ -536,7 +552,8 @@ fn adjudicate_observed_population(
   let received = list_length(items: observed.callbacks)
   if received > 1 {
     DiagnosticBootNotAttested {
-      cause: DuplicateAgentCallback { received: received, acquisition_evidence: observed.acquisition_evidence }
+      cause: DuplicateAgentCallback { received: received },
+      population_evidence: observed.acquisition_evidence,
     }
   } else {
     match observed.callbacks.first() {
@@ -558,13 +575,16 @@ fn adjudicate_observed_population(
   }
 }
 
-// EVERY OUTCOME NAMES THE POPULATION IT WAS READ FROM. The cardinality reading is
-// a fact about a population this repository does not acquire, so an outcome that
-// dropped the acquisition record would leave its only unstated premise -- which
-// list this was, and whose -- unreachable from the value carrying it, which is
-// execution_provenance_loss. The duplicate refusal already pointed at the
-// acquirer's record; the non-refusing arm did not, and now does. That pointer is
-// what makes an Unestablished result investigable rather than merely negative.
+// THE PROVENANCE IS ON THE WRAPPER, SO THE CLAIM IS TRUE BY CONSTRUCTION. An
+// earlier cut put the acquisition record on DuplicateAgentCallback and on the
+// non-refusing arm, and annotated that as "every outcome names the population it
+// was read from" -- which was FALSE for the four field mismatches, and the
+// control greened anyway because it only exercised the unestablished path. That
+// is this repository's own §5 trap: a claim in prose with an oracle that cannot
+// see the paths it is about. Every outcome now takes population_evidence at the
+// same grain, so no adjudication path can return without it, and the cause
+// carries only what distinguishes it -- DuplicateAgentCallback keeps the count
+// and no longer carries a second copy of the record.
 fn adjudicate_single_callback(
   issued: IssuedAttemptNonce,
   unit_key: UnitKey,
@@ -573,13 +593,22 @@ fn adjudicate_single_callback(
   supporting: List<SupportingBootObservation>,
 ) -> DiagnosticBootAttestation {
   if (r.attempt_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
-    DiagnosticBootNotAttested { cause: NonceMismatch }
+    DiagnosticBootNotAttested { cause: AgentCallbackNonceMismatch, population_evidence: population_evidence }
   } else if content_hash_equal(left: issued.artifact.digest, right: r.artifact_digest) == false {
-    DiagnosticBootNotAttested { cause: ArtifactDigestMismatch { expected: issued.artifact.digest, received: r.artifact_digest } }
+    DiagnosticBootNotAttested {
+      cause: ArtifactDigestMismatch { expected: issued.artifact.digest, received: r.artifact_digest },
+      population_evidence: population_evidence,
+    }
   } else if (r.architecture == issued.artifact.architecture) == false {
-    DiagnosticBootNotAttested { cause: ArchitectureMismatch { expected: issued.artifact.architecture, received: r.architecture } }
+    DiagnosticBootNotAttested {
+      cause: ArchitectureMismatch { expected: issued.artifact.architecture, received: r.architecture },
+      population_evidence: population_evidence,
+    }
   } else if r.board_serial != (unit_key as NonEmptyStr) {
-    DiagnosticBootNotAttested { cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial } }
+    DiagnosticBootNotAttested {
+      cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial },
+      population_evidence: population_evidence,
+    }
   } else {
     DiagnosticBootCompletenessUnestablished {
       observed_callbacks: 1,

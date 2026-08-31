@@ -58,7 +58,8 @@ import gunbc.machine_intake_receipt {
   IssuedAttemptNonce,
   MachineIntakeReceiptV1,
   NfsReadPlateau,
-  NonceMismatch,
+  AgentCallbackNonceMismatch,
+  CallbackPopulationForOtherIssuance,
   IntakeLedgerRefusalCause,
   LedgerBrokenLink,
   LedgerEmpty,
@@ -808,7 +809,7 @@ test fn no_observed_callback_does_not_establish_absence() -> Bool {
   match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: []), supporting: [NfsReadPlateau, ImageRedirectionSessionActive]) {
     DiagnosticBootCompletenessUnestablished { observed_callbacks: n, population_evidence: e, supporting: s } =>
       n == 0 && e.label == "callback-endpoint-log" && list_length(items: s) == 2
-    DiagnosticBootNotAttested { cause: _ } => false
+    DiagnosticBootNotAttested { cause: _, population_evidence: _ } => false
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
   }
 }
@@ -819,7 +820,7 @@ test fn no_observed_callback_does_not_establish_absence() -> Bool {
 // hidden sibling would itself be a duplicate and also refuse; the match does not
 // survive, because a hidden sibling turns it into a replay. So a matching
 // callback yields Unestablished naming what was seen, and a wrong nonce yields a
-// definite NonceMismatch -- from the same call, differing only in the callback.
+// definite AgentCallbackNonceMismatch -- same call, differing only in the callback.
 test fn a_matching_callback_is_unestablished_and_a_wrong_nonce_refuses() -> Bool {
   let good = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: [])
   let bad = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [agent_receipt(nonce: "nonce-0000", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: [])
@@ -827,11 +828,11 @@ test fn a_matching_callback_is_unestablished_and_a_wrong_nonce_refuses() -> Bool
     DiagnosticBootCompletenessUnestablished { observed_callbacks: n, population_evidence: _, supporting: _ } =>
       n == 1
         && match bad {
-             DiagnosticBootNotAttested { cause: c } => c == NonceMismatch
+             DiagnosticBootNotAttested { cause: c, population_evidence: _ } => c == AgentCallbackNonceMismatch
              DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
              DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: _, supporting: _ } => false
            }
-    DiagnosticBootNotAttested { cause: _ } => false
+    DiagnosticBootNotAttested { cause: _, population_evidence: _ } => false
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
   }
 }
@@ -840,7 +841,7 @@ test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
   let wrong_artifact = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "some-other-iso", serial: "BRD-000123")]), supporting: [])
   let wrong_unit = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000999")]), supporting: [])
   let a = match wrong_artifact {
-    DiagnosticBootNotAttested { cause: c } =>
+    DiagnosticBootNotAttested { cause: c, population_evidence: _ } =>
       match c {
         ArtifactDigestMismatch { expected: _, received: _ } => true
         _ => false
@@ -849,7 +850,7 @@ test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
     DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: _, supporting: _ } => false
   }
   let b = match wrong_unit {
-    DiagnosticBootNotAttested { cause: c } =>
+    DiagnosticBootNotAttested { cause: c, population_evidence: _ } =>
       match c {
         BoardSerialMismatch { expected: _, received: r } => r == "BRD-000999"
         _ => false
@@ -865,7 +866,7 @@ test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
 test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
   let wrong = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [agent_receipt_on(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123", arch: X86_64)]), supporting: [])
   match wrong {
-    DiagnosticBootNotAttested { cause: c } =>
+    DiagnosticBootNotAttested { cause: c, population_evidence: _ } =>
       match c {
         ArchitectureMismatch { expected: _, received: got } => got == X86_64
         _ => false
@@ -882,9 +883,9 @@ test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool {
   let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
   let replay = attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [one, one]), supporting: [])
   match replay {
-    DiagnosticBootNotAttested { cause: c } =>
+    DiagnosticBootNotAttested { cause: c, population_evidence: _ } =>
       match c {
-        DuplicateAgentCallback { received: n, acquisition_evidence: e } => n == 2 && e.label == "callback-endpoint-log"
+        DuplicateAgentCallback { received: n } => n == 2
         _ => false
       }
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
@@ -902,7 +903,14 @@ test fn the_issued_digest_and_architecture_come_from_one_artifact() -> Bool {
     && issued.artifact.architecture == issued_artifact.architecture
 }
 
-// A POPULATION OBSERVED FOR ONE ISSUANCE CANNOT SPEAK FOR ANOTHER. Naming what
+// A POPULATION OBSERVED FOR ONE ISSUANCE CANNOT SPEAK FOR ANOTHER, AND THAT IS A
+// DIFFERENT FAILURE FROM A CALLBACK RETURNING THE WRONG NONCE. Both used to build
+// one NonceMismatch, which conflated a splice in the ACQUISITION -- whoever
+// assembled this input bound it to the wrong issuance -- with an agent-content
+// failure inside a correctly bound population. Different producers, different
+// evidence, different remedies. This control and
+// a_matching_callback_is_unestablished_and_a_wrong_nonce_refuses now discriminate
+// the two causes; under the old single constructor both greened on either bug. Naming what
 // was observed is only half the property: the record has to name which issuance
 // it is the population OF, or an honest observation of one attempt could be
 // presented against a different attempt's nonce.
@@ -913,7 +921,7 @@ test fn a_population_observed_for_another_issuance_does_not_attest() -> Bool {
     acquisition_evidence: acquisition_record,
   )
   match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: foreign, supporting: []) {
-    DiagnosticBootNotAttested { cause: c } => c == NonceMismatch
+    DiagnosticBootNotAttested { cause: c, population_evidence: _ } => c == CallbackPopulationForOtherIssuance
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
     DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: _, supporting: _ } => false
   }
@@ -940,14 +948,75 @@ test fn an_outcome_carries_the_acquiring_record_it_was_read_from() -> Bool {
   let ordinary = match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: []) {
     DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: e, supporting: _ } =>
       e.label == "callback-endpoint-log" && content_hash_equal(left: e.digest, right: acquisition_record.digest)
-    DiagnosticBootNotAttested { cause: _ } => false
+    DiagnosticBootNotAttested { cause: _, population_evidence: _ } => false
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
   }
   let foreign = match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: from_other, supporting: []) {
     DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: e, supporting: _ } =>
       e.label == "other-endpoint-log" && content_hash_equal(left: e.digest, right: other_record.digest)
-    DiagnosticBootNotAttested { cause: _ } => false
+    DiagnosticBootNotAttested { cause: _, population_evidence: _ } => false
     DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
   }
   ordinary && foreign
+}
+
+// A REFUSAL IS INVESTIGABLE, WHICH MEANS IT NAMES THE POPULATION IT WAS READ FROM.
+// The provenance used to live on DuplicateAgentCallback and the unestablished arm
+// while the four field-mismatch refusals discarded it -- and the annotation
+// claiming "every outcome names the population" greened anyway, because the only
+// control exercised the unestablished path. A claim about paths, with an oracle
+// blind to those paths, is this repository's own §5 trap. This control reads the
+// arm that was actually lying: two DEFINITE mismatch refusals, identical in every
+// respect except which acquisition record they were observed in, each preserving
+// its own. Replacing the wrapper's population_evidence with a constant reds the
+// second half while the first stays green.
+test fn a_definite_refusal_carries_the_acquiring_record_it_was_read_from() -> Bool {
+  let other_record = EvidenceRef {
+    label: "second-endpoint-log",
+    digest: content_hash_of_value(value: "second-endpoint-log-bytes"),
+  }
+  let wrong_serial = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000999")
+  let from_other = observed_agent_callback_population(
+    issuance_nonce: "nonce-7f3a" as IntakeAttemptNonce,
+    callbacks: [wrong_serial],
+    acquisition_evidence: other_record,
+  )
+  let ordinary = match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [wrong_serial]), supporting: []) {
+    DiagnosticBootNotAttested { cause: c, population_evidence: e } =>
+      match c {
+        BoardSerialMismatch { expected: _, received: _ } =>
+          e.label == "callback-endpoint-log" && content_hash_equal(left: e.digest, right: acquisition_record.digest)
+        _ => false
+      }
+    DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
+    DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: _, supporting: _ } => false
+  }
+  let foreign = match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: from_other, supporting: []) {
+    DiagnosticBootNotAttested { cause: c, population_evidence: e } =>
+      match c {
+        BoardSerialMismatch { expected: _, received: _ } =>
+          e.label == "second-endpoint-log" && content_hash_equal(left: e.digest, right: other_record.digest)
+        _ => false
+      }
+    DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
+    DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: _, supporting: _ } => false
+  }
+  ordinary && foreign
+}
+
+// AND THE DUPLICATE REFUSAL STILL LOCATES ITS RECORD, from the wrapper rather than
+// from a second copy inside the cause. Moving it up is what makes the provenance
+// claim structural; this control is the check that the move did not lose it.
+test fn a_duplicate_refusal_reads_its_record_from_the_wrapper() -> Bool {
+  let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
+  match attest_diagnostic_boot(issued: issued, unit_key: unit, observed: delivered(callbacks: [one, one]), supporting: []) {
+    DiagnosticBootNotAttested { cause: c, population_evidence: e } =>
+      match c {
+        DuplicateAgentCallback { received: n } =>
+          n == 2 && e.label == "callback-endpoint-log" && content_hash_equal(left: e.digest, right: acquisition_record.digest)
+        _ => false
+      }
+    DiagnosticBootAttested { attempt_id: _, receipt: _, population_evidence: _ } => false
+    DiagnosticBootCompletenessUnestablished { observed_callbacks: _, population_evidence: _, supporting: _ } => false
+  }
 }
