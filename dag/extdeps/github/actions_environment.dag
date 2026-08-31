@@ -60,6 +60,15 @@ data github_run_id_variable_name: String = "GITHUB_RUN_ID"
 data github_run_attempt_variable_name: String = "GITHUB_RUN_ATTEMPT"
 data github_runner_name_variable_name: String = "RUNNER_NAME"
 
+// THE RUN'S REPOSITORY AND WORKFLOW REFERENCE, carried for the same reason the coordinates above
+// are. GITHUB_REPOSITORY is `owner/repo`; GITHUB_WORKFLOW_REF is
+// `owner/repo/.github/workflows/<file>@<ref>`, the one runner-supplied variable that names the
+// workflow FILE a run executes -- the same path the reviewed fleet-desired admission binds through
+// the workflow_run event's `path` member. A consumer proving "this run executed THIS workflow"
+// reads it here rather than re-deriving the file from a workflow display name.
+data github_repository_variable_name: String = "GITHUB_REPOSITORY"
+data github_workflow_ref_variable_name: String = "GITHUB_WORKFLOW_REF"
+
 // Missing and present-but-empty stay separate arms, exactly as they do for the sha above. Outside
 // Actions every one of these is legitimately absent, which is a different fact from a runner that
 // set the variable to nothing, and only the second is a defect in the environment.

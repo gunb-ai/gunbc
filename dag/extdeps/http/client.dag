@@ -76,6 +76,30 @@ service http.Client {
     }
   }
 
+  operation GetBounded {
+    input { url: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        "curl",
+        "-fsS",
+        "--connect-timeout",
+        http_client_localhost_connect_timeout_flag(),
+        "--max-time",
+        http_client_localhost_max_time_flag(),
+        "{url}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "http client bounded GET failed"
+    }
+    mock_response {
+      0 => { body: "", success: false } "hermetic: no live HTTP endpoint; routed observation refuses rather than fabricate a body"
+    }
+  }
+
   operation PostJsonFromFile {
     input { url: NonEmptyStr, request_body_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }

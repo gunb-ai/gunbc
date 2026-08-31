@@ -93,14 +93,12 @@ type RuntimeUnitCount = RuntimeUnitCountObserved { units: Nat } | RuntimeUnitCou
 // — never map zero to one and render a corpus failure as FLOOR-BATCH-OVER-BUDGET. Authority type
 // here; observation and enforcement live in claim_executor.rs (see
 // gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_note).
-
 // §7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs):
 // FloorRuntimeUnitCount enum mirrors RuntimeUnitCount; each ClaimResult carries the observation;
 // batch aggregation refuses the clamp when any row is Unavailable. Reason: unit-count availability
 // is executor realization over batch results, not yet expressible as substrate behavior inside
 // claim_executor. Dissolve-on: v2 self-emitted claim_executor when the executor bin crosses the
 // self-host frontier.
-
 data gunbc_ci_floor_batch_runtime_unit_count_claim_executor_seed_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -159,7 +157,6 @@ fn gunbc_ci_workflow_wrapper_budget_minutes() -> Minute {
 // witnesses clamps at ~44min". This run discovered 8681, so the clamp's stated basis is ~3.7x stale
 // against the corpus it governs; a deep-std diff is simply the first shape to hit a wall every
 // broad diff now approaches. Re-denominating that basis is owed and not done here.
-
 // Floor batch stop policy (operator ruling 2026-07-22, fail-fast lane): claim_executor's walk halt
 // is event-scoped so cheap-gate-early reorder does not truncate main's ledger. pull_request →
 // StopBeforeDependents (a cheap-gate red stops before compile/corpus). push (main) and schedule
@@ -168,7 +165,6 @@ fn gunbc_ci_workflow_wrapper_budget_minutes() -> Minute {
 // Authority: gunbc_ci_floor_batch_stop_policy_for_github_event in v2.workflow.ci_floor_plan;
 // consumer: claim_executor.rs run_walk (see
 // gunbc_ci_floor_batch_stop_policy_claim_executor_seed_note).
-
 // §7 seed-retained HAND-RUST bridge (src/v1/stage0/src/bin/claim_executor.rs): FloorBatchStopPolicy
 // enum mirrors this type; run_walk halts or continues on the variant returned by
 // gunbc_ci_floor_batch_stop_policy_for_github_event after
@@ -179,7 +175,6 @@ fn gunbc_ci_workflow_wrapper_budget_minutes() -> Minute {
 // measurement (PR fail-fast ~2min; main push prints the complete gate+corpus ledger under
 // FullLedger). Dissolve-on: v2 self-emitted claim_executor run_walk when the executor bin crosses
 // the self-host frontier (DESIGN §7 terminal collapse of stage0 host bins).
-
 data gunbc_ci_floor_batch_stop_policy_claim_executor_seed_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
@@ -218,7 +213,6 @@ type DeployStage {
 // (execution-kind rows with their own resource profile). Empty witness_entries AND empty
 // discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's
 // shape).
-
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
   gates: List<Gate>
@@ -242,7 +236,6 @@ data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_ga
 // projection to the bag EXTENDS the totality check to the new surface; the tempting alternative —
 // dropping the two flipped arms or slackening bag-equality to subset — would have silenced the wall
 // in the same motion that made it informative, the absorbing-fallback shape DESIGN §5 forbids.
-
 data gunbc_ci_falsifier_gates: List<Gate> = project_falsifier_gates(roster: commit_gate_roster)
 
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
@@ -439,7 +432,6 @@ data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived 
 // (witness_floor_batch_clamp_params_cover_schedule) proves the COUNT and cannot prove the MAPPING;
 // that gap is the standing argument for deriving these rows from the schedule rather than pairing
 // them by position.
-
 // NATIVE BUNDLE ROW (index 5, operator ruling via Dispatch A->C, 2026-08-02): the production
 // selector enrollment adds one isolated fixed-count batch, so the positional clamp table adds
 // exactly one companion row; co-locating it with an unrelated batch is rejected because that would
@@ -452,7 +444,6 @@ data gunbc_ci_floor_batch_wall_budget_note: String = "SUPERSEDED by the derived 
 // 11940978688 bytes. The Runnable remains Substantial and isolated, preserving the measured 7.14GB
 // gap between process RSS and cgroup peak rather than disguising it through co-residence. The clamp
 // bounds wall admission; the memory governor remains the fail-closed capacity authority.
-
 // The authority is filled ONCE here rather than per row: every row in this list is declared by this
 // list, and restating it six times would be six chances for one to name something else. The reader
 // supplies the index — an offset is the one part of the citation no symbol can carry.
@@ -558,7 +549,6 @@ fn ci_cargo_eagain_retry_intent(command: String) -> PipelineStep {
 // ruling 2026-07-11 still applies to the handoff shape. The intentionally-absent negative control
 // (no_such_witness_bin_zzz) is excluded. The build-if-absent stale-binary class (#6352) is out of
 // scope: a same-run artifact is fresh by construction.
-
 fn artifact_shell_path(name: String) -> String {
   concat(concat("\"$ROOT/target/release/", name), "\"")
 }
@@ -647,7 +637,6 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
 // pids.current, ancestor limit, observer slot membership) via the typed read seams only.
 // workflow_dispatch-gated at the job, so it never rides PR or push events; the printed return value
 // IS the typed receipt.
-
 // Main→desired-ref advancement (CONVERGE-0 loop leg, operator directive 2026-08-09): on a
 // floor-green main push (needs: [ci] IS the floor-green admission — this job exists only downstream
 // of the required check succeeding in the same run), advance refs/fleet/desired to the merged
@@ -655,7 +644,6 @@ fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
 // decide_fleet_desired_advance's from side), so a race with a concurrent advance refuses rather
 // than overwriting; ref creation is the from=none arm. Hosts follow the ref; no host is contacted
 // here.
-
 // EVERY `gunbc run` STEP THIS SPEC EMITS NAMES ITS TARGET HERE, AND NOWHERE ELSE.
 //
 // The pair was previously two string literals at each call site, and that cost a real defect: a
@@ -783,6 +771,18 @@ data gunbc_ci_live_deploy_apply_srv1_target: GunbcRunStepTarget = GunbcRunStepTa
   function: "live_deploy_apply_srv1_wet",
 }
 
+// THE RECEIPTED DASHBOARD DEPLOY (RLM-2a): the same fold as live_deploy_apply_srv1_wet, bound to
+// the expected revision and the fleet transaction, minting gunbc.live_deploy.apply_receipt.
+data gunbc_ci_live_deploy_transaction_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/live_deploy/apply.dag",
+  function: "live_deploy_apply_srv1_transaction_wet",
+}
+
+data gunbc_ci_rlm_launch_deployment_receipt_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag",
+  function: "rlm_launch_deployment_receipt_wet",
+}
+
 data gunbc_ci_srv1_tasks_observation_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/srv1_tasks_preapply_observation.dag",
   function: "observe_srv1_tasks_preapply_wet",
@@ -850,6 +850,8 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_probe_identity_observe_target,
     gunbc_ci_authorized_key_enroll_target,
     gunbc_ci_live_deploy_apply_srv1_target,
+    gunbc_ci_live_deploy_transaction_target,
+    gunbc_ci_rlm_launch_deployment_receipt_target,
     gunbc_ci_srv1_tasks_observation_target,
     gunbc_ci_heal_regen_target,
     gunbc_ci_heal_repo_local_git_config_target,
@@ -872,6 +874,33 @@ fn gunbc_ci_live_deploy_apply_srv1_invoke() -> String {
   )
 }
 
+data gunbc_live_deploy_receipt_artifact_name: String = "live-deploy-srv1-receipt"
+data gunbc_live_deploy_receipt_artifact_dir: String = "target/live-deploy-srv1-receipt"
+data gunbc_fleet_converge_apply_receipt_artifact_name: String = "fleet-converge-apply-receipt"
+data gunbc_fleet_converge_apply_receipt_artifact_dir: String = "/tmp/fleet-converge-apply"
+data gunbc_rlm_launch_deployment_receipt_artifact_name: String = "rlm-launch-deployment-receipt"
+data gunbc_rlm_launch_deployment_receipt_artifact_dir: String = "target/rlm-launch-deployment-receipt"
+
+fn gunbc_ci_live_deploy_transaction_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_live_deploy_transaction_target.entry,
+    function: gunbc_ci_live_deploy_transaction_target.function,
+    claim_run: false,
+    receipt_rel: "target/live-deploy-srv1-receipt/live_deploy_receipt.json"
+  )
+}
+
+fn gunbc_ci_rlm_launch_deployment_receipt_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_rlm_launch_deployment_receipt_target.entry,
+    function: gunbc_ci_rlm_launch_deployment_receipt_target.function,
+    claim_run: false,
+    receipt_rel: "target/rlm-launch-deployment-receipt/receipt.json"
+  )
+}
+
 fn gunbc_ci_fleet_reach_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -888,7 +917,6 @@ fn gunbc_ci_fleet_reach_probe_invoke() -> String {
 // materialization (gunbc_ci_fleet_key_agent_script); fleet_multi_principal_probe_wet uses
 // typed_argv_probe_over_ssh over SSH_AUTH_SOCK, not a second Secret Manager fetch from gunbc run.
 // Its receipt is a separate file.
-
 fn gunbc_ci_multi_principal_probe_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1062,9 +1090,23 @@ fn gunbc_ci_fleet_key_agent_prelude() -> List<PipelineStep> {
   ]
 }
 
+data gunbc_ci_fleet_key_agent_shell_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "gunbc_ci_fleet_key_agent_script",
+    field: WholeDeclaration
+  }
+}
+
+data gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+
 fn gunbc_ci_fleet_key_agent_script() -> String {
-  gunbc_invoke_step_emit_pipeline(
-    p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+  concat(
+    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_key_agent_shell_emit_dissolution_trigger), "\n")),
+    gunbc_invoke_step_emit_pipeline(
+      p: Pipeline { steps: gunbc_ci_fleet_key_agent_prelude(), on_failure: FailFast }
+    )
   )
 }
 
@@ -1201,7 +1243,6 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
 // concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges the
 // obligation instead of carrying it, and an unbound condition whose subject no longer exists can
 // never report itself fired.
-
 data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
 
 fn gunbc_ci_fleet_converge_plan_invoke() -> String {
@@ -1242,7 +1283,6 @@ data gunbc_ci_fleet_converge_plan_artifact_hash_env_name: String = "EXPECTED_HAS
 // and a per-site widening is the workaround class DESIGN section 5 names — the substrate answer is
 // a typed parameter-expansion carrier, default-substitution as a variant rather than a character in
 // a string, making the construct emittable without loosening the wall. Dissolve-on below.
-
 data gunbc_ci_fleet_converge_apply_plan_hash_predicate_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_converge_apply_plan_hash_prelude — RUNG: mitigatable, and stated rather than left to be read off the Pipeline it now sits inside. The guard executes and its refusal is typed and located at RUNTIME (PlanArtifactHashMismatch naming both hashes, exit 1 before any actuation), but the condition itself is an opaque Run leaf, so nothing at emit time can tell a correct comparison from a lying one — a mistyped operand emits happily and fails open on the runner. CEILING: structurally guaranteed. The property is decidable and the emitter already refuses malformed operands for every predicate it can carry; this one is outside what the carrier can express, not outside what is decidable. NEXT-RUNG TRIGGER, the one named thing that moves it: v2.std.orchestration Predicate operands take a typed shell-word carrier with a default-substitution variant, so the POSIX default-substitution form this guard needs becomes a constructor rather than a character sequence that v2.compiler.emit_orchestration orch_shell_test_operand_alphabet must be widened to admit. At that point the guard becomes Or/Not/StrEmpty/StrEq and Exit, the alphabet check on this construct is unwritable-by-construction, and this row and the three Do lines delete together. NOT BLOCKED ON ANYTHING ELSE: this is can-climb-after-one-grounding, not cannot-climb.")
 
 fn gunbc_ci_fleet_converge_apply_plan_hash_prelude() -> List<PipelineStep> {
@@ -1360,7 +1400,6 @@ fn gunbc_ci_spark_serving_converge_slice_invoke() -> String {
 // WHAT THE FUNCTION STILL IS: an emitter for a step script, retained because
 // collect_fleet_convergence_wet is intact and hand-callable. What ended is this wire's enrolment,
 // not the capability.
-
 fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1373,7 +1412,6 @@ fn gunbc_ci_collect_fleet_convergence_invoke() -> String {
 
 // Host-key scan + enroll dispatch wires (CONVERGE acceptance item 4): scan observes,
 // enroll applies the committed registry; both srv1-dispatched, receipts catted.
-
 fn gunbc_ci_fleet_host_key_scan_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1446,7 +1484,6 @@ fn gunbc_ci_authorized_key_enroll_invoke() -> String {
 // section 3 forbids, so they are merged here, and the accompanying `data ..._deleted_note: String`
 // row is dropped — a String declaration whose sole purpose is commentary is the misplaced data
 // section 4c names.
-
 fn gunbc_ci_srv1_tasks_observation_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1488,7 +1525,6 @@ fn gunbc_ci_heal_regen_invoke() -> String {
 // hooksPath binding does not invoke pre-push during the unattended push (cargo is absent from the
 // hook PATH on heal runners — a push refusal, not a formatting finding). Idempotent:
 // already-converged checkouts are a no-op.
-
 fn gunbc_ci_heal_repo_local_git_config_invoke() -> String {
   gunbc_run_step_script(
     source_roots: witness_layer_roots,
@@ -1521,7 +1557,6 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
 // var. A transport refusal makes the gunbc invocation nonzero; the heal script classifies
 // HealDispatchRefused, keeps revalidation required, and fails loudly. Deliberately no fallback to
 // the ordinary push event and no silent retry.
-
 // RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no
 // function implements it. What follows is the incident record that produced it, kept because the
 // receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED
@@ -1540,7 +1575,6 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
 // execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI
 // failure; against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard
 // refused the unsound pairing instead of discovering it as a mid-regen crash.
-
 // RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard is DELETED. The operator ruling of
 // 2026-07-29 below is kept as the ruling it was, not as live behaviour. THE COMPARAND IS THE
 // BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut compared
@@ -1572,7 +1606,6 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
 // from MERGING at all. That is merge-admission policy, needs a source-of-truth model this repo does
 // not have yet (operator: the SCM lane after v1 deletion), and this guard does not pretend to
 // supply one — it protects the one pairing this job has agency over.
-
 // RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard and its remedy are DELETED. The operator
 // ruling of 2026-07-29 below is kept as the ruling it was, not as live behaviour. THE GUARD APPLIES
 // ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically').
@@ -1591,7 +1624,6 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
 // diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an
 // author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base
 // moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once.
-
 data ci_heal_author_commit_artifact_dir: String = "heal-author-commit-required"
 
 data ci_heal_author_commit_artifact_name: String = "heal-author-commit-required"
