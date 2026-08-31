@@ -28,12 +28,16 @@ type RegenCandidateIdentity {
   candidate_digest: String
 }
 
+type RegenPreStageState
+  = PresentBeforeInstall { digest: String }
+  | AbsentBeforeInstall
+
 type RegenChangedSurface {
   identity: RegenSurfaceIdentity
   generation_role: RegenGenerationRole
   seed_membership: RegenSeedMembership
   dependency_closure_id: String
-  pre_stage_digest: String
+  pre_stage_state: RegenPreStageState
   candidate: RegenCandidateIdentity
 }
 
@@ -197,6 +201,43 @@ type RegenStagePartition {
   deferred: List<RegenDeferredSurface>
 }
 
+type RegenDependencyClosureDisposition
+  = DependencyClosureAssigned { closure_id: String }
+  | DependencyClosureRefused { reason: String }
+
+// The model owns the join from generation role and seed membership to dependency closure. The
+// host supplies facts and consumes this disposition; it does not maintain a parallel classifier.
+fn regen_dependency_closure_disposition(
+  role: RegenGenerationRole,
+  membership: RegenSeedMembership
+) -> RegenDependencyClosureDisposition {
+  match role {
+    GenerationInput => DependencyClosureAssigned { closure_id: "generation-input-cut" }
+    BootstrapSourceMirror => DependencyClosureAssigned { closure_id: "generation-input-cut" }
+    GenerationSubject => match membership {
+      SeedEmbedded => DependencyClosureAssigned { closure_id: "seed-compatibility-cut" }
+      OutsideSeed => DependencyClosureAssigned { closure_id: "non-seed-publish" }
+      UnresolvedSeedMembership { reason: reason } =>
+        DependencyClosureRefused { reason: reason }
+    }
+    NonSeedGeneratedOutput => match membership {
+      OutsideSeed => DependencyClosureAssigned { closure_id: "non-seed-publish" }
+      SeedEmbedded => DependencyClosureRefused { reason: "non-seed output is seed embedded" }
+      UnresolvedSeedMembership { reason: reason } =>
+        DependencyClosureRefused { reason: reason }
+    }
+    UnresolvedGenerationRole { reason: reason } =>
+      DependencyClosureRefused { reason: reason }
+  }
+}
+
+fn regen_dependency_closure_ids(disposition: RegenDependencyClosureDisposition) -> List<String> {
+  match disposition {
+    DependencyClosureAssigned { closure_id: closure_id } => [closure_id]
+    DependencyClosureRefused { reason: _ } => []
+  }
+}
+
 // One typed classification surface. Planning consumes the arm and retains its reason; no Bool
 // predicate aliases the coproduct membership or walks the same row again for deferral.
 fn regen_surface_stage_disposition(
@@ -245,28 +286,39 @@ fn regen_partition_stage(rows: List<RegenChangedSurface>, kind: RegenStageKind) 
   })
 }
 
-fn regen_first_unresolved(rows: List<RegenChangedSurface>) -> List<RegenConvergenceRefusal> {
-  fold(rows, init: [], f: fn(acc, row) {
-    if count(acc) > 0 {
-      acc
-    } else {
+type RegenFirstUnresolved
+  = NoUnresolvedSurface
+  | FirstUnresolvedSurface { refusal: RegenConvergenceRefusal }
+
+fn regen_first_unresolved(rows: List<RegenChangedSurface>) -> RegenFirstUnresolved {
+  fold(rows, init: NoUnresolvedSurface, f: fn(acc, row) {
+    match acc {
+      FirstUnresolvedSurface { refusal: refusal } =>
+        FirstUnresolvedSurface { refusal: refusal }
+      NoUnresolvedSurface =>
       match row.generation_role {
         UnresolvedGenerationRole { reason: reason } =>
-          [GenerationRoleUnresolved { surface: row.identity, reason: reason }]
+          FirstUnresolvedSurface {
+            refusal: GenerationRoleUnresolved { surface: row.identity, reason: reason }
+          }
         GenerationInput => match row.seed_membership {
           UnresolvedSeedMembership { reason: reason } =>
-            [SeedMembershipUnresolved { surface: row.identity, reason: reason }]
-          SeedEmbedded => []
-          OutsideSeed => []
+            FirstUnresolvedSurface {
+              refusal: SeedMembershipUnresolved { surface: row.identity, reason: reason }
+            }
+          SeedEmbedded => NoUnresolvedSurface
+          OutsideSeed => NoUnresolvedSurface
         }
-        BootstrapSourceMirror => []
+        BootstrapSourceMirror => NoUnresolvedSurface
         GenerationSubject => match row.seed_membership {
           UnresolvedSeedMembership { reason: reason } =>
-            [SeedMembershipUnresolved { surface: row.identity, reason: reason }]
-          SeedEmbedded => []
-          OutsideSeed => []
+            FirstUnresolvedSurface {
+              refusal: SeedMembershipUnresolved { surface: row.identity, reason: reason }
+            }
+          SeedEmbedded => NoUnresolvedSurface
+          OutsideSeed => NoUnresolvedSurface
         }
-        NonSeedGeneratedOutput => []
+        NonSeedGeneratedOutput => NoUnresolvedSurface
       }
     }
   })
@@ -378,16 +430,10 @@ fn regen_plan_stage(
   build_target: String,
   build_invocation: String
 ) -> RegenStagePlanOutcome {
-  let unresolved = regen_first_unresolved(rows: changed)
-  if count(unresolved) > 0 {
-    RegenStagePlanningRefused {
-      refusal: fold(
-        unresolved,
-        init: NoBuildableProducerCut { reason: "unreachable empty refusal population" },
-        f: fn(acc, row) { row }
-      )
-    }
-  } else {
+  match regen_first_unresolved(rows: changed) {
+    FirstUnresolvedSurface { refusal: refusal } =>
+      RegenStagePlanningRefused { refusal: refusal }
+    NoUnresolvedSurface => {
     let partition = regen_partition_stage(rows: changed, kind: kind)
     if count(partition.planned) == 0 {
       if count(partition.deferred) == 0 {
@@ -418,6 +464,7 @@ fn regen_plan_stage(
           }
         }
       }
+    }
     }
   }
 }
@@ -498,7 +545,7 @@ fn regen_stage_plan_kind_label(outcome: RegenStagePlanOutcome) -> String {
 
 type RegenSurfaceExecutionReceipt {
   identity: RegenSurfaceIdentity
-  pre_stage_digest: String
+  pre_stage_state: RegenPreStageState
   candidate_digest: String
   installed_digest: String
   planned: Bool

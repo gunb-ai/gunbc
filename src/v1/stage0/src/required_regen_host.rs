@@ -2554,8 +2554,13 @@ const REGEN_CONVERGENCE_RECEIPT_REL: &str = "target/regen-convergence-transactio
 struct RegenConvergenceJournalEntry {
     relative_path: String,
     backup_name: String,
-    existed: bool,
-    pre_stage_digest: String,
+    pre_stage_state: RegenPreStageState,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+enum RegenPreStageState {
+    PresentBeforeInstall { digest: String },
+    AbsentBeforeInstall,
 }
 
 #[derive(Debug, Serialize, serde::Deserialize)]
@@ -2579,7 +2584,7 @@ struct RegenConvergenceCheckpointSubject {
 struct RegenConvergenceSurfaceReceipt {
     declaring_module: String,
     projected_path: String,
-    pre_stage_digest: String,
+    pre_stage_state: RegenPreStageState,
     candidate_digest: String,
     installed_digest: String,
     planned: bool,
@@ -2887,13 +2892,13 @@ fn restore_regen_convergence_journal_for_subject(
     }
     // Validate every backup before creating a temporary restore file or touching a destination.
     for entry in &manifest.entries {
-        if entry.existed {
+        if let RegenPreStageState::PresentBeforeInstall { digest } = &entry.pre_stage_state {
             let backup = root.join(&entry.backup_name);
             let observed = path_digest(&backup)?;
-            if observed != entry.pre_stage_digest {
+            if observed != *digest {
                 return Err(format!(
                     "CheckpointArtifactDigestMismatch: {} recorded {} observed {}",
-                    entry.backup_name, entry.pre_stage_digest, observed
+                    entry.backup_name, digest, observed
                 ));
             }
         }
@@ -2906,7 +2911,10 @@ fn restore_regen_convergence_journal_for_subject(
     fs::create_dir_all(&restore_tmp)
         .map_err(|e| format!("create restore temp {}: {e}", restore_tmp.display()))?;
     for entry in &manifest.entries {
-        if entry.existed {
+        if matches!(
+            entry.pre_stage_state,
+            RegenPreStageState::PresentBeforeInstall { .. }
+        ) {
             let backup = root.join(&entry.backup_name);
             fs::copy(&backup, restore_tmp.join(&entry.backup_name))
                 .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
@@ -2914,7 +2922,10 @@ fn restore_regen_convergence_journal_for_subject(
     }
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
-        if entry.existed {
+        if matches!(
+            entry.pre_stage_state,
+            RegenPreStageState::PresentBeforeInstall { .. }
+        ) {
             let prepared = restore_tmp.join(&entry.backup_name);
             fs::rename(&prepared, &destination).map_err(|e| {
                 format!(
@@ -2977,12 +2988,12 @@ fn journal_stage0_paths_for_subject(
         ));
     }
     for entry in &journal.entries {
-        if entry.existed {
+        if let RegenPreStageState::PresentBeforeInstall { digest } = &entry.pre_stage_state {
             let observed = path_digest(&root.join(&entry.backup_name))?;
-            if observed != entry.pre_stage_digest {
+            if observed != *digest {
                 return Err(format!(
                     "CheckpointArtifactDigestMismatch: {} recorded {} observed {}",
-                    entry.backup_name, entry.pre_stage_digest, observed
+                    entry.backup_name, digest, observed
                 ));
             }
         }
@@ -2998,19 +3009,19 @@ fn journal_stage0_paths_for_subject(
         }
         let source = stage0_src.join(basename);
         let backup_name = format!("surface-{}.bak", journal.entries.len());
-        let existed = source.is_file();
-        let pre_stage_digest = if existed {
+        let pre_stage_state = if source.is_file() {
             fs::copy(&source, root.join(&backup_name))
                 .map_err(|e| format!("snapshot {}: {e}", source.display()))?;
-            path_digest(&source)?
+            RegenPreStageState::PresentBeforeInstall {
+                digest: path_digest(&source)?,
+            }
         } else {
-            "absent".to_string()
+            RegenPreStageState::AbsentBeforeInstall
         };
         journal.entries.push(RegenConvergenceJournalEntry {
             relative_path,
             backup_name,
-            existed,
-            pre_stage_digest,
+            pre_stage_state,
         });
     }
     journal.checkpoint_id = convergence_checkpoint_id(&journal)?;
@@ -3568,11 +3579,94 @@ fn convergence_plan_from_model(
                 "GenerationSubject"
             };
             let seed_embedded = seed_embedded_basenames.contains(basename);
-            let dependency_closure_id = match role {
-                "GenerationInput" | "BootstrapSourceMirror" => "generation-input-cut",
-                "GenerationSubject" if seed_embedded => "seed-compatibility-cut",
-                "GenerationSubject" | "NonSeedGeneratedOutput" => "non-seed-publish",
-                _ => "unresolved-stage-role",
+            let role_value = Value::Variant {
+                type_name: ctx.sym("RegenGenerationRole"),
+                variant_name: ctx.sym(role),
+                fields: Rc::new(vec![]),
+            };
+            let membership_value = if seed_embedded {
+                Value::Variant {
+                    type_name: ctx.sym("RegenSeedMembership"),
+                    variant_name: ctx.sym("SeedEmbedded"),
+                    fields: Rc::new(vec![]),
+                }
+            } else if role == "NonSeedGeneratedOutput" {
+                Value::Variant {
+                    type_name: ctx.sym("RegenSeedMembership"),
+                    variant_name: ctx.sym("OutsideSeed"),
+                    fields: Rc::new(vec![]),
+                }
+            } else {
+                Value::Variant {
+                    type_name: ctx.sym("RegenSeedMembership"),
+                    variant_name: ctx.sym("UnresolvedSeedMembership"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("reason"),
+                        str_value(format!(
+                            "{basename} has no owner in generated_stage0_crate_partition"
+                        )),
+                    )]),
+                }
+            };
+            let closure_disposition = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "regen_dependency_closure_disposition",
+                    &[
+                        (Some("role".to_string()), role_value.clone()),
+                        (Some("membership".to_string()), membership_value.clone()),
+                    ],
+                    false,
+                )
+            })
+            .map_err(|e| format!("dependency closure authority did not answer: {e}"))?;
+            let closure_ids = v1_interpreter::with_active_context(&ctx, || {
+                v1_interpreter::run_in_context_with_args(
+                    &ctx,
+                    "regen_dependency_closure_ids",
+                    &[(Some("disposition".to_string()), closure_disposition)],
+                    false,
+                )
+            })
+            .map_err(|e| format!("dependency closure projection did not answer: {e}"))?;
+            let dependency_closure_id = match closure_ids {
+                Value::List(ids) if ids.len() == 1 => match &ids[0] {
+                    Value::Str(id) => id.to_string(),
+                    other => {
+                        return Err(format!(
+                            "StageDependencyClosureIncomplete: model returned {} closure member",
+                            other.type_label_public()
+                        ))
+                    }
+                },
+                Value::List(ids) => {
+                    return Err(format!(
+                        "StageDependencyClosureIncomplete: model returned {} closure identities for {basename}",
+                        ids.len()
+                    ))
+                }
+                other => {
+                    return Err(format!(
+                        "StageDependencyClosureIncomplete: model returned {} instead of List",
+                        other.type_label_public()
+                    ))
+                }
+            };
+            let pre_stage_state = if stage0_src.join(basename).is_file() {
+                Value::Variant {
+                    type_name: ctx.sym("RegenPreStageState"),
+                    variant_name: ctx.sym("PresentBeforeInstall"),
+                    fields: Rc::new(vec![(
+                        ctx.sym("digest"),
+                        str_value(path_digest(&stage0_src.join(basename))?),
+                    )]),
+                }
+            } else {
+                Value::Variant {
+                    type_name: ctx.sym("RegenPreStageState"),
+                    variant_name: ctx.sym("AbsentBeforeInstall"),
+                    fields: Rc::new(vec![]),
+                }
             };
             let identity = Value::Record {
                 type_name: ctx.sym("RegenSurfaceIdentity"),
@@ -3603,47 +3697,14 @@ fn convergence_plan_from_model(
                     (ctx.sym("identity"), identity),
                     (
                         ctx.sym("generation_role"),
-                        Value::Variant {
-                            type_name: ctx.sym("RegenGenerationRole"),
-                            variant_name: ctx.sym(role),
-                            fields: Rc::new(vec![]),
-                        },
+                        role_value,
                     ),
-                    (
-                        ctx.sym("seed_membership"),
-                        if seed_embedded {
-                            Value::Variant {
-                                type_name: ctx.sym("RegenSeedMembership"),
-                                variant_name: ctx.sym("SeedEmbedded"),
-                                fields: Rc::new(vec![]),
-                            }
-                        } else if role == "NonSeedGeneratedOutput" {
-                            Value::Variant {
-                                type_name: ctx.sym("RegenSeedMembership"),
-                                variant_name: ctx.sym("OutsideSeed"),
-                                fields: Rc::new(vec![]),
-                            }
-                        } else {
-                            Value::Variant {
-                                type_name: ctx.sym("RegenSeedMembership"),
-                                variant_name: ctx.sym("UnresolvedSeedMembership"),
-                                fields: Rc::new(vec![(
-                                    ctx.sym("reason"),
-                                    str_value(format!(
-                                        "{basename} has no owner in generated_stage0_crate_partition"
-                                    )),
-                                )]),
-                            }
-                        },
-                    ),
+                    (ctx.sym("seed_membership"), membership_value),
                     (
                         ctx.sym("dependency_closure_id"),
                         str_value(dependency_closure_id),
                     ),
-                    (
-                        ctx.sym("pre_stage_digest"),
-                        str_value(path_digest(&stage0_src.join(basename))?),
-                    ),
+                    (ctx.sym("pre_stage_state"), pre_stage_state),
                     (ctx.sym("candidate"), candidate),
                 ]),
             })
@@ -3891,10 +3952,12 @@ where
     for basename in basenames {
         let destination = stage0_src.join(basename);
         let candidate = candidate_src.join(basename);
-        let pre = if destination.is_file() {
-            path_digest(&destination)?
+        let pre_stage_state = if destination.is_file() {
+            RegenPreStageState::PresentBeforeInstall {
+                digest: path_digest(&destination)?,
+            }
         } else {
-            "absent".to_string()
+            RegenPreStageState::AbsentBeforeInstall
         };
         let expected = admitted_manifest.get(basename).ok_or_else(|| {
             format!("CandidateManifestPopulationMismatch: installing {basename} is absent")
@@ -3928,7 +3991,7 @@ where
                 )
             })?,
             projected_path: format!("src/v1/stage0/src/{basename}"),
-            pre_stage_digest: pre,
+            pre_stage_state,
             candidate_digest,
             installed_digest: installed,
             planned: true,

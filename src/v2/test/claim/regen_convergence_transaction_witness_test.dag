@@ -12,6 +12,8 @@ import v2.workflow.regen_convergence_transaction {
   RegenSurfaceIdentity,
   RegenCandidateIdentity,
   RegenChangedSurface,
+  RegenPreStageState,
+  PresentBeforeInstall,
   CompleteCandidatePopulation,
   AffectedCandidatePopulation,
   AffectedCandidatePopulationRefused,
@@ -257,7 +259,7 @@ fn fixture_surface_in_closure(
     generation_role: role,
     seed_membership: seed,
     dependency_closure_id: closure_id,
-    pre_stage_digest: "old",
+    pre_stage_state: PresentBeforeInstall { digest: "old" },
     candidate: RegenCandidateIdentity {
       producer_generation_id: "g0",
       candidate_tree_id: "tree-g0",
