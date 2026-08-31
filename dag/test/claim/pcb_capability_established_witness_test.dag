@@ -43,10 +43,10 @@ test fn w_red_pending_and_refused_still_produce_refusals() -> Bool {
     }
 }
 
-// THE ARM IS READ BY MATCHING, not through an is_established predicate. review 52611 noted that
-// such a predicate had no production consumer and only its own witness read it -- a bool over a
-// coproduct that exists to be tested. The three arms are distinguished here directly, which is
-// what any real consumer will do, so nothing in the module is kept alive by evidence alone.
+// THE ARM IS READ BY MATCHING, not through an is_established predicate. review 52611 noted such a
+// predicate had no production consumer and only its own witness read it -- a bool over a
+// coproduct that exists to be tested. The three arms are distinguished directly, as any real
+// consumer will do, so nothing in the module is kept alive by evidence alone.
 test fn w_the_three_standings_are_distinguishable_by_match() -> Bool {
   (match capability_established(authority: a_stackup_authority) {
     CapabilityEstablished { authority: _ } => true

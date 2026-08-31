@@ -15,20 +15,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE.
-// Which ruleset this repository wants, which contexts it requires, and what to do when the live
-// ruleset disagrees are business policy and live in gunbc.repo_ruleset -- modelling them here
-// would be the layer inversion DESIGN section 3 names, and it would make the upstream authority
-// carry a fact GitHub has no opinion about.
+// THIS MODULE OWNS THE INTERFACE SHAPE OF GITHUB'S REPOSITORY RULESETS API AND NOTHING ELSE. Which
+// ruleset this repository wants, which contexts it requires, and what to do when the live ruleset
+// disagrees are business policy and live in gunbc.repo_ruleset — modelling them here would be the
+// layer inversion DESIGN section 3 names, making the upstream authority carry a fact GitHub has no
+// opinion about.
 //
 // THE WIRE RECORDS ARE THE DECODE SURFACE, THE COPRODUCTS ARE THE DOMAIN. GitHub's rule list is
-// heterogeneous -- a `deletion` rule carries no parameters and a `required_status_checks` rule
-// carries a nested object -- and it is open: GitHub adds rule types without asking. A closed
-// coproduct decoded straight off the wire would therefore either refuse on an upstream addition
-// this repository does not care about, or silently drop it. So the transport decodes into records
-// whose type tag is the String GitHub sent, and the projections below carry every tag this module
-// recognizes into a closed type WITH an explicit unrecognized arm. An unmodeled rule then arrives
-// as a value a consumer must match on, never as an absence.
+// heterogeneous — a `deletion` rule carries no parameters, a `required_status_checks` rule a nested
+// object — and open: GitHub adds rule types without asking. A closed coproduct decoded straight off
+// the wire would either refuse on an upstream addition this repository does not care about or
+// silently drop it. So the transport decodes into records whose type tag is the String GitHub sent,
+// and the projections below carry every recognized tag into a closed type WITH an explicit
+// unrecognized arm. An unmodeled rule arrives as a value a consumer must match on, never as an
+// absence.
 
 type RulesetEnforcement
   = RulesetDisabled
@@ -54,8 +54,8 @@ type RulesetRuleType
   | UnrecognizedRuleType { raw: String }
 
 // current_user_can_bypass is documented as one of never / pull_requests_only / always. It is the
-// only field in the response that answers "can the rule be walked past", which is the question a
-// required context exists to make unanswerable, so it is decoded rather than skipped.
+// only response field answering "can the rule be walked past" — the question a required context
+// exists to make unanswerable — so it is decoded rather than skipped.
 type RulesetBypassStanding
   = BypassNever
   | BypassPullRequestsOnly
@@ -88,11 +88,11 @@ type RulesetConditionsWire {
 }
 
 // THE DOCUMENTED 200 SHAPE OF A SINGLE RULESET. The response block below names it; the operations'
-// `output` blocks flatten its top-level keys instead of carrying it as one field, and the reason is
-// mechanical rather than stylistic: the REST realization projects a JSON object into the output
-// record BY KEY, so an output field named `ruleset` looks for a `ruleset` key GitHub does not send
-// and binds Null. Flattening keeps every field the documented shape declares, in the documented
-// spelling, reachable -- and the response block keeps the shape itself named in one place.
+// `output` blocks flatten its top-level keys instead of carrying it as one field, for a mechanical
+// reason: the REST realization projects a JSON object into the output record BY KEY, so an output
+// field named `ruleset` looks for a `ruleset` key GitHub does not send and binds Null. Flattening
+// keeps every documented field, in the documented spelling, reachable — and the response block
+// keeps the shape itself named in one place.
 type RulesetWire {
   id: Int
   name: String
@@ -195,12 +195,12 @@ fn rule_is_required_status_checks(rule: RulesetRuleWire) -> Bool {
   }
 }
 
-// THREE STATES, NOT AN EMPTY LIST. "This ruleset requires no status checks", "this ruleset
-// requires exactly these", and "this ruleset carries more than one required_status_checks rule"
-// are different facts with different remedies, and the first and third both render as [] under a
-// projection that returns a bare roster. The third is a refusal rather than a merge of the two
-// rosters: GitHub admits at most one such rule per ruleset today, so encountering two means the
-// upstream shape moved and this module's reading of it is no longer established.
+// THREE STATES, NOT AN EMPTY LIST. "Requires no status checks", "requires exactly these", and
+// "carries more than one required_status_checks rule" are different facts with different remedies,
+// and the first and third both render as [] under a projection returning a bare roster. The third
+// is a refusal rather than a merge of the two rosters: GitHub admits at most one such rule per
+// ruleset today, so two means the upstream shape moved and this module's reading of it is no longer
+// established.
 type RequiredStatusCheckStanding
   = NoRequiredStatusChecksRule
   | RequiredStatusChecks {
@@ -263,8 +263,8 @@ fn ref_name_conditions(include: List<String>, exclude: List<String>) -> RulesetC
 }
 
 // GitHub's documented alias for "whatever this repository's default branch currently is". Naming
-// the branch literally would fork the fact with the repository's own default_branch and would go
-// silently wrong the day it is renamed.
+// the branch literally would fork the fact with the repository's own default_branch and go silently
+// wrong the day it is renamed.
 data default_branch_ref_alias: String = "~DEFAULT_BRANCH"
 
 service github.Rulesets {

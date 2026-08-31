@@ -40,16 +40,16 @@ import gunbc.legacy_test_behavior_disposition {
 // that ignored its argument, or answered a constant, agrees with the control and is caught.
 
 // THE FIXTURE SITE REFERENCES NAME THIS MODULE'S OWN ROWS, and the first cut of this file did
-// not -- it invented `test.fixture.red` and `test.fixture.green`, modules that do not exist.
-// The citation wall refused all eleven with CITED-MODULE-ABSENT, which is the defect class this
-// whole change exists to enforce, committed by the change enforcing it and caught by execution
-// rather than by its author. Recorded here rather than quietly corrected, because a wall that
-// catches its own advocate is the best evidence available that it is real.
+// not -- it invented `test.fixture.red` and `test.fixture.green`, modules that do not exist. The
+// citation wall refused all eleven with CITED-MODULE-ABSENT: the defect class this change exists
+// to enforce, committed by the change enforcing it and caught by execution rather than by its
+// author. Recorded rather than quietly corrected, because a wall that catches its own advocate is
+// the best evidence available that it is real.
 //
 // The honest repair is to make the citation TRUE, never to exempt a fixture from the rule: a
-// fixture row IS a declaration in a real module, so it cites itself. The `site` field is not
-// what any predicate below reads -- they match on `standing` alone -- which is exactly why a
-// false value there would have sat unnoticed forever.
+// fixture row IS a declaration in a real module, so it cites itself. The `site` field is not what
+// any predicate below reads -- they match on `standing` alone -- which is exactly why a false
+// value there would have sat unnoticed forever.
 data red_rebound_to_dark_cadence: DeletedCadenceReference = DeletedCadenceReference {
   site: decl_ref(module_path: "test.claim.deleted_cadence_reference_census_witness_test", decl_name: "red_rebound_to_dark_cadence"),
   standing: ReboundToExecutingConsumer {

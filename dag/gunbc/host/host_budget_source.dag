@@ -22,11 +22,66 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
   reason: "Single authority for the SOURCE half of the host memory budget the v1 memory governor arms against. The BUDGET VALUE stays where it is measured (a cgroup read, a sysctl read, an operator env override); what this module owns is the closed set of places that value can come from, whether each bounds this process, whether each is degraded, and how each is rendered. It exists because those three facts were carried by a free-text label string and re-derived from it by substring scan."
 }
 
-data host_budget_source_string_scan_note: String = "THE DEFECT THIS MODULE DISSOLVES, quoted from the code that carries it. v1's read_host_budget_bytes returns (Option<u64>, String) and cli_run's typed_module_cache_cap_derivation decides whether the budget is degraded by scanning that string: source_label.contains(\"memory.max\") || source_label.contains(\"memory.high\"). The comment beside it already names the fix and the rule it breaks — 'if it ever grows a typed source enum, ground this check on the enum instead of re-parsing its display label (section 3, avoid a second representation)'. So the label is simultaneously a human diagnostic and a machine-read discriminant, which is one string doing two jobs and neither well: a rewording of the diagnostic silently changes the degradation verdict, and a new source arm is degraded-by-default only if nobody happens to mention a cgroup file in its prose.\n\nThe coproduct below is that enum. Degradation becomes a total match rather than a substring test, rendering becomes one function rather than format! calls scattered across arms, and a new source cannot be added without answering both questions."
+// THE DEFECT THIS MODULE DISSOLVES, quoted from the code that carries it. v1's
+// read_host_budget_bytes returns (Option<u64>, String) and cli_run's
+// typed_module_cache_cap_derivation decides whether the budget is degraded by scanning that string:
+// source_label.contains("memory.max") || source_label.contains("memory.high"). The comment beside
+// it already names the fix and the rule it breaks — 'if it ever grows a typed source enum, ground
+// this check on the enum instead of re-parsing its display label (section 3, avoid a second
+// representation)'. So the label is simultaneously a human diagnostic and a machine-read
+// discriminant, which is one string doing two jobs and neither well: a rewording of the diagnostic
+// silently changes the degradation verdict, and a new source arm is degraded-by-default only if
+// nobody happens to mention a cgroup file in its prose.
+//
+// The coproduct below is that enum. Degradation becomes a total match rather than a substring test,
+// rendering becomes one function rather than format! calls scattered across arms, and a new source
+// cannot be added without answering both questions.
 
-data host_budget_source_fabricated_label_note: String = "THE macOS BUG, which is what made this worth modeling now rather than later. read_host_budget_bytes ends with a terminal arm that reads, in full: (mem_total_bytes(), \"/proc/meminfo MemTotal\".to_string()). mem_total_bytes() reads /proc/meminfo and returns None when it cannot — and on a Darwin host it ALWAYS returns None, because there is no /proc. The label is composed unconditionally beside it, so the tuple that comes back is (None, \"/proc/meminfo MemTotal\"): a source attribution naming a file that does not exist on the platform, for a read that never happened, next to a value that was never obtained.\n\nObserved live, every local run on the developer's machine: `[floor-drain] degraded_budget_source: cap=4000 source=/proc/meminfo MemTotal (no private cgroup memory.max/memory.high found; falling back to a host-shared signal)`. Nothing is CONCEALED — the degraded flag is correctly true and the line is loud — but the provenance is fabricated, which is the section 5 plausible-output shape applied to a diagnostic rather than to a result. It is also the precise failure that cost a session's worth of confusion: a reader cannot tell from that line whether MemTotal was read and disbelieved, or never read at all, and the cap of 4000 is the ceiling fallback rather than anything derived from a host fact.\n\nBudgetSourceDarwinPhysicalMemory is the arm that had nowhere to go — and note it is a SOURCE, not an absence. The first repair attempted here was an absence arm carrying the kernel family, which described the situation truthfully and left the mechanism intact; the second and correct repair was to notice the platform has the fact and read it (extdeps.darwin.sysctl hw.memsize). A diagnostic that accurately reports having read nothing is still a run with no bound on it."
+// THE macOS BUG, which is what made this worth modeling now rather than later.
+// read_host_budget_bytes ends with a terminal arm that reads, in full: (mem_total_bytes(),
+// "/proc/meminfo MemTotal".to_string()). mem_total_bytes() reads /proc/meminfo and returns None
+// when it cannot — and on a Darwin host it ALWAYS returns None, because there is no /proc. The
+// label is composed unconditionally beside it, so the tuple that comes back is (None,
+// "/proc/meminfo MemTotal"): a source attribution naming a file that does not exist on the
+// platform, for a read that never happened, next to a value that was never obtained.
+//
+// Observed live, every local run on the developer's machine: `[floor-drain] degraded_budget_source:
+// cap=4000 source=/proc/meminfo MemTotal (no private cgroup memory.max/memory.high found; falling
+// back to a host-shared signal)`. Nothing is CONCEALED — the degraded flag is correctly true and
+// the line is loud — but the provenance is fabricated, which is the section 5 plausible-output
+// shape applied to a diagnostic rather than to a result. It is also the precise failure that cost a
+// session's worth of confusion: a reader cannot tell from that line whether MemTotal was read and
+// disbelieved, or never read at all, and the cap of 4000 is the ceiling fallback rather than
+// anything derived from a host fact.
+//
+// BudgetSourceDarwinPhysicalMemory is the arm that had nowhere to go — and note it is a SOURCE, not
+// an absence. The first repair attempted here was an absence arm carrying the kernel family, which
+// described the situation truthfully and left the mechanism intact; the second and correct repair
+// was to notice the platform has the fact and read it (extdeps.darwin.sysctl hw.memsize). A
+// diagnostic that accurately reports having read nothing is still a run with no bound on it.
 
-data host_budget_source_no_fallback_arm_note: String = "THERE IS NO FALLBACK ARM, and removing it is the correction this module exists to carry (operator ruling 2026-08-05: 'we can't do fallbacks'). An earlier revision of this file modeled the macOS path as BudgetSourceUnavailable { kernel } and described the consumer as falling back to the declared ceiling. That was honest LABELLING of a dishonest MECHANISM: cli_run's typed_module_cache_cap_derivation ends in .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL), so a budget it cannot compute becomes the MOST PERMISSIVE value it could have returned — top-as-answer conflated with top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. Naming the arm accurately did not stop it widening.\n\nIT HAS A RECEIPT, paid during this very change: the full witness corpus was OOM-killed twice on the operator's Mac (exit 137, at ~6800 and ~3300 witnesses). No host signal was readable, the cap defaulted to the ceiling, nothing bounded the resolve, and the OS ended the process. That is section 5's prediction verbatim — the deficit's frequency is zeroed by construction, so it never ranks for fixing, and the corpus-denominated cost breaks the budget later and at interest instead of breaking the build.\n\nTHE STRATEGY CHANGED RATHER THAN THE LABEL. macOS is not a platform without memory facts; it is a platform whose memory facts were never asked for. extdeps.darwin.sysctl models hw.memsize (verified live: 17179869184), so BudgetSourceDarwinPhysicalMemory is a REAL READ and the Darwin path now produces a budget like any other. What remains is BudgetSourceUnreadable, which carries the reason and is NOT a source at all — it is the refusal, and no consumer may turn it into a number."
+// THERE IS NO FALLBACK ARM, and removing it is the correction this module exists to carry (operator
+// ruling 2026-08-05: 'we can't do fallbacks'). An earlier revision of this file modeled the macOS
+// path as BudgetSourceUnavailable { kernel } and described the consumer as falling back to the
+// declared ceiling. That was honest LABELLING of a dishonest MECHANISM: cli_run's
+// typed_module_cache_cap_derivation ends in .unwrap_or(TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL), so a
+// budget it cannot compute becomes the MOST PERMISSIVE value it could have returned — top-as-answer
+// conflated with top-as-ignorance, the absorbing fallback DESIGN section 5 forbids by name. Naming
+// the arm accurately did not stop it widening.
+//
+// IT HAS A RECEIPT, paid during this very change: the full witness corpus was OOM-killed twice on
+// the operator's Mac (exit 137, at ~6800 and ~3300 witnesses). No host signal was readable, the cap
+// defaulted to the ceiling, nothing bounded the resolve, and the OS ended the process. That is
+// section 5's prediction verbatim — the deficit's frequency is zeroed by construction, so it never
+// ranks for fixing, and the corpus-denominated cost breaks the budget later and at interest instead
+// of breaking the build.
+//
+// THE STRATEGY CHANGED RATHER THAN THE LABEL. macOS is not a platform without memory facts; it is a
+// platform whose memory facts were never asked for. extdeps.darwin.sysctl models hw.memsize
+// (verified live: 17179869184), so BudgetSourceDarwinPhysicalMemory is a REAL READ and the Darwin
+// path now produces a budget like any other. What remains is BudgetSourceUnreadable, which carries
+// the reason and is NOT a source at all — it is the refusal, and no consumer may turn it into a
+// number.
 
 type HostBudgetSource
   = BudgetSourceEnvOverride
@@ -57,7 +112,24 @@ fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolutio
   }
 }
 
-data host_budget_source_degraded_meaning_note: String = "DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the two cgroup arms and an explicit operator override describe a bound that belongs to this process alone; the one remaining arm that does not, BudgetSourceDarwinPhysicalMemory, reports a HOST-SHARED signal — hw.memsize is total physical RAM, a fact about the machine rather than about this process.\n\nWHY THAT ARM IS STILL ADMISSIBLE WHILE THE MEMINFO ARMS ARE NOT, since both are host-shared and the difference is not the reading but the kernel. Darwin offers no private-limit mechanism at all — there are no cgroups, so on a Mac there is nothing stronger to want and degraded-with-a-real-value is the honest ceiling. Linux HAS cgroups, so a host-shared reading there is a SUBSTITUTE for a bound the kernel can express and this process failed to read, which is a different act entirely; host_budget_source_admissible_as_bound_on_kernel is exactly that distinction, and the meminfo arms are deleted rather than merely judged by it because with them gone the substitution has no constructor.\n\nUnreadable is categorically different again: it is not a source at all and appears in HostBudgetResolution rather than in this coproduct, and it carries no number for any consumer to admit against."
+// DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the
+// two cgroup arms and an explicit operator override describe a bound that belongs to this process
+// alone; the one remaining arm that does not, BudgetSourceDarwinPhysicalMemory, reports a
+// HOST-SHARED signal — hw.memsize is total physical RAM, a fact about the machine rather than about
+// this process.
+//
+// WHY THAT ARM IS STILL ADMISSIBLE WHILE THE MEMINFO ARMS ARE NOT, since both are host-shared and
+// the difference is not the reading but the kernel. Darwin offers no private-limit mechanism at all
+// — there are no cgroups, so on a Mac there is nothing stronger to want and
+// degraded-with-a-real-value is the honest ceiling. Linux HAS cgroups, so a host-shared reading
+// there is a SUBSTITUTE for a bound the kernel can express and this process failed to read, which
+// is a different act entirely; host_budget_source_admissible_as_bound_on_kernel is exactly that
+// distinction, and the meminfo arms are deleted rather than merely judged by it because with them
+// gone the substitution has no constructor.
+//
+// Unreadable is categorically different again: it is not a source at all and appears in
+// HostBudgetResolution rather than in this coproduct, and it carries no number for any consumer to
+// admit against.
 
 fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
   match s {
@@ -107,7 +179,21 @@ fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
   }
 }
 
-data host_budget_source_platform_wall_note: String = "THE WALL THIS MODULE EXISTS TO HOLD, stated as a relation between two things that were previously unrelated: a source that READS procfs may not be reported on a kernel that does not PROVIDE procfs. That is exactly the sentence the live macOS diagnostic violates, and with both halves modeled it is now decidable — extdeps.linux.procfs answers which kernels synthesize /proc, this module answers which sources read it, and host_budget_source_admissible_on_kernel is their conjunction.\n\nIt is a validating predicate rather than a construction wall, and that is an honest limitation rather than a preferred design (DESIGN section 5 prefers construction). Making the bad state unwritable would mean parameterizing HostBudgetSource by the kernel it was observed on so a procfs arm could not be constructed for Darwin at all; that is buildable, and it is deliberately not attempted here because the constructor's only caller today is hand-Rust in the v1 seed, which cannot consume a .dag type at the point it runs. The predicate plus its RED control is the strongest wall reachable while the seed still composes these values itself; the dissolution is the same emit path that retires the seed's other budget mirrors."
+// THE WALL THIS MODULE EXISTS TO HOLD, stated as a relation between two things that were previously
+// unrelated: a source that READS procfs may not be reported on a kernel that does not PROVIDE
+// procfs. That is exactly the sentence the live macOS diagnostic violates, and with both halves
+// modeled it is now decidable — extdeps.linux.procfs answers which kernels synthesize /proc, this
+// module answers which sources read it, and host_budget_source_admissible_on_kernel is their
+// conjunction.
+//
+// It is a validating predicate rather than a construction wall, and that is an honest limitation
+// rather than a preferred design (DESIGN section 5 prefers construction). Making the bad state
+// unwritable would mean parameterizing HostBudgetSource by the kernel it was observed on so a
+// procfs arm could not be constructed for Darwin at all; that is buildable, and it is deliberately
+// not attempted here because the constructor's only caller today is hand-Rust in the v1 seed, which
+// cannot consume a .dag type at the point it runs. The predicate plus its RED control is the
+// strongest wall reachable while the seed still composes these values itself; the dissolution is
+// the same emit path that retires the seed's other budget mirrors.
 
 fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFamily) -> Bool {
   if host_budget_source_reads_procfs(s: s) {
@@ -117,7 +203,15 @@ fn host_budget_source_admissible_on_kernel(s: HostBudgetSource, kernel: KernelFa
   }
 }
 
-data kernel_budget_sourcing_absent_conflation_note: String = "WHY THIS IS A COPRODUCT AND NOT AN OPTION. host_budget_source_for_kernel returned HostBudgetSource? and answered BudgetSourceMemTotal for Linux — a STATIC promise that a Linux host always has a budget, discharged by reading the machine. Deleting that arm leaves Linux with no static answer, and returning none for it would collapse two different states into one absence: WindowsNt has no modeled memory facts at all, while Linux has the strongest facts of any platform here and simply cannot say at declaration time WHICH of them applies, because a cgroup limit and an operator override are runtime facts. An unmodeled platform and a runtime-determined one need opposite remedies — model the platform, versus read the host and refuse if it is silent — so they get different arms."
+// WHY THIS IS A COPRODUCT AND NOT AN OPTION. host_budget_source_for_kernel returned
+// HostBudgetSource? and answered BudgetSourceMemTotal for Linux — a STATIC promise that a Linux
+// host always has a budget, discharged by reading the machine. Deleting that arm leaves Linux with
+// no static answer, and returning none for it would collapse two different states into one absence:
+// WindowsNt has no modeled memory facts at all, while Linux has the strongest facts of any platform
+// here and simply cannot say at declaration time WHICH of them applies, because a cgroup limit and
+// an operator override are runtime facts. An unmodeled platform and a runtime-determined one need
+// opposite remedies — model the platform, versus read the host and refuse if it is silent — so they
+// get different arms.
 
 type KernelBudgetSourcing
   = SourcedStatically { source: HostBudgetSource }
@@ -142,9 +236,37 @@ fn kernel_budget_sourcing_static_source(g: KernelBudgetSourcing) -> HostBudgetSo
   }
 }
 
-data host_budget_unreadable_cgroup_receipt_note: String = "THE BUILDBUDDY RECEIPT, measured 2026-08-30 on a remote-execution runner from this repository's own dispatch path, and the reason the meminfo arms are gone rather than narrowed. The runner's /proc/self/cgroup reads `0::/` and /sys/fs/cgroup exposes NO memory.max and NO memory.high at ANY depth — the controller files a limit would live in are simply not present in the namespace. The slot is nevertheless capped by the executor, so a limit exists and this process cannot see it.\n\nWHAT THE OLD ARMS DID WITH THAT. Both cgroup reads returned nothing, so read_host_budget_bytes fell to MemAvailable — a number about a MACHINE that co-hosts other tenants, not about this slot — and then capped it at DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, a mirror of gunbc.runner_slot_allocation, which is a declaration about THIS FLEET'S self-hosted runners and says nothing whatever about a third party's executor. Two substitutions stacked: a host-shared reading standing in for a private bound, then one fleet's slot declaration standing in for another's. The corpus regen (main_wet) was SIGKILLed rc=137 under the budget that produced, with no diagnostic; the same run completes under an explicit GUNBC_MEMORY_BUDGET_BYTES of 10 GiB at a peak RSS of 7.7 GiB.\n\nTHIS IS DESIGN SECTION 5'S ABSORBING FALLBACK EXACTLY, in the one code path whose whole job is to bound memory: the mechanism could not compute its answer, so it substituted a superset and was labelled safe by the cap it applied to it. The cap is what made it look bounded. A failure arm must refuse, never widen — so an unreadable cgroup limit on a kernel that HAS cgroups is now HostBudgetUnreadable, which carries no number, and the operator supplies the bound the executor knows and the process cannot see."
+// THE BUILDBUDDY RECEIPT, measured 2026-08-30 on a remote-execution runner from this repository's
+// own dispatch path, and the reason the meminfo arms are gone rather than narrowed. The runner's
+// /proc/self/cgroup reads `0::/` and /sys/fs/cgroup exposes NO memory.max and NO memory.high at ANY
+// depth — the controller files a limit would live in are simply not present in the namespace. The
+// slot is nevertheless capped by the executor, so a limit exists and this process cannot see it.
+//
+// WHAT THE OLD ARMS DID WITH THAT. Both cgroup reads returned nothing, so read_host_budget_bytes
+// fell to MemAvailable — a number about a MACHINE that co-hosts other tenants, not about this slot
+// — and then capped it at DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES, a mirror of
+// gunbc.runner_slot_allocation, which is a declaration about THIS FLEET'S self-hosted runners and
+// says nothing whatever about a third party's executor. Two substitutions stacked: a host-shared
+// reading standing in for a private bound, then one fleet's slot declaration standing in for
+// another's. The corpus regen (main_wet) was SIGKILLed rc=137 under the budget that produced, with
+// no diagnostic; the same run completes under an explicit GUNBC_MEMORY_BUDGET_BYTES of 10 GiB at a
+// peak RSS of 7.7 GiB.
+//
+// THIS IS DESIGN SECTION 5'S ABSORBING FALLBACK EXACTLY, in the one code path whose whole job is to
+// bound memory: the mechanism could not compute its answer, so it substituted a superset and was
+// labelled safe by the cap it applied to it. The cap is what made it look bounded. A failure arm
+// must refuse, never widen — so an unreadable cgroup limit on a kernel that HAS cgroups is now
+// HostBudgetUnreadable, which carries no number, and the operator supplies the bound the executor
+// knows and the process cannot see.
 
-data host_budget_declared_slot_is_not_a_reading_note: String = "DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES SURVIVES IN THE SEED AND IS NO LONGER A BUDGET SOURCE, which is the distinction the deleted arm erased. It mirrors gunbc.runner_slot_allocation gunbc_runner_slot_desired memory_high: a declaration of what THIS fleet configures its own runner slots to, true of the machines this repository provisions and of nothing else. As a fixture for reasoning about those machines it is sound, and the whole-corpus admission witnesses still use it that way. As a CEILING APPLIED TO A READING FROM AN UNKNOWN HOST it was a claim about a host nobody had measured, and it is that use, not the constant, that is deleted. A declared constant may bound a refusal; it may not stand in for a reading."
+// DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES SURVIVES IN THE SEED AND IS NO LONGER A BUDGET SOURCE,
+// which is the distinction the deleted arm erased. It mirrors gunbc.runner_slot_allocation
+// gunbc_runner_slot_desired memory_high: a declaration of what THIS fleet configures its own runner
+// slots to, true of the machines this repository provisions and of nothing else. As a fixture for
+// reasoning about those machines it is sound, and the whole-corpus admission witnesses still use it
+// that way. As a CEILING APPLIED TO A READING FROM AN UNKNOWN HOST it was a claim about a host
+// nobody had measured, and it is that use, not the constant, that is deleted. A declared constant
+// may bound a refusal; it may not stand in for a reading.
 
 data host_budget_source_seed_mirror_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

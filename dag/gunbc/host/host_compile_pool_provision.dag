@@ -12,18 +12,18 @@ import product.placement_supply { HostIdentity }
 data host_compile_pool_provision_scope_disposition: Disposition = SingleAuthority
 
 // THE ENTRY POINT, WITHOUT WHICH THE WIRING IS NOT WIRING. gunbc.host_toolchain_ensure gained a
-// CompilePool kind, but every other kind on that selector is reached through a named `func` of its own
-// -- provision_build_cache for BuildCache, provision_codex_runtime for CodexRuntime,
-// srv3_os_install_actuator_toolchain_ensure for OsInstallActuator -- and the compile pool had none. A
-// kind nothing selects is the same unreachability this lane exists to close, moved one layer out: the
-// admission would have been reachable from the dispatcher and the dispatcher reachable from nobody.
-// Found by review (codex/gpt-5.6-sol, review 55280) rather than by me, and the finding was correct.
+// CompilePool kind, but every other kind on that selector is reached through a named `func` --
+// provision_build_cache for BuildCache, provision_codex_runtime for CodexRuntime,
+// srv3_os_install_actuator_toolchain_ensure for OsInstallActuator -- and the compile pool had none.
+// A kind nothing selects is the unreachability this lane exists to close, moved one layer out: the
+// admission reachable from the dispatcher and the dispatcher reachable from nobody. Found by review
+// (codex/gpt-5.6-sol, review 55280), and the finding was correct.
 //
-// IT IS A THIN CALLER AND CARRIES NO POLICY. Unlike provision_build_cache there is no catalog gate to
-// consult first: the compile pool has no cited third-party artifact to admit, so every decision this
-// effect makes -- topology declared, size derived, cache placement readable, slice observed -- belongs
-// to gunbc.compile_pool_ensure's admission and is taken inside the realizer against the live host.
-// Putting any of it here would be a second decision site for one question.
+// IT IS A THIN CALLER AND CARRIES NO POLICY. Unlike provision_build_cache there is no catalog gate
+// to consult first: the compile pool has no cited third-party artifact to admit, so every decision
+// this effect makes -- topology declared, size derived, cache placement readable, slice observed --
+// belongs to gunbc.compile_pool_ensure's admission, taken inside the realizer against the live
+// host. Any of it here would be a second decision site for one question.
 data host_compile_pool_provision_realize_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {

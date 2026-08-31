@@ -24,6 +24,9 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
+pub use crate::gunbc_stage0_partition_package_graph::{
+    stage0_partition_package_dependency_names, stage0_partition_row_is_module_bearing_package,
+};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -64,15 +67,6 @@ pub struct Stage0CratePlan {
     pub crates: Rc<Vec<Rc<Stage0CrateSpec>>>,
 }
 
-pub fn stage0_crate_plan_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Derived from v2.workflow.rust_crate_partition via gunbc.stage0_crate_partition_generated (HandExplicit ~8-crate interim partition). Dissolve-on: rust_crate_partition_interim_explicit when PolicyPartition lands.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn stage0_crate_allow_block() -> String {
     Rc::new(vec![
         "#![allow(".to_string(),
@@ -89,15 +83,6 @@ pub fn stage0_crate_allow_block() -> String {
         "#![recursion_limit = \"256\"]".to_string(),
     ])
     .join(&"\n".to_string())
-}
-
-pub fn unreachable_patterns_deny_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "unreachable_patterns is DENIED, not allowed (DESIGN §5 no-escape-hatches). The emitter lowers a nested variant pattern by hoisting the inner discriminant out of the arm into a `let .. = x.as_ref() else { unreachable!() }` prelude, because Rust cannot match through Rc<T> in a pattern. That is sound for ONE arm per outer constructor; two arms sharing an outer constructor collapse to identical Rust patterns, so the second is unreachable and the FIRST panics on any value it did not expect. Allowing unreachable_patterns suppressed the one signal that detects this -- the deficit frequency was zero by construction, so it never ranked for fixing (the exact §5 absorbing shape). Denying converts each occurrence into a located compile error. Proven by execution: reintroducing the nested-pattern form in std.effects.check_modifier_vs_derivation reds std_effects.rs with `unreachable pattern`; the corpus otherwise carried exactly ONE occurrence (a redundant wildcard in v1.compiler.emit.classify_expr, removed with this change). RESIDUE: this is validation, not construction -- the emitter still GENERATES the broken lowering and is merely caught downstream. The construction fix is to group arms sharing an outer constructor into a nested match (the form the emitter already lowers correctly); tracked as follow-on emitter work.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn stage0_foundation_header_doc() -> String {
@@ -146,14 +131,6 @@ pub fn stage0_package_name_to_rust_ident(package_name: String) -> String {
 
 pub fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
     v1_rt::replace(crate_dir.clone(), "src/v1/".to_string(), "../".to_string())
-}
-
-pub fn stage0_partition_row_is_module_bearing(row: Rc<GeneratedPartitionCrateRow>) -> bool {
-    match row.kind.clone() {
-        GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => false,
-        GeneratedPartitionCrateKind::GeneratedFoundationCrate => true,
-        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => true,
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -301,18 +278,7 @@ pub fn stage0_lookup_module_owner_package_name(
         let matches = Rc::new({
             let mut __result = Vec::new();
             for row in generated_partition_crate_rows().iter().cloned() {
-                if (stage0_partition_row_is_module_bearing(row.clone()) && {
-                    let mut __found = false;
-                    for m in row.modules.clone().iter().cloned() {
-                        if (m.clone() == module_basename.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }) {
-                    __result.push(row);
-                }
+                if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); }
             }
             __result
         });
@@ -481,32 +447,6 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
     ])
 }
 
-pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
-    Rc::new(vec![
-        Rc::new(CargoDependency {
-            name: "stacker".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
-                version: "0.1".to_string(),
-                features: Rc::new(vec![]),
-            }),
-        }),
-        Rc::new(CargoDependency {
-            name: "im".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
-                version: "15.1".to_string(),
-                features: Rc::new(vec!["serde".to_string()]),
-            }),
-        }),
-        Rc::new(CargoDependency {
-            name: "serde".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
-                version: "1".to_string(),
-                features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
-            }),
-        }),
-    ])
-}
-
 pub fn stage0_reexport_path_dependencies_outcome(
     reexport_packages: Rc<Vec<String>>,
 ) -> Rc<Stage0ReexportPathDepsOutcome> {
@@ -552,32 +492,6 @@ pub fn stage0_reexport_path_dependencies_outcome(
     )
 }
 
-pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for row in Rc::new({
-            let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
-                if stage0_partition_row_is_module_bearing(row.clone()) {
-                    __result.push(row);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.push(Rc::new(CargoDependency {
-                name: row.package_name.clone(),
-                source: Rc::new(CargoDepSource::LocalPathDep {
-                    path: stage0_crate_dir_to_sibling_dep_path(row.crate_dir.clone()),
-                }),
-            }));
-        }
-        __result
-    })
-}
-
 pub fn stage0_partition_row_kind(row: Rc<GeneratedPartitionCrateRow>) -> Stage0CrateKind {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => Stage0CrateKind::FoundationCrate,
@@ -597,42 +511,24 @@ pub fn stage0_partition_row_header_doc(row: Rc<GeneratedPartitionCrateRow>) -> S
 pub fn stage0_partition_row_dependencies_outcome(
     row: Rc<GeneratedPartitionCrateRow>,
 ) -> Rc<Stage0PartitionRowDepsOutcome> {
-    match row.kind.clone() {
-        GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-                deps: stage0_foundation_runtime_dependencies(),
-            })
-        }
-        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
-            match (*stage0_reexport_path_dependencies_outcome(row.reexport_packages.clone()))
-                .clone()
-            {
-                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
-                    deps: reexport_deps,
-                    ..
-                } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-                    deps: v1_rt::concat(
-                        stage0_foundation_runtime_dependencies(),
-                        reexport_deps.clone(),
-                    ),
-                }),
-                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
-                    cause: cause,
-                    ..
-                } => Rc::new(
-                    Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
-                        cause: cause.clone(),
-                    },
-                ),
-            }
-        }
-        GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-                deps: v1_rt::concat(
-                    stage0_foundation_runtime_dependencies(),
-                    stage0_emit_shell_path_dependencies(),
-                ),
-            })
+    match (*stage0_reexport_path_dependencies_outcome(
+        crate::gunbc_stage0_partition_package_graph::stage0_partition_package_dependency_names(
+            row.clone(),
+        ),
+    ))
+    .clone()
+    {
+        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+            deps: path_deps, ..
+        } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+            deps: v1_rt::concat(stage0_foundation_runtime_dependencies(), path_deps.clone()),
+        }),
+        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused { cause: cause, .. } => {
+            Rc::new(
+                Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
+                    cause: cause.clone(),
+                },
+            )
         }
     }
 }

@@ -21,7 +21,27 @@ import gunbc.runner_activation { BuildCacheInstanceReady, HostCompilePoolReady }
 
 data build_cache_instance_readiness_scope_disposition: Disposition = SingleAuthority
 
-data build_cache_instance_readiness_producer_note: String = "THE PRODUCER PRESERVES THREE STATES, NOT TWO. BuildCacheInstanceReady used to carry six Bool flags, but false could mean either an observation positively disagreed with intent OR the observation never answered. Those states have different remedies and different authority: drift is a host fact; unavailable is a failure of the observation path. Collapsing them is DESIGN's empty-observation narrow. The proof receipt therefore carries no flags. This producer returns Ready only after every exact-subject comparison passes, NotReady only from positive observations that disagree, and ObservationUnavailable whenever an exact-subject input read did not answer.\n\nTHE COMPILE-POOL CHECK IS ABOUT THIS SERVER, NOT MERELY THIS HOST. HostCompilePoolReady proves the declared slice exists and is sized on the host. It does not prove the endpoint owner lives beneath that slice. The producer separately checks the OwnerInSystemdUnit cgroup path contains the declared slice as one complete path segment, so a healthy slice beside a server still running in a runner cgroup cannot mint readiness. CompilePoolInRunnerSlots has no slice name and refuses as PoolNotDeclared; the global managed-slice constant is deliberately not consulted.\n\nTHE JOIN BINDS EVERY INPUT TWICE: the full BuildCacheInstance value and the ProcessIdentity. A storage read from the session server cannot verify the CI server on the same host, and a read from a recycled pid cannot verify its predecessor. An unavailable storage or capacity observation dominates mismatches on other axes only after that observation is bound to the endpoint's instance and owner. A foreign unavailable observation is refused as a subject mismatch before its unavailable result is accepted, so it cannot classify this instance's availability."
+// THE PRODUCER PRESERVES THREE STATES, NOT TWO. BuildCacheInstanceReady used to carry six Bool
+// flags, where false meant either an observation positively disagreed with intent OR never
+// answered. Different remedies, different authority: drift is a host fact, unavailable is a failure
+// of the observation path; collapsing them is DESIGN's empty-observation narrow. So the receipt
+// carries no flags: Ready only after every exact-subject comparison passes, NotReady only from
+// positive disagreeing observations, ObservationUnavailable whenever an exact-subject read did not
+// answer.
+//
+// THE COMPILE-POOL CHECK IS ABOUT THIS SERVER, NOT MERELY THIS HOST. HostCompilePoolReady proves the
+// declared slice exists and is sized; not that the endpoint owner lives beneath it. The producer
+// separately checks the OwnerInSystemdUnit cgroup path contains the declared slice as one complete
+// path segment, so a healthy slice beside a server still in a runner cgroup cannot mint readiness.
+// CompilePoolInRunnerSlots has no slice name and refuses as PoolNotDeclared; the global
+// managed-slice constant is deliberately not consulted.
+//
+// THE JOIN BINDS EVERY INPUT TWICE: the full BuildCacheInstance value and the ProcessIdentity. A
+// storage read from the session server cannot verify the CI server on the same host, nor a read
+// from a recycled pid its predecessor. An unavailable storage or capacity observation dominates
+// mismatches on other axes only once bound to the endpoint's instance and owner; a foreign
+// unavailable observation is refused as a subject mismatch first, so it cannot classify this
+// instance's availability.
 
 type BuildCacheInstanceNotReadyReason
   = CacheEndpointAbsent

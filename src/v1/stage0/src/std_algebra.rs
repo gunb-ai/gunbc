@@ -2,6 +2,7 @@
 // Source module: std.algebra
 
 use self::AlgebraProfile::*;
+use self::AlgebraSupportAxis::*;
 use self::AlgebraTypeTemplate::*;
 use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
@@ -794,6 +795,58 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
                             algebra_type_param_names(carrier.profile.clone())
                                 .iter()
                                 .fold(0, |n: i64, _| (n + 1)),
+                        )
+                    } else {
+                        inner.clone()
+                    }
+                },
+            )
+        },
+    )
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum AlgebraSupportAxis {
+    FiniteSupport,
+    OpenSupport,
+}
+
+pub fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
+    match profile.clone() {
+        AlgebraProfile::OrderedRingProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::ApproximateFieldProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::BooleanAlgebraProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::FinitePowerSetProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::PointwisePowerCollectionProfile => AlgebraSupportAxis::OpenSupport,
+        AlgebraProfile::FreeMonoidScalarProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::FreeMonoidCollectionProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::PartialFunctionProfile => AlgebraSupportAxis::OpenSupport,
+        AlgebraProfile::FinitelySupportedFunctionProfile => AlgebraSupportAxis::FiniteSupport,
+    }
+}
+
+pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
+    match algebra_profile_support(profile.clone()) {
+        AlgebraSupportAxis::FiniteSupport => true,
+        AlgebraSupportAxis::OpenSupport => false,
+    }
+}
+
+pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
+    algebra_carriers().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+            carrier.spellings.clone().iter().cloned().fold(
+                acc,
+                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                        v1_rt::rc_map_insert(
+                            inner.clone(),
+                            spelling.text.clone(),
+                            algebra_profile_equality_extensional(carrier.profile.clone()),
                         )
                     } else {
                         inner.clone()
@@ -2086,15 +2139,6 @@ pub fn all_algebra_template_names() -> Rc<Vec<String>> {
     })
 }
 
-pub fn trim_free_function_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "trim is the importable free-function authority for whitespace trim on String. The declared substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } -- bare trim refuses via closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn trim(s: String) -> String {
     v1_rt::trim(s)
 }
@@ -2137,3 +2181,7 @@ pub struct ShapeLinearScan;
 pub struct ShapeIterateBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShapeSortBody;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FiniteSupport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OpenSupport;

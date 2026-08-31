@@ -20,6 +20,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // WHAT THIS MODULE DOES NOT OWN: the SHAPE of any particular proc file. extdeps.linux.proc_meminfo owns /proc/meminfo's fields and cites the same authority for them. This module owns the interface — which paths exist and which kernels synthesize them — so a consumer can ask whether an observation is answerable here before trying to take it.
 type ProcfsPath
   = ProcMeminfo
+  | ProcSelfStat
   | ProcSelfStatus
   | ProcSelfCgroup
   | ProcNetUnix
@@ -29,6 +30,7 @@ type ProcfsPath
 fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   match p {
     ProcMeminfo => "/proc/meminfo"
+    ProcSelfStat => "/proc/self/stat"
     ProcSelfStatus => "/proc/self/status"
     ProcSelfCgroup => "/proc/self/cgroup"
     ProcNetUnix => "/proc/net/unix"
@@ -37,8 +39,17 @@ fn procfs_path_literal(p: ProcfsPath) -> NonEmptyStr {
   }
 }
 
+// ProcSelfStat was read by this repository before it was rostered here — v1_rt's
+// trace_process_tree_cpu_ms has parsed utime/stime out of /proc/self/stat since the trace
+// ledger landed, so its addition is a roster repair, not a new read. proc.5 documents the
+// file as one space-separated line whose comm field (2) may itself contain spaces and
+// parentheses, which is why every consumer splits on the LAST ')' before indexing fields;
+// majflt is field 12 of that line (1-based, counting pid and comm), the count of page
+// faults that required reading a page back from disk — the process's own record of its
+// resident pages having been evicted and refaulted.
 data procfs_paths_read_by_this_repository: List<ProcfsPath> = [
   ProcMeminfo,
+  ProcSelfStat,
   ProcSelfStatus,
   ProcSelfCgroup,
   ProcNetUnix,

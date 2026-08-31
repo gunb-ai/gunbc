@@ -122,7 +122,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                             })
                         }
                     }
-                    None => Rc::new(ModuleFilenameOwners {
+                    std::option::Option::None => Rc::new(ModuleFilenameOwners {
                         owners: v1_rt::rc_map_insert(
                             acc.owners.clone(),
                             filename.clone(),
@@ -240,7 +240,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             .cloned()
             {
                 Some(p) => p.1.clone(),
-                None => "?".to_string(),
+                std::option::Option::None => "?".to_string(),
             };
             {
                 let __tco_0 = rest.clone();
@@ -533,7 +533,7 @@ pub fn apply_named_template_nested(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match keys.clone().first().cloned() {
-            None => template,
+            std::option::Option::None => template,
             Some(key) => {
                 let rest = Rc::new(
                     keys.clone()
@@ -565,7 +565,7 @@ pub fn apply_named_template_nested(
                         });
                         processed.clone().join(&val.clone())
                     }
-                    None => {
+                    std::option::Option::None => {
                         v1_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key.clone())
                     }
                 }
@@ -576,15 +576,6 @@ pub fn apply_named_template_nested(
 
 pub fn language_spec(target: RenderTarget) -> Rc<LanguageSpec> {
     crate::v1_compiler_languages::language_spec_for_target(target.clone())
-}
-
-pub fn escape_string_literal_control_chars_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "TWO defects, one in each half of the CR step. The DELIMITER used to be \"\\r\", but this language's tokenizer has no \\r escape (its table is \\\" \\\\ \\n \\t \\{ \\} and \\xHH), so that delimiter was the two characters backslash and r, not a carriage return: carriage returns have passed through unescaped into every emitted target for as long as the function has existed, dead in practice only because no corpus string carried one. The first that did turned it into a hard emit failure. The REPLACEMENT was then briefly \\r and \\0, which is a second, subtler version of the same mistake: this function is TARGET-INDEPENDENT — emit_string_literal invokes it for Rust, Dag, Go and Python alike, and never sees a RenderTarget — so a Rust-shaped escape is only correct for one of the four projections, and \\r emitted into a Dag literal reproduces the exact backslash-r bug the delimiter half just fixed (review 2026-07-30). The spelling is therefore \\x0d and \\x00, the hex form all four target grammars accept, and the acceptance is a round trip through every target rather than a Rust regen fixed point, which proves only the Rust projection. Recorded rather than quietly respelled because the class is the point: a target-specific escape inside a target-independent function is invisible until a projection other than the one under test carries the character.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn escape_string_literal_body(s: String) -> String {

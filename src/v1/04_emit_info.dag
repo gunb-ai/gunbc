@@ -74,7 +74,11 @@ fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, N
   dedupe_nonempty_strings(items: concat(own, concat(child_names, inferred_names)))
 }
 
-data emit_graph_fn_decl_items_note: String = "fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup into the SAME typed (post-04_infer, .inferred-populated) module items build_emit_graph_info already folds over, so a caller-side Clone-bound derivation (v1.compiler.trait_bound_witness) can resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration Node — never a second, parallel re-parse or re-inference of the callee."
+// fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup
+// into the SAME typed (post-04_infer, .inferred-populated) module items build_emit_graph_info
+// already folds over, so a caller-side Clone-bound derivation (v1.compiler.trait_bound_witness) can
+// resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration
+// Node — never a second, parallel re-parse or re-inference of the callee.
 
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
@@ -97,10 +101,10 @@ type EmitGraphInfo {
   map_key_required_type_names: Set<String>
   clone_impl_required_type_params: Map<String, Set<String>>
 
-
   fn_generic_param_names: List<String>
   fn_type_env: TypeEnv
   fn_return_type: Node?
+  expected_type: Node?
 }
 
 type EmitInfoBuildState {
@@ -132,7 +136,8 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
 
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
 }
 
@@ -156,7 +161,8 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
     fn_generic_param_names: generic_param_names,
     fn_type_env: env,
-    fn_return_type: emit_info.fn_return_type
+    fn_return_type: emit_info.fn_return_type,
+    expected_type: emit_info.expected_type
   }
 }
 
@@ -180,7 +186,38 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
     clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
     fn_generic_param_names: emit_info.fn_generic_param_names,
     fn_type_env: emit_info.fn_type_env,
-    fn_return_type: fn_return_type
+    fn_return_type: fn_return_type,
+    expected_type: fn_return_type
+  }
+}
+
+// The type the expression being emitted must inhabit, at EXPRESSION grain. A fn body's tail
+// inhabits the declared return (emit_info_with_fn_return seeds it); a record-literal field value
+// inhabits the field's declared type, a narrower fact the return type cannot stand in for -- a
+// `Violates` literal at a `Witness<Node>` field took its type argument from the fn return
+// (`Witness<Rc<RuntimeValueAcceptanceWitness>>`, E0308 x5 at v2.compiler.eval / v2.compiler.compile).
+fn emit_info_with_expected_type(emit_info: EmitGraphInfo, expected_type: Node?) -> EmitGraphInfo {
+  EmitGraphInfo {
+    type_summaries: emit_info.type_summaries,
+    type_decl_items: emit_info.type_decl_items,
+    fn_decl_items: emit_info.fn_decl_items,
+    recursive_type_set: emit_info.recursive_type_set,
+    fielded_variants: emit_info.fielded_variants,
+    positional_payload_variants: emit_info.positional_payload_variants,
+    shared_types: emit_info.shared_types,
+    ownership_index: emit_info.ownership_index,
+    movable: emit_info.movable,
+    variant_to_enum: emit_info.variant_to_enum,
+    owned_bindings: emit_info.owned_bindings,
+    read_only_params_index: emit_info.read_only_params_index,
+    read_only_params: emit_info.read_only_params,
+    clone_bounded_type_params: emit_info.clone_bounded_type_params,
+    map_key_required_type_names: emit_info.map_key_required_type_names,
+    clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
+    fn_generic_param_names: emit_info.fn_generic_param_names,
+    fn_type_env: emit_info.fn_type_env,
+    fn_return_type: emit_info.fn_return_type,
+    expected_type: expected_type
   }
 }
 
@@ -212,7 +249,13 @@ fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineI
   }
 }
 
-data emit_graph_records_fn_decl_note: String = "Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info) is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export')."
+// Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level
+// item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info)
+// is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of
+// 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes
+// the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather
+// than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates
+// answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export').
 
 fn emit_graph_records_fn_decl(item: Node) -> Bool {
   item.body != none && item.type_annotation == none
@@ -559,4 +602,4 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
   }
 }
 
-data emit_dependency_registration_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.")
+data emit_dependency_registration_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_paths from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.")

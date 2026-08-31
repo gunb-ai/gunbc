@@ -90,24 +90,6 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
-pub fn iso_80000_3_version_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "ISO 80000-3 (Quantities and units - Part 3: Space and time): the quantity definitions for length, area, volume, plane angle and solid angle. This module grounds ONLY the exact unit relations the spatial substrate needs; it is not a general physics authority, and no generic extdeps.physics hub is created for it. THE PIN, WITH ITS EVIDENCE STANDING STATED: base edition 2, ISO 80000-3:2019, published October 2019 (catalogue 64974), amended by ISO 80000-3:2019/Amd 1:2025 (catalogue 87100), which is why the amendment is a SECOND citation of this one subject rather than a second subject. HOW THAT WAS ESTABLISHED, and how it was not: iso.org returns HTTP 403 to every automated fetch from this environment, so the NORMATIVE TEXT HAS NOT BEEN READ HERE and no claim in this repository may rest on its exact wording. What was verified is the designation-to-catalogue mapping, from the iso.org page titles as indexed by search plus independent resellers agreeing on both ids. An earlier revision carried www.iso.org/standard/31887.html, which review reported is ISO 80000-2 (mathematical signs and symbols); a later one removed the locator entirely and left the edition unstated, on the ground that an unverifiable numeric id is worse than none. The correction to THAT is the distinction between a paywall and an unknown: a paywall lowers evidence standing, and a mutable search-results URL is not a terminal pin. The relations carried below are in any case not edition-sensitive - they are definitional and independently checkable (a turn is 360 degrees by definition of the degree; a square metre is the area of a square of side one metre).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn iso_80000_3_plane_angle_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Plane angle is dimensionless in the SI sense - it is a ratio of two lengths - but it is NOT interchangeable with an ordinary dimensionless count, and the substrate keeps it a distinct Quantity so that adding an angle to a length, or reading an angle as a bare ratio, has no operation. ISO 80000-3 defines the radian as the coherent unit. The degree, arcminute and arcsecond are non-SI units accepted for use with the SI - a status stated by the BIPM SI Brochure, which is a SEPARATE independently governed subject and therefore neither a citation of this scope nor modeled here (the extdeps.languages.bash.subject / POSIX distinction: multiple citations may ground one subject, but a second governing body's document is never a citation of the first). Nothing below depends on that status; the subdivisions are carried as exact rational fractions of the turn.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn degrees_per_turn() -> Nat {
     360
 }

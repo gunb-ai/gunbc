@@ -40,23 +40,23 @@ import v2.std.text { String }
 // THE FILESYSTEM READ-THROUGH, SEGREGATED FROM THE SOURCE VOCABULARY IT READS INTO.
 //
 // Every declaration here is downstream of one host effect, Filesystem.Read, which has no
-// realization on a target the compiler emits itself to. v2.compiler.source_authority owns
-// the ingest and round-trip LAWS over SourceRef / DagSourceReadWitness, and the v2
-// compiler's import closure carries it for those; no compile path performs a read. But
-// emission is decided at MODULE grain, so the two read sites were emitted into the
-// compiler's own Rust crate as unrealized-seam refusals -- an effect the compiler cannot
-// perform, standing in it because its vocabulary neighbours were needed.
+// realization on a target the compiler emits itself to. v2.compiler.source_authority owns the
+// ingest and round-trip LAWS over SourceRef / DagSourceReadWitness, and the v2 compiler's import
+// closure carries it for those; no compile path performs a read. But emission is decided at MODULE
+// grain, so the two read sites were emitted into the compiler's own Rust crate as unrealized-seam
+// refusals -- an effect the compiler cannot perform, standing in it because its vocabulary
+// neighbours were needed.
 //
-// The real consumers all sit outside that closure and are unchanged by the split: the
-// self-host closure-emit driver and frontier probe, the realization sweep, and the ingest
-// witnesses. What the split buys is that the absence is now provable by identity rather
-// than argued -- a compile-closure declaration that starts reading the filesystem drags
-// THIS module in and the seam reappears in the emitted crate at the same census grep.
+// The real consumers all sit outside that closure and are unchanged by the split: the self-host
+// closure-emit driver and frontier probe, the realization sweep, and the ingest witnesses. The
+// split makes the absence provable by identity rather than argued -- a compile-closure declaration
+// that starts reading the filesystem drags THIS module in and the seam reappears in the emitted
+// crate at the same census grep.
 //
-// The read stays a read: content identity is verified against the ref's ContentHash before
-// the witness is minted, a missing or unreadable path refuses as a read failure rather
-// than a misclassified parse error, and both refusals carry the observed digest. Nothing
-// here widens on failure.
+// The read stays a read: content identity is verified against the ref's ContentHash before the
+// witness is minted, a missing or unreadable path refuses as a read failure rather than a
+// misclassified parse error, and both refusals carry the observed digest. Nothing here widens on
+// failure.
 fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
   let read = Filesystem.Read(path: path)
   SourceRef {
@@ -70,7 +70,10 @@ fn source_ref_for_observed_storage_path(path: String) -> SourceRef {
   }
 }
 
-// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design (deleted) stage 3): filesystem_read at consumption, content identity verified against the ref's ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths refuse as read failures rather than misclassified parse errors.
+// Read-through for ingest-manifest SourceRef rows (ingest-manifest-source-ref-carrier-design
+// (deleted) stage 3): filesystem_read at consumption, content identity verified against the ref's
+// ContentHash before parse. Hash mismatch refuses with both digests; missing/unreadable paths
+// refuse as read failures rather than misclassified parse errors.
 data source_ref_read_refused: Symbol = ^source_ref_read_refused
 
 data source_ref_content_hash_mismatch: Symbol = ^source_ref_content_hash_mismatch
@@ -141,7 +144,9 @@ type SourceRefReadResult
       observed: ContentHash
     }
 
-data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
+// Single filesystem observation for a SourceRef read-through. Accepted carries the witness and the
+// observed hash from the SAME read. Refused and HashMismatch never perform a second read to
+// reconstruct failure detail.
 
 fn dag_source_read_result_from_ref(ref: SourceRef) -> SourceRefReadResult {
   let read = Filesystem.Read(path: ref.path)

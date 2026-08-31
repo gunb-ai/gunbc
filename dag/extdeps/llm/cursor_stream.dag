@@ -38,7 +38,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data cursor_stream_authority_note: String = "WIRE AUTHORITY for @cursor/sdk local stream vocabulary (messages.d.ts @ 1.0.26). Terminal RunResult and LocalRunStreamEvent envelopes only — no retry, switch, or escalation decisions."
+// WIRE AUTHORITY for @cursor/sdk local stream vocabulary (messages.d.ts @ 1.0.26). Terminal
+// RunResult and LocalRunStreamEvent envelopes only — no retry, switch, or escalation decisions.
 
 type CursorSdkMessageKind
   = CursorSdkMessageSystem

@@ -1,41 +1,39 @@
 # Source-intent integration — a first-principles SCM design
 
-**Status:** operator-directed design seed, revised 2026-07-27. This revision supersedes this
-file's 2026-07-25 premise that “merge = keyed diff over node identity.” It preserves the signed
-visibility-first sequence and the landed economics corpus, but treats nodes, files, branches, and
-three-way comparison as possible evidence or realizations—not as the foundation.
+**Status:** operator-directed design seed, revised 2026-07-27, superseding the 2026-07-25 premise
+that “merge = keyed diff over node identity.” It keeps the signed visibility-first sequence and the
+landed economics corpus, but treats nodes, files, branches, and three-way comparison as possible
+evidence or realizations, not the foundation.
 
-“Source-intent integration” is a descriptive name in this plan, not a proposed substrate type.
-No carrier lands from this document alone. The first implementation step remains concept-DFS in
-`std/` and a discriminating scenario corpus; the plan must not create an SCM-local nickname for a
-concept the substrate already owns.
+“Source-intent integration” is a descriptive name, not a proposed substrate type. No carrier lands
+from this document alone; the first step is concept-DFS in `std/` plus a discriminating scenario
+corpus, and the plan must not mint an SCM-local nickname for a concept the substrate already owns.
 
 Roadmap carrier: ROADMAP §2, “SCM — source-intent integration, visibility-first.” Economics
 grounding: DESIGN open thread “SCM economics — the GitLab 10-K corpus.” Visibility authority:
 [node/subtree visibility grants](node-subtree-visibility-grants.md). Storage/surface authority:
 [module identity vs storage](module-identity-storage-binding-design.md). Product wedge, design
 partner, hosted-authority promotion, and adjacent-product sequencing are owned by the operator's
-product-strategy record, which is not published in this repo (moved to the private overlay root,
-2026-08-01). That strategy cannot weaken this document's
-semantic, evidence, admission, or compatibility-fidelity contract; this document cannot promote a
-product stage merely because its technical carrier exists. Git is the first adoption realization,
-not the interface from which the native model is derived.
+product-strategy record, not published in this repo (moved to the private overlay root,
+2026-08-01). That strategy cannot weaken this document's semantic, evidence, admission, or
+compatibility-fidelity contract; this document cannot promote a product stage merely because its
+technical carrier exists. Git is the first adoption realization, not the interface the native model
+derives from.
 
 ## 0. User contract — SCM-compatible, not SCM-shaped
 
-The proof machinery below is an implementation contract, not product vocabulary. A developer
-should not need to understand candidate closure, evidence relations, patch transport,
-linearizability, three-way merge, or which compatibility realization is active. The native
-workflow is:
+The proof machinery below is an implementation contract, not product vocabulary: a developer need
+not understand candidate closure, evidence relations, patch transport, linearizability, three-way
+merge, or which compatibility realization is active. The native workflow is:
 
 > **edit → submit → Landed**
 
 Synchronization, replay against the current accepted target, integration, validation, receipt
-reuse, atomic advance, and compatibility projection are system responsibilities. A normal user
-never chooses merge versus rebase, maintains branch/bookmark/channel topology, edits conflict
-markers, or interprets proof/evidence terminology.
+reuse, atomic advance, and compatibility projection are system responsibilities. A normal user never
+chooses merge vs rebase, maintains branch/bookmark/channel topology, edits conflict markers, or
+interprets proof/evidence terminology.
 
-At the semantic integration boundary, there are only two semantic handoffs:
+The semantic integration boundary has only two semantic handoffs:
 
 ```text
 Landed
@@ -50,20 +48,19 @@ or should a separate foo remain?
 [Follow the rename: bar(...)]  [Keep a separate foo(...)]
 ```
 
-`Choice required` means that more than one materially different requested meaning remains, or that
-two explicit requested outcomes cannot both be preserved. It asks exactly one localized question
-in domain language, presents concrete alternatives with result previews, and retains enough
-continuation state that one answer resumes the operation automatically. It never asks the user to
-perform integration mechanics.
+`Choice required` means more than one materially different requested meaning remains, or two
+explicit requested outcomes cannot both be preserved. It asks exactly one localized question in
+domain language, with concrete alternatives and result previews, and keeps enough continuation
+state that one answer resumes the operation automatically. It never asks the user to perform
+integration mechanics.
 
 Missing observations, stale parents, incomplete models, retryable failures, and projection repair
-remain internal work. The system exhausts its declared mechanical observations and bounded proof
-procedures before interrupting. A machine-answerable issue stays inside the machine. Missing
-information becomes a user question only when the missing information is genuinely a preference
-that no observation can answer. The precise receipt and mechanics remain available on demand
-through an explicit inspect/debug surface.
+are internal work: the system exhausts its declared mechanical observations and bounded proof
+procedures before interrupting. A machine-answerable issue stays in the machine; missing
+information becomes a user question only when it is genuinely a preference no observation can
+answer. The precise receipt and mechanics stay available through an explicit inspect/debug surface.
 
-A third **non-semantic terminal outcome** is necessary for fail-closed honesty:
+A third **non-semantic terminal outcome** is required for fail-closed honesty:
 
 ```text
 Could not land
@@ -72,21 +69,21 @@ Approval was not granted. No files were changed.
 ```
 
 `Could not land` is not a choice and never converts a machine deficit into user work. It appears
-only after the system has exhausted or ruled out every permitted retry, observation, repair,
-approval route, or other machine-owned continuation. Internally it retains a typed, located,
-counted refusal and an audience-authorized receipt reference; the primary message gives the plain
-domain reason, who or what owns any real next action, and confirms that no transition committed.
-Permanent authorization denial, policy refusal, unsupported proof bounds, and non-retryable effect
-failure therefore cannot disappear into an inspect-only state. Non-terminal progress may be shown
-as status, but it is not a semantic conclusion or a request for preference.
+only after every permitted retry, observation, repair, approval route, or other machine-owned
+continuation is exhausted or ruled out. Internally it keeps a typed, located, counted refusal and an
+audience-authorized receipt reference; the primary message gives the plain domain reason, who or
+what owns any real next action, and confirms no transition committed. Permanent authorization
+denial, policy refusal, unsupported proof bounds, and non-retryable effect failure therefore cannot
+vanish into an inspect-only state. Non-terminal progress may show as status; it is not a semantic
+conclusion or a preference request.
 
-The first compatibility surface may look like an ordinary Git worktree and accept ordinary
-commits or PRs, but Git is one import/export and target realization, not the native interaction
-model. A submit operation imports the pending delta/proposal, replays it against the current
-accepted target, and emits the target medium's ordinary representation when it lands. The initial
-product emits an ordinary one-parent/squash Git commit; Mercurial and Pijul are modeled up front as
-design-stress realizations, not silently promised as product-grade adapters. Ordinary native SCM
-clients and expert plumbing remain available; none is the conceptual front door.
+The first compatibility surface may look like an ordinary Git worktree accepting ordinary commits
+or PRs, but Git is one import/export and target realization, not the native interaction model.
+Submit imports the pending delta/proposal, replays it against the current accepted target, and
+emits the target medium's ordinary representation on landing. The initial product emits an ordinary
+one-parent/squash Git commit; Mercurial and Pijul are modeled up front as design-stress
+realizations, not silently promised as product-grade adapters. Native SCM clients and expert
+plumbing remain available; none is the conceptual front door.
 
 The interaction contract has executable acceptance conditions:
 
@@ -104,8 +101,8 @@ The interaction contract has executable acceptance conditions:
   Git.
 
 The first scenario design therefore includes both the internal layered receipt and this minimal
-presentation projection. Internal state is retained and inspectable, but internal terminology does
-not leak into the default UI merely because it exists.
+presentation projection. Internal state is retained and inspectable; its terminology does not leak
+into the default UI merely because it exists.
 
 ## 1. Product objective — minimize judgment without pricing safety
 
@@ -122,12 +119,11 @@ The formal objective underneath that thesis is:
 > whose soundness is established; claim uniqueness only when query-local candidate and evidence
 > completeness are certified.**
 
-Humans and LLMs are both expensive, lossy judgment providers. They should receive only the
-irreducible normative choices. Everything else—alignment, replay, independence, invariant
-checking, affected-set calculation, receipt reuse, and projection—should be mechanical.
+Humans and LLMs are expensive, lossy judgment providers and should receive only the irreducible
+normative choices. Everything else—alignment, replay, independence, invariant checking,
+affected-set calculation, receipt reuse, projection—is mechanical.
 
-The objective is **lexicographic**, not a scalar score in which a sufficiently cheap unsafe answer
-can win:
+The objective is **lexicographic**, not a scalar score a sufficiently cheap unsafe answer can win:
 
 1. hard constraints: authorization, semantic obligations, evidence soundness, confidentiality,
    and an exact-parent transition;
@@ -137,23 +133,22 @@ can win:
 4. preserve Pareto-incomparable choices instead of inventing weights.
 
 The motivating workload is an explicit **stress profile**, not a universal constant: 50 agents per
-developer, 10 proposals touching the same modeled region, and a 30-minute CI path. Every proposal
-invalidated after it was green spends at least another affected 30-minute validation interval;
-serial invalidations also add wall-clock queue delay. The first model must carry these as workload
-inputs so the benefit is measured rather than asserted.
+developer, 10 proposals touching the same modeled region, a 30-minute CI path. Each proposal
+invalidated after going green spends at least another affected 30-minute validation interval;
+serial invalidations add wall-clock queue delay. The first model carries these as workload inputs
+so the benefit is measured, not asserted.
 
-A lower textual-conflict count is not itself success. An aggressive integrator can improve that
-number by silently choosing wrong results. The product metric is **judgment displaced at a fixed
-safety contract**. Safety is a prerequisite, not a finite cost. Even when a batch cannot commit,
-the system returns every independently grounded assessment; a top-level unknown must not erase
-safe partial deductions.
+A lower textual-conflict count is not success: an aggressive integrator improves it by silently
+choosing wrong results. The product metric is **judgment displaced at a fixed safety contract**;
+safety is a prerequisite, not a finite cost. Even when a batch cannot commit, the system returns
+every independently grounded assessment; a top-level unknown must not erase safe partial deductions.
 
 ## 2. Separate the layers
 
-Every SCM exposes its own useful native concepts: Git has commits/trees/refs, Mercurial has
-changesets/manifests/bookmarks/phases, and Pijul has changes/dependencies/channels/pristine state.
-Those are upstream storage, history, publication, and compatibility concepts. None is the program,
-and none supplies the vocabulary of the native integration interface.
+Every SCM has useful native concepts: Git commits/trees/refs, Mercurial
+changesets/manifests/bookmarks/phases, Pijul changes/dependencies/channels/pristine state. These are
+upstream storage, history, publication, and compatibility concepts; none is the program or supplies
+the native integration interface's vocabulary.
 
 This lane keeps the following layers separate:
 
@@ -175,9 +170,9 @@ Text and files have two downstream jobs, already named by the storage-binding de
   explicit fidelity verdict; and
 - **projection:** render the accepted graph through the declared medium.
 
-A path move, import deletion, formatting pass, or source reorder may therefore be a semantic no-op
-**under a declared language model and equivalence witness** even though its Git tree changes.
-Conversely, two disjoint textual hunks may jointly violate one modeled invariant.
+A path move, import deletion, formatting pass, or source reorder may thus be a semantic no-op
+**under a declared language model and equivalence witness** though its Git tree changes; conversely,
+two disjoint textual hunks may jointly violate one modeled invariant.
 
 ## 3. Grain comes from groups of units; SCM does not choose one
 
@@ -191,14 +186,13 @@ The recent group-of-units lane is a starting constraint, not yet a group algebra
 - by an ungrounded nickname, which is the violation.
 
 It does not itself carry a group, its members, closure semantics, or a polymorphic membership
-relation. This is the useful content behind the working shorthand `Group<U>`; this plan must not
-pretend the shorthand has landed or mint a competing generic group type merely because it is
-convenient.
+relation. That is the content behind the working shorthand `Group<U>`; this plan must not pretend
+the shorthand has landed or mint a competing generic group type for convenience.
 
-Module membership is containment-derived; `GroupMembership.ByContainment` classifies the
-provenance of that membership. The namespace/containment authority must still supply the actual
-member relation and distinguish immediate children from descendant closure. An affected closure
-is derivation-backed membership. A temporarily hand-curated migration set is frontier membership.
+Module membership is containment-derived; `GroupMembership.ByContainment` classifies that
+membership's provenance. The namespace/containment authority still supplies the actual member
+relation and distinguishes immediate children from descendant closure. An affected closure is
+derivation-backed membership; a temporarily hand-curated migration set is frontier membership.
 Files are storage realizations of such groups, not group authorities.
 
 The integration algorithm is therefore **unit- and group-polymorphic**:
@@ -210,11 +204,11 @@ The integration algorithm is therefore **unit- and group-polymorphic**:
 - “same node,” “same module,” and “same file” are observations at different grains, never universal
   conflict definitions.
 
-Identity remains involved, but only as detective evidence. A key can align two facts through time;
-it does not decide what their joint result should be. No universal durable `ScmEntityId` is assumed.
-Containment position, declaration reference, content identity, normalization, bounded extensional
-identity, provenance, and an authored transformation can each supply different grades of evidence.
-Unknown alignment stays unknown.
+Identity is involved only as detective evidence: a key aligns two facts through time; it does not
+decide their joint result. No universal durable `ScmEntityId` is assumed. Containment position,
+declaration reference, content identity, normalization, bounded extensional identity, provenance,
+and an authored transformation each supply different grades of evidence. Unknown alignment stays
+unknown.
 
 ## 4. The native transaction is a proposed transformation, not an endpoint diff
 
@@ -237,25 +231,25 @@ A native proposal should eventually carry, by reuse of existing substrate concep
 - capture/decode fidelity.
 
 These are **roles**, not a proposed `Intent` record. `EffectAttemptIntent`, `StandingIntent`, graph
-intent in the orchestration lane, `ChangeSet`, temporal snapshots, and other neighboring concepts
-must be DFS'd before any new carrier is named.
+intent in the orchestration lane, `ChangeSet`, temporal snapshots, and neighboring concepts must be
+DFS'd before any new carrier is named.
 
-Here, **source intent** means only an authenticated authored transformation plus its explicit
+**Source intent** here means only an authenticated authored transformation plus its explicit
 contract and dependencies—not a reconstructed mental preference. “Obligation-preserving source
 integration” or “contract-preserving reconciliation” is the narrower formal substrate even if the
 product lane keeps the source-intent name.
 
-An endpoint diff remains valuable, but it answers only “what observations differ?” A native
-proposal answers “what transformation was requested, against which accepted state, and under
-which obligations?” Capturing the operation before flattening it to two snapshots removes much of
-the detective work a later three-way merge must redo. A frame condition is what makes “no extra
-change” checkable: every result delta must be required by an admitted proposal or be an expressly
-permitted canonicalization, never an unrelated solver repair.
+An endpoint diff answers only “what observations differ?”; a native proposal answers “what
+transformation was requested, against which accepted state, under which obligations?” Capturing the
+operation before flattening it to two snapshots removes much of the detective work a later
+three-way merge must redo. A frame condition makes “no extra change” checkable: every result delta
+must be required by an admitted proposal or be an expressly permitted canonicalization, never an
+unrelated solver repair.
 
 ### P−1 shared prerequisite — claim-indexed evidence
 
-The dashboard/Codex incident and source integration require the same missing relation. A recorded
-fact is not evidence in isolation. It becomes evidence only for a named claim under an explicit
+The dashboard/Codex incident and source integration need the same missing relation. A recorded
+fact is not evidence in isolation; it becomes evidence only for a named claim under an explicit
 inference rule, with a maximum conclusion:
 
 ```text
@@ -275,22 +269,22 @@ recorded fact
   -> SCM outcome or dashboard lamp as a projection
 ```
 
-For example, `codex login status` may support `CredentialRecorded` for one `CODEX_HOME`; it cannot
-support `ProviderReady`. A successful live request can support a provider/request-capability claim
-for its provider, scope, and freshness bound. A worker PID supports lifecycle facts, not provider
-readiness. In SCM, a parse edge, typecheck, behavioral receipt, Git rename score, and native
-authored operation are likewise facts with different claim relations and maximum conclusions.
+E.g. `codex login status` may support `CredentialRecorded` for one `CODEX_HOME`, never
+`ProviderReady`. A successful live request can support a provider/request-capability claim for its
+provider, scope, and freshness bound. A worker PID supports lifecycle facts, not provider readiness.
+In SCM, a parse edge, typecheck, behavioral receipt, Git rename score, and native authored operation
+are likewise facts with different claim relations and maximum conclusions.
 
-The information-state floor for one claim preserves two independent bits—support and challenge:
-support only, challenge only, both/conflicted, or neither/insufficient. This is the
+The information-state floor for one claim keeps two independent bits—support and challenge: support
+only, challenge only, both/conflicted, neither/insufficient. This is the
 [Belnap–Dunn](https://doi.org/10.1007/978-94-010-1161-7_2) shape for incomplete and inconsistent
-information, not permission to reuse that logic's final type names before DFS. Conflicting
-evidence is not semantic contradiction, and absence of evidence is not refutation.
+information, not permission to reuse that logic's type names before DFS. Conflicting evidence is
+not semantic contradiction; absence of evidence is not refutation.
 
 [SACM](https://www.omg.org/spec/SACM/) is the external precedent for artifacts becoming evidence
 through a claimed relation to a subject claim. [W3C PROV](https://www.w3.org/TR/prov-dm/) supplies
-entity/activity/agent provenance; provenance helps assess an evidence link but does not establish
-the target claim by itself.
+entity/activity/agent provenance, which helps assess an evidence link but does not by itself
+establish the target claim.
 
 The repo has partial precedents, not this shared carrier:
 
@@ -306,16 +300,16 @@ The repo has partial precedents, not this shared carrier:
 
 The shared evidence carrier lands in a **separate model-first PR** with three discriminating
 consumers: Codex provider readiness, `gunbc.os_install_deduction`, and source integration. It is
-P−1 for SCM P0. This plan names roles, not final carrier names, so the first DFS can converge on
-existing authorities rather than extract three local versions later.
+P−1 for SCM P0. This plan names roles, not final carrier names, so the first DFS converges on
+existing authorities instead of extracting three local versions later.
 
 ### Native history
 
-Authority is **target-scoped**, not a property of a branch name. A project may have a primary
-target, supported-release targets, or another explicitly admitted target, but each target has one
-current accepted state and each proposal names exactly one target. A Git ref, Mercurial bookmark or
-branch head, and Pijul channel are different upstream projections of target-like roles; checking
-out, updating, switching, pulling, or receiving one does not make it the native authority.
+Authority is **target-scoped**, not a branch-name property. A project may have a primary target,
+supported-release targets, or another explicitly admitted target; each target has one current
+accepted state and each proposal names exactly one target. A Git ref, Mercurial bookmark or branch
+head, and Pijul channel are different upstream projections of target-like roles; checking out,
+updating, switching, pulling, or receiving one does not make it the native authority.
 
 The authoritative history for one target can be a linear sequence of accepted transitions:
 
@@ -327,31 +321,30 @@ target T at accepted state S_n
   -> target T at accepted state S_(n+1)
 ```
 
-Workspaces may be concurrent, but branches and merge commits are not fundamental. A workspace is a
-sandbox containing pending proposals. Its construction history is evidence, not accepted history.
+Workspaces may be concurrent; branches and merge commits are not fundamental. A workspace is a
+sandbox of pending proposals whose construction history is evidence, not accepted history.
 Acceptance records the target, exact accepted predecessor, each proposal's authored parent, the
-applied transformation set, the resulting state hash, and the evidence/receipts that grounded it.
-Git commits/trees, Mercurial changesets/manifests, and Pijul channel/change state are a third thing:
+applied transformation set, the resulting state hash, and the grounding evidence/receipts. Git
+commits/trees, Mercurial changesets/manifests, and Pijul channel/change state are a third thing:
 compatibility projections or capture evidence for those facts.
 
-This is not “last writer wins with a nicer log.” Before a stale-parent proposal can advance current
-state, the system re-evaluates its transformation against current modeled state. Arrival order is
-not intent. If two compatible proposals admit witnessed transports that form a commuting square,
-validation may run in parallel and either serialization must yield the same declared-equivalent
-result. If order changes meaning and no policy declares an order, the system asks rather than
-letting queue timing choose.
+This is not “last writer wins with a nicer log.” A stale-parent proposal is re-evaluated against
+current modeled state before it can advance it; arrival order is not intent. If two compatible
+proposals admit witnessed transports forming a commuting square, validation may run in parallel and
+either serialization must yield the same declared-equivalent result. If order changes meaning and
+no policy declares one, the system asks rather than letting queue timing choose.
 
-Native transactions therefore do not require three endpoint snapshots as their primitive. The
-authored parent remains necessary causal evidence; the operation is replayed and verified on the
-new state. Three-way comparison remains necessary at a **lower-fidelity import/capture boundary**
-where only base, left endpoint, and right endpoint survived.
+Native transactions thus need no three-snapshot primitive: the authored parent stays as necessary
+causal evidence, and the operation is replayed and verified on the new state. Three-way comparison
+remains necessary at a **lower-fidelity import/capture boundary** where only base, left endpoint,
+and right endpoint survived.
 
-No wall-clock fact supplies semantic order. Commit time, authoring time, upload time, observation
-time, queue position, and “objectively arrived first” may be retained as audit or performance
-evidence, but cannot rank proposals or recover intent. A transition precedes another because an
-authorized receipt names its accepted predecessor; one proposal depends on another only through an
-explicit parent/dependency edge. A declared domain-time contract may decide whether evidence is
-fresh enough to use, but never turns chronology into proposal priority.
+No wall-clock fact supplies semantic order. Commit, authoring, upload, and observation time, queue
+position, and “objectively arrived first” may be kept as audit or performance evidence but cannot
+rank proposals or recover intent. A transition precedes another because an authorized receipt names
+its accepted predecessor; a proposal depends on another only through an explicit parent/dependency
+edge. A declared domain-time contract may decide whether evidence is fresh enough, never turn
+chronology into priority.
 
 The accepted parent's model, claim set, inference rules, equivalence, and admission policy are
 frozen for one evaluation. A proposal cannot license itself by deleting the invariant that rejects
@@ -362,8 +355,8 @@ committed first, and affects only subsequent admissions.
 ### Deduction contract — one fold, not an interaction catalog
 
 Native integration is one general reconciliation operation over modeled facts, not a growing
-dispatch table for “rename versus call,” “move versus edit,” or every future pair of language
-features. Conceptually:
+dispatch table for “rename versus call,” “move versus edit,” or every future feature pair.
+Conceptually:
 
 ```text
 assessments =
@@ -391,36 +384,33 @@ admission =
 
 The proposal fold accumulates transformations and obligations; it does **not** apply a list in
 arrival order. “One fold” means one public reconciliation operation and a stable proof-composition
-kernel, preferably with a small trusted checker. A domain may contribute ordinary facts, claims,
-proof rules/procedures, and checkable certificates through shared interfaces. It does not add a
-feature-pair arm to an SCM switch. A solver or LLM may propose a candidate or certificate; an
-unverified proposal has no authority.
+kernel, preferably with a small trusted checker. A domain contributes ordinary facts, claims, proof
+rules/procedures, and checkable certificates through shared interfaces, never a feature-pair arm in
+an SCM switch. A solver or LLM may propose a candidate or certificate; unverified, it has no
+authority.
 
-Safety, explicit obligations, grounding, and the required evidence profile are admission conditions,
-not weighted preferences. A cheaper result cannot buy permission to violate one. Among candidates
-that meet those conditions, preserve every fact whose change is not grounded. By default, cost
-selects only among realizations of the **same semantically determined result**; it cannot decide
-which materially different result the user intended. A contract may make a cost axis part of
-intent explicitly, but absent that authority, several result equivalence classes are `Ambiguous`
-even when one looks cheaper. Within one class, the declared cost order eliminates only strictly
-dominated realizations and preserves incomparable alternatives rather than inventing scalar
-weights.
+Safety, explicit obligations, grounding, and the required evidence profile are admission
+conditions, not weighted preferences; a cheaper result cannot buy permission to violate one. Among
+candidates meeting them, preserve every fact whose change is not grounded. By default cost selects
+only among realizations of the **same semantically determined result**; it cannot decide which
+materially different result the user intended. A contract may explicitly make a cost axis part of
+intent; absent that authority, several result equivalence classes are `Ambiguous` even when one
+looks cheaper. Within one class, the declared cost order eliminates only strictly dominated
+realizations and preserves incomparable alternatives rather than inventing scalar weights.
 
 New models participate by contributing their ordinary facts, relations, claims, effects,
 equivalence, bounds, costs, inference procedures, and certificates to this kernel. The worked
-examples below are discriminating inputs for the same operation, not implementation branches. If
-adding a language concept requires a new pairwise integrator case rather than a shared semantic
-interface, the missing work is a model/algebra seam to ground—not a twentieth-year special case to
-preserve.
+examples below are discriminating inputs to the same operation, not implementation branches. If a
+new language concept needs a new pairwise integrator case rather than a shared semantic interface,
+the missing work is a model/algebra seam to ground—not a twentieth-year special case to preserve.
 
 ### Candidate closedness is a named substrate gap
 
 `v2.std.find_witness.CandidateSet` accepts a caller-supplied finite list and a structural
 closedness witness. `UniqueOnly` counts passing members of that list; it neither generates source
-integration results nor proves the list exhaustive. Today `solve_constraints` constructs a
-singleton candidate set containing the constraint root and derives “closedness” from that root
-being well formed. That is a useful scaffold, not authority that every relevant integration result
-was considered.
+integration results nor proves the list exhaustive. Today `solve_constraints` builds a singleton
+candidate set holding the constraint root and derives “closedness” from that root being well
+formed—a useful scaffold, not authority that every relevant integration result was considered.
 
 Uniqueness therefore requires separate, checkable certificates for:
 
@@ -438,45 +428,44 @@ Uniqueness therefore requires separate, checkable certificates for:
 7. **multiplicity** — zero, one, or many equivalence classes remain; and
 8. **commit validity** — the exact parent/model/policy/evidence inputs validated are still current.
 
-P1 is deliberately a bounded, decidable fragment. Its candidate space is the finite closure of the
+P1 is deliberately a bounded, decidable fragment: its candidate space is the finite closure of the
 accepted state, admitted authored transformations, witnessed transports/rebases, declared
 canonicalizations, and finitely enumerated recovery alternatives—not arbitrary synthesized
 programs. Exhausting a candidate, proof-search, or equivalence bound yields an unclosed result,
 never contradiction and never “the one candidate found so far.”
 
-This objective follows abstract interpretation's vocabulary of
+This follows abstract interpretation's vocabulary of
 [sound approximation](https://cs.nyu.edu/~pcousot/COUSOTpapers/POPL77.shtml) and query-relative
 [completeness](https://doi.org/10.1145/333979.333989): compute the most precise sound conclusion
-available under a declared abstraction, and claim completeness only for the query and fragment
-whose certificates establish it.
+under a declared abstraction, and claim completeness only for the query and fragment whose
+certificates establish it.
 
 ### Fail-closed deduction — ignorance never becomes an answer (DESIGN §5)
 
 Daglang's advantage is information density: types, bindings, containment, effects, claims,
-resource bounds, dependency closure, and execution receipts can all be premises that Git does not
-have. That supports more deductions; it does not grant permission to infer an unexpressed premise.
+resource bounds, dependency closure, and execution receipts are premises Git lacks. That supports
+more deductions; it does not license inferring an unexpressed premise.
 
-This is not a new “humility” principle. It is DESIGN §5's existing rule—never fabricate a
-plausible output; a failure arm refuses, never widens—applied to reconciliation. Returning the one
-candidate the current model happened to expose, while silently treating every unmodeled fact as
-irrelevant, would conflate ignorance with an answer in exactly the absorbing-fallback shape §5
-forbids.
+This is not a new “humility” principle but DESIGN §5's rule—never fabricate a plausible output; a
+failure arm refuses, never widens—applied to reconciliation. Returning the one candidate the current
+model happened to expose while silently treating every unmodeled fact as irrelevant conflates
+ignorance with an answer in exactly the absorbing-fallback shape §5 forbids.
 
 > A modeled fact `X` licenses consequences of `X`. It does not prove that no relevant, unmodeled
 > fact `Y` exists.
 
-The change set is closed in one useful sense: every accepted result change must be grounded in an
-admitted proposal or declared canonicalization. The world of relevant meaning is not automatically
-closed merely because the program typechecks. A closed coproduct closes its declared axis; a
-derived affected/dependency closure closes only the relation and bound its evidence names; a
-lossless surface closes only its declared construct set. A unique semantic result therefore
-requires the specific certificates above, not a claim that all user intent or all program behavior
-has been modeled. If a potentially relevant axis, dependency, effect, capture fragment, or proof
-bound is missing, the semantic result space is unclosed at that evidence profile.
+The change set is closed in one sense: every accepted result change must be grounded in an admitted
+proposal or declared canonicalization. The world of relevant meaning is not closed merely because
+the program typechecks. A closed coproduct closes its declared axis; a derived affected/dependency
+closure closes only the relation and bound its evidence names; a lossless surface closes only its
+declared construct set. A unique semantic result therefore requires the specific certificates
+above, not a claim that all intent or all behavior is modeled. If a potentially relevant axis,
+dependency, effect, capture fragment, or proof bound is missing, the result space is unclosed at
+that evidence profile.
 
-This is also how the model can evolve without making old confidence implicit. An admission receipt
+This is also how the model evolves without making old confidence implicit: an admission receipt
 names the model/contract inputs and closedness evidence it relied on. Adding a relevant model fact
-invalidates the affected receipt and causes re-evaluation; absence in the older model never becomes
+invalidates the affected receipt and forces re-evaluation; absence in the older model never becomes
 negative evidence by inertia.
 
 Two live repo precedents carry the same fail-closed rule:
@@ -558,41 +547,40 @@ A committed/read-back result becomes `Landed`. A closed-many result, or mutually
 explicit requests, becomes `ChoiceRequired` only when a genuine user preference can discriminate
 the alternatives. Those are the only two **semantic handoffs**. Unclosed search, missing
 machine-observable facts, stale-parent retry, authorization routing, effect retry, and projection
-repair remain internal work or non-semantic operational status while a permitted machine-owned
-continuation exists—not questions disguised as work delegation. One answer adds the authenticated
+repair stay internal work or non-semantic operational status while a permitted machine-owned
+continuation exists—not questions disguised as delegation. One answer adds the authenticated
 preference and resumes the stored continuation automatically.
 
 When no permitted continuation remains, the typed refusal projects to `CouldNotLand` rather than
-vanishing into inspect state. A permanently unclosed fragment reports that the requested change
-cannot yet be checked safely; denied authority reports that the change is not permitted; a
-non-retryable effect failure reports the failed domain action. The wording never exposes the
-internal result-arm name, never asks the user to perform reconciliation, and never implies a
-preference could fix a non-preference failure. The receipt preserves the exact typed location and
-cause for inspection, counting, and repair.
+vanishing into inspect state: a permanently unclosed fragment reports the change cannot yet be
+checked safely; denied authority reports it is not permitted; a non-retryable effect failure
+reports the failed domain action. The wording never exposes the internal arm name, asks the user to
+reconcile, or implies a preference could fix a non-preference failure. The receipt keeps the exact
+typed location and cause for inspection, counting, and repair.
 
 Receipts and inspect APIs preserve every underlying state. Every group keeps its partial
-assessments even if the batch cannot partially commit: for example group A may be unique and
-authorized, B closed-contradictory, C unclosed for missing live evidence, and D ambiguous. Partial
-commit additionally requires a declared atomicity split and proven independence.
+assessments even if the batch cannot partially commit: e.g. group A unique and authorized, B
+closed-contradictory, C unclosed for missing live evidence, D ambiguous. Partial commit additionally
+requires a declared atomicity split and proven independence.
 
 The admission policy states the required evidence profile and authority. A structurally universal
-result must not be presented as behaviorally safe; a behaviorally bounded result names its bound.
-Humans or LLMs may answer a genuine normative choice by submitting another authenticated
-proposal/claim. Machine-observable model or evidence deficits stay with the system. A response does
+result is never presented as behaviorally safe; a behaviorally bounded result names its bound.
+Humans or LLMs answer a genuine normative choice by submitting another authenticated
+proposal/claim; machine-observable model or evidence deficits stay with the system. A response does
 not retroactively turn a guess into evidence.
 
-A diagnostic promises only what it can actually compute. This plan chooses **subset-minimal within
-a declared diagnostic bound** for an incompatible core; “minimal” never silently means globally
+A diagnostic promises only what it can compute. This plan chooses **subset-minimal within a
+declared diagnostic bound** for an incompatible core; “minimal” never silently means globally
 minimum-cardinality. “Localized blocking question” is the default phrase. A future diagnostic
-optimizer may choose a lowest-cost discriminating observation/question only under an explicit
-cost policy.
+optimizer may pick a lowest-cost discriminating observation/question only under an explicit cost
+policy.
 
 ### Laws for the certified-compatible region
 
 Parallel proposals are context-indexed patches, not context-free functions. A proposal authored
-against `S` may apply only to `S` or through a witnessed transport into the other proposal's
-context. Compatibility means a grounded commuting square—or joinability/confluence modulo the
-declared equivalence—not literal equality of unchanged `P ∘ Q` and `Q ∘ P`. This is the
+against `S` applies only to `S` or through a witnessed transport into the other proposal's context.
+Compatibility means a grounded commuting square—or joinability/confluence modulo the declared
+equivalence—not literal equality of unchanged `P ∘ Q` and `Q ∘ P`: the
 [patch-theory](https://darcs.net/Theory/MergersDocumentation) distinction between patch, context,
 commutation/transport, and merge.
 
@@ -625,7 +613,7 @@ The laws are:
 - **order honesty:** absence of a unique transported result remains closed-zero, closed-many, or
   unclosed; first arrival never supplies the missing authority.
 
-[CRDTs](https://inria.hal.science/inria-00609399) are a useful convergence comparison, while
+[CRDTs](https://inria.hal.science/inria-00609399) are a useful convergence comparison;
 [invariant confluence](https://arxiv.org/abs/1402.2237) names when application invariants permit
 coordination-free composition. Neither licenses a universal merge law outside the declared
 operations and invariants.
@@ -652,10 +640,10 @@ Proposal Q changes the argument bound to its second parameter:
 foo(a, d)
 ```
 
-A text merge sees two edits to one line and will ordinarily refuse. A node-key rule might say the
-call node overlaps and also refuse. Neither answer uses all the available model.
+A text merge sees two edits to one line and ordinarily refuses; a node-key rule might see the call
+node overlap and also refuse. Neither uses all the available model.
 
-The program graph can instead observe two distinct argument-binding edges. If it also establishes
+The program graph instead observes two distinct argument-binding edges. If it also establishes
 that:
 
 - both edges still target the same resolved `foo`;
@@ -671,18 +659,18 @@ foo(c, d)
 ```
 
 If `c` changes overload resolution, or `foo` requires the two arguments to share a region, the
-result may be contradictory. If both rebinding interpretations are valid and materially different,
-it is ambiguous. If the relevant relationship is not modeled, it is unknown. “Different argument
-keys” is evidence that starts the check, not permission to skip it.
+result may be contradictory; if both rebinding interpretations are valid and materially different,
+ambiguous; if the relevant relationship is not modeled, unknown. “Different argument keys” starts
+the check, it does not skip it.
 
-The reverse is equally important: two transformations touching the **same** coarse key are not
-automatically contradictory. They may be identical, act on independent substructure, or normalize
-to one transformation. Key intersection identifies where deeper reconciliation is required.
+Conversely, two transformations touching the **same** coarse key are not automatically
+contradictory: they may be identical, act on independent substructure, or normalize to one
+transformation. Key intersection marks where deeper reconciliation is required.
 
 ### 6.2 Rename plus a new reference — textual clean merge, semantic question
 
-P renames declaration `foo` to `bar`. Q, authored concurrently, adds a call spelled `foo()` in a
-different line or file. Git can merge this cleanly while leaving a broken reference.
+P renames declaration `foo` to `bar`. Q, authored concurrently, adds a call spelled `foo()` on a
+different line or file. Git merges this cleanly and leaves a broken reference.
 
 With binding provenance, the native possibilities are explicit:
 
@@ -695,8 +683,8 @@ The system does not infer “they probably meant the renamed function” from sp
 
 ### 6.3 Disjoint edits with an emergent invariant failure
 
-P lowers one authorization threshold. Q broadens a separately stored audience grant. The edits
-touch different units and files, but together violate a claim such as “untrusted callers can never
+P lowers one authorization threshold; Q broadens a separately stored audience grant. The edits
+touch different units and files but together violate a claim such as “untrusted callers can never
 reach destructive effect E.” Integration returns `Contradictory` with that claim's counterexample.
 A clean textual merge is not safety evidence.
 
@@ -710,13 +698,13 @@ modeled policy defines placement, the result is `Ambiguous`, not a deterministic
 
 A formatter reorders declarations, a module moves between files, or namespace-derived imports
 disappear while the graph stays identical **under the declared language model and equivalence
-witness**. The semantic transformation is a no-op only under that observation model; storage
-binding or projection provenance changes separately.
+witness**. The transformation is a no-op only under that observation model; storage binding or
+projection provenance changes separately.
 
 ## 7. The safety quadrants and the real bar
 
-“Compatible” below means compatible relative to the explicitly required model, claims, fidelity,
-and bounds—not unknowable private thoughts:
+“Compatible” below means relative to the explicitly required model, claims, fidelity, and
+bounds—not unknowable private thoughts:
 
 | underlying joint result | textual Git says clean | textual Git says conflict |
 |---|---|---|
@@ -735,14 +723,14 @@ The strongest honest “true final intent” guarantee is:
 > The accepted result is the unique result, up to declared equivalence, that satisfies all explicit
 > proposals and required obligations, and every result change is grounded in those proposals.
 
-No SCM can guarantee an unexpressed mental preference. Claiming that would convert missing
-information into a silent decision.
+No SCM can guarantee an unexpressed mental preference; claiming so converts missing information
+into a silent decision.
 
 ### Evidence profile — a product, not a ladder
 
-The evidence dimensions are orthogonal. A fresh independent behavioral probe with lossy operation
-recovery is neither globally above nor below an exact structural parse with no behavioral
-evidence. An admission policy sets minimum requirements **per axis**:
+The evidence dimensions are orthogonal: a fresh independent behavioral probe with lossy operation
+recovery is neither globally above nor below an exact structural parse with no behavioral evidence.
+An admission policy sets minimum requirements **per axis**:
 
 | profile axis | honest states / question |
 |---|---|
@@ -758,17 +746,17 @@ evidence. An admission policy sets minimum requirements **per axis**:
 | probe independence | could collecting the evidence establish the state it claims to observe? |
 | normative input | only authenticated authored transformations, contracts, dependencies, and explicit answers |
 
-`DecodeFidelity = Lossless` can establish exact endpoint decoding for its construct set. It cannot
-reconstruct an authored operation that was never retained. Likewise a passing typecheck cannot
-stand in for behavioral or authorization evidence. Each receipt carries the profile and policy
+`DecodeFidelity = Lossless` establishes exact endpoint decoding for its construct set; it cannot
+reconstruct an authored operation that was never retained. Likewise a passing typecheck cannot stand
+in for behavioral or authorization evidence. Each receipt carries the profile and policy
 requirements; a UI may summarize it, but no dimension masquerades as another.
 
 ### Comparison evidence, not design authority
 
 Git's documented default merge strategy combines non-overlapping textual changes and exposes
-content conflicts when it cannot. Rename/copy pairing is a similarity calculation. A clean result
-therefore means the configured merge machinery found no conflict; it is not a language-semantic
-proof ([Git merge](https://git-scm.com/docs/git-merge),
+content conflicts when it cannot; rename/copy pairing is a similarity calculation. A clean result
+means the configured merge machinery found no conflict, not a language-semantic proof
+([Git merge](https://git-scm.com/docs/git-merge),
 [diffcore rename detection](https://git-scm.com/docs/gitdiffcore#_diffcore_rename_for_detecting_renames_and_copies)).
 
 The empirical baseline reinforces the safety constraint:
@@ -776,16 +764,15 @@ The empirical baseline reinforces the safety constraint:
 - The ASE 2024
   [evaluation of version-control merge tools](https://doi.org/10.1145/3691620.3695075) reports,
   over its corpus, Git `ort` at 2,748 correct / 3,078 unhandled / 157 incorrect scenarios; roughly
-  5.4% of Git's handled outputs in that experiment were incorrect. Its structural Java baseline
-  handled more cases but also produced more incorrect results—evidence that “fewer conflicts”
-  alone is the wrong objective.
+  5.4% of Git's handled outputs were incorrect. Its structural Java baseline handled more cases but
+  produced more incorrect results—evidence that “fewer conflicts” alone is the wrong objective.
 - The 2026 preprint
-  [On Correctness of Software Merge](https://arxiv.org/abs/2607.07987) gives a useful structural
-  floor—parsability plus universal edit preservation—and checks it over 43,774 Java file
-  scenarios. Its guarantee is deliberately syntactic/structural and depends on AST differencing;
-  it does not establish behavioral or normative intent.
+  [On Correctness of Software Merge](https://arxiv.org/abs/2607.07987) gives a structural
+  floor—parsability plus universal edit preservation—checked over 43,774 Java file scenarios. Its
+  guarantee is deliberately syntactic/structural and depends on AST differencing; it does not
+  establish behavioral or normative intent.
 
-These baselines belong in the discriminating corpus. They do not define daglang's model.
+These baselines belong in the discriminating corpus; they do not define daglang's model.
 
 ## 8. Existing concept DFS — reuse, do not fork
 
@@ -814,17 +801,17 @@ The first modeling pass must try to compose these authorities:
 | `extdeps.git` + `extdeps.git.object_store` | cited Git operation, object, tree, commit, ref, and diff interface shapes | external compatibility authority; Git transport/policy and source integration stay separate |
 | GitLab/Atlassian/Microsoft SEC, pricing, and `gunbc.econ.scm_*` carriers | grounded distribution/serving/agentic-stress economics | price the product and store; they do not imply integration semantics |
 
-There is no Mercurial or Pijul extdeps authority in-tree today. That absence is a substrate gap, not
-permission to infer their shapes from Git or to call a Git-shaped interface generic.
+No Mercurial or Pijul extdeps authority exists in-tree today. That is a substrate gap, not
+permission to infer their shapes from Git or call a Git-shaped interface generic.
 
-The existing keyed diff remains useful beneath the new model. Its meaning changes from “the merge
-algorithm” to “one observation/capture engine.” In particular, the storage-binding plan's current
-same-key refusal is the safe adapter available **before** semantic integration lands; it is not a
-proof that same-key proposals are contradictory.
+The existing keyed diff stays useful beneath the new model, re-read as “one observation/capture
+engine” rather than “the merge algorithm.” The storage-binding plan's current same-key refusal is
+the safe adapter available **before** semantic integration lands, not proof that same-key proposals
+are contradictory.
 
-The same anti-fork rule applies to “deduction.” The first implementation must determine how the
+The same anti-fork rule applies to “deduction”: the first implementation must determine how the
 existing finite-candidate, structural-constraint, Pareto, closure, and diagnostic authorities
-compose. It must not land a generic `ScmSolver`, `ReconciliationConstraint`, or interaction-rule
+compose, and must not land a generic `ScmSolver`, `ReconciliationConstraint`, or interaction-rule
 registry beside them merely because the SCM is the first demanding consumer.
 
 ### Objective external concepts for P−1/P0 DFS
@@ -849,9 +836,9 @@ These are comparison authorities, not instructions to implement eleven subsystem
 
 ### SCM plurality stress — three upstream models before one shared shape
 
-The product wedge remains Git-first because that minimizes adoption cost. The technical boundary is
-SCM-plural because adoption order is not design authority. Three upstreams are modeled before a
-common compatibility carrier is allowed to land:
+The product wedge is Git-first to minimize adoption cost; the technical boundary is SCM-plural
+because adoption order is not design authority. Three upstreams are modeled before a common
+compatibility carrier may land:
 
 | upstream realization | upstream shapes that must remain distinct | design pressure |
 |---|---|---|
@@ -860,12 +847,12 @@ common compatibility carrier is allowed to land:
 | [Pijul](https://pijul.org/manual/getting_started.html) | working copy, recorded changes, dependency/context graph, pristine state, tree, conflicts retained in the graph, and [channels as sets of changes](https://pijul.org/manual/workflows/channels) | prevents `change = snapshot commit` and `target = pointer to one commit`; stresses first-class change identity, dependencies, commutation, and set-valued channel state |
 
 These are design falsifiers, not a promise that all three are product-grade on day one. Their
-upstream models land independently in `extdeps/`, with real names, citations, version/format
-boundaries, and no common interface. Only after all three exist may DFS extract proven coincidence.
+upstream models land independently in `extdeps/` with real names, citations, version/format
+boundaries, and no common interface; only after all three exist may DFS extract proven coincidence.
 The core must not gain `ScmKind = Git | Mercurial | Pijul`, switch on vendor identity, or import an
 upstream's branch/ref/channel vocabulary. Dispatch belongs in peripheral realization bindings
-(DESIGN §3), so adding a fourth SCM is a new extdeps model plus bound handlers and witnesses—not a
-kernel edit or a new coproduct arm.
+(DESIGN §3), so a fourth SCM is a new extdeps model plus bound handlers and witnesses—not a kernel
+edit or a new coproduct arm.
 
 The shared compatibility boundary is expected to need these **roles**, pending that DFS:
 
@@ -885,22 +872,22 @@ The shared compatibility boundary is expected to need these **roles**, pending t
   opaque-content, partial-availability, and identity facts.
 
 Not every SCM must provide every role. Missing exact-parent or round-trip fidelity is a typed
-capability refusal for that target policy, not a fake implementation built from fetch timing,
-local locks, or “most recent” state. The semantic kernel consumes native proposals, accepted
-states, claims, and receipts; it never consumes a Git commit, Mercurial changeset, or Pijul change
-as though that upstream object were the semantic contract.
+capability refusal for that target policy, not a fake implementation built from fetch timing, local
+locks, or “most recent” state. The semantic kernel consumes native proposals, accepted states,
+claims, and receipts; never a Git commit, Mercurial changeset, or Pijul change as the semantic
+contract.
 
 The R1 advance carrier is deliberately only `Modeled | Unavailable`, because none of the three R0
 models executes and independently reads back a target advance. Executed advance and repair
-capabilities may be introduced only by the later realization that actually produces those receipts.
+capabilities are introduced only by the later realization that actually produces those receipts.
 
-The landed C0 interaction carrier (`gunbc.native_scm_interaction_contract`) remains deliberately
-only a presentation fixture. R1 dissolves its former optional `git` slot and Git-named scenario
-surface into realization-indexed receipts plus realization-neutral projection/import journeys.
+The landed C0 interaction carrier (`gunbc.native_scm_interaction_contract`) remains only a
+presentation fixture. R1 dissolves its former optional `git` slot and Git-named scenario surface
+into realization-indexed receipts plus realization-neutral projection/import journeys.
 `gunbc.scm_compatibility_shape` owns the extracted presentation/capability roles; the Git,
-Mercurial, and Pijul handlers retain their native receipts beside it. Neither carrier may be
-consumed as a semantic/admission or Applied receipt, and C0's dead-simple primary outcome behavior
-remains unchanged.
+Mercurial, and Pijul handlers keep their native receipts beside it. Neither carrier may be consumed
+as a semantic/admission or Applied receipt, and C0's dead-simple primary outcome behavior is
+unchanged.
 
 ## 9. Admission and CI — linear history without serial work
 
@@ -934,41 +921,41 @@ The native fast path:
     `Projected | ProjectionPending | ProjectionFailed`; it does not replay or roll back the
     semantic transition.
 
-Linear accepted history does not imply serial validation. Compatible proposals and their affected
-claims can evaluate in parallel; the acceptance log serializes receipts only after their
+Linear accepted history does not imply serial validation: compatible proposals and their affected
+claims evaluate in parallel; the acceptance log serializes receipts only once their
 commuting-square and current-parent conditions are established.
 
-The frontier solves a finite coordination question without pretending to know the future. A
-proposal not yet observed cannot block progress. But if two known proposals are order-dependent,
-automatically accepting whichever the scheduler happened to visit first would itself be a
-normative choice. Once an authorized acceptance advances `T`, its receipt—not its timestamp—makes
-the result the authoritative prior for later proposals.
+The frontier solves a finite coordination question without pretending to know the future. An
+unobserved proposal cannot block progress; but if two known proposals are order-dependent,
+accepting whichever the scheduler visited first would itself be a normative choice. Once an
+authorized acceptance advances `T`, its receipt—not its timestamp—makes the result the
+authoritative prior for later proposals.
 
-This is the direct answer to green-then-main-advanced CI waste. A receipt should be keyed by the
-actual modeled inputs of the claim, including any closedness evidence, not by “the whole branch is
-still at this SHA.” If the target advances outside those inputs, the green receipt remains
-grounded. If it advances inside them, the system revalidates the affected claim before acceptance.
-A blanket rerun is an `Unknown`/modeling deficit, not a silent “fail-closed” success.
+This directly answers green-then-main-advanced CI waste. A receipt is keyed by the claim's actual
+modeled inputs, including closedness evidence, not by “the whole branch is still at this SHA.” If
+the target advances outside those inputs the green receipt stays grounded; inside them, the system
+revalidates the affected claim before acceptance. A blanket rerun is an `Unknown`/modeling deficit,
+not a silent “fail-closed” success.
 
 The Git-ref compare-and-swap is the first minimal **transition realization**, not the transition
 interface and not a claim that Git trees become the program authority.
-[`git update-ref`](https://git-scm.com/docs/git-update-ref) supplies the exact-old-object check
-needed by the initial target policy. Other SCMs must ground their guarantee independently or expose
-the capability as unavailable. When a later native target becomes authoritative and external SCMs
-are asynchronous projections, an idempotent outbox binds the committed native transition to each
+[`git update-ref`](https://git-scm.com/docs/git-update-ref) supplies the exact-old-object check the
+initial target policy needs; other SCMs must ground their guarantee independently or expose the
+capability as unavailable. When a later native target becomes authoritative and external SCMs are
+asynchronous projections, an idempotent outbox binds the committed native transition to each
 declared projection and repairs `ProjectionPending`/`ProjectionFailed` without reapplying the
 semantic change.
 
 Every transition receipt binds at least target + generation, parent/result state hashes, proposal
 occurrence-set hash, admission-contract hash, model/schema + inference-rule versions, equivalence
 definition + bound, evidence set + freshness, and affected-set derivation version. The generation
-and policy/evidence hashes prevent an ABA-shaped acceptance in which the visible state hash returns
-to an old value while the authority under which it was validated has changed.
+and policy/evidence hashes prevent an ABA-shaped acceptance where the visible state hash returns to
+an old value while the validating authority has changed.
 
 ## 10. Compatibility realizations are plural; Git is first, not authority
 
-Compatibility is non-negotiable for adoption, but it is downstream. Product priority and design
-coverage are intentionally different:
+Compatibility is non-negotiable for adoption but downstream. Product priority and design coverage
+intentionally differ:
 
 - Git is the first product-grade realization because current gunbc work, forges, CI, and likely
   design partners already use it.
@@ -981,12 +968,12 @@ coverage are intentionally different:
 ### Git export
 
 - Each accepted native transition can emit an ordinary one-parent/squash Git commit and source
-  tree. A team using squash-to-main sees the history shape it already expects.
-- The streamlined submit path treats a branch/PR as a proposal inbox, not a peer authority. Users
-  do not need to merge or rebase it onto the target; the admission service transports and
-  re-evaluates the proposal against the current accepted target.
-- Native proposal/evidence receipts may travel as optional metadata; a normal Git client can ignore
-  them and still clone/build the projected tree.
+  tree; a squash-to-main team sees the history shape it expects.
+- Submit treats a branch/PR as a proposal inbox, not a peer authority. Users need not merge or
+  rebase it onto the target; the admission service transports and re-evaluates the proposal
+  against the current accepted target.
+- Native proposal/evidence receipts may travel as optional metadata a normal Git client can ignore
+  while still cloning/building the projected tree.
 - Files, paths, formatting, opaque blobs, and derived artifacts follow the storage-binding and
   materialization policies; they are not smuggled into the semantic model.
 
@@ -1004,15 +991,15 @@ NativeAuthoredOperation
 ```
 
 Those labels are illustrative roles pending DFS. `NativeAuthoredOperation` is possible only when
-the operation or equivalent authenticated metadata survived. A lossless endpoint decode can prove
+the operation or equivalent authenticated metadata survived. A lossless endpoint decode proves
 `ExactEndpointDelta`; it cannot recover the operation that produced the endpoint. Rename
-similarity, matching content, and three-way ancestry are claim-indexed evidence. They never become
-invented identity. A textual merge driver may remain as a compatibility fallback, but its clean
-result carries only textual evidence and cannot claim the native safety profile.
+similarity, matching content, and three-way ancestry are claim-indexed evidence, never invented
+identity. A textual merge driver may remain as a compatibility fallback, but its clean result
+carries only textual evidence and cannot claim the native safety profile.
 
-The current `extdeps.git.object_store` is intentionally not treated as complete: `TreeEntry` omits
-Git modes, and `StoreObject` omits tag objects even though `extdeps.git.ObjectType` has `TagObj`.
-P4's import/export DFS must cover:
+`extdeps.git.object_store` is intentionally not treated as complete: `TreeEntry` omits Git modes,
+and `StoreObject` omits tag objects though `extdeps.git.ObjectType` has `TagObj`. P4's
+import/export DFS must cover:
 
 - tree-entry mode/type, including regular vs executable blobs, symlink blobs, subtrees, and
   gitlinks/submodules;
@@ -1029,13 +1016,13 @@ Git's own [object model](https://git-scm.com/docs/user-manual),
 [`gitattributes`](https://git-scm.com/docs/gitattributes), [partial-clone
 contract](https://git-scm.com/docs/partial-clone), and [hash-format
 transition](https://git-scm.com/docs/hash-function-transition) are the external boundary. Ordinary
-clone/build compatibility is not established until these fidelity axes round-trip or refuse
+clone/build compatibility is established only once these fidelity axes round-trip or refuse
 honestly.
 
 ### Mercurial stress boundary
 
-Mercurial modeling must preserve its own distinctions rather than translate them into Git names:
-portable changeset identity versus clone-local revision number; file revisions and manifests;
+Mercurial modeling preserves its own distinctions rather than translating them into Git names:
+portable changeset identity vs clone-local revision number; file revisions and manifests;
 executable/symlink/copy facts; changeset parents and heads; named branches, movable bookmarks, and
 tags; public/draft/secret phase monotonicity and publishing-server behavior; subrepositories;
 repository-format requirements and unavailable data; and experimental obsolescence markers as
@@ -1044,36 +1031,35 @@ phase is not reduced to a visibility Boolean, and an obsolescence successor is n
 a rebase.
 
 The first Mercurial fixture is read-only state/change capture plus round-trip projection over a
-bounded repository. Managed target advance remains capability-unavailable until the upstream model
-and an executing transport witness establish the exact concurrency/transaction guarantee required
-by the target policy.
+bounded repository. Managed target advance stays capability-unavailable until the upstream model
+and an executing transport witness establish the exact concurrency/transaction guarantee the target
+policy requires.
 
 ### Pijul stress boundary
 
-Pijul modeling must preserve change identity and dependency/context facts, the recorded
+Pijul modeling preserves change identity and dependency/context facts, the recorded
 change/pristine/tree/working-copy split, graph conflict facts, channel state as a set of changes,
 channel-independent change identity, version/state identity, partial-path/change availability, and
 the difference between applying a change and projecting a working copy. A change is not renamed to
-a commit and a channel is not forced into one-head semantics merely to inhabit a Git-derived
-adapter.
+a commit, nor a channel forced into one-head semantics to inhabit a Git-derived adapter.
 
 The first Pijul fixture imports and exports a bounded change/dependency/channel state and proves
-that reordering independent change delivery does not change the native semantic receipt. This is
-not permission to inherit Pijul's textual conflict semantics as Daglang semantic safety. Managed
-target advance remains capability-unavailable until its upstream operation and read-back contract
-meet the declared target policy.
+that reordering independent change delivery does not change the native semantic receipt. This does
+not license inheriting Pijul's textual conflict semantics as Daglang semantic safety. Managed target
+advance stays capability-unavailable until its upstream operation and read-back contract meet the
+declared target policy.
 
 ### Cross-realization law
 
 For one accepted native state and one declared surface fragment, changing only the compatibility
 realization may change upstream bytes, history topology, publication metadata, and fidelity
-receipts. It must not change the native semantic result, admission decision, or user question.
-Removing an upstream capability may turn projection or target admission into a typed refusal; it
-may not select a different semantic result. Adding a fourth SCM must require no edit to the proof
-kernel or primary interaction carrier.
+receipts, never the native semantic result, admission decision, or user question. Removing an
+upstream capability may turn projection or target admission into a typed refusal, not select a
+different semantic result. A fourth SCM must require no edit to the proof kernel or primary
+interaction carrier.
 
 The first product can therefore be a Git-compatible semantic admission tool rather than a new
-hosted object store. It proves the integration advantage while keeping clone, editor, CI, and forge
+hosted object store, proving the integration advantage while keeping clone, editor, CI, and forge
 workflows intact. A native store is justified only after the semantic consumer displaces measured
 cost.
 
@@ -1081,58 +1067,57 @@ cost.
 
 The [visibility-grants authority](node-subtree-visibility-grants.md) §11 owns the publication
 capability profile, ciphertext/interface cut, admission/refusal rules, hole residues, placement
-limits, residual-channel threat model, and conditional crypto-erase semantics. This plan neither
+limits, residual-channel threat model, and conditional crypto-erase semantics; this plan neither
 abbreviates nor redefines them.
 
-The only integration consequences carried here are:
+The only integration consequences carried here:
 
 - the signed order remains: implement `Reference`/`Publish` first over today's two Git storage
   roots; and
 - the same grant interface later constrains native history, storage, projection, and remote
   execution without becoming an integration/conflict predicate.
 
-No proposal or successful transition can widen a publication grant merely because its program is
+No proposal or successful transition can widen a publication grant because its program is
 structurally or behaviorally valid, and no secrecy/publication claim can be inferred from semantic
-compatibility. Grant/policy changes require separate authority and the parent-policy transition
-rule in §4. The concerns compose through explicit grants and realization bindings only.
+compatibility. Grant/policy changes require separate authority and the §4 parent-policy transition
+rule. The concerns compose only through explicit grants and realization bindings.
 
-Diagnostics are themselves publication projections. A full internal proof may mention a locked
-node, counterexample, affected closure, or alternate result that an audience is not authorized to
-know exists. The default response must therefore be an audience-authorized projection—possibly a
-redaction or commitment to hidden evidence—with no error, timing, size, or alternative-count
-distinction that bypasses the visibility model. The same
+Diagnostics are publication projections. A full internal proof may mention a locked node,
+counterexample, affected closure, or alternate result an audience is not authorized to know exists,
+so the default response is an audience-authorized projection—possibly a redaction or commitment to
+hidden evidence—with no error, timing, size, or alternative-count distinction bypassing the
+visibility model. The same
 [information-flow/declassification](https://doi.org/10.3233/JCS-2009-0352) rule governs remote
-execution: metering prices an oracle; it does not prove that outputs, failures, effects, timing, or
+execution: metering prices an oracle; it does not prove outputs, failures, effects, timing, or
 resource use reveal only what policy authorizes.
 
-Vertical integration can bring the product closer to real compiler/use-case failures. It must not
-turn “visibility into customer code” into an undeclared surveillance business model. Raw source
-stays governed by `Publish`/effect grants; telemetry is derived, consented, and minimal—evidence
-profile, layered outcome summary, cost, and anonymized mechanism gap where possible. Trust is part
-of the safety product, not a growth shortcut.
+Vertical integration brings the product closer to real compiler/use-case failures; it must not turn
+“visibility into customer code” into an undeclared surveillance business model. Raw source stays
+governed by `Publish`/effect grants; telemetry is derived, consented, and minimal—evidence profile,
+layered outcome summary, cost, and anonymized mechanism gap where possible. Trust is part of the
+safety product, not a growth shortcut.
 
 ## 12. Product thesis and falsification
 
-The idea is interesting because agent concurrency changes the economics of source control. A
-30-minute validation path and many simultaneous proposals make integration quality a direct,
-compounding compute/latency/token cost. Daglang has unusually rich evidence available because the
-program, claims, compiler, affected set, and execution model can share one substrate.
+Agent concurrency changes the economics of source control: a 30-minute validation path and many
+simultaneous proposals make integration quality a direct, compounding compute/latency/token cost.
+Daglang has unusually rich evidence because the program, claims, compiler, affected set, and
+execution model share one substrate.
 
-The product advantage is therefore not “the language knows what the user meant.” It is:
+The product advantage is not “the language knows what the user meant.” It is:
 
 > **The user makes changes and states preferences. The system owns integration. It lands every
 > safely determined result and interrupts the user only for an irreducible choice about what they
 > want; when a terminal refusal makes landing impossible, it says so plainly without fabricating a
 > choice.**
 
-The user-facing operation stays the §0 loop: edit, submit, then receive **Landed** or one localized
+The user-facing operation stays the §0 loop: edit, submit, then **Landed** or one localized
 plain-language **Choice required** question with concrete previews and a stored continuation. The
-system retries stale targets and seeks missing mechanical evidence itself. If every permitted
+system retries stale targets and seeks missing mechanical evidence itself; once every permitted
 machine-owned continuation is exhausted, **Could not land** reports the plain domain reason and
 confirms no transition committed. Internal `BothConflicted`, `Unclosed`, policy, transition, and
 projection states remain inspectable receipts, never default error prose. The model can deepen for
-decades without changing that public operation or growing a catalog of language-feature
-interactions.
+decades without changing that public operation or growing a catalog of feature interactions.
 
 The initial wedge is narrow and credible:
 
@@ -1143,10 +1128,10 @@ The initial wedge is narrow and credible:
   falsified against Mercurial and Pijul upstream models; and
 - a dashboard showing judgment and validation work actually displaced.
 
-The GitLab corpus supports the “cheap to serve” premise, not “distribution is free.” GitLab's
-serving cost is a minority of revenue while selling and R&D dominate. Word of mouth is plausible
-only if the product makes savings obvious in the existing workflow. Compatibility and receipts are
-therefore part of the product, not marketing afterthoughts.
+The GitLab corpus supports “cheap to serve,” not “distribution is free”: GitLab's serving cost is
+a minority of revenue while selling and R&D dominate. Word of mouth is plausible only if savings
+are obvious in the existing workflow, so compatibility and receipts are part of the product, not
+marketing afterthoughts.
 
 Track at least:
 
@@ -1164,7 +1149,7 @@ Track at least:
 - compatibility-import fidelity distribution and round-trip fidelity by bound realization; and
 - storage operations/bytes/egress under the landed packing and provider models.
 
-The “unsafe automatic integration” target is not hand-waved as absolute. Every claim is scoped to
+The “unsafe automatic integration” target is not hand-waved as absolute: every claim is scoped to
 the declared model, fidelity, and bound, and the falsifier corpus must actively search for escaped
 wrong results.
 
@@ -1204,73 +1189,70 @@ projection:
 | a fourth SCM model/handler is added | no proof-kernel or primary-outcome edit | the same edit → submit → outcome contract |
 
 Every committed/Applied case needs a perturbation that breaks one obligation or certificate and
-turns the appropriate semantic/admission/transition layer red. Every refusal needs a nearby
-compatible control, so “always refuse” cannot satisfy the suite. The timestamp case permutes and
-erases incidental time metadata. The model-extension case adds its invariant as data through an
-authorized earlier transition while holding the kernel fixed. The presentation witnesses reject
-internal type/logic/proof vocabulary on the default surface and reject more than one simultaneous
-normative question.
+reddens the appropriate semantic/admission/transition layer. Every refusal needs a nearby compatible
+control, so “always refuse” cannot satisfy the suite. The timestamp case permutes and erases
+incidental time metadata. The model-extension case adds its invariant as data through an authorized
+earlier transition with the kernel fixed. The presentation witnesses reject internal
+type/logic/proof vocabulary on the default surface and more than one simultaneous normative
+question.
 
-Git's default merge, the current keyed-diff adapter, and at least one structural merge baseline
-should run on the same corpus. Mercurial and Pijul fixtures additionally exercise the compatibility
-boundary, not their merge engines as semantic oracles. The comparison is evidence, not the design
-authority.
+Git's default merge, the current keyed-diff adapter, and at least one structural merge baseline run
+on the same corpus. Mercurial and Pijul fixtures additionally exercise the compatibility boundary,
+not their merge engines as semantic oracles. The comparison is evidence, not design authority.
 
 ## 14. Sequencing and acceptance
 
-The previously signed visibility sequence stays intact. Integration work starts model-first and
-does not wait for a native store:
+The signed visibility sequence stays intact. Integration work starts model-first and does not wait
+for a native store:
 
 1. **Visibility Stage 0 (already first):** `Publish`/`Reference` model, public/private Git roots,
    file-grain declarations, push guard, and existing-public-corpus stamp.
 2. **R0 — three independent upstream-model PRs:** complete the Git extdeps boundary, then model
    Mercurial and Pijul from their own primary authorities. Each PR keeps its upstream's real
    object/change, target, identity, history, publication, path, format, and availability
-   distinctions and deliberately declares no shared SCM interface.
+   distinctions and declares no shared SCM interface.
    **Accept T1 per upstream:** a bounded fixture decodes, projects, and independently reads back its
-   declared fragment; a nearby RED proves that one upstream-specific distinction cannot be
-   represented as the tempting Git analogue. For Git this includes modes, symlinks, gitlinks, tags,
-   paths, object format, and exact-old-OID ref advance. For Mercurial it includes portable changeset
-   identity versus clone-local revision, manifests/file revisions, bookmarks/branches, phases, and
-   optional evolution metadata. For Pijul it includes change dependency/context, pristine/tree
-   state, conflict facts, and channels as sets of channel-independent changes. Write capability may
-   remain honestly unavailable.
+   declared fragment; a nearby RED proves one upstream-specific distinction cannot be represented
+   as the tempting Git analogue. Git: modes, symlinks, gitlinks, tags, paths, object format,
+   exact-old-OID ref advance. Mercurial: portable changeset identity vs clone-local revision,
+   manifests/file revisions, bookmarks/branches, phases, optional evolution metadata. Pijul: change
+   dependency/context, pristine/tree state, conflict facts, channels as sets of channel-independent
+   changes. Write capability may remain honestly unavailable.
 3. **P−1 — shared claim-indexed evidence carrier, separate PR:** after DFS, model recorded facts,
    scoped claims, support/challenge evidence links, maximum conclusions, assessments, and readiness
    policy once for Codex provider readiness, `os_install_deduction`, and SCM.
    **Accept T1:** login-status/live-request and self-establishing-probe scenarios preserve
-   credential-vs-provider and support/challenge/neither distinctions; the three consumers use the
-   same carrier rather than local enums.
-4. **R1 — extract the compatibility realization shape:** only after all three R0 models land, run
-   DFS over their executing fixtures and extract the smallest role interface actually shared. Keep
-   upstream dispatch peripheral; capability support is data/receipts, never a central vendor enum
-   or switch.
+   credential-vs-provider and support/challenge/neither distinctions; the three consumers share the
+   carrier rather than local enums.
+4. **R1 — extract the compatibility realization shape:** only after all three R0 models land, DFS
+   their executing fixtures and extract the smallest role interface actually shared. Upstream
+   dispatch stays peripheral; capability support is data/receipts, never a central vendor enum or
+   switch.
    **Accept T1/T2:** one fixed accepted-state/proposal fixture exercises all three and preserves
    C0-owned proposal identity, transition, and primary outcome while projection/fidelity receipts
-   remain realization specific; R1 does not invent the later semantic/admission receipt. Removing a
+   stay realization specific; R1 does not invent the later semantic/admission receipt. Removing a
    required conditional-advance capability refuses that target policy; a synthetic fourth adapter
    requires no primary-interaction edit. This slice replaces C0's optional `git` fixture slot and
    Git-named presentation cases with realization-indexed projection receipts without changing
    primary behavior. It does not predeclare an executed-advance or repair-capability state; those
    wait for an executing realization.
-   R0 and P−1 may proceed in parallel because neither is allowed to infer the other. R1 waits for
-   all three R0 models; the proof kernel waits for P−1.
+   R0 and P−1 may proceed in parallel since neither may infer the other. R1 waits for all three R0
+   models; the proof kernel waits for P−1.
    **Status 2026-08-01:** the three R0 receipts, P−1 receipt, R1 receipt, and P0 receipt are accepted
    in `roadmap_authority.dag`. P0's `gunbc.source_integration_landing_spine` consumes the accepted
-   evidence and compatibility shapes but deliberately does not claim the P1 proof kernel or P3
-   write transport. The operator-authored P1 roadmap node is now the one active SCM slice; it stays
-   fail-closed at `ExecutionContractUnspecified` until its first modeled carrier supplies a
-   discriminating acceptance witness. P2 and P3 remain parked.
+   evidence and compatibility shapes but does not claim the P1 proof kernel or P3 write transport.
+   The operator-authored P1 roadmap node is the one active SCM slice; it stays fail-closed at
+   `ExecutionContractUnspecified` until its first modeled carrier supplies a discriminating
+   acceptance witness. P2 and P3 remain parked.
 5. **P0 — user contract, cost, and layered scenario model:** carry the §0
    `Landed | ChoiceRequired | CouldNotLand` surface, stress profile, proposal contract roles,
-   evidence profiles, semantic
-   zero/one/many/unclosed space, admission, transition, projection, closure certificates,
-   timestamp non-authority, and scenario corpus as `.dag` facts/witnesses.
+   evidence profiles, semantic zero/one/many/unclosed space, admission, transition, projection,
+   closure certificates, timestamp non-authority, and scenario corpus as `.dag` facts/witnesses.
    The landed C0 carrier from PR #7334 supplies twelve presentation-journey witnesses, not the
    semantic kernel or evidence relation. R1 replaces its optional Git projection with
-   realization-indexed projection receipts while preserving the C0-owned identity, transition,
-   and primary outcome; that projection list remains presentation/compatibility state, not an
-   admission or Applied receipt.
+   realization-indexed projection receipts while preserving the C0-owned identity, transition, and
+   primary outcome; that projection list stays presentation/compatibility state, not an admission
+   or Applied receipt.
    **Accept T1:** every scenario produces its internal receipt and three-arm primary outcome, with
    only `Landed | ChoiceRequired` as semantic handoffs; nearby REDs prevent always-apply/refuse;
    removing a closure certificate changes `ClosedOne` to `Unclosed`; self-amendment,
@@ -1293,9 +1275,9 @@ does not wait for a native store:
    source-only information retention/declared canonicalization, and unsupported/ambiguous refusal
    all execute without mutation on refusal.
 8. **P3 — target-scoped atomic admission + receipt reuse:** consume the R1 bound
-   target-transition capability rather than an SCM name. The first writable realization uses Git
+   target-transition capability, not an SCM name. The first writable realization uses Git
    `update-ref <ref> <new> <old>`; pending proposals re-evaluate against the accepted target, and
-   affected receipts survive unrelated advances. Mercurial and Pijul fixtures remain read-only or
+   affected receipts survive unrelated advances. Mercurial and Pijul fixtures stay read-only or
    capability-refused until their own executing transports ground the target policy's required
    guarantee.
    **Accept T2/T3:** two concurrent proposals accept without full CI replay; changed
@@ -1319,10 +1301,10 @@ does not wait for a native store:
    semantic node by default.
 
 The publication capability profile may advance independently after visibility Stage 0; it is not a
-semantic-integration prerequisite. R0 is upstream grounding and P−1 is shared deduction substrate;
-they may run concurrently, neither imports the other, and both precede the downstream consumer that
-needs them. No phase is complete at T0 algebra alone: each names an executing consumer and a
-discriminating red.
+semantic-integration prerequisite. R0 (upstream grounding) and P−1 (shared deduction substrate) may
+run concurrently, neither imports the other, and both precede the downstream consumer needing them.
+No phase is complete at T0 algebra alone: each names an executing consumer and a discriminating
+red.
 
 ## 15. Non-goals
 

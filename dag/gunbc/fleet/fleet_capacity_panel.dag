@@ -23,7 +23,8 @@ import gunbc.fleet_capacity_control {
 // a display copy. That is the whole difference between a control and a cockpit: a panel with its
 // own roster drifts from the thing it claims to steer, and the drift is invisible because both
 // sides look internally consistent.
-data fleet_capacity_panel_note: String = "Daily-workspace panel over declared fleet capacity. Reads gunbc.fleet_capacity_control directly so the panel and the dispatch gate cannot disagree."
+// Daily-workspace panel over declared fleet capacity. Reads gunbc.fleet_capacity_control directly
+// so the panel and the dispatch gate cannot disagree.
 
 // EVERY NUMBER HERE IS DECLARED, NOT OBSERVED, AND THE PANEL SAYS SO IN THE RENDERED OUTPUT.
 //
@@ -34,7 +35,9 @@ data fleet_capacity_panel_note: String = "Daily-workspace panel over declared fl
 // fleet is running 22, and a capacity decision made on that number would be wrong on the only axis
 // the panel exists to inform. Labelling the column "committed" costs one word and removes the
 // class of error entirely.
-data fleet_capacity_panel_declared_note: String = "Widths are committed allocations, not observed incarnations. srv3/srv4 commit 6 while running 5 (runner_slot_allocation gunbc_runner_slot_width_ruling_note): the model leads the fleet on that axis."
+// Widths are committed allocations, not observed incarnations. srv3/srv4 commit 6 while running 5
+// (runner_slot_allocation gunbc_runner_slot_width_ruling_note): the model leads the fleet on that
+// axis.
 
 // THE PANEL NAMES WHICH AXIS BOUND EACH HOST, BECAUSE THE TOTAL CANNOT SAY IT AND THE REMEDIES
 // DIFFER. A committed width is a minimum over axes, and the number that survives says nothing

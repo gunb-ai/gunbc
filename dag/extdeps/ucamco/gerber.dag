@@ -28,13 +28,24 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // VERIFIED LIVE 2026-08-11 by fetching the cited locator. Facts taken from the response, none
 // recalled: Ucamco publishes the specification; the format is described there as 'the de facto
-// standard for printed circuit board (PCB) design data transfer'; the newest revision named on
-// the page is Gerber X3, with Gerber X2 (also called 'Gerber version 2') beside it and Standard
-// Gerber declared OBSOLETE as of May 2014; the most recent specification update named in the
-// news section is 'Gerber Layer Format Specification, revision 2024.05'. The page states that
-// attributes carry meta-information about graphics objects and connections, and that the Gerber
-// job file transfers fabrication characteristics such as thickness and finish.
-data gerber_subject_note: String = "THE GERBER FORMAT, cited to Ucamco, its publisher. A CORRECTION THIS ROW EXISTS TO RECORD: the scoping proposal that motivated this module named Gerber X2 as the current revision. It is not — the fetched page names X3 as the newest, X2 beside it, and Standard Gerber obsolete since May 2014, so a compatibility projection that hardcoded 'X2' would have pinned the wrong revision of a live upstream on the strength of recollection. WHY THIS IS A SEPARATE SUBJECT FROM IPC-DPMX: Ucamco and the IPC-2581 Consortium are independently governed, so a single 'PCB output format' enum spanning both would fuse two upstreams into one nickname (DESIGN §3). THE LOAD-BEARING FACT FOR A MANUFACTURING HANDOFF is the carriage roster below, not the revision: layer imagery travels in the layer format, fabrication characteristics travel in a SEPARATE job file, and connectivity/BOM/placement do not travel in the image files at all. That asymmetry is precisely why 'we emitted Gerbers' is not 'we described the board' — the semantics that did not survive are the ones a fabricator then reconstructs by hand or guesses."
+// standard for printed circuit board (PCB) design data transfer'; the newest revision named on the
+// page is Gerber X3, with Gerber X2 (also called 'Gerber version 2') beside it and Standard Gerber
+// declared OBSOLETE as of May 2014; the most recent specification update named in the news section
+// is 'Gerber Layer Format Specification, revision 2024.05'. The page states that attributes carry
+// meta-information about graphics objects and connections, and that the Gerber job file transfers
+// fabrication characteristics such as thickness and finish.
+// THE GERBER FORMAT, cited to Ucamco, its publisher. A CORRECTION THIS ROW EXISTS TO RECORD: the
+// scoping proposal that motivated this module named Gerber X2 as the current revision. It is not —
+// the fetched page names X3 newest, X2 beside it, and Standard Gerber obsolete since May 2014, so a
+// compatibility projection hardcoding 'X2' would have pinned the wrong revision of a live upstream
+// on the strength of recollection. WHY THIS IS A SEPARATE SUBJECT FROM IPC-DPMX: Ucamco and the
+// IPC-2581 Consortium are independently governed, so a single 'PCB output format' enum spanning
+// both would fuse two upstreams into one nickname (DESIGN §3). THE LOAD-BEARING FACT FOR A
+// MANUFACTURING HANDOFF is the carriage roster below, not the revision: layer imagery travels in
+// the layer format, fabrication characteristics in a SEPARATE job file, and connectivity/BOM/
+// placement not in the image files at all. That asymmetry is why 'we emitted Gerbers' is not 'we
+// described the board' — the semantics that did not survive are the ones a fabricator then
+// reconstructs by hand or guesses.
 
 type GerberFormat
   = | GerberFormatTarget

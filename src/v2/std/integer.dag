@@ -29,7 +29,7 @@ import v2.std.machine {
   Word64,
   Word128
 }
-import v2.std.nat { Nat }
+import v2.std.nat { Nat, Zero, Succ, NatQuotient, nat_div_rem_by_succ }
 import v2.std.text { Char, CharAbsent, CharFound, String, string_head, string_tail }
 type Int = GroupCompletion<v2.std.nat.Nat>
 type UInt = v2.std.nat.Nat
@@ -1306,41 +1306,97 @@ fn integer_signed_i32_le_bytes_to_int(bytes: List<Byte>) -> Outcome<Int> {
   }
 }
 
-fn integer_nat_decimal_digit_char(digit: v2.std.nat.Nat) -> String {
-  if digit == 0 {
-    "0"
-  } else if digit == 1 {
-    "1"
-  } else if digit == 2 {
-    "2"
-  } else if digit == 3 {
-    "3"
-  } else if digit == 4 {
-    "4"
-  } else if digit == 5 {
-    "5"
-  } else if digit == 6 {
-    "6"
-  } else if digit == 7 {
-    "7"
-  } else if digit == 8 {
-    "8"
-  } else {
-    "9"
+// ONE GLYPH TABLE for the ten decimal digits, keyed on the DecimalDigit coproduct this module
+// already owns; both the Peano and the machine-integer renderings below reach it through their
+// own digit selection rather than each carrying a second copy of the ten glyphs.
+fn decimal_digit_glyph(d: DecimalDigit) -> String {
+  match d {
+    D0 => "0"
+    D1 => "1"
+    D2 => "2"
+    D3 => "3"
+    D4 => "4"
+    D5 => "5"
+    D6 => "6"
+    D7 => "7"
+    D8 => "8"
+    D9 => "9"
   }
 }
 
+// The Peano value of each decimal digit. Every arm is a kernel integer literal at a
+// v2.std.nat.Nat return boundary: the literal elaborates through the declared homomorphism
+// (gunbc.structural_realization_bindings literal_homomorphism_rows) to its Zero/Succ image --
+// this function is the return-position exemplar of std.literal_elaboration.
+fn decimal_digit_nat(d: DecimalDigit) -> v2.std.nat.Nat {
+  match d {
+    D0 => 0
+    D1 => 1
+    D2 => 2
+    D3 => 3
+    D4 => 4
+    D5 => 5
+    D6 => 6
+    D7 => 7
+    D8 => 8
+    D9 => 9
+  }
+}
+
+// A Peano digit (a Nat below ten) to its glyph: select the DecimalDigit whose Peano value equals
+// the digit by STRUCTURAL equality (std.operator_realization StructuralEquality on v2.std.nat.Nat),
+// then read the one glyph table. A digit outside the roster (ten or more) is not a decimal digit
+// and this function is not its authority: the caller obtains digits from nat_div_rem_by_succ by
+// ten, whose remainder is below ten by construction, so the fold's D0 seed is never the answer
+// for an in-domain input.
+fn integer_nat_decimal_digit_char(digit: v2.std.nat.Nat) -> String {
+  decimal_digit_glyph(d: fold_list(
+    xs: decimal_digit_roster,
+    empty: D0,
+    cons: fn(acc, d) { if decimal_digit_nat(d: d) == digit { d } else { acc } }
+  ))
+}
+
+// PEANO NAT TO DECIMAL TEXT over the DECLARED structural operations: division by ten is
+// nat_div_rem_by_succ with divisor predecessor nine (the divisor Succ { prev: 9 } is nonzero by
+// construction, so no zero-divisor arm exists to be handled), and the recursion descends on the
+// quotient. The literal 9 elaborates at the argument boundary (std.literal_elaboration). No host
+// operator is applied to a Nat here: the previous body spelled `value == 0`, `value < 10`,
+// `value / 10` and `value - (rest * 10)` on Rc<Nat>, which rustc refused (E0308 x10, E0369) and
+// which the operator realization authority now refuses at emission by typed diagnostic instead.
 fn integer_nat_to_decimal_string(value: v2.std.nat.Nat) -> String {
-  if value == 0 {
-    "0"
-  } else if value < 10 {
-    integer_nat_decimal_digit_char(digit: value)
+  let q = nat_div_rem_by_succ(a: value, divisor_prev: 9)
+  match q.quotient {
+    Zero => integer_nat_decimal_digit_char(digit: q.remainder)
+    Succ { prev: _ } =>
+      concat(
+        integer_nat_to_decimal_string(value: q.quotient),
+        integer_nat_decimal_digit_char(digit: q.remainder)
+      )
+  }
+}
+
+// MACHINE INTEGER TO DECIMAL TEXT. Int realizes as the host integer, so host division and
+// remainder are its declared operations (std.operator_realization HostOperator); the digit glyph
+// comes from the same one table. This is the formatter the two Int-valued callers that previously
+// passed an Int into the Nat renderer's parameter (v2.std.native_agreement octet_display,
+// v2.workflow.realization_sweep sweep_histogram_tsv) actually asked for -- the interpreter's
+// numeric grounding made that mismatch invisible there, and the emitted closure refused it
+// (E0308 Rc<Nat> vs integer).
+fn integer_int_to_decimal_string(value: Int) -> String {
+  if value < 0 {
+    concat("-", integer_int_magnitude_to_decimal_string(value: 0 - value))
   } else {
-    let rest = value / 10
-    let digit = value - (rest * 10)
-    concat(
-      integer_nat_to_decimal_string(value: rest),
-      integer_nat_decimal_digit_char(digit: digit)
-    )
+    integer_int_magnitude_to_decimal_string(value: value)
+  }
+}
+
+fn integer_int_magnitude_to_decimal_string(value: Int) -> String {
+  let rest = value / 10
+  let digit = decimal_digit_glyph(d: decimal_digit_of_units(value: value - (rest * 10)))
+  if rest == 0 {
+    digit
+  } else {
+    concat(integer_int_magnitude_to_decimal_string(value: rest), digit)
   }
 }

@@ -148,15 +148,15 @@ fn linux_proc_mount_unescape(field: String) -> String {
 }
 
 // THE ELIMINATION `first()` OWES. `first` answers `NonEmptyStr?` because a list may be empty, and
-// the six sites below reached the value with `as String`, which does NOT eliminate the absence -- it
-// re-types the wrapper, so a short row would have rendered `Present { value: /dev/sda }` (or the bare
-// word `Absent`) INTO the parsed mount row. The compiler now refuses that cast outright
-// (`OptionalCastNotEliminated`), and this is the elimination it demands. The Absent arm is the empty
-// string on purpose rather than a fresh refusal variant: every consumer of a field already refuses on
-// it -- source/target/mount_type through `LinuxProcMountEmptyRequiredField`, the two numeric fields
-// through `parse_int` returning Absent -- so absence routes into a refusal that already exists
-// instead of minting a second one beside it. It is unreachable in any case: the caller has already
-// refused a row whose field count is not six.
+// the six sites below reached the value with `as String`, which does NOT eliminate the absence --
+// it re-types the wrapper, so a short row would have rendered `Present { value: /dev/sda }` (or the
+// bare word `Absent`) INTO the parsed mount row. The compiler now refuses that cast outright
+// (`OptionalCastNotEliminated`), and this is the elimination it demands. The Absent arm is the
+// empty string rather than a fresh refusal variant: every consumer of a field already refuses on
+// it -- source/target/mount_type through `LinuxProcMountEmptyRequiredField`, the two numeric
+// fields through `parse_int` returning Absent -- so absence routes into an existing refusal
+// instead of minting a second. It is unreachable in any case: the caller has already refused a
+// row whose field count is not six.
 fn linux_proc_mount_field(fields: List<NonEmptyStr>, index: Int) -> String {
   match fields.skip(n: index).first() {
     Present { value: field } => field as String
@@ -507,6 +507,13 @@ fn linux_overlay_observation_is_flash_backed(
     )
 }
 
-data linux_file_publication_semantics_note: String = "Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem metadata and cached file data to the underlying filesystems and waits for I/O completion. OverlayFS names the writable upper directory separately from the lower directory. Synchronized durability commit is admitted only through the LinuxSynchronizedRenameReplacePublication unit variant; partial protocol records remain explicitly unsynchronized. This module records those operations and observed mount relationships; it does not itself claim survival across a lifecycle boundary."
+// Literal mechanism facts precede any durability judgment. Linux rename replacement is atomic when
+// replacing an existing pathname on the same filesystem; Linux sync writes pending filesystem
+// metadata and cached file data to the underlying filesystems and waits for I/O completion.
+// OverlayFS names the writable upper directory separately from the lower directory. Synchronized
+// durability commit is admitted only through the LinuxSynchronizedRenameReplacePublication unit
+// variant; partial protocol records remain explicitly unsynchronized. This module records those
+// operations and observed mount relationships; it does not itself claim survival across a lifecycle
+// boundary.
 
 data linux_proc_mounts_parser_dissolve_on: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: a cited proc_mounts grammar row set lands in the shared grammar substrate with forward ingest and escape decoding. linux_proc_mount_row_from_line then becomes that grammar forward fold, and the same rows own any later serialization; until then this parser is the declared six-field Linux wire scaffold, fail-closed through LinuxProcMountLineRefusal rather than a second typed represent")

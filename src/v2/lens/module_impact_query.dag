@@ -31,9 +31,24 @@ import v2.lens.module_graph {
   map_lookup_where_rejected_unreachable,
 }
 
-data module_impact_query_subject_note: String = "CONFIDENCE-0. THE direction-typed reading over the module-graph edge population. It adds NO edge producer: it consumes v2.lens.module_graph's ModuleDependencyEdge and ModuleDeclarationFact rows as data, exactly as dependency_closure does, honouring the 2026-07-10 operator constraint in dependency_edge_source_migration_note. What is new is DIRECTION: before this module every closure in the corpus was forward, and any consumer wanting dependents simulated it with N forward closures."
+// CONFIDENCE-0. THE direction-typed reading over the module-graph edge population. It adds NO edge
+// producer: it consumes v2.lens.module_graph's ModuleDependencyEdge and ModuleDeclarationFact rows
+// as data, exactly as dependency_closure does, honouring the 2026-07-10 operator constraint in
+// dependency_edge_source_migration_note. What is new is DIRECTION: before this module every closure
+// in the corpus was forward, and any consumer wanting dependents simulated it with N forward
+// closures.
 
-data module_impact_semantic_identity_note: String = "The core is keyed on MODULE IDENTITY, not on paths (operator ruling 2026-08-08, recut A). ModuleDependencyEdge is asymmetric - a source PATH and a target MODULE - so normalization goes through ModuleDeclarationFact into dependent_module / dependency_module, and the whole traversal, cycle partition and standing operate on ModuleIdentity. Paths are attached as PRESENTATION and as an adapter for file-shaped questions, never as the semantic authority: a file-level question may conservatively resolve to SEVERAL semantic seeds, which is why the adapter returns a list. ModuleIdentity is a record rather than a bare String so a path cannot be passed where an identity is required - the confusion is unwritable rather than merely labelled. The earlier revision keyed the core on paths and normalized INTO path space, the inverse of the ruled direction, which silently changes meaning under the module-identity-storage lane's staged many-to-many path/module relation."
+// The core is keyed on MODULE IDENTITY, not on paths (operator ruling 2026-08-08, recut A).
+// ModuleDependencyEdge is asymmetric - a source PATH and a target MODULE - so normalization goes
+// through ModuleDeclarationFact into dependent_module / dependency_module, and the whole traversal,
+// cycle partition and standing operate on ModuleIdentity. Paths are attached as PRESENTATION and as
+// an adapter for file-shaped questions, never as the semantic authority: a file-level question may
+// conservatively resolve to SEVERAL semantic seeds, which is why the adapter returns a list.
+// ModuleIdentity is a record rather than a bare String so a path cannot be passed where an identity
+// is required - the confusion is unwritable rather than merely labelled. The earlier revision keyed
+// the core on paths and normalized INTO path space, the inverse of the ruled direction, which
+// silently changes meaning under the module-identity-storage lane's staged many-to-many path/module
+// relation.
 
 type ModuleIdentity {
   name: String
@@ -53,7 +68,16 @@ type ImpactEdge {
   provenance: EdgeProvenance
 }
 
-data module_impact_standing_note: String = "Standing is a TYPED carrier DERIVED from ReferenceDerivedClosureAdmission, not prose and not a lower bound (operator ruling 2026-08-08, recut B). The earlier revision minted ImpactLowerBound, which is unjustified: UnrelatedLoadedFileExcluded is Unavailable, so the observed pool can introduce SPURIOUS edges as well as omit real ones - the reading may over- AND under-approximate, and lower bound claims only the second. ExactForGraphSubject is reachable only when pool-independent projection is Established AND no cause was observed; with the capability Unavailable the standing is PoolIndependentProjectionUnavailable carrying the admission's OWN trigger, so the reason a consumer cannot treat the answer as exact is the admission carrier's fact rather than this module's opinion. DESIGN 4c: an annotation is never evidence a machine claim holds, so none of this lives in a note a consumer cannot read."
+// Standing is a TYPED carrier DERIVED from ReferenceDerivedClosureAdmission, not prose and not a
+// lower bound (operator ruling 2026-08-08, recut B). The earlier revision minted ImpactLowerBound,
+// which is unjustified: UnrelatedLoadedFileExcluded is Unavailable, so the observed pool can
+// introduce SPURIOUS edges as well as omit real ones - the reading may over- AND under-approximate,
+// and lower bound claims only the second. ExactForGraphSubject is reachable only when
+// pool-independent projection is Established AND no cause was observed; with the capability
+// Unavailable the standing is PoolIndependentProjectionUnavailable carrying the admission's OWN
+// trigger, so the reason a consumer cannot treat the answer as exact is the admission carrier's
+// fact rather than this module's opinion. DESIGN 4c: an annotation is never evidence a machine
+// claim holds, so none of this lives in a note a consumer cannot read.
 
 type ImpactStandingCause
   = UndeclaredTargetModule {
@@ -75,7 +99,16 @@ type ImpactStanding
       trigger: ReferenceDerivedClosureTrigger
     }
 
-data module_impact_pool_mismatch_note: String = "The declared flag and pool membership are INDEPENDENT observations and are kept independent (operator ruling 2026-08-08, folding manager finding F3). ModuleDependencyEdge.target_declared says the producer believed the target declared; ModuleDeclarationFact membership says the supplied pool actually carries it. An edge with target_declared true whose target has no ModuleDeclarationFact used to resolve to ZERO edges and vanish from adjacency, closure and cycle classification, while completeness was computed from the raw flag alone - so the reading still answered complete. That is the empty-observation narrow DESIGN 5 names: bottom-as-answer conflated with bottom-as-ignorance, from an inconsistent pool, in a module whose own notes cite the rule. Both observations now land as DISTINCT ImpactStandingCause arms and neither is inferred from the other."
+// The declared flag and pool membership are INDEPENDENT observations and are kept independent
+// (operator ruling 2026-08-08, folding manager finding F3). ModuleDependencyEdge.target_declared
+// says the producer believed the target declared; ModuleDeclarationFact membership says the
+// supplied pool actually carries it. An edge with target_declared true whose target has no
+// ModuleDeclarationFact used to resolve to ZERO edges and vanish from adjacency, closure and cycle
+// classification, while completeness was computed from the raw flag alone - so the reading still
+// answered complete. That is the empty-observation narrow DESIGN 5 names: bottom-as-answer
+// conflated with bottom-as-ignorance, from an inconsistent pool, in a module whose own notes cite
+// the rule. Both observations now land as DISTINCT ImpactStandingCause arms and neither is inferred
+// from the other.
 
 type ImpactCycle
   = ImpactCycleReferenceAdmissible {
@@ -85,11 +118,36 @@ type ImpactCycle
       members: List<ModuleIdentity>
     }
 
-data module_impact_cycle_law_note: String = "Operator refinement 2026-08-08. Cycle membership is computed over the UNION edge population, where reference-derived cycles are legitimate and carry no violation. A cycle whose every participating edge is import-derived additionally violates the import-acyclicity law and surfaces as its own typed diagnostic, not merely as SCC membership. Distinct arms, not one arm with a flag."
+// Operator refinement 2026-08-08. Cycle membership is computed over the UNION edge population,
+// where reference-derived cycles are legitimate and carry no violation. A cycle whose every
+// participating edge is import-derived additionally violates the import-acyclicity law and surfaces
+// as its own typed diagnostic, not merely as SCC membership. Distinct arms, not one arm with a
+// flag.
 
-data module_impact_cycle_partition_note: String = "Cycle classification partitions cyclic modules into strongly connected components and classifies EACH component independently. An earlier revision folded every cyclic module in the reached set into ONE member list and emitted ONE verdict for the union, which was fail-open on precisely the law above: with two disjoint cycles, a single ReferenceDerivedEdge in the first made the all-import test false for the whole union, so a genuine all-import cycle in the second reported admissible and its violation was suppressed. Import-acyclicity is a per-cycle law, so the partition is part of the law's meaning, not an optimisation. Caught by review 50459 on gunbc#8044."
+// Cycle classification partitions cyclic modules into strongly connected components and classifies
+// EACH component independently. An earlier revision folded every cyclic module in the reached set
+// into ONE member list and emitted ONE verdict for the union, which was fail-open on precisely the
+// law above: with two disjoint cycles, a single ReferenceDerivedEdge in the first made the
+// all-import test false for the whole union, so a genuine all-import cycle in the second reported
+// admissible and its violation was suppressed. Import-acyclicity is a per-cycle law, so the
+// partition is part of the law's meaning, not an optimisation. Caught by review 50459 on
+// gunbc#8044.
 
-data module_impact_provenance_derivation_note: String = "Edge provenance is DERIVED at query time by membership in the import-only population, not read off the edge. ModuleDependencyEdge carries no provenance field, and dependency_resolution_facts_live erases it by construction: it unions import and reference facts as ImportResolutionFact BEFORE mapping to edges, and the union dedups reference-first, so a fact backed by BOTH survives as the reference copy. That reference-first law now lives in the native construction v1_compiler.cli_run union_dedup_import_facts_reference_first, which the interpreted union_import_resolution_fact_lists carried until it was deleted for cost (module_graph dedup_import_resolution_facts_cost_note); the law is unchanged, only its home moved, and this note's derivation depends on the law rather than on where it is realized. Declared residue: a dual-backed edge therefore classifies reference-derived here, which is the conservative direction for the acyclicity law - it under-reports violations rather than inventing them - but is not the answer a carried provenance field would give, and it earns its own witness when the stamp lands. The construction-grade climb is to stamp provenance at the single construction site import_fact_to_dependency_edge (one construction site, two referencing files); it edits the single edge producer under the 2026-07-10 constraint, so it is escalated rather than taken here."
+// Edge provenance is DERIVED at query time by membership in the import-only population, not read
+// off the edge. ModuleDependencyEdge carries no provenance field, and
+// dependency_resolution_facts_live erases it by construction: it unions import and reference facts
+// as ImportResolutionFact BEFORE mapping to edges, and the union dedups reference-first, so a fact
+// backed by BOTH survives as the reference copy. That reference-first law now lives in the native
+// construction v1_compiler.cli_run union_dedup_import_facts_reference_first, which the interpreted
+// union_import_resolution_fact_lists carried until it was deleted for cost (module_graph
+// dedup_import_resolution_facts_cost_note); the law is unchanged, only its home moved, and this
+// note's derivation depends on the law rather than on where it is realized. Declared residue: a
+// dual-backed edge therefore classifies reference-derived here, which is the conservative direction
+// for the acyclicity law - it under-reports violations rather than inventing them - but is not the
+// answer a carried provenance field would give, and it earns its own witness when the stamp lands.
+// The construction-grade climb is to stamp provenance at the single construction site
+// import_fact_to_dependency_edge (one construction site, two referencing files); it edits the
+// single edge producer under the 2026-07-10 constraint, so it is escalated rather than taken here.
 
 type ImpactReading {
   direction: ImpactDirection
@@ -137,7 +195,13 @@ fn impact_add_unseen_module(
   }
 }
 
-data module_impact_index_note: String = "Normalization is INDEXED, not scanned. The first recut resolved each edge by folding the whole ModuleDeclarationFact list twice - once for the source path, once for target membership - which is O(edges x modules): on the live corpus that is 15376 edges against 3256 modules, roughly 50 million allocating scan steps, and it OOM-killed the front door rather than answering. Both lookups are now Map probes against indexes built ONCE per reading. This is the bare-minimum-cost rule with a measured receipt, not a speculative optimisation: the unindexed shape could not answer the live question at all."
+// Normalization is INDEXED, not scanned. The first recut resolved each edge by folding the whole
+// ModuleDeclarationFact list twice - once for the source path, once for target membership - which
+// is O(edges x modules): on the live corpus that is 15376 edges against 3256 modules, roughly 50
+// million allocating scan steps, and it OOM-killed the front door rather than answering. Both
+// lookups are now Map probes against indexes built ONCE per reading. This is the bare-minimum-cost
+// rule with a measured receipt, not a speculative optimisation: the unindexed shape could not
+// answer the live question at all.
 
 type ImpactPoolIndex {
   path_to_module: Map<String, String>
@@ -189,7 +253,12 @@ fn impact_pool_declares_module_indexed(
   }
 }
 
-data module_impact_path_adapter_note: String = "impact_paths_for_module and impact_seeds_for_path are the FILE-SHAPED ADAPTERS above the semantic core, not part of it. impact_seeds_for_path returns a LIST because one path may conservatively resolve to several semantic seeds under the staged many-to-many path/module relation, and returning a single identity would silently pick one. An empty result is a real answer - the pool declares no module at that path - and the caller decides whether that is a refusal; the adapter never invents a seed."
+// impact_paths_for_module and impact_seeds_for_path are the FILE-SHAPED ADAPTERS above the semantic
+// core, not part of it. impact_seeds_for_path returns a LIST because one path may conservatively
+// resolve to several semantic seeds under the staged many-to-many path/module relation, and
+// returning a single identity would silently pick one. An empty result is a real answer - the pool
+// declares no module at that path - and the caller decides whether that is a refusal; the adapter
+// never invents a seed.
 
 fn impact_paths_for_module(
   nodes: List<ModuleDeclarationFact>,
@@ -309,7 +378,16 @@ fn impact_normalize_edge(
   }
 }
 
-data impact_import_index_note: String = "The import index is keyed on the PATH ALONE, mapping to that path's list of imported module names, and provenance is decided by a membership check within that small per-path list. An earlier attempt built a single composite key by interpolating path and module into one String; every lookup then hit, so every edge classified import-derived - the FAIL-OPEN direction for the acyclicity law, because it invents violations rather than missing them. Two witnesses caught it (the reference-admissible cycle pair); a suite without them would have greened an index that answers the same thing for every input. Rather than keep guessing at the composite key's behaviour, the index now uses only plain keys of the same shape the pool index already proves correct, and the per-path import list is short enough that membership within it is not a cost shape."
+// The import index is keyed on the PATH ALONE, mapping to that path's list of imported module
+// names, and provenance is decided by a membership check within that small per-path list. An
+// earlier attempt built a single composite key by interpolating path and module into one String;
+// every lookup then hit, so every edge classified import-derived - the FAIL-OPEN direction for the
+// acyclicity law, because it invents violations rather than missing them. Two witnesses caught it
+// (the reference-admissible cycle pair); a suite without them would have greened an index that
+// answers the same thing for every input. Rather than keep guessing at the composite key's
+// behaviour, the index now uses only plain keys of the same shape the pool index already proves
+// correct, and the per-path import list is short enough that membership within it is not a cost
+// shape.
 
 fn impact_append_import_module(
   existing: List<String>,
@@ -453,7 +531,11 @@ fn impact_standing_from_admissions(
   }
 }
 
-data module_impact_bfs_membership_note: String = "The BFS carries a membership Map ALONGSIDE the ordered reached list: the list preserves meaningful traversal order, the map answers membership in one probe. A linear contains over reached is O(n^2) on a corpus-scale closure and was part of what OOM-killed the live front door. This is the pattern DESIGN's determinism thread prescribes - preserve source order in a list, use a map only for membership - so no map traversal order is ever observed."
+// The BFS carries a membership Map ALONGSIDE the ordered reached list: the list preserves
+// meaningful traversal order, the map answers membership in one probe. A linear contains over
+// reached is O(n^2) on a corpus-scale closure and was part of what OOM-killed the live front door.
+// This is the pattern DESIGN's determinism thread prescribes - preserve source order in a list, use
+// a map only for membership - so no map traversal order is ever observed.
 
 type ImpactBfsState {
   reached: List<ModuleIdentity>
@@ -461,7 +543,17 @@ type ImpactBfsState {
   queue: List<ModuleIdentity>
 }
 
-data module_impact_walk_shape_note: String = "The walk is the recursive worklist shape v2.lens.module_graph proves in import_closure_bfs_walk, over an adjacency built once per reading. Declared residue, all renegotiable as follow-on: the adjacency is rebuilt per call rather than reused once per graph subject; this is a second BFS beside import_closure_bfs_walk where one direction-parameterized walk was the section-2 shape (that walk is path-keyed and this core is module-keyed, so unifying them belongs to the module-identity-storage lane rather than a local edit); and cycle classification runs one walk per cyclic module plus two per candidate component through impact_mutually_reachable, so it is quadratic in the reached set and superlinear in components. The SCC partition made that term LARGER and was still right, because the union-level classification it replaced was fail-open. Climb: a single-pass Tarjan producer computes the same partition in one traversal and subsumes every walk site."
+// The walk is the recursive worklist shape v2.lens.module_graph proves in import_closure_bfs_walk,
+// over an adjacency built once per reading. Declared residue, all renegotiable as follow-on: the
+// adjacency is rebuilt per call rather than reused once per graph subject; this is a second BFS
+// beside import_closure_bfs_walk where one direction-parameterized walk was the section-2 shape
+// (that walk is path-keyed and this core is module-keyed, so unifying them belongs to the
+// module-identity-storage lane rather than a local edit); and cycle classification runs one walk
+// per cyclic module plus two per candidate component through impact_mutually_reachable, so it is
+// quadratic in the reached set and superlinear in components. The SCC partition made that term
+// LARGER and was still right, because the union-level classification it replaced was fail-open.
+// Climb: a single-pass Tarjan producer computes the same partition in one traversal and subsumes
+// every walk site.
 
 fn impact_adjacency_from(edge: ImpactEdge, direction: ImpactDirection) -> ModuleIdentity {
   match direction {
@@ -595,7 +687,26 @@ fn impact_module_reaches_self(
   )
 }
 
-data module_impact_cycle_peel_note: String = "MEASURED cost-shape fix (capsule 2). Cycle detection previously ran a full closure PER reached module (impact_module_reaches_self over every node), plus two more per pairwise component placement — O(V) closures at best and O(V^2) with placement. That is correct and affordable at a small reading (231 modules rendered in 290s) and fatal at an ordinary one: an impact query over a real 37-path diff (33 .dag modules as seeds) was OOM-killed after 1649s. The fix is a PEEL, not a different partition: a module can lie on a cycle only if it has at least one predecessor AND at least one successor INSIDE the candidate set, so iteratively dropping modules that fail that test leaves exactly the union of the non-trivial strongly connected components. COST, STATED HONESTLY: each peel round is O(V+E) and runs ZERO closures, but the number of ROUNDS is bounded by peel depth, not by one - a chain sheds one module from each end per round - so the worst case is O(V*(V+E)), the SAME asymptotic class as the closure-per-module version it replaces. The win here is a depth factor on a shallow dependency DAG plus the elimination of closure allocation, not a change of complexity class, and it is justified by measurement rather than by the bound: the same real 37-path subject went from OOM-killed at 1649s to completing in 591s. An earlier revision of this note claimed the peel was O(V+E) outright, which is false for any population needing more than one round. Semantics are unchanged by construction: a peeled module provably cannot participate in a cycle, so no component and no acyclicity verdict can differ — the peel decides membership candidacy, never the verdict, and the per-SCC classification that review 50459 required is untouched. Self-loops survive the peel because a self-edge is both an in- and an out-edge."
+// MEASURED cost-shape fix (capsule 2). Cycle detection previously ran a full closure PER reached
+// module (impact_module_reaches_self over every node), plus two more per pairwise component
+// placement — O(V) closures at best and O(V^2) with placement. That is correct and affordable at a
+// small reading (231 modules rendered in 290s) and fatal at an ordinary one: an impact query over a
+// real 37-path diff (33 .dag modules as seeds) was OOM-killed after 1649s. The fix is a PEEL, not a
+// different partition: a module can lie on a cycle only if it has at least one predecessor AND at
+// least one successor INSIDE the candidate set, so iteratively dropping modules that fail that test
+// leaves exactly the union of the non-trivial strongly connected components. COST, STATED HONESTLY:
+// each peel round is O(V+E) and runs ZERO closures, but the number of ROUNDS is bounded by peel
+// depth, not by one - a chain sheds one module from each end per round - so the worst case is
+// O(V*(V+E)), the SAME asymptotic class as the closure-per-module version it replaces. The win here
+// is a depth factor on a shallow dependency DAG plus the elimination of closure allocation, not a
+// change of complexity class, and it is justified by measurement rather than by the bound: the same
+// real 37-path subject went from OOM-killed at 1649s to completing in 591s. An earlier revision of
+// this note claimed the peel was O(V+E) outright, which is false for any population needing more
+// than one round. Semantics are unchanged by construction: a peeled module provably cannot
+// participate in a cycle, so no component and no acyclicity verdict can differ — the peel decides
+// membership candidacy, never the verdict, and the per-SCC classification that review 50459
+// required is untouched. Self-loops survive the peel because a self-edge is both an in- and an
+// out-edge.
 
 fn impact_opposite_direction(direction: ImpactDirection) -> ImpactDirection {
   match direction {
@@ -888,7 +999,15 @@ fn module_impact_reading(
   }
 }
 
-data module_cycle_analysis_note: String = "OPERATOR RULING 2026-08-08, item 5: reachability and cycle analysis are SEPARATE questions and only the first answers what does this change impact. The reading previously ran peeling, exact cycle membership, component construction and per-component classification UNCONDITIONALLY on every query — that is what OOM-killed the first live run and dominated the 591s of the run that replaced it. Cycle analysis is now an optional projection computed ONLY on request over an already-selected reading, so the common path pays nothing for it. It is a projection rather than a second reading: it derives its adjacency from the reading's own explanation edges and direction, so there is no second edge population and no way for the two to disagree. The per-SCC classification review 50459 required is unchanged — it moved, it did not weaken."
+// OPERATOR RULING 2026-08-08, item 5: reachability and cycle analysis are SEPARATE questions and
+// only the first answers what does this change impact. The reading previously ran peeling, exact
+// cycle membership, component construction and per-component classification UNCONDITIONALLY on
+// every query — that is what OOM-killed the first live run and dominated the 591s of the run that
+// replaced it. Cycle analysis is now an optional projection computed ONLY on request over an
+// already-selected reading, so the common path pays nothing for it. It is a projection rather than
+// a second reading: it derives its adjacency from the reading's own explanation edges and
+// direction, so there is no second edge population and no way for the two to disagree. The per-SCC
+// classification review 50459 required is unchanged — it moved, it did not weaken.
 
 type ModuleCycleAnalysis {
   cycles: List<ImpactCycle>
@@ -911,9 +1030,33 @@ fn module_cycle_analysis(reading: ImpactReading) -> ModuleCycleAnalysis {
   }
 }
 
-data module_impact_changed_surface_note: String = "CAPSULE 2, REWORKED under the operator ruling 2026-08-08. The consumer takes a changed surface - the shape a diff actually has - and answers what it impacts. Four things the first revision got wrong and this one does not. (1) DELETIONS were discarded: the front door threw away departed_paths, so the query could not answer what depends on the module I am DELETING, which is the most important destructive form of the question. (2) A deleted module is absent from the head population BY DEFINITION, so resolving every subject against head silently answers nothing-depends-on-it for exactly the case that most needs an answer. Each subject therefore carries the SIDE it must resolve against. (3) An unresolved subject was a side list beside the reading, so a machine consumer reading only the reading saw affects nothing with no typed signal - the outcome is now a coproduct and an unresolved subject CONTAMINATES the whole result. (4) Nothing prevented a partial answer being used to skip work."
+// CAPSULE 2, REWORKED under the operator ruling 2026-08-08. The consumer takes a changed surface -
+// the shape a diff actually has - and answers what it impacts. Four things the first revision got
+// wrong and this one does not. (1) DELETIONS were discarded: the front door threw away
+// departed_paths, so the query could not answer what depends on the module I am DELETING, which is
+// the most important destructive form of the question. (2) A deleted module is absent from the head
+// population BY DEFINITION, so resolving every subject against head silently answers
+// nothing-depends-on-it for exactly the case that most needs an answer. Each subject therefore
+// carries the SIDE it must resolve against. (3) An unresolved subject was a side list beside the
+// reading, so a machine consumer reading only the reading saw affects nothing with no typed signal
+// - the outcome is now a coproduct and an unresolved subject CONTAMINATES the whole result. (4)
+// Nothing prevented a partial answer being used to skip work.
 
-data module_impact_changed_side_note: String = "Which population a changed subject must resolve against is a fact about the EDIT, not about the graph: added -> head, deleted -> base, modified -> both, renamed -> old name in base and new name in head. Conservatively the dependent populations of both sides join. This carrier models that axis so a deletion can never be silently resolved against head; what it does NOT do is supply the base population, because no revision-scoped fact producer exists. module_declaration_facts / import_resolution_facts / reference_resolution_facts are host builtins over pool_roots that walk the WORKING TREE (cli_run pool_roots_abs) with no revision parameter, and the three ways to obtain a base graph are all gated: a revision-scoped builtin is new hand-Rust under gunbc.seed_growth; a base checkout is a heavy wet effect; reconstructing the graph from git show would be a SECOND edge producer, which the 2026-07-10 operator constraint in dependency_edge_source_migration_note forbids. So a base-side subject resolves to BaseGraphUnavailable, which is a typed, located, counted refusal that contaminates the outcome to Partial - never a fabricated head-side answer for a module that no longer exists there. Dissolve-on: a revision-scoped population becomes available to .dag, at which point ResolveInBase resolves against it and this cause disappears."
+// Which population a changed subject must resolve against is a fact about the EDIT, not about the
+// graph: added -> head, deleted -> base, modified -> both, renamed -> old name in base and new name
+// in head. Conservatively the dependent populations of both sides join. This carrier models that
+// axis so a deletion can never be silently resolved against head; what it does NOT do is supply the
+// base population, because no revision-scoped fact producer exists. module_declaration_facts /
+// import_resolution_facts / reference_resolution_facts are host builtins over pool_roots that walk
+// the WORKING TREE (cli_run pool_roots_abs) with no revision parameter, and the three ways to
+// obtain a base graph are all gated: a revision-scoped builtin is new hand-Rust under
+// gunbc.seed_growth; a base checkout is a heavy wet effect; reconstructing the graph from git show
+// would be a SECOND edge producer, which the 2026-07-10 operator constraint in
+// dependency_edge_source_migration_note forbids. So a base-side subject resolves to
+// BaseGraphUnavailable, which is a typed, located, counted refusal that contaminates the outcome to
+// Partial - never a fabricated head-side answer for a module that no longer exists there.
+// Dissolve-on: a revision-scoped population becomes available to .dag, at which point ResolveInBase
+// resolves against it and this cause disappears.
 
 type ChangedSubjectSide
   = ResolveInHead
@@ -939,7 +1082,12 @@ type ChangedPathSeeds {
   seeds: List<ModuleIdentity>
 }
 
-data module_impact_outcome_note: String = "Complete | Partial | Refused, so a consumer cannot read a partial answer as a whole one. Partial carries the unresolved subjects rather than a flag, because the remedy differs per cause and a count cannot carry that. Refused is for an input that could not be observed at all - it computes no reading and widens nothing (DESIGN 5: a failure arm must refuse, never widen). Presentation is NOT a safety wall: the previous revision printed a warning line about unresolved paths while the typed result still said complete, and a machine consumer does not read terminal output."
+// Complete | Partial | Refused, so a consumer cannot read a partial answer as a whole one. Partial
+// carries the unresolved subjects rather than a flag, because the remedy differs per cause and a
+// count cannot carry that. Refused is for an input that could not be observed at all - it computes
+// no reading and widens nothing (DESIGN 5: a failure arm must refuse, never widen). Presentation is
+// NOT a safety wall: the previous revision printed a warning line about unresolved paths while the
+// typed result still said complete, and a machine consumer does not read terminal output.
 
 type ChangedSurfaceImpactOutcome
   = ChangedSurfaceComplete {
@@ -993,7 +1141,16 @@ fn impact_subject_resolvable_in_head(subject: ChangedSubject) -> Bool {
   }
 }
 
-data module_impact_departed_overlap_note: String = "git diff --name-status reports a DELETED path in BOTH projections: touched_paths carries every entry's path regardless of status (plus old_path for renames), while departed_paths carries deletions and rename old-paths. A deleted path is therefore in both lists, and building a subject from each produced TWO subjects for one deletion - a head-side one that resolves to nothing and reports NoModuleDeclaredAtPath, beside the correct base-side BaseGraphUnavailable. That inflated the unresolved count and misreported the cause for exactly the destructive case this rework exists to serve. A departed path is a deletion, so it is a base-side subject ONLY. A rename is unaffected and still yields two subjects, correctly: the old name in base and the distinct new name in head. Found by the real-diff deletion receipt (operator ruling item 7), not by a fixture - the fixtures authored the two lists as disjoint, which is not how git reports them."
+// git diff --name-status reports a DELETED path in BOTH projections: touched_paths carries every
+// entry's path regardless of status (plus old_path for renames), while departed_paths carries
+// deletions and rename old-paths. A deleted path is therefore in both lists, and building a subject
+// from each produced TWO subjects for one deletion - a head-side one that resolves to nothing and
+// reports NoModuleDeclaredAtPath, beside the correct base-side BaseGraphUnavailable. That inflated
+// the unresolved count and misreported the cause for exactly the destructive case this rework
+// exists to serve. A departed path is a deletion, so it is a base-side subject ONLY. A rename is
+// unaffected and still yields two subjects, correctly: the old name in base and the distinct new
+// name in head. Found by the real-diff deletion receipt (operator ruling item 7), not by a fixture
+// - the fixtures authored the two lists as disjoint, which is not how git reports them.
 
 fn impact_path_is_departed(departed_set: Map<String, String>, path: String) -> Bool {
   match map_lookup_where_rejected_unreachable(m: departed_set, key: path) {
@@ -1144,7 +1301,16 @@ fn changed_surface_impact_outcome(
   }
 }
 
-data module_impact_skip_authority_note: String = "OPERATOR RULING 2026-08-08, item 4: a Partial answer must NEVER become a CI skip authority. This is the wall, and it is a construction wall rather than a check: the ONLY function that yields a skip authority pattern-matches the outcome, and the granting arm is reachable exclusively from ChangedSurfaceComplete whose reading ALSO carries ExactForGraphSubject. A Partial or Refused outcome has no path to SkipAuthorityGranted at all, so a consumer cannot obtain one by being careless with a field. Note what this means today: pool-independent projection is Unavailable, so no reading currently reaches ExactForGraphSubject and SkipAuthorityGranted is therefore UNREACHABLE on the live corpus. That is the honest state - this capability is a pool-relative module dependent query, not an affected set - and it is asserted by a witness rather than left as a claim."
+// OPERATOR RULING 2026-08-08, item 4: a Partial answer must NEVER become a CI skip authority. This
+// is the wall, and it is a construction wall rather than a check: the ONLY function that yields a
+// skip authority pattern-matches the outcome, and the granting arm is reachable exclusively from
+// ChangedSurfaceComplete whose reading ALSO carries ExactForGraphSubject. A Partial or Refused
+// outcome has no path to SkipAuthorityGranted at all, so a consumer cannot obtain one by being
+// careless with a field. Note what this means today: pool-independent projection is Unavailable, so
+// no reading currently reaches ExactForGraphSubject and SkipAuthorityGranted is therefore
+// UNREACHABLE on the live corpus. That is the honest state - this capability is a pool-relative
+// module dependent query, not an affected set - and it is asserted by a witness rather than left as
+// a claim.
 
 type SkipWithheldCause
   = SkipWithheldUnresolvedSubjects
@@ -1176,7 +1342,19 @@ fn changed_surface_skip_authority(outcome: ChangedSurfaceImpactOutcome) -> SkipA
   }
 }
 
-data module_impact_construction_justification_note: String = "The bad-state class is a consumer reading a pool-relative, per-component answer as if it were exact and whole-subgraph. Most of that class is unwritable by construction rather than validated after the fact: ImpactStanding makes ExactForGraphSubject reachable only when the admission carrier reports pool independence Established AND no cause was observed, so a pool-relative answer cannot present as exact; ModuleIdentity is a record, so a path cannot be passed where a semantic identity is required; the declared flag and pool membership are independent observations landing as distinct cause arms, so an inconsistent pool cannot silently answer complete; and cycle verdicts are per strongly connected component, so a per-cycle law cannot be answered at union grain. What is NOT yet walled, and is what the grounding supplies: edge provenance is derived at query time rather than carried, so a dual-backed edge classifies reference-derived and a change to the edge population could reclassify a cycle with no consumer edit. That dissolves to one authority - provenance stamped at the single construction site import_fact_to_dependency_edge - hence WallAfterGrounding rather than WallNow, and not RatchetForever, because it is decidable."
+// The bad-state class is a consumer reading a pool-relative, per-component answer as if it were
+// exact and whole-subgraph. Most of that class is unwritable by construction rather than validated
+// after the fact: ImpactStanding makes ExactForGraphSubject reachable only when the admission
+// carrier reports pool independence Established AND no cause was observed, so a pool-relative
+// answer cannot present as exact; ModuleIdentity is a record, so a path cannot be passed where a
+// semantic identity is required; the declared flag and pool membership are independent observations
+// landing as distinct cause arms, so an inconsistent pool cannot silently answer complete; and
+// cycle verdicts are per strongly connected component, so a per-cycle law cannot be answered at
+// union grain. What is NOT yet walled, and is what the grounding supplies: edge provenance is
+// derived at query time rather than carried, so a dual-backed edge classifies reference-derived and
+// a change to the edge population could reclassify a cycle with no consumer edit. That dissolves to
+// one authority - provenance stamped at the single construction site import_fact_to_dependency_edge
+// - hence WallAfterGrounding rather than WallNow, and not RatchetForever, because it is decidable.
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }

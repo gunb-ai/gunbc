@@ -58,7 +58,7 @@ import std.types { String }
 // an admitted one at a glance, which is the silence DESIGN section 5 forbids. The if_condition
 // below is scope, not a safety gate -- it keeps pull-request floor runs from opening a job whose
 // only possible outcome is a branch refusal, and the model re-checks the branch regardless.
-data fleet_desired_admission_workflow_note: String = "This module emits the fleet-desired admission workflow. See the annotation above it."
+// This module emits the fleet-desired admission workflow. See the annotation above it.
 
 data fleet_desired_admission_workflow_job_id: String = "admit"
 
@@ -370,6 +370,7 @@ fn fleet_desired_admission_job() -> Job {
 // than this change. Declared here rather than left to be discovered.
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
+  run_name: none,
   on: [
     WorkflowRunCompleted {
       workflows: [witness_floor_workflow_name],

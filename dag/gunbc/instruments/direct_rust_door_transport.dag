@@ -20,7 +20,10 @@ import v2.std.text { String }
 
 data direct_rust_door_fixture_lane_tag: String = "direct_rust_door_fixture_containment"
 
-data direct_rust_door_transport_note: String = "Lane B wet transport realization (wise-ram-22 PR1 containment): mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. No mint_written_provenanced_rust_artifact and no ProducerEmissionReceipt on this path."
+// Lane B wet transport realization (wise-ram-22 PR1 containment):
+// mint_written_synthetic_emitted_artifact_from_fixture_inferred is the sole fixture write
+// authority; FixtureCargoGreen only after cargo.Build.BuildManifest executes. No
+// mint_written_provenanced_rust_artifact and no ProducerEmissionReceipt on this path.
 
 fn direct_rust_door_compile_workspace(workspace_dir: String) -> Bool {
   let build = cargo.Build.BuildManifest(

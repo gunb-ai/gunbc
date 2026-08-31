@@ -39,7 +39,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 // returns; the arms exist so that "declared but never offered" and "no such declaration" cannot
 // be represented by one value, which is the whole defect being repaired.
 //
-// WHAT IS NOT GROWN: no roster, no policy, no status vocabulary, and no roster line. The declared
+// THE STANDING VOCABULARY IS MODELED SINCE FLOOR-CHANGED-COST-0 (2026-08-30). `CostDebtRosterStanding`,
+// its `CostDebtDispositionReading` input and the fold `cost_debt_roster_standing` are declared in
+// `v2.workflow.required_floor` -- beside `RequiredFloorDisposition`, which is what they fold over,
+// and not in `v2.workflow.floor_cost_debt`, which cannot import that module without a cycle. The
+// Rust enum below is now the SEED REALIZATION of those arms rather than their origin, so its arm
+// set must track the model. The hand item that remains is the JOIN: preparation's declared
+// population and disposition rows never leave `run_required_floor`, which is what this row's
+// trigger is about and what modeling the vocabulary does not discharge.
+//
+// WHAT IS NOT GROWN: no roster, no policy, and no roster line. The declared
 // population and the disposition rows both come from gunbc#9684's projection; the withheld set is
 // the fold's own; v2.workflow.floor_cost_debt remains the sole authority for WHICH identities are
 // enrolled. The Rust decides nothing about membership -- it reports what the three modeled

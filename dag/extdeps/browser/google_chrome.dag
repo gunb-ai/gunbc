@@ -44,6 +44,10 @@ fn value_is_frozen_ua_token(v: String) -> Bool {
   v == frozen_macos_platform_token || v == frozen_macos_os_version_token
 }
 
-data minor_version_is_zeroed: Bool = true
+// A Google Chrome build is not a Chromium build, not Microsoft Edge, not Opera, and not a
+// Playwright-driven browser, even where all of them share an engine revision. A platform limitation
+// observed in Chrome is attributable to Chrome and to whatever engine revision was separately
+// resolved; it is not attributable to the Chromium project unless the engine identity was actually
+// read.
 
-data identity_boundary_note: String = "A Google Chrome build is not a Chromium build, not Microsoft Edge, not Opera, and not a Playwright-driven browser, even where all of them share an engine revision. A platform limitation observed in Chrome is attributable to Chrome and to whatever engine revision was separately resolved; it is not attributable to the Chromium project unless the engine identity was actually read."
+data minor_version_is_zeroed: Bool = true

@@ -110,37 +110,34 @@ enum Commands {
         host: String,
         #[arg(long, default_value = "8080")]
         port: u16,
-        /// Release revision this process serves, bound ONCE at startup and
-        /// immutable for the process lifetime. Required and validated before
-        /// the listener binds: `gunbc serve` compiles its graph once, so the
-        /// launch argument is the only fact that describes what this PROCESS
-        /// serves. Re-reading a file, an env var, or git HEAD per request
-        /// would report mutable disk state wearing a process-shaped
-        /// interface. Published through /healthz beside the served-surface
-        /// identity (gunbc.running_release_identity).
+        /// Release revision this process serves, bound ONCE at startup and immutable for the
+        /// process lifetime. Required and validated before the listener binds: `gunbc serve`
+        /// compiles its graph once, so the launch argument is the only fact describing what
+        /// this PROCESS serves; re-reading a file, an env var, or git HEAD per request would
+        /// report mutable disk state wearing a process-shaped interface. Published through
+        /// /healthz beside the served-surface identity (gunbc.running_release_identity).
         #[arg(long = "release-revision")]
         release_revision: String,
         /// Per-request THREAD-CPU evaluation budget in milliseconds. Omitted means this process
-        /// declares no CPU bound — today's behavior, stated rather than implied. Deliberately has
-        /// no default: no measurement of normal `roadmap_serve_handle` evaluation cost exists, and
-        /// the one adjacent figure available (~70s cold graph compile) gives no reason to believe
-        /// a sub-second ceiling is safe, so inventing a production value here would risk refusing
-        /// legitimate requests to close a hypothetical one.
+        /// declares no CPU bound -- today's behavior, stated. Deliberately no default: no
+        /// measurement of normal `roadmap_serve_handle` evaluation cost exists, and the one
+        /// adjacent figure (~70s cold graph compile) gives no reason to believe a sub-second
+        /// ceiling is safe, so an invented value would risk refusing legitimate requests.
         #[arg(long = "eval-budget-cpu-ms")]
         eval_budget_cpu_ms: Option<u64>,
         /// Per-request MONOTONIC-WALL evaluation budget in milliseconds. Separate from the CPU
         /// bound because they catch different failures: CPU catches a spin, wall catches a stall
-        /// that consumes almost no CPU while still holding the listener. Neither contains an
-        /// evaluation blocked inside a single native primitive — that needs worker isolation.
+        /// that holds the listener while consuming almost no CPU. Neither contains an evaluation
+        /// blocked inside a single native primitive -- that needs worker isolation.
         #[arg(long = "eval-budget-wall-ms")]
         eval_budget_wall_ms: Option<u64>,
     },
 }
 
-/// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization
-/// output, not source: a corpus copy materialized under it must never enter a module
-/// index alongside the tree it was copied from. A source root passed FROM inside
-/// `target/` is still walked — only DESCENT into the output dir is refused.
+/// cargo's build-output dir (a `target` dir beside a `Cargo.toml`) is realization output, not
+/// source: a corpus copy materialized under it must never enter a module index alongside the
+/// tree it was copied from. A source root passed FROM inside `target/` is still walked -- only
+/// DESCENT into the output dir is refused.
 fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path) -> bool {
     child.file_name().and_then(|n| n.to_str()) == Some("target")
         && parent.join("Cargo.toml").is_file()
@@ -149,23 +146,18 @@ fn is_cargo_target_output_dir(parent: &std::path::Path, child: &std::path::Path)
 /// Recursively find all .dag files under a directory.
 /// Fail-closed: panics on unreadable directory entries.
 ///
-/// THE GUARD BELOW IS RESTORED FROM THE COPY THIS CUT DELETES, and the direction is
-/// the point: `cli_run` carried its own `collect_dag_files` WITH the target-dir refusal
-/// while this one has always lacked it, so the dying copy was the SAFER one. Deleting
-/// `cli_run` without moving the guard here would have made the cut silently lower
-/// safety — a regression introduced by a deletion, which is the one outcome delete-first
-/// must not produce. This is not porting `cli_run`; it is refusing to drop a rule while
-/// keeping the branch that needs it.
+/// THE GUARD BELOW IS RESTORED FROM THE COPY THIS CUT DELETES: `cli_run`'s `collect_dag_files`
+/// carried the target-dir refusal and this one did not, so the dying copy was the SAFER one.
+/// Deleting `cli_run` without moving the guard would have lowered safety by deletion -- the one
+/// outcome delete-first must not produce.
 ///
-/// Without it, a whole-root compile (the no-`--entry` branch, which is what calls this)
-/// walks into `target/` and ingests emitted or materialized `.dag` as SOURCE, alongside
-/// the tree it was copied from — duplicate module paths, resolved by collision panic or
-/// by silent shadowing depending on which the index hits first.
+/// Without it, a whole-root compile (the no-`--entry` branch, which calls this) walks into
+/// `target/` and ingests emitted or materialized `.dag` as SOURCE beside the tree it was copied
+/// from: duplicate module paths, resolved by collision panic or silent shadowing.
 ///
-/// RUNG, HONESTLY: this restores a guard, it does not prove a live bug. `find target
-/// -name '*.dag'` returns 0 in this worktree today, so I cannot exhibit the failure. The
-/// hazard is evidenced by the deleted code's own comment naming a concrete case it was
-/// written for — a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
+/// RUNG, HONESTLY: this restores a guard, it does not prove a live bug -- `find target -name
+/// '*.dag'` returns 0 in this worktree today. The hazard is evidenced by the deleted code's own
+/// comment naming its case: a corpus copy under `target/func_env_semantic_baseline_corpus/dag/**`.
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
@@ -209,22 +201,17 @@ fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {
 //
 // `extract_module_path`, `report_moduleless_dag_entry_skips`, `extract_import_paths`,
 // `insert_module_path`, `index_source_root`, `build_module_index` and
-// `resolve_transitively_with_seen` were this handler's private copy of the module-indexing and
+// `resolve_transitively_with_seen` were this handler's private module-indexing and
 // import-walking machinery. Routing the whole-root subject through `cli_run::compile_emission`
-// left every one of them with no caller, and they went out on that census rather than on a
-// judgement -- which is what DESIGN's delete-first doctrine means by the deletion BEING the
-// census: what breaks loudly is exactly what was load-bearing, and nothing did.
-//
-// Their surviving authorities are `cli_run`'s: `extract_module_path`, `extract_import_paths`,
+// left each with no caller -- DESIGN's delete-first doctrine, the deletion BEING the census.
+// Surviving authorities are `cli_run`'s: `extract_module_path`, `extract_import_paths`,
 // `build_multi_entry_index*` and `resolve_transitively_bfs_legacy`.
 //
 // AN EARLIER REVISION OF THIS NOTE CLAIMED THE MODULE-LESS SKIP REPORT HAD NO COUNTERPART THERE.
-// That was false, and it is corrected here rather than quietly dropped because a note asserting
-// an ABSENCE is exactly the claim a later reader will not re-check. `report_moduleless_dag_entry_skips`
-// and `moduleless_dag_entry_paths` are both `pub` in `cli_run`, both carry tests, and neither was
-// ever deleted; the deletion note asserted their absence without grepping for it. The behaviour is
-// now wired into the transaction's `PrimaryRoot` arm through those same two functions, so nothing
-// is lost and no second authority was minted.
+// False, corrected rather than dropped because a note asserting an ABSENCE is the claim a later
+// reader will not re-check: `report_moduleless_dag_entry_skips` and `moduleless_dag_entry_paths`
+// are both `pub` in `cli_run`, both carry tests, neither was deleted, and the behaviour is wired
+// into the transaction's `PrimaryRoot` arm through them -- nothing lost, no second authority.
 
 fn render_target_from_name(
     target: &str,
@@ -239,9 +226,8 @@ fn render_target_from_name(
 }
 
 /// THE PARSE RETURNS TARGETS, NOT (NAME, TARGET) PAIRS. The authored spelling is discarded
-/// here deliberately: it is recoverable from the target through `cli_run::render_target_name`,
-/// which is this function's inverse, and keeping both would let a caller carry a name that
-/// disagrees with the target it names.
+/// deliberately: it is recoverable through `cli_run::render_target_name`, this function's
+/// inverse, and keeping both would let a caller carry a name that disagrees with its target.
 fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::RenderTarget> {
     let mut targets = Vec::new();
     for part in target.split('+') {
@@ -267,34 +253,29 @@ fn parse_render_targets(target: &str) -> Vec<v1_compiler::v1_compiler_artifact::
     targets
 }
 
-/// THE OUTPUT WRITER'S OWN REFUSAL VOCABULARY. Three causes, one per host effect the
-/// writer performs, each naming the path it failed on.
+/// THE OUTPUT WRITER'S OWN REFUSAL VOCABULARY. Three causes, one per host effect the writer
+/// performs, each naming the path it failed on.
 ///
-/// The parent-directory arm is the one that had no representation at all: it was
-/// `create_dir_all(parent).ok()`, and the very next statement panicked naming the WRITE, so
-/// a missing parent directory was reported as a write failure and the real cause was not
-/// recoverable from the message -- a silent arm feeding a misleading one, which is the
-/// absorbing failure arm DESIGN §5 forbids.
+/// The parent-directory arm had no representation: `create_dir_all(parent).ok()`, then a panic
+/// naming the WRITE, so a missing parent was reported as a write failure -- a silent arm feeding
+/// a misleading one, the absorbing failure arm DESIGN §5 forbids.
 ///
-/// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285), which is
-/// this seed's established shape for exactly this repair: a typed refusal with a `Display`,
-/// returned by `Result`, with the process exit taken at the command boundary.
+/// The form follows `Stage0CargoBinManifestParseRefusal` in `cli_run` (gunbc#9285): a typed
+/// refusal with a `Display`, returned by `Result`, the exit taken at the command boundary.
 ///
 /// THIS WIDENS main.rs's DECLARED DIVERGENCE FROM ITS EMITTED FORM, AND THE NEXT PERSON TO
 /// CLOSE THAT DIVERGENCE WILL DELETE THIS REPAIR UNLESS THEY READ THIS.
 ///
-/// `v1.05_emit_rust` `emit_main_rs` still emits the OLD `write_output_files` verbatim -- the
-/// two `panic!`s and the `.ok()`. That is sanctioned today, not drift: `main.rs` is a
-/// `hand_maintained_stage0_filenames` member, suppressed from the derived generated
-/// population, and `gunbc.emit_diagnostic_observation` names it as this repository's one
-/// declared divergence from its emitted form. So nothing reds, and nothing will.
+/// `v1.05_emit_rust` `emit_main_rs` still emits the OLD `write_output_files` -- two `panic!`s
+/// and the `.ok()`. Sanctioned, not drift: `main.rs` is a `hand_maintained_stage0_filenames`
+/// member, suppressed from the derived generated population, and
+/// `gunbc.emit_diagnostic_observation` names it as this repository's one declared divergence.
 ///
 /// But `gunbc.plans.seed_debt_bundle_item_2` plans to wire the main-emit path, move `main.rs`
-/// into the generated population and regen. Executing that emits over this function and
-/// silently puts a panic back where this typed refusal now stands. Whoever does it owes
-/// `emit_main_rs` this same repair FIRST, or the regen is a safety regression wearing a
-/// green diff. Two bodies for one function currently carry OPPOSITE failure semantics; this
-/// one is authoritative until that wiring lands.
+/// into the generated population and regen -- which emits a panic back over this typed refusal.
+/// Whoever does it owes `emit_main_rs` this repair FIRST, or the regen is a safety regression
+/// wearing a green diff. Two bodies for one function carry OPPOSITE failure semantics; this one
+/// is authoritative until that wiring lands.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum OutputWriteRefusal {
     OutputDirectoryNotCreated {
@@ -314,9 +295,9 @@ enum OutputWriteRefusal {
 
 impl std::fmt::Display for OutputWriteRefusal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // The wording deliberately avoids the `refused at {phase}` sentence the compile arms
-        // use. That sentence is the COMPILER disowning its own output; this one is the
-        // filesystem refusing to take output the compiler already stands behind.
+        // Deliberately not the `refused at {phase}` sentence the compile arms use: that is the
+        // COMPILER disowning its output; this is the filesystem refusing output the compiler
+        // stands behind.
         write!(f, "gunbc compile: output write refused: ")?;
         match self {
             Self::OutputDirectoryNotCreated { path, cause } => {
@@ -339,9 +320,8 @@ impl OutputWriteRefusal {
     /// THE BOUNDARY TRANSLATION, so no call site decides a status of its own.
     ///
     /// `1` already means "the compile refused, or the arguments were bad". Reusing it would
-    /// re-fuse at the exit status precisely what the typed refusal above splits at the
-    /// message -- and the exit status is what a machine consumer reads. So the writer gets
-    /// its own, `3`, chosen here and nowhere else.
+    /// re-fuse at the exit status -- what a machine consumer reads -- exactly what the typed
+    /// refusal above splits at the message. So the writer gets its own, `3`, chosen here only.
     fn verdict(self) -> Verdict {
         Verdict {
             status: 3,
@@ -352,15 +332,12 @@ impl OutputWriteRefusal {
 
 /// WRITING THE TREE IS A HOST EFFECT, NOT A COMPILE PHASE, AND IT NOW HAS A FAILURE CHANNEL.
 ///
-/// This returned `()`. Its two reachable failures could therefore only be reported by
-/// `panic!` and its third not at all -- not a lazy choice over an available `Result`, but
-/// the only thing a unit return permits. The consequence at all three call sites was one
-/// observable outcome: exit 101, a Rust panic message, and no `compiled:` summary line,
-/// after a compile that had already SUCCEEDED through emit. Every consumer that reads this
-/// CLI then classifies it as a compile failure -- `gunbc.emit_diagnostic_observation` reads
-/// the absence of that line as "the compile refused and wrote no tree". "Your program is
-/// wrong" and "this disk would not take the output" are different states with opposite
-/// remedies, and the unit return is exactly what made them one symbol.
+/// This returned `()`, so two failures could only `panic!` and the third went unreported. At all
+/// three call sites the outcome was exit 101, a panic message, and no `compiled:` summary line
+/// after a compile that had SUCCEEDED through emit -- which every consumer classifies as a
+/// compile failure (`gunbc.emit_diagnostic_observation` reads the absent line as "the compile
+/// refused and wrote no tree"). "Your program is wrong" and "this disk would not take the
+/// output" have opposite remedies, and the unit return made them one symbol.
 fn write_output_files(
     output_dir: &str,
     result: &v1_compiler::v1_compiler_compile::PipelineResult,
@@ -423,34 +400,27 @@ fn main() {
             let render_targets = parse_render_targets(&target);
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
-            // ── THE SCOPED SINGLE-TARGET COMPILE IS THE SHARED EMISSION TRANSACTION ──
+            // -- THE SCOPED SINGLE-TARGET COMPILE IS THE SHARED EMISSION TRANSACTION --
             //
             // This is the invocation the cargo board's producer uses
-            // (`docs/probes/curated_cargo_probe_one.sh`), and it is now the SAME FUNCTION
-            // the required v2-emission phase calls -- `cli_run::compile_entry_emission`.
-            // Before this, the phase was a second caller reproducing the closure load, the
-            // census assembly, the refusal check and the silent-pick gate beside the ones
-            // below, with three parameters to keep equal by hand; a gate that drifts from
-            // the board's producer can green while the board refuses, which is two answers
-            // to one question (DESIGN §3). The handler keeps what is genuinely its own:
-            // writing the tree, rendering diagnostics, and choosing an exit code.
-            // ── BOTH CLI SUBJECTS REACH THE ONE TRANSACTION ──
+            // (`docs/probes/curated_cargo_probe_one.sh`), and the SAME FUNCTION the required
+            // v2-emission phase calls: `cli_run::compile_entry_emission`. Before, the phase
+            // reproduced the closure load, census assembly, refusal check and silent-pick gate
+            // beside these, with three parameters kept equal by hand -- a gate drifting from the
+            // board's producer can green while the board refuses (DESIGN §3).
+            // -- BOTH CLI SUBJECTS REACH THE ONE TRANSACTION --
             //
             // `--entry` compiles that file's reference-derived closure; without it, the first
-            // `--source-root` is the primary root and the rest stay a dependency pool. Until
-            // this routing landed the second case was a SECOND index/load/resolve/admit/
-            // compile/refuse pipeline open-coded here, beside the transaction rather than
-            // through it, so "the required phase is green" and "the CLI emitted" were two
-            // facts about two producers (DESIGN §3). The handler keeps what is genuinely its
-            // own: writing the tree, rendering diagnostics, and choosing an exit code.
+            // `--source-root` is the primary root and the rest a dependency pool. Until this
+            // landed the second case was a SECOND index/load/resolve/admit/compile/refuse
+            // pipeline open-coded here, two producers of one fact (DESIGN §3). The handler keeps
+            // what is its own: writing the tree, rendering diagnostics, choosing an exit code.
             //
             // THE MULTI-TARGET CASE ROUTES HERE TOO, as of the transaction taking a target
-            // VECTOR. It did not, briefly, and that was a REGRESSION rather than a scope
-            // statement: `--source-root X --target rust+dag` fell past this gate into a branch
-            // whose only remaining subject is `--source-dir`, and exited with
-            // "provide --source-root or --source-dir" over an argv that provided one. The
-            // transaction now resolves once and emits per target, which is what the deleted
-            // loop did, so the fork is closed rather than documented.
+            // VECTOR. Briefly it did not -- a REGRESSION, not a scope statement:
+            // `--source-root X --target rust+dag` fell through to the `--source-dir` branch and
+            // exited "provide --source-root or --source-dir" over an argv that provided one. The
+            // transaction resolves once and emits per target, as the deleted loop did.
             let cli_subject = match (&entry, &source_roots.is_empty()) {
                 (Some(entry_path), _) => Some(cli_run::CompileSubject::Entry(entry_path.clone())),
                 (None, false) => Some(cli_run::CompileSubject::PrimaryRoot(
@@ -475,9 +445,9 @@ fn main() {
                         earlier_phase,
                         cause,
                     } => {
-                        // The closure/census line is DELIBERATELY not printed here: the
-                        // transaction never ran, so `resolved 0 sources` would report a
-                        // resolve that did not happen as one that found nothing.
+                        // The closure/census line is DELIBERATELY not printed: the transaction
+                        // never ran, so `resolved 0 sources` would report a resolve that did not
+                        // happen as one that found nothing.
                         eprintln!("gunbc compile: {earlier_phase}: {cause}");
                         std::process::exit(1);
                     }
@@ -506,12 +476,12 @@ fn main() {
                         // NOTHING IS MATERIALIZED UNTIL EVERY TARGET HAS COMPLETED. The
                         // disposition above is over the whole emission set, so reaching here
                         // means no target refused -- a per-target write inside the emit loop
-                        // would leave one target's tree on disk beside another target's
-                        // refusal, which is the partial fabricated output §5 forbids.
+                        // would leave one target's tree on disk beside another's refusal, the
+                        // partial fabricated output §5 forbids.
                         //
                         // A single target writes to `output_dir` itself; several write to
-                        // `output_dir/<name>`, which is the layout the deleted loop used and
-                        // which downstream consumers already read.
+                        // `output_dir/<name>`, the layout the deleted loop used and downstream
+                        // consumers read.
                         let mut total_diagnostics = 0usize;
                         for emission in &run.emissions {
                             let target_dir = if multi_target {
@@ -545,54 +515,44 @@ fn main() {
 
             v1_rt::resolution_silent_pick_enable();
 
-            // THE WHOLE-ROOT PIPELINE THAT STOOD HERE IS DELETED, NOT DISABLED. It was ~200
-            // lines re-implementing indexing, memory admission, entry-set discovery, the
-            // import walk, census fill and the refusal check that `cli_run::compile_emission`
-            // already owns. Every `--source-root` invocation now routes through the
-            // transaction above and never reaches this point, so leaving the code here would
-            // be a second authority kept warm for nothing (DESIGN §3, delete-first).
+            // THE WHOLE-ROOT PIPELINE THAT STOOD HERE IS DELETED, NOT DISABLED: ~200 lines
+            // re-implementing indexing, memory admission, entry-set discovery, the import walk,
+            // census fill and the refusal check `cli_run::compile_emission` owns. Every
+            // `--source-root` invocation routes through the transaction above, so keeping the
+            // code would be a second authority kept warm for nothing (DESIGN §3, delete-first).
             //
             // WHAT REMAINS BELOW IS THE `--source-dir` FLAT SCAN AND NOTHING ELSE: a legacy
-            // subject with no source roots, no index and no dependency pool, which the
-            // transaction's two subjects do not describe. It is named rather than swept in,
-            // and it is the remaining fork in this handler.
+            // subject with no source roots, index or dependency pool, which the transaction's
+            // two subjects do not describe. The remaining fork in this handler, named.
             //
-            // THE CENSUS BEHIND "ONE COMPILATION CONCEPT", AT CALL-SITE GRAIN RATHER THAN
-            // FILE GRAIN, because a file-grain claim is not checkable and this one was
-            // overstated once already. Direct calls to the compile kernel
-            // (`compile_sources_with_options` / `compile_to_resolved_with_options` /
-            // `emit_resolved_for_target`) outside `cli_run::compile_emission`, in non-test
-            // code:
+            // THE CENSUS BEHIND "ONE COMPILATION CONCEPT", AT CALL-SITE GRAIN RATHER THAN FILE
+            // GRAIN, because a file-grain claim is not checkable and this one was overstated
+            // once. Direct calls to the compile kernel (`compile_sources_with_options` /
+            // `compile_to_resolved_with_options` / `emit_resolved_for_target`) outside
+            // `cli_run::compile_emission`, in non-test code:
             //
             //   - main.rs, this handler, the `--source-dir` arm (3 sites) -- the legacy flat
-            //     scan above. A FORK, declared. It survives because the transaction models a
-            //     source-root subject and this one has no root, no index and no pool; the
-            //     terminal form is a third subject or the flag's deletion, and nothing in the
-            //     repository passes `--source-dir` today.
-            //   - cli_run compile-clean oracle (2 sites) -- deliberately index-independent
-            //     and cache-independent, which is the whole point of it: it exists to
-            //     disagree with the via-index path. Routing it through the transaction would
-            //     destroy the property it measures.
+            //     scan above. A FORK, declared: no root, index or pool for the transaction to
+            //     model; terminal form is a third subject or the flag's deletion, and nothing in
+            //     the repository passes `--source-dir` today.
+            //   - cli_run compile-clean oracle (2 sites) -- deliberately index- and
+            //     cache-independent; it exists to disagree with the via-index path.
             //   - cli_run synthesized-resolved emit (1 site) -- emits a `ResolvedPipelineResult`
-            //     assembled in memory, so there is no source set for a transaction to take.
-            //   - required_regen_host `compile_stage0` (1 site) -- calls `compile_sources`
-            //     directly over `regen_input_sources`. A FORK, declared. Its subject is an
-            //     EXACT SOURCE SET read from the regen roster, not a root and not an entry, so
-            //     neither of the transaction's two subjects describes it; the terminal form is
-            //     a third subject (`ExactSourceSet`) carrying the roster as its authority.
-            //     Note it also passes a hardcoded refusal subject ("v2 self-compile"), which
-            //     the transaction derives from the subject it was given.
+            //     assembled in memory; no source set for a transaction to take.
+            //   - required_regen_host `compile_stage0` (1 site) -- calls `compile_sources` over
+            //     `regen_input_sources`. A FORK, declared: its subject is an EXACT SOURCE SET
+            //     from the regen roster, neither root nor entry; terminal form is a third
+            //     subject (`ExactSourceSet`) carrying the roster as authority. It also passes a
+            //     hardcoded refusal subject ("v2 self-compile") the transaction derives itself.
             //
-            // THIS CENSUS WAS WRONG ONCE, IN THE DIRECTION THAT FLATTERS. Its first revision
-            // omitted `required_regen_host` -- the file appeared in the file-level count I ran
-            // and did not survive into the call-site list I wrote from it, so a fork was
-            // reported as absent by a census whose whole purpose is to enumerate forks. Caught
-            // in review. The lesson is the one the floor's own first-execution receipt records:
-            // a list you transcribe from a wider measurement is not the measurement.
+            // THIS CENSUS WAS WRONG ONCE, IN THE DIRECTION THAT FLATTERS: its first revision
+            // omitted `required_regen_host`, present in the file-level count and lost in the
+            // call-site list transcribed from it. Caught in review. As the floor's own
+            // first-execution receipt records: a list transcribed from a wider measurement is
+            // not the measurement.
             //
-            // NOT a claim that nothing else compiles: the test files and the witness bins call
-            // the kernel directly too, and they are outside this census by scope, not because
-            // they were checked and cleared.
+            // NOT a claim that nothing else compiles: test files and witness bins call the
+            // kernel directly too, outside this census by scope, not because they were checked.
             let compile_subject = match &source_dir {
                 Some(dir) => format!("compile of {dir}"),
                 None => "compile".to_string(),
@@ -717,20 +677,17 @@ fn main() {
 
         // THE FOUR VERB HANDLERS ARE DELETED, AND THIS ARM IS THE DECLARED INTERIM.
         //
-        // Their terminal Y is NOT YET MODELLED, and this branch deliberately does not
-        // sketch it: a CLI model authored before its consumer exists is shaped by the CLI
-        // we have, not the one we are building. So until that lands these verbs have a
-        // decoder and no dispatcher.
+        // Their terminal Y is NOT YET MODELLED, and this branch deliberately does not sketch
+        // it: a CLI model authored before its consumer exists is shaped by the CLI we have, not
+        // the one we are building. Until it lands these verbs have a decoder and no dispatcher.
         //
-        // This REFUSES rather than degrading. It prints a typed, located reason and exits
-        // nonzero; it does not fall back to a partial run, does not guess a default verb,
-        // and does not print a plausible success. A cut that leaves a verb unimplemented
-        // must say so loudly at the boundary — an absorbing fallback here would be the
-        // exact §5 failure this deletion exists to remove, reintroduced by the deletion.
+        // This REFUSES rather than degrading: a typed, located reason and a nonzero exit; no
+        // partial run, no guessed default verb, no plausible success. A cut that leaves a verb
+        // unimplemented must say so loudly at the boundary -- an absorbing fallback here would
+        // be the exact §5 failure this deletion exists to remove.
         //
-        // NOT a scaffold with a trigger standing in for a decision: the terminal
-        // construction is named, its two halves exist, and the missing piece is the
-        // wiring between them.
+        // NOT a scaffold with a trigger standing in for a decision: the terminal construction
+        // is named, its two halves exist, and the missing piece is the wiring between them.
         Commands::Run {
             source_roots,
             function,
@@ -749,15 +706,15 @@ fn main() {
 
         // THE TARGET DISPATCH SEAM, AND THE WHOLE ARM IS A CALL.
         //
-        // There is deliberately no mode switch here and no arm per instrument: which producer a
-        // label names is decided by the registry in `target_invocation_host`, mirroring
-        // `gunbc.instrument_targets`, and the realization that runs it is selected one level
-        // below that. A second instrument adds a row there and nothing at all here.
+        // Deliberately no mode switch and no arm per instrument: which producer a label names is
+        // decided by the registry in `target_invocation_host`, mirroring
+        // `gunbc.instrument_targets`, and the realization is selected one level below. A second
+        // instrument adds a row there and nothing here.
         //
         // The status is the producer's own termination, not an aggregate verdict: 0 the reading
         // held, 1 it did not, 2 no reading was taken. `gunbc.build_target`'s
-        // `test_standing_verdict` and the Blaze status export are both deliberately NOT consulted
-        // -- each refuses instrument producers by design, so either would answer a question this
+        // `test_standing_verdict` and the Blaze status export are deliberately NOT consulted --
+        // each refuses instrument producers by design, so either would answer a question this
         // verb is not asking.
         Commands::Test { target } => {
             let outcome = cli_run::target_invocation_host::test_verb(&target);
@@ -770,20 +727,18 @@ fn main() {
             .apply()
         }
 
-        // The refusal names a CONDITION, not a branch. An earlier revision said "not
-        // available on integration/cli-run-cut", which the merge itself would have
-        // falsified — the code would keep naming a branch it no longer ran on, the §3
-        // stale-citation decay that needs no edit to break. The PR reference stays: a PR
-        // is historical after merge, not false.
-        // Converge is NOT wired here. The terminal route is the modeled convergence
-        // spine — gunbc.fleet_converge_timer -> fleet_converge_apply ->
-        // host_effect_realize host_effect_apply — consuming modeled desired state and
-        // native host-effect realizations. An earlier revision of this seam implemented
-        // it as resolve-a-.dag-entry + build-an-interpreter-context + run, which is the
-        // cheapest implementation available while the frozen engine stands and exactly
-        // why it is wrong: it would make the interpreter LOAD-BEARING FOR A NEW
-        // capability at the moment two lanes are deleting it, converting removable debt
-        // into an architectural dependency.
+        // The refusal names a CONDITION, not a branch. An earlier revision said "not available
+        // on integration/cli-run-cut", which the merge itself would have falsified -- the §3
+        // stale-citation decay that needs no edit to break. The PR reference stays: a PR is
+        // historical after merge, not false.
+        // Converge is NOT wired here. The terminal route is the modeled convergence spine --
+        // gunbc.fleet_converge_timer -> fleet_converge_apply -> host_effect_realize
+        // host_effect_apply -- consuming modeled desired state and native host-effect
+        // realizations. An earlier revision implemented this seam as resolve-a-.dag-entry +
+        // build-an-interpreter-context + run: the cheapest implementation while the frozen
+        // engine stands, and exactly why it is wrong -- it would make the interpreter
+        // LOAD-BEARING FOR A NEW capability while two lanes are deleting it, converting
+        // removable debt into an architectural dependency.
         Commands::Converge { .. } => Verdict {
             status: 2,
             message: Some(
@@ -800,26 +755,23 @@ fn main() {
         .apply(),
 
         // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
-        // #8286 deleted this seam together with converge's, but the two are not the same
-        // case and deleting them as one population is what made this wrong. Converge has
-        // a successor that EXISTS (the convergence spine above). Serve's declared
-        // successor — gunbc.roadmap_serve roadmap_serve_interpreted_scaffold, dissolving
-        // to emit-on-demand of the serve closure — was never built, so the deletion
-        // removed a live outward-facing production route with no minimal Y able to hold
-        // the boundary. DESIGN section 3 names that exact carve-out: a gap-intolerant
-        // boundary keeps the staged form, and where no Y can hold it at all, X stays but
-        // stays FROZEN. This restores X and freezes it.
+        // #8286 deleted this seam together with converge's, but converge has a successor that
+        // EXISTS (the spine above) while serve's declared successor -- gunbc.roadmap_serve
+        // roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure
+        // -- was never built, so the deletion removed a live outward-facing production route
+        // with no minimal Y to hold the boundary. DESIGN section 3 names that carve-out: where
+        // no Y can hold a gap-intolerant boundary, X stays FROZEN. This restores X and freezes
+        // it.
         //
-        // FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter,
-        // no completion work. The substantive claim of the deleted refusal still stands
-        // and is NOT retracted — serve is a desired service occurrence that convergence
-        // should observe and reconcile, and gunbc.host_effect carries no service-occurrence
-        // member to express that with. This seam is what runs until it does.
+        // FROZEN MEANS: no new options, verbs, routes into the interpreter, or completion work.
+        // The deleted refusal's claim is NOT retracted -- serve is a desired service occurrence
+        // that convergence should observe and reconcile, and gunbc.host_effect has no
+        // service-occurrence member to express that. This seam runs until it does.
         //
-        // The engine objection is recorded rather than argued away: this does make the
-        // interpreter load-bearing for a capability two lanes are deleting. It is not a
-        // NEW dependency — it is the one that existed until #8286 — but if this route
-        // starts attracting completion work, the freeze has been repealed by drift.
+        // The engine objection is recorded, not argued away: this makes the interpreter
+        // load-bearing for a capability two lanes are deleting. Not a NEW dependency (it existed
+        // until #8286), but if this route attracts completion work the freeze has been repealed
+        // by drift.
         Commands::Serve {
             source_roots,
             entry,
@@ -853,30 +805,25 @@ fn main() {
 
 /// Severity of one diagnostic, as a TOTAL partition.
 ///
-/// The deleted `cli_run` pair asked two independent questions — `..._is_hard` and an
-/// `..._is_advisory` ALLOWLIST — and its own comment recorded the consequence: a
-/// non-blocking variant absent from the allowlist was counted by NEITHER, so it rendered
-/// to the terminal while every count the gate reported read zero for it. A frontier
-/// claiming to be counted while nothing counts it is the silent-wrongness §5 forbids, and
-/// it was reachable by adding a variant and forgetting a list.
+/// The deleted `cli_run` pair asked two independent questions -- `..._is_hard` and an
+/// `..._is_advisory` ALLOWLIST -- so a non-blocking variant absent from the allowlist was counted
+/// by NEITHER: rendered to the terminal while every reported count read zero for it, the silent
+/// wrongness §5 forbids, reachable by adding a variant and forgetting a list. One classification
+/// with no third arm makes that unwritable: `hard + advisory == diagnostics.len()` by
+/// construction.
 ///
-/// One classification with no third arm makes that unwritable rather than checked:
-/// `hard + advisory == diagnostics.len()` holds by construction, not by assertion.
-///
-/// `is_interpreter_blocking_diagnostic` is the whole native answer. `cli_run` differed
-/// from it in exactly one arm — `UnlistedImportUse`, which it could escalate to blocking
-/// via a policy read that reached a full source resolve, entry-graph build and interpreter
-/// run to decide. That is the escape-hatch mechanism this cut exists to remove: a
-/// projection owning a compiler invocation. The base predicate already answers `false`
-/// for that variant, and import-list enforcement is being deleted at its root, so the
-/// override has no referent in the terminal model.
-/// A NOTE ON THE PARAMETER TYPE, because I got it wrong in both directions before the
-/// compiler could speak. `PipelineResult.diagnostics` is declared `Rc<Vec<Rc<ErrorNode>>>`
-/// — but `v1_compiler_compile.rs` opens with `use im::{.., Vector as Vec}`, so inside that
-/// file `Vec` MEANS `im::Vector`, and the field is an `im::Vector`. Reading the struct
-/// declaration is not enough; the imports of the file it lives in are part of the type.
-/// The deleted helpers' `compile_clean_im_vector_*` name was accurate, and I "corrected"
-/// my signatures away from it on the strength of a declaration that reads as std `Vec`.
+/// `is_interpreter_blocking_diagnostic` is the whole native answer. `cli_run` differed in one
+/// arm -- `UnlistedImportUse`, escalated to blocking via a policy read that reached a full source
+/// resolve, entry-graph build and interpreter run: the escape-hatch mechanism this cut removes,
+/// a projection owning a compiler invocation. The base predicate already answers `false` there,
+/// and import-list enforcement is being deleted at its root, so the override has no referent in
+/// the terminal model.
+/// A NOTE ON THE PARAMETER TYPE, wrong in both directions before the compiler could speak.
+/// `PipelineResult.diagnostics` is declared `Rc<Vec<Rc<ErrorNode>>>`, but
+/// `v1_compiler_compile.rs` opens with `use im::{.., Vector as Vec}`, so the field is an
+/// `im::Vector`: the declaring file's imports are part of the type. The deleted helpers'
+/// `compile_clean_im_vector_*` name was accurate and the signatures were "corrected" away from
+/// it on the strength of a declaration that reads as std `Vec`.
 enum DiagnosticSeverity {
     Blocking,
     Advisory,
@@ -995,12 +942,11 @@ fn render_one_diagnostic(
 mod tests {
     use super::Cli;
     use clap::CommandFactory;
-    // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY.
-    // They were written against this file's private copy of `extract_module_path`, which the
-    // fork closure deleted; the behaviour they pin is `cli_run`'s, so they now assert it there.
-    // Deleting them with the function would have retired the evidence along with one of the two
-    // implementations, which is exactly what DESIGN §4b(4) forbids: the redundant machinery
-    // goes, the discriminating cases stay enrolled.
+    // THE TESTS SURVIVE THE FUNCTION AND ARE RE-POINTED AT THE SURVIVING AUTHORITY. Written
+    // against this file's private `extract_module_path`, deleted by the fork closure, they pin
+    // `cli_run`'s behaviour and now assert it there. Deleting them with the function would
+    // retire the evidence with one of two implementations -- what DESIGN §4b(4) forbids: the
+    // redundant machinery goes, the discriminating cases stay enrolled.
     use v1_compiler::cli_run::extract_module_path_public as extract_module_path;
 
     #[test]
@@ -1067,27 +1013,23 @@ fn decode_run_args(
         .collect()
 }
 
-/// `gunbc run` — argv → modeled intent → the RETAINED resolve/eval engine → exit code.
+/// `gunbc run` -- argv -> modeled intent -> the RETAINED resolve/eval engine -> exit code.
 ///
-/// This is the seam the cut's declared boundary was missing. It calls the engine
+/// The seam the cut's declared boundary was missing. It calls the engine
 /// (`cli_run::resolve_entry_graph`, `cli_run::make_eval_context`) and the interpreter
-/// (`run_in_context_with_args`); it does not re-home either, and it adds no policy of
-/// its own beyond decoding argv and mapping an outcome to a status.
+/// (`run_in_context_with_args`), re-homes neither, and adds no policy beyond decoding argv and
+/// mapping an outcome to a status.
 ///
-/// Every failure arm REFUSES with a typed, located reason and a nonzero status. There is
-/// no arm that widens, defaults, or prints a plausible success — including the
-/// whole-tree case, which is declared unsupported here rather than silently approximated
-/// by loading everything under `--source-root`.
+/// Every failure arm REFUSES with a typed, located reason and a nonzero status; none widens,
+/// defaults, or prints a plausible success -- the whole-tree case is declared unsupported rather
+/// than approximated by loading everything under `--source-root`.
 /// A verb's OUTCOME, returned rather than acted on.
 ///
-/// This is the construction half, and it exists because a pure mapping function was not
-/// enough: the defect a planted-drift control caught was an arm that PRINTED AND FELL
-/// THROUGH — it never called any mapping, so no amount of totality in the mapping could
-/// have stopped it. A driver can always decline to call a function.
-///
-/// Making the verdict the RETURN TYPE removes the ability to decide at all. Every arm of
-/// `run_verb` must produce a `Verdict`, one place maps it to a process status, and an arm
-/// that forgets to report a failure is a TYPE ERROR rather than a silent zero exit.
+/// The construction half. A pure mapping was not enough: the defect a planted-drift control
+/// caught was an arm that PRINTED AND FELL THROUGH, never calling any mapping -- a driver can
+/// always decline to call a function. With the verdict as RETURN TYPE, every arm of `run_verb`
+/// must produce a `Verdict`, one place maps it to a status, and a forgotten failure report is a
+/// TYPE ERROR rather than a silent zero exit.
 struct Verdict {
     status: i32,
     message: Option<String>,
@@ -1097,11 +1039,10 @@ impl Verdict {
     /// The ONE place a verdict becomes a process status. Nothing else in this file calls
     /// `std::process::exit` for a verb outcome.
     ///
-    /// `OutputWriteRefusal::verdict` is the second producer, and it is not a verb outcome:
-    /// it is the output writer's refusal, which before this change had no channel at all.
-    /// The carrier is reused rather than a second status-plus-message pair authored beside
-    /// it, so the writer's status is decided where the writer decides to refuse and nowhere
-    /// else.
+    /// `OutputWriteRefusal::verdict` is the second producer and not a verb outcome: the output
+    /// writer's refusal, which before this change had no channel. The carrier is reused rather
+    /// than a second status-plus-message pair, so the writer's status is decided where the
+    /// writer refuses and nowhere else.
     fn apply(self) -> ! {
         if let Some(message) = self.message {
             eprintln!("{message}");
@@ -1226,29 +1167,27 @@ fn run_verb(
 
 /// TOTAL map from a run's verdict to a process status, plus the message that explains it.
 ///
-/// This is a pure function on purpose, and the purpose is §5 construction-over-validation.
-/// The first version of the seam inlined this decision in a `match` arm and DROPPED the
-/// failure case — it printed `ExitFailure { code: 1, reason: "…drift…" }` and exited 0,
-/// which would have reported green for every consumer of `gunbc run` regardless of content.
-/// A planted-drift control caught it; nothing else could have, because a clean run and a
-/// malformed-argv refusal are both satisfiable by a seam that always exits 0.
+/// Pure on purpose (§5 construction-over-validation). The first version inlined this in a
+/// `match` arm and DROPPED the failure case -- printed `ExitFailure { code: 1, reason:
+/// "…drift…" }` and exited 0, green for every consumer of `gunbc run` regardless of content. A
+/// planted-drift control caught it; nothing else could, since a clean run and a malformed-argv
+/// refusal are both satisfiable by a seam that always exits 0.
 ///
-/// Made total and pure, the arm has nowhere to drop a verdict: every `ExitClass` yields a
-/// status, `Failure` cannot yield 0 (its own code is the status, and the .dag side cannot
-/// construct `ExitFailure` with code 0 — see the assertion below), and the only way to
-/// re-introduce the defect is to edit THIS function rather than to forget a case.
+/// Total and pure, the arm has nowhere to drop a verdict: every `ExitClass` yields a status,
+/// `Failure` cannot yield 0 (its code is the status, and the .dag side cannot construct
+/// `ExitFailure` with code 0 -- see the assertion below), and re-introducing the defect means
+/// editing THIS function rather than forgetting a case.
 ///
-/// RUNG, HONESTLY: this is a construction, not an enrolled check. The tests below are Rust,
-/// and CI on this repository runs no Rust suite (removed 2026-07-11, operator ruling,
-/// local-only). So the class is `mechanically preventable` ONLY where the suite is run by
-/// hand; in CI it rests on the totality above. The planted-drift control is the executed
-/// evidence and it is a manual procedure, recorded in the PR rather than enrolled.
+/// RUNG, HONESTLY: a construction, not an enrolled check. The tests below are Rust, and CI runs
+/// no Rust suite (removed 2026-07-11, operator ruling, local-only), so the class is
+/// `mechanically preventable` ONLY where the suite is run by hand; in CI it rests on the
+/// totality above. The planted-drift control is a manual procedure recorded in the PR.
 fn exit_status_for(class: cli_run::ExitClass, function: &str) -> (i32, Option<String>) {
     match class {
         cli_run::ExitClass::Success => (0, None),
-        // A `Failure` carrying code 0 would say "failed" and report success. Refuse rather
-        // than pass it through: the .dag authority cannot express it, so reaching here means
-        // the classifier changed, and the safe reading of an impossible verdict is not 0.
+        // A `Failure` carrying code 0 would say "failed" and report success. Refuse: the .dag
+        // authority cannot express it, so reaching here means the classifier changed, and the
+        // safe reading of an impossible verdict is not 0.
         cli_run::ExitClass::Failure { code: 0, reason } => (
             1,
             Some(format!(
@@ -1281,15 +1220,14 @@ mod exit_status_tests {
     /// THE DISCRIMINATING RED FOR THE WRITER/COMPILER CONFLATION.
     ///
     /// The claim under test is not "a refusal type exists" -- that probe cannot fail for the
-    /// reason that matters. It is that a writer failure and a compiler refusal are
-    /// DISTINGUISHABLE AT THE EXIT STATUS, which is the thing that was impossible before:
-    /// the writer had no failure channel, so its only outcome was an unwind at 101 with no
-    /// summary line, which every consumer reads as a failed compile.
+    /// reason that matters -- but that a writer failure and a compiler refusal are
+    /// DISTINGUISHABLE AT THE EXIT STATUS, impossible before: the writer's only outcome was an
+    /// unwind at 101 with no summary line, which every consumer reads as a failed compile.
     ///
-    /// The edits that make this red, named rather than assumed: changing the status in
-    /// `OutputWriteRefusal::verdict` to 1 (re-fusing the two states at the status a compile
-    /// refusal already exits with), or to 0 (a writer refusal reporting success). Restoring
-    /// the `panic!` makes it fail to compile instead, which is the stronger outcome.
+    /// The edits that make this red: changing the status in `OutputWriteRefusal::verdict` to 1
+    /// (re-fusing the two states at the status a compile refusal exits with), or to 0 (a writer
+    /// refusal reporting success). Restoring the `panic!` makes it fail to compile instead,
+    /// the stronger outcome.
     #[test]
     fn a_writer_refusal_does_not_exit_as_a_compile_refusal() {
         // The status a compile refusal exits with, at every compile arm in `main`.
@@ -1318,10 +1256,10 @@ mod exit_status_tests {
         }
     }
 
-    /// THE THREE CAUSES STAY THREE. The parent-directory arm is here specifically because it
-    /// had no representation at all -- `.ok()` discarded it and the write arm then reported
-    /// its own name for the failure. This goes red if any arm is collapsed into another's
-    /// wording, which is the state the repair removed.
+    /// THE THREE CAUSES STAY THREE. The parent-directory arm is here because it had no
+    /// representation at all -- `.ok()` discarded it and the write arm reported its own name for
+    /// the failure. Red if any arm collapses into another's wording, the state the repair
+    /// removed.
     #[test]
     fn each_writer_cause_names_itself_and_its_path() {
         assert_eq!(

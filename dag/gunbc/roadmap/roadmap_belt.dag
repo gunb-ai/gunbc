@@ -28,7 +28,15 @@ import extdeps.languages.json.emit {
   json_kv,
 }
 
-data spawn_mode_note: String = "RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): the belt's run state and the launch admission's spawn mode were ONE concept, migrated at the root (DESIGN 3 replacement migration) -- BeltRunState = Running | Paused is gone and SpawnMode stands where it stood. Paused: no cause may start work and the reconciler emits nothing. ManualReady (PRODUCTION): the operator may start a Ready node through the shared launch admission; the timer may not start new work, while its reconciliation (teardown of departed members), verification, publication and cleanup continue -- so the reconciler still runs and only the launch admission (gunbc.roadmap_launch_admission launch_gate_cause) withholds the timer's spawns. AutomaticReady: the timer starts Ready nodes up to capacity, the retired default. The production value is roadmap_belt_production_spawn_mode."
+// RLM-1 (docs/plans/roadmap-launch-mvp-plan.md section 3): the belt's run state and the launch
+// admission's spawn mode were ONE concept, migrated at the root (DESIGN 3 replacement migration) --
+// BeltRunState = Running | Paused is gone and SpawnMode stands where it stood. Paused: no cause may
+// start work and the reconciler emits nothing. ManualReady (PRODUCTION): the operator may start a
+// Ready node through the shared launch admission; the timer may not start new work, while its
+// reconciliation (teardown of departed members), verification, publication and cleanup continue --
+// so the reconciler still runs and only the launch admission (gunbc.roadmap_launch_admission
+// launch_gate_cause) withholds the timer's spawns. AutomaticReady: the timer starts Ready nodes up
+// to capacity, the retired default. The production value is roadmap_belt_production_spawn_mode.
 
 type SpawnMode
   = Paused
@@ -65,7 +73,19 @@ data roadmap_belt_default_capacity: BeltCapacity = BeltCapacity { max_concurrent
 
 data roadmap_belt_production_spawn_mode: SpawnMode = ManualReady
 
-data belt_reconcile_authority_note: String = "R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) -> reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMED belt_step (spawn-only, observed hardcoded empty), the degenerate slice-1 precursor; the host-effect driver (belt_tick_for_instance: MemberAdded/MemberChanged -> launch admission -> dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the sole belt decision, and belt_step was DELETED under RLM-1 because a retired planner still selecting frontier.ready is a second eligibility authority (DESIGN 3 delete-first). The belt is a CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps, count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9)."
+// R9 session-grain binding: the belt IS gunbc.membership_reconcile at member-type = dispatch
+// Session. Desired = frontier.ready roadmap nodes; observed = dispatch_live_sessions (belt-owned by
+// construction — the gunbc-dispatch- prefix filter + node-id keying, so a foreign tmux session has
+// no node-id key, is not a member, and never enters Removed). Added -> spawn, Removed(owned) ->
+// reap, Unchanged -> noop, Paused -> no actions, capacity caps upserts. This SUBSUMED belt_step
+// (spawn-only, observed hardcoded empty), the degenerate slice-1 precursor; the host-effect driver
+// (belt_tick_for_instance: MemberAdded/MemberChanged -> launch admission ->
+// dispatch_spawn_commands, MemberRemoved -> tmux_kill_session_argv) consumes belt_reconcile as the
+// sole belt decision, and belt_step was DELETED under RLM-1 because a retired planner still
+// selecting frontier.ready is a second eligibility authority (DESIGN 3 delete-first). The belt is a
+// CONTINUOUS reconciler => SIBLINGS-CONTINUE (product/plan grain: emit doable spawns+reaps,
+// count+surface refusals), NOT the deploy's atomic wholesale-refuse. It reuses the spine UNCHANGED
+// (zero spine edit) — the grain-agnosticism proof (DESIGN §2 Realization / R9).
 
 type DispatchMemberAt = String
 
@@ -73,7 +93,13 @@ type DispatchMember
   = DesiredMember { node_id: String, node: RoadmapNode }
   | ObservedMember { node_id: String, session: DispatchLiveSession }
 
-data belt_dispatch_member_note: String = "The reconcile member for the belt. DesiredMember (from frontier.ready) carries the RoadmapNode for the spawn brief; ObservedMember (from dispatch_live_sessions) carries the DispatchLiveSession for the teardown. Both keyed on the node-id String so a ready node and its live session collapse to one key. The action's member carries exactly the payload that action needs: Added->DesiredMember(.node) spawns, Removed->ObservedMember(.session) reaps. Keyed on raw String (not RoadmapNodeId) so desired (n.node as String) and observed (s.node_id, already String) share one key type with no branded cast."
+// The reconcile member for the belt. DesiredMember (from frontier.ready) carries the RoadmapNode
+// for the spawn brief; ObservedMember (from dispatch_live_sessions) carries the DispatchLiveSession
+// for the teardown. Both keyed on the node-id String so a ready node and its live session collapse
+// to one key. The action's member carries exactly the payload that action needs:
+// Added->DesiredMember(.node) spawns, Removed->ObservedMember(.session) reaps. Keyed on raw String
+// (not RoadmapNodeId) so desired (n.node as String) and observed (s.node_id, already String) share
+// one key type with no branded cast.
 
 fn dispatch_member_key(m: DispatchMember) -> String {
   match m {
@@ -84,11 +110,27 @@ fn dispatch_member_key(m: DispatchMember) -> String {
 
 fn dispatch_member_key_eq(a: String, b: String) -> Bool { a == b }
 
-data belt_value_eq_note: String = "Presence-only equality (always true): a ready node WITH a live session is Unchanged (noop), never Modified — the belt must NEVER respawn a running session on content drift (that would kill live work). Session HEALTH (drain/restart of a drifted or hung session for a still-ready node) is the actuator lease concern (roadmap_dispatch_actuator.classify_dispatch_lease_upsert), a SEPARATE layer over membership. key_of is stable identity (node-id) so a Removed member means the node genuinely left the ready set (done), never a content drift."
+// Presence-only equality (always true): a ready node WITH a live session is Unchanged (noop), never
+// Modified — the belt must NEVER respawn a running session on content drift (that would kill live
+// work). Session HEALTH (drain/restart of a drifted or hung session for a still-ready node) is the
+// actuator lease concern (roadmap_dispatch_actuator.classify_dispatch_lease_upsert), a SEPARATE
+// layer over membership. key_of is stable identity (node-id) so a Removed member means the node
+// genuinely left the ready set (done), never a content drift.
 
 fn dispatch_member_value_eq(a: DispatchMember, b: DispatchMember) -> Bool { true }
 
-data belt_ownership_mapping_note: String = "R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's dispatch_session_is_owned Bool (Converged/Drifted = OUR process; Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note). This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned -> Present{Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with Optional.Absent."
+// R5 owned-only teardown at session grain. Teardown-eligibility (Owned) is the actuator's
+// dispatch_session_is_owned Bool (Converged/Drifted = OUR process;
+// Conflict/Inaccessible/UnknownRefused/Absent = not owned — see dispatch_session_ownership_note).
+// This fn LIFTS that Bool into gunbc.ownership.Ownership? for the spine's teardown gate: owned ->
+// Present{Owned} (reap), not-owned -> Absent -> OwnershipUnknown -> the spine REFUSES teardown
+// (counted, surfaced), never kills a session it cannot prove it owns. The coarse spine cause
+// (foreign Conflict collapses to OwnershipUnknown because gunbc.ownership has no
+// observed-but-foreign stance distinct from Ensured=required-dependency) is retained finely in the
+// ObservedMember payload (session.lease_verdict) for belt surfacing; a spine-cause refinement is a
+// coordinated evolution, not a belt fork. Keeping the verdict match in the actuator lets
+// roadmap_belt avoid importing ObservationVerdict, whose Absent variant collides with
+// Optional.Absent.
 
 fn belt_ownership_owned() -> Ownership? { Present { value: Owned } }
 fn belt_ownership_unknown() -> Ownership? { Absent }
@@ -97,7 +139,10 @@ fn belt_session_ownership(session: DispatchLiveSession) -> Ownership? {
   if dispatch_session_is_owned(session: session) { belt_ownership_owned() } else { belt_ownership_unknown() }
 }
 
-data belt_desired_member_ownership_note: String = "ownership_of is called by the spine ONLY on Removed (observed-side) members; a DesiredMember is on the desired side and is never Removed, so this arm is unreachable by construction. IF reached it returns Absent => OwnershipUnknown => REFUSE (fail-closed, DESIGN §5) — never a fabricated Owned that would license a teardown."
+// ownership_of is called by the spine ONLY on Removed (observed-side) members; a DesiredMember is
+// on the desired side and is never Removed, so this arm is unreachable by construction. IF reached
+// it returns Absent => OwnershipUnknown => REFUSE (fail-closed, DESIGN §5) — never a fabricated
+// Owned that would license a teardown.
 
 fn dispatch_member_ownership(m: DispatchMember) -> Ownership? {
   match m {
@@ -172,7 +217,15 @@ type BeltReconcile {
   refusals: List<MemberAction<DispatchMember, DispatchMemberAt>>,
 }
 
-data belt_upserts_note: String = "EVERY upsert the membership plan produces is returned, in plan order; the reconcile does NOT truncate to free capacity. Capacity is the launch admission's gate (gunbc.roadmap_launch_admission launch_gate_capacity, with `reserved` counting the launches already admitted in the same fold), so the timer's excess rows receive a typed LaunchNoCapacity from the one decision instead of vanishing into a count here -- review 5059520727 found `spawns = ups.take(n: free)` standing as a second capacity authority in front of the admission. Any deferred summary is DERIVED from those per-row outcomes (gunbc.roadmap_belt_actuate belt_tick_deferred_count), never computed beside them. The idempotence argument is unchanged: a refused node stays desired-not-observed and is planned again next tick."
+// EVERY upsert the membership plan produces is returned, in plan order; the reconcile does NOT
+// truncate to free capacity. Capacity is the launch admission's gate
+// (gunbc.roadmap_launch_admission launch_gate_capacity, with `reserved` counting the launches
+// already admitted in the same fold), so the timer's excess rows receive a typed LaunchNoCapacity
+// from the one decision instead of vanishing into a count here -- review 5059520727 found `spawns =
+// ups.take(n: free)` standing as a second capacity authority in front of the admission. Any
+// deferred summary is DERIVED from those per-row outcomes (gunbc.roadmap_belt_actuate
+// belt_tick_deferred_count), never computed beside them. The idempotence argument is unchanged: a
+// refused node stays desired-not-observed and is planned again next tick.
 
 fn belt_reconcile(
   state: SpawnMode,
@@ -193,7 +246,13 @@ fn belt_reconcile(
   }
 }
 
-data belt_reconcile_members_note: String = "The membership plan runs in BOTH non-paused modes. In ManualReady the upserts it plans are still handed to the tick, which folds each through gunbc.roadmap_launch_admission with cause Timer and receives LaunchCauseNotPermitted -- so the receipt shows what the timer WOULD have started and why it did not (the plan's exit: the timer returns a projection of the one decision), while the teardowns of departed members proceed. Withholding the plan here instead would make ManualReady indistinguishable from Paused on the reconcile axis and stop the reap arm the plan says must continue."
+// The membership plan runs in BOTH non-paused modes. In ManualReady the upserts it plans are still
+// handed to the tick, which folds each through gunbc.roadmap_launch_admission with cause Timer and
+// receives LaunchCauseNotPermitted -- so the receipt shows what the timer WOULD have started and
+// why it did not (the plan's exit: the timer returns a projection of the one decision), while the
+// teardowns of departed members proceed. Withholding the plan here instead would make ManualReady
+// indistinguishable from Paused on the reconcile axis and stop the reap arm the plan says must
+// continue.
 
 fn belt_reconcile_members(
   mode: SpawnMode,

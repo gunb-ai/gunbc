@@ -57,7 +57,11 @@ test fn witness_over_budget_exceeds_and_names_its_clock() -> Bool {
   }
 }
 
-data unset_limit_note: String = "THE DISCRIMINATING HALF. An elapsed value astronomically past any plausible budget must still be WITHIN budget when no limit is declared, because LimitUnset is a policy state rather than a missing number. If this returned exceeded, an unbounded caller would refuse every evaluation the moment the carrier was introduced — the exact regression that makes landing the mechanism unset-by-default unsafe."
+// THE DISCRIMINATING HALF. An elapsed value astronomically past any plausible budget must still be
+// WITHIN budget when no limit is declared, because LimitUnset is a policy state rather than a
+// missing number. If this returned exceeded, an unbounded caller would refuse every evaluation the
+// moment the carrier was introduced — the exact regression that makes landing the mechanism
+// unset-by-default unsafe.
 
 test fn witness_unset_limit_never_exceeds() -> Bool {
   match evaluation_budget_verdict(
@@ -83,7 +87,10 @@ test fn witness_boundary_equal_elapsed_is_within() -> Bool {
   }
 }
 
-data nesting_law_note: String = "EARLIEST-DEADLINE-WINS, ASSERTED IN BOTH DIRECTIONS. A one-sided check would pass against the seed's current inverted behavior: arm_eval_deadline overwrites with a fresh baseline, so an inner scope requesting a LONGER limit currently wins and extends its caller's bound. The second conjunct is what fails against that."
+// EARLIEST-DEADLINE-WINS, ASSERTED IN BOTH DIRECTIONS. A one-sided check would pass against the
+// seed's current inverted behavior: arm_eval_deadline overwrites with a fresh baseline, so an inner
+// scope requesting a LONGER limit currently wins and extends its caller's bound. The second
+// conjunct is what fails against that.
 
 test fn witness_nested_limit_takes_the_smaller() -> Bool {
   effective_nested_limit_nanos(outer_remaining_nanos: 3000000, inner_limit_nanos: 9000000) == 3000000

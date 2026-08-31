@@ -49,7 +49,13 @@ test fn w_success_ansi_is_256_green() -> Bool {
   }
 }
 
-data ansi_escape_is_a_real_byte_note: String = "w_success_ansi_is_256_green above compares one \\x1b literal against another, so it agreed with itself for as long as the tokenizer left BOTH undecoded — it passed throughout the period when every colour this repo authored rendered as the literal text backslash-x-1-b (seen in CI run 30167957464's TOP SLOWEST WITNESSES table). Equality against a same-source literal can never discriminate a decode defect. The two witnesses below do: they read the CODE POINT of the first character (27 = ESC, never 92 = backslash) and pin the decoded length, both of which are properties of the decode rather than of the spelling."
+// w_success_ansi_is_256_green above compares one \x1b literal against another, so it agreed with
+// itself for as long as the tokenizer left BOTH undecoded — it passed throughout the period when
+// every colour this repo authored rendered as the literal text backslash-x-1-b (seen in CI run
+// 30167957464's TOP SLOWEST WITNESSES table). Equality against a same-source literal can never
+// discriminate a decode defect. The two witnesses below do: they read the CODE POINT of the first
+// character (27 = ESC, never 92 = backslash) and pin the decoded length, both of which are
+// properties of the decode rather than of the spelling.
 
 test fn w_ansi_first_char_is_escape_byte() -> Bool {
   match ansi_code(c: Success) {

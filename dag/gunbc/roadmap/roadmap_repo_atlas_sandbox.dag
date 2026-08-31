@@ -193,7 +193,10 @@ fn atlas_change_dot(cell: RepoAtlasCell, changed: List<ModuleIdentity>) -> Fragm
   ] }
 }
 
-data repo_atlas_plane_note: String = "Each plane is its own SVG group so a register or a motion realization can transform one without the others. They are emitted in one document and share the coordinate frame — co-registered, not composited after the fact — which is what lets a future impulse desynchronize them the way a CRT loses hold, using the planes that already exist rather than new machinery."
+// Each plane is its own SVG group so a register or a motion realization can transform one without
+// the others. They are emitted in one document and share the coordinate frame — co-registered, not
+// composited after the fact — which is what lets a future impulse desynchronize them the way a CRT
+// loses hold, using the planes that already exist rather than new machinery.
 
 fn atlas_structure_plane(snapshot: RepoAtlasSnapshot) -> Fragment {
   Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
@@ -221,7 +224,10 @@ fn atlas_impact_ring(cell: RepoAtlasCell) -> Fragment {
   ] }
 }
 
-data repo_atlas_impact_plane_note: String = "The impact plane renders ONLY from AtlasImpactComputed. Under AtlasImpactNotComputed it emits no group at all and the readout says impact not computed — because an empty plane and an uncomputed plane look identical on screen, and the difference is exactly what a reader needs to know before concluding nothing is affected."
+// The impact plane renders ONLY from AtlasImpactComputed. Under AtlasImpactNotComputed it emits no
+// group at all and the readout says impact not computed — because an empty plane and an uncomputed
+// plane look identical on screen, and the difference is exactly what a reader needs to know before
+// concluding nothing is affected.
 
 fn atlas_impact_plane(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
   match snapshot.impact {
@@ -273,7 +279,11 @@ fn atlas_svg(snapshot: RepoAtlasSnapshot) -> Fragment {
   }
 }
 
-data repo_atlas_readout_note: String = "THE READOUT IS THE HONEST HALF OF THE PAGE AND IS NOT OPTIONAL GARNISH. Everything the atlas cannot draw truthfully is stated here in words: the refusal cause when the change overlay refused, the departed paths that have no head identity, the paths declaring no module, and whether an impact reading exists and at what standing. A viewer who reads only the picture must not be able to conclude more than the model knows."
+// THE READOUT IS THE HONEST HALF OF THE PAGE AND IS NOT OPTIONAL GARNISH. Everything the atlas
+// cannot draw truthfully is stated here in words: the refusal cause when the change overlay
+// refused, the departed paths that have no head identity, the paths declaring no module, and
+// whether an impact reading exists and at what standing. A viewer who reads only the picture must
+// not be able to conclude more than the model knows.
 
 fn atlas_comparison_text(c: AtlasComparison) -> String {
   let rel = match c.relation { TwoDot => ".." ThreeDot => "..." }
@@ -331,7 +341,8 @@ fn atlas_impact_readout(snapshot: RepoAtlasSnapshot) -> Fragment {
   }
 }
 
-data repo_atlas_not_observed_readout_note: String = "The not-observed arm reads differently from a comparison that found nothing, because they ARE different and the remedy differs: one needs a comparison run, the other needs nothing."
+// The not-observed arm reads differently from a comparison that found nothing, because they ARE
+// different and the remedy differs: one needs a comparison run, the other needs nothing.
 
 fn atlas_changes_readout(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
   match snapshot.changes {
@@ -377,7 +388,9 @@ fn atlas_subject_text(subject: AtlasSubject) -> String {
   }
 }
 
-data repo_atlas_occupancy_absent_note: String = "The page states the absence of agent occupancy out loud rather than simply omitting it. A viewer arriving at a repo atlas expecting to see where agents are working must not read 'no dots lit' as 'nobody is working' — the honest statement is that the channel does not exist yet."
+// The page states the absence of agent occupancy out loud rather than simply omitting it. A viewer
+// arriving at a repo atlas expecting to see where agents are working must not read 'no dots lit' as
+// 'nobody is working' — the honest statement is that the channel does not exist yet.
 
 fn atlas_legend() -> Fragment {
   Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-legend") ], children: [
@@ -586,7 +599,11 @@ fn repo_atlas_css() -> String {
 
 data repo_atlas_page_title: String = "gunbc — repo atlas"
 
-data repo_atlas_document_note: String = "A FULL DOCUMENT, matching every sibling route on the same serve table. The route previously returned a bare main fragment, so the browser received markup with no charset, no viewport, no title, no stylesheet and no header — an incomplete document that the sibling pages all get right (review 50752). The page witnesses now serialize THIS function rather than the section beneath it, because the shape the route serves is the shape a claim has to cover."
+// A FULL DOCUMENT, matching every sibling route on the same serve table. The route previously
+// returned a bare main fragment, so the browser received markup with no charset, no viewport, no
+// title, no stylesheet and no header — an incomplete document that the sibling pages all get right
+// (review 50752). The page witnesses now serialize THIS function rather than the section beneath
+// it, because the shape the route serves is the shape a claim has to cover.
 
 fn repo_atlas_document(snapshot: RepoAtlasSnapshot) -> Fragment {
   Element {
@@ -616,7 +633,11 @@ fn repo_atlas_document(snapshot: RepoAtlasSnapshot) -> Fragment {
   }
 }
 
-data repo_atlas_served_shape_note: String = "repo_atlas_document IS THE SERVED SHAPE and takes the snapshot as a parameter for exactly one reason: the page witnesses must be able to drive the shape the route serves with controlled fixtures. Before this split the claims serialized the SECTION while the route served a bare main, so a headless or unstyled page stayed green — the claims were covering a shape nobody received. repo_atlas_page is now the thin live binding and nothing else."
+// repo_atlas_document IS THE SERVED SHAPE and takes the snapshot as a parameter for exactly one
+// reason: the page witnesses must be able to drive the shape the route serves with controlled
+// fixtures. Before this split the claims serialized the SECTION while the route served a bare main,
+// so a headless or unstyled page stayed green — the claims were covering a shape nobody received.
+// repo_atlas_page is now the thin live binding and nothing else.
 
 fn repo_atlas_page() -> Fragment {
   repo_atlas_document(snapshot: repo_atlas_live_snapshot())

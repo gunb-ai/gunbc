@@ -164,6 +164,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_regen_fixed_point_mode = false;
     let mut regen_round_cost_mode = false;
     let mut regen_affected_set_mode = false;
+    let mut regen_affected_scope = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -240,6 +241,15 @@ fn run() -> Result<ExitCode, ExitCode> {
             // Reports; it installs nothing. An edited path the tree cannot name refuses.
             "--regen-affected-set" => {
                 regen_affected_set_mode = true;
+            }
+            // CONSUME the bound rather than report it: the round adjudicates, writes and digests
+            // only the mirrors `--regen-affected-set` names for this edit, and REFUSES when that
+            // bound cannot locate an edited path. Opt-in and narrowing: without it the round is
+            // whole-population, which is what the required CI phase runs and what establishes
+            // the fixed point a scoped round starts from (v2.workflow.required_regen
+            // RegenEmissionScope).
+            "--regen-affected-scope" => {
+                regen_affected_scope = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -871,6 +881,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             &regen_candidate_dir,
             &regen_receipt_path,
             &source_roots,
+            regen_affected_scope,
         ) {
             Ok(outcome) => {
                 eprint!("{}", outcome.rendered);
@@ -895,10 +906,16 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     if required_regen_mode {
-        return match v1_compiler::cli_run::run_required_regen(
-            &regen_candidate_dir,
-            &regen_receipt_path,
-        ) {
+        let regen = if regen_affected_scope {
+            v1_compiler::cli_run::run_required_regen_scoped(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+                &source_roots,
+            )
+        } else {
+            v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path)
+        };
+        return match regen {
             Ok(outcome) => {
                 // Both values here ARE measured by this pass, so they print unqualified. Read
                 // through accessors rather than by matching the variant: the
