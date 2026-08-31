@@ -2501,6 +2501,12 @@ fn fleet_converge_plan_artifact_assembled(
       ["# fabric-cell"],
       fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells),
       [
+        concat(
+          "# spark-serving-typed-actions:",
+          fleet_converge_spark_serving_typed_actions_wire(
+            rows: scheduled_rows_list(scheduled: spark_rows),
+          ),
+        ),
         concat("# slot-refusals=", to_string(fleet_converge_slot_refusal_count(host: host, observed_slots: observed_slots))),
         concat("# activation-refusals=", to_string(fleet_converge_activation_refusal_count(host: host, readiness: observed_activation_readiness))),
         concat("# cap-refusals=", to_string(membership_refusal_count(plan: cap_plan))),
