@@ -24,6 +24,9 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
+pub use crate::gunbc_stage0_partition_package_graph::{
+    stage0_partition_package_dependency_names, stage0_partition_row_is_module_bearing_package,
+};
 pub use crate::std_dissolution::unbound_dissolution;
 pub use crate::std_dissolution::DissolutionCondition;
 use crate::std_dissolution::DissolutionCondition::*;
@@ -128,14 +131,6 @@ pub fn stage0_package_name_to_rust_ident(package_name: String) -> String {
 
 pub fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
     v1_rt::replace(crate_dir.clone(), "src/v1/".to_string(), "../".to_string())
-}
-
-pub fn stage0_partition_row_is_module_bearing(row: Rc<GeneratedPartitionCrateRow>) -> bool {
-    match row.kind.clone() {
-        GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => false,
-        GeneratedPartitionCrateKind::GeneratedFoundationCrate => true,
-        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => true,
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -283,18 +278,7 @@ pub fn stage0_lookup_module_owner_package_name(
         let matches = Rc::new({
             let mut __result = Vec::new();
             for row in generated_partition_crate_rows().iter().cloned() {
-                if (stage0_partition_row_is_module_bearing(row.clone()) && {
-                    let mut __found = false;
-                    for m in row.modules.clone().iter().cloned() {
-                        if (m.clone() == module_basename.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                }) {
-                    __result.push(row);
-                }
+                if (crate::gunbc_stage0_partition_package_graph::stage0_partition_row_is_module_bearing_package(row.clone()) && { let mut __found = false; for m in row.modules.clone().iter().cloned() { if (m.clone() == module_basename.clone()) { __found = true; break; } } __found }) { __result.push(row); }
             }
             __result
         });
@@ -463,32 +447,6 @@ pub fn stage0_foundation_runtime_dependencies() -> Rc<Vec<Rc<CargoDependency>>> 
     ])
 }
 
-pub fn stage0_emit_shell_registry_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
-    Rc::new(vec![
-        Rc::new(CargoDependency {
-            name: "stacker".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
-                version: "0.1".to_string(),
-                features: Rc::new(vec![]),
-            }),
-        }),
-        Rc::new(CargoDependency {
-            name: "im".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
-                version: "15.1".to_string(),
-                features: Rc::new(vec!["serde".to_string()]),
-            }),
-        }),
-        Rc::new(CargoDependency {
-            name: "serde".to_string(),
-            source: Rc::new(CargoDepSource::RegistryDep {
-                version: "1".to_string(),
-                features: Rc::new(vec!["derive".to_string(), "rc".to_string()]),
-            }),
-        }),
-    ])
-}
-
 pub fn stage0_reexport_path_dependencies_outcome(
     reexport_packages: Rc<Vec<String>>,
 ) -> Rc<Stage0ReexportPathDepsOutcome> {
@@ -534,32 +492,6 @@ pub fn stage0_reexport_path_dependencies_outcome(
     )
 }
 
-pub fn stage0_emit_shell_path_dependencies() -> Rc<Vec<Rc<CargoDependency>>> {
-    Rc::new({
-        let mut __result = Vec::new();
-        for row in Rc::new({
-            let mut __result = Vec::new();
-            for row in generated_partition_crate_rows().iter().cloned() {
-                if stage0_partition_row_is_module_bearing(row.clone()) {
-                    __result.push(row);
-                }
-            }
-            __result
-        })
-        .iter()
-        .cloned()
-        {
-            __result.push(Rc::new(CargoDependency {
-                name: row.package_name.clone(),
-                source: Rc::new(CargoDepSource::LocalPathDep {
-                    path: stage0_crate_dir_to_sibling_dep_path(row.crate_dir.clone()),
-                }),
-            }));
-        }
-        __result
-    })
-}
-
 pub fn stage0_partition_row_kind(row: Rc<GeneratedPartitionCrateRow>) -> Stage0CrateKind {
     match row.kind.clone() {
         GeneratedPartitionCrateKind::GeneratedFoundationCrate => Stage0CrateKind::FoundationCrate,
@@ -579,42 +511,24 @@ pub fn stage0_partition_row_header_doc(row: Rc<GeneratedPartitionCrateRow>) -> S
 pub fn stage0_partition_row_dependencies_outcome(
     row: Rc<GeneratedPartitionCrateRow>,
 ) -> Rc<Stage0PartitionRowDepsOutcome> {
-    match row.kind.clone() {
-        GeneratedPartitionCrateKind::GeneratedFoundationCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-                deps: stage0_foundation_runtime_dependencies(),
-            })
-        }
-        GeneratedPartitionCrateKind::GeneratedLayeredCoreCrate => {
-            match (*stage0_reexport_path_dependencies_outcome(row.reexport_packages.clone()))
-                .clone()
-            {
-                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
-                    deps: reexport_deps,
-                    ..
-                } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-                    deps: v1_rt::concat(
-                        stage0_foundation_runtime_dependencies(),
-                        reexport_deps.clone(),
-                    ),
-                }),
-                Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused {
-                    cause: cause,
-                    ..
-                } => Rc::new(
-                    Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
-                        cause: cause.clone(),
-                    },
-                ),
-            }
-        }
-        GeneratedPartitionCrateKind::GeneratedEmitCoreCrate => {
-            Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
-                deps: v1_rt::concat(
-                    stage0_foundation_runtime_dependencies(),
-                    stage0_emit_shell_path_dependencies(),
-                ),
-            })
+    match (*stage0_reexport_path_dependencies_outcome(
+        crate::gunbc_stage0_partition_package_graph::stage0_partition_package_dependency_names(
+            row.clone(),
+        ),
+    ))
+    .clone()
+    {
+        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsOk {
+            deps: path_deps, ..
+        } => Rc::new(Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsOk {
+            deps: v1_rt::concat(stage0_foundation_runtime_dependencies(), path_deps.clone()),
+        }),
+        Stage0ReexportPathDepsOutcome::Stage0ReexportPathDepsRefused { cause: cause, .. } => {
+            Rc::new(
+                Stage0PartitionRowDepsOutcome::Stage0PartitionRowDepsRefused {
+                    cause: cause.clone(),
+                },
+            )
         }
     }
 }

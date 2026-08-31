@@ -50,6 +50,7 @@ pub mod gunbc_rust_source_type_bindings;
 pub mod gunbc_stage0_crate_layout_generated;
 pub mod gunbc_stage0_crate_partition_generated;
 pub mod gunbc_stage0_emitted_population_manifest;
+pub mod gunbc_stage0_partition_package_graph;
 pub mod std_algebra;
 pub mod std_checked_arithmetic;
 pub mod std_coercion;
