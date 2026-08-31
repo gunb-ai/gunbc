@@ -431,120 +431,33 @@ pub struct TransitionAdmission {
 /// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
 /// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
 /// Removed by the roster's own rule before the PR merged, so the rows never reached main.
-/// FOURTH TRANSITION, SAME RULE (2026-08-30). Two rows for the SPARK-PAIR-0 P0-C3a cut, where
-/// `spark_serving_linger_probe_words` stops being declared inside `gunbc.spark.serving_converge_slice_wet`
-/// and is imported from `gunbc.spark.serving_observe`, which already owned the probe words the
-/// observation path uses.
-///
-/// WHY THE REBIND IS THE POINT AND NOT A SIDE EFFECT. The argv was authored twice — one spelling on
-/// the context path and an identical one on the HostEffectTransport path — which is DESIGN §3's fork:
-/// the same fact with two homes, free to drift the first time `loginctl`'s interface moves. Removing
-/// the second home is what moves the binding, so the delta is the consolidation itself, reported at
-/// exactly the grain that makes it reviewable: two named declarations, one spelling, one old target,
-/// one new target.
-///
-/// DISSOLUTION. Both rows go stale the moment this lands on main, because base and head will then
-/// carry the same single authority and no run can produce the delta. They are removed by that
-/// trigger, in the shrink this roster's rule requires — not left standing to refuse unrelated
-/// changes, which is the cost the first 53 rows recorded above.
+/// XL-0N (`node://adhoc-aec65f93-b00`, gunbc#9719): ONE relocation, rostered by its author under
+/// the rule this ledger states -- "a run carrying a real namespace delta still refuses it as
+/// UNADJUDICATED until its author adds a row here". The operand's declaration must be read where
+/// the type reference's SCOPED env binding is live, which is inference; `v1.compiler.emit_rust`
+/// cannot be imported by `v1.compiler.infer` (emission depends on inference, not the reverse), so
+/// the identity read `type_reference_declaration_ref` moves to `v1.compiler.infer_env`, where the
+/// only other consumer already lives. The move is the whole change to this spelling: same function,
+/// same signature, one declaring module -- not a requalification, and no second declaration is left
+/// behind. `emit_rust`'s own call site now resolves to the new declarer, which is the delta below.
 ///
 /// SEVENTH DISSOLUTION (2026-08-31). XL-0N (#9719) merged, so base and head both carry the
 /// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
 /// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
 /// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
-/// BOOT ARTIFACT RELOCATION (2026-08-31, gunbc#9784). `BootArtifact` and its neighbours
-/// (`IntakeLinuxEnvironment`, `IsoImage`, the artifact set and its selection) were authored in
-/// `gunbc.boot_artifact_delivery`, which imports `gunbc.machine_intake_receipt`. Issuance has to
-/// carry the artifact it issued a nonce for, so the receipt module needs those names — and
-/// importing them back from the delivery module would have closed a cycle, which §4's acyclicity
-/// law refuses outright. The names therefore moved DOWN to a new leaf authority,
-/// `gunbc.boot_artifact`, which imports neither side; both modules now reach them there. That is
-/// ordinary single-authority relocation, not a second spelling: nothing is defined twice at any
-/// point, and the old module authors none of these names any more.
-///
-/// FIVE ROWS, EACH NAMING ONE EXACT (module, declaration, spelling) TRIPLE, blast radius 0. No row
-/// admits a module, a prefix, or a spelling in general, so an unintended rebinding of any other
-/// name still refuses. The four membership deltas this move also produces are
-/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent from this list.
-///
-/// DISSOLVE-ON: this PR merging. Base and head then both carry the relocation, no run can produce
-/// these deltas, all five report stale, and a stale row refuses every unrelated PR in the
-/// repository — the same trigger under which the roster has been emptied six times above.
-///
-/// CHECKABLE HAND-RUST RECEIPT (review 57801). The objection is that this expands hand-written
-/// compiler Rust and that a dissolution condition does not by itself authorize the growth. Both
-/// halves are right as stated, so here is the measurement rather than the argument. Against
-/// `origin/main`, `git diff --numstat -- src/v1/stage0/src/namespace_wave_admission.rs` reports
-/// 65 added / 1 removed. Of the added lines, 16 are this justification and 49 are the five row
-/// literals. The single removed line is the const's own `= &[];`, reopened as `= &[`.
-///
-/// THE DECLARATION COUNT IS UNCHANGED, WHICH IS THE MEASURE THE GATE IS ABOUT.
-/// `grep -cE '^(pub )?(fn|struct|enum|const|static) '` reports 38 on `origin/main` and 38 here.
-/// No function, type, const, capability or mechanism is added: the rows are DATA consumed by the
-/// already-rostered `NAMESPACE_TRANSITION_ADMISSIONS` declaration, initialized from an authored
-/// literal, with no scan, file read, environment read or computed predicate. This is the same
-/// receipt shape #9436 filed for the 53-row cut, and it is an expansion in maintained lines only.
-///
-/// THE ROWS ARE NOT SCAFFOLD; THEY ARE THE WALL'S REQUIRED INPUT. The roster's own rule is that a
-/// run carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row —
-/// empty is not permissive. A relocation that §4 acyclicity FORCED (the receipt module must carry
-/// the artifact it issued a nonce for, and the delivery module already imports the receipt module,
-/// so importing back would close a cycle) therefore has exactly one sanctioned way to land, and
-/// this is it. Declining to author the rows would not reduce hand Rust; it would leave the
-/// relocation unmergeable. The alternative that WOULD reduce hand Rust — migrating the roster's
-/// pure fold to `.dag` — is blocked upstream on `ModuleDeclarationRecord` / `DeclarationIndex`
-/// having no `.dag` carrier, which the CLASS A justification above already names, and authoring
-/// one here would fork the carrier `gunbc.declaration_index_seed_growth` owns.
-///
-/// AND THE ROWS DELETE THEMSELVES. Each is stale the moment this PR merges, and a stale row reds
-/// every unrelated PR in the repository, so the deletion is enforced by the same wall rather than
-/// by anyone remembering — which is why the count has returned to zero seven times above.
+/// EIGHTH DISSOLUTION (2026-08-31). INTAKE-AGENT-0A (#9784) merged, so base and head both carry
+/// the `BootArtifact` / `IntakeLinuxEnvironment` / `IsoImage` relocations to `gunbc.boot_artifact`.
+/// The five rows above could no longer match any delta and were observed stale on every unrelated
+/// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
+/// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
+/// empty and remains fail-closed for any new namespace delta.
+/// NINTH, AND THIS ONE IS AN ADDITION RATHER THAN A SHRINK (2026-08-31). The two rows below are
+/// the SPARK-PAIR-0 P0-C3a consolidation's own adjudication, carried across main's eighth
+/// dissolution, which emptied the roster. They are NOT stale: the required run that reported the
+/// five BootArtifact rows stale reported `0 unadjudicated delta(s)` on the same line, and that
+/// zero is these two rows doing their job. They dissolve when this PR merges, by the same trigger
+/// as every shrink above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryPlan)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.boot_artifact_delivery",
-            in_declaration: "BootDeliveryPlan",
-            spelling: "BootArtifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryRequest)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.boot_artifact_delivery",
-            in_declaration: "BootDeliveryRequest",
-            spelling: "BootArtifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "BootArtifact relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.boot_artifact_delivery_witness_test",
-            in_declaration: "intake_artifact",
-            spelling: "BootArtifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "IntakeLinuxEnvironment relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.boot_artifact_delivery_witness_test",
-            in_declaration: "intake_artifact",
-            spelling: "IntakeLinuxEnvironment",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "IsoImage relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.boot_artifact_delivery_witness_test",
-            in_declaration: "intake_artifact",
-            spelling: "IsoImage",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
         subject: AdmissionSubject::Binding {
