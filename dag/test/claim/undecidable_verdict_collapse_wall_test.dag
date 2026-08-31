@@ -1,0 +1,188 @@
+module test.claim.undecidable_verdict_collapse_wall
+
+import std.occurrence_identity { OccurrenceSynthetic }
+import v2.lens.undecidable_verdict_collapse {
+  undecidable_verdict_collapse_compile_gate,
+  undecidable_verdict_collapse_findings
+}
+import v2.extdeps.languages.dag {
+  dag_match_arm_node,
+  dag_match_body_from_arms,
+  dag_named_edge,
+  dag_type_atom_node
+}
+import std.algebra { Empty }
+import v2.std.algebra { length }
+import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode
+}
+import v2.std.witness { Witness }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// RED/GREEN controls for the undecidable-verdict routing wall (synthetic fixtures, no host).
+//
+// The wall's subject: a match arm whose pattern names a rostered undecidable-verdict variant
+// (v2.std.runtime's RuntimeValueEqualityUnavailable) and whose body is a DECIDABLE LITERAL. That
+// arm answers a question the model declined to answer and discards the reason it computed.
+//
+// THE RED IS AUTHORABLE HERE DESPITE THE WITNESS CARVE-OUT. The lens exempts test.claim.* modules
+// so a fixture may build the escape hatch in order to test it. These fixtures therefore call the
+// gate DIRECTLY on a planted tree carrying no module node at all, which is the unsanctioned
+// context -- the same route v2.lens.machine_shape's wall test uses. If the carve-out were instead
+// applied to the fixture, every assertion below would go permanently green and the wall would be a
+// decoration (DESIGN 4b: ask whether the check's RED is authorable before writing the check).
+
+data collapse_reason: Symbol = ^undecidable_verdict_collapsed_to_literal
+
+fn planted_scrutinee() -> Node {
+  dag_type_atom_node(identity: ^planted_equality_verdict)
+}
+
+// A bare-variant arm: `RuntimeValueEqualityUnavailable => false`.
+fn collapsing_arm_bare() -> Node {
+  dag_match_arm_node(
+    pattern_lit: ^RuntimeValueEqualityUnavailable,
+    body_lit: ^dag_token_kw_false
+  )
+}
+
+// The payload-carrying spelling: `RuntimeValueEqualityUnavailable { reason: _ } => false`. The
+// pattern is a Conj whose HEAD positional child is the constructor atom, so this control proves
+// the wall does not turn on whether the author happened to bind a field.
+fn collapsing_arm_with_payload() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^match_arm_pattern,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            Edge {
+              label: Positional,
+              target: dag_type_atom_node(identity: ^RuntimeValueEqualityUnavailable)
+            },
+            Edge {
+              label: Positional,
+              target: dag_type_atom_node(identity: ^reason)
+            }
+          ],
+          occurrence_id: OccurrenceSynthetic
+        }
+      ),
+      dag_named_edge(
+        name: ^match_arm_body,
+        target: dag_type_atom_node(identity: ^dag_token_kw_false)
+      )
+    ],
+    occurrence_id: OccurrenceSynthetic
+  }
+}
+
+// The repaired shape: the arm routes to a construction that carries the reason onward.
+fn routing_arm() -> Node {
+  dag_match_arm_node(
+    pattern_lit: ^RuntimeValueEqualityUnavailable,
+    body_lit: ^Violates
+  )
+}
+
+// An unrostered variant collapsing to a literal is NOT this wall's subject: deciding a decidable
+// verdict is exactly what a decidable verdict is for.
+fn decidable_arm() -> Node {
+  dag_match_arm_node(pattern_lit: ^RuntimeValuesDiffer, body_lit: ^dag_token_kw_false)
+}
+
+fn match_with(first: Node, second: Node) -> Node {
+  dag_match_body_from_arms(
+    scrutinee: planted_scrutinee(),
+    true_arm: first,
+    false_arm: second
+  )
+}
+
+fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+  if d.head.reason == reason {
+    true
+  } else {
+    fold(d.tail, init: false, f: fn(acc, diag) { acc || (diag.reason == reason) })
+  }
+}
+
+fn gate_accepts(o: Outcome<Witness<Node>>) -> Bool {
+  match o {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+// ---- RED: the collapse must be refused, in both spellings ----
+
+test fn gate_red_bare_variant_collapses_to_literal() -> Bool {
+  match undecidable_verdict_collapse_compile_gate(
+    node: match_with(first: decidable_arm(), second: collapsing_arm_bare())
+  ) {
+    Rejected { diagnostics: d } =>
+      non_empty_contains_reason(d: d, reason: collapse_reason)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+test fn gate_red_payload_variant_collapses_to_literal() -> Bool {
+  match undecidable_verdict_collapse_compile_gate(
+    node: match_with(first: decidable_arm(), second: collapsing_arm_with_payload())
+  ) {
+    Rejected { diagnostics: d } =>
+      non_empty_contains_reason(d: d, reason: collapse_reason)
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
+
+// ---- GREEN: the repaired shape, and the boundary control ----
+
+test fn gate_green_routing_arm_admits() -> Bool {
+  gate_accepts(
+    o: undecidable_verdict_collapse_compile_gate(
+      node: match_with(first: decidable_arm(), second: routing_arm())
+    )
+  )
+}
+
+// BOUNDARY CONTROL. Without this, a wall that refused EVERY match arm would pass both REDs above
+// and still be wrong. This pins that the refusal discriminates on the rostered variant rather than
+// on the presence of a literal body.
+test fn gate_green_unrostered_variant_may_decide() -> Bool {
+  gate_accepts(
+    o: undecidable_verdict_collapse_compile_gate(
+      node: match_with(first: decidable_arm(), second: decidable_arm())
+    )
+  )
+}
+
+// COUNT CONTROL. Two collapsing arms in one tree must produce two findings, not one: a walk that
+// stopped at the first would under-report a corpus and read as clean.
+test fn findings_count_one_per_collapsing_arm() -> Bool {
+  length(
+    xs: undecidable_verdict_collapse_findings(
+      root: match_with(first: collapsing_arm_bare(), second: collapsing_arm_with_payload())
+    )
+  ) == 2
+}
+
+test fn findings_empty_on_clean_tree() -> Bool {
+  match undecidable_verdict_collapse_findings(
+    root: match_with(first: decidable_arm(), second: routing_arm())
+  ) {
+    Empty => true
+    _ => false
+  }
+}
