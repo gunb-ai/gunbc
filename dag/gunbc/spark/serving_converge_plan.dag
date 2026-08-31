@@ -5,9 +5,7 @@ import gunbc.spark.serving_observed_members {
   SparkServingObservedMemberProjection,
   SparkServingObservedMembers,
 }
-
 import std.types { String, List, Bool, NonEmptyStr, Int }
-import std.content_hash { content_hash_of_value, content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationAcquired,
@@ -25,7 +23,6 @@ import gunbc.membership_reconcile {
   MemberRemoved,
   MemberRemovalRefused,
   MemberRosterDuplicateKeyRefused,
-  membership_write_count,
 }
 import gunbc.spark.serving_execution_schedule {
   ScheduledRows,
@@ -35,15 +32,12 @@ import gunbc.spark.serving_execution_schedule {
   spark_serving_bound_axis_plan,
   spark_serving_computed_rows,
   SparkServingAxisRefused,
-  SparkServingAxisNotApplicable,
-  SparkServingAxisUnobserved,
   SparkServingFrozenExecutionSchedule,
   SparkServingScheduleFrozen,
   SparkServingScheduleRefused,
   scheduled_rows_from_frozen_schedule,
   scheduled_rows_list,
   spark_serving_freeze_execution_schedule,
-  spark_serving_frozen_schedule_order,
 }
 import gunbc.spark.serving_membership {
   SparkServingMember,
@@ -91,34 +85,18 @@ import gunbc.spark.serving_realization {
 import gunbc.runner_slot_provision { RunnerSlotMember }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision,
-  fabric_cell_observation_unobserved,
 }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
   PlannedEffectExecution,
-  fleet_converge_plan_subject,
-  FleetConvergeRequest,
-  FullHostConverge,
-  fleet_converge_plan_held_lease,
   fleet_converge_apply_shell,
   TimerRetirementMember,
   TimerRetirementMemberAt,
   CapMember,
   CapMemberAt,
-  FleetConvergeApplyTerminal,
   fleet_converge_apply_terminal,
-  timer_retirement_plan,
-  membership_plan_lines_timer,
-  membership_plan_lines_cap,
-  fleet_converge_desired_caps,
-  caps_reconcile,
-  observed_baseline_text,
-  fleet_converge_plan_lease_key,
-  membership_refusal_count,
-  fleet_converge_spark_serving_action_line,
-  fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_spark_serving_row_effects,
 }
 // Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed
