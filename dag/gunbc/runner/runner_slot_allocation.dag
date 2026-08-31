@@ -436,11 +436,21 @@ fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
 //
 // DECLARED GAP, NOT AN ACCIDENT, and the trigger is the CAPABILITY rather than an artifact: the arm
 // dissolves when the canonical width answer is a RunnerWidthResolution -- derived, held, or
-// unresolved-with-cause -- and every one of the sixteen production call sites carries or refuses
-// that cause instead of reading an Int. That is a fail-closed cascade through nine modules,
-// including `data` rows whose declared shape has no arm to match on, so it is the whole subject of
-// its own change rather than a rider on this one. Landing half of it would mean minting sixteen new
-// silent defaults, which is the defect this branch exists to remove.
+// unresolved-with-cause -- and every production call site carries or refuses that cause instead of
+// reading an Int. That is a fail-closed cascade, including `data` rows whose declared shape has no
+// arm to match on, so it is the whole subject of its own change rather than a rider on this one.
+// Landing half of it would mean minting one silent default per un-migrated site, which is the
+// defect this branch exists to remove.
+//
+// THE POPULATION IS NAMED BY ITS PRODUCER RATHER THAN TRANSCRIBED, because an earlier revision of
+// this annotation said "sixteen production call sites" and a census taken while planning the
+// cascade independently said twelve. Both were wrong, and neither was checkable from where it was
+// written. The producer is the call-site read over this symbol -- every non-comment, non-import
+// occurrence of gunbc_runner_slots_per_host( under dag/gunbc and src/v2, less this declaration --
+// and a reader who wants the count runs it. DESIGN section 6 states the rule this violated: name
+// the instrument, never transcribe its output, for the same reason section 3 cites a symbol rather
+// than a line -- a copied number is unreachable from the thing that owns it, so it rots without
+// anyone touching either end, and here it rotted twice in opposite directions.
 fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeRefusedZeroMemoryMax => 0
