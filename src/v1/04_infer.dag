@@ -11513,7 +11513,7 @@ fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> 
   }
 }
 
-data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
+data direct_import_export_precedence_note: String = "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded)."
 
 fn overlay_skips_kernel_name(name: String) -> Bool {
   is_kernel_type(name: name)
@@ -11547,6 +11547,29 @@ fn overlay_direct_import_exports(ancestry_str_bindings: Map<String, TypeBinding>
       Absent => acc
     }
   )
+}
+
+type AncestryPrecedence {
+  cache: TypeEnvCache
+  ancestry_str_bindings: Map<String, TypeBinding>
+  conflicts: List<TypeEnvCacheMergeConflict>
+}
+
+// THE PRECEDENCE IS PRODUCED ONCE, HERE, AND NOWHERE DOWNSTREAM. Both type-env builders consume
+// this producer, so resolved and unresolved construction share one precedence chain: import
+// union (fork ledger unchanged) -> kernel overlay UNCONDITIONALLY -> direct-selected overlay
+// with kernel names skipped -> locals kept above by the str_bindings-first lookup. The former
+// shape special-cased a single import by skipping the kernel overlay entirely, so with exactly
+// one import the environment was that import's flattened cache alone -- kernel identity won or
+// lost by ancestry occupancy, resolution by accident rather than by the declared precedence.
+fn build_ancestry_precedence(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, kernel_cache: TypeEnvCache) -> AncestryPrecedence {
+  let import_union = union_parent_type_env_caches(resolved_imports: resolved_imports, parent_index: parent_index)
+  let with_kernel = merge_type_env_cache(base: import_union.cache, overlay: kernel_cache)
+  AncestryPrecedence {
+    cache: with_kernel,
+    ancestry_str_bindings: overlay_direct_import_exports(ancestry_str_bindings: with_kernel.str_bindings, resolved_imports: resolved_imports, parent_index: parent_index),
+    conflicts: import_union.conflicts
+  }
 }
 
 // THE AUTHORED HALF OF THIS FUNCTION'S VISIBILITY MAPS, KEPT SEPARATE BECAUSE THE UNION DESTROYS IT.
@@ -11662,14 +11685,9 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     source_indices: source_indices,
     cycle_set_str: compiler_recursive_name_set()
   )
-  let import_union = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index)
-  let import_cache = import_union.cache
-  let binding_forks = import_union.conflicts
-  let ancestry_cache = if module.resolved_imports |> count == 1 {
-    import_cache
-  } else {
-    merge_type_env_cache(base: import_cache, overlay: kernel_cache)
-  }
+  let ancestry_precedence = build_ancestry_precedence(resolved_imports: module.resolved_imports, parent_index: parent_index, kernel_cache: kernel_cache)
+  let ancestry_cache = ancestry_precedence.cache
+  let binding_forks = ancestry_precedence.conflicts
 
   let local_deps_map = fold(all_local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
@@ -11694,11 +11712,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = overlay_direct_import_exports(
-    ancestry_str_bindings: ancestry_cache.str_bindings,
-    resolved_imports: module.resolved_imports,
-    parent_index: parent_index
-  )
+  let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
   let svn_local = fold(map_keys(local_str_bindings), init: empty_map(), f: (acc, n) => map_insert(acc, n, true))
   let svn_kernel = fold(map_keys(kernel_type_set), init: svn_local, f: (acc, n) => map_insert(acc, n, true))
   let source_visible_names = fold(module.resolved_imports, init: svn_kernel, f: (acc, imp) =>
@@ -11806,12 +11820,8 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     source_indices: source_indices,
     cycle_set_str: compiler_recursive_name_set()
   )
-  let import_cache = union_parent_type_env_caches(resolved_imports: module.resolved_imports, parent_index: parent_index).cache
-  let ancestry_cache = if module.resolved_imports |> count == 1 {
-    import_cache
-  } else {
-    merge_type_env_cache(base: import_cache, overlay: kernel_cache)
-  }
+  let ancestry_precedence = build_ancestry_precedence(resolved_imports: module.resolved_imports, parent_index: parent_index, kernel_cache: kernel_cache)
+  let ancestry_cache = ancestry_precedence.cache
 
   let local_deps_map = fold(local_bindings |> map_values, init: empty_map(), f: (acc, b) =>
     map_insert(acc, b.name, deps_excluding_leaf_self(b: b, source_indices: source_indices))
@@ -11836,7 +11846,7 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     Absent => empty_map()
   }
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = ancestry_cache.str_bindings
+  let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
   let unresolved_env = TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: module_variant_index }
