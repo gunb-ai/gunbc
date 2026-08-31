@@ -133,7 +133,9 @@ import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
   spark_serving_acquired_provenance_of,
   SparkServingObservationRequest,
+  SparkServingTransactionRefusal,
   spark_serving_observation_request,
+  spark_serving_hermetic_provenance_of,
   spark_serving_refused_provenance_of,
   spark_serving_provenance_receipt_line,
   SparkServingObservationPhase,
@@ -604,10 +606,19 @@ type SparkServingHostObservation sole_constructor {
 // transaction apart from one somebody assembled. The provenance field made that distinction
 // STATABLE; admit_callers is what makes it TRUE.
 //
-// Three callers: the transaction projector, the refused-transaction projector beside it, and one
-// hermetic fixture. The fixture is admitted deliberately and by name -- hermetic witnesses need to
-// build observations without an SSH transport -- but it is a named exception rather than an open
-// door, so a new production caller cannot appear without editing this list.
+// TWO CALLERS, BOTH TRANSACTION PROJECTORS. NO FIXTURE REACHES THIS MINT.
+//
+// A fixture used to be admitted here by name, and review found what that bought: the fixture could
+// pair an ACQUIRED provenance -- honestly projected from a real admitted transaction -- with runtime,
+// store, unit and linger values authored independently of that transaction's captures. The arm was
+// authentic and the facts under it were not, which is this carrier's own defect one layer up, and no
+// RED caught it because the REDs all proved that the WRONG ARM is refused.
+//
+// So the fixture route is gone from here. Witnesses that need an observation carrying independently
+// authored facts go through spark_serving_hermetic_host_observation below, which cannot express an
+// acquired arm at all; witnesses that need an ACQUIRED observation must build captures whose stdout
+// makes the production projectors derive the state they want, and come through
+// spark_serving_host_observation_from_transaction like production does.
 fn spark_serving_host_observation(
   readback: SparkServingReadback,
   account: SparkManagedAccountObservation,
@@ -627,8 +638,8 @@ fn spark_serving_host_observation(
       decl_name: "spark_serving_host_observation_from_refused_transaction",
     ),
     decl_ref(
-      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
-      decl_name: "hermetic_host_observation",
+      module_path: "gunbc.spark.serving_observe",
+      decl_name: "spark_serving_hermetic_host_observation",
     ),
   ]
 {
@@ -646,6 +657,51 @@ fn spark_serving_host_observation(
     ),
     provenance: provenance,
   }
+}
+
+// THE FIXTURE MINT, AND IT CANNOT EXPRESS AN ACQUIRED ARM.
+//
+// This is how independently authored facts enter a host observation, and it is deliberately not a
+// parameterisation of the privileged mint: there is NO provenance parameter. The provenance is the
+// hermetic arm, always, by construction. So the invalid state review found -- independent runtime,
+// store, unit and linger sitting under SparkServingObservationAcquired -- has no constructor
+// anywhere, rather than being a route somebody remembered not to take.
+//
+// That is the difference between deleting a caller and closing a class. Deleting the fixture from
+// the privileged mint would have left the splice writable by the next fixture; removing the
+// provenance PARAMETER means no fixture can author one, present or future.
+//
+// A witness that wants a genuinely acquired observation has exactly one route, the same one
+// production takes: choose capture stdout so the production projectors derive the state, admit a
+// transaction, and project it with spark_serving_host_observation_from_transaction.
+fn spark_serving_hermetic_host_observation(
+  readback: SparkServingReadback,
+  account: SparkManagedAccountObservation,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  observed_unit: SparkServingObservedUnit,
+  linger: SparkServingObservedLingerState,
+  fixture_identity: NonEmptyStr,
+) -> SparkServingHostObservation
+  admit_callers: [
+    decl_ref(
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_host_observation",
+    ),
+  ]
+{
+  spark_serving_host_observation(
+    readback: readback,
+    account: account,
+    runtime: runtime,
+    store: store,
+    observed_unit: observed_unit,
+    linger: linger,
+    provenance: spark_serving_hermetic_provenance_of(
+      host: readback.host,
+      fixture_identity: fixture_identity,
+    ),
+  )
 }
 
 fn spark_serving_transaction_provenance(
@@ -975,15 +1031,8 @@ fn spark_serving_observe_host_via_locus(
     host: host,
     phase: SparkServingReportObservation,
   ) {
-    SparkServingTransactionRefused { cause: why } =>
-      spark_serving_host_observation_from_refused_transaction(
-        request: spark_serving_observation_request(
-          host: host,
-          fleet_attempt: context.attempt,
-          phase: SparkServingReportObservation,
-        ),
-        cause: why,
-      )
+    SparkServingTransactionRefused { refusal: r } =>
+      spark_serving_host_observation_from_refused_transaction(refusal: r)
     SparkServingTransactionAdmitted { txn: txn } =>
       spark_serving_host_observation_from_transaction(txn: txn)
   }
@@ -1042,26 +1091,25 @@ fn spark_serving_observed_facts_via_locus(
 // "we looked and found nothing" and "we never got a coherent look" is the whole subject of the
 // unobserved arms downstream. The readback carries the cause so the refusal is located.
 fn spark_serving_host_observation_from_refused_transaction(
-  request: SparkServingObservationRequest,
-  cause: NonEmptyStr,
+  refusal: SparkServingTransactionRefusal,
 ) -> SparkServingHostObservation {
   spark_serving_host_observation(
     readback: spark_serving_readback_from_probe_results(
-      host: request.host,
+      host: refusal.request.host,
       load_state: none, is_active: none, version: none, tags: none, nvidia_driver: none,
       runtime_receipt: none, active_enter: none, default_target_enter: none, uptime: none,
       grants: none,
     ),
     account: spark_serving_account_observation_from_probes(passwd_probe: none, key_probe: none),
-    runtime: RuntimeMaterializationObservationRefused { cause: cause },
-    store: ModelStoreObservationRefused { cause: cause },
+    runtime: RuntimeMaterializationObservationRefused { cause: refusal.cause },
+    store: ModelStoreObservationRefused { cause: refusal.cause },
     observed_unit: SparkServingObservedUnit {
       state: UserUnitStateUnobserved,
       enablement: UserUnitManagerUnobserved,
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
-    provenance: spark_serving_refused_provenance_of(request: request, cause: cause),
+    provenance: spark_serving_refused_provenance_of(refusal: refusal),
   )
 }
 

@@ -83,7 +83,8 @@ import gunbc.spark.serving_observe {
   SparkServingObservedUnit,
   SparkManagedAccountObservation,
   ManagedAccountProbeRefused,
-  spark_serving_host_observation,
+  spark_serving_hermetic_host_observation,
+  spark_serving_host_observation_from_transaction,
   spark_serving_transaction_provenance,
 }
 import gunbc.spark.serving_loaded_release { SparkServingReadback, SparkServingUnitAbsent }
@@ -260,38 +261,10 @@ fn hermetic_fixture_provenance(host: HostIdentity) -> SparkServingObservationPro
   )
 }
 
-// THE ONE ADMITTED FIXTURE ROUTE INTO THE HOST-OBSERVATION MINT.
-//
-// The mint is sealed to the two transaction projectors plus exactly one fixture, and this is it. It
-// used to be a helper inside the observe witness, which meant a second witness needing an
-// observation had either to be added to the seal -- widening it once per file -- or to reach for the
-// deleted lower-level planning route. One fixture route, named in the seal, consumed by every
-// witness that needs one.
-fn hermetic_host_observation(
-  readback: SparkServingReadback,
-  account: SparkManagedAccountObservation,
-  runtime: RuntimeMaterializationObservation,
-  store: ModelStoreObservation,
-  observed_unit: SparkServingObservedUnit,
-  linger: SparkServingObservedLingerState,
-  provenance: SparkServingObservationProvenance,
-) -> SparkServingHostObservation {
-  spark_serving_host_observation(
-    readback: readback,
-    account: account,
-    runtime: runtime,
-    store: store,
-    observed_unit: observed_unit,
-    linger: linger,
-    provenance: provenance,
-  )
-}
-
 // A READBACK CARRYING NOTHING BUT ITS HOST.
 //
-// Planning witnesses do not read the readback; they read the projection the mint derives from
-// readback.host. So this supplies the host and refuses every field honestly rather than inventing
-// values a probe would have had to produce.
+// Every field refuses honestly rather than inventing a value a probe would have had to produce. It
+// is only reachable through the hermetic route below, so it can never sit under an acquired arm.
 fn hermetic_readback(host: HostIdentity) -> SparkServingReadback {
   SparkServingReadback {
     host: host,
@@ -308,33 +281,53 @@ fn hermetic_readback(host: HostIdentity) -> SparkServingReadback {
   }
 }
 
-// THE PLANNING FIXTURE: AN OBSERVATION WHOSE PROVENANCE IS ACQUIRED.
+// THE FIXTURE ROUTE FOR INDEPENDENTLY AUTHORED FACTS, AND IT CANNOT CLAIM ACQUISITION.
 //
-// This is what every planning witness now uses. Its provenance comes out of an admitted transaction
-// rather than the hermetic arm, which matters because planning REFUSES the hermetic arm -- so the
-// old fixtures could only ever have exercised the refusal, and the claims that appeared to plan were
-// reaching a second route that existed for exactly that purpose. Absent here means the fixture's own
-// acquisition refused, which is a red the caller must not paper over.
-fn hermetic_plan_observation(
-  host: HostIdentity,
+// Review found the defect this replaces: the previous route took a provenance parameter, so a
+// fixture could pair an ACQUIRED provenance projected from a real transaction with runtime, store,
+// unit and linger authored independently of that transaction's captures. Authentic arm, fabricated
+// facts -- this carrier's own defect one layer up, and none of the REDs caught it because they all
+// proved the WRONG ARM is refused rather than that the right arm's facts are real.
+//
+// There is no provenance parameter now. spark_serving_hermetic_host_observation has none either, so
+// the pairing is not expressible from any fixture rather than merely not written by this one.
+fn hermetic_host_observation(
+  readback: SparkServingReadback,
+  account: SparkManagedAccountObservation,
   runtime: RuntimeMaterializationObservation,
   store: ModelStoreObservation,
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
+) -> SparkServingHostObservation {
+  spark_serving_hermetic_host_observation(
+    readback: readback,
+    account: account,
+    runtime: runtime,
+    store: store,
+    observed_unit: observed_unit,
+    linger: linger,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
+  )
+}
+
+// THE ACQUIRED ROUTE, AND ITS FACTS COME FROM THE CAPTURES OR THEY DO NOT EXIST.
+//
+// This is the ONLY way a witness obtains an observation whose provenance is the acquired arm, and it
+// supplies nothing but captures: the runtime, store, unit, linger, readback, account and projection
+// are all derived by the SAME production projectors production uses. To make a particular acquired
+// state, a witness chooses capture stdout until the projectors derive it -- which is the cost the
+// review correctly insisted on, because paying it is what makes the resulting value evidence.
+//
+// Absent means the fixture's own transaction refused. It is returned rather than swallowed so a
+// broken fixture reddens its claims instead of quietly turning them into refusal tests.
+fn hermetic_acquired_observation(
+  host: HostIdentity,
+  phase: SparkServingObservationPhase,
+  captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingHostObservation? {
-  match hermetic_plan_provenance(host: host) {
-    Absent => none
-    Present { value: p } =>
-      Present {
-        value: hermetic_host_observation(
-          readback: hermetic_readback(host: host),
-          account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
-          runtime: runtime,
-          store: store,
-          observed_unit: observed_unit,
-          linger: linger,
-          provenance: p,
-        ),
-      }
+  match hermetic_admission(host: host, phase: phase, captures: captures) {
+    SparkServingTransactionRefused { refusal: _ } => none
+    SparkServingTransactionAdmitted { txn: t } =>
+      Present { value: spark_serving_host_observation_from_transaction(txn: t) }
   }
 }
