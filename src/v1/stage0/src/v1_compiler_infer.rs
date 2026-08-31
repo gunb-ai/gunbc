@@ -48,9 +48,7 @@ pub use crate::std_interface_summary::{ExportEntry, ExportKind, InterfaceSummary
 use crate::std_literal_elaboration::LiteralElaborationOutcome::{
     DirectLiteral, LiteralElaborationRefused, ViaHomomorphism,
 };
-use crate::std_literal_elaboration::LiteralUnfolding::{
-    BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
-};
+use crate::std_literal_elaboration::LiteralUnfolding::{BooleanUnfold, PeanoUnfold};
 pub use crate::std_literal_elaboration::{
     elaborate_literal_at, literal_elaboration_refusal_message, literal_source_kind_of,
 };
@@ -8492,40 +8490,6 @@ pub fn unfold_peano_image(
     })
 }
 
-pub fn unfold_scalar_sequence_image(
-    s: String,
-    destination_type: Rc<Node>,
-    span: Rc<SourceSpan>,
-) -> Rc<Node> {
-    {
-        let scalar_nodes = Rc::new({
-            let mut __result = Vec::new();
-            for cp in Rc::new(s.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
-                .iter()
-                .cloned()
-            {
-                __result.push(crate::v1_std_core::make_expr_node(
-                    Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
-                    Rc::new(ExprData::ExprLiteral {
-                        value: Rc::new(LiteralValue::LitInt { value: cp.clone() }),
-                    }),
-                    Rc::new(vec![]),
-                    Some(Rc::new(InferredNode::Resolved { node: int_type() })),
-                    span.clone(),
-                ));
-            }
-            __result
-        });
-        elaborated_expr_node(
-            "<unicode-scalar-sequence>".to_string(),
-            Rc::new(ExprData::ExprListLit),
-            scalar_nodes.clone(),
-            destination_type.clone(),
-            span.clone(),
-        )
-    }
-}
-
 pub fn unfold_literal_image(
     lit: Rc<LiteralValue>,
     elaboration: Rc<LiteralElaboration>,
@@ -8533,10 +8497,6 @@ pub fn unfold_literal_image(
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     match (*elaboration.homomorphism.clone().producer.clone()).clone() {
-    LiteralUnfolding::UnicodeScalarSequenceUnfold => match (*lit.clone()).clone() {
-    LiteralValue::LitStr { value: s, .. } => unfold_scalar_sequence_image(s.clone(), destination_type.clone(), span.clone()),
-    _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Unicode-scalar-sequence unfolding row was selected for a non-string literal (gunbc.structural_realization_bindings keys the row on KernelStringLiteral, so this row is malformed)".to_string(), span.clone()),
-},
     LiteralUnfolding::PeanoUnfold { zero, succ, prev_field, .. } => match (*lit.clone()).clone() {
     LiteralValue::LitInt { value: n, .. } => unfold_peano_image(n.clone(), zero.decl_name.clone(), succ.decl_name.clone(), prev_field.clone(), elaboration.destination.clone().decl_name.clone(), destination_type.clone(), span.clone()),
     _ => crate::v1_std_core::make_expr_error_node(Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic), ExprErrorKind::InternalExprError, "literal elaboration: a Peano unfolding row was selected for a non-integer literal (gunbc.structural_realization_bindings keys the row on KernelIntLiteral, so this row is malformed)".to_string(), span.clone()),

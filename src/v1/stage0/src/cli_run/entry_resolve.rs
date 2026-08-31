@@ -1289,6 +1289,74 @@ pub(crate) fn via_index_parse_one_source(
     entry
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ResolvedGraphCacheDegradation {
+    JsonRepresentationCannotServe,
+}
+
+impl ResolvedGraphCacheDegradation {
+    fn stable_tag(self) -> &'static str {
+        match self {
+            Self::JsonRepresentationCannotServe => "json-representation-cannot-serve",
+        }
+    }
+
+    fn reason(self) -> &'static str {
+        match self {
+            Self::JsonRepresentationCannotServe => {
+                "canonical JSON cold write exceeded 31 GiB; bounded experiment remained \
+                 incomplete after 28 minutes at 1.2 GiB compressed, so production payoff is \
+                 negative"
+            }
+        }
+    }
+}
+
+static RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn format_resolved_graph_cache_degradation(
+    diagnostic: ResolvedGraphCacheDegradation,
+    subject: &str,
+    count: usize,
+) -> String {
+    format!(
+        "[resolved-graph-cache] degradation tag={} count={count} subject={subject} \
+         disposition=cold-recompute reason={}",
+        diagnostic.stable_tag(),
+        diagnostic.reason(),
+    )
+}
+
+fn report_resolved_graph_cache_degradation(
+    diagnostic: ResolvedGraphCacheDegradation,
+    subject: &str,
+) {
+    let count = RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    eprintln!(
+        "{}",
+        format_resolved_graph_cache_degradation(diagnostic, subject, count)
+    );
+}
+
+#[cfg(test)]
+mod resolved_graph_cache_degradation_tests {
+    use super::{format_resolved_graph_cache_degradation, ResolvedGraphCacheDegradation};
+
+    #[test]
+    fn unavailable_optional_tier_is_typed_located_counted_cold_recompute() {
+        let diagnostic = format_resolved_graph_cache_degradation(
+            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
+            "subject-abc",
+            7,
+        );
+        assert!(diagnostic.contains("tag=json-representation-cannot-serve"));
+        assert!(diagnostic.contains("count=7"));
+        assert!(diagnostic.contains("subject=subject-abc"));
+        assert!(diagnostic.contains("disposition=cold-recompute"));
+        assert!(!diagnostic.contains("refus"));
+    }
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -1332,19 +1400,17 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     {
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
-    // The JSON tree representation is deliberately non-serving on the production
-    // seam. Its canonical encoder materializes the recursive JSON value and was
-    // kernel-confirmed to exceed 31 GiB; a bounded direct stream loses canonical
-    // map order, and the exact fabric invocation showed that stream still could
-    // not finish after 28 minutes / 1.2 GiB compressed. Do not spend the caller's
-    // answer or silently pretend this opt-in cache is live while the program-level
-    // representation decision remains open.
-    let cross_process_json_refused = resolved_graph_cache_root_from_env().is_some();
-    if cross_process_json_refused {
-        eprintln!(
-            "[resolved-graph-cache] representation refused subject={subject}: canonical JSON \
-             cold write exceeded 31 GiB; bounded experiment remained incomplete after \
-             28 minutes at 1.2 GiB compressed, so production payoff is negative"
+    // Arming the optional tier while its JSON representation cannot serve is a
+    // deliberate, bounded degradation to the authoritative cold computation. It
+    // never changes the compiler answer or enters the OOMing encoder. Keep the
+    // degradation typed, subject-located, and process-counted until the
+    // `real-production-invocation` clause lands a representation with positive
+    // measured cold/write and warm/hit payoff, at which point this arm dissolves.
+    let cross_process_cache_degraded = resolved_graph_cache_root_from_env().is_some();
+    if cross_process_cache_degraded {
+        report_resolved_graph_cache_degradation(
+            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
+            &subject,
         );
     }
 
@@ -1577,7 +1643,7 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // store, unbounded, ~1GB per level (repeat-resolve OOM, root-caused 2026-08-03).
     // Counted, never silent: a suppressed store is a bounded bootstrap-window skip
     // whose frequency stays observable (§5 — a failure arm must refuse, never widen).
-    if cross_process_provider_routing_suppressed() && !cross_process_json_refused {
+    if cross_process_provider_routing_suppressed() && !cross_process_cache_degraded {
         record_provider_bootstrap_store_skip();
     }
 
