@@ -82,6 +82,11 @@ import gunbc.runner_host_grants {
 import gunbc.fabric_allocation_store_substrate {
   fabric_allocation_store_substrate_spec,
   fabric_allocation_store_ensure_effect,
+  AllocationStoreSubstratePrestate,
+  AllocationStoreDirectoryAbsent,
+  AllocationStoreDirectoryPresentExpected,
+  AllocationStoreDirectoryPresentUnexpected,
+  allocation_store_substrate_prestate_wire,
 }
 import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
 import gunbc.fabric_cell_observation_admission {
@@ -245,13 +250,16 @@ type FleetConvergeRequest
       host: NonEmptyStr
       observed_fabric_cells: FabricCellObservationDecision
     }
-  | FabricAllocationStoreConverge { host: NonEmptyStr }
+  | FabricAllocationStoreConverge {
+      host: NonEmptyStr
+      observed_allocation_store: AllocationStoreSubstratePrestate
+    }
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => FullHost
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
-    FabricAllocationStoreConverge { host: _ } => FabricAllocationStoreOnly
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
   }
 }
 
@@ -259,7 +267,7 @@ fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
     FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
-    FabricAllocationStoreConverge { host: h } => h
+    FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
   }
 }
 
@@ -352,6 +360,7 @@ fn fleet_converge_apply_subject_admits(
     ApplyScopeUndecodable { cause: _ } => false
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
   }
 }
 
@@ -367,6 +376,7 @@ type FleetConvergeApplyAdmission
   | ApplyScopeUndecodable { cause: String }
   | ApplyScopeMismatch { planned_wire: String, observed_wire: String }
   | ApplyMemberSetMismatch
+  | ApplyAllocationStorePrestateMismatch { namespace_path: NonEmptyStr, store_path: NonEmptyStr, observed: String }
 
 // THE CANONICAL APPLY ADMISSION, OVER EXACTLY WHAT THE ARTIFACT CARRIES. Host, scope and member
 // set are judged together in one place, so a caller cannot check two of three and still reach the
@@ -399,7 +409,16 @@ fn fleet_converge_apply_artifact_admits(
           planned_fingerprint_text: planned_fingerprint_text,
           observed: observed,
         ) {
-          ApplyMemberSetMismatch
+          match observed {
+            FabricAllocationStoreConverge { host: _, observed_allocation_store: prestate } =>
+              ApplyAllocationStorePrestateMismatch {
+                namespace_path: fabric_allocation_store_substrate_spec().namespace_path,
+                store_path: fabric_allocation_store_substrate_spec().path,
+                observed: allocation_store_substrate_prestate_wire(prestate: prestate),
+              }
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+            FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+          }
         } else {
           ApplyAdmitted
         }
@@ -450,6 +469,8 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
       )
     ApplyMemberSetMismatch =>
       "SubjectIdentityMismatch — member set drifted since plan; rerun plan and review"
+    ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
+      join(["AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], "")
   }
 }
 
@@ -1095,6 +1116,34 @@ fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> S
   }
 }
 
+// The terminal's wire spelling, carried by the plan artifact and both fleet receipts so the RLM-2
+// join can require FullyApplied without re-deriving refusal counts it cannot observe.
+fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "fully_applied"
+    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
+  }
+}
+
+fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
+  if text == "fully_applied" {
+    Present { value: FullyApplied }
+  } else if starts_with(s: text, prefix: "partially_applied|") {
+    let rest = substring(s: text, start: 18, end: string_length(s: text))
+    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    match parse_int(s: n_text) {
+      Absent => none
+      Present { value: n } =>
+        Present { value: PartiallyApplied {
+          refused_axis_count: n,
+          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
+        } }
+    }
+  } else {
+    none
+  }
+}
+
 fn fleet_converge_activation_declaration_lines() -> List<String> {
   [
     concat("# activation-reachability: ", runner_activation_reachability_report()),
@@ -1437,11 +1486,12 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
         ),
         "\n",
       )
-    FabricAllocationStoreConverge { host: host } =>
+    FabricAllocationStoreConverge { host: host, observed_allocation_store: observed } =>
       join(
         [
           fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
           concat("host:", host as String),
+          allocation_store_substrate_prestate_wire(prestate: observed),
         ],
         "\n",
       )
@@ -1543,6 +1593,7 @@ type FleetConvergePlanArtifact {
   subject: FleetConvergePlanSubject
   prior_generation: Int
   plan_lease: HeldLease
+  apply_terminal: FleetConvergeApplyTerminal
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
@@ -2348,21 +2399,22 @@ fn fleet_converge_plan_artifact(
     prior_generation: prior_generation,
     owner_fingerprint: owner_fp,
   )
+  let planned_terminal = fleet_converge_apply_terminal(
+    host: host,
+    observed_slots: observed_slots,
+    observed_caps: observed_caps,
+    timer_plan: timer_plan,
+    cap_plan: cap_plan,
+    observed_fabric_cells: observed_fabric_cells,
+    observed_activation_readiness: observed_activation_readiness,
+  )
   let apply_shell = fleet_converge_apply_shell(
     timer_plan: timer_plan,
     host: host,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
     observed_activation_readiness: observed_activation_readiness,
-    terminal: fleet_converge_apply_terminal(
-      host: host,
-      observed_slots: observed_slots,
-      observed_caps: observed_caps,
-      timer_plan: timer_plan,
-      cap_plan: cap_plan,
-      observed_fabric_cells: observed_fabric_cells,
-      observed_activation_readiness: observed_activation_readiness,
-    ),
+    terminal: planned_terminal,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>
@@ -2371,6 +2423,7 @@ fn fleet_converge_plan_artifact(
           subject: subject,
           prior_generation: prior_generation,
           plan_lease: lease,
+          apply_terminal: planned_terminal,
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
@@ -2386,8 +2439,12 @@ fn fleet_converge_plan_artifact(
 fn fleet_converge_allocation_store_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
 ) -> FleetConvergePlanArtifact? {
-  let request = FabricAllocationStoreConverge { host: host }
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
   let subject = fleet_converge_plan_subject(request: request)
   let spec = fabric_allocation_store_substrate_spec()
   let baseline = observed_baseline_text(request: request)
@@ -2407,6 +2464,10 @@ fn fleet_converge_allocation_store_plan_artifact(
           concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
           concat("plan_generation:", to_string(planned_generation)),
           "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", spec.namespace_mode as String),
+          "ensure-directory:owner=CellSubstrateRootOwned",
           concat("ensure-directory:path=", spec.path as String),
           concat("ensure-directory:mode=", spec.mode as String),
           "ensure-directory:owner=CellSubstrateRootOwned",
@@ -2433,6 +2494,7 @@ fn fleet_converge_allocation_store_plan_artifact(
           subject: subject,
           prior_generation: prior_generation,
           plan_lease: lease,
+          apply_terminal: FullyApplied,
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,

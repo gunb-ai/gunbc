@@ -1,8 +1,11 @@
 module gunbc.fabric_allocation_store_substrate
 
-import std.types { NonEmptyStr }
+import std.types { String, Bool, NonEmptyStr }
 import gunbc.fabric_control_plane { fabric_control_plane_store_root }
 import gunbc.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
+import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
+import extdeps.posix.path_ownership { posix_owner_spec_equal }
+import extdeps.filesystem.filesystem_io { FilesystemEstablishedAbsence }
 
 // The store root is durable control-plane substrate, not an incidental directory created by a
 // reservation. The CAS realization explicitly refuses a missing root and never removes one.
@@ -21,16 +24,28 @@ type AllocationStoreWriterStanding
 
 type AllocationStoreSubstrateSpec {
   path: NonEmptyStr
+  namespace_path: NonEmptyStr
+  presence_ancestor: NonEmptyStr
+  presence_parent_entry: NonEmptyStr
+  presence_target_entry: NonEmptyStr
   owner: FabricCellSubstrateOwner
   mode: NonEmptyStr
+  namespace_owner: FabricCellSubstrateOwner
+  namespace_mode: NonEmptyStr
   writer_standing: AllocationStoreWriterStanding
 }
 
 fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
   AllocationStoreSubstrateSpec {
     path: fabric_control_plane_store_root(),
+    namespace_path: "/var/lib/gunbc/fabric" as NonEmptyStr,
+    presence_ancestor: "/var/lib/gunbc" as NonEmptyStr,
+    presence_parent_entry: "fabric" as NonEmptyStr,
+    presence_target_entry: "allocation" as NonEmptyStr,
     owner: CellSubstrateRootOwned,
     mode: "0700" as NonEmptyStr,
+    namespace_owner: CellSubstrateRootOwned,
+    namespace_mode: "0700" as NonEmptyStr,
     writer_standing: AllocationStoreRootWriterOnly {
       live_caller: "tools.fabric_control_plane_live_probe under EUID 0" as NonEmptyStr,
       rederive_trigger: "a non-root production reservation caller is modeled" as NonEmptyStr,
@@ -38,9 +53,104 @@ fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
   }
 }
 
+fn allocation_store_presence_parent(spec: AllocationStoreSubstrateSpec) -> NonEmptyStr {
+  spec.namespace_path
+}
+
+fn allocation_store_presence_coordinates_match_path(spec: AllocationStoreSubstrateSpec) -> Bool {
+  join([spec.presence_ancestor as String, "/", spec.presence_parent_entry as String], "") == spec.namespace_path as String
+    && join([spec.namespace_path as String, "/", spec.presence_target_entry as String], "") == spec.path as String
+}
+
+type AllocationStoreDirectoryPrestate
+  = AllocationStoreDirectoryAbsent { path: NonEmptyStr, evidence: FilesystemEstablishedAbsence }
+  | AllocationStoreDirectoryPresentExpected { path: NonEmptyStr, owner: PosixOwnerSpec, mode: NonEmptyStr }
+  | AllocationStoreDirectoryPresentUnexpected {
+      path: NonEmptyStr
+      observed_owner: PosixOwnerSpec
+      observed_mode: NonEmptyStr
+      desired_owner: PosixOwnerSpec
+      desired_mode: NonEmptyStr
+    }
+
+type AllocationStoreSubstratePrestate
+  = AllocationStoreNamespaceAbsent {
+      namespace: AllocationStoreDirectoryPrestate
+      store_path: NonEmptyStr
+    }
+  | AllocationStoreNamespacePresent {
+      namespace: AllocationStoreDirectoryPrestate
+      store: AllocationStoreDirectoryPrestate
+    }
+
+type AllocationStoreSubstrateObservation
+  = AllocationStoreSubstrateObserved { prestate: AllocationStoreSubstratePrestate }
+  | AllocationStoreSubstrateObservationRefused { path: NonEmptyStr, cause: String }
+
+fn allocation_store_desired_owner() -> PosixOwnerSpec {
+  PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } }
+}
+
+// GNU stat %a omits the leading special-bits zero carried by the install/chmod serialization.
+// The observed spelling is projected from the spec rather than copied as a second literal.
+fn allocation_store_desired_stat_mode(mode: NonEmptyStr) -> NonEmptyStr {
+  substring(s: mode as String, start: 1, end: string_length(s: mode as String)) as NonEmptyStr
+}
+
+fn allocation_store_directory_present(
+  path: NonEmptyStr,
+  owner: PosixOwnerSpec,
+  mode: NonEmptyStr,
+  desired_mode: NonEmptyStr,
+) -> AllocationStoreDirectoryPrestate {
+  let desired_owner = allocation_store_desired_owner()
+  if posix_owner_spec_equal(left: owner, right: desired_owner) && mode == desired_mode {
+    AllocationStoreDirectoryPresentExpected { path: path, owner: owner, mode: mode }
+  } else {
+    AllocationStoreDirectoryPresentUnexpected {
+      path: path,
+      observed_owner: owner,
+      observed_mode: mode,
+      desired_owner: desired_owner,
+      desired_mode: desired_mode,
+    }
+  }
+}
+
+fn allocation_store_directory_absent(
+  path: NonEmptyStr,
+  evidence: FilesystemEstablishedAbsence,
+) -> AllocationStoreDirectoryPrestate {
+  AllocationStoreDirectoryAbsent { path: path, evidence: evidence }
+}
+
+fn allocation_store_directory_prestate_wire(prestate: AllocationStoreDirectoryPrestate) -> String {
+  match prestate {
+    AllocationStoreDirectoryAbsent { path: p, evidence: e } =>
+      join(["allocation-store:absent:path=", p as String, ":listed-parent=", e.directory, ":missing-entry=", e.name], "")
+    AllocationStoreDirectoryPresentExpected { path: p, owner: o, mode: m } =>
+      join(["allocation-store:present-expected:path=", p as String, ":uid=", to_string(o.user.value), ":gid=", to_string(o.group.value), ":mode=", m as String], "")
+    AllocationStoreDirectoryPresentUnexpected { path: p, observed_owner: o, observed_mode: m, desired_owner: d, desired_mode: dm } =>
+      join(["allocation-store:present-unexpected:path=", p as String, ":uid=", to_string(o.user.value), ":gid=", to_string(o.group.value), ":mode=", m as String, ":desired-uid=", to_string(d.user.value), ":desired-gid=", to_string(d.group.value), ":desired-mode=", dm as String], "")
+  }
+}
+
+fn allocation_store_substrate_prestate_wire(prestate: AllocationStoreSubstratePrestate) -> String {
+  match prestate {
+    AllocationStoreNamespaceAbsent { namespace: n, store_path: s } => join([
+      "allocation-namespace:", allocation_store_directory_prestate_wire(prestate: n),
+      "\nallocation-store:absent-because-namespace-absent:path=", s as String,
+    ], "")
+    AllocationStoreNamespacePresent { namespace: n, store: s } => join([
+      "allocation-namespace:", allocation_store_directory_prestate_wire(prestate: n),
+      "\nallocation-store:", allocation_store_directory_prestate_wire(prestate: s),
+    ], "")
+  }
+}
+
 type AllocationStoreEffect
-  = AllocationStoreDirectoryEnsure { spec: AllocationStoreSubstrateSpec }
+  = AllocationStoreDirectoryChainEnsure { spec: AllocationStoreSubstrateSpec }
 
 fn fabric_allocation_store_ensure_effect() -> AllocationStoreEffect {
-  AllocationStoreDirectoryEnsure { spec: fabric_allocation_store_substrate_spec() }
+  AllocationStoreDirectoryChainEnsure { spec: fabric_allocation_store_substrate_spec() }
 }

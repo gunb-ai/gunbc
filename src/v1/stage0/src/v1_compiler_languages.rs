@@ -371,7 +371,7 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
         });
         match matching.clone().first().cloned() {
             Some(f) => f.keyword.clone(),
-            None => "__MISSING_ITEM_KEYWORD__".to_string(),
+            std::option::Option::None => "__MISSING_ITEM_KEYWORD__".to_string(),
         }
     }
 }
@@ -608,7 +608,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: None,
+            wildcard_case: std::option::Option::None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -795,7 +795,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
-            wildcard_case: None,
+            wildcard_case: std::option::Option::None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: "(".to_string(),
                 close: ")".to_string(),
@@ -982,8 +982,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             if_value_form: IfValueForm::IfStatement,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
-            variant_pattern: None,
-            guard_prefix: None,
+            variant_pattern: std::option::Option::None,
+            guard_prefix: std::option::Option::None,
             empty_return_value: "struct{}{}, nil".to_string(),
             return_suffix: ", nil".to_string(),
             suppress_unit_return: true,
@@ -1154,7 +1154,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: None,
+            wildcard_case: std::option::Option::None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -1237,15 +1237,15 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target.clone() {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
-            None => key.clone(),
+            std::option::Option::None => key.clone(),
         },
         RenderTarget::Go => match v1_rt::lookup(&go_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
-            None => key.clone(),
+            std::option::Option::None => key.clone(),
         },
         RenderTarget::Python => match v1_rt::lookup(&python_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
-            None => key.clone(),
+            std::option::Option::None => key.clone(),
         },
         RenderTarget::Dag => key.clone(),
     }
@@ -1272,7 +1272,7 @@ pub fn binop_symbol(
             for spec in ops.iter().cloned() {
                 if match spec.binop.clone() {
                     Some(b) => (b.clone() == op.clone()),
-                    None => false,
+                    std::option::Option::None => false,
                 } {
                     __result.push(spec);
                 }
@@ -1294,11 +1294,11 @@ pub fn binop_symbol(
             })
             .first()
             .cloned(),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         };
         let result = match specific.clone() {
             Some(_) => specific.clone(),
-            None => Rc::new({
+            std::option::Option::None => Rc::new({
                 let mut __result = Vec::new();
                 for spec in op_matching.iter().cloned() {
                     if (spec.algebra_field.clone() == std::option::Option::None) {
@@ -1312,7 +1312,7 @@ pub fn binop_symbol(
         };
         match result.clone() {
             Some(spec) => Some(spec.symbol.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }

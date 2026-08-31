@@ -68,6 +68,7 @@ data cargo_message_level_member: String = "level"
 data cargo_message_spans_member: String = "spans"
 data cargo_span_file_member: String = "file_name"
 data cargo_span_line_member: String = "line_start"
+data cargo_span_column_member: String = "column_start"
 data cargo_span_primary_member: String = "is_primary"
 
 // AN UNCODED DIAGNOSTIC IS A MEMBER, NOT AN ABSENCE. rustc issues plenty of errors with no E-code
@@ -83,13 +84,14 @@ type RustcDiagnosticIdentity
 // we failed to read. The first is `spans: []`, which rustc emits for whole-crate messages; the
 // second refuses the scan below and never becomes a member at all.
 type RustcDiagnosticLocation
-  = RustcSpan { file: String, line: Int }
+  = RustcSpan { file: String, line: Int, column: Int }
   | RustcSpanAbsent
 
 type RustcCodedDiagnostic {
   identity: RustcDiagnosticIdentity
   level: String
   location: RustcDiagnosticLocation
+  message: String
 }
 
 // EVERY REFUSAL CARRIES THE LINE IT COULD NOT READ. A stream this decode cannot understand is not
@@ -218,7 +220,11 @@ fn cargo_diagnostic_span_of(element: JsonValue) -> RustcSpanRead {
           Present { value: f } =>
             match cargo_diagnostic_int_value(v: span_member_or_null(element: element, key: cargo_span_line_member)) {
               Absent => RustcSpanUnreadable
-              Present { value: n } => RustcSpanRead { location: RustcSpan { file: f, line: n } }
+              Present { value: n } =>
+                match cargo_diagnostic_int_value(v: span_member_or_null(element: element, key: cargo_span_column_member)) {
+                  Absent => RustcSpanUnreadable
+                  Present { value: c } => RustcSpanRead { location: RustcSpan { file: f, line: n, column: c } }
+                }
             }
         }
       } else {
@@ -244,7 +250,7 @@ fn cargo_diagnostic_fold_span(acc: RustcSpanRead, element: JsonValue) -> RustcSp
     RustcSpanUnreadable => RustcSpanUnreadable
     RustcSpanRead { location: found } =>
       match found {
-        RustcSpan { file: f, line: n } => RustcSpanRead { location: RustcSpan { file: f, line: n } }
+        RustcSpan { file: f, line: n, column: c } => RustcSpanRead { location: RustcSpan { file: f, line: n, column: c } }
         RustcSpanAbsent => cargo_diagnostic_span_of(element: element)
       }
   }
@@ -294,17 +300,27 @@ fn cargo_diagnostic_member(
                   match cargo_diagnostic_location(message: message) {
                     RustcSpanUnreadable => CargoDiagnosticSpanUnreadable { line_number: line_number }
                     RustcSpanRead { location: location } =>
-                      CargoDiagnosticsRead {
-                        diagnostics: concat(ds, [
-                          RustcCodedDiagnostic {
-                            identity: identity,
-                            level: level,
-                            location: location
+                      match json_object_unique_member(v: message, key: cargo_message_message_member) {
+                        JsonMemberAbsent => CargoDiagnosticMessageAbsent { line_number: line_number }
+                        JsonMemberDuplicated { count: _ } => CargoDiagnosticMemberDuplicated { line_number: line_number, key: cargo_message_message_member }
+                        JsonMemberNotAnObject => CargoDiagnosticLineNotAnObject { line_number: line_number }
+                        JsonMemberFound { value: message_value } =>
+                          match cargo_diagnostic_string_value(v: message_value) {
+                            Absent => CargoDiagnosticMessageAbsent { line_number: line_number }
+                            Present { value: message_text } => CargoDiagnosticsRead {
+                              diagnostics: concat(ds, [
+                                RustcCodedDiagnostic {
+                                  identity: identity,
+                                  level: level,
+                                  location: location,
+                                  message: message_text
+                                }
+                              ]),
+                              lines_scanned: n + 1,
+                              build_succeeded: ok,
+                              terminal_seen: seen
+                            }
                           }
-                        ]),
-                        lines_scanned: n + 1,
-                        build_succeeded: ok,
-                        terminal_seen: seen
                       }
                   }
               }
@@ -480,18 +496,18 @@ fn rustc_diagnostic_code_or_uncoded(d: RustcCodedDiagnostic) -> String {
 
 fn rustc_diagnostic_location_text(d: RustcCodedDiagnostic) -> String {
   match d.location {
-    RustcSpan { file: f, line: n } => concat(concat(f, ":"), to_string(n))
+    RustcSpan { file: f, line: n, column: c } => concat(concat(concat(concat(f, ":"), to_string(n)), ":"), to_string(c))
     RustcSpanAbsent => "(no span)"
   }
 }
 
-// ONE MEMBER, ONE LINE, IDENTITY FIRST. The rendering is deliberately joinable rather than pretty:
-// a consumer differencing two runs sorts and compares these lines, which a prose summary cannot
-// support and a bare count cannot support at all.
+// ONE MEMBER, ONE LINE, IN THE CENSUS IDENTITY ORDER: file:line:column, code, message. `level`
+// remains carried by RustcCodedDiagnostic but is not identity: this frontier compares rustc error
+// identities, and changing presentation severity must not silently create a different location.
 fn rustc_diagnostic_row(d: RustcCodedDiagnostic) -> String {
   concat(
-    concat(rustc_diagnostic_code_or_uncoded(d: d), concat("\t", d.level)),
-    concat("\t", rustc_diagnostic_location_text(d: d))
+    concat(rustc_diagnostic_location_text(d: d), concat("\t", rustc_diagnostic_code_or_uncoded(d: d))),
+    concat("\t", d.message)
   )
 }
 

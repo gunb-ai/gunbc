@@ -1803,6 +1803,7 @@ fn required_lanes_aggregate_job() -> Job {
 
 data witness_floor_workflow: Workflow = {
   name: witness_floor_workflow_name,
+  run_name: none,
   on: [
     WorkflowDispatch { inputs: [] },
     MergeGroup,

@@ -98,6 +98,17 @@ type V4EvaluatorRuntime {
   boundary: ResourceEffectBoundary
 }
 
+// XL-0E ruling (2026-08-30): '==' on V4EvaluatorRuntime has no denotation -- values and execution
+// carry raw function slots with no declared slot identities. Runtime-model equality is therefore
+// the declared runtime_identity plus the structural boundary slot (the discriminator the bootstrap
+// footprint anchor relies on). Next-rung trigger: declared slot identities on
+// ValueRepresentationModel / ExecutionSemantics / ModelCore, at which point this comparator widens
+// to the full slot-identity conjunction (the InterpretationAlgebra precedent).
+fn v4_evaluator_runtime_models_equal(a: V4EvaluatorRuntime, b: V4EvaluatorRuntime) -> Bool {
+  (a.runtime_identity == b.runtime_identity)
+    && (a.boundary == b.boundary)
+}
+
 fn v2_eval_unit_type_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^v2_eval_unit_type_symbol } },
