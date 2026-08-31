@@ -64,6 +64,8 @@ import tools.emission_entry_instrument {
   StageEmitDecode,
   StageAssemble,
   StageManifest,
+  StageArtifactIdentity,
+  StageParse,
   StageCargo,
   StageCargoDecode,
   emission_stage_name
@@ -217,7 +219,15 @@ import tools.emission_entry_instrument {
 // ---------------------------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------------------------
-// HOLE 3 -- THE INSTRUMENT CAN ONLY MEASURE QUIET SUBJECTS, AND THE UNIVERSE CONTAINS LOUD ONES.
+// HOLE 3 -- DEFAULT-TAIL INVOCATIONS CAN ONLY MEASURE QUIET SUBJECTS.
+//
+// DISSOLVED FOR OPTED-IN INVOCATIONS (2026-08-30): WitnessBin.Run now models a closed
+// BoundedTail{bytes}|Complete policy. The default remains a 16 KiB bounded tail, so existing
+// consumers retain their cost and the specimens below still refuse honestly. The self-host compile
+// phase census requests Complete because its anchor may occur anywhere in the stream; Complete is
+// bounded by GUNBC_MEMORY_BUDGET_BYTES and refuses on overflow rather than truncating. Thus this hole
+// remains a true limitation of DEFAULT callers, but is no longer a prerequisite for the census that
+// explicitly pays and names the complete-capture cost.
 //
 // This one is a DEPENDENCY rather than a design choice here, and it is declared because a reader who
 // meets it as a refusal will otherwise rediscover it from scratch. It was measured by another lane
@@ -752,6 +762,8 @@ fn not_evaluated_cause_for_stage(stage: EmissionStage, cause: String) -> EmitNot
     StageEmitDecode => PopulationUnreadable { stage: stage, cause: cause }
     StageAssemble => PopulationUnreadable { stage: stage, cause: cause }
     StageManifest => PopulationUnreadable { stage: stage, cause: cause }
+    StageArtifactIdentity => PopulationUnreadable { stage: stage, cause: cause }
+    StageParse => PopulationUnreadable { stage: stage, cause: cause }
     StageCargo => PopulationUnreadable { stage: stage, cause: cause }
     StageCargoDecode => PopulationUnreadable { stage: stage, cause: cause }
   }
