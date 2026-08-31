@@ -1,8 +1,14 @@
 module test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test
 
-import std.types { Bool, String }
-import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
-import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import std.types { Bool, Int, String }
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
 import v2.std.optional { Absent, Present }
 
 // THE WALL IS REAL, PROVEN WHERE ITS RED IS AUTHORABLE (DESIGN §4b).
@@ -14,22 +20,95 @@ import v2.std.optional { Absent, Present }
 //
 // §4b names the second boundary that decides it: a state unrepresentable in the
 // ACCEPTED corpus is still representable as SOURCE HANDED TO THE COMPILER BY A
-// FIXTURE. These two sources differ on exactly one axis — the value placed in
-// the plan's ineligible arm — so the verdict cannot be attributed to anything
-// else. The RED places CandidateEligible there and must be refused; the GREEN
-// places a real ineligibility cause and must compile.
-data plan_ineligible_eligible_red_source: String = "module probe_no_fallback_plan_ineligible_eligible_red\nimport gunbc.boot_artifact_delivery { BootDeliveryPlanCandidateDisposition, CandidateEligible, PlanCandidateIneligible }\nfn f() -> BootDeliveryPlanCandidateDisposition { PlanCandidateIneligible { cause: CandidateEligible } }\n"
+// FIXTURE. The RED places CandidateEligible in the plan's ineligible arm and
+// must be refused; the GREEN places a real ineligibility cause there and must
+// not be.
+//
+// ONE AXIS BY CONSTRUCTION, NOT BY MAINTENANCE. Both fixtures come out of
+// plan_ineligible_probe_source, which is parameterised by the cause spelling and
+// nothing else: same module name, same import list — carrying BOTH candidate
+// values so the import set is not a second variable — same function, same
+// return type. So the one-axis relation is a property of the producer rather
+// than an alignment between two literals a reader would have to check and a
+// future edit could silently break.
+fn plan_ineligible_probe_source(cause: String) -> String {
+  "module probe_no_fallback_plan_ineligible\n"
+    + "import gunbc.boot_artifact_delivery { BootDeliveryPlanCandidateDisposition, CandidateEligible, CandidateStagingAbsent, PlanCandidateIneligible }\n"
+    + "fn f() -> BootDeliveryPlanCandidateDisposition { PlanCandidateIneligible { cause: "
+    + cause
+    + " } }\n"
+}
 
-data plan_ineligible_cause_green_source: String = "module probe_no_fallback_plan_ineligible_cause_green\nimport gunbc.boot_artifact_delivery { BootDeliveryPlanCandidateDisposition, CandidateStagingAbsent, PlanCandidateIneligible }\nfn f() -> BootDeliveryPlanCandidateDisposition { PlanCandidateIneligible { cause: CandidateStagingAbsent } }\n"
+// WHAT THE CENSUS ACTUALLY COVERS, measured rather than assumed, because it
+// decides which exactness is authorable here. compile_dag_diagnostic_census
+// reports the diagnostics of the whole compile the fixture is handed to, not of
+// the fixture's own lines: both arms carry ~130 rows of ambient corpus
+// diagnostics, blocking UnresolvedType rows among them. So "total == 0" is not
+// a statement this instrument can make about the GREEN, and asserting it would
+// be a permanently-red check dressed as rigour — just as "total == 1" on the RED
+// would be. The exact form the instrument does support is the DIFFERENTIAL one
+// below, which is the stronger claim anyway: the two censuses are the same
+// census plus one row.
+type ProbeCensusCounts {
+  total: Int
+  blocking: Int
+  blocking_of_class: Int
+  blocking_of_class_and_subject: Int
+}
+
+// Absent is the CensusNotRunnable arm: a census that could not run is not a
+// green, and keeping it in the optional rather than answering 0 is why this
+// reads rows through the coproduct instead of a rows-of-census accessor.
+fn plan_ineligible_probe_counts(cause: String, wanted: String, subject: String) -> ProbeCensusCounts? {
+  match compile_dag_diagnostic_census(plan_ineligible_probe_source(cause: cause)) {
+    CensusObserved { rows: rows } =>
+      Present {
+        value: ProbeCensusCounts {
+          total: census_total_count(rows: rows),
+          blocking: census_total_count(rows: census_blocking_rows(rows: rows)),
+          blocking_of_class: census_total_count(
+            rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted)
+          ),
+          blocking_of_class_and_subject: census_total_count(
+            rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted)
+              |> filter(r => r.subject_name == subject)
+          ),
+        }
+      }
+    CensusNotRunnable { cause: _ } => none
+  }
+}
+
+fn red_counts() -> ProbeCensusCounts? {
+  plan_ineligible_probe_counts(
+    cause: "CandidateEligible",
+    wanted: "TypeMismatch",
+    subject: "Coproduct(BootDeliveryCandidateStanding)"
+  )
+}
+
+fn green_counts() -> ProbeCensusCounts? {
+  plan_ineligible_probe_counts(
+    cause: "CandidateStagingAbsent",
+    wanted: "TypeMismatch",
+    subject: "Coproduct(BootDeliveryCandidateStanding)"
+  )
+}
 
 // THE DISCRIMINATING RED. Before the refusal-only split this source compiled,
 // because PlanCandidateIneligible carried the whole standing and CandidateEligible
 // inhabited it. It is the exact contradictory row NO-FALLBACK-0 forbids: a
 // candidate recorded as ineligible whose stated cause is that it was eligible —
 // an executor reading the plan finds a spare transport to try next.
+//
+// EXACT, not lower-bounded, and pinned to the subject. `>= 1` would keep greening
+// on the day the fixture starts refusing for a second, unintended reason: the
+// wall would still prove that SOMETHING refuses while it had stopped proving that
+// THIS refuses. One blocking TypeMismatch, and it is the standing coproduct
+// rejecting the arm payload — not a mistyped import or a renamed field.
 test fn an_eligible_standing_cannot_be_placed_in_a_plans_ineligible_arm() -> Bool {
-  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(plan_ineligible_eligible_red_source), wanted: "TypeMismatch") {
-    Present { value: n } => n >= 1
+  match red_counts() {
+    Present { value: red } => red.blocking_of_class == 1 && red.blocking_of_class_and_subject == 1
     Absent => false
   }
 }
@@ -38,12 +117,28 @@ test fn an_eligible_standing_cannot_be_placed_in_a_plans_ineligible_arm() -> Boo
 // at all — a broken import, a misspelled type — and would still look like a
 // wall.
 test fn a_real_ineligibility_cause_is_still_admitted_in_that_arm() -> Bool {
-  match compile_dag_diagnostic_census(plan_ineligible_cause_green_source) {
-    CensusObserved { rows: rows } =>
-      match census_blocking_count_for_class(census: CensusObserved { rows: rows }, wanted: "TypeMismatch") {
-        Present { value: n } => n == 0
+  match green_counts() {
+    Present { value: green } => green.blocking_of_class == 0
+    Absent => false
+  }
+}
+
+// THE ONE-AXIS RECEIPT. The construction makes the two SOURCES differ by one
+// token; this makes the two VERDICTS differ by one diagnostic. Whatever the
+// ambient corpus contributes cancels, so the wall is measured against the other
+// arm rather than against a literal copied out of today's tree (DESIGN §5: a
+// measurement of the current tree is not an oracle). It goes red if the RED
+// picks up a second refusal, if the GREEN loses or gains one, or if an advisory
+// appears on one side only — every way the pair could drift apart while both
+// single-arm assertions above still passed.
+test fn the_two_arms_differ_by_exactly_one_blocking_diagnostic() -> Bool {
+  match red_counts() {
+    Present { value: red } =>
+      match green_counts() {
+        Present { value: green } =>
+          red.total == green.total + 1 && red.blocking == green.blocking + 1
         Absent => false
       }
-    CensusNotRunnable { cause: _ } => false
+    Absent => false
   }
 }
