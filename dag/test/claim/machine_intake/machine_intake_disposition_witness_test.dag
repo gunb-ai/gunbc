@@ -4,7 +4,9 @@ import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String, list_length }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.content_hash { ContentHash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable, compare_content_hash, content_hash_of_value }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
 import gunbc.machine_intake_subject {
+  content_hash_equal,
   SubjectCurrent,
   SubjectStale,
   StaleAxis,
@@ -74,6 +76,8 @@ import gunbc.machine_intake_receipt {
   ReceiptSatisfied,
   ValidatedIntakeReceiptLedger,
   ArchitectureMismatch,
+  AgentCallbackDeliveryBatch,
+  agent_callback_delivery_batch,
   DuplicateAgentCallback,
   attest_diagnostic_boot,
   intake_receipt_structural_fingerprint,
@@ -744,12 +748,35 @@ test fn receipt_chain_link_is_checked_by_fingerprint() -> Bool {
   ok && bad
 }
 
+data issued_artifact: BootArtifact = BootArtifact {
+  purpose: IntakeLinuxEnvironment,
+  architecture: Aarch64,
+  digest: content_hash_of_value(value: "intake-iso-aarch64"),
+  format: IsoImage,
+  entrypoint: "/casper/vmlinuz",
+  build_identity: "intake-agent-0a-aarch64",
+}
+
 data issued: IssuedAttemptNonce = IssuedAttemptNonce {
   attempt_id: attempt_one,
   nonce: "nonce-7f3a" as IntakeAttemptNonce,
-  artifact_digest: content_hash_of_value(value: "intake-iso-aarch64"),
-  artifact_architecture: Aarch64,
+  artifact: issued_artifact,
   issued_at: 1788000000000,
+}
+
+data acquisition_record: EvidenceRef = EvidenceRef {
+  label: "callback-endpoint-log",
+  digest: content_hash_of_value(value: "endpoint-callback-log"),
+}
+
+// The batch as the ENDPOINT would mint it: the population it actually received
+// for this issuance, sealed with the digest of its own record of them.
+fn delivered(callbacks: List<IntakeAgentBootReceipt>) -> AgentCallbackDeliveryBatch {
+  agent_callback_delivery_batch(
+    issuance_nonce: "nonce-7f3a" as IntakeAttemptNonce,
+    callbacks: callbacks,
+    acquisition_evidence: acquisition_record,
+  )
 }
 
 fn agent_receipt(nonce: NonEmptyStr, artifact: NonEmptyStr, serial: NonEmptyStr) -> IntakeAgentBootReceipt {
@@ -771,7 +798,7 @@ fn agent_receipt_on(nonce: NonEmptyStr, artifact: NonEmptyStr, serial: NonEmptyS
 // CONTROL — media activity, an image-redirection session and an NFS plateau
 // WITHOUT the agent callback do not attest the boot; they ride in the refusal.
 test fn activity_without_agent_receipt_does_not_attest_boot() -> Bool {
-  match attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [], supporting: [NfsReadPlateau, ImageRedirectionSessionActive]) {
+  match attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: []), supporting: [NfsReadPlateau, ImageRedirectionSessionActive]) {
     DiagnosticBootNotAttested { cause: c } =>
       match c {
         AgentReceiptAbsent { supporting: s } => list_length(items: s) == 2
@@ -782,8 +809,8 @@ test fn activity_without_agent_receipt_does_not_attest_boot() -> Bool {
 }
 
 test fn nonce_bound_receipt_attests_and_wrong_nonce_refuses() -> Bool {
-  let good = attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")], supporting: [])
-  let bad = attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [agent_receipt(nonce: "nonce-0000", artifact: "intake-iso-aarch64", serial: "BRD-000123")], supporting: [])
+  let good = attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: [])
+  let bad = attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: [agent_receipt(nonce: "nonce-0000", artifact: "intake-iso-aarch64", serial: "BRD-000123")]), supporting: [])
   match good {
     DiagnosticBootAttested { attempt_id: a, receipt: _ } =>
       (a as NonEmptyStr) == (attempt_one as NonEmptyStr)
@@ -796,8 +823,8 @@ test fn nonce_bound_receipt_attests_and_wrong_nonce_refuses() -> Bool {
 }
 
 test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
-  let wrong_artifact = attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "some-other-iso", serial: "BRD-000123")], supporting: [])
-  let wrong_unit = attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000999")], supporting: [])
+  let wrong_artifact = attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "some-other-iso", serial: "BRD-000123")]), supporting: [])
+  let wrong_unit = attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000999")]), supporting: [])
   let a = match wrong_artifact {
     DiagnosticBootNotAttested { cause: c } =>
       match c {
@@ -820,7 +847,7 @@ test fn wrong_artifact_or_wrong_unit_refuses_attestation() -> Bool {
 // RED CONTROL — the receipt's architecture was carried and never compared, so
 // an x86-64 agent callback would have attested an AArch64 unit's issuance.
 test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
-  let wrong = attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [agent_receipt_on(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123", arch: X86_64)], supporting: [])
+  let wrong = attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: [agent_receipt_on(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123", arch: X86_64)]), supporting: [])
   match wrong {
     DiagnosticBootNotAttested { cause: c } =>
       match c {
@@ -836,13 +863,39 @@ test fn an_agent_on_the_wrong_architecture_does_not_attest_the_boot() -> Bool {
 // the first: honouring one of two would be an absorbing fallback (§5).
 test fn a_second_callback_on_one_nonce_is_a_replay_not_a_boot() -> Bool {
   let one = agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")
-  let replay = attest_diagnostic_boot(issued: issued, unit_key: unit, callbacks: [one, one], supporting: [])
+  let replay = attest_diagnostic_boot(issued: issued, unit_key: unit, batch: delivered(callbacks: [one, one]), supporting: [])
   match replay {
     DiagnosticBootNotAttested { cause: c } =>
       match c {
-        DuplicateAgentCallback { received: n } => n == 2
+        DuplicateAgentCallback { received: n, acquisition_evidence: e } => n == 2 && e.label == "callback-endpoint-log"
         _ => false
       }
+    DiagnosticBootAttested { attempt_id: _, receipt: _ } => false
+  }
+}
+
+// THE MISMATCHED PAIR HAS NOWHERE TO BE WRITTEN. Digest and architecture are two
+// projections of one BootArtifact, so an issuance naming an AArch64 artifact's
+// digest beside X86_64 is not a state a fixture can construct -- which is why
+// this asserts the projection relation rather than trying to build the invalid
+// pair and watch it refuse.
+test fn the_issued_digest_and_architecture_come_from_one_artifact() -> Bool {
+  content_hash_equal(left: issued.artifact.digest, right: issued_artifact.digest)
+    && issued.artifact.architecture == issued_artifact.architecture
+}
+
+// A BATCH ACQUIRED FOR ONE ISSUANCE CANNOT SPEAK FOR ANOTHER. Sealing the
+// population is only half the property: the seal has to name which issuance it
+// is the population OF, or an endpoint's honest batch for one attempt could be
+// presented against a different attempt's nonce.
+test fn a_batch_sealed_for_another_issuance_does_not_attest() -> Bool {
+  let foreign = agent_callback_delivery_batch(
+    issuance_nonce: "nonce-0000" as IntakeAttemptNonce,
+    callbacks: [agent_receipt(nonce: "nonce-7f3a", artifact: "intake-iso-aarch64", serial: "BRD-000123")],
+    acquisition_evidence: acquisition_record,
+  )
+  match attest_diagnostic_boot(issued: issued, unit_key: unit, batch: foreign, supporting: []) {
+    DiagnosticBootNotAttested { cause: c } => c == NonceMismatch
     DiagnosticBootAttested { attempt_id: _, receipt: _ } => false
   }
 }
