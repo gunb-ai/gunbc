@@ -7219,18 +7219,35 @@ fn record_lit_construction_field_names(type_name: String, scope: InferScope) -> 
   }
 }
 
-fn field_in_any_variant_named(type_name: String, field: String, scope: InferScope) -> Bool {
+// THE CONSTRUCTED VARIANT ARM'S OWN FIELD ROSTER, and why the unknown-field arm could not read one.
+// `lookup_type_by_name` projects a coproduct arm out of its owner only through
+// `variant_arm_type_projection`, which returns the arm ONLY when the arm carries no payload; a
+// payload-carrying arm falls back to the OWNER, whose connective is Disj, so
+// `record_lit_construction_field_names` answers `none` and the unknown-field arm goes silent for
+// every payload-carrying variant literal -- a field named nowhere in the corpus was admitted, not
+// only a sibling arm's field. MissingField never had this hole because presence checking reads the
+// arm through `variant_owner_node`. This function is that same read, projected to names, so the two
+// halves of the record literal's field judgment consult ONE roster.
+//
+// The nullary arm answers `[]` rather than `none`, and that is a judgment, not a degenerate case.
+// A zero-field arm's roster is EMPTY, not UNKNOWN: `Red` names a tag that declares no fields, so
+// `Red { x: 1 }` supplies a field the declaration does not have and must refuse exactly as
+// `Circle { nowhere: 2 }` does -- measured admitting it on origin/main. Answering `none` here would
+// have left that hole open under a repair that claims to close the class. The bare tag reference is
+// untouched because it carries no field inits at all: the unknown-field arm maps over the supplied
+// inits, so an empty roster and an empty init list produce no diagnostic.
+fn record_lit_variant_arm_field_names(type_name: String, scope: InferScope) -> List<String>? {
   let si = scope.type_env.source_indices
   match variant_owner_node(scope: scope, name: type_name) {
     Present { value: owner } =>
-      owner.children |> any(arm =>
-        if authored_name_at(source_indices: si, node: arm) == type_name {
+      match owner.children |> filter(v => authored_name_at(source_indices: si, node: v) == qualified_last_segment(name: type_name)) |> first {
+        Present { value: arm } =>
           let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name).resolved
           let fields = if (ea.connective == Conj) { ea.children } else { arm.children }
-          fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
-        } else { false }
-      )
-    Absent => false
+          Present { value: fields |> map(f => authored_name_at(source_indices: si, node: f)) }
+        Absent => none
+      }
+    Absent => none
   }
 }
 
@@ -7395,7 +7412,11 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     Absent => []
   }
   let construction_field_names = match type_name {
-    Present { value: tn } => record_lit_construction_field_names(type_name: tn, scope: scope)
+    Present { value: tn } =>
+      match record_lit_construction_field_names(type_name: tn, scope: scope) {
+        Present { value: names } => Present { value: names }
+        Absent => record_lit_variant_arm_field_names(type_name: tn, scope: scope)
+      }
     Absent => none
   }
   let tn_str = match type_name {
@@ -7469,7 +7490,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
 
     let unknown_field_diags = match construction_field_names {
       Present { value: names } =>
-        if (names |> any(n => n == fi_name)) || field_in_any_variant_named(type_name: tn_str, field: fi_name, scope: scope) {
+        if names |> any(n => n == fi_name) {
           []
         } else {
           [make_error_node(diagnostic: FieldNotFound { field: fi_name, type_name: tn_str, span: fi.span }, module_name: scope.module_name)]
