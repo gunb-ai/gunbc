@@ -17959,8 +17959,11 @@ pub fn run_bootstrap_dag_operation(
 mod bootstrap_operation_launcher_tests {
     use super::bootstrap_invocation_receipt_path;
 
+    /// Threads exercise the per-process sequence; the explicit PID assertions are the
+    /// discriminator for the separate process-invocation boundary. Removing either component
+    /// makes this control red instead of leaving the other component to mask the collision.
     #[test]
-    fn concurrent_invocations_receive_distinct_receipt_and_artifact_paths() {
+    fn concurrent_threads_receive_distinct_paths_and_each_path_carries_process_identity() {
         let root =
             std::env::temp_dir().join(format!("gunbc-bootstrap-path-test-{}", std::process::id()));
         let root_text = root.to_string_lossy().into_owned();
@@ -17974,6 +17977,13 @@ mod bootstrap_operation_launcher_tests {
         });
         let left = left.join().unwrap();
         let right = right.join().unwrap();
+        let process_component = format!("receipt-{}-", std::process::id());
+        assert!(left
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with(&process_component)));
+        assert!(right
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().starts_with(&process_component)));
         assert_ne!(left, right);
         assert_ne!(
             left.with_extension("artifact"),
