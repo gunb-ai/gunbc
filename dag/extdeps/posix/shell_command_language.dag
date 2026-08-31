@@ -127,6 +127,15 @@ data extdeps_model_scope: ExternalModelScope = posix_shell_model_scope
 // one home matching its one cited authority, and a bash-specific change to Bash's own emitter can
 // no longer silently invalidate a POSIX claim made outside that module.
 
+data posix_single_quote_delimiter: String = "'"
+data posix_single_quote_escape_encoding: String = "'\\''"
+
 fn posix_single_quote(spelling: String) -> String {
-  concat("'", concat(replace(spelling, "'", "'\\''"), "'"))
+  concat(
+    posix_single_quote_delimiter,
+    concat(
+      replace(spelling, posix_single_quote_delimiter, posix_single_quote_escape_encoding),
+      posix_single_quote_delimiter
+    )
+  )
 }
