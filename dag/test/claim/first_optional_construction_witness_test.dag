@@ -1,0 +1,85 @@
+module test.claim.first_optional_construction_witness
+
+// WHAT THIS PINS. `dag/std/algebra.dag` declares `first`, `last`, `get`, `lookup` and `map_get`
+// with `return_type: OptionalOf { inner: ReceiverElement }`. That one row is what makes the Rust
+// emit arm produce `Option<T>`; the interpreter used to answer the same question by hand and
+// answer it differently -- `first` returned `items.front().cloned().unwrap_or(Null)`, i.e. the RAW
+// ELEMENT. Two realizations of one declared signature that disagree are DESIGN.md section 5 silent
+// wrongness: `(["x"] |> filter(n => true) |> first) == Present { value: "x" }` typechecked and
+// returned FALSE interpreted while returning true emitted, with no diagnostic anywhere.
+//
+// WHY THE PRE-EXISTING first WITNESSES DID NOT CATCH IT. `branded_list_first_optional_witness`
+// eliminates `first` with `match { Present { value: v } => .. Absent => .. }` over a NON-optional
+// element type, and the interpreter carried compensating raw-unwrap arms in `match_pattern` that
+// made exactly that shape agree. So the whole match-scrutinee population -- the large majority of
+// the corpus's terminal `|> first` sites -- was green on a divergence it could not observe. The
+// two shapes below are the ones the compensation cannot cover, and they are the discriminating
+// RED: each one goes red against the raw-element arm and green against the constructed Optional.
+//
+// SHAPE 1 -- THE ELEMENT TYPE IS ITSELF AN Optional. `[Absent] |> first` must be
+// `Present { value: Absent }`, one head that is an absent optional. Under the raw arm the head
+// came back bare, so the outer `Present` pattern saw an `Absent` variant and the whole match took
+// the OUTER Absent arm: a one-element list read as an empty one.
+//
+// SHAPE 2 -- THE RESULT IS COMPARED RATHER THAN MATCHED. `==` against `Present { value: .. }` has
+// no pattern for a compensation arm to intercept, so it reads the representation directly.
+
+fn classify(xs: List<Optional<String>>) -> String {
+  match xs |> first {
+    Present { value: inner } =>
+      match inner {
+        Present { value: s } => s
+        Absent => "OUTER-PRESENT-INNER-ABSENT"
+      }
+    Absent => "OUTER-ABSENT"
+  }
+}
+
+// Positive control: the empty list is the one case the raw arm already got right, so a green here
+// with the two reds below is what separates "the Optional is constructed" from "the arm refuses".
+test fn first_of_an_empty_list_is_absent() -> Bool {
+  classify(xs: []) == "OUTER-ABSENT"
+}
+
+// SHAPE 1, discriminating: red against `unwrap_or(Value::Null)`, which reported "OUTER-ABSENT".
+test fn first_of_a_list_whose_head_is_an_absent_optional_is_present_of_absent() -> Bool {
+  classify(xs: [Absent]) == "OUTER-PRESENT-INNER-ABSENT"
+}
+
+// Positive control for the same shape: a present head must still reach its payload, so the fix is
+// not "wrap everything and lose the value".
+test fn first_of_a_list_whose_head_is_a_present_optional_reaches_the_payload() -> Bool {
+  classify(xs: [Present { value: "x" }]) == "x"
+}
+
+// SHAPE 2, discriminating: this is the exact comparison the BT-0 lane found returning false
+// interpreted and true emitted.
+test fn first_result_compares_equal_to_the_optional_the_roster_declares() -> Bool {
+  (["x"] |> filter(n => true) |> first) == Present { value: "x" }
+}
+
+// SHAPE 2, the other direction. The raw arm made this TRUE -- the bare element compared equal to
+// itself -- which is the same divergence read from the side where the interpreter was permissive
+// rather than wrong-answered.
+test fn first_result_does_not_compare_equal_to_the_bare_element() -> Bool {
+  ((["x"] |> filter(n => true) |> first) == Present { value: "x" })
+    && !(match ["x"] |> filter(n => true) |> first { Present { value: v } => v == "y" Absent => true })
+}
+
+// `last` carries the identical roster row and had the identical raw arm.
+test fn last_of_a_list_whose_tail_is_an_absent_optional_is_present_of_absent() -> Bool {
+  match [Present { value: "a" }, Absent] |> last {
+    Present { value: inner } =>
+      match inner {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Absent => false
+  }
+}
+
+// `get` carries it too, and its absent case was the same or-Null read.
+test fn get_past_the_end_is_absent_and_get_in_bounds_is_present() -> Bool {
+  (match ["a"] |> get(1) { Present { value: _ } => false Absent => true })
+    && (match ["a"] |> get(0) { Present { value: s } => s == "a" Absent => false })
+}
