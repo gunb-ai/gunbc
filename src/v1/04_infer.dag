@@ -111,7 +111,7 @@ import v1.compiler.infer_method {
   builtin_kernel_seed_diagnostics, infer_builtin_call_type, resolve_builtin_call_type
 }
 import v1.compiler.infer_cycle { detect_type_cycles_kahn }
-import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file }
+import v1.compiler.coercion { decl_file_realizes_natively, type_reference_decl_file, decl_identity_file }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   merge_type_env_cache_guarded, GuardedTypeEnvCacheMerge, TypeEnvCacheMergeConflict,
@@ -178,7 +178,7 @@ import v1.compiler.infer_emit_info {
   TypeSummary, EmitGraphInfo, EmitInfoBuildState,
   empty_emit_graph_info, empty_type_env, lookup_emit_type_summary,
   build_struct_field_summaries, build_enum_field_summaries,
-  add_emit_item_summary, derive_variant_to_enum, close_fn_fields
+  add_emit_item_summary, derive_variant_to_enum, close_fn_fields, emit_graph_records_type_decl
 }
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
@@ -12701,6 +12701,35 @@ fn build_enum_variant_shape_sets(modules: List<TypedModule>, type_summaries: Map
   )
 }
 
+// Recursiveness is a property of a DECLARATION, so the emit-graph carrier records it at
+// declaration identity (name -> declaring ident_span files), never as a closure-global bare-name
+// set: two declarations may share a spelling (std.nat Nat is a native i64 alias while a Peano
+// Nat elsewhere is recursive), and a bare-name union let one module's recursive declaration
+// force another module's unrelated same-named alias to the Rc reference layer -- the executed
+// reproducer behind this row emitted `amount: Rc<Nat>` beside `pub use std_nat::Nat` (= i64) and
+// rustc refused with expected i64 found Rc<i64>. Kernel-minted recursive types have no corpus
+// declaration; their identity is the parser's own `<kernel:Name>` pseudo-file, which is exactly
+// what a resolved reference to them carries, so the join stays exact for both populations.
+fn add_recursive_type_decl_row(acc: Map<String, List<String>>, item: Node, env: TypeEnv) -> Map<String, List<String>> {
+  let decl_name = authored_name_at(source_indices: env.source_indices, node: item)
+  if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: env.source_indices) {
+    match map_get(env.recursive_type_set, intern(table: env.intern_table, s: decl_name).id) {
+      Present { value: _ } =>
+        let file = decl_identity_file(item: item)
+        if file == "" { acc }
+        else {
+          match map_get(acc, decl_name) {
+            Present { value: files } =>
+              if files |> any(f => f == file) { acc }
+              else { map_insert(acc, decl_name, concat(files, [file])) }
+            Absent => map_insert(acc, decl_name, [file])
+          }
+        }
+      Absent => acc
+    }
+  } else { acc }
+}
+
 fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
   let init = EmitInfoBuildState {
     type_summaries: empty_map(),
@@ -12715,9 +12744,12 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     )
   )
   let built = EmitInfoBuildState { type_summaries: close_fn_fields(summaries: built_raw.type_summaries, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names), type_decl_items: built_raw.type_decl_items, fn_decl_items: built_raw.fn_decl_items, structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names, structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names }
-  let all_recursive = modules |> fold(init: empty_set(), f: (acc, m) =>
-    fold(map_keys(m.type_env.recursive_type_set), init: acc, f: (inner, ident) =>
-      set_insert(inner, intern_str(table: m.type_env.intern_table, id: ident))
+  let kernel_recursive_decls = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) =>
+    map_insert(acc, name, [concat("<kernel:", name, ">")])
+  )
+  let all_recursive = modules |> fold(init: kernel_recursive_decls, f: (acc, m) =>
+    m.items |> fold(init: acc, f: (inner, item) =>
+      add_recursive_type_decl_row(acc: inner, item: item, env: m.type_env)
     )
   )
   let variant_shapes = build_enum_variant_shape_sets(modules: modules, type_summaries: built.type_summaries)

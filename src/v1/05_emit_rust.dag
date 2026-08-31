@@ -2730,8 +2730,8 @@ fn is_dag_value_type_name(name: String) -> Bool {
   }
 }
 
-fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bool {
-  let is_recursive = set_contains(recursive_type_set, summary.name)
+fn is_type_constant(summary: TypeSummary, recursive_type_set: Map<String, List<String>>) -> Bool {
+  let is_recursive = map_get(recursive_type_set, summary.name) != none
   let has_generics = (summary.generic_param_names |> count) > 0
   match summary.repr {
     EnumRepr { unit_only: unit_only } =>
@@ -2747,7 +2747,7 @@ fn is_type_constant(summary: TypeSummary, recursive_type_set: Set<String>) -> Bo
   }
 }
 
-fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type_set: Set<String>, target_needs_sharing: Bool) -> Set<String> {
+fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type_set: Map<String, List<String>>, target_needs_sharing: Bool) -> Set<String> {
   let needs_sharing = target_needs_sharing && match summary.repr {
     StructRepr => true
     EnumRepr { unit_only: unit_only } => unit_only == false
@@ -2761,7 +2761,7 @@ fn maybe_mark_shared_type(acc: Set<String>, summary: TypeSummary, recursive_type
   }
 }
 
-fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Set<String>, target: RenderTarget) -> Set<String> {
+fn build_shared_types(type_summaries: Map<String, TypeSummary>, recursive_type_set: Map<String, List<String>>, target: RenderTarget) -> Set<String> {
 
   let sharing = sharing_for_target(target: target)
   let user_shared = map_values(type_summaries) |> fold(init: empty_set(), f: (acc, summary) =>
@@ -6655,14 +6655,23 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   }
 }
 
-fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn reference_declares_recursive(n: Node, name: String, recursive_types: Map<String, List<String>>) -> Bool {
+  match map_get(recursive_types, name) {
+    Present { value: files } =>
+      let decl_file = type_reference_decl_file(n: n)
+      if decl_file == "" { false } else { files |> any(f => f == decl_file) }
+    Absent => false
+  }
+}
+
+fn needs_box_wrapping(n: Node, recursive_types: Map<String, List<String>>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   let authored = authored_name_at(source_indices: source_indices, node: n)
   let name = qualified_last_segment(name: authored)
   if set_contains(shared_types, name) { false }
-  else if set_contains(recursive_types, name) { true }
+  else if reference_declares_recursive(n: n, name: name, recursive_types: recursive_types) { true }
   else if n.children |> count == 0 {
     if coerce_primitive_type(target: Rust, dag_name: name, decl_file: type_reference_decl_file(n: n)) != name { false }
-    else { set_contains(recursive_types, name) }
+    else { reference_declares_recursive(n: n, name: name, recursive_types: recursive_types) }
   } else {
     let is_optional = n.return_cardinality == CardOptional
     if is_optional {
@@ -6890,7 +6899,7 @@ fn emit_item_clone_bound_refusal(item: Node, item_name: String, emit_info: EmitG
 // a plain-field positive control, and a converse control requiring that a callable over UNBOUNDED
 // parameters still emits bare), PLUS the regen fixed point over the live callable-field carriers
 // as the regression control that the 16 derive carriers did not gain a header bound.
-fn emit_type_def_from_connective(item: Node, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, List<String>>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
@@ -7075,7 +7084,7 @@ fn emit_sealed_struct_accessors(name: String, type_params: String, generic_param
   concat("\nimpl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
-fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Map<String, List<String>>, shared_types: Set<String>, sealed: Bool, deserialize_forbidden: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let surface = v1_emit_struct_from_capability_table(
     module_path: env.module_path,
@@ -7199,7 +7208,7 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
 // field position from re-deriving the layer locally; the next rung is the same modeled layer
 // transition that predicate names.
 
-fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
+fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Map<String, List<String>>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
   let native_scalar = rust_seed_host_numeric_alias(name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), decl_file: type_reference_decl_file_in_env(n: rt_field, env: env, source_indices: source_indices))
   if needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices) {
     concat("Box<", ty, ">")
@@ -7210,7 +7219,7 @@ fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Se
   } else { ty }
 }
 
-fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, sealed: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_names: List<String>, recursive_types: Map<String, List<String>>, shared_types: Set<String>, sealed: Bool, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let rt_child = resolved_type(n: child)
   let authored_child_type = field_node_type_expr(n: child)
   let ty = if generic_param_names |> count > 0 {
@@ -7282,7 +7291,7 @@ fn enum_derives(name: String, children: List<Node>, has_fn_fields: Bool, deseria
 // in this scope" -- trading one error for another rather than removing it. The derive decision
 // and the attribute decision are therefore one decision with two renderings, and both read the
 // same has_fn_fields here rather than deriving it twice.
-fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
+fn emit_enum_from_children(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Map<String, List<String>>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let has_fn_fields = type_has_fn_fields(name: name, emit_info: emit_info)
   let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(name: name, children: children, emit_info: emit_info, source_indices: env.source_indices)
   let derives = enum_derives(name: name, children: children, has_fn_fields: has_fn_fields, deserialize_forbidden: deserialize_forbidden, generic_param_names: generic_param_names, emit_info: emit_info, source_indices: env.source_indices)
@@ -7319,7 +7328,7 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
 // THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
 // reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
 // `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
-fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
+fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Map<String, List<String>>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
   let fielded = children |> filter(child =>
@@ -7552,7 +7561,7 @@ fn variant_is_synthetic_positional_payload(fields: List<Node>, source_indices: M
   }
 }
 
-fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: List<String>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
+fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: List<String>, recursive_types: Map<String, List<String>>, shared_types: Set<String>, env: TypeEnv, serde_policy: RustEnumWireSerde, emit_info: EmitGraphInfo) -> String {
   let child_text = authored_name(env: env, node: child)
   let rename_attr = wire_variant_rename_attr_for_policy(authored: child_text, policy: serde_policy)
   if child.children |> count == 0 {

@@ -84,7 +84,7 @@ type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   type_decl_items: Map<String, Node>
   fn_decl_items: Map<String, Node>
-  recursive_type_set: Set<String>
+  recursive_type_set: Map<String, List<String>>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
 
@@ -120,7 +120,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
     fn_decl_items: empty_map(),
-    recursive_type_set: empty_set(),
+    recursive_type_set: empty_map(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
     shared_types: empty_set(),
