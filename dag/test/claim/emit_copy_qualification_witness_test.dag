@@ -1,5 +1,6 @@
 module test.claim.emit_copy_qualification_witness_test
 
+import std.measure { byte_size }
 import gunbc.emit_copy_qualification {
   all_ownership_patterns, all_carrier_realizations, all_control_shapes, all_consumer_contracts,
   all_input_size_bases, ruling_shape_assignments,
@@ -182,28 +183,28 @@ test fn ecq_accumulator_expectation_is_linear_holds() -> Bool {
 // ── Growth judgment discrimination ───────────────────────────────────────────────────────────
 fn rows_constant() -> List<AllocObservationRow> {
   [
-    AllocObservationRow { cardinality: 0, allocation_operations: 1, allocated_bytes: 32 },
-    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 32 },
-    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: 32 },
-    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: 32 }
+    AllocObservationRow { cardinality: 0, allocation_operations: 1, allocated_bytes: byte_size(count: 32) },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: byte_size(count: 32) },
+    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: byte_size(count: 32) },
+    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: byte_size(count: 32) }
   ]
 }
 
 fn rows_linear() -> List<AllocObservationRow> {
   [
-    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
-    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 128 },
-    AllocObservationRow { cardinality: 16, allocation_operations: 2, allocated_bytes: 512 },
-    AllocObservationRow { cardinality: 64, allocation_operations: 3, allocated_bytes: 2048 }
+    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: byte_size(count: 0) },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: byte_size(count: 128) },
+    AllocObservationRow { cardinality: 16, allocation_operations: 2, allocated_bytes: byte_size(count: 512) },
+    AllocObservationRow { cardinality: 64, allocation_operations: 3, allocated_bytes: byte_size(count: 2048) }
   ]
 }
 
 fn rows_quadratic() -> List<AllocObservationRow> {
   [
-    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
-    AllocObservationRow { cardinality: 4, allocation_operations: 4, allocated_bytes: 64 },
-    AllocObservationRow { cardinality: 16, allocation_operations: 16, allocated_bytes: 1024 },
-    AllocObservationRow { cardinality: 64, allocation_operations: 64, allocated_bytes: 16384 }
+    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: byte_size(count: 0) },
+    AllocObservationRow { cardinality: 4, allocation_operations: 4, allocated_bytes: byte_size(count: 64) },
+    AllocObservationRow { cardinality: 16, allocation_operations: 16, allocated_bytes: byte_size(count: 1024) },
+    AllocObservationRow { cardinality: 64, allocation_operations: 64, allocated_bytes: byte_size(count: 16384) }
   ]
 }
 
@@ -225,10 +226,10 @@ test fn ecq_growth_constant_refuses_growing_rows_holds() -> Bool {
 // per-call box) but refuses a boundary ABOVE the plateau — both directions discriminated.
 fn rows_plateau_with_zero_boundary() -> List<AllocObservationRow> {
   [
-    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
-    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 24 },
-    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: 24 },
-    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: 24 }
+    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: byte_size(count: 0) },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: byte_size(count: 24) },
+    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: byte_size(count: 24) },
+    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: byte_size(count: 24) }
   ]
 }
 
@@ -241,10 +242,10 @@ test fn ecq_growth_constant_accepts_zero_boundary_below_plateau_holds() -> Bool 
 
 test fn ecq_growth_constant_refuses_boundary_above_plateau_holds() -> Bool {
   let rows = [
-    AllocObservationRow { cardinality: 0, allocation_operations: 2, allocated_bytes: 64 },
-    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 24 },
-    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: 24 },
-    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: 24 }
+    AllocObservationRow { cardinality: 0, allocation_operations: 2, allocated_bytes: byte_size(count: 64) },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: byte_size(count: 24) },
+    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: byte_size(count: 24) },
+    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: byte_size(count: 24) }
   ]
   match judge_alloc_growth(expected: ConstantAllocGrowth, rows: rows) {
     GrowthExceeds { cardinality: n, observed_bytes: _, allowed_bytes: _ } => n == 0

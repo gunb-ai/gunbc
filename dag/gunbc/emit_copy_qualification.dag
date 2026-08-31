@@ -1,6 +1,8 @@
 module gunbc.emit_copy_qualification
 
 import std.types { Bool, Int, List, String }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_add, measure_le }
+import std.nat { Nat }
 
 // EMIT-COST-QUAL-0 grid authority (side-chat ruling 2026-08-31, dispatched under XL-N).
 // Qualifies the production Rust emitter's copy/share behavior over ONE named, finite permutation
@@ -609,7 +611,10 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
 // cardinalities — chunk nodes amortize above the payload; the earlier 4x pricing refused them).
 // The bound exists to separate growth CLASSES at the declared cardinalities — a copied
 // accumulator's quadratic shape crosses it at n=64 by an order of magnitude — not to price
-// exact constants.
+// exact constants. It is a RATE (bytes per element of cardinality delta), not a byte quantity,
+// so it stays Int and is lifted into the ByteSize carrier only when multiplied by a delta at the
+// one consuming site in judge_alloc_growth — typing the rate itself as ByteSize would be the
+// opposite unit fork.
 data linear_alloc_growth_bound_bytes_per_element: Int = 128
 
 // ── Observations (two independent arms; typed unavailability, never fabricated zeros) ────────
@@ -652,7 +657,27 @@ fn observed_copy_work_from_allocator(alloc_ops: Int, alloc_bytes: Int) -> Observ
 type AllocObservationRow {
   cardinality: Int
   allocation_operations: Int
-  allocated_bytes: Int
+  allocated_bytes: ByteSize
+}
+
+// The one sanctioned Int -> ByteSize crossing for allocator readings (review 57849: byte
+// quantities ride the std.measure carrier, never bare Int). The Int -> Nat identity is admitted
+// at a function RETURN position (std.checked_arithmetic documents the crossing), so the Nat hop
+// is its own declaration; allocator readings are nonnegative by construction of the counter.
+fn alloc_reading_nat(bytes: Int) -> Nat {
+  bytes
+}
+
+fn allocated_byte_size(bytes: Int) -> ByteSize {
+  byte_size(count: alloc_reading_nat(bytes: bytes))
+}
+
+fn byte_size_gt(a: ByteSize, b: ByteSize) -> Bool {
+  !measure_le(a: a, b: b)
+}
+
+fn byte_size_ne(a: ByteSize, b: ByteSize) -> Bool {
+  !(measure_le(a: a, b: b) && measure_le(a: b, b: a))
 }
 
 // Runtime observation for one case: either the per-cardinality allocator rows (already proven
@@ -676,7 +701,7 @@ type EmitCopyQualification
   | QualificationRefusedCaseNotExecutable { case: EmitCopyQualificationCaseId, phase: String, detail: String }
   | QualificationRefusedCostOracleUnavailable { case: EmitCopyQualificationCaseId, unresolved_fact: String }
   | QualificationRefusedObservationUnavailable { case: EmitCopyQualificationCaseId, cause: String }
-  | QualificationRefusedExcessCopy { case: EmitCopyQualificationCaseId, cardinality: Int, observed_bytes: Int, allowed_bytes: Int }
+  | QualificationRefusedExcessCopy { case: EmitCopyQualificationCaseId, cardinality: Int, observed_bytes: ByteSize, allowed_bytes: ByteSize }
   | QualificationRefusedRedundantClone { case: EmitCopyQualificationCaseId, lint: String, emitted_item: String, line: Int }
 
 fn qualification_is_qualified(q: EmitCopyQualification) -> Bool {
@@ -719,11 +744,11 @@ fn qualification_slug(q: EmitCopyQualification) -> String {
 //    cardinalities, with the declared linear bound. Refusal carries the violating row. ────────
 type GrowthJudgment
   = GrowthWithinExpectation
-  | GrowthExceeds { cardinality: Int, observed_bytes: Int, allowed_bytes: Int }
+  | GrowthExceeds { cardinality: Int, observed_bytes: ByteSize, allowed_bytes: ByteSize }
 
 type ConsecutivePairScan {
   prev_cardinality: Int
-  prev_bytes: Int
+  prev_bytes: ByteSize
   have_prev: Bool
   verdict: GrowthJudgment
 }
@@ -742,11 +767,11 @@ fn judge_alloc_growth(expected: AllocGrowthClass, rows: List<AllocObservationRow
         Absent =>
           match rows |> first {
             Present { value: r0 } => r0.allocated_bytes
-            Absent => 0
+            Absent => byte_size(count: 0)
           }
       }
       let violation = rows |> filter(r =>
-        if r.cardinality > 0 { r.allocated_bytes != plateau } else { r.allocated_bytes > plateau }
+        if r.cardinality > 0 { byte_size_ne(a: r.allocated_bytes, b: plateau) } else { byte_size_gt(a: r.allocated_bytes, b: plateau) }
       ) |> first
       match violation {
         Present { value: v } => GrowthExceeds { cardinality: v.cardinality, observed_bytes: v.allocated_bytes, allowed_bytes: plateau }
@@ -754,14 +779,14 @@ fn judge_alloc_growth(expected: AllocGrowthClass, rows: List<AllocObservationRow
       }
     LinearAllocGrowth =>
       let scan = rows |> fold(
-        init: ConsecutivePairScan { prev_cardinality: 0, prev_bytes: 0, have_prev: false, verdict: GrowthWithinExpectation },
+        init: ConsecutivePairScan { prev_cardinality: 0, prev_bytes: byte_size(count: 0), have_prev: false, verdict: GrowthWithinExpectation },
         f: (acc, r) =>
           match acc.verdict {
             GrowthExceeds { cardinality: _, observed_bytes: _, allowed_bytes: _ } => acc
             GrowthWithinExpectation =>
               if acc.have_prev {
-                let allowed = acc.prev_bytes + linear_alloc_growth_bound_bytes_per_element * (r.cardinality - acc.prev_cardinality)
-                if r.allocated_bytes > allowed {
+                let allowed = measure_add(a: acc.prev_bytes, b: allocated_byte_size(bytes: linear_alloc_growth_bound_bytes_per_element * (r.cardinality - acc.prev_cardinality)))
+                if byte_size_gt(a: r.allocated_bytes, b: allowed) {
                   ConsecutivePairScan { prev_cardinality: r.cardinality, prev_bytes: r.allocated_bytes, have_prev: true, verdict: GrowthExceeds { cardinality: r.cardinality, observed_bytes: r.allocated_bytes, allowed_bytes: allowed } }
                 } else {
                   ConsecutivePairScan { prev_cardinality: r.cardinality, prev_bytes: r.allocated_bytes, have_prev: true, verdict: GrowthWithinExpectation }

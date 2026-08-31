@@ -15,6 +15,7 @@ import extdeps.languages.json.emit {
   JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject
 }
 import std.types { Bool, Int, List, String }
+import std.measure { byte_size_count }
 import tools.host_prelude { WitnessBin, witness_bin, witness_bin_ensure_built_typed, WitnessBinReady, WitnessBinRefused, witness_bin_release_path }
 import gunbc.emit_copy_qualification {
   CarrierRealization, PersistentSequenceCarrier, EmitCopyQualificationCaseId, EmitCopyQualificationCaseRow,
@@ -22,7 +23,7 @@ import gunbc.emit_copy_qualification {
   BehaviorAgreement, BehaviorAgreed, BehaviorDisagreed, BehaviorUnavailable,
   StaticCloneObservation, NoRedundantCloneReported, RedundantCloneReported, StaticObservationUnavailable,
   RuntimeObservation, RuntimeRowsObserved, RuntimeObservationUnavailable,
-  AllocObservationRow, EmitCopyQualification, QualificationRefusedObservationUnavailable,
+  AllocObservationRow, allocated_byte_size, EmitCopyQualification, QualificationRefusedObservationUnavailable,
   judge_case, qualification_is_qualified, qualification_slug, qualification_case
 }
 import gunbc.emit_copy_qualification_fixture_gen {
@@ -432,7 +433,7 @@ fn runtime_for_case(native_lines: List<CaseLineParse>, id: EmitCopyQualification
         RuntimeRowsObserved { rows: rows } =>
           match observation_at(lines: n_lines, cardinality: n) {
             CaseObservationLine { slug: _, cardinality: k, result: _, alloc_ops: o, alloc_bytes: b } =>
-              RuntimeRowsObserved { rows: list_push(rows, AllocObservationRow { cardinality: k, allocation_operations: o, allocated_bytes: b }) }
+              RuntimeRowsObserved { rows: list_push(rows, AllocObservationRow { cardinality: k, allocation_operations: o, allocated_bytes: allocated_byte_size(bytes: b) }) }
             CaseNondeterministicLine { slug: _, cardinality: k } =>
               RuntimeObservationUnavailable { cause: concat("nondeterministic repeats at cardinality ", to_string(k)) }
             _ =>
@@ -630,7 +631,7 @@ fn verdict_receipt_line(q: EmitCopyQualification) -> String {
     QualificationRefusedObservationUnavailable { case: id, cause: cz } =>
       concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_observation_unavailable cause=", cz)))
     QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab } =>
-      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_excess_copy n=", concat(to_string(n), concat(" observed_bytes=", concat(to_string(ob), concat(" allowed_bytes=", to_string(ab))))))))
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_excess_copy n=", concat(to_string(n), concat(" observed_bytes=", concat(to_string(byte_size_count(b: ob)), concat(" allowed_bytes=", to_string(byte_size_count(b: ab)))))))))
     QualificationRefusedRedundantClone { case: id, lint: l, emitted_item: item, line: n } =>
       concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_redundant_clone lint=", concat(l, concat(" item=", concat(item, concat(" line=", to_string(n))))))))
   }
