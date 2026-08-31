@@ -33,7 +33,7 @@ type TypeEnv {
   source_indices: Map<String, NewlineIndex>
   intern_table: InternTable
   source_visible_names: Map<String, Bool>
-  authored_import_names: Map<String, Bool>
+  authored_import_names: Map<String, String>
   symbol_index: SymbolIndex
   module_path: String
   unit_variant_index: Map<String, Map<String, UnitVariantContribution>>
@@ -1116,9 +1116,30 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   }
 }
 
+fn authored_import_qualified_key(env: TypeEnv, name: String) -> String? {
+  match map_get(env.authored_import_names, name) {
+    Present { value: qualified_key } => Present { value: qualified_key }
+    Absent => map_get(env.authored_import_names, qualified_last_segment(name: name))
+  }
+}
+
 // Identity-bearing form used by the unlisted-type origin channel.  The ordinary lookup below is
 // still the compatibility projection; both answers are made by this same census decision.
 fn declared_type_binding_for_unlisted_reference(env: TypeEnv, name: String) -> DeclaredTypeBinding? {
+  match authored_import_qualified_key(env: env, name: name) {
+    Present { value: qualified_key } =>
+      match symbol_index_entry_lookup(index: env.symbol_index, qualified_name: qualified_key) {
+        Present { value: entry } => Present { value: DeclaredTypeBinding {
+          binding: entry.binding,
+          declaration: entry.declaring_declaration
+        } }
+        Absent => none
+      }
+    Absent => declared_type_binding_for_unlisted_reference_after_authored_import(env: env, name: name)
+  }
+}
+
+fn declared_type_binding_for_unlisted_reference_after_authored_import(env: TypeEnv, name: String) -> DeclaredTypeBinding? {
   if contains(name, ".") {
     match symbol_index_entry_lookup(index: env.symbol_index, qualified_name: name) {
       Present { value: entry } => Present { value: DeclaredTypeBinding {
@@ -1263,6 +1284,18 @@ fn authored_name(env: TypeEnv, node: Node) -> String {
 }
 
 fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
+  let authored = authored_name(env: env, node: node)
+  match authored_import_qualified_key(env: env, name: authored) {
+    Present { value: qualified_key } =>
+      match symbol_index_entry_lookup(index: env.symbol_index, qualified_name: qualified_key) {
+        Present { value: entry } => Present { value: entry.binding.resolved }
+        Absent => lookup_type_for_compatibility(env: env, node: node)
+      }
+    Absent => lookup_type_for_compatibility(env: env, node: node)
+  }
+}
+
+fn lookup_type_for_compatibility(env: TypeEnv, node: Node) -> Node? {
   match node.ident {
     Present { value: id } =>
       match lookup_type(env: env, ident: id) {

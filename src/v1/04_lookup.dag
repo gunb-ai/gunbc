@@ -594,6 +594,10 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
   }
 }
 
+// A local/ancestry TypeBinding is a compatibility node projection and does not carry the
+// declaration selected for it. Do not turn the referencing module into an owner. A local source
+// declaration is read from the same completed SymbolIndex entry as qualified/global-bare lookup;
+// otherwise the global-bare census makes the unlisted-call decision.
 fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   if algebra_method_template_name(name: name) {
     FuncSigUnresolved
@@ -601,8 +605,12 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
   match infer_builtin_call_type(name: name) {
     Present { value: _ } => FuncSigUnresolved
     Absent =>
-  let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: decl_ref(module_path: type_env.module_path, decl_name: binding.name), node: binding.resolved } }
+  let local_qualified = concat(type_env.module_path, concat(".", name))
+  let borrowed = match symbol_index_entry_lookup(index: type_env.symbol_index, qualified_name: local_qualified) {
+    Present { value: entry } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl {
+      declaring_declaration: entry.declaring_declaration,
+      node: entry.binding.resolved
+    } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {

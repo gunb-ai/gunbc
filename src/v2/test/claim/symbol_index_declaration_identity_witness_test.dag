@@ -40,7 +40,7 @@ test fn parser_distinguishes_string_function_data_and_transparent_type_alias() -
   (rows |> any(row => match row.constructor { FunctionDeclaration => true  _ => false }))
     && (rows |> any(row => match row.constructor { DataDeclaration => true  _ => false }))
     && (rows |> any(row => match row.constructor {
-      TransparentTypeAlias { representation_target } => representation_target.spelling == "String"
+      TransparentTypeAlias { representation_target } => representation_target.spelling == "String" && representation_target.argument_count == 0
       _ => false
     }))
     && (rows |> count) == 3

@@ -62,6 +62,7 @@ type OccurrenceId {
 // constructor from a resolved Node shape.
 type AuthoredTypeTarget {
   spelling: String
+  argument_count: Int
 }
 
 type SourceDeclarationConstructor

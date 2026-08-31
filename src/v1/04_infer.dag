@@ -12000,7 +12000,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     if imp.is_all {
       acc
     } else {
-      fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, true))
+      fold(imp.specific_names, init: acc, f: (x, n) => map_insert(x, n, concat(imp.module_path, concat(".", n))))
     }
   )
   let module_variant_index = build_unit_variant_index(str_bindings: local_str_bindings, parents: scope_parents, source_indices: source_indices)
