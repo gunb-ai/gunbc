@@ -242,7 +242,7 @@ test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
 // THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
 //
 // It replaces w_RED_fabric_evidence_failure_reaches_required_context, whose subject was the
-// gating edge that gunbc.rung_drop `required_ci_fabric_evidence_lane` withdraws. That row is not
+// gating edge that gunbc.rung_drop `fabric_evidence_gating` withdraws. That row is not
 // retired as obsolete -- its subject is real and its restoration is the drop's trigger -- it is
 // asserting a fact that is deliberately no longer true, so keeping it would have been a red
 // against the declared state rather than evidence about it.
