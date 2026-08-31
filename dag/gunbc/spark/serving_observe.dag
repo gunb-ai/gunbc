@@ -1050,15 +1050,17 @@ fn spark_serving_observe_host_via_locus(
 // spark_serving_probe_linger and then acquired a transaction that captured ProbeLinger as well, so
 // linger was read twice per host from two instants -- the same class as the is_active double read,
 // reintroduced from the caller's side while the carrier was being built. One capture, one reader.
+// IT HANDS BACK THE OBSERVATION, NOT FIVE LOOSE FACTS.
+//
+// The Ready arm used to carry runtime, store, unit, linger and provenance as five separate fields,
+// and every caller immediately recombined them into a projection. That recombination was the fixture
+// splice in production dress: five values that came from one transaction, travelling apart, free to
+// be paired with a sixth that did not -- and the converge slice did exactly that, passing a
+// provenance beside facts it rebuilt itself. One value travels now, and it is the carrier the rest
+// of this module already projects, so there is nothing to recombine and nothing to mispair.
 type SparkServingObservedFacts
   = SparkServingObservedFactsRefused { cause: NonEmptyStr }
-  | SparkServingObservedFactsReady {
-      runtime: RuntimeMaterializationObservation
-      store: ModelStoreObservation
-      observed_unit: SparkServingObservedUnit
-      linger: SparkServingObservedLingerState
-      provenance: SparkServingObservationProvenance
-    }
+  | SparkServingObservedFactsReady { observation: SparkServingHostObservation }
 
 fn spark_serving_observed_facts_via_locus(
   context: FleetSshExecutionContext,
@@ -1070,17 +1072,11 @@ fn spark_serving_observed_facts_via_locus(
     host: host,
     phase: phase,
   ) {
-    SparkServingTransactionRefused { cause: why } =>
-      SparkServingObservedFactsRefused { cause: why }
+    SparkServingTransactionRefused { refusal: r } =>
+      SparkServingObservedFactsRefused { cause: r.cause }
     SparkServingTransactionAdmitted { txn: txn } =>
       SparkServingObservedFactsReady {
-        runtime: spark_serving_runtime_materialization_from_transaction(txn: txn),
-        store: spark_serving_model_store_from_transaction(txn: txn),
-        observed_unit: spark_serving_user_unit_from_transaction(txn: txn),
-        linger: spark_serving_observed_linger_from_probe(
-          result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
-        ),
-        provenance: spark_serving_transaction_provenance(txn: txn),
+        observation: spark_serving_host_observation_from_transaction(txn: txn),
       }
   }
 }

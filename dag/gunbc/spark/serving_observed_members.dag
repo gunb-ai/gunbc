@@ -340,6 +340,37 @@ fn spark_serving_enablement_was_observed(manager: SparkServingUnitManagerState) 
   }
 }
 
+fn spark_serving_member_address_is_linger(member: SparkServingMember) -> Bool {
+  match member.address {
+    SparkServingLingerAddress => true
+    SparkServingUserUnitAddress => false
+    SparkServingUserUnitRegistrationAddress => false
+    SparkServingUserUnitEnablementAddress => false
+    SparkServingUserUnitActivityAddress => false
+    SparkServingRuntimeRootAddress => false
+    SparkServingModelSlotAddress { slot: _ } => false
+  }
+}
+
+// The report prints whether linger was observed ENABLED, and it reads that off the projection's own
+// member list rather than off a Bool the caller carried beside it. A linger member is present in the
+// observed list only when linger was observed enabled, so presence IS the fact; an unobserved and a
+// disabled linger both project no member, and the plan's own linger_observed flag is what separates
+// those two for every consumer that needs to.
+fn spark_serving_projection_linger_enabled(
+  projection: SparkServingObservedMemberProjection,
+) -> Bool {
+  match projection {
+    SparkServingObservedMembers {
+      members: ms, runtime_observed: _, model_observed: _, unit_observed: _,
+      registration_observed: _, enablement_observed: _, activity_observed: _,
+      linger_observed: lo, provenance: _,
+    } =>
+      lo
+        && length(filter(ms, m => spark_serving_member_address_is_linger(member: m))) > 0
+  }
+}
+
 fn spark_serving_linger_state_was_observed(linger: SparkServingObservedLingerState) -> Bool {
   match linger {
     LingerObservedEnabled => true
