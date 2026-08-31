@@ -39,6 +39,8 @@ import v2.std.optional {
 import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, ModeledLexRules }
 import v2.std.compilers.target_model {
   BoundToken,
+  EmitSpellingConstant,
+  TokenClassEmitTransform,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
@@ -569,13 +571,9 @@ fn sql_fold_translation_rules_node_for_emitted(
   }
 }
 
-fn sql_fold_kind_emit_transform(_spelling: String) -> String {
-  ""
-}
-
-fn sql_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+fn sql_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
   let m0 = sql_token_class_emit_transforms()
-  map_insert(m0, ^sql_fold_stmt_kind_tag, sql_fold_kind_emit_transform)
+  map_insert(m0, ^sql_fold_stmt_kind_tag, EmitSpellingConstant { value: "" })
 }
 
 data sql_fold_stmt_kind_sentinel: String = "\u{0002}"

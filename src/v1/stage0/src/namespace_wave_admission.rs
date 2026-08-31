@@ -445,6 +445,12 @@ pub struct TransitionAdmission {
 /// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
 /// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
 /// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
+/// EIGHTH DISSOLUTION (2026-08-31). INTAKE-AGENT-0A (#9784) merged, so base and head both carry
+/// the `BootArtifact` / `IntakeLinuxEnvironment` / `IsoImage` relocations to `gunbc.boot_artifact`.
+/// The five rows above could no longer match any delta and were observed stale on every unrelated
+/// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
+/// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
+/// empty and remains fail-closed for any new namespace delta.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an

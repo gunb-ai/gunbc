@@ -39,7 +39,10 @@ import v2.std.compilers.lexing {
   TokenRule
 }
 import v2.std.compilers.target_model {
+  EmitSpellingConstant,
+  EmitSpellingIdentity,
   TargetModel,
+  TokenClassEmitTransform,
   target_model_make_with_emit_transforms
 }
 import v2.std.diagnostic {
@@ -756,22 +759,10 @@ fn gha_fold_lex() -> LexRules {
   ModeledLexRules { root: gha_fold_lex_rules() }
 }
 
-fn gha_fold_kind_emit_transform(_spelling: String) -> String {
-  ""
-}
-
-fn gha_fold_scalar_kind_emit_transform(_spelling: String) -> String {
-  ""
-}
-
-fn gha_fold_identity_emit_transform(spelling: String) -> String {
-  spelling
-}
-
-fn gha_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
-  let m0 = map_insert(empty_map(), ^gha_fold_prod_kind_tag, gha_fold_kind_emit_transform)
-  let m1 = map_insert(m0, ^gha_fold_scalar_kind, gha_fold_scalar_kind_emit_transform)
-  map_insert(m1, ^gha_token_scalar_value, gha_fold_identity_emit_transform)
+fn gha_fold_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  let m0 = map_insert(empty_map(), ^gha_fold_prod_kind_tag, EmitSpellingConstant { value: "" })
+  let m1 = map_insert(m0, ^gha_fold_scalar_kind, EmitSpellingConstant { value: "" })
+  map_insert(m1, ^gha_token_scalar_value, EmitSpellingIdentity)
 }
 
 fn gha_fold_binding_spellings() -> Map<Symbol, String> {

@@ -395,7 +395,10 @@ fn validate_declared_artifact_len(
 }
 
 const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 3;
-const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
+// A part has no independent transport ceiling. The only modeled storage bound
+// is the 10 GiB artifact/store capacity above, so a part is bounded by that same
+// authority while `validate_declared_artifact_len` enforces the aggregate cap.
+const MAX_PART_BYTES: u64 = RESOLVED_GRAPH_CACHE_CAP_BYTES;
 
 #[derive(Debug, Clone)]
 struct V3PartDescriptor {
