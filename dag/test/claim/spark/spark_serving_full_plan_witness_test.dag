@@ -101,10 +101,6 @@ import gunbc.spark.serving_converge_plan {
   SparkServingFullMembershipPlanRefused,
   spark_serving_full_membership_plan,
   spark_serving_linger_membership_plan,
-  SparkServingPlanArtifactVerdict,
-  SparkServingPlanArtifactReady,
-  SparkServingPlanArtifactRefused,
-  spark_serving_fleet_converge_plan_artifact,
 }
 import gunbc.spark.serving_member_realization {
   spark_serving_install_effects_for_add,
@@ -130,7 +126,7 @@ import gunbc.spark.serving_observe {
 }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
   hermetic_fleet_attempt_raw,
-  hermetic_plan_observation,
+  hermetic_linger_varied_observation,
   hermetic_host_observation,
   hermetic_readback,
   hermetic_fixture_provenance,
@@ -531,30 +527,35 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
 
 // ── The cutover: the production plan artifact now plans the whole population ─────────────────────
 
+// THE SPARK-SPECIFIC ARTIFACT ROUTE IS GONE, AND THESE CLAIMS ENTER THE ROW PRODUCER INSTEAD.
+//
+// The claims below are about WHAT MUST BE DONE to a host in a given observed state -- how many
+// members are owed, which refusal fires, which effect is selected. That is a fact about the row
+// producer, not about artifact assembly, and none of them reads a field the artifact adds. Routing
+// them through a Spark-shaped artifact door was what let that door exist.
+//
+// A bare projection reaching the row producer is not the privilege leak the cut closed. Rows are not
+// a bound plan: `spark_serving_bound_axis_plan` is admit_callers-sealed to
+// `spark_serving_axis_for_observation`, so nothing a fixture assembles here can become a plan the
+// converge will act on. The binding claims stay on the observation route further down.
 fn artifact_verdict(
   host: HostIdentity,
   projection: SparkServingObservedMemberProjection,
-) -> SparkServingPlanArtifactVerdict {
-  spark_serving_fleet_converge_plan_artifact(
-    host: host as NonEmptyStr,
-    prior_generation: 0,
-    observed_timers: [],
-    observed_caps: [],
-    projection: projection,
-  )
+) -> SparkServingScheduledRowsVerdict {
+  spark_serving_scheduled_rows_for(host: host as NonEmptyStr, projection: projection)
 }
 
-fn artifact_refusal_cause(v: SparkServingPlanArtifactVerdict) -> String {
+fn artifact_refusal_cause(v: SparkServingScheduledRowsVerdict) -> String {
   match v {
-    SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
-    SparkServingPlanArtifactRefused { cause: c } => c
+    SparkServingScheduledRowsReady { computed: _, plan: _ } => "<ready>"
+    SparkServingScheduledRowsRefused { cause: c } => c
   }
 }
 
-fn artifact_row_count(v: SparkServingPlanArtifactVerdict) -> Int {
+fn artifact_row_count(v: SparkServingScheduledRowsVerdict) -> Int {
   match v {
-    SparkServingPlanArtifactReady { artifact: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
-    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    SparkServingScheduledRowsReady { computed: c, plan: _ } => length(scheduled_rows_list(scheduled: c.rows))
+    SparkServingScheduledRowsRefused { cause: _ } => 0 - 1
   }
 }
 
@@ -638,11 +639,11 @@ test fn a_unit_only_drift_freezes_exactly_two_rows() -> Bool {
 // Counts frozen rows addressed at the RUNTIME ROOT specifically, rather than rows in total. The
 // distinction is the whole point: "no writes at all" and "no runtime write" are different facts, and
 // only the second is what the publish sequence needs.
-fn runtime_rows(v: SparkServingPlanArtifactVerdict) -> Int {
+fn runtime_rows(v: SparkServingScheduledRowsVerdict) -> Int {
   match v {
-    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
-    SparkServingPlanArtifactReady { artifact: a } =>
-      length(filter(scheduled_rows_list(scheduled: a.spark_serving_typed_actions), row =>
+    SparkServingScheduledRowsRefused { cause: _ } => 0 - 1
+    SparkServingScheduledRowsReady { computed: c, plan: _ } =>
+      length(filter(scheduled_rows_list(scheduled: c.rows), row =>
         match row.action {
           MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
           MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
@@ -1348,9 +1349,9 @@ test fn the_extracted_row_producer_still_refuses_an_unobserved_linger() -> Bool 
 
 test fn extraction_did_not_change_what_the_slice_artifact_plans() -> Bool {
   match artifact_verdict(host: subject_host, projection: c3_projection(linger: LingerObservedEnabled)) {
-    SparkServingPlanArtifactRefused { cause: _ } => false
-    SparkServingPlanArtifactReady { artifact: a } =>
-      length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+    SparkServingScheduledRowsRefused { cause: _ } => false
+    SparkServingScheduledRowsReady { computed: c, plan: _ } =>
+      length(scheduled_rows_list(scheduled: c.rows))
         == c3_rows_count(v: spark_serving_scheduled_rows_for(
              host: subject_host as NonEmptyStr,
              projection: c3_projection(linger: LingerObservedEnabled),
@@ -1413,17 +1414,7 @@ fn c3_observation_at(
   host: HostIdentity,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingHostObservation? {
-  hermetic_plan_observation(
-    host: host,
-    runtime: RuntimeMaterializationAbsent,
-    store: complete_required_store(),
-    observed_unit: SparkServingObservedUnit {
-      state: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-      enablement: UserUnitManagerEnabled,
-      activity: UnitActivityRunning,
-    },
-    linger: linger,
-  )
+  hermetic_linger_varied_observation(host: host, linger: linger)
 }
 
 fn c3_axis_at(

@@ -96,7 +96,12 @@ import gunbc.spark.serving_readback_parse { SparkServingReadbackAbsent }
 import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
 import gunbc.ollama_runtime_bundle { RuntimeMaterializationObservation, ModelStoreObservation }
-import gunbc.spark.serving_observed_members { SparkServingObservedLingerState }
+import gunbc.spark.serving_observed_members {
+  SparkServingObservedLingerState,
+  LingerObservedEnabled,
+  LingerObservedDisabled,
+  LingerUnobservedState,
+}
 
 data hermetic_identity_file: NonEmptyStr = "/tmp/gunbc-hermetic-acquisition-fixture-key"
 
@@ -388,6 +393,53 @@ fn hermetic_linger_capture(enabled: Bool) -> SparkServingProbeLegCapture {
     exit_code: 0,
     out: if enabled { "Linger=yes" } else { "Linger=no" },
     err: "",
+  )
+}
+
+// THE THIRD LINGER STATE IS EARNED THE SAME WAY THE OTHER TWO ARE.
+//
+// An unobserved linger is not a value a fixture may assert; it is what the production projector
+// derives from a loginctl that RAN and answered nonzero. The leg is still executed, so the
+// transaction's coverage stays complete and the observation is still acquired -- which is the point:
+// this is a host whose linger genuinely was not readable, not a host we declined to probe.
+fn hermetic_linger_unobserved_capture() -> SparkServingProbeLegCapture {
+  hermetic_leg(
+    request: LingerRequest,
+    exit_code: 1,
+    out: "",
+    err: "Failed to get user: No such process",
+  )
+}
+
+fn hermetic_linger_state_capture(
+  linger: SparkServingObservedLingerState,
+) -> SparkServingProbeLegCapture {
+  match linger {
+    LingerObservedEnabled => hermetic_linger_capture(enabled: true)
+    LingerObservedDisabled => hermetic_linger_capture(enabled: false)
+    LingerUnobservedState => hermetic_linger_unobserved_capture()
+  }
+}
+
+// The captures for a host whose unit is present and correct, varying ONLY linger. Everything else is
+// whatever the complete capture set projects, so a claim about linger is about linger.
+fn hermetic_linger_varied_observation(
+  host: HostIdentity,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingHostObservation? {
+  hermetic_acquired_observation(
+    host: host,
+    phase: SparkServingPlanObservation,
+    captures: concat(
+      filter(
+        hermetic_complete_captures(),
+        c => !spark_serving_probe_leg_eq(
+          a: spark_serving_capture_leg(c: c),
+          b: spark_serving_probe_request_leg(request: LingerRequest),
+        ),
+      ),
+      [hermetic_linger_state_capture(linger: linger)],
+    ),
   )
 }
 
