@@ -38,13 +38,15 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 
 // THE PHASE IDENTITIES ARE A CLOSED VOCABULARY. Adding a phase means adding a variant, at which
 // point required_ci_phase_name and required_ci_phase_lane refuse to compile until the phase states
-// its CLI word and lane -- construction, not a list a phase can be omitted from. The four phases
-// are the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29): parse,
-// namespace-wave-admission, regen, floor.
+// its CLI word and lane -- construction, not a list a phase can be omitted from. Four phases are
+// the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29), with the
+// generated-artifact wall restored after its declared population produced a real drift incident:
+// parse, namespace-wave-admission, regen, generated-artifact, floor.
 type RequiredCiPhase
   = ParsePhase
   | NamespaceWaveAdmissionPhase
   | RegenPhase
+  | GeneratedArtifactPhase
   | FloorPhase
 
 fn required_ci_phase_name(p: RequiredCiPhase) -> String {
@@ -52,6 +54,7 @@ fn required_ci_phase_name(p: RequiredCiPhase) -> String {
     ParsePhase => "parse"
     NamespaceWaveAdmissionPhase => "namespace-wave-admission"
     RegenPhase => "regen"
+    GeneratedArtifactPhase => "generated-artifact"
     FloorPhase => "floor"
   }
 }
@@ -63,6 +66,7 @@ fn required_ci_phase_lane(p: RequiredCiPhase) -> RequiredCiLane {
     ParsePhase => WitnessesLane
     NamespaceWaveAdmissionPhase => WitnessesLane
     RegenPhase => BuildLane
+    GeneratedArtifactPhase => BuildLane
     FloorPhase => WitnessesLane
   }
 }
@@ -75,6 +79,7 @@ data required_ci_phases: List<RequiredCiPhase> = [
   ParsePhase,
   NamespaceWaveAdmissionPhase,
   RegenPhase,
+  GeneratedArtifactPhase,
   FloorPhase,
 ]
 
