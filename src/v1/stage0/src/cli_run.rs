@@ -173,6 +173,67 @@ pub enum ResolveTypecheckGate {
     DiscoveryCorpusAdvisory,
 }
 
+#[cfg(test)]
+mod generated_cli_dispatch_allocator_integration_tests {
+    use std::rc::Rc;
+
+    use crate::gunbc_cli_dispatch_surface::{
+        CliArmRealization, CliOptionArity, CliOptionRow, CliOptionValue, CliSubcommandRow,
+        CliSurfaceEmission,
+    };
+
+    /// DISCRIMINATING RED for the allocator-to-emitter edge. The substrate fixture proves the
+    /// allocator's bounded choice; this seed-side fixture proves the Rust emitter actually uses
+    /// that choice at both the declaration and call sites. Hard-coding `_0` in the emitter makes
+    /// this fail even while every allocator-only assertion remains green.
+    #[test]
+    fn generated_dispatch_consumes_shifted_executor_name_at_definition_and_use() {
+        let collision = "__gunbc_dispatch_executor_0".to_string();
+        let shifted = "__gunbc_dispatch_executor_1";
+        let rows = Rc::new(
+            vec![Rc::new(CliSubcommandRow {
+                verb: "fixture".to_string(),
+                variant: "Fixture".to_string(),
+                doc: Rc::new(Vec::new().into()),
+                operands: Rc::new(Vec::new().into()),
+                options: Rc::new(
+                    vec![Rc::new(CliOptionRow {
+                        field: collision.clone(),
+                        long: collision,
+                        value: Rc::new(CliOptionValue::CliToggleValue),
+                        arity: CliOptionArity::CliAtMostOne,
+                        doc: Rc::new(Vec::new().into()),
+                        emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+                    })]
+                    .into(),
+                ),
+                realization: Rc::new(CliArmRealization::CliRetainedHostKernel),
+                emission: CliSurfaceEmission::CarriedByGeneratedDispatch,
+            })]
+            .into(),
+        );
+
+        let emitted = crate::v1_compiler_emit_rust::emit_gunbc_cli_dispatch_generated_for_rows(
+            "fixture_crate".to_string(),
+            rows,
+        )
+        .content
+        .clone();
+        assert_eq!(
+            emitted.matches(&format!("{shifted}: &H")).count(),
+            1,
+            "shifted executor must be the generated dispatch parameter: {emitted}"
+        );
+        assert_eq!(
+            emitted
+                .matches(&format!("=> {shifted}.retained_host_kernel"))
+                .count(),
+            1,
+            "shifted executor must be used at the retained-host call site: {emitted}"
+        );
+    }
+}
+
 fn is_resolve_typecheck_blocking(d: Rc<CompilerDiagnostic>, gate: ResolveTypecheckGate) -> bool {
     match gate {
         ResolveTypecheckGate::Strict => is_interpreter_blocking_diagnostic(d),
