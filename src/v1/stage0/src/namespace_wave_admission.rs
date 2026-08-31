@@ -431,7 +431,71 @@ pub struct TransitionAdmission {
 /// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
 /// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
 /// Removed by the roster's own rule before the PR merged, so the rows never reached main.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// BOOT ARTIFACT RELOCATION (2026-08-31, gunbc#9784). `BootArtifact` and its neighbours
+/// (`IntakeLinuxEnvironment`, `IsoImage`, the artifact set and its selection) were authored in
+/// `gunbc.boot_artifact_delivery`, which imports `gunbc.machine_intake_receipt`. Issuance has to
+/// carry the artifact it issued a nonce for, so the receipt module needs those names — and
+/// importing them back from the delivery module would have closed a cycle, which §4's acyclicity
+/// law refuses outright. The names therefore moved DOWN to a new leaf authority,
+/// `gunbc.boot_artifact`, which imports neither side; both modules now reach them there. That is
+/// ordinary single-authority relocation, not a second spelling: nothing is defined twice at any
+/// point, and the old module authors none of these names any more.
+///
+/// FIVE ROWS, EACH NAMING ONE EXACT (module, declaration, spelling) TRIPLE, blast radius 0. No row
+/// admits a module, a prefix, or a spelling in general, so an unintended rebinding of any other
+/// name still refuses. The four membership deltas this move also produces are
+/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent from this list.
+///
+/// DISSOLVE-ON: this PR merging. Base and head then both carry the relocation, no run can produce
+/// these deltas, all five report stale, and a stale row refuses every unrelated PR in the
+/// repository — the same trigger under which the roster has been emptied six times above.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryPlan)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.boot_artifact_delivery",
+            in_declaration: "BootDeliveryPlan",
+            spelling: "BootArtifact",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryRequest)",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.boot_artifact_delivery",
+            in_declaration: "BootDeliveryRequest",
+            spelling: "BootArtifact",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "BootArtifact relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.boot_artifact_delivery_witness_test",
+            in_declaration: "intake_artifact",
+            spelling: "BootArtifact",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "IntakeLinuxEnvironment relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.boot_artifact_delivery_witness_test",
+            in_declaration: "intake_artifact",
+            spelling: "IntakeLinuxEnvironment",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "IsoImage relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
+        subject: AdmissionSubject::Binding {
+            module: "test.claim.boot_artifact_delivery_witness_test",
+            in_declaration: "intake_artifact",
+            spelling: "IsoImage",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
