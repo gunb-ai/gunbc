@@ -5247,6 +5247,67 @@ mod regen_convergence_host_instrument_tests {
             .collect()
     }
 
+    /// PRODUCT HOST-JOIN INSTRUMENT: the carrier's producer role, product role, seed membership,
+    /// and bootstrap-edge absence come from their independent production authorities. The real
+    /// host then materializes the changed surface and must choose the seed-compatibility cut.
+    #[test]
+    fn gunbc_cli_dispatch_host_join_materializes_one_generation_subject_seed_member() {
+        let workspace = workspace_root();
+        let roots = fixture_roots();
+        let (
+            basename_to_module,
+            generation_modules,
+            bootstrap_sources,
+            bootstrap_products,
+            seed_embedded_basenames,
+            generated_product_roles,
+        ) = convergence_surface_roles(&workspace, &roots).unwrap();
+        let carrier = "gunbc_cli_dispatch_generated.rs";
+        assert_eq!(
+            basename_to_module.get(carrier).map(String::as_str),
+            Some("v1.compiler.emit_rust")
+        );
+        assert!(generation_modules.contains("v1.compiler.emit_rust"));
+        assert_eq!(
+            generated_product_roles.get(carrier).map(String::as_str),
+            Some("GenerationSubject")
+        );
+        assert!(seed_embedded_basenames.contains(carrier));
+        assert!(!bootstrap_products.contains(carrier));
+
+        let (fixture_root, stage0, candidate, _) = fixture_workspace();
+        let rows = [(carrier, "v1.compiler.emit_rust", "// candidate carrier\n")];
+        let (manifest, admitted) = fixture_manifest(&candidate, &rows);
+        let model = RegenConvergenceModel::load(&roots).unwrap();
+        let (kind, planned, closure) = convergence_plan_from_model(
+            &model,
+            1,
+            &manifest.generation_id,
+            &manifest.candidate_tree_id,
+            &manifest.candidate_tree_digest,
+            &[carrier.to_string()],
+            &admitted,
+            &stage0,
+            &basename_to_module,
+            &generation_modules,
+            &bootstrap_sources,
+            &bootstrap_products,
+            &seed_embedded_basenames,
+            &generated_product_roles,
+            &RegenEmissionScope::WholePopulation,
+            &[],
+            "seed-0",
+        )
+        .unwrap();
+        assert_eq!(
+            kind,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut
+        );
+        assert_eq!(planned, vec![carrier.to_string()]);
+        assert_eq!(closure, "seed-compatibility-cut");
+        fs::remove_dir_all(fixture_root).unwrap();
+    }
+
     /// HOST-PATH INSTRUMENT: this calls the same journal/install/build/admission orchestration as
     /// production. Only the external seed build and executable digest are hermetic callbacks.
     #[test]

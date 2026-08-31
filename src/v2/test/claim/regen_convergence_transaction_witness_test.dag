@@ -3,6 +3,7 @@ module v2.test.claim.regen_convergence_transaction_witness_test
 import std.types { Bool, List, String }
 import gunbc.regen_affected_set {
   regen_generation_role_modules,
+  regen_bootstrap_product_paths,
   regen_generated_product_owner_paths,
   regen_generated_product_source_modules,
   regen_generated_product_generation_role_labels
@@ -432,15 +433,50 @@ test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
       == ["v1.compiler.compiler_tests_rust"]
 }
 
-// The generated CLI carrier is a seed input synthesized by v1.compiler.emit_rust, not an
-// ordinary same-named module projection. Ownership and generation role are both declared here;
-// adding a basename exception in the host would let either fact drift independently.
-test fn gunbc_cli_dispatch_aggregate_has_one_declared_seed_product_owner() -> Bool {
+// The generated CLI carrier is a seed-embedded generation subject synthesized by
+// v1.compiler.emit_rust, not an ordinary same-named module projection. Ownership and generation
+// role are both declared here; adding a basename exception in the host would let either fact
+// drift independently.
+test fn gunbc_cli_dispatch_aggregate_has_one_declared_generation_subject_owner() -> Bool {
   count(regen_generated_product_owner_paths() |> filter(path => path == "gunbc_cli_dispatch_generated.rs")) == 1
     && regen_generated_product_source_modules(product: "gunbc_cli_dispatch_generated.rs")
       == ["v1.compiler.emit_rust"]
     && regen_generated_product_generation_role_labels(product: "gunbc_cli_dispatch_generated.rs")
-      == ["GenerationInput"]
+      == ["GenerationSubject"]
+    && count(regen_generation_role_modules(modules: ["v1.compiler.emit_rust"]) |> filter(module => module == "v1.compiler.emit_rust")) == 1
+    && count(regen_bootstrap_product_paths() |> filter(path => path == "gunbc_cli_dispatch_generated.rs")) == 0
+}
+
+// These stage assertions consume GenerationSubject and SeedEmbedded independently. Together
+// they reject both false aggregate roles: generation-input promotion and non-seed publication.
+test fn gunbc_cli_dispatch_generation_subject_obeys_all_three_stage_boundaries() -> Bool {
+  let carrier = fixture_surface(
+    module: "v1.compiler.emit_rust",
+    path: "gunbc_cli_dispatch_generated.rs",
+    role: GenerationSubject,
+    seed: SeedEmbedded
+  )
+  let promote = fixture_plan(kind: PromoteGenerationInputs, rows: [carrier])
+  let install = fixture_plan(kind: InstallSeedCompatibilityCut, rows: [carrier])
+  let publish = fixture_plan(kind: PublishNonSeedOutputs, rows: [carrier])
+  match promote {
+    RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: held } } =>
+      count(held) == 1 && match install {
+        RegenStagePlanned { stage: stage } =>
+          count(stage.planned_surfaces) == 1
+            && stage.planned_surfaces |> all(row =>
+              row.identity.declaring_module == "v1.compiler.emit_rust"
+                && row.identity.projected_path == "gunbc_cli_dispatch_generated.rs"
+            )
+            && match publish {
+              RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: publish_held } } =>
+                count(publish_held) == 1
+              _ => false
+            }
+        _ => false
+      }
+    _ => false
+  }
 }
 
 // Seed-manifest absence is not itself an OutsideSeed fact. The generated-product authority
