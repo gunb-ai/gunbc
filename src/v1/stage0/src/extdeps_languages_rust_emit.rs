@@ -151,6 +151,80 @@ pub fn rust_string_types() -> Rc<Vec<String>> {
     CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
+pub fn rust_value_binding_candidate(prefix: String, index: i64) -> String {
+    v1_rt::concat(prefix.clone(), (index.clone()).to_string())
+}
+
+pub fn cli_dispatch_executor_name_absent() -> Option<String> {
+    None
+}
+
+pub fn cli_dispatch_executor_name_present(candidate: String) -> Option<String> {
+    Some(candidate.clone())
+}
+
+pub fn cli_dispatch_executor_choose_unblocked(
+    found: Option<String>,
+    candidate: String,
+    blocked: Rc<Vec<String>>,
+) -> Option<String> {
+    match found.clone() {
+        Some(_) => found.clone(),
+        None => {
+            if {
+                let mut __found = false;
+                for local in blocked.iter().cloned() {
+                    if (local.clone() == candidate.clone()) {
+                        __found = true;
+                        break;
+                    }
+                }
+                __found
+            } {
+                cli_dispatch_executor_name_absent()
+            } else {
+                cli_dispatch_executor_name_present(candidate.clone())
+            }
+        }
+    }
+}
+
+pub fn fresh_rust_value_binding_name(blocked: Rc<Vec<String>>, prefix: String) -> Option<String> {
+    {
+        let first_n = Rc::new({
+            let mut __result = Vec::new();
+            for pair in Rc::new(
+                blocked
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .enumerate()
+                    .map(|(i, v)| (i as i64, v))
+                    .collect::<Vec<_>>(),
+            )
+            .iter()
+            .cloned()
+            {
+                __result.push(rust_value_binding_candidate(prefix.clone(), pair.0.clone()));
+            }
+            __result
+        });
+        let candidates = v1_rt::concat(
+            first_n.clone(),
+            Rc::new(vec![rust_value_binding_candidate(
+                prefix.clone(),
+                (blocked.clone().len() as i64),
+            )]),
+        );
+        candidates
+            .iter()
+            .cloned()
+            .fold(None, |found: _, candidate: String| {
+                cli_dispatch_executor_choose_unblocked(found, candidate.clone(), blocked.clone())
+            })
+    }
+}
+
 pub fn rust_struct_derives() -> String {
     thread_local! {
         static CACHED: String = {

@@ -52,12 +52,13 @@ import v1.std.core {
   transport_base_path, empty_intern_table
 }
 
-import v1.compiler.artifact { RenderTarget, Rust }
+import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, RenderEveryModule, RenderSelectedMirrors }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
   rust_serde_rename_all_snake_case, rust_serde_rename_all_screaming_snake_case,
-  HigherOrderMethodSpec, rust_higher_order_methods
+  HigherOrderMethodSpec, rust_higher_order_methods,
+  rust_value_binding_candidate, fresh_rust_value_binding_name
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
@@ -86,9 +87,8 @@ import gunbc.cli_dispatch_surface {
   CliToggleValue,
   cli_subcommand_generated_dispatch_operands,
   cli_subcommand_generated_dispatch_options,
-  cli_dispatch_executor_candidate,
   dispatch_local_binding_names,
-  fresh_cli_dispatch_executor_name,
+  gunbc_cli_dispatch_executor_binding_prefix,
   gunbc_cli_about,
   gunbc_cli_binary_name,
   gunbc_cli_generated_dispatch_subcommands,
@@ -2987,6 +2987,33 @@ fn emit_rust_reference_derived_census(typed: ResolvedGraph) -> ReferenceDerivedC
 // therefore joins the two diagnostic guards that already sit after the context, and the
 // preamble's binding order is untouched.
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+  emit_rust_selected(typed: typed, selection: RenderEveryModule)
+}
+
+// THE EMISSION, DENOMINATED IN THE CHANGE.
+//
+// Under RenderSelectedMirrors only the selected modules are RENDERED. Everything else this
+// function returns is derived from the resolved graph or from paths, so it is identical under
+// both arms of the selection -- which is what makes a scoped emission a subset of a whole one
+// rather than a different answer:
+//
+//   * the crate's module list (lib.rs) and the emitted-population manifest are computed from
+//     `module_paths`, one path per module in `typed.modules` whether or not it was rendered.
+//     Their inputs are `List<String>`, so no rendered byte can reach them -- content
+//     independence is the parameter type rather than a claim about the body.
+//   * the two closure-stub decisions are asked of the RESOLVED GRAPH (see
+//     `closure_references_module_filename`), never of emitted text, so a module the selection
+//     declined to render still counts toward whether the crate needs a stub.
+//   * `import_refusals` are observed only for rendered modules, and that is exact rather than
+//     partial. `emit_resolved_for_target_selected` in `v1.compiler.compile` carries the
+//     argument: an emit with any error diagnostic returns NO files, so a committed tree is one
+//     whose whole closure emitted clean and the unrendered modules had nothing to say.
+//
+// The selection is a LIST of mirror basenames -- the exact derived closure of an edit. It is
+// never "the one module that changed": a change reaches every mirror its reverse closure names,
+// and a selector that could carry only one member would be a bound that cannot express its own
+// answer.
+fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
   let registry = ctx.registry
@@ -3010,14 +3037,24 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     return EmitResult { files: [], diagnostics: filename_collisions }
   }
   let test_projections = ctx.test_projections
-  let module_emissions = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
+  let module_emissions = typed.modules
+    |> filter(tm => rust_module_render_selection_renders(
+      selection: selection,
+      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+    |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
   let module_files = module_emissions |> map(e => e.file)
   let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
-  let test_files = typed.modules
-    |> map(tm => emit_test_file(
-      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
-      projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
-    |> filter(f => string_length(s: f.content) > 0)
+  let module_paths = typed.modules |> map(tm => rust_module_emit_path(
+    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+  let test_module_names = typed.modules
+    |> map(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
+    |> filter(name => (test_projections |> filter(p => p.module_name == name)) |> count > 0)
+  let test_file_paths = test_module_names |> map(name => rust_test_file_path(module_name: name))
+  let test_files = test_module_names
+    |> filter(name => rust_module_render_selection_renders(selection: selection, module_name: name))
+    |> map(name => emit_test_file(
+      module_name: name,
+      projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
@@ -3032,24 +3069,57 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     []
   }
 
-  let v2_std_text_stub = if module_files_reference_v2_std_text(files: module_files)
-    && !module_files_include_v2_std_text(files: module_files) {
+  let v2_std_text_stub = if closure_needs_module_filename_stub(typed: typed, ctx: ctx, filename: "v2_std_text") {
     [emit_v2_std_text_closure_stub_module()]
   } else {
     []
   }
-  let v2_std_integer_stub = if module_files_reference_v2_std_integer(files: module_files)
-    && !module_files_include_v2_std_integer(files: module_files) {
+  let v2_std_integer_stub = if closure_needs_module_filename_stub(typed: typed, ctx: ctx, filename: "v2_std_integer") {
     [emit_v2_std_integer_closure_stub_module()]
   } else {
     []
   }
   let all_mod_files = concat(module_files, v2_std_text_stub, v2_std_integer_stub, [rt_file], dry_run_file, cli_dispatch_file)
-  let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
+  let all_mod_paths = concat(
+    module_paths,
+    v2_std_text_stub |> map(f => f.path),
+    v2_std_integer_stub |> map(f => f.path),
+    [rt_file.path],
+    dry_run_file |> map(f => f.path),
+    cli_dispatch_file |> map(f => f.path)
+  )
+  let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
+  let emitted_paths = concat(
+    [cargo.path, lib_file.path, main_file.path],
+    all_mod_paths,
+    compiler_tests_file |> map(f => f.path),
+    test_file_paths
+  )
+  let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
-  let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
   EmitResult { files: files, diagnostics: import_refusals }
+}
+
+// THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
+// population-denominated aggregate that must name a module it did not render. `main` collides
+// with the crate's own entry file, so it renders as `main_mod`; that rename used to live inside
+// `emit_module_full` alone, where a second reader of the same fact had no way to reach it.
+fn rust_module_emit_filename(module_name: String) -> String {
+  let raw = module_to_filename(name: module_name)
+  if raw == "main" { "main_mod" } else { raw }
+}
+
+fn rust_module_emit_path(module_name: String) -> String {
+  concat(rust_source_root(), rust_module_emit_filename(module_name: module_name), rust_source_ext())
+}
+
+fn rust_module_render_selection_renders(selection: RustModuleRenderSelection, module_name: String) -> Bool {
+  match selection {
+    RenderEveryModule => true
+    RenderSelectedMirrors { basenames: basenames } =>
+      basenames |> any(b => b == concat(rust_module_emit_filename(module_name: module_name), rust_source_ext()))
+  }
 }
 
 // THE EMITTER DECLARES THE POPULATION IT PRODUCED. This is the one place in the repository
@@ -3077,8 +3147,8 @@ fn emitted_population_manifest_path() -> String {
   concat(rust_source_root(), emitted_population_manifest_basename)
 }
 
-fn emit_emitted_population_manifest(files: List<TextFile>) -> TextFile {
-  let declared = concat(files |> map(f => f.path), [emitted_population_manifest_path()])
+fn emit_emitted_population_manifest(paths: List<String>) -> TextFile {
+  let declared = concat(paths, [emitted_population_manifest_path()])
   let lines = declared
     |> sort_by(path => path)
     |> map(path => concat(emitted_population_manifest_line_prefix, path))
@@ -3099,40 +3169,112 @@ fn emit_compiler_tests_module() -> TextFile {
   TextFile { path: concat(rust_source_root(), "compiler_tests", rust_source_ext()), content: compiler_tests_source() }
 }
 
-// The v2 closure-stub triggers scan EMITTED TEXT for a module reference, and the emitter's own
-// emitted file contains every such pattern as a STRING LITERAL -- both the pattern being searched
-// for and the use line being generated. So the predicate matched itself, and any crate containing
-// the emitter emitted stubs for modules nothing actually used. This was latent, not new: the
-// deleted corpus_repr_is_faithful conjunct happened to be false on the seed regen closure and
-// suppressed the self-match there, so removing the corpus mode surfaced it as a fail-closed
-// emission-plan refusal rather than as wrong output. Anchoring on a leading newline discriminates a
-// real emitted use line (line start) from the emitter's literal (always preceded by a quote). WHAT
-// THIS DOES NOT DO: it does not climb the rung. The grain is still a text scan over emitted
-// content, which cannot in general distinguish a program from the compiler that writes it; it only
-// removes the one false-positive class that is decidable by anchoring. The stub's own dissolve-on
-// stands unchanged -- derive the condition from the emitted reference SET, a produced structural
-// fact, rather than re-scanning the output for it.
-
-fn emitted_files_carry_use_line(files: List<TextFile>, line: String) -> Bool {
-  files |> any(f => string_contains(s: f.content, pattern: concat("\n", line)))
+// THE CLOSURE-STUB DECISION IS ASKED OF THE RESOLVED GRAPH, AND THAT IS WHAT MAKES IT TOTAL.
+//
+// It used to be a text scan over the files this emission had just rendered: does any emitted
+// byte carry a line `pub use crate::v2_std_text::`. Two things are wrong with that, and only the
+// second is new.
+//
+// The old one, recorded because it is the reason the scan grew its anchor: the emitter's OWN
+// emitted file contains every such pattern as a string literal, both the pattern searched for and
+// the use line generated, so the predicate matched itself and any crate containing the emitter
+// stubbed modules nothing used. Anchoring on a leading newline removed that class without
+// climbing the rung -- a text scan cannot in general distinguish a program from the compiler that
+// writes it.
+//
+// The new one is decisive: a scan over rendered bytes cannot answer for a module that was not
+// rendered. Under `RenderSelectedMirrors` the emitter renders a subset, so the old predicate
+// would answer about the SUBSET and drop a stub the crate needs -- an E0583 in a crate nobody
+// re-rendered, produced silently. The question is about the CLOSURE, so it is asked of the
+// closure.
+//
+// WHAT IT ASKS. A use line `use crate::<filename>::<name>` is produced in exactly one place --
+// `reference_derived_use_line_plan`, from a candidate name whose registry provider is the module
+// with that filename. (The other producer, `emit_faithful_text_carrier_import_lines`, is the
+// hardcoded carrier family; its gate `module_needs_faithful_carrier_imports` currently answers
+// `false` unconditionally, so it emits nothing and contributes no reference at all.) So the
+// question is: does any module in the closure carry a reference candidate whose provider is that
+// filename. The candidates come from the SAME collectors the plan seeds itself from, through the
+// same `repair_input_origin_candidates` authority -- not a second reading of them.
+//
+// IT IS A SUPERSET, COMPUTED AS THE ANSWER, AND THE DIRECTION IS THE SAFE ONE. The plan narrows
+// its candidates by the module's own emitted tokens, by names already imported and by an export
+// proof; those filters are downstream of rendering, so an exact predicate would cost the whole
+// render and leave nothing to save. This omits them, so it can name a provider the plan would
+// have dropped. Paired with an EXACT `includes` half, the only reachable error is one stub module
+// too many -- an unused `pub mod`, which compiles -- while the error it forecloses is a missing
+// module, which does not. This is a structural over-approximation standing as the answer, with no
+// failure arm to widen: there is no input on which it declines to decide.
+fn module_reference_candidate_names(typed_module: TypedModule, ctx: EmitRustContext) -> List<String> {
+  let source_indices = typed_module.type_env.source_indices
+  let emit_info = ctx.emit_info
+  let this_module_name = authored_name_at(source_indices: source_indices, node: typed_module.module)
+  let items = typed_module.items
+  let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
+  let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
+  let type_surface_names = unique_strings(items: item_emit_surface_names)
+  let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
+  let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
+  let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: emit_info.shared_types, source_indices: source_indices, emit_info: emit_info)))
+  let unlisted_type_names = match map_get(ctx.unlisted_type_names_by_module, this_module_name) {
+    Present { value: v } => v
+    Absent => []
+  }
+  let origin_candidates = repair_input_origin_candidates(
+    emitting_module: this_module_name,
+    unlisted_type_names: unlisted_type_names,
+    value_reference_names: value_names,
+    item_emit_surface_names: type_surface_names,
+    field_import_surface_names: field_surface_names,
+    variant_payload_surface_names: variant_payload_structs,
+    rendered_type_surface_names: realized_surface_names,
+  )
+  unique_strings(items: repair_input_origin_compatibility_names(candidates: origin_candidates))
+    |> filter(name => !reference_is_host_realized_builtin(name: name))
 }
 
-fn module_files_reference_v2_std_text(files: List<TextFile>) -> Bool {
-  emitted_files_carry_use_line(files: files, line: concat(rust_visibility_prefix(), "use crate::v2_std_text::"))
+// THE NECESSARY CONDITION, ASKED FIRST BECAUSE IT IS THE CHEAP ONE AND IT IS EXACT.
+//
+// A `use crate::<filename>::<name>` line exists only if `name` resolves through the item registry
+// to a module with that filename. So a registry carrying no such provider admits no such line,
+// whatever any module references -- this is an implication, not a heuristic, and answering `false`
+// here is answering the question rather than declining it.
+//
+// IT IS ALSO THE WHOLE COST OF THIS PREDICATE. Without it the reference half walks every module in
+// the closure through `repair_input_origin_candidates`, twice -- once per stub filename -- and that
+// walk MEASURED 288 s on the seed regen closure, taking compile.emit from 258 s to 546 s. The
+// modules it walks for are absent from the registry in every closure that is not a narrow one, so
+// the walk was paid in full to answer `false` on the common path. The instrument is
+// `claim_executor --regen-round-cost`, phase=compile.emit; the isolation was a probe that
+// short-circuited this predicate and left emitted bytes unchanged (changed_paths=0).
+fn registry_declares_module_filename(registry: Map<String, ItemInfo>, filename: String) -> Bool {
+  map_values(registry) |> any(info => module_to_filename(name: info.module_name) == filename)
 }
 
-fn module_files_reference_v2_std_integer(files: List<TextFile>) -> Bool {
-  emitted_files_carry_use_line(files: files, line: concat(rust_visibility_prefix(), "use crate::v2_std_integer::"))
+fn closure_references_module_filename(typed: ResolvedGraph, ctx: EmitRustContext, filename: String) -> Bool {
+  if !registry_declares_module_filename(registry: ctx.registry, filename: filename) {
+    return false
+  }
+  typed.modules |> any(tm =>
+    module_reference_candidate_names(typed_module: tm, ctx: ctx) |> any(name =>
+      match map_get(ctx.registry, name) {
+        Present { value: info } => module_to_filename(name: info.module_name) == filename
+        Absent => false
+      }
+    )
+  )
 }
 
-fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
-  let expected = concat(rust_source_root(), "v2_std_text", rust_source_ext())
-  files |> any(f => f.path == expected)
-}
-
-fn module_files_include_v2_std_integer(files: List<TextFile>) -> Bool {
-  let expected = concat(rust_source_root(), "v2_std_integer", rust_source_ext())
-  files |> any(f => f.path == expected)
+// REFERENCED BUT ABSENT, and both halves read the resolved graph. `includes` is exact -- a module
+// is in the closure or it is not -- so the superset lives entirely in the reference half and the
+// conjunction inherits its one-sided direction.
+fn closure_needs_module_filename_stub(typed: ResolvedGraph, ctx: EmitRustContext, filename: String) -> Bool {
+  closure_references_module_filename(typed: typed, ctx: ctx, filename: filename)
+    && !typed_closure_includes_module_filename(
+      typed_modules: typed.modules,
+      filename: filename,
+      source_indices: merged_module_source_indices(modules: typed.modules)
+    )
 }
 
 fn emit_v2_std_integer_closure_stub_module() -> TextFile {
@@ -3149,11 +3291,11 @@ fn emit_v2_std_text_closure_stub_module() -> TextFile {
   }
 }
 
-fn lib_rs_mod_name_from_file(f: TextFile) -> String {
+fn lib_rs_mod_name_from_path(path: String) -> String {
   let src_prefix_len = string_length(s: rust_source_root())
   let ext_len = string_length(s: rust_source_ext())
-  let path_len = string_length(s: f.path)
-  substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
+  let path_len = string_length(s: path)
+  substring(s: path, start: src_prefix_len, end: path_len - ext_len)
 }
 
 // v1_map_key_required_type_names discovers a declared type's map-key Hash+Eq requirement by
@@ -3217,8 +3359,15 @@ fn order_partial_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
 // which is E0583. It surfaced on the falsifier's wet witnesses, whose lib.rs is a
 // dozen lines: two of them died on the missing module before reaching the behaviour
 // they exist to measure. A partial crate now declares exactly what this emit produced.
-fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
-  let file_derived_names = all_module_files |> map(lib_rs_mod_name_from_file)
+//
+// PATH-ONLY, AND THE SIGNATURE IS THE PROOF. A crate's `mod` block is a statement about which
+// FILES exist, never about what is in them, and this function once took the files themselves --
+// so a reader had to check the body to know that only `.path` was read, and a later edit could
+// have reached for content without anything refusing. Taking `List<String>` makes content
+// independence structural: there is no content here to depend on. That is what lets a
+// change-denominated emission declare modules it did not render.
+fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
+  let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
   let mod_names = if has_compiler_tests {
     order_lib_rs_mod_names(mod_names: file_derived_names)
   } else {
@@ -4682,8 +4831,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
-  let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
-  let filename = if raw_filename == "main" { "main_mod" } else { raw_filename }
+  let module_emit_path = rust_module_emit_path(module_name: authored_name(env: scope.type_env, node: m))
   let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {
     "#![allow(non_camel_case_types)]\n\n"
   } else { "" }
@@ -4692,7 +4840,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
   ModuleEmission {
-    file: TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
+    file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
     import_refusals: reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span)
   }
@@ -14634,7 +14782,10 @@ fn emit_gunbc_cli_dispatch_generated_with_executor_name(crate_name: String, rows
 }
 
 fn emit_gunbc_cli_dispatch_generated_for_rows(crate_name: String, rows: List<CliSubcommandRow>) -> TextFile {
-  match fresh_cli_dispatch_executor_name(blocked: dispatch_local_binding_names(rows: rows)) {
+  match fresh_rust_value_binding_name(
+    blocked: dispatch_local_binding_names(rows: rows),
+    prefix: gunbc_cli_dispatch_executor_binding_prefix()
+  ) {
     Present { value: executor_name } => emit_gunbc_cli_dispatch_generated_with_executor_name(
       crate_name: crate_name,
       rows: rows,

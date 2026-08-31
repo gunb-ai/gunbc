@@ -106,6 +106,44 @@ data rust_reserved_escape_suffix: String = "_"
 
 data rust_string_types: List<String> = ["String", "Secret"]
 
+// RUST VALUE-BINDING ALLOCATION FOR GENERATED DISPATCH. The CLI authority supplies the lexical
+// population; this target authority owns the legal Rust spelling and collision-free selection.
+// The sole current consumer is v1.compiler.emit_rust. Dissolves into a general Rust identifier
+// allocation authority when that capability exists.
+fn rust_value_binding_candidate(prefix: String, index: Int) -> String {
+  concat(prefix, to_string(index))
+}
+
+fn cli_dispatch_executor_name_absent() -> String? {
+  Absent
+}
+
+fn cli_dispatch_executor_name_present(candidate: String) -> String? {
+  Present { value: candidate }
+}
+
+fn cli_dispatch_executor_choose_unblocked(found: String?, candidate: String, blocked: List<String>) -> String? {
+  match found {
+    Present { value: _ } => found
+    Absent => if blocked |> any(local => local == candidate) {
+      cli_dispatch_executor_name_absent()
+    } else {
+      cli_dispatch_executor_name_present(candidate: candidate)
+    }
+  }
+}
+
+// Do not use terminal `first`: gunbc.cli_dispatch_surface
+// interpreter_algebra_optional_method_semantic_divergence_rung enrolls the substrate split that
+// makes its interpreted result disagree with emitted Rust.
+fn fresh_rust_value_binding_name(blocked: List<String>, prefix: String) -> String? {
+  let first_n = enumerate(blocked) |> map(pair => rust_value_binding_candidate(prefix: prefix, index: pair.first))
+  let candidates = concat(first_n, [rust_value_binding_candidate(prefix: prefix, index: count(blocked))])
+  fold(candidates, init: Absent, f: fn(found, candidate) {
+    cli_dispatch_executor_choose_unblocked(found: found, candidate: candidate, blocked: blocked)
+  })
+}
+
 data rust_struct_derives: String = rust_trait_derive_attr_from_traits(record_derive_traits_heap())
 
 data rust_struct_derives_copy: String = rust_trait_derive_attr_from_traits(record_derive_traits_copy())

@@ -1,9 +1,12 @@
 module test.claim.cli_dispatch_surface
 
 import gunbc.cli_dispatch_surface {
-  cli_dispatch_executor_candidate,
   dispatch_local_binding_names,
-  fresh_cli_dispatch_executor_name
+  gunbc_cli_dispatch_executor_binding_prefix
+}
+import extdeps.languages.rust.emit {
+  rust_value_binding_candidate,
+  fresh_rust_value_binding_name
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -85,12 +88,13 @@ test fn gap_is_empty_when_every_row_is_emitted() -> Bool {
 // DISCRIMINATING RED for the generated-binding collision wall. The fixture gives an authored
 // field the emitter's preferred executor spelling. A fixed private spelling makes the generated
 // arm shadow its executor; the bounded fresh-name construction shifts both the parameter and its
-// use to the next spelling. `fresh_cli_dispatch_executor_name` constructs exactly N+1 distinct
+// use to the next spelling. `fresh_rust_value_binding_name` constructs exactly N+1 distinct
 // candidates for N fields with a forward fold, so termination is bounded by the finite population
 // rather than justified by open recursion.
 test fn generated_dispatch_executor_name_shifts_when_a_modeled_field_collides() -> Bool {
-  let collision = cli_dispatch_executor_candidate(index: 0)
-  let shifted = cli_dispatch_executor_candidate(index: 1)
+  let prefix = gunbc_cli_dispatch_executor_binding_prefix()
+  let collision = rust_value_binding_candidate(prefix: prefix, index: 0)
+  let shifted = rust_value_binding_candidate(prefix: prefix, index: 1)
   let rows = [
     CliSubcommandRow {
       verb: "fixture",
@@ -102,18 +106,19 @@ test fn generated_dispatch_executor_name_shifts_when_a_modeled_field_collides() 
       emission: CarriedByGeneratedDispatch
     }
   ]
-  fresh_cli_dispatch_executor_name(blocked: dispatch_local_binding_names(rows: rows)) == Present { value: shifted }
+  fresh_rust_value_binding_name(blocked: dispatch_local_binding_names(rows: rows), prefix: prefix) == Present { value: shifted }
 }
 
 test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_stable() -> Bool {
-  let base = cli_dispatch_executor_candidate(index: 0)
-  let next = cli_dispatch_executor_candidate(index: 1)
-  let third = cli_dispatch_executor_candidate(index: 2)
-  fresh_cli_dispatch_executor_name(blocked: []) == Present { value: base }
-    && fresh_cli_dispatch_executor_name(blocked: [base]) == Present { value: next }
-    && fresh_cli_dispatch_executor_name(blocked: [base, base]) == Present { value: next }
-    && fresh_cli_dispatch_executor_name(blocked: [base, next]) == Present { value: third }
-    && fresh_cli_dispatch_executor_name(blocked: [next, base]) == Present { value: third }
+  let prefix = gunbc_cli_dispatch_executor_binding_prefix()
+  let base = rust_value_binding_candidate(prefix: prefix, index: 0)
+  let next = rust_value_binding_candidate(prefix: prefix, index: 1)
+  let third = rust_value_binding_candidate(prefix: prefix, index: 2)
+  fresh_rust_value_binding_name(blocked: [], prefix: prefix) == Present { value: base }
+    && fresh_rust_value_binding_name(blocked: [base], prefix: prefix) == Present { value: next }
+    && fresh_rust_value_binding_name(blocked: [base, base], prefix: prefix) == Present { value: next }
+    && fresh_rust_value_binding_name(blocked: [base, next], prefix: prefix) == Present { value: third }
+    && fresh_rust_value_binding_name(blocked: [next, base], prefix: prefix) == Present { value: third }
 }
 
 // KNOWN RED: the interpreter returns the raw element or Null for terminal `first`, while emitted

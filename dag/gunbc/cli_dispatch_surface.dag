@@ -12,7 +12,7 @@ import std.dissolution { DissolutionCondition, unbound_dissolution }
 // order. Dissolve into a general Rust value-identifier allocation authority when one exists.
 data cli_dispatch_executor_name_construction_note: String = "The generated CLI dispatch consumes one collision-free executor binding spelling derived from its modeled local-binding population."
 
-data cli_dispatch_executor_binding_collision_rung: String = "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_cli_dispatch_executor_name total and delete the Absent arm and this row together."
+data cli_dispatch_executor_binding_collision_rung: String = "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_rust_value_binding_name total and delete the Absent arm and this row together."
 
 // `first` currently has two runtime meanings: the interpreter returns the raw element or Null,
 // while emitted Rust returns Optional<T>. That is silent wrongness, outside the ladder: the
@@ -22,7 +22,7 @@ data cli_dispatch_executor_binding_collision_rung: String = "Class: generated di
 // consumers, not a claim that every site is harmed. The ceiling is structural: derive both the
 // interpreter and emitted realizations from one authority for `first`. When that capability lands,
 // the known-red turns green and becomes an ordinary regression control; this row then deletes.
-data interpreter_first_optional_semantic_divergence_rung: String = "Class: interpreter/emitted terminal first semantic divergence. Invalid state: interpreted first yields a raw element or Null while emitted first yields Optional. Harm: silent wrongness outside the ladder. Found at: one executing known-red specimen; 187 candidate sites measured across 82 files, with the affected intersection unknown. Ceiling: structural. Trigger: one authority derives both realizations of first so they cannot disagree."
+data interpreter_algebra_optional_method_semantic_divergence_rung: String = "Class: interpreter/emitted algebra OptionalOf method semantic divergence. Invalid state: interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control. Harm: silent wrongness outside the ladder. Found at: one executing known-red first specimen. Population: candidate consumers and executed probes are derived by docs/plans/first-optional-divergence-census.md on PR #9785; the measured populations are candidates, not a claim that every site is harmed, and pipeline and method forms are correct today for different reasons in each lane. Ceiling: structural. Trigger: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf -- first, last, get, and lookup -- from that existing row rather than hand-implementing it, so an arm cannot disagree with the declared signature; AND builtin parameter cardinality is grounded in the signature authority beside the return type builtin_function_registry already carries, so argument coercion is derivable for builtin callees. The second half is required because raw-element arms compensate for missing coercion today; repairing result construction alone flips passing witnesses that name nothing about optionals."
 
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
@@ -250,41 +250,8 @@ fn dispatch_local_binding_names(rows: List<CliSubcommandRow>) -> List<String> {
   concat(["command"], rows |> flat_map(sub => modeled_subcommand_bound_fields(sub: sub)))
 }
 
-fn cli_dispatch_executor_candidate(index: Int) -> String {
-  concat("__gunbc_dispatch_executor_", to_string(index))
-}
-
-fn cli_dispatch_executor_name_absent() -> String? {
-  Absent
-}
-
-fn cli_dispatch_executor_name_present(candidate: String) -> String? {
-  Present { value: candidate }
-}
-
-fn cli_dispatch_executor_choose_unblocked(
-  found: String?,
-  candidate: String,
-  blocked: List<String>
-) -> String? {
-  match found {
-    Present { value: _ } => found
-    Absent => if blocked |> any(local => local == candidate) {
-      cli_dispatch_executor_name_absent()
-    } else {
-      cli_dispatch_executor_name_present(candidate: candidate)
-    }
-  }
-}
-
-// Do not use terminal `first` here: interpreter_first_optional_semantic_divergence_rung
-// enrolls the substrate split that makes its interpreted result disagree with emitted Rust.
-fn fresh_cli_dispatch_executor_name(blocked: List<String>) -> String? {
-  let first_n = enumerate(blocked) |> map(pair => cli_dispatch_executor_candidate(index: pair.first))
-  let candidates = concat(first_n, [cli_dispatch_executor_candidate(index: count(blocked))])
-  fold(candidates, init: Absent, f: fn(found, candidate) {
-    cli_dispatch_executor_choose_unblocked(found: found, candidate: candidate, blocked: blocked)
-  })
+fn gunbc_cli_dispatch_executor_binding_prefix() -> String {
+  "__gunbc_dispatch_executor_"
 }
 
 fn gunbc_cli_binary_name() -> String {

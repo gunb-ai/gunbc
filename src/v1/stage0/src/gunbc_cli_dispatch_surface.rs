@@ -38,7 +38,16 @@ pub fn cli_dispatch_executor_name_construction_note() -> String {
 pub fn cli_dispatch_executor_binding_collision_rung() -> String {
     thread_local! {
         static CACHED: String = {
-            "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_cli_dispatch_executor_name total and delete the Absent arm and this row together.".to_string()
+            "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_rust_value_binding_name total and delete the Absent arm and this row together.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn interpreter_algebra_optional_method_semantic_divergence_rung() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Class: interpreter/emitted algebra OptionalOf method semantic divergence. Invalid state: interpreted first, last, get, and lookup yield a raw element or Null while their existing std.algebra method rows declare OptionalOf and emitted Rust realizes that shape; map_get already constructs Optional through map_lookup_as_optional and is the positive control. Harm: silent wrongness outside the ladder. Found at: one executing known-red first specimen. Population: candidate consumers and executed probes are derived by docs/plans/first-optional-divergence-census.md on PR #9785; the measured populations are candidates, not a claim that every site is harmed, and pipeline and method forms are correct today for different reasons in each lane. Ceiling: structural. Trigger: the interpreter arm derives the result shape of every std.algebra method row declaring OptionalOf -- first, last, get, and lookup -- from that existing row rather than hand-implementing it, so an arm cannot disagree with the declared signature; AND builtin parameter cardinality is grounded in the signature authority beside the return type builtin_function_registry already carries, so argument coercion is derivable for builtin callees. The second half is required because raw-element arms compensate for missing coercion today; repairing result construction alone flips passing witnesses that name nothing about optionals.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -252,60 +261,8 @@ pub fn dispatch_local_binding_names(rows: Rc<Vec<Rc<CliSubcommandRow>>>) -> Rc<V
     )
 }
 
-pub fn cli_dispatch_executor_candidate(index: i64) -> String {
-    v1_rt::concat(
-        "__gunbc_dispatch_executor_".to_string(),
-        (index.clone()).to_string(),
-    )
-}
-
-pub fn fresh_cli_dispatch_executor_name(blocked: Rc<Vec<String>>) -> Option<String> {
-    {
-        let first_n = Rc::new({
-            let mut __result = Vec::new();
-            for pair in Rc::new(
-                blocked
-                    .clone()
-                    .iter()
-                    .cloned()
-                    .enumerate()
-                    .map(|(i, v)| (i as i64, v))
-                    .collect::<Vec<_>>(),
-            )
-            .iter()
-            .cloned()
-            {
-                __result.push(cli_dispatch_executor_candidate(pair.0.clone()));
-            }
-            __result
-        });
-        let candidates = v1_rt::concat(
-            first_n.clone(),
-            Rc::new(vec![cli_dispatch_executor_candidate(
-                (blocked.clone().len() as i64),
-            )]),
-        );
-        Rc::new({
-            let mut __result = Vec::new();
-            for name in candidates.iter().cloned() {
-                if !{
-                    let mut __found = false;
-                    for local in blocked.iter().cloned() {
-                        if (local.clone() == name.clone()) {
-                            __found = true;
-                            break;
-                        }
-                    }
-                    __found
-                } {
-                    __result.push(name);
-                }
-            }
-            __result
-        })
-        .first()
-        .cloned()
-    }
+pub fn gunbc_cli_dispatch_executor_binding_prefix() -> String {
+    "__gunbc_dispatch_executor_".to_string()
 }
 
 pub fn gunbc_cli_binary_name() -> String {
