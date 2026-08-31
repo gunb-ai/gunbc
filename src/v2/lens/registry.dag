@@ -438,6 +438,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
       ComplexityDerivedKernel => true
       _ => false
     }
+    UndecidableVerdictCollapse => match right {
+      UndecidableVerdictCollapse => true
+      _ => false
+    }
     ComplexityOptimality => match right {
       ComplexityOptimality => true
       _ => false
