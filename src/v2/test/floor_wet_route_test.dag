@@ -332,10 +332,12 @@ test fn wet_route_executor_contract_mismatch_blocks_on_its_own_axis() -> Bool {
 // expired, and a semantic-subject mismatch is never admitted by any lease.
 fn fixture_lease() -> BootstrapExecutorSnapshotReceipt {
   BootstrapExecutorSnapshotReceipt {
+    lease_identity: "fixture-lease-identity",
     exact_envelope_digest: "fixture-envelope-digest",
     exact_attempt_seq: 1,
     exact_semantic_subject_digest: fixture_digest,
     exact_roster_digest: "fixture-roster-digest",
+    observed_executor_contract_digest: "fixture-conceded-executor-digest",
     executed_at_unix_secs: 1000000,
     not_after_unix_secs: 1000000 + wet_seed_bootstrap_lease_window_secs()
   }
@@ -428,10 +430,12 @@ test fn wet_lease_never_admits_a_semantic_subject_mismatch() -> Bool {
 // window — is not applicable: the window is derived and checked, never trusted.
 test fn wet_lease_with_slid_window_is_not_applicable() -> Bool {
   let slid = BootstrapExecutorSnapshotReceipt {
+    lease_identity: "fixture-lease-identity",
     exact_envelope_digest: "fixture-envelope-digest",
     exact_attempt_seq: 1,
     exact_semantic_subject_digest: fixture_digest,
     exact_roster_digest: "fixture-roster-digest",
+    observed_executor_contract_digest: "fixture-conceded-executor-digest",
     executed_at_unix_secs: 1000000,
     not_after_unix_secs: 1000001 + wet_seed_bootstrap_lease_window_secs()
   }
