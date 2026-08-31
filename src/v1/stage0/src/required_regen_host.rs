@@ -539,7 +539,6 @@ pub fn run_required_regen_scoped(
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
     let candidate_manifest = produce_candidate_manifest(
-        &formatter,
         &fresh_src,
         &selected_basenames,
         &basename_to_module,
@@ -3003,6 +3002,106 @@ fn path_digest(path: &Path) -> Result<String, String> {
         .map_err(|e| format!("read {} for digest: {e}", path.display()))
 }
 
+fn observe_complete_candidate_artifact_population_from_entries<I>(
+    candidate_src: &Path,
+    phase: &str,
+    entries: I,
+) -> Result<Vec<String>, String>
+where
+    I: IntoIterator<Item = Result<PathBuf, String>>,
+{
+    let mut population = Vec::new();
+    for entry in entries {
+        let path = entry.map_err(|error| {
+            format!(
+                "CandidateManifestPopulationUnreadable: candidate_path={} phase={phase} error={error}",
+                candidate_src.display()
+            )
+        })?;
+        let relative = path.strip_prefix(candidate_src).map_err(|error| {
+            format!(
+                "CandidateManifestPopulationUnreadable: candidate_path={} phase={phase} error=observed file {} is outside the candidate root: {error}",
+                candidate_src.display(),
+                path.display()
+            )
+        })?;
+        population.push(
+            relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+        );
+    }
+    population.sort();
+    population.dedup();
+    Ok(population)
+}
+
+fn observe_complete_candidate_artifact_population(
+    candidate_src: &Path,
+    phase: &str,
+) -> Result<Vec<String>, String> {
+    fn visit(candidate_src: &Path, directory: &Path, entries: &mut Vec<Result<PathBuf, String>>) {
+        let directory_entries = match fs::read_dir(directory) {
+            Ok(value) => value,
+            Err(error) => {
+                entries.push(Err(format!("read {}: {error}", directory.display())));
+                return;
+            }
+        };
+        for entry in directory_entries {
+            let entry = match entry {
+                Ok(value) => value,
+                Err(error) => {
+                    entries.push(Err(format!(
+                        "read directory entry under {}: {error}",
+                        directory.display()
+                    )));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(file_type) if file_type.is_dir() => visit(candidate_src, &path, entries),
+                Ok(file_type) if file_type.is_file() => entries.push(Ok(path)),
+                Ok(_) => entries.push(Err(format!(
+                    "unsupported non-file candidate entry {}",
+                    path.display()
+                ))),
+                Err(error) => entries.push(Err(format!(
+                    "read candidate entry type {}: {error}",
+                    path.display()
+                ))),
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    visit(candidate_src, candidate_src, &mut entries);
+    observe_complete_candidate_artifact_population_from_entries(candidate_src, phase, entries)
+}
+
+fn candidate_artifact_tree_digest(
+    candidate_src: &Path,
+    paths: &[String],
+    label: &str,
+) -> Result<String, String> {
+    if paths.is_empty() {
+        return Err(format!(
+            "CandidateManifestPopulationMismatch: cannot compute {label} over an empty artifact"
+        ));
+    }
+    let mut payload = String::new();
+    for relative_path in paths {
+        payload.push_str(relative_path);
+        payload.push('\0');
+        payload.push_str(&path_digest(&candidate_src.join(relative_path))?);
+        payload.push('\n');
+    }
+    Ok(bytes_digest(payload.as_bytes()))
+}
+
 fn candidate_manifest_aggregate(
     producer_seed_digest: &str,
     generation_id: &str,
@@ -3023,7 +3122,6 @@ fn candidate_manifest_aggregate(
 }
 
 fn produce_candidate_manifest(
-    formatter: &ResolvedFormatter,
     candidate_src: &Path,
     selected_basenames: &[String],
     basename_to_module: &HashMap<String, String>,
@@ -3035,30 +3133,28 @@ fn produce_candidate_manifest(
         .iter()
         .map(|name| (*name).to_string())
         .collect::<BTreeSet<_>>();
-    let mut names = fs::read_dir(candidate_src)
-        .map_err(|e| {
-            format!(
-                "read complete candidate artifact {}: {e}",
-                candidate_src.display()
-            )
-        })?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let path = entry.path();
-            (path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
-                .then(|| entry.file_name().to_string_lossy().into_owned())
-        })
-        .collect::<Vec<_>>();
-    names.sort();
-    names.dedup();
+    let names =
+        observe_complete_candidate_artifact_population(candidate_src, "manifest-production")?;
     let generation_id =
         bytes_digest(format!("{producer_seed_digest}:{candidate_tree_id}").as_bytes());
     let surfaces = names
         .iter()
         .map(|basename| {
-            let (declaring_module, role) = if bootstrap_mirrors.contains(basename) {
+            let bootstrap_directory = HAND_MAINTAINED_STAGE0_DIRS
+                .iter()
+                .find(|directory| {
+                    basename
+                        .strip_prefix(**directory)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                });
+            let (declaring_module, role) = if bootstrap_mirrors.contains(basename)
+                || bootstrap_directory.is_some()
+            {
                 (
-                    basename.strip_suffix(".rs").unwrap_or(basename).to_string(),
+                    basename
+                        .strip_suffix(".rs")
+                        .unwrap_or(basename)
+                        .replace('/', "::"),
                     RegenCandidateManifestSurfaceRole::BootstrapSourceMirror,
                 )
             } else if selected.contains(basename) {
@@ -3084,12 +3180,8 @@ fn produce_candidate_manifest(
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
-    let complete_candidate_tree_digest = tree_digest_for_basenames(
-        formatter,
-        candidate_src,
-        &names,
-        "complete candidate manifest",
-    )?;
+    let complete_candidate_tree_digest =
+        candidate_artifact_tree_digest(candidate_src, &names, "complete candidate manifest")?;
     let aggregate_digest = candidate_manifest_aggregate(
         producer_seed_digest,
         &generation_id,
@@ -3200,21 +3292,8 @@ fn admit_candidate_manifest(
             manifest.aggregate_digest, aggregate
         ));
     }
-    let mut observed_population = fs::read_dir(candidate_src)
-        .map_err(|e| {
-            format!(
-                "read candidate manifest population {}: {e}",
-                candidate_src.display()
-            )
-        })?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let path = entry.path();
-            (path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
-                .then(|| entry.file_name().to_string_lossy().into_owned())
-        })
-        .collect::<Vec<_>>();
-    observed_population.sort();
+    let observed_population =
+        observe_complete_candidate_artifact_population(candidate_src, "manifest-admission")?;
     let recorded_population = manifest
         .surfaces
         .iter()
@@ -3225,13 +3304,8 @@ fn admit_candidate_manifest(
             "CandidateManifestPopulationMismatch: recorded {recorded_population:?} observed {observed_population:?}"
         ));
     }
-    let formatter = ResolvedFormatter::admit()?;
-    let observed_tree_digest = tree_digest_for_basenames(
-        &formatter,
-        candidate_src,
-        &recorded_population,
-        "candidate manifest",
-    )?;
+    let observed_tree_digest =
+        candidate_artifact_tree_digest(candidate_src, &recorded_population, "candidate manifest")?;
     if observed_tree_digest != manifest.candidate_tree_digest {
         return Err(format!(
             "CandidateManifestTreeDigestMismatch: recorded {} observed {}",
@@ -5252,14 +5326,12 @@ mod regen_convergence_host_instrument_tests {
             })
             .collect::<Vec<_>>();
         surfaces.sort_by(|left, right| left.projected_path.cmp(&right.projected_path));
-        let formatter = ResolvedFormatter::admit().unwrap();
         let population = surfaces
             .iter()
             .map(|surface| surface.projected_path.clone())
             .collect::<Vec<_>>();
         let candidate_tree_digest =
-            tree_digest_for_basenames(&formatter, candidate, &population, "fixture candidate")
-                .unwrap();
+            candidate_artifact_tree_digest(candidate, &population, "fixture candidate").unwrap();
         let aggregate_digest = candidate_manifest_aggregate(
             "seed-0",
             "generation-0",
@@ -5294,6 +5366,33 @@ mod regen_convergence_host_instrument_tests {
             .collect()
     }
 
+    #[test]
+    fn complete_candidate_population_refuses_an_unreadable_entry_and_sorts_successes() {
+        let candidate = PathBuf::from("fixture-candidate");
+        let refused = observe_complete_candidate_artifact_population_from_entries(
+            &candidate,
+            "fixture-observation",
+            vec![
+                Ok(candidate.join("a.rs")),
+                Err("injected read_dir entry failure".to_string()),
+                Ok(candidate.join("b.rs")),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused,
+            "CandidateManifestPopulationUnreadable: candidate_path=fixture-candidate phase=fixture-observation error=injected read_dir entry failure"
+        );
+
+        let observed = observe_complete_candidate_artifact_population_from_entries(
+            &candidate,
+            "fixture-observation",
+            vec![Ok(candidate.join("b.rs")), Ok(candidate.join("a.rs"))],
+        )
+        .unwrap();
+        assert_eq!(observed, vec!["a.rs".to_string(), "b.rs".to_string()]);
+    }
+
     /// HOST-PATH INSTRUMENT: this calls the same journal/install/build/admission orchestration as
     /// production. Only the external seed build and executable digest are hermetic callbacks.
     #[test]
@@ -5305,21 +5404,27 @@ mod regen_convergence_host_instrument_tests {
         // surfaces. Their role is bound by the manifest, and changing their bytes after
         // production refuses before any install journal exists.
         let (_, _, bootstrap_candidate, _) = fixture_workspace();
-        let bootstrap_rows = [("fixture_host.rs", "fixture_host", "// host source\n")];
-        let (mut bootstrap_manifest, _) = fixture_manifest(&bootstrap_candidate, &bootstrap_rows);
-        bootstrap_manifest.surfaces[0].role =
-            RegenCandidateManifestSurfaceRole::BootstrapSourceMirror;
-        bootstrap_manifest.aggregate_digest = candidate_manifest_aggregate(
-            &bootstrap_manifest.producer_seed_digest,
-            &bootstrap_manifest.generation_id,
-            &bootstrap_manifest.candidate_tree_id,
-            &bootstrap_manifest.candidate_tree_digest,
-            &bootstrap_manifest.surfaces,
+        fs::create_dir_all(bootstrap_candidate.join("cli_run")).unwrap();
+        fs::write(
+            bootstrap_candidate.join("cli_run/fixture_support.txt"),
+            "original support bytes\n",
         )
         .unwrap();
+        let bootstrap_manifest = produce_candidate_manifest(
+            &bootstrap_candidate,
+            &[],
+            &HashMap::new(),
+            "seed-0",
+            "tree-bootstrap",
+        )
+        .unwrap();
+        assert!(matches!(
+            bootstrap_manifest.surfaces[0].role,
+            RegenCandidateManifestSurfaceRole::BootstrapSourceMirror
+        ));
         fs::write(
-            bootstrap_candidate.join("fixture_host.rs"),
-            "// tampered host\n",
+            bootstrap_candidate.join("cli_run/fixture_support.txt"),
+            "tampered support bytes\n",
         )
         .unwrap();
         assert!(admit_candidate_manifest(
@@ -5340,7 +5445,7 @@ mod regen_convergence_host_instrument_tests {
             "// generated\n",
         )];
         let (foreign_manifest, _) = fixture_manifest(&foreign_candidate, &foreign_rows);
-        fs::write(foreign_candidate.join("foreign.rs"), "// foreign\n").unwrap();
+        fs::write(foreign_candidate.join("foreign.bin"), b"foreign bytes\n").unwrap();
         assert!(
             admit_candidate_manifest(&model, &foreign_candidate, &foreign_manifest, "seed-0")
                 .unwrap_err()
@@ -5577,7 +5682,7 @@ mod regen_convergence_host_instrument_tests {
         let journal_root = regen_convergence_journal_path(&workspace);
         let backup = fs::read_dir(&journal_root)
             .unwrap()
-            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.expect("fixture journal directory entry must remain readable"))
             .map(|entry| entry.path())
             .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bak"))
             .unwrap();
