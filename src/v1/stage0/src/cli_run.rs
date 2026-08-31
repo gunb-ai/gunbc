@@ -7755,6 +7755,23 @@ fn bare_reference_pull_paths_for_source(
     });
     let self_declared = module_self_declared_names(&sf.content);
     let explicit_imports = explicit_import_member_names(&sf.content);
+    // SUBSTRATE VOCABULARY IS NOT A MODULE MEMBER. The 8 kernel type names
+    // (`std_types::kernel_type_set` -- String/Int/Bool/Float/Secret/Json/Unit/Bytes) and the
+    // container carrier spellings (`std_types::container_type_arity`, itself derived from the
+    // `std.algebra` carrier roster) are resolved by the type env as primitives: a `-> Bool`
+    // annotation binds to `bool_type()` and pulls no module. Asking the global bare census
+    // about them is a category error, and it is the one that produced every AMBIGUOUS state
+    // in this corpus -- `Bool` is declared identically by `std.types` and `v2.std.logic`, and
+    // `List` by `std.types` and `v2.std.collection`, so the census reports a fork over a name
+    // whose meaning was never the census's to decide.
+    //
+    // This does not under-pull. A module that uses a kernel type's CONSTRUCTORS references
+    // those names (`True`, `False`) directly, and they resolve on their own; what is skipped
+    // here is only the type spelling, which needs no declaring module.
+    let substrate_vocabulary = |name: &str| -> bool {
+        crate::std_types::kernel_type_set().contains_key(name)
+            || crate::std_types::container_type_arity().contains_key(name)
+    };
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
@@ -7769,6 +7786,9 @@ fn bare_reference_pull_paths_for_source(
         // module, so there is nothing for the census to add -- and asking it anyway is
         // what would report AMBIGUOUS for a name the author disambiguated by hand.
         if !service_head && explicit_imports.contains(&name) {
+            continue;
+        }
+        if !service_head && substrate_vocabulary(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
