@@ -80,6 +80,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergeRequest,
   FleetConvergePlanArtifact,
   FullHostConverge,
+  LaunchEnvironmentConverge,
   FabricExecutionCellsConverge,
   FabricAllocationStoreConverge,
   FleetConvergeScope,
@@ -87,6 +88,9 @@ import gunbc.fleet_converge_plan {
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
   fleet_converge_scope_of_wire,
+  FleetConvergeScope,
+  LaunchEnvironment,
+  fleet_converge_plan_artifact_of_request,
   ScopeDecoded,
   ScopeUndecodable,
   timer_retirement_observed_legacy_srv1,
@@ -234,6 +238,19 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
         observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
       },
     }
+    // THE LAUNCH-ENVIRONMENT ARM DOES NOT CALL THE SLOT OBSERVER, and that is the construction
+    // rather than a saved probe: the arm it builds has no slot field to put the answer in, so
+    // observing runner slots here would produce a value with nowhere to go. The refusal an
+    // unreadable slot roster raises for a full-host plan is therefore not suppressed for this
+    // scope -- it is not reachable, because this scope never took on that obligation.
+    ScopeDecoded { scope: LaunchEnvironment } => FleetConvergeRequestObserved {
+      request: LaunchEnvironmentConverge {
+        host: host,
+        observed_timers: observe_timer_members_wet(),
+        observed_caps: observe_cap_members_wet(),
+        observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+      },
+    }
     ScopeDecoded { scope: FullHost } =>
       match observe_runner_slot_members_wet() {
         RunnerSlotsUnobserved { reason: why } => FleetConvergeRequestUnobserved { reason: why as String }
@@ -245,6 +262,7 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
             observed_spark: [],
             observed_slots: observed_slots,
             observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
+            observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
           },
         }
       }
@@ -448,7 +466,25 @@ func observe_allocation_store_under_namespace_wet(
 // 2 and 8). The run binding is what the plan receipt carries; the expected host is the workflow's
 // `host` input, delivered through FLEET_CONVERGE_EXPECTED_HOST, and a plan whose kernel hostname is
 // not that input refuses -- the runner label aims the dispatch, the hostname is the evidence.
+// THE TWO PLAN MODES ARE ONE ENTRY POINT UNDER TWO SCOPES. The run binding, the expected-revision
+// admission, the expected-host admission, the generation lease and the receipt mint are obligations
+// of PLANNING, not of any one resource family, so a second copy of them beside this one would be a
+// parallel authority for whether a plan run is admissible at all.
 func fleet_converge_plan_wet() -> ProcessExit
+  uses net: Network
+{
+  fleet_converge_scoped_plan_wet(scope: FullHost)
+}
+
+// RLM-2's launch-environment plan. Same admission spine, narrower scope: see the scope annotation
+// in gunbc.fleet_converge_plan for why runner-slot and activation are omitted rather than excused.
+func fleet_converge_launch_environment_plan_wet() -> ProcessExit
+  uses net: Network
+{
+  fleet_converge_scoped_plan_wet(scope: LaunchEnvironment)
+}
+
+func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
   uses net: Network
 {
   match observe_actions_run_binding() {
@@ -467,14 +503,18 @@ func fleet_converge_plan_wet() -> ProcessExit
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
         ActionsVariablePresent { value: expected_host } =>
-          fleet_converge_plan_bound_wet(run: run, expected_host: expected_host)
+          fleet_converge_plan_scoped_bound_wet(run: run, expected_host: expected_host, scope: scope)
       }
           }
       }
   }
 }
 
-func fleet_converge_plan_bound_wet(run: ActionsRunBinding, expected_host: String) -> ProcessExit
+func fleet_converge_plan_scoped_bound_wet(
+  run: ActionsRunBinding,
+  expected_host: String,
+  scope: FleetConvergeScope,
+) -> ProcessExit
   uses net: Network
 {
   match observe_host_short_wet() {
@@ -488,23 +528,17 @@ func fleet_converge_plan_bound_wet(run: ActionsRunBinding, expected_host: String
   match observe_generation_store_wet() {
     GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
     GenerationAdmitted { generation: prior_generation } => {
-  let observed_timers = observe_timer_members_wet()
-  let observed_caps = observe_cap_members_wet()
-  match observe_runner_slot_members_wet() {
-    RunnerSlotsUnobserved { reason: why } =>
-      exit_failure(
-        reason: concat("fleet_converge_plan: RunnerSlotsUnobserved — ", why as String),
-      )
-    RunnerSlotsObserved { members: observed_slots } =>
-  match fleet_converge_plan_artifact(
-    host: host,
+  // ONE OBSERVER, SELECTED BY THE SCOPE. This branch used to inline the timer, cap and slot probes
+  // beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
+  // that a scope could only widen. Routing plan through the same observer means the population the
+  // plan hashes and the population apply re-observes come from one authority.
+  match observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: host) {
+    FleetConvergeRequestUnobserved { reason: why } =>
+      exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
+    FleetConvergeRequestObserved { request: request } =>
+  match fleet_converge_plan_artifact_of_request(
+    request: request,
     prior_generation: prior_generation,
-    observed_timers: observed_timers,
-    observed_caps: observed_caps,
-    observed_spark: [],
-    observed_slots: observed_slots,
-    observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
-    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
   ) {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: observed baseline is not Fnv1a64Structural — plan refused")

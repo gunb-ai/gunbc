@@ -358,29 +358,14 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
   }
 }
 
-fn spark_serving_fleet_converge_apply_shell(
-  timer_plan: MembershipPlan<TimerRetirementMember, TimerRetirementMemberAt>,
-  host: NonEmptyStr,
-  observed_slots: List<RunnerSlotMember>,
-  observed_caps: List<CapMember>,
-  cap_plan: MembershipPlan<CapMember, CapMemberAt>,
-  observed_fabric_cells: FabricCellObservationDecision,
-) -> String {
+// THE SPARK PLAN'S SCRIPT AND TERMINAL COME FROM THE SAME REQUEST THE SUBJECT DOES. This wrapper
+// used to rebuild both from eight loose families, which is the shape gunbc.fleet_converge_plan
+// removed when the terminal became a fold over the request: two reconstructions of one observation
+// could disagree, and nothing joined them.
+fn spark_serving_fleet_converge_apply_shell(request: FleetConvergeRequest) -> String {
   fleet_converge_apply_shell(
-    timer_plan: timer_plan,
-    host: host,
-    observed_slots: observed_slots,
-    observed_fabric_cells: observed_fabric_cells,
-    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-    terminal: fleet_converge_apply_terminal(
-      host: host,
-      observed_slots: observed_slots,
-      observed_caps: observed_caps,
-      timer_plan: timer_plan,
-      cap_plan: cap_plan,
-      observed_fabric_cells: observed_fabric_cells,
-      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-    ),
+    request: request,
+    terminal: fleet_converge_apply_terminal(request: request),
   )
 }
 
@@ -538,6 +523,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       observed_spark: observed_spark,
       observed_slots: observed_slots,
       observed_fabric_cells: observed_fabric_cells,
+      observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
     }
     let subject = fleet_converge_plan_subject(request: request)
     let timer_plan = timer_retirement_plan(observed: observed_timers)
@@ -548,14 +534,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
     let baseline = observed_baseline_text(request: request)
     let planned_generation = prior_generation + 1
     let spark_wire = fleet_converge_spark_serving_typed_actions_wire(rows: scheduled_rows_list(scheduled: spark_rows))
-    let apply_shell = spark_serving_fleet_converge_apply_shell(
-      timer_plan: timer_plan,
-      host: host,
-      observed_slots: observed_slots,
-      observed_caps: observed_caps,
-      cap_plan: cap_plan,
-      observed_fabric_cells: observed_fabric_cells,
-    )
+    let apply_shell = spark_serving_fleet_converge_apply_shell(request: request)
     let body = join(
       concat(
         [

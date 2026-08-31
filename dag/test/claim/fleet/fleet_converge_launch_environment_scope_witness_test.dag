@@ -1,0 +1,319 @@
+module test.claim.fleet_converge_launch_environment_scope_witness
+
+import std.types { String, Bool, NonEmptyStr, List }
+import product.placement_supply { HostIdentity }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.fleet_converge_plan {
+  FleetConvergeRequest,
+  FullHostConverge,
+  LaunchEnvironmentConverge,
+  FleetConvergeScope,
+  FullHost,
+  LaunchEnvironment,
+  FabricExecutionCellsOnly,
+  FabricAllocationStoreOnly,
+  FleetConvergeApplyTerminal,
+  FullyApplied,
+  PartiallyApplied,
+  fleet_converge_apply_terminal,
+  fleet_converge_apply_terminal_wire,
+  fleet_converge_apply_shell,
+  fleet_converge_scope_wire,
+  fleet_converge_scope_of_wire,
+  ScopeDecoded,
+  ScopeUndecodable,
+  fleet_converge_request_scope,
+  fleet_converge_apply_artifact_admits,
+  ApplyAdmitted,
+  ApplyScopeMismatch,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyMemberSetMismatch,
+  ApplyAllocationStorePrestateMismatch,
+  observed_baseline_text,
+  fleet_converge_plan_subject,
+  fleet_converge_launch_environment_plan_artifact,
+  fleet_converge_plan_artifact,
+}
+import std.content_hash { serialize_content_hash }
+import gunbc.fabric_cell_observation_admission { FabricCellObservationDecision }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: RLM-2's launch environment is a NARROWER convergence obligation than the host, and
+// the evidence below is that narrowing observed as a DIFFERENCE rather than asserted as a property.
+//
+// THE INCIDENT. The RLM-2b plan run over srv1 landed
+// `partially_applied|33|slot=31 cap=0 timer=0 fabric-cell=0 activation=2`. Thirty-one of those are
+// REFUSED-REMOVAL on runner slots whose ownership no provenance signal establishes, and two are the
+// runner-service activation stall every production caller supplies. Both belong to CI runner
+// capacity and to its own plan; neither says anything about whether the launch environment is
+// converged. The RLM deployment fold accepts only FullyApplied, so a scope that ANSWERS FOR MORE
+// THAN THE QUESTION could not report the answer honestly.
+//
+// WHAT WOULD BE THE WRONG FIX, AND WHY THESE CONTROLS ARE SHAPED TO CATCH IT. Relaxing the
+// FullyApplied requirement, or selecting the slot family and excusing its refusals, or passing an
+// empty slot population, would each produce a green RLM receipt with the axis set unchanged. So the
+// controls do not assert "the terminal is FullyApplied" alone -- every one of them is a PAIR over
+// the SAME host observation, full-host beside launch-environment, and each pair goes red if the
+// launch-environment scope quietly regains an axis or if the full-host scope quietly loses one.
+//
+// THE STRUCTURAL HALF IS NOT ASSERTED HERE, AND THAT IS A RUNG STATEMENT RATHER THAN AN OMISSION.
+// `LaunchEnvironmentConverge` has no runner-slot field and no activation field, so a launch-
+// environment request carrying one has no constructor: the invalid state is unwritable in the
+// accepted corpus (DESIGN section 4b rung 4), and the executing evidence for that is the exhaustive
+// matches over `FleetConvergeRequest` in gunbc.fleet_converge_plan -- adding an axis makes the
+// terminal, the apply shell, the baseline text and the axis lines fail to compile.
+// A fixture-authored RED is expressible -- `compile_dag_diagnostic_census` compiles a synthetic
+// source through the real acceptance path -- and it is NOT enrolled here for a reason that is
+// itself a finding rather than a preference: a witness carrier calling that builtin declares
+// `ReadsLiveTree` truthfully, and the required floor DECLINES every ReadsLiveTree identity before
+// the fold (gunbc.guarantee_probe_corpus, measured 2026-08-22). Enrolling the probe would add a
+// never-executed identity that reads as coverage, which is worse than absent. The trigger is that
+// arm's deletion, which v2.workflow.required_floor already stages.
+data witness_unmodeled_host: NonEmptyStr = "srv9" as NonEmptyStr
+
+// AN UNMODELED HOST IS THE MINIMAL DISCRIMINATING OBSERVATION. Its runner-slot family refuses
+// (`REFUSED-UNMODELED-HOST`, one refusal) while its caps, its timer retirement and its fabric cells
+// have nothing refused -- so every difference the pairs below report is attributable to the slot
+// and activation axes and to nothing else.
+fn witness_full_host_request() -> FleetConvergeRequest {
+  FullHostConverge {
+    host: witness_unmodeled_host,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  }
+}
+
+fn witness_launch_environment_request() -> FleetConvergeRequest {
+  LaunchEnvironmentConverge {
+    host: witness_unmodeled_host,
+    observed_timers: [],
+    observed_caps: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
+  }
+}
+
+fn terminal_is_fully_applied(t: FleetConvergeApplyTerminal) -> Bool {
+  match t {
+    FullyApplied => true
+    PartiallyApplied { refused_axis_count: _, detail: _ } => false
+  }
+}
+
+fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
+  match s {
+    LaunchEnvironment => true
+    FullHost => false
+    FabricExecutionCellsOnly => false
+    FabricAllocationStoreOnly => false
+  }
+}
+
+// THE PAIR. One observation, two scopes, opposite terminals -- and the full-host half is the
+// control that makes the launch-environment half mean anything. If this file asserted only that a
+// launch-environment plan is FullyApplied, it would stay green if the refusal disappeared for any
+// reason at all, including the slot family silently ceasing to refuse.
+test fn the_launch_environment_scope_is_fully_applied_where_the_host_scope_is_not() -> Bool {
+  terminal_is_fully_applied(t: fleet_converge_apply_terminal(request: witness_launch_environment_request()))
+    && !terminal_is_fully_applied(t: fleet_converge_apply_terminal(request: witness_full_host_request()))
+}
+
+// THE WIRE IS WHAT RLM-2's DEPLOYMENT FOLD READS. It requires the exact token `fully_applied` and
+// cannot re-derive a refusal count, so the terminal being FullyApplied and the wire spelling it are
+// two facts and this asserts the second.
+test fn the_launch_environment_terminal_wire_is_the_token_the_rlm_join_requires() -> Bool {
+  fleet_converge_apply_terminal_wire(
+    terminal: fleet_converge_apply_terminal(request: witness_launch_environment_request()),
+  ) == "fully_applied"
+}
+
+// THE HOST SCOPE'S DETAIL STILL NAMES THE SLOT AXIS. Without this, the pair above would also be
+// satisfied by a full-host plan that refused for some unrelated reason.
+test fn the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis() -> Bool {
+  match fleet_converge_apply_terminal(request: witness_full_host_request()) {
+    FullyApplied => false
+    PartiallyApplied { refused_axis_count: _, detail: d } =>
+      string_contains(s: d, pattern: "slot=1")
+        && string_contains(s: d, pattern: "activation=")
+  }
+}
+
+// AND THE LAUNCH-ENVIRONMENT DETAIL HAS NO POSITION FOR THEM. A terminal that reported `slot=0` for
+// this scope would be the empty-observation narrow in its reporting form: zero reads as "nothing was
+// refused on this axis", which is a claim about the host, where the truth is that the axis was never
+// this scope's obligation. Exercised through a refusing fabric observation so the PartiallyApplied
+// arm -- the only arm that carries a detail -- is actually reached.
+test fn the_launch_environment_detail_has_no_slot_or_activation_position() -> Bool {
+  match fleet_converge_apply_terminal(
+    request: LaunchEnvironmentConverge {
+      host: witness_unmodeled_host,
+      observed_timers: [],
+      observed_caps: [],
+      observed_fabric_cells: refusing_fabric_observation(),
+    },
+  ) {
+    FullyApplied => false
+    PartiallyApplied { refused_axis_count: _, detail: d } =>
+      string_contains(s: d, pattern: "cap=")
+        && string_contains(s: d, pattern: "timer=")
+        && string_contains(s: d, pattern: "fabric-cell=")
+        && !string_contains(s: d, pattern: "slot=")
+        && !string_contains(s: d, pattern: "activation=")
+  }
+}
+
+// A HOST WHOSE FABRIC CELLS ARE EXPECTED BUT UNREAD REFUSES ITS FABRIC AXIS, which is what puts the
+// launch-environment terminal into its PartiallyApplied arm for the detail assertion above.
+fn refusing_fabric_observation() -> FabricCellObservationDecision {
+  fabric_cell_observation_unobserved(host: operator_host_srv3)
+}
+
+// THE EXECUTED SCRIPT, NOT ONLY THE REPORTED COUNT. A terminal that omitted the axes while the
+// apply script still emitted slot installs would be the worse failure of the two: it would report a
+// converged launch environment while actuating CI runner capacity nobody planned.
+// THE ASSERTION IS OVER THE SECTION MARKERS AND THE REFUSAL THE SLOT FAMILY EMITS, NOT OVER THE
+// WORD. Its first cut matched the bare spelling `runner-slot` and went RED on this script's own
+// preamble note, which names the omitted axes so an operator reading the script knows they were
+// never selected. That red was correct about the string and wrong about the subject: a witness that
+// cannot tell an emitted SECTION from a sentence describing its absence would force the annotation
+// out to stay green, which is the check dictating the prose rather than measuring the behaviour.
+test fn the_launch_environment_apply_script_emits_no_slot_or_activation_work() -> Bool {
+  let le = fleet_converge_apply_shell(
+    request: witness_launch_environment_request(),
+    terminal: fleet_converge_apply_terminal(request: witness_launch_environment_request()),
+  )
+  let fh = fleet_converge_apply_shell(
+    request: witness_full_host_request(),
+    terminal: fleet_converge_apply_terminal(request: witness_full_host_request()),
+  )
+  !string_contains(s: le, pattern: "# runner-slot membership")
+    && !string_contains(s: le, pattern: "# runner-service activation (gunbc.runner_service_activation)")
+    && !string_contains(s: le, pattern: "REFUSED-UNMODELED-HOST")
+    && string_contains(s: fh, pattern: "# runner-slot membership")
+    && string_contains(s: fh, pattern: "# runner-service activation (gunbc.runner_service_activation)")
+    && string_contains(s: fh, pattern: "REFUSED-UNMODELED-HOST")
+}
+
+// THE REVIEWED PLAN BODY CARRIES THE SAME AXIS SET THE SCRIPT DOES, so a reviewer approving a
+// launch-environment plan is not reading counters for families it never observed.
+test fn the_launch_environment_plan_body_carries_only_its_own_axis_counters() -> Bool {
+  match fleet_converge_launch_environment_plan_artifact(
+    host: witness_unmodeled_host,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
+  ) {
+    Absent => false
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "# scope=scope:launch-environment")
+        && string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# timer-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
+        && !string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
+        && !string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: FullyApplied")
+  }
+}
+
+// THE FULL-HOST BODY IS UNCHANGED IN THE FACT THAT MATTERS: it still carries both counters. This is
+// the control that separates "the launch-environment scope omits these axes" from "these axes were
+// deleted from the module".
+test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters() -> Bool {
+  match fleet_converge_plan_artifact(
+    host: witness_unmodeled_host,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  ) {
+    Absent => false
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "# scope=scope:full-host")
+        && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: PartiallyApplied")
+  }
+}
+
+// SCOPE IS IN THE SUBJECT, so the two plans are different subjects rather than two readings of one.
+// A launch-environment plan artifact admitted against a full-host re-observation would actuate a
+// family the plan never selected; apply refuses it as a SCOPE crossing and not as ordinary drift,
+// which is the distinction that decides whether an operator replans or investigates.
+test fn a_launch_environment_plan_cannot_be_applied_against_a_full_host_reobservation() -> Bool {
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: witness_unmodeled_host as String,
+    planned_scope_wire: fleet_converge_scope_wire(scope: LaunchEnvironment),
+    planned_fingerprint_text: "irrelevant-the-scope-refuses-first",
+    observed: witness_full_host_request(),
+  ) {
+    ApplyScopeMismatch { planned_wire: p, observed_wire: o } =>
+      p == "scope:launch-environment" && o == "scope:full-host"
+    ApplyAdmitted => false
+    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+  }
+}
+
+// AND THE REVERSE, because a one-directional refusal would leave the crossing open the way that
+// actually actuates: a full-host plan admitted against a launch-environment re-observation is the
+// arm where slot work runs under a scope that never reviewed it.
+test fn a_full_host_plan_cannot_be_applied_against_a_launch_environment_reobservation() -> Bool {
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: witness_unmodeled_host as String,
+    planned_scope_wire: fleet_converge_scope_wire(scope: FullHost),
+    planned_fingerprint_text: "irrelevant-the-scope-refuses-first",
+    observed: witness_launch_environment_request(),
+  ) {
+    ApplyScopeMismatch { planned_wire: p, observed_wire: o } =>
+      p == "scope:full-host" && o == "scope:launch-environment"
+    ApplyAdmitted => false
+    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
+  }
+}
+
+// THE WIRE DECODES BACK TO THE SCOPE IT NAMES. Apply reads the planned scope off a file, so a wire
+// this build could write and could not read would refuse every launch-environment apply -- the
+// version-skew arm the decode's own refusal vocabulary separates from an empty artifact.
+test fn the_launch_environment_wire_round_trips_through_the_decode() -> Bool {
+  match fleet_converge_scope_of_wire(wire: "scope:launch-environment") {
+    ScopeDecoded { scope: s } => scope_is_launch_environment(s: s)
+    ScopeUndecodable { cause: _ } => false
+  }
+    && scope_is_launch_environment(s: fleet_converge_request_scope(request: witness_launch_environment_request()))
+}
+
+// THE OMISSION REACHES SUBJECT IDENTITY, NOT ONLY THE REPORT. The baseline the fingerprint hashes
+// carries the scope row and the members the scope observed, so two scopes over one host fingerprint
+// differently and neither can be admitted against the other's artifact.
+test fn the_two_scopes_fingerprint_the_same_host_differently() -> Bool {
+  let le = fleet_converge_plan_subject(request: witness_launch_environment_request())
+  let fh = fleet_converge_plan_subject(request: witness_full_host_request())
+  (serialize_content_hash(hash: le.member_set_fingerprint) as String)
+    != (serialize_content_hash(hash: fh.member_set_fingerprint) as String)
+    && string_contains(
+      s: observed_baseline_text(request: witness_launch_environment_request()),
+      pattern: "scope:launch-environment",
+    )
+    && !string_contains(
+      s: observed_baseline_text(request: witness_launch_environment_request()),
+      pattern: "scope:full-host",
+    )
+}

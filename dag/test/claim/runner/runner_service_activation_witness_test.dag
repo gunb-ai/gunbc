@@ -51,6 +51,8 @@ import gunbc.runner_service_activation {
 import gunbc.fleet_converge_plan {
   fleet_converge_apply_shell,
   fleet_converge_apply_terminal,
+  FleetConvergeRequest,
+  FullHostConverge,
   fleet_converge_apply_terminal_line,
   timer_retirement_plan,
   caps_reconcile,
@@ -150,27 +152,27 @@ fn witness_plans(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness)
   )
 }
 
-fn witness_apply_text(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> String {
-  fleet_converge_apply_shell(
-    timer_plan: timer_retirement_plan(observed: []),
+fn witness_request(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> FleetConvergeRequest {
+  FullHostConverge {
     host: deploy.host_label,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
     observed_slots: [],
     observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
     observed_activation_readiness: readiness,
+  }
+}
+
+fn witness_apply_text(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> String {
+  fleet_converge_apply_shell(
+    request: witness_request(deploy: deploy, readiness: readiness),
     terminal: witness_terminal(deploy: deploy, readiness: readiness),
   )
 }
 
 fn witness_terminal(deploy: RunnerHostDeploy, readiness: RunnerActivationReadiness) -> FleetConvergeApplyTerminal {
-  fleet_converge_apply_terminal(
-    host: deploy.host_label,
-    observed_slots: [],
-    observed_caps: [],
-    timer_plan: timer_retirement_plan(observed: []),
-    cap_plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: []),
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: deploy.host_label as HostIdentity),
-    observed_activation_readiness: readiness,
-  )
+  fleet_converge_apply_terminal(request: witness_request(deploy: deploy, readiness: readiness))
 }
 
 fn witness_systemctl_word() -> String {
