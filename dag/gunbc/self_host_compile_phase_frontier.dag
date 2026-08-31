@@ -656,13 +656,9 @@ fn receipt_added_identities(previous: CompilePhaseFrontierReceipt, current: Comp
 
 fn diagnostic_semantic_key(identity: String) -> String {
   let fields = split(s: identity, delimiter: "\t")
-  if count(fields) < 3 { identity } else {
-    let location = split(s: fields[0], delimiter: ":")
-    let file = if count(location) < 3 { fields[0] } else {
-      location.take(n: count(location) - 2) |> join(separator: ":")
-    }
-    join([file, fields[1], fields[2]], "\t")
-  }
+  let location = split(s: fields[0], delimiter: ":")
+  let file = location.take(n: count(location) - 2) |> join(separator: ":")
+  join([file, fields[1], fields[2]], "\t")
 }
 
 fn receipt_removed_identities(previous: CompilePhaseFrontierReceipt, current: CompilePhaseFrontierReceipt) -> List<String> {
