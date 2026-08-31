@@ -1,0 +1,59 @@
+module test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness_test
+
+import gunbc.fabric_required_build_cell {
+  AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld,
+  AllocationStoreRestorationRefused,
+  AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
+  fci1_allocation_slot_available, fci1_exact_allocation_restoration,
+}
+
+test fn witness_fci1_absent_slot_is_available_but_held_slot_is_not() -> Bool {
+  fci1_allocation_slot_available(prestate: AllocationSlotAbsent { path: "/fixture/store" })
+    && !fci1_allocation_slot_available(prestate: AllocationSlotHeld { path: "/fixture/store", generation: 1 })
+}
+
+test fn witness_fci1_absent_slot_exactly_returns_free_at_generation_two() -> Bool {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotAbsent { path: "/fixture/store" },
+    held_generation: 1,
+    poststate: AllocationSlotFree { path: "/fixture/store", generation: 2 },
+  ) {
+    AllocationSlotAbsentReturnedFree { path: p, held_generation: h, post_generation: f } =>
+      p == "/fixture/store" && h == 1 && f == 2
+    _ => false
+  }
+}
+
+test fn witness_fci1_free_slot_exactly_advances_reserve_then_release() -> Bool {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotFree { path: "/fixture/store", generation: 7 },
+    held_generation: 8,
+    poststate: AllocationSlotFree { path: "/fixture/store", generation: 9 },
+  ) {
+    AllocationSlotFreeReturnedFree { path: p, pre_generation: pre, held_generation: held, post_generation: post } =>
+      p == "/fixture/store" && pre == 7 && held == 8 && post == 9
+    _ => false
+  }
+}
+
+test fn witness_fci1_unexpected_extra_generation_refuses() -> Bool {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotFree { path: "/fixture/store", generation: 7 },
+    held_generation: 8,
+    poststate: AllocationSlotFree { path: "/fixture/store", generation: 10 },
+  ) {
+    AllocationStoreRestorationRefused { path: p } => p == "/fixture/store"
+    _ => false
+  }
+}
+
+test fn witness_fci1_wrong_held_generation_refuses() -> Bool {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotAbsent { path: "/fixture/store" },
+    held_generation: 2,
+    poststate: AllocationSlotFree { path: "/fixture/store", generation: 2 },
+  ) {
+    AllocationStoreRestorationRefused { path: p } => p == "/fixture/store"
+    _ => false
+  }
+}

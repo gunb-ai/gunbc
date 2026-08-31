@@ -55,16 +55,70 @@ type FabricCellPreReservationStanding
   | FabricCellPreReservationAbsent { cell: CellId }
   | FabricCellPreReservationRefused { cell: CellId }
 
-type AllocationStorePrestate
-  = AllocationStoreAbsent { path: NonEmptyStr }
-  | AllocationStoreFree { path: NonEmptyStr, generation: Int }
-  | AllocationStoreHeld { path: NonEmptyStr, generation: Int }
-  | AllocationStoreUnreadable { path: NonEmptyStr }
-  | AllocationStoreUndecodable { path: NonEmptyStr, generation: Int }
+// Directory-substrate standing and slot state are deliberately different coordinates. An empty,
+// converged allocation directory legitimately contains no slot version yet; that is SlotAbsent,
+// not evidence that the directory substrate is absent.
+type AllocationSlotPrestate
+  = AllocationSlotAbsent { path: NonEmptyStr }
+  | AllocationSlotFree { path: NonEmptyStr, generation: Int }
+  | AllocationSlotHeld { path: NonEmptyStr, generation: Int }
+  | AllocationSlotUnreadable { path: NonEmptyStr }
+  | AllocationSlotUndecodable { path: NonEmptyStr, generation: Int }
 
 type AllocationStoreRestoration
-  = AllocationStoreReturnedFree { path: NonEmptyStr, pre_generation: Int, post_generation: Int }
+  = AllocationSlotAbsentReturnedFree { path: NonEmptyStr, held_generation: Int, post_generation: Int }
+  | AllocationSlotFreeReturnedFree { path: NonEmptyStr, pre_generation: Int, held_generation: Int, post_generation: Int }
   | AllocationStoreRestorationRefused { path: NonEmptyStr }
+
+func fci1_allocation_slot_available(prestate: AllocationSlotPrestate) -> Bool {
+  match prestate {
+    AllocationSlotAbsent { path: _ } => true
+    AllocationSlotFree { path: _, generation: _ } => true
+    AllocationSlotHeld { path: _, generation: _ } => false
+    AllocationSlotUnreadable { path: _ } => false
+    AllocationSlotUndecodable { path: _, generation: _ } => false
+  }
+}
+
+// The canonical lifecycle advances exactly twice: reserve commits Held, then release commits Free.
+// An append-only store may not return byte-empty, and a merely monotone comparison would admit an
+// unrelated writer's extra generation.
+func fci1_exact_allocation_restoration(
+  prestate: AllocationSlotPrestate,
+  held_generation: Int,
+  poststate: AllocationSlotPrestate,
+) -> AllocationStoreRestoration {
+  match prestate {
+    AllocationSlotAbsent { path: p } => match poststate {
+      AllocationSlotFree { path: q, generation: post } =>
+        if p == q && held_generation == 1 && post == 2 {
+          AllocationSlotAbsentReturnedFree { path: q, held_generation: held_generation, post_generation: post }
+        } else { AllocationStoreRestorationRefused { path: p } }
+      AllocationSlotAbsent { path: _ } => AllocationStoreRestorationRefused { path: p }
+      AllocationSlotHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+      AllocationSlotUnreadable { path: _ } => AllocationStoreRestorationRefused { path: p }
+      AllocationSlotUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+    }
+    AllocationSlotFree { path: p, generation: pre } => match poststate {
+      AllocationSlotFree { path: q, generation: post } =>
+        if p == q && held_generation == pre + 1 && post == pre + 2 {
+          AllocationSlotFreeReturnedFree {
+            path: q,
+            pre_generation: pre,
+            held_generation: held_generation,
+            post_generation: post,
+          }
+        } else { AllocationStoreRestorationRefused { path: p } }
+      AllocationSlotAbsent { path: _ } => AllocationStoreRestorationRefused { path: p }
+      AllocationSlotHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+      AllocationSlotUnreadable { path: _ } => AllocationStoreRestorationRefused { path: p }
+      AllocationSlotUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: p }
+    }
+    AllocationSlotHeld { path: p, generation: _ } => AllocationStoreRestorationRefused { path: p }
+    AllocationSlotUnreadable { path: p } => AllocationStoreRestorationRefused { path: p }
+    AllocationSlotUndecodable { path: p, generation: _ } => AllocationStoreRestorationRefused { path: p }
+  }
+}
 
 // Mode remains outside the observed guarantee until the same exact-path producer reports it.
 fn fci1_directory_mode_unobserved(path: NonEmptyStr, desired_mode: NonEmptyStr) -> DirectoryModeStanding {

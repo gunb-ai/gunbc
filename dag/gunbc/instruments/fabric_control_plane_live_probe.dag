@@ -59,10 +59,11 @@ import gunbc.fabric_required_build_cell {
   RequiredBuildCellLifetimeSampleDecode, RequiredBuildCellLifetimeSampleDecoded, RequiredBuildCellLifetimeSampleUndecodable,
   FabricCellPreReservationStanding, FabricCellPreReservationClean, FabricCellPreReservationAbsent,
   FabricCellPreReservationRefused,
-  AllocationStorePrestate, AllocationStoreAbsent, AllocationStoreFree, AllocationStoreHeld,
-  AllocationStoreUnreadable, AllocationStoreUndecodable,
-  AllocationStoreRestoration, AllocationStoreReturnedFree,
+  AllocationSlotPrestate, AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld,
+  AllocationSlotUnreadable, AllocationSlotUndecodable,
+  AllocationStoreRestoration, AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   AllocationStoreRestorationRefused,
+  fci1_allocation_slot_available, fci1_exact_allocation_restoration,
   observe_required_build_cell_wet, required_build_cell_lifetime_sample,
   required_build_cell_lifetime_sample_wire, decode_required_build_cell_lifetime_sample,
   required_build_cell_lifetime_verdict, required_build_cell_lifetime_verdict_wire,
@@ -261,6 +262,10 @@ func fci1_assert_host_preconditions() -> ProcessExit {
               exit_failure(reason: "FCI-1 cell root owner/group mismatch")
             } else if !fci1_path_owner_matches(path: attempts, expected: runner_owner) {
               exit_failure(reason: "FCI-1 attempts root owner/group mismatch")
+            } else if !fci1_path_owner_matches(path: "/var/lib/gunbc/fabric" as NonEmptyStr, expected: fci1_root_owner()) {
+              exit_failure(reason: "FCI-1 allocation namespace substrate owner/group mismatch")
+            } else if !fci1_path_owner_matches(path: "/var/lib/gunbc/fabric/allocation" as NonEmptyStr, expected: fci1_root_owner()) {
+              exit_failure(reason: "FCI-1 allocation directory substrate owner/group mismatch")
             } else {
               match mode {
                 DirectoryModeUnobserved { path: p, desired_mode: desired, trigger: trigger } =>
@@ -514,45 +519,45 @@ func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessEx
   }
 }
 
-fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationStorePrestate {
+fn fci1_allocation_prestate(root: NonEmptyStr) -> AllocationSlotPrestate {
   match observe_cas_slot_state(root: root, key: fabric_cell_allocation_key(slot: cp_probe_slot())) {
-    CasObservedUnreadable { cause: _ } => AllocationStoreUnreadable { path: root }
-    CasObservedReadable { readable: CasReadableAbsent } => AllocationStoreAbsent { path: root }
+    CasObservedUnreadable { cause: _ } => AllocationSlotUnreadable { path: root }
+    CasObservedReadable { readable: CasReadableAbsent } => AllocationSlotAbsent { path: root }
     CasObservedReadable { readable: CasReadablePresent { version: version } } =>
       match decode_cell_slot_payload(payload: version.value) {
-        CellSlotDecoded { state: CellFree { released_by: _ } } => AllocationStoreFree { path: root, generation: version.generation }
-        CellSlotDecoded { state: CellHeld { reservation: _ } } => AllocationStoreHeld { path: root, generation: version.generation }
-        CellSlotUndecodable { detail: _ } => AllocationStoreUndecodable { path: root, generation: version.generation }
+        CellSlotDecoded { state: CellFree { released_by: _ } } => AllocationSlotFree { path: root, generation: version.generation }
+        CellSlotDecoded { state: CellHeld { reservation: _ } } => AllocationSlotHeld { path: root, generation: version.generation }
+        CellSlotUndecodable { detail: _ } => AllocationSlotUndecodable { path: root, generation: version.generation }
       }
   }
 }
 
-fn fci1_allocation_prestate_wire(prestate: AllocationStorePrestate) -> NonEmptyStr {
+fn fci1_allocation_prestate_wire(prestate: AllocationSlotPrestate) -> NonEmptyStr {
   match prestate {
-    AllocationStoreAbsent { path: p } => join(["absent\n", p as String], "") as NonEmptyStr
-    AllocationStoreFree { path: p, generation: g } => join(["free\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
-    AllocationStoreHeld { path: p, generation: g } => join(["held\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
-    AllocationStoreUnreadable { path: p } => join(["unreadable\n", p as String], "") as NonEmptyStr
-    AllocationStoreUndecodable { path: p, generation: g } => join(["undecodable\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
+    AllocationSlotAbsent { path: p } => join(["slot-absent\n", p as String], "") as NonEmptyStr
+    AllocationSlotFree { path: p, generation: g } => join(["slot-free\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
+    AllocationSlotHeld { path: p, generation: g } => join(["slot-held\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
+    AllocationSlotUnreadable { path: p } => join(["slot-unreadable\n", p as String], "") as NonEmptyStr
+    AllocationSlotUndecodable { path: p, generation: g } => join(["slot-undecodable\n", p as String, "\n", to_string(g)], "") as NonEmptyStr
   }
 }
 
-fn fci1_decode_allocation_prestate(wire: String) -> AllocationStorePrestate {
+fn fci1_decode_allocation_prestate(wire: String) -> AllocationSlotPrestate {
   let fields = split(s: wire, delimiter: "\n")
   match fields.first() {
-    Absent => AllocationStoreUnreadable { path: "invalid-before-wire" }
+    Absent => AllocationSlotUnreadable { path: "invalid-before-wire" }
     Present { value: tag } => match fields.skip(n: 1).first() {
-      Absent => AllocationStoreUnreadable { path: "invalid-before-wire" }
-      Present { value: path } => if path == "" { AllocationStoreUnreadable { path: "invalid-before-wire" } } else {
-        if tag == "absent" && list_length(items: fields) == 2 { AllocationStoreAbsent { path: path as NonEmptyStr } }
+      Absent => AllocationSlotUnreadable { path: "invalid-before-wire" }
+      Present { value: path } => if path == "" { AllocationSlotUnreadable { path: "invalid-before-wire" } } else {
+        if tag == "slot-absent" && list_length(items: fields) == 2 { AllocationSlotAbsent { path: path as NonEmptyStr } }
         else { match fields.skip(n: 2).first() {
-          Absent => AllocationStoreUnreadable { path: path as NonEmptyStr }
+          Absent => AllocationSlotUnreadable { path: path as NonEmptyStr }
           Present { value: generation_text } => match parse_int(s: generation_text) {
-            Absent => AllocationStoreUnreadable { path: path as NonEmptyStr }
+            Absent => AllocationSlotUnreadable { path: path as NonEmptyStr }
             Present { value: generation } =>
-              if tag == "free" { AllocationStoreFree { path: path as NonEmptyStr, generation: generation } }
-              else if tag == "held" { AllocationStoreHeld { path: path as NonEmptyStr, generation: generation } }
-              else { AllocationStoreUndecodable { path: path as NonEmptyStr, generation: generation } }
+              if tag == "slot-free" { AllocationSlotFree { path: path as NonEmptyStr, generation: generation } }
+              else if tag == "slot-held" { AllocationSlotHeld { path: path as NonEmptyStr, generation: generation } }
+              else { AllocationSlotUndecodable { path: path as NonEmptyStr, generation: generation } }
           }
         } }
       }
@@ -568,42 +573,79 @@ func fci1_live_allocation_prestate(root: NonEmptyStr, path: String) -> ProcessEx
 }
 
 func fci1_assert_allocation_available(root: NonEmptyStr) -> ProcessExit {
-  match fci1_allocation_prestate(root: root) {
-    AllocationStoreAbsent { path: _ } => exit_failure(reason: "FCI-1 allocation store substrate is absent")
-    AllocationStoreFree { path: _, generation: _ } => ExitSuccess
-    AllocationStoreHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation store remains held")
-    AllocationStoreUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation store unreadable")
-    AllocationStoreUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation store undecodable")
-  }
+  let prestate = fci1_allocation_prestate(root: root)
+  if fci1_allocation_slot_available(prestate: prestate) { ExitSuccess } else { match prestate {
+    AllocationSlotAbsent { path: _ } => ExitSuccess
+    AllocationSlotFree { path: _, generation: _ } => ExitSuccess
+    AllocationSlotHeld { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot remains held")
+    AllocationSlotUnreadable { path: _ } => exit_failure(reason: "FCI-1 allocation slot unreadable")
+    AllocationSlotUndecodable { path: _, generation: _ } => exit_failure(reason: "FCI-1 allocation slot undecodable")
+  } }
 }
 
-fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String) -> AllocationStoreRestoration {
+fn fci1_allocation_restoration(root: NonEmptyStr, before_wire: String, held_wire: String) -> AllocationStoreRestoration {
   match decode_fabric_ci_evidence_wire(wire: before_wire) {
     FabricCiEvidenceUndecodable => AllocationStoreRestorationRefused { path: root }
     FabricCiEvidenceDecoded { value: before } => {
       let prestate = fci1_decode_allocation_prestate(wire: before as String)
       let poststate = fci1_allocation_prestate(root: root)
-      match prestate {
-        AllocationStoreAbsent { path: _ } => AllocationStoreRestorationRefused { path: root }
-        AllocationStoreFree { path: p, generation: pre } => match poststate {
-          AllocationStoreFree { path: q, generation: post } => if p == q && post > pre { AllocationStoreReturnedFree { path: q, pre_generation: pre, post_generation: post } } else { AllocationStoreRestorationRefused { path: root } }
-          AllocationStoreAbsent { path: _ } => AllocationStoreRestorationRefused { path: root }
-          AllocationStoreHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
-          AllocationStoreUnreadable { path: _ } => AllocationStoreRestorationRefused { path: root }
-          AllocationStoreUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
-        }
-        AllocationStoreHeld { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
-        AllocationStoreUnreadable { path: _ } => AllocationStoreRestorationRefused { path: root }
-        AllocationStoreUndecodable { path: _, generation: _ } => AllocationStoreRestorationRefused { path: root }
+      match fci1_decode_transport_sample(wire: held_wire) {
+        RequiredBuildCellLifetimeSampleUndecodable => AllocationStoreRestorationRefused { path: root }
+        RequiredBuildCellLifetimeSampleDecoded { sample: held } => fci1_exact_allocation_restoration(
+          prestate: prestate,
+          held_generation: held.generation,
+          poststate: poststate,
+        )
       }
     }
   }
 }
 
-func fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String) -> ProcessExit {
-  match fci1_allocation_restoration(root: root, before_wire: before_wire) {
-    AllocationStoreReturnedFree { path: _, pre_generation: _, post_generation: _ } => ExitSuccess
+func fci1_assert_allocation_restored(root: NonEmptyStr, before_wire: String, held_wire: String) -> ProcessExit {
+  match fci1_allocation_restoration(root: root, before_wire: before_wire, held_wire: held_wire) {
+    AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => ExitSuccess
+    AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => ExitSuccess
     AllocationStoreRestorationRefused { path: _ } => exit_failure(reason: "FCI-1 allocation store restoration refused")
+  }
+}
+
+// Pure controls run before host effects. Their rejecting counterparts are enrolled in the witness
+// corpus; the disposable-store mutation in the live driver exercises the production CAS mechanism.
+func fci1_assert_slot_absent_admitted() -> ProcessExit {
+  if fci1_allocation_slot_available(prestate: AllocationSlotAbsent { path: "/run/fci1-control" }) { ExitSuccess }
+  else { exit_failure(reason: "FCI-1 absent slot was not admitted") }
+}
+
+func fci1_assert_exact_absent_to_free_control() -> ProcessExit {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotAbsent { path: "/run/fci1-control" },
+    held_generation: 1,
+    poststate: AllocationSlotFree { path: "/run/fci1-control", generation: 2 },
+  ) {
+    AllocationSlotAbsentReturnedFree { path: _, held_generation: _, post_generation: _ } => ExitSuccess
+    _ => exit_failure(reason: "FCI-1 exact absent-slot lifecycle refused")
+  }
+}
+
+func fci1_assert_exact_free_to_free_control() -> ProcessExit {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotFree { path: "/run/fci1-control", generation: 7 },
+    held_generation: 8,
+    poststate: AllocationSlotFree { path: "/run/fci1-control", generation: 9 },
+  ) {
+    AllocationSlotFreeReturnedFree { path: _, pre_generation: _, held_generation: _, post_generation: _ } => ExitSuccess
+    _ => exit_failure(reason: "FCI-1 exact free-slot lifecycle refused")
+  }
+}
+
+func fci1_assert_extra_generation_refused_control() -> ProcessExit {
+  match fci1_exact_allocation_restoration(
+    prestate: AllocationSlotFree { path: "/run/fci1-control", generation: 7 },
+    held_generation: 8,
+    poststate: AllocationSlotFree { path: "/run/fci1-control", generation: 10 },
+  ) {
+    AllocationStoreRestorationRefused { path: _ } => ExitSuccess
+    _ => exit_failure(reason: "FCI-1 unexpected extra generation was admitted")
   }
 }
 
