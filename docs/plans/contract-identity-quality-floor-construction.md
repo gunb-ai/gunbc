@@ -197,6 +197,35 @@ disappears as an independently authored fact.
   text. A constructor taking arbitrary consequence text would make malformed contracts writable and
   relocate the invariant into callers.
 
+### The terminal consequence law
+
+```
+EvaluationWithinBudget   -> no budget-refusal consequence
+
+EvaluationBudgetExceeded { contract identity, entry, clock, elapsed, limit }
+  -> a typed exceeded consequence
+  -> code "evaluation_budget_exceeded"
+```
+
+Two constraints follow, and both are prohibitions rather than preferences.
+
+**No freely writable consequence field.** A `consequence_code: NonEmptyStr` on the policy, on the
+contract identity, or on the exceeded arm would make a budget contract with an arbitrary or
+self-contradictory consequence *constructible*. There is no such field.
+
+**The typed breach must determine delivery, not merely own the bytes.** Today's zero-argument
+`evaluation_budget_refusal_code()` is an authority over the bytes, but by itself it does not
+establish that the typed cause determines their delivery — production can still select the code
+independently. Cut B closes that edge: the machine code is projected through the exceeded arm, or
+through a consequence value only that arm can produce. The required property, stated so the
+implementation shape stays free:
+
+> A production `evaluation_budget_exceeded` response exists **because the execution produced the
+> generic exceeded cause** — not because the boundary separately chose the same text.
+
+Whether that is a fold over the verdict, a projection from a typed consequence, or an exhaustive
+boundary mapping is left open; the property is not.
+
 ### One entry, projected from the identity — never duplicated beside it
 
 `EvaluationBudgetPolicy` today stores `entry`, `cpu_limit`, `wall_limit`, and
@@ -240,7 +269,10 @@ cementing Rust into a template — the emitted artifact is one authority-derived
 **(i) Semantic breach RED.** Hold contract identity, consequence, entry and the other clock fixed;
 cross exactly one declared limit at `elapsed = limit + delta`. Required outcome: **exactly one**
 `EvaluationBudgetExceeded` carrying the exact contract identity, entry, clock, elapsed, limit and
-typed consequence. **Cardinality: exactly 1 exceeded, 0 admitted.**
+typed consequence. **Cardinality — "exactly one" identified at the correct grain: one bounded clock crossed, one
+`EvaluationBudgetExceeded` cause, one named machine consequence, one production refusal response;
+0 admitted.** The other clock, the contract identity, entry, epoch and the consequence authority all
+stay unchanged.
 Paired controls, unrelated axes fixed: `elapsed == limit` admits, and `elapsed < limit` admits
 through the same arm — equality already belongs to the admitted side in the existing model.
 **Cardinality: 2 admissions, 0 exceeded.**
@@ -262,15 +294,42 @@ A separate exhaustiveness mutation — adding a new consequence arm and requirin
 generation to refuse until the fold handles it — is worth enrolling, but it is **not** a substitute
 for the value-propagation falsifier and is reported separately.
 
-### The generated projection's full enrollment chain
+### The generated projection's enrollment chain, proved rather than asserted
 
-The generated-artifact authority and emitter are closed dispatches over explicitly enumerated
-artifact variants, so a new committed Rust projection is not one file — it is a chain, and the plan
-names every link: **artifact identity**, **path**, **commit policy**, **generation arm**, **emitted
-file**, **crate enrollment**, **drift adjudication**, and **executing consumer**. A missing link
-anywhere leaves the projection unreachable from the mechanism that is supposed to keep it honest.
+Reachability was the plan's remaining discovery obligation, so it is discharged here with the actual
+symbols, censused at `main@1635a9ee06524711f8b7ff8def4dae9f9715b727`:
 
-The two are reported with separate cardinalities. "Some RED occurs" establishes nothing.
+```
+std.evaluation_budget                       authority over the consequence identity
+  -> an authority-reading emitter fn        (beside expected_v1_interpreter_dispatch_generated_rs)
+  -> a GeneratedArtifact variant            gunbc.generated_artifact, in the coproduct AND the
+                                            committed roster, with an ArtifactLocation, a
+                                            CommitRequired policy and an equality arm
+  -> an artifact_generate arm               gunbc.generated_artifact_emit
+  -> main_wet generation + drift            the same gate that adjudicates every committed artifact
+  -> stage0 crate inclusion                 pub mod in src/v1/stage0/src/lib.rs
+  -> serve_budget_refusal_body reads it     cli_run, the executing consumer
+  -> rebuilt seed binary
+  -> executed refusal response carries it
+```
+
+**Why a half-enrolled artifact cannot exist.** Every link in `gunbc.generated_artifact` and
+`gunbc.generated_artifact_emit` — the roster, `ArtifactLocation`, the commit policy, the equality
+fold, the generation arm and the comparison arm — is an *exhaustive match over the variant set*, so
+adding a variant fails to compile until every arm is answered. Enrollment is closed by construction,
+not by an author remembering the checklist.
+
+**No semantic hitchhiking.** The consequence does **not** go into
+`v1_interpreter_dispatch_generated.rs` merely because that path already exists: that artifact's
+subject is interpreter primitive dispatch, and mixing two authorities into one generated file for
+convenience is the §3 fork wearing a generated file's clothes. Cut B adds a **dedicated** generated
+Rust projection.
+
+**What is and is not forbidden.** The generated Rust may contain the literal, because it is a
+mechanically derived projection of its authority. The forbidden state is the *independently
+maintained* literal in `cli_run`. A generated file that is never compiled, or a compiled module the
+response body never reads, is an unused twin and fails the consumer bar — which is exactly what the
+two-part falsifier below is shaped to catch.
 
 ## 3. Closure honesty
 
@@ -286,6 +345,14 @@ The two are reported with separate cardinalities. "Some RED occurs" establishes 
 | dissolved by landing | this plan file, deleted by the second cut — its consumers are the two cuts, and a retained copy would be a second prose representation of a live authority |
 
 ## 4. Contribution boundary
+
+**No generated budget-consequence bridge belongs in Cut A** merely because one plan describes both
+cuts. Cut A lands and its tree is verified before Cut B mutates anything.
+
+**Census base.** The reachability chain and every cited shape above were censused at
+`main@1635a9ee06524711f8b7ff8def4dae9f9715b727`. The authority and consumer paths are rechecked immediately before the
+contribution boundary is frozen, since main advances continuously.
+
 
 Cut A touches the identity authority, the fleet acceptance module, the epoch's emission into the workflow artifact and its exact-commit observation at `event.head_sha`, and the A witnesses. The observation is part of the boundary, not an implementation detail: without it the epoch is stamped rather than observed. Cut B touches
 `std.evaluation_budget`, its emitted projection, the seed consumer call site, and the B witnesses.
