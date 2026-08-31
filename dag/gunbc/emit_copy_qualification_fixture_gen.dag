@@ -440,7 +440,18 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let ns_text = ns |> fold(init: "", f: (acc, n) =>
     if acc == "" { concat(to_string(n), "i64") } else { concat(acc, concat(", ", concat(to_string(n), "i64"))) }
   )
-  concat("    for n in [", concat(ns_text, concat("] {\n        let mut seen: Vec<(i64, u64, u64)> = std::vec::Vec::new();\n        for _rep in 0..", concat(to_string(runner_repeat_count), concat(" {\n            let input = ", concat(module_path, concat("::ecq_input_", concat(slug, concat("(n);\n            let (r, o, b) = ecq_window(|| ", concat(module_path, concat("::ecq_subject_", concat(slug, concat("(", concat(runner_arg_expr(mutant: mutant), concat("));\n            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n            seen.push((r_scalar, o, b));\n        }\n        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, concat(" n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n        } else {\n            println!(\"case=", concat(slug, " n={} observation=nondeterministic\", n);\n        }\n    }\n")))))))))))))))))))
+  let call_expr = concat(module_path, concat("::ecq_subject_", concat(slug, concat("(", concat(runner_arg_expr(mutant: mutant), ")")))))
+  let input_expr = concat(module_path, concat("::ecq_input_", concat(slug, "(n)")))
+  let l_for = concat("    for n in [", concat(ns_text, "] {\n"))
+  let l_seen = "        let mut seen: Vec<(i64, u64, u64)> = std::vec::Vec::new();\n"
+  let l_rep = concat("        for _rep in 0..", concat(to_string(runner_repeat_count), " {\n"))
+  let l_input = concat("            let input = ", concat(input_expr, ";\n"))
+  let l_window = concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
+  let l_scalar = "            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n"
+  let l_push = "            seen.push((r_scalar, o, b));\n        }\n"
+  let l_ok = concat("        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, " n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n"))
+  let l_bad = concat("        } else {\n            println!(\"case=", concat(slug, " n={} observation=nondeterministic\", n);\n        }\n    }\n"))
+  concat(l_for, concat(l_seen, concat(l_rep, concat(l_input, concat(l_window, concat(l_scalar, concat(l_push, concat(l_ok, l_bad))))))))
 }
 
 // The subject's return is Int-realized; the scalar reader tolerates either the bare or the
