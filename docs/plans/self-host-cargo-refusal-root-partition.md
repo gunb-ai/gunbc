@@ -953,7 +953,9 @@ case the row belongs to that carrier's root, not here).
 tuple. 27 sites.** Small, named for completeness. R5 is worth a second look for its *kind*
 rather than its size: two modules declaring one concept (`OccurrenceId` in both
 `std_occurrence_identity` and `v2_std_node`; `Nat` in both `std.nat` and `v2.std.nat`, the latter
-fork already declared in tree at `nat_max_two_nat_authorities_note`). That is a §3 violation
+fork already declared in tree — the stall row `gunbc.guarantee_rung_drop`
+`two_nat_authorities_stall` carries the rung, ceiling and trigger, since #9794 deleted the
+`nat_max_two_nat_authorities_note` narration this line used to cite). That is a §3 violation
 producing type errors, and no amount of emitter work fixes it.
 
 ### 11.5 Two July roots are DEAD, and one is far larger than its ticket
@@ -2760,3 +2762,59 @@ the file's top-class share rises from 21% to 24% — i.e. fixing the singletons 
 *flatter* by the code-grain metric while making it more concentrated by the mechanism-grain one.
 That is the same confound in miniature: **a code-grain histogram is not a root census**, and a
 lane picked off one should re-partition before it plans.
+
+## 23. The `Rc<i64>` span-stamping arm at `std_checked_arithmetic`: subject reached, defect NOT live (`crisp-owl-751`, 2026-08-31)
+
+The XL-0N-RC lane's question, in the order its brief fixed: prove the victim file is inside the
+measured closure BEFORE interpreting any arm. A predecessor (`loyal-raven-297`) reported the
+class REFUTED off an A/B over `src/v2/compiler/00_compile.dag`, then retracted it — no v2
+compiler module imports `std.checked_arithmetic`, so both arms agreed at zero for want of a
+subject. This section replaces that retraction with a subject-present measurement. All arms on
+current main (`eced9d24c59` merged into the lane branch), locally built `target/release/gunbc` +
+`cssl_assemble`.
+
+**Positive control — the subject IS reachable, by a route the retraction missed.** The import
+chain `v2.std.integer → std.integer → std.induction → std.checked_arithmetic` puts the victim in
+every census closure that reaches `v2.std.integer`. Instrument:
+`gunbc compile --source-root dag --source-root src/v2 --entry src/v2/compiler/03_normalize.dag
+--target rust --dependency-pool-index primary-precedence` emits 80 files including
+`std_checked_arithmetic.rs`, `std_nat.rs` AND `v2_std_nat.rs` — both Nat authorities in one
+closure, which is the collision the keying family needs.
+
+**Instrument discrimination — the revert arm reds at the victim itself.** With
+`decl_file_realizes_natively` forced to `false` in the seed mirror (compiler-side perturbation,
+reverted after the reading), the same three-file probe
+(`--entry dag/std/checked_arithmetic.dag`) flips `std_nat.rs` to
+`pub type Nat = Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>` and cargo refuses with 9
+errors, two inside `std_checked_arithmetic.rs`. So a keying miss is visible at exactly the
+claimed victim, and the green arm's zero is a real zero, not an absent subject.
+
+**The verdict, per key.**
+- *decl_file via `ident_span` on the alias (key B):* HITS. `type Nat =
+  CommutativeSemiring<Magnitude>` resolves its references to `dag/std/nat.dag` — the alias hop
+  does not divert `type_reference_decl_file` to the RHS's declaring module. Green arm emits
+  `pub type Nat = i64` and the victim compiles; forced-miss arm (above) reds. Measured in both
+  directions.
+- *bare-vs-qualified spelling (key A):* NOT REACHABLE AT FIELD GRAIN. A fixture declaring the
+  same field twice — `bare_field: Nat` and `qualified_field: std.nat.Nat` — emits byte-identical
+  code for both, green. Mechanism, from the code rather than asserted:
+  `field_access_field_is_boxed` (v1.compiler.emit_rust) does pass raw `authored_name_at` where
+  its siblings peel via `qualified_last_segment`, but a miss there only matters if
+  `needs_box_wrapping` would box — and `needs_box_wrapping` performs its own
+  `qualified_last_segment` peel and boxes only recursive non-shared carriers, which a numeric
+  alias cannot be. The un-peeled comparison is real and is NOT a live defect: its RED is not
+  authorable at this grain, so a check written against it today would be permanently green
+  (DESIGN §4b — decoration). It becomes authorable only if a recursive carrier ever gains a
+  native-scalar realization; the family's carrier and stated ceiling remain the note above
+  `rust_carrier_realizes_as_machine_scalar` ("keys on a NAME plus a declaring-file check, not on
+  resolved declaration identity"), rung Mitigatable, unchanged by this reading.
+
+**Census cross-check.** The assembled `03_normalize` closure (`cssl_assemble` PASS) refuses with
+88 errors — 65 in `v2_extdeps_languages_dag.rs`, zero mentioning `Rc<i64>` and zero in
+`std_checked_arithmetic.rs`; the emitted victim is byte-identical between its own-entry closure
+and the census closure. Whatever produced the archived "expected `Rc<i64>`, found `i64` at
+`src/std_checked_arithmetic.rs`" observation, it is not reproducible on current main by any of
+these routes; #9813 (kernel-precedence repair, one shared type-env producer) landed between the
+observation and this reading and is the plausible mover. No emitter or resolver edit ships with
+this section: repairing the un-peeled comparison without an authorable RED would be
+specification-without-execution.
