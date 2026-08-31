@@ -511,6 +511,14 @@ fn rustc_diagnostic_row(d: RustcCodedDiagnostic) -> String {
   )
 }
 
+// The inverse of `rustc_diagnostic_row`, and it lives beside it because the field order is ONE
+// fact: a reader that hard-codes its own index is a second authority for that order, and it stays
+// silently wrong -- an out-of-range index yields Absent, which every consumer reads as "this
+// diagnostic carries no code" rather than "this reader cannot parse the row".
+fn rustc_diagnostic_row_code(row: String) -> String? {
+  get(xs: split(s: row, sep: "\t"), index: 1)
+}
+
 fn cargo_diagnostic_scan_refusal_reason(scan: CargoDiagnosticScan) -> String {
   match scan {
     CargoDiagnosticsRead { diagnostics: _, lines_scanned: _, build_succeeded: _, terminal_seen: _ } => ""

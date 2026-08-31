@@ -11,7 +11,8 @@ import extdeps.cargo_diagnostic {
   RustcDiagnosticIdentity,
   RustcCoded,
   RustcUncoded,
-  rustc_diagnostic_row
+  rustc_diagnostic_row,
+  rustc_diagnostic_row_code
 }
 import extdeps.languages.rust.compiler_phases {
   RustcPhase,
@@ -224,8 +225,10 @@ fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
   }
 }
 
+// The row layout is owned by `rustc_diagnostic_row`, which produced these identities; this asks
+// that authority for the code rather than re-deriving a field index here.
 fn census_identity_code(identity: String) -> String? {
-  get(xs: split(s: identity, sep: "\t"), index: 3)
+  rustc_diagnostic_row_code(row: identity)
 }
 
 fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
@@ -999,16 +1002,27 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
   }
 }
 
-fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
+// PASSES is a claim about the phase, not about this row's arithmetic. A zero count means only that
+// no ATTRIBUTED identity landed in the phase, so while the census still holds identities no phase
+// row accounts for, every one of those unattributed identities is a candidate member of this phase
+// and the zero establishes nothing. Rendering PASSES there is the absorbing arm of DESIGN section
+// 5 pointed at the compiler's own self-description: a reader cannot tell "this phase passed" from
+// "the census could not be partitioned". The honest arm names the shortfall instead of hiding it.
+fn render_phase_standing(row: RustcPhaseBoardRow, partition_complete: Bool) -> String {
   match row.standing {
     PhaseNotYetReached => concat(rustc_phase_name(phase: row.phase), " not yet reached")
-    PhaseCount { count: 0, evidence: _ } => concat(rustc_phase_name(phase: row.phase), " PASSES")
+    PhaseCount { count: 0, evidence: _ } =>
+      if partition_complete {
+        concat(rustc_phase_name(phase: row.phase), " PASSES")
+      } else {
+        concat(rustc_phase_name(phase: row.phase), " 0 attributed (census partition incomplete)")
+      }
     PhaseCount { count: n, evidence: _ } => concat(concat(rustc_phase_name(phase: row.phase), " "), concat(to_string(n), " remaining"))
   }
 }
 
 fn render_phase_board(board: RustcPhaseBoard) -> String {
-  board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
+  board.rows |> map(r => render_phase_standing(row: r, partition_complete: board.partition_complete)) |> join(separator: " / ")
 }
 data genesis_5006ddc6_raw_error_diagnostic_identities: List<String> = [
   "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",
