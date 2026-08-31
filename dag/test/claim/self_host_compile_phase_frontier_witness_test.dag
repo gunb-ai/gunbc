@@ -501,6 +501,41 @@ test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
     && census_population_is_duplicate_free(identities: [])
 }
 
+// Board identity is the phase-partitioned SET, not the order cargo or rustfmt emitted it. This is
+// stronger than digest invariance: the rows themselves compare equal, so receipt coherence and any
+// future structural board consumer cannot accidentally recover encounter order as semantics.
+test fn phase_boards_are_invariant_under_population_reordering() -> Bool {
+  let a = census_probe_row(code: "E0308", message: "alpha")
+  let b = census_probe_row(code: "E0599", message: "beta")
+  let parse_forward = phase_board_from_census_identities(
+    parse_observation: RustfmtParseObservation { producer: "fixture", files_observed: 2, refused_files: ["src/b.rs", "src/a.rs"] },
+    raw_identities: []
+  )
+  let parse_reversed = phase_board_from_census_identities(
+    parse_observation: RustfmtParseObservation { producer: "fixture", files_observed: 2, refused_files: ["src/a.rs", "src/b.rs"] },
+    raw_identities: []
+  )
+  let diagnostic_forward = phase_board_from_census_identities(
+    parse_observation: clean_parse_observation(),
+    raw_identities: [b, a]
+  )
+  let diagnostic_reversed = phase_board_from_census_identities(
+    parse_observation: clean_parse_observation(),
+    raw_identities: [a, b]
+  )
+  parse_forward.board.rows == parse_reversed.board.rows
+    && diagnostic_forward.board.rows == diagnostic_reversed.board.rows
+    && diagnostic_forward.unplaced_identities == diagnostic_reversed.unplaced_identities
+}
+
+// Positive control: canonicalization preserves identity content rather than reducing a board to
+// phase cardinalities. Substituting one identity at equal cardinality must still change the board.
+test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool {
+  let a = census_probe_row(code: "E0308", message: "alpha")
+  let b = census_probe_row(code: "E0599", message: "beta")
+  let substituted = census_probe_row(code: "E0308", message: "substituted")
+  census_fold(raw: [a, b]).board != census_fold(raw: [substituted, b]).board
+
 // PINS THE WIRING, NOT THE PREDICATE. census_population_is_duplicate_free already has a direct
 // probe, but nothing drove receipt_population_coherent with a duplicated population, so DELETING
 // the conjunct outright left every witness green -- the wall executed as a predicate and unexecuted

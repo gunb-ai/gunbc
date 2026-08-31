@@ -1099,17 +1099,17 @@ pub fn emit_py_func_def(
         let body_scope =
             crate::v1_compiler_infer::build_params_scope(scope.clone(), params.clone());
         let si = scope.type_env.clone().source_indices.clone();
-        let body_scope =
-            uses.iter()
-                .cloned()
-                .fold(body_scope.clone(), |s: Rc<InferScope>, u: Rc<Node>| {
-                    crate::v1_compiler_infer::extend_scope(
-                        s,
-                        crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
-                        crate::v1_std_core::resource_use_resource(u.clone()),
-                        Rc::new(SubValueRelation::SubValueUnknown),
-                    )
-                });
+        let body_scope = uses
+            .iter()
+            .cloned()
+            .fold(body_scope.clone(), |s: _, u: Rc<Node>| {
+                crate::v1_compiler_infer::extend_scope(
+                    s,
+                    crate::v1_std_core::resource_use_name_at(u.clone(), si.clone()),
+                    crate::v1_std_core::resource_use_resource(u.clone()),
+                    Rc::new(SubValueRelation::SubValueUnknown),
+                )
+            });
         let body_str = crate::v1_compiler_emit::emit_unified_typed_func_body(
             body.clone(),
             RenderTarget::Python,

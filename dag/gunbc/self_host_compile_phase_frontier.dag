@@ -118,6 +118,15 @@ fn deduplicate_identities(identities: List<String>) -> List<String> {
   )
 }
 
+// RustcPhaseBoard is a census at identity grain, not a transcript of cargo's diagnostic stream.
+// Every consumer asks membership, cardinality, or set difference; none gives encounter order a
+// meaning. Give that set one representation here so structural board equality cannot accidentally
+// make cargo/rustfmt emission order semantic. Duplicate refusal remains separate and upstream:
+// canonicalizing a board does not canonicalize either raw population before coherence checks it.
+fn canonical_identity_set(identities: List<String>) -> List<String> {
+  deduplicate_identities(identities: identities) |> sort_by(identity => identity)
+}
+
 // Duplicate handling is a POPULATION fact, and the two populations answer it at different sites.
 // raw_identities is set-deduplicated by the live producer before the fold, and on the persisted
 // path a repeat makes the deduplicated total disagree with the raw count, which receipt coherence
@@ -130,13 +139,13 @@ fn census_population_is_duplicate_free(identities: List<String>) -> Bool {
 }
 
 fn phase_identities(ds: List<RustcCodedDiagnostic>, phase: RustcPhase) -> List<String> {
-  deduplicate_identities(
+  canonical_identity_set(
     identities: ds |> filter(d => diagnostic_is_phase(d: d, phase: phase)) |> map(d => rustc_diagnostic_row(d: d))
   )
 }
 
 fn unplaced_identities(ds: List<RustcCodedDiagnostic>) -> List<String> {
-  deduplicate_identities(
+  canonical_identity_set(
     identities: ds |> filter(d => match diagnostic_phase(d: d) {
       ErrorCodePlaced { phase: _, authority: _ } => false
       ErrorCodeUnplaced { code: _, index: _ } => true
@@ -241,20 +250,21 @@ fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcC
     RustcCoded { code: _ } => false
     RustcUncoded => true
   })
-  let coded_identities = deduplicate_identities(identities: coded_errors |> map(d => rustc_diagnostic_row(d: d)))
-  let codeless_identities = deduplicate_identities(identities: codeless_errors |> map(d => rustc_diagnostic_row(d: d)))
+  let coded_identities = canonical_identity_set(identities: coded_errors |> map(d => rustc_diagnostic_row(d: d)))
+  let codeless_identities = canonical_identity_set(identities: codeless_errors |> map(d => rustc_diagnostic_row(d: d)))
   let unplaced = unplaced_identities(ds: errors)
-  let parse_errors = count(parse_observation.refused_files)
+  let parse_identities = canonical_identity_set(identities: parse_observation.refused_files)
+  let parse_errors = count(parse_identities)
   let furthest = if parse_errors > 0 { Parse } else { first_failing_checked_phase(ds: errors) }
   let furthest_order = rustc_phase_order(phase: furthest)
-  let raw_identities = deduplicate_identities(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
+  let raw_identities = canonical_identity_set(identities: errors |> map(d => rustc_diagnostic_row(d: d)))
   PhaseBoardDerived {
     board: RustcPhaseBoard {
         rows: [
           RustcPhaseBoardRow {
             phase: Parse,
             standing: PhaseCount { count: parse_errors, evidence: Observed },
-            identities: parse_observation.refused_files
+            identities: parse_identities
           },
           phase_row(ds: errors, phase: Expand, reached: furthest_order >= rustc_phase_order(phase: Expand)),
           phase_row(ds: errors, phase: Resolve, reached: furthest_order >= rustc_phase_order(phase: Resolve)),
@@ -306,21 +316,21 @@ fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
 }
 
 fn census_identities_for_phase(identities: List<String>, phase: RustcPhase) -> List<String> {
-  deduplicate_identities(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
+  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
     ErrorCodePlaced { phase: placed, authority: _ } => rustc_phase_order(phase: placed) == rustc_phase_order(phase: phase)
     ErrorCodeUnplaced { code: _, index: _ } => false
   }))
 }
 
 fn census_unplaced_identities(identities: List<String>) -> List<String> {
-  deduplicate_identities(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
+  canonical_identity_set(identities: identities |> filter(identity => match census_identity_phase(identity: identity) {
     ErrorCodePlaced { phase: _, authority: _ } => false
     ErrorCodeUnplaced { code: _, index: _ } => true
   }))
 }
 
 fn census_codeless_identities(identities: List<String>) -> List<String> {
-  deduplicate_identities(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
+  canonical_identity_set(identities: identities |> filter(identity => match census_identity_code(identity: identity) {
     Present { value: code } => code == "uncoded"
     Absent => false
   }))
@@ -337,8 +347,9 @@ fn phase_board_from_census_identities(
   let borrowck_ids = census_identities_for_phase(identities: raw_identities, phase: Borrowck)
   let unplaced = census_unplaced_identities(identities: raw_identities)
   let codeless = census_codeless_identities(identities: raw_identities)
-  let unique_errors = deduplicate_identities(identities: raw_identities)
-  let parse_errors = count(parse_observation.refused_files)
+  let unique_errors = canonical_identity_set(identities: raw_identities)
+  let parse_identities = canonical_identity_set(identities: parse_observation.refused_files)
+  let parse_errors = count(parse_identities)
   let furthest = if parse_errors > 0 { Parse }
     else if count(resolve_ids) > 0 { Resolve }
     else if count(typeck_ids) > 0 { Typeck }
@@ -347,7 +358,7 @@ fn phase_board_from_census_identities(
   PersistedPhaseBoardFold {
     board: RustcPhaseBoard {
       rows: [
-        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: Observed }, identities: parse_observation.refused_files },
+        RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: parse_errors, evidence: Observed }, identities: parse_identities },
         if furthest_order >= rustc_phase_order(phase: Expand) {
           RustcPhaseBoardRow { phase: Expand, standing: PhaseCount { count: 0, evidence: DerivedFromRustcErrorIndex }, identities: [] }
         } else { RustcPhaseBoardRow { phase: Expand, standing: PhaseNotYetReached, identities: [] } },
