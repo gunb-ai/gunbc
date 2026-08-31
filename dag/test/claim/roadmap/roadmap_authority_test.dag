@@ -66,7 +66,6 @@ import gunbc.roadmap_model {
   AcceptanceNodeReopensActiveFrontier,
   AcceptanceNodeWithdrawnFromProgram,
   acceptance_disposition_agreement,
-  acceptance_disposition_agreement_holds,
   AcceptanceDispositionAgreementHolds,
   AcceptanceDispositionRefusedWithdrawnNodeStillDeclared,
   AcceptanceDispositionRefusedReopenedNodeMissing,
@@ -818,10 +817,14 @@ data disposition_agreement_witness_note: String = "THE ARM HAD TO CONTROL A STAT
 fn declared_node_ids() -> List<RoadmapNodeId> { nodes() |> map(n => n.node) }
 
 test fn witness_terminal_disposition_agrees_with_declared_nodes() -> Bool {
-  acceptance_disposition_agreement_holds(
+  match acceptance_disposition_agreement(
     events: live_acceptance_event_history(),
     declared: declared_node_ids(),
-  )
+  ) {
+    AcceptanceDispositionAgreementHolds => true
+    AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: _ } => false
+    AcceptanceDispositionRefusedReopenedNodeMissing { node: _ } => false
+  }
 }
 
 test fn witness_reopening_a_deleted_node_refuses() -> Bool {

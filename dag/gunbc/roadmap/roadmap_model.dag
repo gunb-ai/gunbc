@@ -709,17 +709,6 @@ fn acceptance_disposition_agreement(
   })
 }
 
-fn acceptance_disposition_agreement_holds(
-  events: List<RoadmapAcceptanceEvent>,
-  declared: List<RoadmapNodeId>,
-) -> Bool {
-  match acceptance_disposition_agreement(events: events, declared: declared) {
-    AcceptanceDispositionAgreementHolds => true
-    AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: _ } => false
-    AcceptanceDispositionRefusedReopenedNodeMissing { node: _ } => false
-  }
-}
-
 fn acceptance_history_integrity_verdict(
   history: List<RoadmapAcceptanceEvent>,
   prior_history: List<RoadmapAcceptanceEvent>,
