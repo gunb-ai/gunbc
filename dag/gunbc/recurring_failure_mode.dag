@@ -174,6 +174,18 @@ data surface_shorthand_preempts_resolved_identity: RecurringFailureMode = Recurr
   evidence: [],
 }
 
+data meaning_fork: RecurringFailureMode = RecurringFailureMode {
+  identity: "meaning_fork" as NonEmptyStr,
+  authored: "**meaning fork** (one scoped name carries more than one material semantic referent under hidden state; accuracy of meaning applies to terms in every layer, and for a contract-bearing name, differences in obligations, quality floor, refusal behavior, billing consequence, or remedy establish different referents. The subject is scoped: the key is the naming surface, the visible name, and the declared effective version or epoch — the same spelling in two explicitly distinct scopes or across a declared version transition is legitimate reuse, not a fork. Recognition rule: hold that key constant and vary the hidden state; if the material semantic referent changes without a distinct variant name, the name has forked — for a contract-bearing name, a change in obligations, quality floor, refusal behavior, billing consequence, or remedy is sufficient evidence of that change. This is the one-name/two-meanings dual of nicknaming.)",
+  evidence: [],
+}
+
+data externalized_degradation: RecurringFailureMode = RecurringFailureMode {
+  identity: "externalized_degradation" as NonEmptyStr,
+  authored: "**externalized degradation** (an actor that accepted an obligation or risk, or caused a cost, silently shifts the resulting burden to another principal while preserving the apparent name, price, or contract. Recognition rule: identify the accepted obligation or causal responsibility, trigger the adverse state, and follow who bears the marginal burden; if another principal's burden rises while the responsible actor neither absorbs it through its reserve, refusal, or remedy path nor exposes a separately named, priced, and refusable transfer, the burden was externalized. A disclosed, refusable allocation agreed before contract formation is the transfer arm; an undisclosed or unilateral later shift is refused. The honest arms are absorb-and-reserve or separately name-and-price the transfer.)",
+  evidence: [],
+}
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   hollow_alias,
   state_space_conflation,
@@ -196,4 +208,6 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   diagnostic_name_mechanism_silent,
   identity_absent_graph_traversal,
   surface_shorthand_preempts_resolved_identity,
+  meaning_fork,
+  externalized_degradation,
 ]
