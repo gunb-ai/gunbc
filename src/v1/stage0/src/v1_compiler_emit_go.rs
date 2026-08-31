@@ -201,7 +201,7 @@ pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
                 .clone()
             {
                 Some(path) => path.clone(),
-                None => "go.mod".to_string(),
+                std::option::Option::None => "go.mod".to_string(),
             };
         let content = v1_rt::concat(
             v1_rt::concat("module ".to_string(), module_name.clone()),
@@ -562,7 +562,7 @@ pub fn go_package_name(module_name: String) -> String {
                 __result
             })
             .join(&"".to_string()),
-            None => "main".to_string(),
+            std::option::Option::None => "main".to_string(),
         }
     }
 }
@@ -1187,7 +1187,7 @@ pub fn emit_go_func_def(
         let service_names =
             match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
                 Some(info) => info.service_names.clone(),
-                None => Rc::new(vec![]),
+                std::option::Option::None => Rc::new(vec![]),
             };
         let params_str = emit_go_func_params(
             params.clone(),
@@ -1498,7 +1498,7 @@ pub fn emit_go_rest_call(
                         source_indices.clone(),
                     ) {
                         Some(h) => h.clone(),
-                        None => "Authorization".to_string(),
+                        std::option::Option::None => "Authorization".to_string(),
                     };
                     v1_rt::concat(
                         v1_rt::concat(
