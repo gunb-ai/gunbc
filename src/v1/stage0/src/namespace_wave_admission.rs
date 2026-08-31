@@ -460,7 +460,34 @@ pub struct TransitionAdmission {
 /// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
 /// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
 /// empty and remains fail-closed for any new namespace delta.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// NINTH, AND THIS ONE IS AN ADDITION RATHER THAN A SHRINK (2026-08-31). The two rows below are
+/// the SPARK-PAIR-0 P0-C3a consolidation's own adjudication, carried across main's eighth
+/// dissolution, which emptied the roster. They are NOT stale: the required run that reported the
+/// five BootArtifact rows stale reported `0 unadjudicated delta(s)` on the same line, and that
+/// zero is these two rows doing their job. They dissolve when this PR merges, by the same trigger
+/// as every shrink above.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_converge_slice_wet",
+            in_declaration: "spark_serving_probe_linger",
+            spelling: "spark_serving_linger_probe_words",
+            target: "gunbc.spark.serving_observe",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
+        subject: AdmissionSubject::Binding {
+            module: "gunbc.spark.serving_durability_transaction",
+            in_declaration: "spark_serving_observe_linger_enabled",
+            spelling: "spark_serving_linger_probe_words",
+            target: "gunbc.spark.serving_observe",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

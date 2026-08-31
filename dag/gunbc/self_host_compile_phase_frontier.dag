@@ -127,13 +127,16 @@ fn canonical_identity_set(identities: List<String>) -> List<String> {
   deduplicate_identities(identities: identities) |> sort_by(identity => identity)
 }
 
-// Duplicate handling is a POPULATION fact, and the two populations answer it at different sites.
-// raw_identities is set-deduplicated by the live producer before the fold, and on the persisted
-// path a repeat makes the deduplicated total disagree with the raw count, which receipt coherence
-// refuses. parse_refused_files had neither wall: a path rustfmt refused twice would be counted
-// twice in the Parse row and kept twice in the digest, so the digest would answer about a multiset
-// while its name claims a set. Refusing is the right arm rather than deduplicating here, because
-// collapsing the repeat would hide the producer defect behind a well-formed-looking census.
+// A census population carries no repeats, and this predicate is where that is decided. Refusal is
+// the arm rather than collapsing the repeat: deduplicating here would make a duplicated population
+// indistinguishable from a clean one, hiding a producer defect behind a census that still looked
+// well-formed -- widening instead of refusing.
+//
+// It answers for BOTH populations reaching receipt coherence, and the refused-file population is
+// the reason it exists: a path refused twice would be counted twice in the Parse row and kept twice
+// in the digest, so the digest would answer about a multiset while its name claims a set.
+// The falsifier is enrolled: deleting either call in receipt_population_coherent must turn
+// a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence red.
 fn census_population_is_duplicate_free(identities: List<String>) -> Bool {
   count(deduplicate_identities(identities: identities)) == count(identities)
 }
@@ -178,20 +181,19 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
 // refuses a receipt whose census is in fact identical. The two populations stay separate segments:
 // canonicalizing them jointly would let a refused path and an identity trade places.
 //
-// EmissionOrderedV1 is retired and NO PRODUCER CONSTRUCTS IT. Its justification is NOT that it
-// labels a live value -- it does not. docs/design-ledgers.md published an emission-order digest
-// until this change, and regenerating that projection replaces it, so after this commit no
-// artifact in the tree carries one and the retired value survives only in git history.
+// EmissionOrderedV1 is retired and no producer constructs it. It is kept because an algorithm
+// identity with exactly ONE inhabitant distinguishes nothing: the field exists so two incompatible
+// digest meanings cannot hide behind one unlabeled hash, and that requires both meanings to be
+// nameable. Keeping the tag while deleting its only contrast is the worse of the two shapes, so the
+// fork is the arm AND the field together, never the arm alone. A second fold is then a row rather
+// than a migration.
 //
-// It is kept because an algorithm identity with exactly ONE inhabitant distinguishes nothing. The
-// field exists to stop two incompatible digest meanings hiding behind a single unlabeled hash, and
-// that requires both meanings to be nameable. So the honest fork is not "drop the arm" but "drop
-// the arm AND the field": a one-inhabitant tag is decoration, and keeping the tag while deleting
-// its only contrast is the worse of the two shapes.
-//
-// It is read by production -- census_identity_domain_separator matches it exhaustively -- and by a
-// witness asserting the two separators differ, so it is not an inert carrier under
-// v2.lens.inert_carrier, whose scope is carriers read by no production code.
+// The evidence that the arm is not decorative is the witness:
+// the_census_digest_carries_the_algorithm_that_produced_it asserts the two separators differ, so
+// unifying them goes red. Supporting that, census_identity_domain_separator must handle the arm in
+// an exhaustive match -- a compile-time read, not a runtime one, since nothing constructs the arm.
+// That forces an edit on deletion but does not by itself distinguish a live arm from an inert one,
+// which is true of every arm of every coproduct.
 type CensusIdentityAlgorithm
   = EmissionOrderedV1
   | CanonicalIdentitySetV1
@@ -210,6 +212,15 @@ type CensusIdentityDigest {
   digest: Fnv1a64Structural
 }
 
+// NEITHER SORT MAY BE REMOVED ON THE GROUNDS THAT A CALLER ALREADY CANONICALIZES. The PERSISTED
+// path calls this function with receipt.raw_error_diagnostic_identities directly, and that list
+// passes through no caller-side canonicalization at all -- so no property of any caller, present or
+// future, can substitute for these sorts. Delete either one and the live path stays correct while
+// the persisted path silently returns to being order-contaminated, which is the defect this fold
+// exists to close, reintroduced by a plausible cleanup.
+//
+// The falsifier is enrolled rather than described: removing a sort must turn
+// the_census_digest_is_invariant_under_reordering_of_either_population red.
 fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> CensusIdentityDigest {
   CensusIdentityDigest {
     algorithm: CanonicalIdentitySetV1,

@@ -5,6 +5,12 @@ import std.measure { microsecond }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.spark.serving_boot_provenance { SparkServingBootProvenance, BootProvenanceUnobserved, UnitStartedByManagerAtBoot, UnitStartedAfterBoot, UnitNotActiveAtAll }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
+import gunbc.spark.serving_observed_members {
+  UserUnitStateUnobserved,
+  UserUnitManagerUnobserved,
+  UnitActivityUnobserved,
+  LingerUnobservedState,
+}
 import gunbc.spark.serving_release {
   SparkServingObservation, SparkServingAbsent, SparkServingObserved,
   SparkServingObservationRefused,
@@ -30,13 +36,15 @@ import extdeps.ollama.binary_release {
   ollama_v0_32_9_jetpack5_release,
 }
 import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationAbsent,
+  ModelStoreAbsent,
   ollama_runtime_materialization_identity,
   ollama_runtime_materialization_identity_for_observed_release,
   ollama_runtime_materialization_identity_for_required_release,
 }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
-  spark_serving_host_observation,
+  SparkServingObservedUnit,
   SparkServingCurrentBootDurabilityStanding,
   CurrentBootDurabilityExhibitedFleetWide,
   CurrentBootDurabilityNotExhibited,
@@ -72,6 +80,9 @@ import gunbc.spark.serving_runtime_receipt {
   spark_serving_runtime_receipt_field_from_probe,
   spark_serving_runtime_receipt_probe_words,
   spark_serving_materialization_receipt_field_from_probe,
+}
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
+  hermetic_host_observation,
 }
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
@@ -560,10 +571,26 @@ fn readback_active_complete_at(host: HostIdentity) -> SparkServingReadback {
   }
 }
 
+// These fixtures vary the REPORTING facts, so the member projection stays fixed and empty -- the
+// honest value, since no probe ran. Listing a member with a placeholder digest would fabricate a
+// state, and absence from the observed list is exactly what makes membership_reconcile plan an
+// addition.
+//
+// Neither the projection's host nor its provenance is stateable here. The mint derives the
+// projection from readback.host and always builds the hermetic arm, so a fixture cannot claim this
+// observation measured anything -- which is the property the acquired arm's receipt depends on.
 fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
-  spark_serving_host_observation(
+  hermetic_host_observation(
     readback: readback,
     account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+    runtime: RuntimeMaterializationAbsent,
+    store: ModelStoreAbsent,
+    observed_unit: SparkServingObservedUnit {
+      state: UserUnitStateUnobserved,
+      enablement: UserUnitManagerUnobserved,
+      activity: UnitActivityUnobserved,
+    },
+    linger: LingerUnobservedState,
   )
 }
 
