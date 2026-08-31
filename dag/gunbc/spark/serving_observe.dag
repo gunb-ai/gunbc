@@ -576,10 +576,9 @@ type SparkServingHostObservation sole_constructor {
 // transaction projectors and one named hermetic fixture, so an observation cannot be assembled
 // without a transaction behind it.
 //
-// THE ONE REMAINING EXCEPTION, named rather than glossed: the converge slice's POST-APPLY replan
-// still probes linger on its own and passes a Bool, instead of acquiring a second transaction under
-// SparkServingPostApplyObservation. Until that lands, the post-apply path is the one place where a
-// planning input is not a projection of the transaction it was planned from.
+// The post-apply replan used to be the exception, probing linger on its own and passing a Bool. It
+// now acquires its own transaction under SparkServingPostApplyObservation, so there is no planning
+// input anywhere that is not a projection of the transaction it was planned from.
 //
 // THE MINT TAKES PROBES, NOT A FINISHED PROJECTION, AND THAT IS THE WHOLE PROVENANCE ARGUMENT.
 //

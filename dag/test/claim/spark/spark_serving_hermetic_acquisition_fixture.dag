@@ -1,0 +1,245 @@
+module test.claim.spark.spark_serving_hermetic_acquisition_fixture
+
+// ONE HERMETIC ACQUISITION AUTHORITY FOR EVERY WITNESS THAT NEEDS A PROVENANCE.
+//
+// Four witness files each declared their own `witness_provenance`, and all four answered with the
+// HERMETIC arm -- so every planning claim in the corpus was made against a provenance that
+// production planning is required to refuse. That is two defects wearing one helper: the same fact
+// authored four times (one concept, four authorities), and a fixture whose arm is not the arm the
+// route under test accepts, so the claims could only ever exercise the refusal path or a route that
+// existed to bypass it.
+//
+// This module is the single authority. It builds an ACQUIRED provenance the only way one can be
+// built -- through the sealed transaction mint, over a complete capture roster -- with every input
+// hermetic and every derivation real. Nothing here asserts a credential or an attempt: the
+// credential comes out of the production classifier having established the key equality, and the
+// fleet attempt is parsed rather than cast, so an unparseable literal refuses here exactly as it
+// would in acquisition.
+//
+// The refused and fixture arms are also offered, because a witness that wants to prove planning
+// REFUSES a non-acquired observation needs to author one.
+
+import std.types { Bool, List, NonEmptyStr, String }
+import std.content_hash { serialize_content_hash }
+import product.placement_supply { HostIdentity }
+import extdeps.ssh { SshPublicKey, Ed25519 }
+import extdeps.ssh.session { SshSessionExecResult }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
+  FleetSshCredentialBinding,
+  fleet_ssh_attempt_identity,
+  fleet_ssh_credential_identity,
+}
+import gunbc.fleet_ssh_credential_verify {
+  FleetSshCredentialVerification,
+  FleetSshCredentialVerified,
+  FleetSshCredentialIdentityMismatch,
+  FleetSshCredentialDerivationRefused,
+  expected_public_key_line,
+  classify_derived_public_key_line,
+}
+import gunbc.spark.serving_observation_transaction {
+  SparkServingObservationTransaction,
+  SparkServingObservationPhase,
+  SparkServingObservationProvenance,
+  SparkServingPlanObservation,
+  SparkServingProbeLegCapture,
+  SparkServingProbeRequest,
+  SparkServingProbeOutcome,
+  SparkServingProbeExecuted,
+  SparkServingTransactionAdmission,
+  SparkServingTransactionAdmitted,
+  SparkServingTransactionRefused,
+  LoadStateRequest,
+  IsActiveRequest,
+  VersionRequest,
+  TagsRequest,
+  NvidiaDriverRequest,
+  RuntimeReceiptRequest,
+  ActiveEnterRequest,
+  DefaultTargetEnterRequest,
+  UptimeRequest,
+  GrantsRequest,
+  PasswdRequest,
+  AuthorizedKeysRequest,
+  LingerRequest,
+  ModelManifestRequest,
+  ModelBlobsListingRequest,
+  ModelManifestDigestRequest,
+  ModelBlobDigestsRequest,
+  UserUnitReadRequest,
+  UserUnitIsEnabledRequest,
+  RuntimeRootRequest,
+  RuntimeExecutableRequest,
+  RuntimeExecutableBitRequest,
+  RuntimeRootListingRequest,
+  spark_serving_probe_leg_capture_of,
+  spark_serving_observation_transaction_of,
+  spark_serving_hermetic_provenance_of,
+}
+import gunbc.spark.serving_observe { spark_serving_transaction_provenance }
+
+data hermetic_identity_file: NonEmptyStr = "/tmp/gunbc-hermetic-acquisition-fixture-key"
+
+data hermetic_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAIHERMETICACQUISITIONFIXTURE000000" as NonEmptyStr,
+  comment: "hermetic-acquisition-fixture",
+}
+
+data hermetic_fleet_attempt_raw: String = "hermetic-acquisition"
+
+// THE BINDING IS DERIVED, NOT DECLARED.
+//
+// `FleetSshCredentialBinding` has one reachable mint and it is admitted to the credential classifier
+// alone, deliberately: a binding must not exist without a derivation that produced the material
+// being hashed. Adding a fixture to that seal would make the seal's annotation false, so this goes
+// THROUGH the classifier with a hermetic stdout instead. The equality the classifier establishes is
+// real; only the transport that would have produced the line is simulated.
+fn hermetic_credential() -> FleetSshCredentialBinding? {
+  match classify_derived_public_key_line(
+    identity_file: hermetic_identity_file,
+    expected_key: hermetic_key,
+    derivation_succeeded: true,
+    derivation_stdout: expected_public_key_line(key: hermetic_key),
+    derivation_stderr: "",
+  ) {
+    FleetSshCredentialVerified { binding: b } => Present { value: b }
+    FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+    FleetSshCredentialDerivationRefused { cause: _ } => none
+  }
+}
+
+fn hermetic_credential_identity_text() -> String? {
+  match hermetic_credential() {
+    Absent => none
+    Present { value: b } =>
+      Present { value: serialize_content_hash(hash: fleet_ssh_credential_identity(binding: b)) as String }
+  }
+}
+
+fn hermetic_fleet_attempt() -> FleetSshAttemptIdentity? {
+  fleet_ssh_attempt_identity(raw: hermetic_fleet_attempt_raw)
+}
+
+fn hermetic_ok(out: String) -> SparkServingProbeOutcome {
+  SparkServingProbeExecuted {
+    result: SshSessionExecResult { exit_code: 0, success: true, stdout: out, stderr: "" },
+  }
+}
+
+// THE ONE ADMITTED FIXTURE ROUTE INTO THE CAPTURE MINT.
+fn hermetic_capture_of(
+  request: SparkServingProbeRequest,
+  outcome: SparkServingProbeOutcome,
+) -> SparkServingProbeLegCapture {
+  spark_serving_probe_leg_capture_of(request: request, outcome: outcome)
+}
+
+fn hermetic_capture(request: SparkServingProbeRequest, out: String) -> SparkServingProbeLegCapture {
+  hermetic_capture_of(request: request, outcome: hermetic_ok(out: out))
+}
+
+// THE COMPLETE POPULATION, BECAUSE A TRANSACTION MISSING ONE OF THEM IS NOT A TRANSACTION.
+//
+// Coverage is checked at identity grain against the required roster rather than by counting, so this
+// enumerates the requests: a count would be satisfied by twenty-three copies of the wrong one.
+fn hermetic_every_request() -> List<SparkServingProbeRequest> {
+  [
+    LoadStateRequest, IsActiveRequest, VersionRequest, TagsRequest, NvidiaDriverRequest,
+    RuntimeReceiptRequest, ActiveEnterRequest, DefaultTargetEnterRequest, UptimeRequest,
+    GrantsRequest, PasswdRequest, AuthorizedKeysRequest, LingerRequest,
+    ModelManifestRequest, ModelBlobsListingRequest, ModelManifestDigestRequest,
+    ModelBlobDigestsRequest { digests: ["deadbeef" as NonEmptyStr] },
+    UserUnitReadRequest, UserUnitIsEnabledRequest,
+    RuntimeRootRequest, RuntimeExecutableRequest, RuntimeExecutableBitRequest,
+    RuntimeRootListingRequest,
+  ]
+}
+
+fn hermetic_complete_captures() -> List<SparkServingProbeLegCapture> {
+  map(hermetic_every_request(), r => hermetic_capture(request: r, out: "fixture"))
+}
+
+// THE ONE ADMITTED FIXTURE ROUTE INTO THE TRANSACTION MINT.
+fn hermetic_transaction_of(
+  host: HostIdentity,
+  fleet_attempt: FleetSshAttemptIdentity,
+  phase: SparkServingObservationPhase,
+  credential: FleetSshCredentialBinding,
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingTransactionAdmission {
+  spark_serving_observation_transaction_of(
+    host: host,
+    fleet_attempt: fleet_attempt,
+    phase: phase,
+    credential: credential,
+    captures: captures,
+  )
+}
+
+// Both identity values are OPTIONAL because both are parsed rather than asserted. If either refuses,
+// this answers refused rather than substituting a plausible constant, so a claim that needs an
+// admitted transaction goes red instead of testing a fabricated one.
+fn hermetic_admission(
+  host: HostIdentity,
+  phase: SparkServingObservationPhase,
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingTransactionAdmission {
+  match hermetic_fleet_attempt() {
+    Absent =>
+      SparkServingTransactionRefused { cause: "hermetic fleet attempt did not parse" as NonEmptyStr }
+    Present { value: fa } =>
+      match hermetic_credential() {
+        Absent =>
+          SparkServingTransactionRefused {
+            cause: "hermetic credential derivation did not verify" as NonEmptyStr,
+          }
+        Present { value: cr } =>
+          hermetic_transaction_of(
+            host: host,
+            fleet_attempt: fa,
+            phase: phase,
+            credential: cr,
+            captures: captures,
+          )
+      }
+  }
+}
+
+fn hermetic_transaction(
+  host: HostIdentity,
+  phase: SparkServingObservationPhase,
+) -> SparkServingObservationTransaction? {
+  match hermetic_admission(host: host, phase: phase, captures: hermetic_complete_captures()) {
+    SparkServingTransactionAdmitted { txn: t } => Present { value: t }
+    SparkServingTransactionRefused { cause: _ } => none
+  }
+}
+
+// THE ACQUIRED PROVENANCE, PROJECTED FROM A REAL ADMITTED TRANSACTION.
+//
+// This is the arm production planning accepts, and the only way to reach it is through the mint --
+// so a witness planning from this is exercising the same admission an acquisition does.
+fn hermetic_acquired_provenance(
+  host: HostIdentity,
+  phase: SparkServingObservationPhase,
+) -> SparkServingObservationProvenance? {
+  match hermetic_transaction(host: host, phase: phase) {
+    Absent => none
+    Present { value: t } => Present { value: spark_serving_transaction_provenance(txn: t) }
+  }
+}
+
+// The plan-phase acquisition, which is what almost every planning witness wants.
+fn hermetic_plan_provenance(host: HostIdentity) -> SparkServingObservationProvenance? {
+  hermetic_acquired_provenance(host: host, phase: SparkServingPlanObservation)
+}
+
+// The non-acquired arm, kept so a witness can author the value planning must REFUSE.
+fn hermetic_fixture_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
+  spark_serving_hermetic_provenance_of(
+    host: host,
+    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
+  )
+}

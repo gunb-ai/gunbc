@@ -504,8 +504,8 @@ fn spark_serving_probe_leg_capture_of(
   admit_callers: [
     decl_ref(module_path: "gunbc.spark.serving_observe", decl_name: "spark_serving_captured_leg"),
     decl_ref(
-      module_path: "test.claim.spark.spark_serving_observation_transaction_witness_test",
-      decl_name: "hermetic_capture_fixture",
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_capture_of",
     ),
   ]
 {
@@ -532,8 +532,8 @@ fn spark_serving_observation_transaction_of(
       decl_name: "spark_serving_acquire_observation_transaction",
     ),
     decl_ref(
-      module_path: "test.claim.spark.spark_serving_observation_transaction_witness_test",
-      decl_name: "hermetic_transaction_fixture",
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_transaction_of",
     ),
   ]
 {
