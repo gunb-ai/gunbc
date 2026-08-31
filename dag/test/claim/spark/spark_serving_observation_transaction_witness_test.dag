@@ -4,7 +4,11 @@ import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
 import std.content_hash { serialize_content_hash }
-import gunbc.fleet_known_hosts_anchor { fleet_ssh_credential_identity }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
+  fleet_ssh_attempt_identity,
+  fleet_ssh_credential_identity,
+}
 import gunbc.spark.serving_observe {
   SparkServingHostObservation,
   SparkServingObservationReport,
@@ -29,6 +33,8 @@ import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
   hermetic_every_request,
   hermetic_complete_captures,
   hermetic_admission,
+  hermetic_request,
+  hermetic_fleet_attempt,
   hermetic_host_observation,
   hermetic_readback,
 }
@@ -80,6 +86,8 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_transaction_missing_legs,
   spark_serving_required_probe_legs,
   spark_serving_observation_attempt_of,
+  SparkServingObservationRequest,
+  SparkServingObservationAttemptIdentity,
   spark_serving_hermetic_provenance_of,
   spark_serving_provenance_host,
   spark_serving_provenance_observation_attempt,
@@ -121,21 +129,41 @@ fn ok(out: String) -> SparkServingProbeOutcome {
   }
 }
 
+// The fixture answers Absent only when its OWN material could not be built, which is a broken
+// fixture rather than a transaction refusal. Every claim below distinguishes the two: an Absent
+// fixture fails the claim outright rather than passing as a refusal it did not measure.
 fn admission_at(
   phase: SparkServingObservationPhase,
   captures: List<SparkServingProbeLegCapture>,
-) -> SparkServingTransactionAdmission {
+) -> SparkServingTransactionAdmission? {
   hermetic_admission(host: subject_host, phase: phase, captures: captures)
 }
 
-fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission {
+fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission? {
   admission_at(phase: SparkServingPlanObservation, captures: captures)
+}
+
+fn admission_refused(captures: List<SparkServingProbeLegCapture>) -> Bool {
+  match admission(captures: captures) {
+    Absent => false
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => true
+    Present { value: SparkServingTransactionAdmitted { txn: _ } } => false
+  }
+}
+
+fn admission_refusal_cause(captures: List<SparkServingProbeLegCapture>) -> NonEmptyStr? {
+  match admission(captures: captures) {
+    Absent => none
+    Present { value: SparkServingTransactionRefused { refusal: r } } => Present { value: r.cause }
+    Present { value: SparkServingTransactionAdmitted { txn: _ } } => none
+  }
 }
 
 fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservationTransaction? {
   match admission(captures: captures) {
-    SparkServingTransactionAdmitted { txn: t } => Present { value: t }
-    SparkServingTransactionRefused { cause: _ } => none
+    Absent => none
+    Present { value: SparkServingTransactionAdmitted { txn: t } } => Present { value: t }
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => none
   }
 }
 
@@ -171,10 +199,7 @@ test fn a_captured_leg_is_readable_from_a_complete_transaction() -> Bool {
 // claimed both. Every downstream reader would have read Absent for every fact and honestly reported
 // unobserved, so the host would have looked measured-and-empty rather than never-acquired.
 test fn an_empty_transaction_cannot_be_admitted() -> Bool {
-  match admission(captures: []) {
-    SparkServingTransactionRefused { cause: _ } => true
-    SparkServingTransactionAdmitted { txn: _ } => false
-  }
+  admission_refused(captures: [])
 }
 
 test fn dropping_one_required_capture_refuses_and_names_it() -> Bool {
@@ -182,9 +207,9 @@ test fn dropping_one_required_capture_refuses_and_names_it() -> Bool {
     complete_captures(),
     c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("linger" as NonEmptyStr)),
   )
-  match admission(captures: without_linger) {
-    SparkServingTransactionAdmitted { txn: _ } => false
-    SparkServingTransactionRefused { cause: why } =>
+  match admission_refusal_cause(captures: without_linger) {
+    Absent => false
+    Present { value: why } =>
       string_contains(s: why as String, pattern: "linger")
         && length(without_linger) == (length(complete_captures()) - 1)
   }
@@ -193,12 +218,12 @@ test fn dropping_one_required_capture_refuses_and_names_it() -> Bool {
 // The positive control for both directions: the complete roster admits, so the refusals above
 // discriminate on coverage rather than rejecting everything.
 test fn the_complete_roster_admits() -> Bool {
-  match admission(captures: complete_captures()) {
-    SparkServingTransactionAdmitted { txn: t } =>
+  match txn_of(captures: complete_captures()) {
+    Absent => false
+    Present { value: t } =>
       length(spark_serving_transaction_missing_legs(txn: t)) == 0
         && length(spark_serving_transaction_duplicated_legs(txn: t)) == 0
         && length(spark_serving_required_probe_legs()) == length(t.captures)
-    SparkServingTransactionRefused { cause: _ } => false
   }
 }
 
@@ -208,10 +233,9 @@ test fn the_complete_roster_admits() -> Bool {
 // again inside the user-unit observer -- so this is the regression control for that class, at the
 // grain where it is detectable rather than at the call sites where it was invisible.
 test fn a_leg_captured_twice_refuses_the_transaction() -> Bool {
-  match admission(captures: concat(complete_captures(), [capture(request: IsActiveRequest, out: "again")])) {
-    SparkServingTransactionRefused { cause: _ } => true
-    SparkServingTransactionAdmitted { txn: _ } => false
-  }
+  admission_refused(
+    captures: concat(complete_captures(), [capture(request: IsActiveRequest, out: "again")]),
+  )
 }
 
 // A TRANSPORT REFUSAL IS NOT A REMOTE EXIT 127.
@@ -298,12 +322,8 @@ test fn the_transaction_carries_its_full_acquisition_identity() -> Bool {
              SparkServingPostApplyObservation => false
              SparkServingReportObservation => false
            })
-        && t.observation_attempt
-          == spark_serving_observation_attempt_of(
-               fleet_attempt: hermetic_fleet_attempt_raw as NonEmptyStr,
-               host: subject_host,
-               phase: SparkServingPlanObservation,
-             )
+        && (t.observation_attempt as String)
+          == concat(hermetic_fleet_attempt_raw, "/srv5/plan")
         && (match hermetic_credential() {
              Absent => false
              Present { value: c } =>
@@ -320,19 +340,16 @@ test fn the_transaction_carries_its_full_acquisition_identity() -> Bool {
 // one attempt would again be indistinguishable.
 test fn the_minted_phase_travels_into_the_transaction_identity() -> Bool {
   match admission_at(phase: SparkServingPostApplyObservation, captures: complete_captures()) {
-    SparkServingTransactionRefused { cause: _ } => false
-    SparkServingTransactionAdmitted { txn: t } =>
+    Absent => false
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => false
+    Present { value: SparkServingTransactionAdmitted { txn: t } } =>
       (match t.request.phase {
         SparkServingPostApplyObservation => true
         SparkServingPlanObservation => false
         SparkServingReportObservation => false
       })
-        && t.observation_attempt
-          == spark_serving_observation_attempt_of(
-               fleet_attempt: hermetic_fleet_attempt_raw as NonEmptyStr,
-               host: subject_host,
-               phase: SparkServingPostApplyObservation,
-             )
+        && (t.observation_attempt as String)
+          == concat(hermetic_fleet_attempt_raw, "/srv5/post-apply")
   }
 }
 
@@ -343,34 +360,47 @@ test fn the_minted_phase_travels_into_the_transaction_identity() -> Bool {
 // attempt alone makes the before and after readings indistinguishable, which is precisely the join
 // the carrier exists to prevent. The first cut was worse still: every acquisition passed the same
 // constant, so no two observations anywhere differed.
+// The request mint is sealed to acquisition and one fixture, so these distinctness claims build
+// their requests through the fixture rather than minting their own. Each varies exactly one of the
+// three components, which is what makes the result a JOIN claim rather than three separate ones.
+fn attempt_for(
+  host: HostIdentity,
+  fleet_attempt: FleetSshAttemptIdentity,
+  phase: SparkServingObservationPhase,
+) -> SparkServingObservationAttemptIdentity {
+  spark_serving_observation_attempt_of(
+    request: hermetic_request(host: host, fleet_attempt: fleet_attempt, phase: phase),
+  )
+}
+
 test fn observations_of_one_host_in_one_attempt_differ_by_phase() -> Bool {
-  let a = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
-  )
-  let b = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingPostApplyObservation,
-  )
-  let c = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingReportObservation,
-  )
-  !(a == b) && !(b == c) && !(a == c)
+  match hermetic_fleet_attempt() {
+    Absent => false
+    Present { value: fa } => {
+      let a = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPlanObservation)
+      let b = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPostApplyObservation)
+      let c = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingReportObservation)
+      !(a == b) && !(b == c) && !(a == c)
+    }
+  }
 }
 
 // And the same phase on two hosts, or two attempts, is likewise distinct -- so the identity is a
 // join of all three facts rather than a phase label that happens to differ.
 test fn the_observation_attempt_is_a_join_of_fleet_attempt_host_and_phase() -> Bool {
-  let here = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-7" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
-  )
-  let other_host = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-7" as NonEmptyStr,
-    host: "srv6" as HostIdentity,
-    phase: SparkServingPlanObservation,
-  )
-  let other_run = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-8" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
-  )
-  !(here == other_host) && !(here == other_run)
+  match hermetic_fleet_attempt() {
+    Absent => false
+    Present { value: fa } =>
+      match fleet_ssh_attempt_identity(raw: "hermetic-acquisition-other-run") {
+        Absent => false
+        Present { value: other_fa } => {
+          let here = attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPlanObservation)
+          let other_host = attempt_for(host: "srv6" as HostIdentity, fleet_attempt: fa, phase: SparkServingPlanObservation)
+          let other_run = attempt_for(host: subject_host, fleet_attempt: other_fa, phase: SparkServingPlanObservation)
+          !(here == other_host) && !(here == other_run)
+        }
+      }
+  }
 }
 
 // THE POST-APPLY READING IS A DIFFERENT OBSERVATION, NOT A SECOND LOOK AT THE SAME ONE.
@@ -382,15 +412,12 @@ test fn the_observation_attempt_is_a_join_of_fleet_attempt_host_and_phase() -> B
 // phase now travels instead. This claim pins the two phases apart at the identity grain the receipt
 // will record.
 test fn the_post_apply_reading_carries_its_own_phase_identity() -> Bool {
-  let plan = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-9" as NonEmptyStr, host: subject_host, phase: SparkServingPlanObservation,
-  )
-  let post = spark_serving_observation_attempt_of(
-    fleet_attempt: "run-9" as NonEmptyStr,
-    host: subject_host,
-    phase: SparkServingPostApplyObservation,
-  )
-  !(plan == post)
+  match hermetic_fleet_attempt() {
+    Absent => false
+    Present { value: fa } =>
+      !(attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPlanObservation)
+        == attempt_for(host: subject_host, fleet_attempt: fa, phase: SparkServingPostApplyObservation))
+  }
 }
 
 // LINGER APPEARS ONCE PER PHASE, WHICH IS WHAT MAKES "READ IT TWICE" A COVERAGE ERROR RATHER THAN A
@@ -402,18 +429,9 @@ test fn exactly_one_linger_capture_belongs_to_a_phase() -> Bool {
     complete_captures(),
     c => !(spark_serving_probe_leg_key(leg: spark_serving_capture_leg(c: c)) == ("linger" as NonEmptyStr)),
   )
-  match admission(captures: doubled) {
-    SparkServingTransactionAdmitted { txn: _ } => false
-    SparkServingTransactionRefused { cause: _ } =>
-      match admission(captures: dropped) {
-        SparkServingTransactionAdmitted { txn: _ } => false
-        SparkServingTransactionRefused { cause: _ } =>
-          match admission(captures: complete_captures()) {
-            SparkServingTransactionAdmitted { txn: _ } => true
-            SparkServingTransactionRefused { cause: _ } => false
-          }
-      }
-  }
+  admission_refused(captures: doubled)
+    && admission_refused(captures: dropped)
+    && !admission_refused(captures: complete_captures())
 }
 
 // A REFUSED OR HERMETIC PROVENANCE IS NOT SOMETHING TO PLAN FROM.
@@ -561,8 +579,9 @@ fn observation_with(
 
 fn acquired_observation_body(captures: List<SparkServingProbeLegCapture>) -> String? {
   match admission_at(phase: SparkServingPlanObservation, captures: captures) {
-    SparkServingTransactionRefused { cause: _ } => none
-    SparkServingTransactionAdmitted { txn: t } =>
+    Absent => none
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => none
+    Present { value: SparkServingTransactionAdmitted { txn: t } } =>
       Present {
         value: spark_serving_report_body_lines(
           report: report_of(
@@ -600,11 +619,7 @@ test fn the_report_line_attempt_agrees_with_the_hosts_acquired_provenance() -> B
         s: body,
         pattern: concat(
           "observation-attempt=",
-          spark_serving_observation_attempt_of(
-            fleet_attempt: hermetic_fleet_attempt_raw as NonEmptyStr,
-            host: subject_host,
-            phase: SparkServingPlanObservation,
-          ) as String,
+          concat(hermetic_fleet_attempt_raw, "/srv5/plan"),
         ),
       )
   }

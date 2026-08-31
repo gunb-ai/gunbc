@@ -76,6 +76,8 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_probe_leg_eq,
   spark_serving_capture_leg,
   spark_serving_probe_leg_capture_of,
+  SparkServingObservationRequest,
+  SparkServingObservationAttemptIdentity,
   spark_serving_observation_request,
   spark_serving_observation_transaction_of,
   spark_serving_hermetic_provenance_of,
@@ -187,11 +189,7 @@ fn hermetic_transaction_of(
   captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingTransactionAdmission {
   spark_serving_observation_transaction_of(
-    request: spark_serving_observation_request(
-      host: host,
-      fleet_attempt: fleet_attempt,
-      phase: phase,
-    ),
+    request: hermetic_request(host: host, fleet_attempt: fleet_attempt, phase: phase),
     credential: credential,
     captures: captures,
   )
@@ -200,28 +198,42 @@ fn hermetic_transaction_of(
 // Both identity values are OPTIONAL because both are parsed rather than asserted. If either refuses,
 // this answers refused rather than substituting a plausible constant, so a claim that needs an
 // admitted transaction goes red instead of testing a fabricated one.
+// THE ONE ADMITTED FIXTURE ROUTE INTO THE REQUEST MINT.
+fn hermetic_request(
+  host: HostIdentity,
+  fleet_attempt: FleetSshAttemptIdentity,
+  phase: SparkServingObservationPhase,
+) -> SparkServingObservationRequest {
+  spark_serving_observation_request(host: host, fleet_attempt: fleet_attempt, phase: phase)
+}
+
+// OPTIONAL BECAUSE THE FIXTURE'S OWN MATERIAL IS PARSED, NOT ASSERTED.
+//
+// Absent means this fixture could not build a credential or a fleet attempt at all, which is a
+// BROKEN FIXTURE and not a transaction refusal. It cannot be reported as one: a refusal now carries
+// the request it refused, and the request needs the very attempt that failed to parse. Conflating
+// the two would put a fabricated request inside a refusal -- the same shape as everything else this
+// carrier removes -- so the two outcomes stay different types and a caller must handle both.
 fn hermetic_admission(
   host: HostIdentity,
   phase: SparkServingObservationPhase,
   captures: List<SparkServingProbeLegCapture>,
-) -> SparkServingTransactionAdmission {
+) -> SparkServingTransactionAdmission? {
   match hermetic_fleet_attempt() {
-    Absent =>
-      SparkServingTransactionRefused { cause: "hermetic fleet attempt did not parse" as NonEmptyStr }
+    Absent => none
     Present { value: fa } =>
       match hermetic_credential() {
-        Absent =>
-          SparkServingTransactionRefused {
-            cause: "hermetic credential derivation did not verify" as NonEmptyStr,
-          }
+        Absent => none
         Present { value: cr } =>
-          hermetic_transaction_of(
-            host: host,
-            fleet_attempt: fa,
-            phase: phase,
-            credential: cr,
-            captures: captures,
-          )
+          Present {
+            value: hermetic_transaction_of(
+              host: host,
+              fleet_attempt: fa,
+              phase: phase,
+              credential: cr,
+              captures: captures,
+            ),
+          }
       }
   }
 }
@@ -231,8 +243,9 @@ fn hermetic_transaction(
   phase: SparkServingObservationPhase,
 ) -> SparkServingObservationTransaction? {
   match hermetic_admission(host: host, phase: phase, captures: hermetic_complete_captures()) {
-    SparkServingTransactionAdmitted { txn: t } => Present { value: t }
-    SparkServingTransactionRefused { cause: _ } => none
+    Absent => none
+    Present { value: SparkServingTransactionAdmitted { txn: t } } => Present { value: t }
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => none
   }
 }
 
@@ -328,8 +341,9 @@ fn hermetic_acquired_observation(
   captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingHostObservation? {
   match hermetic_admission(host: host, phase: phase, captures: captures) {
-    SparkServingTransactionRefused { refusal: _ } => none
-    SparkServingTransactionAdmitted { txn: t } =>
+    Absent => none
+    Present { value: SparkServingTransactionRefused { refusal: _ } } => none
+    Present { value: SparkServingTransactionAdmitted { txn: t } } =>
       Present { value: spark_serving_host_observation_from_transaction(txn: t) }
   }
 }
