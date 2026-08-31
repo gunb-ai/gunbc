@@ -420,7 +420,6 @@ fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<Strin
 fn render_rust_text_carrier(n: Node, shared_types: Set<String>, env: TypeEnv) -> String {
   render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
 }
-}
 
 data render_rust_text_carrier_identity_note: String = "REVERTED TO THE BARE REFERENCE SPELLING, WITH THE EXPERIMENT RECORDED. Two identity-keyed spellings were built here and each measured WORSE on the emitted-closure board than the bare spelling it replaced: a corpus-wide grounding spelling (std::string::String wherever identity was known non-structural) redded two enrolled witnesses that pin the bare kernel spelling, and a one-authority qualified render (crate::v2_std_text::String wherever the shared identity reader answered structural) drove the board from 108 to 745 because the reader answers structural for kernel-corpus positions faster than it repairs the text modules. The shadowed-module class (generated_binding_shadows_bare_render in gunbc.recurring_failure_mode) is REAL and stays open under the boundary lane declared rung drop; its fix shape is recorded on that class row, and the successor is the carrier-realization arbiter design (docs/plans/carrier-realization-arbiter-repair-design.md) with a correct per-reference identity, not a spelling switch keyed on a reader measured to answer the kernel corpus wrongly."
 
