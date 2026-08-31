@@ -39,6 +39,7 @@ import gunbc.self_host_compile_phase_frontier {
   compile_phase_frontier_standing,
   genesis_5006ddc6_parse_observation,
   genesis_5006ddc6_raw_error_diagnostic_identities,
+  phase_census_digest,
   render_phase_board
 }
 import extdeps.cargo_diagnostic {
@@ -394,4 +395,37 @@ test fn the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed
     }
     standing => false
   }
+}
+
+// The digest is named an IDENTITY of the census, and a census is a set: cargo's diagnostic stream
+// and rustfmt's refusal list carry no ordering guarantee, so a reordered-but-identical census must
+// fold to the same digest or receipt_population_coherent refuses a receipt that in fact agrees.
+test fn the_census_digest_is_invariant_under_reordering_of_either_population() -> Bool {
+  let forward = phase_census_digest(
+    parse_refused_files: ["src/a.rs", "src/b.rs"],
+    raw_identities: ["src/a.rs:1:1\tE0308\tmismatch", "src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let reversed = phase_census_digest(
+    parse_refused_files: ["src/b.rs", "src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/a.rs:1:1\tE0308\tmismatch"]
+  )
+  forward == reversed
+}
+
+// Positive control: canonicalizing the order must not be achieved by discarding content. A census
+// that genuinely differs, and a value that moves between the two populations, both still separate.
+test fn the_census_digest_still_separates_genuinely_different_censuses() -> Bool {
+  let base = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let extra_identity = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0433\tunresolved"]
+  )
+  let populations_swapped = phase_census_digest(
+    parse_refused_files: ["src/b.rs:2:2\tE0425\tunresolved"],
+    raw_identities: ["src/a.rs"]
+  )
+  base != extra_identity && base != populations_swapped && extra_identity != populations_swapped
 }

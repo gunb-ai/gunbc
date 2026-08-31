@@ -152,13 +152,20 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
   else { Borrowck }
 }
 
+// The digest names the census as a SET, so it is folded over a canonical ordering of each
+// population rather than the encounter order cargo and rustfmt happened to emit. Without the sort
+// the same census reordered upstream produces a different digest, and receipt_population_coherent
+// refuses a receipt whose census is in fact identical. The two populations stay separate segments:
+// canonicalizing them jointly would let a refused path and an identity trade places. The version
+// tag moves to v2 with the fold: holding the tag constant while the fold changed would let one
+// declared version name two different digest procedures.
 fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> Fnv1a64Structural {
   content_hash_atom(
     value: (concat(
-      ["self-host-compile-phase-census-v1"],
+      ["self-host-compile-phase-census-v2"],
       concat(
-        parse_refused_files |> map(path => concat("rustfmt-refused\t", path)),
-        raw_identities
+        parse_refused_files |> map(path => concat("rustfmt-refused\t", path)) |> sort_by(line => line),
+        raw_identities |> sort_by(identity => identity)
       )
     ) |> join(separator: "\n")) as NonEmptyStr
   )
