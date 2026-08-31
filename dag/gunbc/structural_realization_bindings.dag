@@ -3,7 +3,7 @@ module gunbc.structural_realization_bindings
 import std.types { List, String, Bool, NonEmptyStr }
 import std.decl_ref { DeclarationRef, decl_ref }
 import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold }
-import std.operator_realization { StructuralOrderingBinding }
+import std.operator_realization { StructuralOrderingBinding, StructuralConnectiveBinding }
 
 // THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
 // std.operator_realization): which of THIS corpus's structural declarations supply a kernel literal,
@@ -61,4 +61,15 @@ fn structural_ordering_binding(carrier_module: String, carrier: String, compare_
 
 data structural_ordering_rows: List<StructuralOrderingBinding> = [
   structural_ordering_binding(carrier_module: "v2.std.nat", carrier: "Nat", compare_module: "v2.std.nat", compare: "nat_compare", ordering_module: "std.algebra", ordering: "Ordering")
+]
+
+// Which structural carriers declare their connectives (&&, ||) host-realized. v2.std.logic Bool is
+// the corpus's ordinary Bool (True | False); its conjunction IS the host conjunction, which is why
+// this row may exist at all. A structural carrier with no row here refuses under a connective.
+fn structural_connective_binding(carrier_module: String, carrier: String) -> StructuralConnectiveBinding {
+  StructuralConnectiveBinding { carrier: decl_ref(module_path: carrier_module, decl_name: carrier) }
+}
+
+data structural_connective_rows: List<StructuralConnectiveBinding> = [
+  structural_connective_binding(carrier_module: "v2.std.logic", carrier: "Bool")
 ]

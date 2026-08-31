@@ -120,6 +120,38 @@ fn structural_ordering_for(rows: List<StructuralOrderingBinding>, carrier: Decla
   }
 }
 
+// A DECLARED CONNECTIVE (review 57746, retiring gunbc.guarantee_rung_drop structural_connective_stall
+// by its own trigger): the row admits that this structural carrier's conjunction and disjunction
+// realize on the host token -- a row may only state what is already true of the destination
+// (v2.std.logic Bool = True | False, the corpus's ordinary Bool). A structural operand under a
+// connective with NO row refuses, typed and located, instead of emitting the host token for a
+// carrier that is not a Boolean algebra at all (a Peano-shaped operand was authorable because
+// inference constrains only the RESULT of && / || to Bool). NullCoalesce is not a connective and
+// keeps its own arm.
+type StructuralConnectiveBinding {
+  carrier: DeclarationRef
+}
+
+type StructuralConnectiveLookup
+  = StructuralConnectiveFound { row: StructuralConnectiveBinding }
+  | StructuralConnectiveAbsent
+  | StructuralConnectiveAmbiguous { row_count: Int }
+
+fn structural_connective_for(rows: List<StructuralConnectiveBinding>, carrier: DeclarationRef) -> StructuralConnectiveLookup {
+  let matching = rows |> filter(r => declaration_ref_eq(a: r.carrier, b: carrier))
+  let n = matching |> count
+  if n == 0 {
+    StructuralConnectiveAbsent
+  } else if n == 1 {
+    match matching |> first {
+      Present { value: row } => StructuralConnectiveFound { row: row }
+      Absent => StructuralConnectiveAbsent
+    }
+  } else {
+    StructuralConnectiveAmbiguous { row_count: n }
+  }
+}
+
 // The test an ordering operator performs on a comparison's result, grounded on std.algebra
 // Ordering = Less | Equal | Greater: `<` is `== Less`, `>` is `== Greater`, `<=` is `!= Greater`,
 // `>=` is `!= Less`. Non-ordering operators have no test.
@@ -143,25 +175,6 @@ fn ordering_test_for(op: BinOp) -> OrderingTest? {
     And => none
     Or => none
     NullCoalesce => none
-  }
-}
-
-fn binop_is_equality(op: BinOp) -> Bool {
-  match op {
-    Eq => true
-    Ne => true
-    Add => false
-    Sub => false
-    Mul => false
-    Div => false
-    Mod => false
-    Lt => false
-    Gt => false
-    Le => false
-    Ge => false
-    And => false
-    Or => false
-    NullCoalesce => false
   }
 }
 
@@ -191,6 +204,7 @@ fn binop_label(op: BinOp) -> String {
 type OperatorRealizationRefusal
   = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: String }
   | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
+  | StructuralConnectiveDuplicated { declaration: DeclarationRef, row_count: Int }
   | OperandIdentityUnavailableAt { operator: String, facts: OperandShapeFacts }
 
 type OperatorRealization
@@ -212,6 +226,12 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
         "operator realization: structural ordering for ",
         d.module_path as String, ".", d.decl_name as String,
         " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)"
+      )
+    StructuralConnectiveDuplicated { declaration: d, row_count: n } =>
+      concat(
+        "operator realization: structural connective for ",
+        d.module_path as String, ".", d.decl_name as String,
+        " has more than one declared row (gunbc.structural_realization_bindings authoring defect)"
       )
     OperandIdentityUnavailableAt { operator: o, facts: f } =>
       concat(
@@ -236,16 +256,20 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
 // for it. It is not repaired by refusing every structural operand: v2.std.logic Bool is a declared
 // structural coproduct that 593 modules import as their ordinary Bool, so a blanket refusal would
 // refuse the corpus's ordinary conjunction -- the wall paid for in false refusals. The repair is a
-// declared-connective row family beside the ordering rows, and it is a DECLARED STALL with that
-// trigger (gunbc.structural_realization_bindings structural_connective_stall), not a claim this
-// authority already covers connectives.
+// declared-connective row family beside the ordering rows. THAT FAMILY NOW EXISTS
+// (StructuralConnectiveBinding below; rows in gunbc.structural_realization_bindings
+// structural_connective_rows): a structural operand under And/Or realizes on the host only where
+// its carrier declares it, and refuses, typed and located, where it does not. The former
+// structural_connective_stall row in gunbc.guarantee_rung_drop is retired by exactly this
+// capability, which is what its trigger named.
 //
 // AN OPERAND WHOSE DECLARATION COULD NOT BE READ is not a widen and not a guess: it decides by
 // operator class, below.
 fn operator_realization_for(
   op: BinOp,
   operand: OperandRealization,
-  ordering_rows: List<StructuralOrderingBinding>
+  ordering_rows: List<StructuralOrderingBinding>,
+  connective_rows: List<StructuralConnectiveBinding>
 ) -> OperatorRealization {
   match operand {
     HostNumericOperand => HostOperator
@@ -275,8 +299,8 @@ fn operator_realization_for(
         Gt => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
         Le => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
         Ge => structural_ordering_realization(op: op, declaration: d, ordering_rows: ordering_rows)
-        And => HostOperator
-        Or => HostOperator
+        And => structural_connective_realization(op: op, declaration: d, connective_rows: connective_rows)
+        Or => structural_connective_realization(op: op, declaration: d, connective_rows: connective_rows)
         NullCoalesce => HostOperator
         Add => structural_arithmetic_refusal(op: op, declaration: d)
         Sub => structural_arithmetic_refusal(op: op, declaration: d)
@@ -284,6 +308,16 @@ fn operator_realization_for(
         Div => structural_arithmetic_refusal(op: op, declaration: d)
         Mod => structural_arithmetic_refusal(op: op, declaration: d)
       }
+  }
+}
+
+// A connective on a structural operand: host realization where the carrier declares it (the row),
+// a typed located refusal where it does not, a duplication refusal where the roster forked.
+fn structural_connective_realization(op: BinOp, declaration: DeclarationRef, connective_rows: List<StructuralConnectiveBinding>) -> OperatorRealization {
+  match structural_connective_for(rows: connective_rows, carrier: declaration) {
+    StructuralConnectiveFound { row: _ } => HostOperator
+    StructuralConnectiveAbsent => structural_arithmetic_refusal(op: op, declaration: declaration)
+    StructuralConnectiveAmbiguous { row_count: n } => OperatorRealizationRefused { cause: StructuralConnectiveDuplicated { declaration: declaration, row_count: n } }
   }
 }
 

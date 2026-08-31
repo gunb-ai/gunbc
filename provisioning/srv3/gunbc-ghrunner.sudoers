@@ -88,6 +88,7 @@ ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-0
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice TasksMax=16384
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl set-property fabric-cell-srv3-06.slice CPUWeight=100
 ghrunner ALL=(root) NOPASSWD: /usr/bin/systemctl start fabric-cell-srv3-06.slice
+ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 0700 -o root -g root /var/lib/gunbc/fabric
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 0700 -o root -g root /var/lib/gunbc/fabric/allocation
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o ghrunner -g ghrunner /var/lib/gunbc/fleet-converge
 ghrunner ALL=(root) NOPASSWD: /usr/bin/install -d -m 755 -o briansrls -g briansrls /opt/actions-runner

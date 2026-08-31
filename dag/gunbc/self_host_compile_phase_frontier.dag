@@ -563,10 +563,32 @@ fn board_row(board: RustcPhaseBoard, phase: RustcPhase) -> RustcPhaseBoardRow? {
   board.rows |> filter(r => rustc_phase_order(phase: r.phase) == rustc_phase_order(phase: phase)) |> first
 }
 
-fn phase_count_or_negative(row: RustcPhaseBoardRow) -> Int {
+// The standing is a SUM (PhaseCount | PhaseNotYetReached); each question below matches it
+// directly instead of collapsing it into an Int with a sentinel (review 57752:
+// state_space_conflation -- "-1" made not-yet-reached and reached-at-zero share a numeric axis).
+fn phase_closed_at_zero(row: RustcPhaseBoardRow) -> Bool {
   match row.standing {
-    PhaseCount { count: n, evidence: _ } => n
-    PhaseNotYetReached => -1
+    PhaseCount { count: n, evidence: _ } => n == 0
+    PhaseNotYetReached => false
+  }
+}
+
+fn phase_reached_with_diagnostics(row: RustcPhaseBoardRow) -> Bool {
+  match row.standing {
+    PhaseCount { count: n, evidence: _ } => n > 0
+    PhaseNotYetReached => false
+  }
+}
+
+// True only when BOTH rows reached the phase and the count strictly grew: a phase not yet reached
+// on either side is not a count comparison at all (furthest-phase regression owns that question).
+fn phase_count_increased(old: RustcPhaseBoardRow, now: RustcPhaseBoardRow) -> Bool {
+  match old.standing {
+    PhaseNotYetReached => false
+    PhaseCount { count: old_n, evidence: _ } => match now.standing {
+      PhaseNotYetReached => false
+      PhaseCount { count: now_n, evidence: _ } => now_n > old_n
+    }
   }
 }
 
@@ -577,7 +599,7 @@ fn first_closed_phase_regression(
   previous.rows
     |> flat_map(old => match board_row(board: current, phase: old.phase) {
       Present { value: now } =>
-        if phase_count_or_negative(row: old) == 0 && phase_count_or_negative(row: now) > 0 {
+        if phase_closed_at_zero(row: old) && phase_reached_with_diagnostics(row: now) {
           [now]
         } else { [] }
       Absent => []
@@ -607,12 +629,10 @@ fn phase_ratchet(previous: RustcPhaseBoard, current: RustcPhaseBoard) -> PhaseRa
         PhaseRatchetHeld => match board_row(board: current, phase: old.phase) {
           Absent => PhaseRatchetRefused { phase: old.phase, identities: [], reason: "current board omitted a phase" as NonEmptyStr }
           Present { value: now } => {
-            let old_count = phase_count_or_negative(row: old)
-            let now_count = phase_count_or_negative(row: now)
             let added = now.identities |> filter(identity => !any(old.identities, prior => prior == identity))
-            if old_count == 0 && now_count > 0 {
+            if phase_closed_at_zero(row: old) && phase_reached_with_diagnostics(row: now) {
               PhaseRatchetRefused { phase: old.phase, identities: now.identities, reason: "a closed phase regained diagnostic identities" as NonEmptyStr }
-            } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && now_count > old_count {
+            } else if rustc_phase_order(phase: old.phase) == rustc_phase_order(phase: previous.furthest_phase_reached) && phase_count_increased(old: old, now: now) {
               PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached phase diagnostic identity count increased" as NonEmptyStr }
             } else if count(added) > 0 {
               PhaseRatchetRefused { phase: old.phase, identities: added, reason: "the reached population gained diagnostic identities without a newly-exposed disposition" as NonEmptyStr }
