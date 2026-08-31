@@ -443,9 +443,13 @@ struct BoundedWriter<W> {
 impl<W: Write> Write for BoundedWriter<W> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if self.written.saturating_add(buf.len() as u64) > MAX_PART_BYTES {
+            let observed_at_least = self.written.saturating_add(buf.len() as u64);
             return Err(std::io::Error::new(
                 std::io::ErrorKind::FileTooLarge,
-                "resolved-graph cache part exceeds MAX_PART_BYTES",
+                format!(
+                    "resolved-graph cache part exceeds modeled artifact capacity: \
+                     cap_bytes={MAX_PART_BYTES} observed_at_least_bytes={observed_at_least}"
+                ),
             ));
         }
         let n = self.inner.write(buf)?;
