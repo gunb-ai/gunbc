@@ -543,9 +543,9 @@ fn hermetic_required_model_hex() -> NonEmptyStr? {
     SparkServingDesiredAdmitted { serving_release: r } =>
       match r.model.identity {
         Sha256Hash(d) => Present { value: d.hex as NonEmptyStr }
-        Fnv1a64(_) => none
-        Sha1Hash(_) => none
-        Sha512Hash(_) => none
+        Fnv1a64(structural) => none
+        Sha1Hash(sha1) => none
+        Sha512Hash(sha512) => none
       }
   }
 }
