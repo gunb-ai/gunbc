@@ -14,6 +14,7 @@ import gunbc.parse_refusal_location_seed_growth { parse_refusal_location_seed_gr
 import gunbc.qualified_pipe_callee_seed_growth { qualified_pipe_callee_seed_growth_justification }
 import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_growth_justification }
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
+import gunbc.roadmap_prefix_test_seed_growth { roadmap_prefix_test_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
@@ -194,6 +195,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_population_projection_seed_growth_justification,
     stage0_rust_observation_seed_growth_justification,
     observation_scoped_run_seed_growth_justification(),
+    roadmap_prefix_test_seed_growth_justification,
     whole_corpus_compile_seed_growth_justification,
     reference_closure_binder_seed_growth_justification,
     bare_reference_scanner_seed_growth_justification,

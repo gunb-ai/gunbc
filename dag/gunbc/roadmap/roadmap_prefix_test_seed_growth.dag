@@ -1,0 +1,26 @@
+module gunbc.roadmap_prefix_test_seed_growth
+
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.seed_growth { SeedGrowthJustification }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+// ITS OWN MODULE BECAUSE THE ROSTER IMPORTS IT. gunbc.seed_growth_admission reads every
+// justification row, so a row living in a module that itself imports seed_growth_admission would
+// close an import cycle, and acyclicity is the import graph's only structural law (DESIGN 3).
+// gunbc.floor_route_gap_seed_growth is the same shape for the same reason.
+// THE RENAMED PREFIX TEST IS AN ADDED ITEM, NOT A MODIFIED ONE, AND THAT DISTINCTION DECIDES WHICH
+// ROSTER MUST CARRY IT. A rename is a departure and an arrival at item-identity grain, so
+// gunbc.rust_item_host_observation reports it under added_hand_items -- and
+// seed_growth_admit_change joins ADDED items against seed_growth_justification_roster, never
+// against SeedGrowthChangeDisposition. A disposition row therefore cannot admit it: the join does
+// not read that module. This was first authored as an ExistingSeedItemModified row (gunbc#9756)
+// and that row was in the wrong roster, admitting nothing while appearing to.
+data roadmap_prefix_test_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
+  hand_authored_declarations: [
+    DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bootstrap_authority_projection_is_jsonl_carrier_prefix", field: WholeDeclaration }
+  ],
+  reason: "WHY RUST IS STILL NEEDED: the acceptance carrier is committed bytes read by the seed's bootstrap projection, and this item is the only executing check that the merge-base projection is an exact SERIALIZED PREFIX of the committed carrier. gunbc.roadmap_model acceptance_history_extends_prior owns the law; nothing in .dag executes it against the committed file, because the projection it compares is produced by the seed.\n\nWHY THE ITEM IDENTITY CHANGED: the predecessor merge_base_authority_projection_matches_jsonl_carrier asserted EQUALITY of event counts. That had never been asked of a carrier that moved -- the migration wrote 16 events and the carrier still held exactly 16 -- so it would have refused every future acceptance as well as the five withdrawals this change appends. It was a frozen snapshot wearing a continuity check's name. Keeping the old identity over prefix behaviour would have left the name asserting a relation the body no longer checks.\n\nWHY IT IS ADMITTED AGAINST THE v1 FREEZE: gunbc.v1_maintenance_standing v1_seed_standing admits work serving the v2 self-host program. This strengthens an existing check from a snapshot equality to the append-only law the model states, and adds no language behavior, compatibility route, escape hatch, or emitted public surface.\n\nHAND-ITEM DELTA: +1, this test item, arising from a rename. Every other Rust edit in the change is inside pre-existing declarations -- the codec enum gains one variant and two match arms sit inside existing functions -- and those are dispositioned ExistingSeedItemModified below.",
+  owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
+  trigger: "Delete this item when a .dag witness can read the committed carrier bytes and the merge-base projection directly and assert acceptance_history_extends_prior over them, so the prefix law is executed from the authority that states it rather than from a seed test.",
+  current_boundary: "gunbc.roadmap_model acceptance_history_extends_prior -> v1_compiler.cli_run bootstrap_authority_projection_is_jsonl_carrier_prefix -> dag/gunbc/roadmap/roadmap_acceptance_event_history.jsonl"
+}
