@@ -22503,8 +22503,9 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
             return;
         }
     };
-    // Host budget: the SAME single authority the MemoryGovernor schedules against
-    // (env -> cgroup memory.high -> memory.max -> Darwin hw.memsize). Unreadable -> the
+    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
+    // It is the minimum of an optional env request and observed cgroup lines; an env-only
+    // declaration is unverified and unreadable to consumers. Unreadable -> the
     // modeled law refuses (BudgetRefused), never a fabricated width.
     let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
     let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);

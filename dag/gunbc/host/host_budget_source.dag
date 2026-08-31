@@ -1,7 +1,7 @@
 module gunbc.host_budget_source
 
 import std.types { NonEmptyStr, String, Bool, List }
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size_count }
 import std.os.types { KernelFamily, Linux, Darwin, WindowsNt, LinuxGuestOnWindows }
 import extdeps.linux.cgroup_v2 { kernel_provides_cgroup_v2 }
 import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
@@ -19,7 +19,7 @@ import extdeps.linux.procfs {
 }
 
 data host_budget_source_authority_disposition: Disposition = Terminal {
-  reason: "Single authority for the SOURCE half of the host memory budget the v1 memory governor arms against. The BUDGET VALUE stays where it is measured (a cgroup read, a sysctl read, an operator env override); what this module owns is the closed set of places that value can come from, whether each bounds this process, whether each is degraded, and how each is rendered. It exists because those three facts were carried by a free-text label string and re-derived from it by substring scan."
+  reason: "Single authority for the inputs to the host memory PLANNING ceiling the v1 governor uses for scheduling. This is not an RSS cap. The observed values stay where measured (cgroup reads or sysctl); an operator environment value is separately a request that may narrow an observation but never replace or widen it. This module owns whether a source is observed, whether it is enforced, whether it is degraded, and how it renders."
 }
 
 // THE DEFECT THIS MODULE DISSOLVES, quoted from the code that carries it. v1's
@@ -84,19 +84,34 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 // number.
 
 type HostBudgetSource
-  = BudgetSourceEnvOverride
-  | BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
+  = BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
   | BudgetSourceCgroupMemoryMax { cgroup_dir: NonEmptyStr }
   | BudgetSourceDarwinPhysicalMemory
 
+type HostBudgetObservation = HostBudgetObserved { source: HostBudgetSource, bytes: ByteSize }
+
 type HostBudgetResolution
-  = HostBudgetResolved { source: HostBudgetSource, bytes: ByteSize }
+  = HostBudgetResolved {
+      effective_bytes: ByteSize,
+      requested_bytes: ByteSize?,
+      observation: HostBudgetObservation
+    }
+  | HostBudgetDeclaredUnverified { requested_bytes: ByteSize, reason: NonEmptyStr }
   | HostBudgetUnreadable { reason: NonEmptyStr }
 
 fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
   match r {
-    HostBudgetResolved { source: _, bytes: b } => Present { value: b }
+    HostBudgetResolved { effective_bytes: b, requested_bytes: _, observation: _ } => Present { value: b }
+    HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } => Present { value: requested }
     HostBudgetUnreadable { reason: _ } => none
+  }
+}
+
+fn host_budget_resolved_observation(source: HostBudgetSource, bytes: ByteSize) -> HostBudgetResolution {
+  HostBudgetResolved {
+    effective_bytes: bytes,
+    requested_bytes: none,
+    observation: HostBudgetObserved { source: source, bytes: bytes }
   }
 }
 
@@ -106,15 +121,16 @@ fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolutio
       "no host memory budget is readable on kernel family ",
       concat(
         kernel_family_label(kernel: kernel) as String,
-        ": no cgroup memory.high or memory.max binds this process and GUNBC_MEMORY_BUDGET_BYTES is unset, so the admission bound is UNKNOWN. Refuse the run rather than admitting against the widest cap the consumer could have chosen — an unbounded resolve on an unbounded host is the OOM-kill this arm exists to prevent, and it is not a state a default can rescue. Declare the slot's bound with GUNBC_MEMORY_BUDGET_BYTES."
+        ": no cgroup memory.high or memory.max binds this process, so the planning allowance is UNKNOWN. Refuse the run rather than admitting against the widest cap the consumer could have chosen — an unbounded resolve on an unbounded host is the OOM-kill this arm exists to prevent, and it is not a state an environment integer can rescue. The executor must expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling."
       )
     ) as NonEmptyStr
   }
 }
 
-// DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the
-// two cgroup arms and an explicit operator override describe a bound that belongs to this process
-// alone; the one remaining arm that does not, BudgetSourceDarwinPhysicalMemory, reports a
+// DEGRADED MEANS 'NOT A PROCESS-SCOPED OBSERVATION', not 'bad' and not 'unreadable'. The
+// cgroup arms are process-scoped: memory.high is a throttle and memory.max is an enforced cap. An operator environment value is
+// a planning request: it can narrow an independently observed limit, but cannot prove or widen one.
+// The other non-bounding arm, BudgetSourceDarwinPhysicalMemory, reports a
 // HOST-SHARED signal — hw.memsize is total physical RAM, a fact about the machine rather than about
 // this process.
 //
@@ -133,20 +149,56 @@ fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolutio
 
 fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
   match s {
-    BudgetSourceEnvOverride => false
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => false
     BudgetSourceDarwinPhysicalMemory => true
   }
 }
 
-// A source is a BOUND only if the thing it measures is something this process cannot exceed: an operator's declaration of the slot, or a cgroup limit the kernel will enforce against this very process. Every meminfo-derived reading fails that test and none survives in the coproduct above, so this predicate is total over what remains and its false arm is inhabited by exactly one thing — the Darwin physical-memory read, which is a fact about the machine. Keeping the predicate after deleting the arms it used to reject is deliberate: it is what makes the next arm someone adds answer the question, and Darwin keeps its false arm inhabited so the wall below has a live subject rather than being green by having nothing to judge.
+// A source is a BOUND only if the thing it measures is something this process cannot exceed. An
+// environment integer does not constrain allocation, whatever the operator intended it to mean.
 fn host_budget_source_bounds_this_process(s: HostBudgetSource) -> Bool {
   match s {
-    BudgetSourceEnvOverride => true
-    BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => true
+    BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
     BudgetSourceDarwinPhysicalMemory => false
+  }
+}
+
+// memory.high is an observed, process-scoped operating throttle but not a hard cap: allocations
+// may cross it while the kernel reclaims. memory.max is both observed and enforced. Keeping this
+// axis separate prevents "applicable planning constraint" from silently becoming "RSS ceiling".
+// An operator request may narrow an observed allowance, never replace or widen it. A declaration
+// with no observation remains a typed refusal carrying the requested value for diagnosis.
+fn effective_planning_budget(
+  requested: ByteSize?,
+  observation: HostBudgetObservation?
+) -> HostBudgetResolution {
+  match observation {
+    Present { value: observed } =>
+      match observed {
+        HostBudgetObserved { source: source, bytes: observed_bytes } =>
+          match requested {
+            Present { value: wanted } => HostBudgetResolved {
+              effective_bytes: if byte_size_count(b: wanted) < byte_size_count(b: observed_bytes) { wanted } else { observed_bytes },
+              requested_bytes: requested,
+              observation: HostBudgetObserved { source: source, bytes: observed_bytes }
+            }
+            Absent => HostBudgetResolved {
+              effective_bytes: observed_bytes,
+              requested_bytes: none,
+              observation: HostBudgetObserved { source: source, bytes: observed_bytes }
+            }
+          }
+      }
+    Absent =>
+      match requested {
+        Present { value: wanted } => HostBudgetDeclaredUnverified {
+          requested_bytes: wanted,
+          reason: "GUNBC_MEMORY_BUDGET_BYTES is a planning request, not an enforced process limit; no observed cgroup memory.high or memory.max verifies the executor allowance"
+        }
+        Absent => HostBudgetUnreadable { reason: "no planning request or observed memory limit" }
+      }
   }
 }
 
@@ -161,7 +213,6 @@ fn host_budget_source_admissible_as_bound_on_kernel(s: HostBudgetSource, kernel:
 
 fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
   match s {
-    BudgetSourceEnvOverride => false
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => true
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
     BudgetSourceDarwinPhysicalMemory => false
@@ -170,7 +221,6 @@ fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
 
 fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
   match s {
-    BudgetSourceEnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES"
     BudgetSourceCgroupMemoryHigh { cgroup_dir: d } =>
       concat("cgroup memory.high (", concat(d as String, ")")) as NonEmptyStr
     BudgetSourceCgroupMemoryMax { cgroup_dir: d } =>
@@ -256,8 +306,8 @@ fn kernel_budget_sourcing_static_source(g: KernelBudgetSourcing) -> HostBudgetSo
 // bound memory: the mechanism could not compute its answer, so it substituted a superset and was
 // labelled safe by the cap it applied to it. The cap is what made it look bounded. A failure arm
 // must refuse, never widen — so an unreadable cgroup limit on a kernel that HAS cgroups is now
-// HostBudgetUnreadable, which carries no number, and the operator supplies the bound the executor
-// knows and the process cannot see.
+// HostBudgetUnreadable, which carries no number. The executor must expose the bound; an operator
+// declaration alone remains HostBudgetDeclaredUnverified.
 
 // DECLARED_RUNNER_SLOT_MEMORY_HIGH_BYTES SURVIVES IN THE SEED AND IS NO LONGER A BUDGET SOURCE,
 // which is the distinction the deleted arm erased. It mirrors gunbc.runner_slot_allocation
