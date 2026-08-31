@@ -200,32 +200,6 @@ fn spark_serving_capture_leg(c: SparkServingProbeLegCapture) -> SparkServingProb
   spark_serving_probe_request_leg(request: c.request)
 }
 
-// THE TRANSACTION IS sole_constructor SO A DERIVED OBSERVATION CANNOT BE ASSEMBLED FROM NOWHERE.
-//
-// attempt is the identity of THIS acquisition. It is not decoration: two transactions for one host
-// are two different instants, and a consumer that joins facts across them is doing the thing this
-// carrier exists to stop. locus is the single credential path every capture came through, so a value
-// derived from this transaction can state which credential path produced it.
-// THE IDENTITY FIELDS ARE TYPED AND DERIVED, NOT FLAT STRINGS SUPPLIED BESIDE EACH OTHER.
-//
-// The first cut carried `attempt: NonEmptyStr` and `locus: NonEmptyStr`, and the provenance
-// projector took fleet_attempt, phase and credential AGAIN as independent arguments. Nothing joined
-// those back to the transaction's own attempt, so this was constructible:
-//
-//     txn.attempt             = attempt-A/srv5/report
-//     projected fleet_attempt = attempt-B
-//     projected phase         = post-apply
-//
-// The production caller passed agreeing values, which is exactly the producer coincidence this
-// carrier exists to remove -- the same shape as the host-carried-twice class, one layer up. Now all
-// five identity fields are derived at the mint from context + host + phase, the observation attempt
-// is derived from the other two rather than stored beside them, and every projector below takes ONLY
-// the transaction.
-//
-// The whole sealed FleetSshCredentialBinding travels rather than fleet_locus_label's rendering of
-// it, for the reason the bound axis plan carries the whole provenance value: a presentation string
-// is not semantic evidence, and the receipt can derive both the credential identity and the locus
-// label at the boundary where rendering belongs.
 // THE IDENTITY OF AN OBSERVATION THAT WAS ATTEMPTED, WHETHER OR NOT IT SUCCEEDED.
 //
 // Host, fleet attempt and phase are the three facts that name WHICH observation this is, and they
@@ -263,6 +237,27 @@ fn spark_serving_observation_request(
   SparkServingObservationRequest { host: host, fleet_attempt: fleet_attempt, phase: phase }
 }
 
+// THE TRANSACTION IS sole_constructor SO A DERIVED OBSERVATION CANNOT BE ASSEMBLED FROM NOWHERE,
+// AND ITS IDENTITY FIELDS ARE TYPED AND DERIVED RATHER THAN FLAT STRINGS SUPPLIED BESIDE EACH OTHER.
+//
+// The first cut carried `attempt: NonEmptyStr` and `locus: NonEmptyStr`, and the provenance
+// projector took fleet_attempt, phase and credential AGAIN as independent arguments. Nothing joined
+// those back to the transaction's own attempt, so this was constructible:
+//
+//     txn.attempt             = attempt-A/srv5/report
+//     projected fleet_attempt = attempt-B
+//     projected phase         = post-apply
+//
+// The production caller passed agreeing values, which is exactly the producer coincidence this
+// carrier exists to remove -- the same shape as the host-carried-twice class, one layer up. Now the
+// three facts that NAME the observation travel as one SparkServingObservationRequest, the observation
+// attempt is DERIVED from that request at the mint rather than stored beside it, and every projector
+// below takes ONLY the transaction.
+//
+// The whole sealed FleetSshCredentialBinding travels rather than fleet_locus_label's rendering of
+// it, for the reason the bound axis plan carries the whole provenance value: a presentation string
+// is not semantic evidence, and the receipt can derive both the credential identity and the locus
+// label at the boundary where rendering belongs.
 type SparkServingObservationTransaction sole_constructor {
   request: SparkServingObservationRequest
   observation_attempt: NonEmptyStr
@@ -412,10 +407,8 @@ fn spark_serving_acquisition_receipt_of(
     missing: map(spark_serving_transaction_missing_legs(txn: txn), k => k),
     duplicated: map(spark_serving_transaction_duplicated_legs(txn: txn), k => k),
     executed: length(filter(txn.captures, c => spark_serving_capture_is_executed(c: c))),
-    transport_refused:
-      length(filter(txn.captures, c => spark_serving_capture_is_transport_refused(c: c))),
-    prerequisite_refused:
-      length(filter(txn.captures, c => spark_serving_capture_is_prerequisite_refused(c: c))),
+    transport_refused: length(filter(txn.captures, c => spark_serving_capture_is_transport_refused(c: c))),
+    prerequisite_refused: length(filter(txn.captures, c => spark_serving_capture_is_prerequisite_refused(c: c))),
   }
 }
 
