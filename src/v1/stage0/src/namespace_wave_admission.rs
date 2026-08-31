@@ -444,15 +444,10 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: this pull request merging. Base and head then both carry the relocation, no run can
 /// produce this delta, the row reports stale on every build, and it is removed by that trigger
 /// exactly as all six shrinks above were -- a stale row here refuses every unrelated PR.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "type_reference_declaration_ref relocated to v1.compiler.infer_env (XL-0N, gunbc#9719)",
-    subject: AdmissionSubject::Binding {
-        module: "v1.compiler.emit_rust",
-        in_declaration: "rust_exact_reference_spelling",
-        spelling: "type_reference_declaration_ref",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+/// RETIRED BY THAT TRIGGER (XL-0T, gunbc#9720): gunbc#9719 is in main, the run on bc74b2eecac
+/// reported `0 unadjudicated delta(s), 1 stale admission(s)` naming this row, and it is removed
+/// here by the ledger's own rule.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
