@@ -966,8 +966,8 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // the container's cgroup namespace (BuildBuddy, measured 2026-08-30), and it used to be
     // answered with the machine's MemAvailable capped at this fleet's own declared slot line
     // — two substitutions stacked, and an rc=137 SIGKILL of `main_wet` with no diagnostic.
-    // The bound the executor knows and the process cannot see is exactly what the env
-    // override is for. Panicking here is a hard
+    // An environment declaration cannot replace that missing observation: it constrains no
+    // allocation. Panicking here is a hard
     // stop by design: this runs inside resolution, there is no caller that could honour a
     // typed refusal without threading Result through the cache seam, and continuing is the
     // one option ruled out.
@@ -978,8 +978,8 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
              unknown budget cannot be defaulted — the previous default was the ceiling, which \
              OOM-killed this process rather than refusing, and the MemAvailable arm that \
              replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
-             at rc=137 instead. Declare this slot's bound with GUNBC_MEMORY_BUDGET_BYTES, or \
-             model this platform's memory source \
+             at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
+             GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
              (dag/gunbc/host/host_budget_source.dag)."
         );
     };

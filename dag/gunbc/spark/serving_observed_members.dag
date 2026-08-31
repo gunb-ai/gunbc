@@ -2,6 +2,7 @@ module gunbc.spark.serving_observed_members
 
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
+import gunbc.spark.serving_observation_transaction { SparkServingObservationProvenance }
 import gunbc.ownership { Owned, Ensured }
 import gunbc.spark.serving_release {
   SparkServingObservation,
@@ -92,7 +93,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool, provenance: SparkServingObservationProvenance }
 
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -257,10 +258,11 @@ fn spark_serving_observed_members(
   enablement: SparkServingUnitManagerState,
   activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
+  provenance: SparkServingObservationProvenance,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_reached_host_members(
     host: host, runtime: runtime, store: store, unit: unit, enablement: enablement,
-    activity: activity, linger: linger,
+    activity: activity, linger: linger, provenance: provenance,
   )
 }
 
@@ -273,8 +275,10 @@ fn spark_serving_reached_host_members(
   enablement: SparkServingUnitManagerState,
   activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
+  provenance: SparkServingObservationProvenance,
 ) -> SparkServingObservedMemberProjection {
   SparkServingObservedMembers {
+    provenance: provenance,
     members: concat(
       concat(
         spark_serving_observed_runtime_members(host: host, runtime: runtime),
@@ -336,6 +340,37 @@ fn spark_serving_enablement_was_observed(manager: SparkServingUnitManagerState) 
   }
 }
 
+fn spark_serving_member_address_is_linger(member: SparkServingMember) -> Bool {
+  match member.address {
+    SparkServingLingerAddress => true
+    SparkServingUserUnitAddress => false
+    SparkServingUserUnitRegistrationAddress => false
+    SparkServingUserUnitEnablementAddress => false
+    SparkServingUserUnitActivityAddress => false
+    SparkServingRuntimeRootAddress => false
+    SparkServingModelSlotAddress { slot: _ } => false
+  }
+}
+
+// The report prints whether linger was observed ENABLED, and it reads that off the projection's own
+// member list rather than off a Bool the caller carried beside it. A linger member is present in the
+// observed list only when linger was observed enabled, so presence IS the fact; an unobserved and a
+// disabled linger both project no member, and the plan's own linger_observed flag is what separates
+// those two for every consumer that needs to.
+fn spark_serving_projection_linger_enabled(
+  projection: SparkServingObservedMemberProjection,
+) -> Bool {
+  match projection {
+    SparkServingObservedMembers {
+      members: ms, runtime_observed: _, model_observed: _, unit_observed: _,
+      registration_observed: _, enablement_observed: _, activity_observed: _,
+      linger_observed: lo, provenance: _,
+    } =>
+      lo
+        && any(xs: ms, predicate: fn(m) { spark_serving_member_address_is_linger(member: m) })
+  }
+}
+
 fn spark_serving_linger_state_was_observed(linger: SparkServingObservedLingerState) -> Bool {
   match linger {
     LingerObservedEnabled => true
@@ -355,6 +390,17 @@ fn spark_serving_unit_state_was_observed(unit: SparkServingObservedUnitState) ->
 // A plan built while the unit member was never looked at cannot honestly report convergence: the
 // unit would be planned as an addition on every run, so a second plan can never be empty. Consumers
 // that care about the empty-replan bar read this rather than re-deriving it.
+// The projection's own record of where it was observed. A consumer that wants to plan from it must
+// be able to ask which host it belongs to without being told separately, which is the whole point of
+// carrying provenance through the projection rather than beside it.
+fn spark_serving_projection_provenance(
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingObservationProvenance {
+  match projection {
+    SparkServingObservedMembers { provenance: p } => p
+  }
+}
+
 fn spark_serving_projection_supports_empty_replan(
   projection: SparkServingObservedMemberProjection,
 ) -> Bool {
