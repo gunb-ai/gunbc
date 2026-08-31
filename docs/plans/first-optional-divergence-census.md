@@ -290,26 +290,40 @@ does not distinguish a still-discriminating known-red from one that has stopped 
 assertion, so it is the wrong field to cite for that property — a citation defect, not a safety gap,
 because the adjacent counter gates.
 
-**A second measured victim outside the floor, and a reachability lesson: the drift gate.** After
-refreshing onto main at `a6d6c68d4d1` (42 commits), `required-witnesses-build` fails where it passed
-at `abee235`. The cause is not stale artifacts, which was the obvious hypothesis and the wrong one:
+**The build lane's real cause, and a correction to this document's first account of it.** After
+refreshing onto main at `a6d6c68d4d1`, `required-witnesses-build` fails where it passed at
+`abee235`. This document first recorded the cause as `NoSuchField { type_name: "Optional", field:
+"shape" }` at `extdeps.bmc.types` line 183 (`matches.first().shape`), reproduced by running
+`run_generated_artifact_drift_gate_body` locally, and explicitly ruled OUT stale artifacts. **That
+was wrong, and the ruled-out hypothesis was half the answer.** The CI log reports:
 
-    run_generated_artifact_drift_gate_body
-    cause: NoSuchField { type_name: "Optional", field: "shape" }
+    generated-artifact rostered=35 adjudicated=32 matches=30 drifted=2 absent=0 unadjudicated=3
+      drifted DESIGN.md
+      drifted docs/design-ledgers.md
+      UNADJUDICATED .github/workflows/{witnesses,fleet-converge,fleet-desired}.yml
+        — CallContractMismatch { callee: "outcome_accepted", detail: "an optional value flowed
+          into non-optional parameter 1 ('value') (empty Optional at runtime)" }
 
-The site is `extdeps.bmc.types` line 183, `SurfaceShapeKnown { shape: matches.first().shape }` — a
-field read directly off a `first()` result. It is a value-position method-form site, a member of the
-646-occurrence population this document names and does not roster at identity grain, so it is
-in-class rather than a census miss.
+Two classes, both this branch's:
 
-**The site is not new and neither is the repair; only the composition is.** That exact line predates
-this branch (added by #9238) and was present at `abee235`, where the build lane was green. Nothing in
-main's 42 commits is defective and nothing in this branch changed to reach it. What changed is
-REACHABILITY: main widened `generated_artifact_gate` by 98 lines, and the site entered the gate's
-evaluation closure. Neither side is broken alone; together they refuse. Recorded because the
-diagnostic instinct here — bisect the diff for the newly introduced call — searches for something
-that does not exist, and because a site's presence in the corpus is not evidence that any executed
-path reaches it.
+- **3 unadjudicated** — this branch's own argument-coercion arm, the same refusal `main_wet` gives.
+  Those artifacts cannot be generated at all, so the gate reaches no verdict on them.
+- **2 drifted** — `DESIGN.md` and `docs/design-ledgers.md`, the deliberate unregenerated projections
+  recorded below.
+
+**Why the local reproduction pointed elsewhere.** The local entry evaluates the gate body as one
+expression and dies at the first refusal it meets, which is the `bmc.types` field read; CI's build
+lane adjudicates PER ARTIFACT PATH and so records a per-path outcome for all 35. Same subject, two
+routes, different first failures — and reproducing *a* failure locally is not the same as
+reproducing *the* failure. The `NoSuchField` site is real and remains an in-class value-position
+victim; it is simply not why the lane is red.
+
+**What changed to make this blocking: main #9814, "Restore generated-artifact drift to required CI".**
+The generated-artifact drift check was a declared rung drop and is now a required check again. So the
+drift recorded below stopped being latent debt that dissolves with the repair and became an active
+blocker. That does not change the refusal to fabricate the bytes from a stock-interpreter seed — a
+green gate over a live divergence is worse than a red one — but it does mean this branch cannot show
+a green build lane until the repair completes, for a second independent reason.
 
 **A measured victim outside the floor: `main_wet`.** The generated-artifact actuator
 `tools.generated_artifact_gate main_wet` refuses under this branch's interpreter with
