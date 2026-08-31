@@ -125,7 +125,7 @@ import gunbc.spark.serving_observe {
 }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
   hermetic_fleet_attempt_raw,
-  hermetic_linger_varied_observation,
+  hermetic_converged_observation,
   hermetic_host_observation,
   hermetic_readback,
   hermetic_fixture_provenance,
@@ -1413,7 +1413,7 @@ fn c3_observation_at(
   host: HostIdentity,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingHostObservation? {
-  hermetic_linger_varied_observation(host: host, linger: linger)
+  hermetic_converged_observation(host: host, linger: linger)
 }
 
 fn c3_axis_at(
