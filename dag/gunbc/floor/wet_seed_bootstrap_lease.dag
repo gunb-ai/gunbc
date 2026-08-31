@@ -1,0 +1,50 @@
+module gunbc.wet_seed_bootstrap_lease
+
+import v2.workflow.floor_wet_route { BootstrapExecutorSnapshotReceipt }
+import v2.std.optional { Optional, Absent, Present }
+
+// THE DECLARED ONE-SHOT BOOTSTRAP LEASE ROW (parent lease ruling 2026-08-30), homed OUTSIDE
+// the wet semantic closure on purpose: `v2.workflow.floor_wet_route` is inside its own wet
+// subject digest, so a lease row declared there would move the semantic digest when flipped
+// Absent→Present and invalidate the very envelope it exists to admit. This module imports
+// the route authority (downward edge only — no routed witness closure imports this module),
+// so flipping this row, like a receipt-pair refresh, moves neither digest.
+//
+// Absent is the standing state. A Present row is authored ONLY in the same push as the
+// envelope it names, beside its `gunbc.rung_drop` `wet_executor_bootstrap_lease` row. The
+// admission semantics — exact envelope-digest/attempt-seq/subject/roster join, the fixed
+// executed_at + 28,800s window with `not_after` derived and checked — are owned by
+// `v2.workflow.floor_wet_route.wet_seed_bootstrap_admission`, which takes this row as a
+// parameter; this module carries only the declaration.
+//
+// TWO LIFECYCLES, AND THEY ARE NOT THE SAME EVENT (parent ruling 2026-08-31, lifecycle
+// correction). An earlier revision of this comment said the row "deletes in the same
+// transaction as the first exact-main receipt (the rung-drop row's restoration)", fusing them;
+// both halves were wrong.
+//   THIS OPERATIONAL ROW must REMAIN IN THE MERGED TREE for as long as v7 is executor-different.
+//   Deleting it in v7's own merge would leave main immediately red for exactly the mismatch the
+//   merge just admitted. It deletes with the first executor-exact receipt refresh, or at its
+//   fixed expiry — whichever comes first.
+//   THE RUNG-DROP ROW does not retire on v7's merge, on this row's deletion, or on one receipt
+//   that happens to land executor-exact. It retires only on its capability-shaped trigger,
+//   because the executor race is structural and recurs on every later candidate.
+//
+// THIS RULING AUTHORIZES v7 ONLY. The earlier lease retired unexercised; this is not a rolling
+// renewal, and no successor lease is authorized by it. A v8 row would need its own ruling and
+// its own drop row.
+//
+// WHY THIS ROW IS `Absent` AND THE MECHANISM AROUND IT IS NOT (parent ruling 2026-08-31,
+// SHAPE 1). The wet subject digest folds the closure subject of `v2.workflow.floor_wet_route`
+// itself — that module is one of the digest's own entries — so the lease TYPE and ADMISSION
+// FUNCTION, which cannot live anywhere else without splitting the authority, MOVE THE VERY
+// DIGEST A LEASE EXISTS TO ADMIT. An envelope executed before the mechanism landed is therefore
+// never candidate-exact against a head that carries the mechanism, and a lease naming it could
+// never be admitted. That is self-defeating in the same shape as the transform-in-the-subject
+// defect this route already repaired.
+//
+// So the mechanism lands FIRST, with this row `Absent` and no envelope claim, and the wet lane
+// is dispatched afterwards ON THE TREE THAT CARRIES IT. That run's envelope is semantic-exact by
+// construction. If no executor drift occurs while it runs, no lease is needed at all — which is
+// the outcome to prefer, because the ruling that authorized a lease authorized ONE envelope (v7)
+// and explicitly authorized no successor. Flipping this row again requires its own grant.
+data wet_seed_bootstrap_lease_declared: Optional<BootstrapExecutorSnapshotReceipt> = Absent {}

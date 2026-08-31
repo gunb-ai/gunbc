@@ -211,9 +211,10 @@ type WetReceiptEnvelope = {
 // subject mismatch (parent lease ruling 2026-08-30): a semantic-subject mismatch means the
 // lane executed a DIFFERENT PROGRAM and is never admissible, while an executor-snapshot
 // difference means the same semantic subject ran under a superseded seed build — still a
-// refusal with its own remedy (re-run the lane on this head), split so the two causes are
-// never conflated. The one-shot bootstrap lease that once admitted this arm was retired
-// unexercised under its own dissolution (landing push, 2026-08-31); the split outlives it.
+// refusal by default, but the one arm the one-shot bootstrap admission below may admit, and
+// the split keeps that admission from ever widening onto the semantic axis. The arm does NOT
+// make the mismatch look exact: the standing stays different; only the gate DISPOSITION may
+// admit it, visibly, as `WetFloorAdmittedUnderBootstrapLease`.
 type WetLaneReceiptStanding =
     ReceiptFreshExactSubject { age_secs: Seconds }
   | ReceiptMissing
@@ -570,20 +571,124 @@ data wet_receipt_pr_branch_hand_commit_dissolve_on: DissolutionCondition = unbou
   description: "🟡 out-of-band actuation: the wet-lane receipt envelope is fetched from the run artifact and committed by hand on a pull-request branch, because gunbc.witness_floor_workflow gates its commit-and-open-PR step to refs/heads/main. dissolve-on: that ref gate widens so the wet-receipts lane commits its own receipt pair onto the head it executed on any branch a required floor gates — no human retrieval between execution and receipt. Conveniences around the fetch do not retire this row." as NonEmptyStr,
 )
 
+// THE ONE-SHOT BOOTSTRAP ADMISSION (parent lease ruling 2026-08-30, re-instantiated
+// 2026-08-31 bound to envelope v7). The structural race it prices: a wet cycle takes ~2.5h
+// while main merges src/v1/stage0 every ~1-2h, so an envelope can be executor-stale on every
+// mergeable head without any semantic fact changing.
+//
+// WHY THE RE-INSTANTIATION IS SOUNDER THAN THE ORIGINAL RULING, and this is the fact that
+// changed under it: when the lease was first ruled admissible, the SEMANTIC subject digest was
+// not a function of the tree at all — it folded `transform_content_digest()`, the bytes of the
+// running executable, so producer and consumer could never agree and "executor-only drift" was
+// not a state anyone could actually establish. That defect is fixed (`wet_closure_subject`), the
+// semantic axis is now tree-only and provably convergent, and a lease that admits ONLY past
+// `ReceiptExecutorSnapshotDifferent` is therefore admitting past a genuinely isolated axis
+// rather than past a digest that was noise on both. The narrowness the original ruling assumed
+// is now real rather than asserted. The lease
+// admits EXACTLY ONE named envelope past `ReceiptExecutorSnapshotDifferent` — never past a
+// semantic-subject, contract, roster, expiry or missing standing — bound by envelope digest
+// and attempt_seq (never commit ancestry: a squash merge erases ancestry), inside a FIXED
+// window of `executed_at + wet_seed_bootstrap_lease_window_secs()` with no slide, renewal or
+// commit-count bound. `not_after` is DERIVED and checked, not trusted: a declared row whose
+// not_after is not exactly executed_at + window is not applicable. The declared row deletes in
+// the same transaction as the first exact-main receipt (the rung-drop row's restoration).
+fn wet_seed_bootstrap_lease_window_secs() -> Seconds {
+  28800
+}
+
+// `lease_identity` names WHICH lease this row is, so a second row cannot be mistaken for a
+// renewal of this one, and `observed_executor_contract_digest` records the executor digest the
+// lease was authored AGAINST -- the one fact the admission is conceding. Neither participates in
+// the admission join: the join is over the exact envelope/attempt/subject/roster facts below,
+// and recording the conceded digest is what makes the concession readable rather than implicit.
+type BootstrapExecutorSnapshotReceipt = {
+  lease_identity: String,
+  exact_envelope_digest: String,
+  exact_attempt_seq: Int,
+  exact_semantic_subject_digest: String,
+  exact_roster_digest: String,
+  observed_executor_contract_digest: String,
+  executed_at_unix_secs: EpochSecs,
+  not_after_unix_secs: EpochSecs
+}
+
+type WetSeedBootstrapAdmission =
+    BootstrapExecutorSnapshotLeaseAdmitted {
+      exact_envelope_digest: String,
+      exact_attempt_seq: Int,
+      exact_semantic_subject_digest: String,
+      exact_roster_digest: String,
+      executed_at_unix_secs: EpochSecs,
+      not_after_unix_secs: EpochSecs
+    }
+  | BootstrapLeaseExpired { detail: String }
+  | BootstrapLeaseNotApplicable
+
+// THE DECLARED LEASE ROW LIVES OUTSIDE THIS MODULE — `gunbc.wet_seed_bootstrap_lease`
+// (dag/gunbc/floor/wet_seed_bootstrap_lease.dag) — deliberately: the wet SEMANTIC subject
+// digest hashes this module's closure subject, so a row declared here would move the digest
+// the moment it flips Absent→Present and invalidate the very envelope it admits. The
+// admission fn below therefore takes the lease as a parameter; the required floor runner
+// reads the declared row from its own module.
+
+// THE ADMISSION EVALUATION: every exact fact must join, and the window is closed-form. Any
+// mismatch is NotApplicable (the lease names a different envelope — not an error, just not
+// this one); a joined lease outside its window is Expired, the arm that distinguishes "the
+// lease died of age" from "no lease names this envelope".
+fn wet_seed_bootstrap_admission(
+  lease: Optional<BootstrapExecutorSnapshotReceipt>,
+  envelope_digest: String,
+  attempt_seq: Int,
+  semantic_subject_digest: String,
+  roster_digest: String,
+  evaluated_tree_commit_unix_secs: EpochSecs
+) -> WetSeedBootstrapAdmission {
+  match lease {
+    Absent => BootstrapLeaseNotApplicable {}
+    Present { value: r } => {
+      if r.exact_envelope_digest != envelope_digest
+        || r.exact_attempt_seq != attempt_seq
+        || r.exact_semantic_subject_digest != semantic_subject_digest
+        || r.exact_roster_digest != roster_digest {
+        BootstrapLeaseNotApplicable {}
+      } else {
+        if wet_time_scalar(x: r.not_after_unix_secs)
+          != wet_time_scalar(x: r.executed_at_unix_secs) + wet_time_scalar(x: wet_seed_bootstrap_lease_window_secs()) {
+          BootstrapLeaseNotApplicable {}
+        } else {
+          if wet_time_scalar(x: evaluated_tree_commit_unix_secs) > wet_time_scalar(x: r.not_after_unix_secs) {
+            BootstrapLeaseExpired { detail: "the evaluated tree's commit time exceeds the lease's fixed not_after window" }
+          } else {
+            BootstrapExecutorSnapshotLeaseAdmitted {
+              exact_envelope_digest: r.exact_envelope_digest,
+              exact_attempt_seq: r.exact_attempt_seq,
+              exact_semantic_subject_digest: r.exact_semantic_subject_digest,
+              exact_roster_digest: r.exact_roster_digest,
+              executed_at_unix_secs: r.executed_at_unix_secs,
+              not_after_unix_secs: r.not_after_unix_secs
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // THE GATE DISPOSITION — the canonical fold the blocking polarity consumes (review 57656:
-// a coproduct must not be flattened to Bool at the consumer; the algebra lives here).
-// Exactly one arm admits, carrying the admission's own evidence; `WetFloorRefused` carries
-// the standing so the refusal stays located and typed. A one-shot bootstrap lease admission
-// for `ReceiptExecutorSnapshotDifferent` was authored here under the 2026-08-30 liveness
-// ruling, never exercised (envelope v2 landed executor- and semantic-exact), and RETIRED
-// under its own dissolution in the landing push; the arm split it motivated stays, because
-// "same semantic subject under a superseded seed build" and "different program" remain two
-// different refusals with two different remedies.
+// a coproduct must not be flattened to Bool at the consumer; the algebra lives here). Exactly
+// two arms admit, and each carries its admission's own evidence: `WetFloorAdmittedFresh` is
+// the ordinary exact-subject admission, and `WetFloorAdmittedUnderBootstrapLease` is the
+// declared one-shot admission, distinct so no reader can mistake a leased envelope for an
+// exact one. `WetFloorRefused` carries the standing so the refusal stays located and typed.
 type WetFloorGateDisposition =
     WetFloorAdmittedFresh { age_secs: Seconds }
+  | WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: EpochSecs }
   | WetFloorRefused { standing: WetLaneReceiptStanding }
 
-fn wet_route_gate_disposition(standing: WetLaneReceiptStanding) -> WetFloorGateDisposition {
+fn wet_route_gate_disposition(
+  standing: WetLaneReceiptStanding,
+  admission: WetSeedBootstrapAdmission
+) -> WetFloorGateDisposition {
   match standing {
     ReceiptFreshExactSubject { age_secs: a } => WetFloorAdmittedFresh { age_secs: a }
     ReceiptMissing => WetFloorRefused { standing: standing }
@@ -591,7 +696,14 @@ fn wet_route_gate_disposition(standing: WetLaneReceiptStanding) -> WetFloorGateD
     ReceiptSubjectMismatch { axis: _, receipt_digest: _, computed_digest: _ } =>
       WetFloorRefused { standing: standing }
     ReceiptExecutorSnapshotDifferent { receipt_digest: _, computed_digest: _ } =>
-      WetFloorRefused { standing: standing }
+      match admission {
+        BootstrapExecutorSnapshotLeaseAdmitted {
+          exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _,
+          exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: n
+        } => WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: n }
+        BootstrapLeaseExpired { detail: _ } => WetFloorRefused { standing: standing }
+        BootstrapLeaseNotApplicable => WetFloorRefused { standing: standing }
+      }
     ReceiptContractMismatch { detail: _ } => WetFloorRefused { standing: standing }
     ReceiptRosterInexact { detail: _ } => WetFloorRefused { standing: standing }
   }
@@ -600,17 +712,25 @@ fn wet_route_gate_disposition(standing: WetLaneReceiptStanding) -> WetFloorGateD
 fn wet_route_disposition_blocks_floor(disposition: WetFloorGateDisposition) -> Bool {
   match disposition {
     WetFloorAdmittedFresh { age_secs: _ } => false
+    WetFloorAdmittedUnderBootstrapLease { not_after_unix_secs: _ } => false
     WetFloorRefused { standing: _ } => true
   }
 }
 
 // THE ENVELOPE-LEVEL BLOCKING POLARITY, STATED ONCE, as a read of the canonical disposition
-// fold above rather than a second enumeration of the standing (review 57656). The
+// fold above rather than a second enumeration of the standing (review 57656). This
+// projection evaluates the LEASELESS gate — the admission parameter is the terminal
+// `BootstrapLeaseNotApplicable`, so a leased envelope is visible only to consumers that
+// evaluate `wet_seed_bootstrap_admission` against the envelope's own facts and consume
+// `wet_route_gate_disposition` directly (the required floor runner does exactly that). The
 // per-identity polarity is `wet_route_identity_reds_block` above, decided from the same
 // envelope's rows once the disposition admits.
 fn wet_route_standing_blocks_floor(standing: WetLaneReceiptStanding) -> Bool {
   wet_route_disposition_blocks_floor(
-    disposition: wet_route_gate_disposition(standing: standing)
+    disposition: wet_route_gate_disposition(
+      standing: standing,
+      admission: BootstrapLeaseNotApplicable {}
+    )
   )
 }
 
