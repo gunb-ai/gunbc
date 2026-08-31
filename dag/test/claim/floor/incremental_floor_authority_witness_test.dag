@@ -1,0 +1,490 @@
+module test.claim.incremental_floor_authority_witness_test
+
+import std.types { Bool, String, List }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.incremental_floor_authority {
+  FloorWitnessRow,
+  FloorRoster,
+  FloorBaseReceipt,
+  BaseWholeHeadCorpus,
+  BaseProvenIncremental,
+  FloorInputDelta,
+  MediumDelta,
+  MediumUnobserved,
+  SourceTreeFiles,
+  Fixtures,
+  GeneratedArtifacts,
+  ToolchainIdentity,
+  ExecutingBinaryIdentity,
+  RosterDiscoveryInputs,
+  FloorAffectedClosure,
+  ClosureExact,
+  ClosureStructuralOverApproximation,
+  ClosureUnestablished,
+  FloorExecutedRow,
+  FloorCarriedRow,
+  RowPassed,
+  RowNotExecuted,
+  FloorGlobalInvariantResult,
+  FloorIncrementalAttempt,
+  floor_global_invariants,
+  floor_proof_conjuncts,
+  floor_unmet_conjuncts,
+  floor_proof_conjunct_name,
+  whole_head_corpus_floor_valid,
+  floor_whole_head_corpus_execution,
+  floor_verdict_standing,
+  floor_verdict_established,
+  floor_proof_unestablished_receipt,
+  WholeHeadCorpusExecuted,
+  IncrementalEquivalentToWholeHead,
+  IncrementalProofUnestablished
+}
+
+// THE LAW IS EXERCISED HERE, AND THE SHAPE OF THE EXERCISE IS THE POINT.
+//
+// A conjunction of seven is trivially easy to write and trivially easy to get wrong in the one way
+// that matters: a conjunct that is never the deciding one is a decoration, and a conjunction whose
+// green is reachable with any conjunct removed is not the law it claims to be. So every test below
+// is the SAME accepted attempt with exactly ONE fact broken, and every one of them must refuse --
+// which is what makes each conjunct load-bearing by measurement rather than by assertion.
+//
+// The positive control is `w_a_complete_attempt_is_equivalent_to_the_whole_head_run`: without it
+// the seven refusals could all be produced by a predicate that refuses everything.
+
+data witness_live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FIXTURE CORPUS. Three rows; the head edit touches `alpha` only, so `beta` and `gamma` are
+// the carry population and `alpha` is the recomputation. Digests are opaque strings on purpose --
+// the law never inspects a digest, it only compares two of them, which is exactly the property
+// that makes carrying an identity rather than a belief.
+fn fixture_head_roster() -> FloorRoster {
+  FloorRoster {
+    tree: "head0000",
+    rows: [
+      FloorWitnessRow { id: "alpha", input_digest: "alpha-2" },
+      FloorWitnessRow { id: "beta", input_digest: "beta-1" },
+      FloorWitnessRow { id: "gamma", input_digest: "gamma-1" }
+    ]
+  }
+}
+
+fn fixture_base_roster() -> FloorRoster {
+  FloorRoster {
+    tree: "base0000",
+    rows: [
+      FloorWitnessRow { id: "alpha", input_digest: "alpha-1" },
+      FloorWitnessRow { id: "beta", input_digest: "beta-1" },
+      FloorWitnessRow { id: "gamma", input_digest: "gamma-1" }
+    ]
+  }
+}
+
+fn fixture_base() -> FloorBaseReceipt {
+  FloorBaseReceipt {
+    tree: "base0000",
+    roster: fixture_base_roster(),
+    all_rows_passed: true,
+    provenance: BaseWholeHeadCorpus
+  }
+}
+
+fn fixture_delta() -> FloorInputDelta {
+  FloorInputDelta {
+    base_tree: "base0000",
+    head_tree: "head0000",
+    observations: [
+      MediumDelta { medium: SourceTreeFiles, changed: ["dag/fixture/alpha.dag"] },
+      MediumDelta { medium: Fixtures, changed: [] },
+      MediumDelta { medium: GeneratedArtifacts, changed: [] },
+      MediumDelta { medium: ToolchainIdentity, changed: [] },
+      MediumDelta { medium: ExecutingBinaryIdentity, changed: [] },
+      MediumDelta { medium: RosterDiscoveryInputs, changed: [] }
+    ]
+  }
+}
+
+fn fixture_closure() -> FloorAffectedClosure {
+  FloorAffectedClosure {
+    changed_inputs: ["dag/fixture/alpha.dag"],
+    affected_rows: ["alpha"],
+    kind: ClosureExact
+  }
+}
+
+fn fixture_recomputed() -> List<FloorExecutedRow> {
+  [FloorExecutedRow { id: "alpha", input_digest: "alpha-2", verdict: RowPassed }]
+}
+
+fn fixture_carried() -> List<FloorCarriedRow> {
+  [
+    FloorCarriedRow { id: "beta", base_input_digest: "beta-1", head_input_digest: "beta-1" },
+    FloorCarriedRow { id: "gamma", base_input_digest: "gamma-1", head_input_digest: "gamma-1" }
+  ]
+}
+
+// THE GLOBAL INVARIANTS ARE DERIVED FROM THE ROSTER, NEVER RETYPED HERE. A fixture that lists its
+// own four invariant names would go green on the day a fifth row is declared and never recomputed
+// -- the change detector DESIGN section 5 names. Deriving them means adding a row to the authority
+// makes this attempt's discharge an obligation automatically.
+fn fixture_global_invariants() -> List<FloorGlobalInvariantResult> {
+  floor_global_invariants |> map(row => FloorGlobalInvariantResult {
+    invariant: row.invariant,
+    recomputed_at_head: true,
+    passed: true
+  })
+}
+
+fn fixture_attempt() -> FloorIncrementalAttempt {
+  FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: fixture_base(),
+    delta: fixture_delta(),
+    closure: fixture_closure(),
+    recomputed: fixture_recomputed(),
+    carried: fixture_carried(),
+    global_invariants: fixture_global_invariants()
+  }
+}
+
+fn attempt_refuses_exactly(attempt: FloorIncrementalAttempt, conjunct_name: String) -> Bool {
+  let unmet = floor_unmet_conjuncts(attempt: attempt)
+  count(unmet) == 1
+    && (unmet |> all(u => floor_proof_conjunct_name(conjunct: u.conjunct) == conjunct_name))
+    && !floor_verdict_established(standing: floor_verdict_standing(
+      disposition: whole_head_corpus_floor_valid(attempt: attempt)))
+}
+
+// POSITIVE CONTROL.
+test fn w_a_complete_attempt_is_equivalent_to_the_whole_head_run() -> Bool {
+  let disposition = whole_head_corpus_floor_valid(attempt: fixture_attempt())
+  let established = floor_verdict_established(standing: floor_verdict_standing(disposition: disposition))
+  let shaped = match disposition {
+    WholeHeadCorpusExecuted { head_tree: _, rows: _ } => false,
+    IncrementalEquivalentToWholeHead { head_tree: tree, recomputed: recomputed, carried: carried } =>
+      tree == "head0000" && recomputed == 1 && carried == 2,
+    IncrementalProofUnestablished { head_tree: _, unmet: _ } => false
+  }
+  established && shaped && count(floor_unmet_conjuncts(attempt: fixture_attempt())) == 0
+}
+
+// CONJUNCT 1. A base that never established a whole-corpus pass is an unknown, and carrying from
+// an unknown is the failure this whole module exists to make unauthorable. The mutation is the
+// smallest one that can occur in production: the base ran and was red.
+test fn w_RED_a_base_receipt_that_did_not_pass_cannot_be_carried_from() -> Bool {
+  let base = FloorBaseReceipt {
+    tree: "base0000",
+    roster: fixture_base_roster(),
+    all_rows_passed: false,
+    provenance: BaseWholeHeadCorpus
+  }
+  let attempt = FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: base,
+    delta: fixture_delta(),
+    closure: fixture_closure(),
+    recomputed: fixture_recomputed(),
+    carried: fixture_carried(),
+    global_invariants: fixture_global_invariants()
+  }
+  attempt_refuses_exactly(attempt: attempt, conjunct_name: "base_receipt_whole")
+}
+
+// CONJUNCT 1, THE CHAIN. An incremental base is admissible -- soundness is inductive -- but only
+// when it can cite the whole-corpus ancestor and the proof that reached it. "Descended from a
+// whole run, somehow" is the state that must not stand.
+test fn w_RED_an_incremental_base_without_a_cited_proof_is_not_a_base() -> Bool {
+  let ungrounded = FloorBaseReceipt {
+    tree: "base0000",
+    roster: fixture_base_roster(),
+    all_rows_passed: true,
+    provenance: BaseProvenIncremental { whole_corpus_ancestor: "root0000", proof_receipt: "" }
+  }
+  let refused = attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: fixture_head_roster(),
+      base: ungrounded,
+      delta: fixture_delta(),
+      closure: fixture_closure(),
+      recomputed: fixture_recomputed(),
+      carried: fixture_carried(),
+      global_invariants: fixture_global_invariants()
+    },
+    conjunct_name: "base_receipt_whole"
+  )
+  // The same chain WITH its citation stands, so the refusal above is about the missing proof and
+  // not about the incremental provenance itself.
+  let grounded = FloorBaseReceipt {
+    tree: "base0000",
+    roster: fixture_base_roster(),
+    all_rows_passed: true,
+    provenance: BaseProvenIncremental { whole_corpus_ancestor: "root0000", proof_receipt: "receipt-9" }
+  }
+  let stands = count(floor_unmet_conjuncts(attempt: FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: grounded,
+    delta: fixture_delta(),
+    closure: fixture_closure(),
+    recomputed: fixture_recomputed(),
+    carried: fixture_carried(),
+    global_invariants: fixture_global_invariants()
+  })) == 0
+  refused && stands
+}
+
+// CONJUNCT 2, AND THIS IS THE ONE THE MEDIUM ROSTER EXISTS FOR. The source-tree delta is complete
+// and correct; the toolchain was simply never looked at. Every carried row rests on an input class
+// nobody measured, and the attempt looks exactly like a clean one from the source-tree side.
+test fn w_RED_an_unobserved_input_medium_refuses_the_whole_delta() -> Bool {
+  let delta = FloorInputDelta {
+    base_tree: "base0000",
+    head_tree: "head0000",
+    observations: [
+      MediumDelta { medium: SourceTreeFiles, changed: ["dag/fixture/alpha.dag"] },
+      MediumDelta { medium: Fixtures, changed: [] },
+      MediumDelta { medium: GeneratedArtifacts, changed: [] },
+      MediumUnobserved { medium: ToolchainIdentity, detail: "runner did not record the toolchain identity" },
+      MediumDelta { medium: ExecutingBinaryIdentity, changed: [] },
+      MediumDelta { medium: RosterDiscoveryInputs, changed: [] }
+    ]
+  }
+  attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: fixture_head_roster(),
+      base: fixture_base(),
+      delta: delta,
+      closure: fixture_closure(),
+      recomputed: fixture_recomputed(),
+      carried: fixture_carried(),
+      global_invariants: fixture_global_invariants()
+    },
+    conjunct_name: "complete_input_delta"
+  )
+}
+
+// CONJUNCT 3, THE ABSORBING-FALLBACK CELL. A closure that could not compute must not answer, and
+// the arm that would have made this green in every other system -- "so run everything" -- is not
+// reachable from here at all. The disposition is a refusal that names the conjunct.
+test fn w_RED_an_unestablished_closure_refuses_rather_than_widening() -> Bool {
+  let closure = FloorAffectedClosure {
+    changed_inputs: ["dag/fixture/alpha.dag"],
+    affected_rows: ["alpha"],
+    kind: ClosureUnestablished { detail: "edited path is under no source root" }
+  }
+  let attempt = FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: fixture_base(),
+    delta: fixture_delta(),
+    closure: closure,
+    recomputed: fixture_recomputed(),
+    carried: fixture_carried(),
+    global_invariants: fixture_global_invariants()
+  }
+  let refused = attempt_refuses_exactly(attempt: attempt, conjunct_name: "affected_closure_sound")
+  let receipt_names_the_stop = floor_proof_unestablished_receipt(
+    head_tree: "head0000",
+    unmet: floor_unmet_conjuncts(attempt: attempt)
+  ) == "incremental floor proof unestablished: head_tree=head0000 unmet=affected_closure_sound"
+  refused && receipt_names_the_stop
+}
+
+// CONJUNCT 3, THE OVER-APPROXIMATION NEIGHBOUR. A structural bound computed AS the answer is
+// admissible -- it is what the closure believes, bounded by structure -- so the refusal above is
+// about the closure failing, not about it being imprecise. Without this row the previous test
+// would be consistent with a law that only admits exact closures, which is not the law.
+test fn w_a_structural_over_approximation_is_an_answer_not_a_fallback() -> Bool {
+  let closure = FloorAffectedClosure {
+    changed_inputs: ["dag/fixture/alpha.dag"],
+    affected_rows: ["alpha"],
+    kind: ClosureStructuralOverApproximation { basis: "reverse import closure over declared edges" }
+  }
+  count(floor_unmet_conjuncts(attempt: FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: fixture_base(),
+    delta: fixture_delta(),
+    closure: closure,
+    recomputed: fixture_recomputed(),
+    carried: fixture_carried(),
+    global_invariants: fixture_global_invariants()
+  })) == 0
+}
+
+// CONJUNCT 3, THE JOIN. The closure names a row and the run did not execute it: coverage that
+// looks like coverage. This is the cell that distinguishes "a closure exists" from "the closure's
+// answer was obeyed".
+test fn w_RED_a_closure_row_that_was_not_recomputed_is_not_covered() -> Bool {
+  let closure = FloorAffectedClosure {
+    changed_inputs: ["dag/fixture/alpha.dag"],
+    affected_rows: ["alpha", "beta"],
+    kind: ClosureExact
+  }
+  let attempt = FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: fixture_base(),
+    delta: fixture_delta(),
+    closure: closure,
+    recomputed: fixture_recomputed(),
+    carried: fixture_carried(),
+    global_invariants: fixture_global_invariants()
+  }
+  attempt_refuses_exactly(attempt: attempt, conjunct_name: "affected_closure_sound")
+}
+
+// CONJUNCT 4, AND THE ARM THAT MATTERS IS `RowNotExecuted` RATHER THAN `RowFailed`. A red row is
+// nobody's temptation; a row the runner never got to is, because its absence of a failure reads as
+// an absence of a problem.
+test fn w_RED_a_recomputed_row_that_never_executed_is_not_a_pass() -> Bool {
+  let recomputed = [FloorExecutedRow {
+    id: "alpha",
+    input_digest: "alpha-2",
+    verdict: RowNotExecuted { detail: "worker lost before the row was reached" }
+  }]
+  attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: fixture_head_roster(),
+      base: fixture_base(),
+      delta: fixture_delta(),
+      closure: fixture_closure(),
+      recomputed: recomputed,
+      carried: fixture_carried(),
+      global_invariants: fixture_global_invariants()
+    },
+    conjunct_name: "recomputed_rows_passed"
+  )
+}
+
+// CONJUNCT 5, THE WHOLE POINT OF CARRYING. `beta`'s inputs moved between base and head and the
+// carry claimed them identical anyway. This is the single mutation that turns the incremental
+// verdict into a lie while leaving every other conjunct intact.
+test fn w_RED_a_carried_row_whose_inputs_moved_cannot_be_carried() -> Bool {
+  let head = FloorRoster {
+    tree: "head0000",
+    rows: [
+      FloorWitnessRow { id: "alpha", input_digest: "alpha-2" },
+      FloorWitnessRow { id: "beta", input_digest: "beta-2" },
+      FloorWitnessRow { id: "gamma", input_digest: "gamma-1" }
+    ]
+  }
+  attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: head,
+      base: fixture_base(),
+      delta: fixture_delta(),
+      closure: fixture_closure(),
+      recomputed: fixture_recomputed(),
+      carried: fixture_carried(),
+      global_invariants: fixture_global_invariants()
+    },
+    conjunct_name: "carried_digests_identical"
+  )
+}
+
+// CONJUNCT 5, THE ORACLE. The carry asserts two identical digests that match NOTHING in either
+// roster. Self-consistent and worthless -- a measurement compared against a copy of itself.
+test fn w_RED_a_carry_that_cites_digests_no_roster_carries_is_not_evidence() -> Bool {
+  let carried = [
+    FloorCarriedRow { id: "beta", base_input_digest: "invented", head_input_digest: "invented" },
+    FloorCarriedRow { id: "gamma", base_input_digest: "gamma-1", head_input_digest: "gamma-1" }
+  ]
+  attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: fixture_head_roster(),
+      base: fixture_base(),
+      delta: fixture_delta(),
+      closure: fixture_closure(),
+      recomputed: fixture_recomputed(),
+      carried: carried,
+      global_invariants: fixture_global_invariants()
+    },
+    conjunct_name: "carried_digests_identical"
+  )
+}
+
+// CONJUNCT 6. `gamma` is in the head roster and in neither set: a witness that silently did not
+// participate. Nothing goes red, nothing is missing from any list a reader would think to check,
+// and the run reports a pass over a roster it did not cover.
+test fn w_RED_a_head_row_in_neither_set_breaks_the_partition() -> Bool {
+  let carried = [FloorCarriedRow { id: "beta", base_input_digest: "beta-1", head_input_digest: "beta-1" }]
+  attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: fixture_head_roster(),
+      base: fixture_base(),
+      delta: fixture_delta(),
+      closure: fixture_closure(),
+      recomputed: fixture_recomputed(),
+      carried: carried,
+      global_invariants: fixture_global_invariants()
+    },
+    conjunct_name: "exact_partition"
+  )
+}
+
+// CONJUNCT 6, THE OTHER DIRECTION. A row is both recomputed and carried: two verdicts for one
+// subject, and the carried green stands beside whatever the recomputation found. A count equality
+// alone admits this, which is why the check is an identity join.
+test fn w_RED_a_row_that_is_both_recomputed_and_carried_is_two_verdicts() -> Bool {
+  let carried = [
+    FloorCarriedRow { id: "alpha", base_input_digest: "alpha-1", head_input_digest: "alpha-2" },
+    FloorCarriedRow { id: "beta", base_input_digest: "beta-1", head_input_digest: "beta-1" },
+    FloorCarriedRow { id: "gamma", base_input_digest: "gamma-1", head_input_digest: "gamma-1" }
+  ]
+  let unmet = floor_unmet_conjuncts(attempt: FloorIncrementalAttempt {
+    head_roster: fixture_head_roster(),
+    base: fixture_base(),
+    delta: fixture_delta(),
+    closure: fixture_closure(),
+    recomputed: fixture_recomputed(),
+    carried: carried,
+    global_invariants: fixture_global_invariants()
+  })
+  // Both the partition and the digest conjunct object here, and that is the honest report: the
+  // duplicated row is also a carry over inputs that moved.
+  count(unmet) == 2
+    && (unmet |> any(u => floor_proof_conjunct_name(conjunct: u.conjunct) == "exact_partition"))
+    && (unmet |> any(u => floor_proof_conjunct_name(conjunct: u.conjunct) == "carried_digests_identical"))
+}
+
+// CONJUNCT 7. Every row-local fact is impeccable and the corpus-wide obligation was carried rather
+// than recomputed -- which is not a thing it can be, because it has no row to be carried on. This
+// is the conjunct that survives a perfect selector.
+test fn w_RED_a_global_invariant_carried_instead_of_recomputed_refuses() -> Bool {
+  let results = floor_global_invariants |> map(row => FloorGlobalInvariantResult {
+    invariant: row.invariant,
+    recomputed_at_head: row.invariant != "generated_artifact_drift",
+    passed: true
+  })
+  attempt_refuses_exactly(
+    attempt: FloorIncrementalAttempt {
+      head_roster: fixture_head_roster(),
+      base: fixture_base(),
+      delta: fixture_delta(),
+      closure: fixture_closure(),
+      recomputed: fixture_recomputed(),
+      carried: fixture_carried(),
+      global_invariants: results
+    },
+    conjunct_name: "global_invariants_recomputed"
+  )
+}
+
+// THE CONJUNCTION IS EXACTLY SEVEN, joined to the roster the law folds over rather than to a
+// literal. If a conjunct is added to `floor_proof_conjuncts` without a discriminating red beside
+// it, this row is the reader's cue that the evidence set is behind the law.
+test fn w_the_law_is_the_declared_conjunct_roster() -> Bool {
+  count(floor_proof_conjuncts) == 7
+    && (floor_proof_conjuncts |> all(c => floor_proof_conjunct_name(conjunct: c) != ""))
+}
+
+// THE WHOLE-CORPUS ARM DISCHARGES BY EXECUTION, and it establishes a verdict without any proof
+// obligation at all -- which is what makes today's whole-corpus required floor the configuration
+// under which this law is trivially satisfied.
+test fn w_a_whole_head_corpus_run_establishes_its_verdict_by_execution() -> Bool {
+  let disposition = floor_whole_head_corpus_execution(roster: fixture_head_roster())
+  let established = floor_verdict_established(standing: floor_verdict_standing(disposition: disposition))
+  let shaped = match disposition {
+    WholeHeadCorpusExecuted { head_tree: tree, rows: rows } => tree == "head0000" && rows == 3,
+    IncrementalEquivalentToWholeHead { head_tree: _, recomputed: _, carried: _ } => false,
+    IncrementalProofUnestablished { head_tree: _, unmet: _ } => false
+  }
+  established && shaped
+}
