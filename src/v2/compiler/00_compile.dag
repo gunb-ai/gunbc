@@ -30,6 +30,7 @@ import v2.lens.complexity_accumulator_copy.compile_gate { accumulator_copy_compi
 import v2.lens.determinism { determinism_compile_gate }
 import v2.lens.machine_shape { machine_shape_compile_gate }
 import v2.lens.mandatory_tag { mandatory_tag_compile_gate }
+import v2.lens.undecidable_verdict_collapse { undecidable_verdict_collapse_compile_gate }
 import v2.lens.fact_density { fact_density_hollow_alias_gate }
 import v2.lens.unit_modeling { unit_modeling_gate }
 import v2.lens.lifecycle_carrier { lifecycle_carrier_gate }
@@ -131,6 +132,7 @@ data accumulator_copy_lens: CompileLens = CompileLens { gate: accumulator_copy_r
 data determinism_lens: CompileLens = CompileLens { gate: determinism_root_gate }
 
 data machine_shape_lens: CompileLens = CompileLens { gate: machine_shape_root_gate }
+data undecidable_verdict_collapse_lens: CompileLens = CompileLens { gate: undecidable_verdict_collapse_root_gate }
 
 data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_gate }
 
@@ -148,7 +150,13 @@ data mandatory_tag_lens: CompileLens = CompileLens { gate: mandatory_tag_root_ga
 // re-enrolling a nullary gate here re-opens the census class.
 
 fn always_required_root_lenses() -> List<CompileLens> {
-  [accumulator_copy_lens, determinism_lens, machine_shape_lens, mandatory_tag_lens]
+  [
+    accumulator_copy_lens,
+    determinism_lens,
+    machine_shape_lens,
+    mandatory_tag_lens,
+    undecidable_verdict_collapse_lens
+  ]
 }
 
 fn accumulator_copy_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
@@ -165,6 +173,10 @@ fn machine_shape_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
 
 fn mandatory_tag_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   mandatory_tag_compile_gate(node: tree.root)
+}
+
+fn undecidable_verdict_collapse_root_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+  undecidable_verdict_collapse_compile_gate(node: tree.root)
 }
 
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
