@@ -317,7 +317,7 @@ test fn witness_matching_revision_and_clean_tree_is_the_only_converged_arm() -> 
       deployed_tree_standing_is_converged(
         standing: standing_for(
           desired: a,
-          obs: DeployedTreeObserved { revision: a, content: DeployedScopeMatchesCommit },
+          obs: DeployedTreeObserved { revision: a, tree: a, content: DeployedScopeMatchesCommit },
         ),
       )
   }
@@ -333,6 +333,7 @@ test fn witness_right_revision_with_modifications_is_not_converged_and_not_drift
         desired: a,
         obs: DeployedTreeObserved {
           revision: a,
+          tree: a,
           content: DeployedScopeDiverged { changed_paths: "dag/gunbc/ci/ci_spec.dag" as NonEmptyStr },
         },
       ) {
@@ -354,7 +355,7 @@ test fn witness_a_different_revision_reports_drift_carrying_both_sides() -> Bool
         Present { value: b } =>
           match standing_for(
             desired: a,
-            obs: DeployedTreeObserved { revision: b, content: DeployedScopeMatchesCommit },
+            obs: DeployedTreeObserved { revision: b, tree: b, content: DeployedScopeMatchesCommit },
           ) {
             DeployedTreeRevisionDrifted { desired: d, local: l } =>
               git_object_id_eq(left: d, right: a) && git_object_id_eq(left: l, right: b)
@@ -379,6 +380,7 @@ test fn witness_drift_dominates_modification() -> Bool {
             desired: a,
             obs: DeployedTreeObserved {
               revision: b,
+              tree: b,
               content: DeployedScopeDiverged { changed_paths: "x" as NonEmptyStr },
             },
           ) {

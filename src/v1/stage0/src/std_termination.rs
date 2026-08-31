@@ -88,9 +88,9 @@ pub fn optional_evidence_meet(
     b: Option<DescentEvidence>,
 ) -> Option<DescentEvidence> {
     match a.clone() {
-        None => b,
+        std::option::Option::None => b,
         Some(va) => match b {
-            None => a.clone(),
+            std::option::Option::None => a.clone(),
             Some(vb) => Some(descent_evidence_lattice_meet(va.clone(), vb.clone())),
         },
     }
@@ -107,7 +107,9 @@ pub fn map_evidence_merge_at(
             key.clone(),
             descent_evidence_lattice_meet(existing.clone(), new_val.clone()),
         ),
-        None => v1_rt::rc_map_insert(base.clone(), key.clone(), new_val.clone()),
+        std::option::Option::None => {
+            v1_rt::rc_map_insert(base.clone(), key.clone(), new_val.clone())
+        }
     }
 }
 
@@ -203,7 +205,7 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
                         Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
                             previous: prev.clone(),
                         })),
-                        None => std::option::Option::None,
+                        std::option::Option::None => std::option::Option::None,
                     }
                 }
             }
@@ -226,7 +228,7 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
                         Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
                             inner: prev.clone(),
                         })),
-                        None => std::option::Option::None,
+                        std::option::Option::None => std::option::Option::None,
                     }
                 }
             }

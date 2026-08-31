@@ -133,7 +133,7 @@ pub fn rust_exact_type_checkpoint(
             is_copy: Some(r.is_copy.clone()),
             literal_suffix: r.literal_suffix.clone(),
         })),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 

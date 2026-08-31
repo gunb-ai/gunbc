@@ -175,6 +175,7 @@ pub struct EmitGraphInfo {
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
     pub fn_return_type: Option<Rc<Node>>,
+    pub expected_type: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -207,6 +208,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
         fn_return_type: std::option::Option::None,
+        expected_type: std::option::Option::None,
     })
 }
 
@@ -235,6 +237,7 @@ pub fn emit_info_with_fn_type_context(
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
+        expected_type: emit_info.expected_type.clone(),
     })
 }
 
@@ -262,6 +265,35 @@ pub fn emit_info_with_fn_return(
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
+        expected_type: fn_return_type.clone(),
+    })
+}
+
+pub fn emit_info_with_expected_type(
+    emit_info: Rc<EmitGraphInfo>,
+    expected_type: Option<Rc<Node>>,
+) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        type_summaries: emit_info.type_summaries.clone(),
+        type_decl_items: emit_info.type_decl_items.clone(),
+        fn_decl_items: emit_info.fn_decl_items.clone(),
+        recursive_type_set: emit_info.recursive_type_set.clone(),
+        fielded_variants: emit_info.fielded_variants.clone(),
+        positional_payload_variants: emit_info.positional_payload_variants.clone(),
+        shared_types: emit_info.shared_types.clone(),
+        ownership_index: emit_info.ownership_index.clone(),
+        movable: emit_info.movable.clone(),
+        variant_to_enum: emit_info.variant_to_enum.clone(),
+        owned_bindings: emit_info.owned_bindings.clone(),
+        read_only_params_index: emit_info.read_only_params_index.clone(),
+        read_only_params: emit_info.read_only_params.clone(),
+        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
+        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
+        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
+        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
+        fn_type_env: emit_info.fn_type_env.clone(),
+        fn_return_type: emit_info.fn_return_type.clone(),
+        expected_type: expected_type.clone(),
     })
 }
 
@@ -303,7 +335,7 @@ pub fn emit_graph_records_type_decl(
 ) -> bool {
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
-        None => {
+        std::option::Option::None => {
             ((((item.connective.clone() == Connective::NoConnective)
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
@@ -343,7 +375,7 @@ pub fn derive_variant_to_enum(
                                 Some(_) => {
                                     v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
                                 }
-                                None => v1_rt::rc_map_insert(
+                                std::option::Option::None => v1_rt::rc_map_insert(
                                     inner.clone(),
                                     vn.clone(),
                                     summary.name.clone(),
@@ -395,7 +427,7 @@ pub fn variant_belongs_to_enum(
             }
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -408,7 +440,7 @@ pub fn is_enum_in_summaries(
             TypeRepr::EnumRepr { unit_only: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -517,9 +549,9 @@ pub fn find_first_enum_field_node(
             source_indices.clone(),
         ) {
             Some(field_child) => Some(field_child.clone()),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -563,7 +595,7 @@ pub fn enum_field_type_consistent(
                     expected.clone(),
                     source_indices.clone(),
                 ),
-                None => false,
+                std::option::Option::None => false,
             }) {
                 __all = false;
                 break;
@@ -589,7 +621,7 @@ pub fn build_enum_field_summaries(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let shared = Rc::new({
             let mut __result = Vec::new();
@@ -618,7 +650,7 @@ pub fn build_enum_field_summaries(
                         crate::v1_compiler_infer_types::child_type_node(first_field.clone()),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 } {
                     __result.push(field_name);
                 }
@@ -645,7 +677,7 @@ pub fn build_enum_field_summaries(
                             ),
                         }),
                     ),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             },
         )
@@ -900,7 +932,7 @@ pub fn type_summary_or_structural_alias_reaches_fn(
                             __found
                         })
                     }
-                    None => {
+                    std::option::Option::None => {
                         (v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
                             || match v1_rt::map_get(
                                 &structural_alias_fn_surface_names,
@@ -922,7 +954,7 @@ pub fn type_summary_or_structural_alias_reaches_fn(
                                     }
                                     __found
                                 }
-                                None => false,
+                                std::option::Option::None => false,
                             })
                     }
                 }
@@ -970,7 +1002,7 @@ pub fn close_fn_fields(
                     acc.clone()
                 }
             }
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -1012,7 +1044,7 @@ pub fn add_emit_item_summary(
                 item_decl_file.clone(),
             ) {
                 Some(_) => false,
-                None => true,
+                std::option::Option::None => true,
             }
         } else {
             false
@@ -1159,7 +1191,7 @@ pub fn add_emit_item_summary(
                         .clone(),
                 })
             }
-            None => state.clone(),
+            std::option::Option::None => state.clone(),
         }
     }
 }

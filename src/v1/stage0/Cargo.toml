@@ -33,6 +33,14 @@ test_hooks = []
 # atomically, so this taxes every collection op including the interpreter
 # hot path.
 im = { version = "15.1", features = ["serde"] }
+# THE PARTITION, LINKED. This crate is the host shell of the stage0 executable: it declares the
+# retained host modules and the emitted mirrors no partition crate owns yet, and it re-exports
+# this package for the seventy-one it does. One edge, not six -- each layered partition crate
+# re-exports the crates below it, so the top module-bearing package carries the whole chain.
+# Authority: v2.compiler.self_host.stage0_executable_assembly
+# (stage0_host_shell_partition_dependencies), projected through
+# gunbc.stage0_executable_assembly_generated.
+v1-stage0-v1-infer = { path = "../stage0_v1_infer" }
 unicode-ident = "1"
 unicode-properties = { version = "0.1", features = ["emoji"] }
 stacker = "0.1"

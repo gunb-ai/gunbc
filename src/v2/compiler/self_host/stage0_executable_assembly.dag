@@ -1,0 +1,362 @@
+module v2.compiler.self_host.stage0_executable_assembly
+
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.rust_crate_partition {
+  Stage0PartitionCrateRow,
+  stage0_module_bearing_crate_rows
+}
+import v2.compiler.self_host.stage0_crate_layout {
+  hand_maintained_pub_mod_basenames
+}
+import v2.compiler.self_host.seed_retention_frontier {
+  SeedRetentionFrontierRow,
+  seed_retention_frontier_roster
+}
+
+// WHO COMPILES EACH MODULE OF THE NEXT-PASS EXECUTABLE, at module grain, exactly once.
+//
+// The rebuild scope answers which PACKAGES one changed mirror forces cargo to compile
+// (gunbc.stage0_partition_rebuild_scope). It cannot answer whether the thing cargo produces is a
+// compiler assembled FROM those packages, and until it is, a package-scope receipt is evidence
+// about a build that did not become the next generation. This module is the missing half: the
+// assembly surface each module of the executable is compiled through.
+//
+// THE PREMISE THAT DIED. While the monolithic v1-compiler library was the crate root, "is this
+// module declared by the monolith" was a usable membership question, and
+// v2.test.claim.stage0_partition_roster_layout_join asked exactly that of every partition row.
+// A partition crate compiled a mirror by path include AND the monolith declared it again, so one
+// file had two compilation stories and the join at least kept the two stories in step. Removing
+// the second declaration is what this transaction does, so that join's question stops being
+// answerable in its old form and is re-grounded onto the question that survives the cut: is every
+// module of the executable owned by exactly ONE admitted assembly surface, and does the
+// executable's package graph reach that owner.
+//
+// FOUR OWNERSHIP CLASSES, AND THEY ARE NOT ONE CLASS WITH FOUR LABELS -- each retires under a
+// different law, which is the whole reason the ruling that approved this transaction forbade
+// widening Stage0PartitionCrateRow.modules to carry them all:
+//
+//   EmittedPartitionOwner   an emitted mirror compiled by its owning partition crate. Retires by
+//                           moving between partition crates; never by hand.
+//   HostShellEmittedOwner   an emitted mirror the partition does not yet own, so the host shell
+//                           declares it directly. Retires by the partition GROWING to cover it --
+//                           this population is the prioritizable residue of the cut, and it is
+//                           deliberately not folded into RetainedHostOwner, because calling a
+//                           compiler-emitted mirror seed-retained is the misclassification the
+//                           seed-retention frontier exists to make impossible.
+//   RetainedHostOwner       hand-authored host implementation the seed still needs. Retires by
+//                           being modeled and emitted, and its reason lives in the retention
+//                           frontier -- cited by path identity here, never copied.
+//   BinaryEntrypointOwner   the cargo binary target that IS the next pass. Retires with the seed.
+//
+// MEMBERSHIP AND RETENTION REASON ARE STILL DIFFERENT FACTS. stage0_crate_layout says which
+// basenames the crate's mod tree names; seed_retention_frontier says why a retained source is
+// retained and what ends it. This module joins them and adds a third fact neither carried: WHICH
+// PACKAGE compiles the module. Package movement is therefore visible as package movement, and
+// cannot masquerade as retirement -- a module that leaves the host shell for a partition crate
+// changes its owner arm here while its retention row is untouched, or has no retention row at all
+// because it never was hand-authored.
+
+type Stage0ExecutableModuleOwner
+  = EmittedPartitionOwner { module_basename: String, package_name: String }
+  | HostShellEmittedOwner { module_basename: String, host_package: String }
+  | RetainedHostOwner { module_basename: String, host_package: String, retention_row: String }
+  | BinaryEntrypointOwner { target: String, package_name: String }
+
+// THE HOST SHELL AND THE BINARY IT CARRIES. One package name, one bin name, stated once because
+// three consumers need them: the lib.rs cut names the package whose declarations shrink, the
+// package graph names the node whose edges reach the partition, and the rebuild decision names
+// the executable the second generation runs.
+data stage0_host_shell_package_name: String = "v1-compiler"
+
+data stage0_next_pass_bin_name: String = "claim_executor"
+
+// ONE EDGE, NOT SIX, AND THE LAYERING IS WHY. Each layered partition crate re-exports the crates
+// below it (v1.compiler.stage0_crates render_stage0_layered_core_lib), so a dependency on the top
+// module-bearing package transitively re-exports every mirror the partition owns. Depending on all
+// six would name five edges cargo already has and give the reverse package closure a second,
+// redundant path to the same packages.
+//
+// THE EMIT SHELL IS NOT ON THIS LIST. v1-stage0-emit-core re-exports a SURFACE assembled from the
+// module-bearing packages -- the same modules under second names -- so linking it into the host
+// shell would import each of those modules twice under two paths. It is a consumer of the
+// partition, not a layer of it.
+data stage0_host_shell_partition_dependencies: List<String> = ["v1-stage0-v1-infer"]
+
+fn stage0_module_is_partition_owned(
+  module_basename: String,
+  partition_rows: List<Stage0PartitionCrateRow>
+) -> Bool {
+  any(
+    xs: partition_rows,
+    predicate: fn(row) { any(xs: row.modules, predicate: fn(m) { m == module_basename }) }
+  )
+}
+
+fn stage0_partition_owner_packages(
+  module_basename: String,
+  partition_rows: List<Stage0PartitionCrateRow>
+) -> List<String> {
+  fold(
+    partition_rows,
+    init: [],
+    f: fn(acc, row) {
+      if any(xs: row.modules, predicate: fn(m) { m == module_basename }) {
+        concat(acc, [row.package_name])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// A RETAINED MODULE'S ROW IS FOUND BY PATH IDENTITY, at the two exact spellings a retained module
+// can have in the crate: a file, or a directory with a mod.rs. No prefix match and no basename
+// search -- a prefix would let src/cli_run.rs answer for a row about src/cli_run_helper.rs, which
+// is the wrong-grain key failure this repository has paid for before.
+fn stage0_retained_module_file_path(module_basename: String) -> String {
+  concat("src/", module_basename, ".rs")
+}
+
+fn stage0_retained_module_dir_path(module_basename: String) -> String {
+  concat("src/", module_basename, "/mod.rs")
+}
+
+fn stage0_retention_row_path(
+  module_basename: String,
+  roster: List<SeedRetentionFrontierRow>
+) -> String {
+  let file_path = stage0_retained_module_file_path(module_basename: module_basename)
+  let dir_path = stage0_retained_module_dir_path(module_basename: module_basename)
+  fold(
+    roster,
+    init: "",
+    f: fn(acc, row) {
+      if acc != "" {
+        acc
+      } else if row.crate_relative_path == file_path {
+        row.crate_relative_path
+      } else if row.crate_relative_path == dir_path {
+        row.crate_relative_path
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+type Stage0AssemblyOwnerResolution
+  = Stage0AssemblyOwnerResolved { owner: Stage0ExecutableModuleOwner }
+  | Stage0AssemblyOwnerRefused { cause: Stage0AssemblyOwnershipRefusalCause }
+
+// EVERY REFUSAL NAMES THE MODULE AND WHICH WAY THE ROSTERS ARE WRONG. None of them widens: there
+// is no arm that answers "compile it somewhere" for a module whose owner cannot be resolved,
+// because the state this module exists to make unwritable is exactly a module compiled twice or
+// compiled by nobody.
+type Stage0AssemblyOwnershipRefusalCause
+  = ModuleOwnedByNoSurface { module_basename: String }
+  | ModuleOwnedByTwoSurfaces { module_basename: String, surfaces: List<String> }
+  | ModuleOwnedByTwoPartitionPackages { module_basename: String, packages: List<String> }
+  | RetainedModuleHasNoRetentionRow { module_basename: String }
+
+fn stage0_resolve_executable_module_owner(
+  module_basename: String,
+  partition_rows: List<Stage0PartitionCrateRow>,
+  emitted_module_basenames: List<String>,
+  retained_pub_mod_basenames: List<String>,
+  roster: List<SeedRetentionFrontierRow>
+) -> Stage0AssemblyOwnerResolution {
+  let partition_packages = stage0_partition_owner_packages(
+    module_basename: module_basename,
+    partition_rows: partition_rows
+  )
+  let is_partitioned = length(xs: partition_packages) > 0
+  let is_emitted = any(xs: emitted_module_basenames, predicate: fn(m) { m == module_basename })
+  let is_retained = any(xs: retained_pub_mod_basenames, predicate: fn(m) { m == module_basename })
+  if is_partitioned && is_retained {
+    Stage0AssemblyOwnerRefused {
+      cause: ModuleOwnedByTwoSurfaces {
+        module_basename: module_basename,
+        surfaces: concat(partition_packages, [stage0_host_shell_package_name])
+      }
+    }
+  } else if length(xs: partition_packages) > 1 {
+    Stage0AssemblyOwnerRefused {
+      cause: ModuleOwnedByTwoPartitionPackages {
+        module_basename: module_basename,
+        packages: partition_packages
+      }
+    }
+  } else if is_partitioned {
+    Stage0AssemblyOwnerResolved {
+      owner: EmittedPartitionOwner {
+        module_basename: module_basename,
+        package_name: fold(partition_packages, init: "", f: fn(acc, p) { if acc == "" { p } else { acc } })
+      }
+    }
+  } else if is_retained {
+    let retention_row = stage0_retention_row_path(module_basename: module_basename, roster: roster)
+    if retention_row == "" {
+      Stage0AssemblyOwnerRefused {
+        cause: RetainedModuleHasNoRetentionRow { module_basename: module_basename }
+      }
+    } else {
+      Stage0AssemblyOwnerResolved {
+        owner: RetainedHostOwner {
+          module_basename: module_basename,
+          host_package: stage0_host_shell_package_name,
+          retention_row: retention_row
+        }
+      }
+    }
+  } else if is_emitted {
+    Stage0AssemblyOwnerResolved {
+      owner: HostShellEmittedOwner {
+        module_basename: module_basename,
+        host_package: stage0_host_shell_package_name
+      }
+    }
+  } else {
+    Stage0AssemblyOwnerRefused {
+      cause: ModuleOwnedByNoSurface { module_basename: module_basename }
+    }
+  }
+}
+
+type Stage0AssemblyOwnershipCensus {
+  owners: List<Stage0ExecutableModuleOwner>
+  refusals: List<Stage0AssemblyOwnershipRefusalCause>
+}
+
+// THE CENSUS IS A PURE FUNCTION OF ITS THREE POPULATIONS, and the populations are parameters for
+// the same reason seed_retention_frontier's roster is one: closed over the live rosters, the only
+// authorable discriminating RED would be a fixture enumerating the whole live tree -- a
+// measurement copied from the current tree, which is not an oracle. Parameterized, a probe hands
+// in a four-module world, plants exactly one defect, and the assertion has a reachable opposite.
+fn stage0_assembly_ownership_census(
+  declared_modules: List<String>,
+  partition_rows: List<Stage0PartitionCrateRow>,
+  emitted_module_basenames: List<String>,
+  retained_pub_mod_basenames: List<String>,
+  roster: List<SeedRetentionFrontierRow>
+) -> Stage0AssemblyOwnershipCensus {
+  fold(
+    declared_modules,
+    init: Stage0AssemblyOwnershipCensus { owners: [], refusals: [] },
+    f: fn(acc, module_basename) {
+      match stage0_resolve_executable_module_owner(
+        module_basename: module_basename,
+        partition_rows: partition_rows,
+        emitted_module_basenames: emitted_module_basenames,
+        retained_pub_mod_basenames: retained_pub_mod_basenames,
+        roster: roster
+      ) {
+        Stage0AssemblyOwnerResolved { owner: owner } =>
+          Stage0AssemblyOwnershipCensus {
+            owners: concat(acc.owners, [owner]),
+            refusals: acc.refusals
+          }
+        Stage0AssemblyOwnerRefused { cause: cause } =>
+          Stage0AssemblyOwnershipCensus {
+            owners: acc.owners,
+            refusals: concat(acc.refusals, [cause])
+          }
+      }
+    }
+  )
+}
+
+fn stage0_assembly_ownership_disjoint_and_total(
+  declared_modules: List<String>,
+  partition_rows: List<Stage0PartitionCrateRow>,
+  emitted_module_basenames: List<String>,
+  retained_pub_mod_basenames: List<String>,
+  roster: List<SeedRetentionFrontierRow>
+) -> Bool {
+  let census = stage0_assembly_ownership_census(
+    declared_modules: declared_modules,
+    partition_rows: partition_rows,
+    emitted_module_basenames: emitted_module_basenames,
+    retained_pub_mod_basenames: retained_pub_mod_basenames,
+    roster: roster
+  )
+  (length(xs: census.refusals) == 0)
+    && (length(xs: census.owners) == length(xs: declared_modules))
+}
+
+// THE MODULES THE HOST SHELL STILL DECLARES ITSELF, which is what the lib.rs cut renders: every
+// module of the executable that the partition does NOT own. Derived by subtraction from the
+// partition rows rather than authored, so a module moving into a partition crate leaves the
+// monolith's declaration surface in the same edit that gives it an owner -- the duplicate
+// declaration has no spelling.
+fn stage0_host_shell_declared_modules(
+  declared_modules: List<String>,
+  partition_rows: List<Stage0PartitionCrateRow>
+) -> List<String> {
+  fold(
+    declared_modules,
+    init: [],
+    f: fn(acc, module_basename) {
+      if stage0_module_is_partition_owned(module_basename: module_basename, partition_rows: partition_rows) {
+        acc
+      } else {
+        concat(acc, [module_basename])
+      }
+    }
+  )
+}
+
+fn stage0_partition_owned_module_basenames(
+  partition_rows: List<Stage0PartitionCrateRow>
+) -> List<String> {
+  fold(partition_rows, init: [], f: fn(acc, row) { concat(acc, row.modules) })
+}
+
+fn stage0_live_partition_owned_module_basenames() -> List<String> {
+  stage0_partition_owned_module_basenames(partition_rows: stage0_module_bearing_crate_rows())
+}
+
+fn stage0_live_retained_pub_mod_basenames() -> List<String> {
+  hand_maintained_pub_mod_basenames()
+}
+
+fn stage0_live_assembly_ownership_census(
+  declared_modules: List<String>,
+  emitted_module_basenames: List<String>
+) -> Stage0AssemblyOwnershipCensus {
+  stage0_assembly_ownership_census(
+    declared_modules: declared_modules,
+    partition_rows: stage0_module_bearing_crate_rows(),
+    emitted_module_basenames: emitted_module_basenames,
+    retained_pub_mod_basenames: stage0_live_retained_pub_mod_basenames(),
+    roster: seed_retention_frontier_roster
+  )
+}
+
+fn stage0_binary_entrypoint_owner() -> Stage0ExecutableModuleOwner {
+  BinaryEntrypointOwner {
+    target: stage0_next_pass_bin_name,
+    package_name: stage0_host_shell_package_name
+  }
+}
+
+fn stage0_host_shell_emitted_owner_count(census: Stage0AssemblyOwnershipCensus) -> Int {
+  fold(
+    census.owners,
+    init: 0,
+    f: fn(acc, owner) {
+      match owner {
+        HostShellEmittedOwner { module_basename: _, host_package: _ } => acc + 1
+        EmittedPartitionOwner { module_basename: _, package_name: _ } => acc
+        RetainedHostOwner { module_basename: _, host_package: _, retention_row: _ } => acc
+        BinaryEntrypointOwner { target: _, package_name: _ } => acc
+      }
+    }
+  )
+}
+
+data stage0_host_shell_emitted_residue_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: HostShellEmittedOwner — the arm empties when v2.workflow.rust_crate_partition assigns every emitted mirror of the executable to a module-bearing partition crate, at which point the host shell declares only retained host modules and stage0_host_shell_emitted_owner_count is 0. It is not retired by a date or by a count target: the arm's population IS the measurement, and it shrinks by partition rows landing.")

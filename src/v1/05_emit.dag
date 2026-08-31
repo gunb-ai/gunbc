@@ -8,7 +8,7 @@ import v1.std.core {
   module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData,
-  NoExprData, VarBindingKind, ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  NoExprData, VarBindingKind, ExprLiteral, ExprElaboratedLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
   ExprStringInterp, ExprBlock, ExprCast, ExprForEach, ExprIndex, ExprSlice, ExprError,
   ExprReturn, StringPart, Text, Interpolation, TextFile, SourceSpan, UnaryOpKind, NullCoalesce,
@@ -1264,6 +1264,7 @@ type ExprCategory
 fn classify_expr(texpr: Node) -> ExprCategory {
   match texpr.expr_data {
     ExprLiteral { value: _ } => ExprCatLeaf
+    ExprElaboratedLiteral { value: _, elaboration: _ } => ExprCatLeaf
     ExprError { kind: _, message: _ } => ExprCatLeaf
     ExprVar { binding_kind: _ } => ExprCatLeaf
     ExprFieldAccess { summary: _ } => ExprCatCompound
@@ -2476,6 +2477,11 @@ fn emit_shared_expr(
   match texpr.expr_data {
     ExprLiteral { value: v } =>
       wrap_result(emit_literal(value: v, target: target))
+    ExprElaboratedLiteral { value: _, elaboration: _ } =>
+      match texpr.children |> first {
+        Present { value: image } => recurse(image)
+        Absent => wrap_result(emit_error_expr(message: "elaborated literal carries no image (v1.compiler.infer unfold_literal_image)", target: target))
+      }
     ExprError { kind: _, message: message } =>
       wrap_result(emit_error_expr(message: message, target: target))
     ExprVar { binding_kind: _ } =>

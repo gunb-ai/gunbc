@@ -3,7 +3,7 @@ module v1.compiler.ownership
 import v1.std.core {
   Node,
   ExprData, NoExprData, ExprError,
-  ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
+  ExprLiteral, ExprElaboratedLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprBlock, ExprReturn, ExprLambda, ExprForEach,
   ExprRecordLit,
   VarBindingKind, LocalValueBinding, FunctionValueBinding,
@@ -169,6 +169,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       }
 
     ExprLiteral { value: _ } => accum
+    ExprElaboratedLiteral { value: _, elaboration: _ } => accum
 
     ExprFieldAccess =>
       let base_node = field_access_base(texpr: texpr)
@@ -375,6 +376,7 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
         _ => empty_set()
       }
     ExprLiteral { value: _ } => empty_set()
+    ExprElaboratedLiteral { value: _, elaboration: _ } => empty_set()
     ExprFieldAccess =>
       collect_callable_refs(texpr: field_access_base(texpr: texpr), si: si)
     ExprCall =>

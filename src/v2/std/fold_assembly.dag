@@ -27,7 +27,7 @@ fn conj_record(children: FreeMonoid<Edge>) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: children)
 }
 
-fn fold_decode_reject(node: Node, reason: Symbol) -> Outcome<FreeMonoid<Node>> {
+fn fold_decode_reject<T>(node: Node, reason: Symbol) -> Outcome<T> {
   outcome_rejected(d: Diagnostic {
     reason: reason,
     at: node_locus(node: node),
