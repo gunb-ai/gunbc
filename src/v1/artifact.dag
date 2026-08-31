@@ -11,12 +11,33 @@ type ArtifactKind
   | Frontend
   | GeneratedSupport
 
+// WHICH MODULES THIS ARTIFACT RENDERS, and it is a property of the PLAN rather than of the
+// emitter, because the plan is where "what is being built" is already decided.
+//
+// RenderEveryModule is the whole closure, byte for byte what the emitter always produced.
+// RenderSelectedMirrors carries the exact derived closure of a change -- the basenames a regen
+// round's affected-set bound selected -- and the emitter renders those and no others.
+//
+// THE SELECTION BOUNDS RENDERING AND NOTHING ELSE. Every population-denominated answer the
+// emitter gives (the crate's module list, the emitted-population manifest, the closure-stub
+// decision) is derived from the resolved graph or from paths, so it is identical under both
+// arms. A selection that could change one of those answers would be a scope silently deciding
+// what the artifact IS, rather than which of its files this round re-renders.
+//
+// There is no arm meaning "select nothing in particular": an empty basename list renders no
+// modules, which is the honest answer for a round whose change touches no mirror, and is a
+// different state from RenderEveryModule rather than a degenerate spelling of it.
+type RustModuleRenderSelection
+  = RenderEveryModule
+  | RenderSelectedMirrors { basenames: List<String> }
+
 type Artifact {
   name: String
   kind: ArtifactKind
   target: RenderTarget
   entry_modules: List<String>
   dependencies: List<String>
+  module_selection: RustModuleRenderSelection
 }
 
 type BoundaryKind
@@ -54,12 +75,20 @@ type ArtifactOutput {
 }
 
 fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> ArtifactPlan {
+  selected_artifact_plan(root_modules: root_modules, target: target, selection: RenderEveryModule)
+}
+
+// ONE BODY, TWO NAMED ENTRY POINTS. `default_artifact_plan` is this call with the whole-closure
+// arm supplied, so a caller states which question it asks by naming it rather than by passing a
+// flag, and there is no second plan constructor to drift from this one.
+fn selected_artifact_plan(root_modules: List<String>, target: RenderTarget, selection: RustModuleRenderSelection) -> ArtifactPlan {
   plan_artifacts(rule: Explicit { artifacts: [Artifact {
     name: "default",
     kind: ServiceBinary,
     target: target,
     entry_modules: root_modules,
-    dependencies: []
+    dependencies: [],
+    module_selection: selection
   }] })
 }
 
