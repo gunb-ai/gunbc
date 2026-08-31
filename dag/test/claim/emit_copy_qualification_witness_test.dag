@@ -37,9 +37,15 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // nine cells the emitter's copy decision tracks the position oracle exactly, and it is INDEPENDENT
 // of the receiver shape -- the same three answers on an aggregate, a scalar and a container. On the
 // cost axis Widget and FreeMonoid<Widget> both realize Rc<...> while Int realizes bare, so every
-// non-scalar copy emitted here is a refcount increment. NO REDUNDANT CLONE AND NO REALIZED DEEP
-// COPY EXISTS IN THIS POPULATION. This file therefore defends that behavior against a future change
-// rather than reporting a defect, exactly as lambda_capture_clone_required_witness_test came to.
+// non-scalar copy emitted here is a refcount increment.
+//
+// SCOPED PRECISELY, because the obvious summary overstates it: no redundant clone and no realized
+// deep copy exists in this population ON THE SHAPES WHERE MINIMALITY IS DECIDABLE -- the six
+// non-scalar cells. The two scalar cells that emit a clone are NOT covered by that sentence: their
+// clone is neither established required nor established redundant, because the Copy trap makes the
+// removal experiment blind (see copy_cell_minimality). This file defends the decidable behavior
+// against a future change, exactly as lambda_capture_clone_required_witness_test came to, and
+// reports the rest as undecided rather than as clean.
 //
 // WHAT IT DOES NOT ESTABLISH, stated so the greens are not read wider than they reach. The
 // DeepAggregateCopy arm of CopyRealizationCost is UNINHABITED here: these three shapes never reach
@@ -150,4 +156,44 @@ test fn calibration_scalar_shared_handle_falsifier_is_red() -> Bool {
 
 test fn calibration_container_bare_falsifier_is_red() -> Bool {
   !ecq_falsifier_container_realizes_bare()
+}
+
+// THE UNDECIDABILITY IS ITSELF UNDER TEST, so that withholding an assertion cannot become a way to
+// buy a green. Without this row a future change could widen CloneEmittedUndecidable across the
+// population and every shard would still pass while asserting nothing about copy behavior at all --
+// the withheld cell would have degraded into a silently excluded one.
+//
+// This joins on the derived surface the shards actually consume rather than on a parallel
+// classifier, so the two cannot drift: a cell is undecided exactly when neither expectation list
+// mentions .clone(). Asserted at cell identity, not by counting.
+
+fn ecq_cell_withholds_clone(cell: CopyQualificationCell) -> Bool {
+  !contains(copy_cell_expected_present(cell: cell), ".clone()")
+    && !contains(copy_cell_expected_absent(cell: cell), ".clone()")
+}
+
+fn ecq_cell_requires_clone(cell: CopyQualificationCell) -> Bool {
+  contains(copy_cell_expected_present(cell: cell), ".clone()")
+}
+
+fn ecq_cell_forbids_clone(cell: CopyQualificationCell) -> Bool {
+  contains(copy_cell_expected_absent(cell: cell), ".clone()")
+}
+
+test fn undecidable_cells_withhold_clone_assertion() -> Bool {
+  ecq_cell_withholds_clone(cell: CopyQualificationCell { shape: ReceiverMachineScalar, position: PositionReturnedClosureCapture })
+    && ecq_cell_withholds_clone(cell: CopyQualificationCell { shape: ReceiverMachineScalar, position: PositionDuplicatedArgument })
+}
+
+test fn decidable_cells_still_assert_clone_presence() -> Bool {
+  ecq_cell_requires_clone(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionReturnedClosureCapture })
+    && ecq_cell_requires_clone(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionDuplicatedArgument })
+    && ecq_cell_requires_clone(cell: CopyQualificationCell { shape: ReceiverSharedContainer, position: PositionReturnedClosureCapture })
+    && ecq_cell_requires_clone(cell: CopyQualificationCell { shape: ReceiverSharedContainer, position: PositionDuplicatedArgument })
+}
+
+test fn direct_return_cells_forbid_clone_on_every_shape() -> Bool {
+  ecq_cell_forbids_clone(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionDirectReturn })
+    && ecq_cell_forbids_clone(cell: CopyQualificationCell { shape: ReceiverMachineScalar, position: PositionDirectReturn })
+    && ecq_cell_forbids_clone(cell: CopyQualificationCell { shape: ReceiverSharedContainer, position: PositionDirectReturn })
 }

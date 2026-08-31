@@ -109,55 +109,55 @@ fn copy_qualification_population() -> List<CopyQualificationCell> {
   )
 }
 
-// Whether the position semantically REQUIRES a copy, independent of what the emitter did. This is
-// the oracle the population is measured against, and it is grounded in executed rustc receipts
-// rather than in the emitter's own output -- reading the requirement off the emitter would make the
-// check compare the emitter to itself.
-fn copy_position_requires_copy(position: CopyUsePosition) -> Bool {
-  match position {
-    PositionDirectReturn => false
-    PositionReturnedClosureCapture => true
-    PositionDuplicatedArgument => true
-  }
-}
-
-// THE COPY-TRAP LAW, derived rather than authored per cell: on a Copy-eligible receiver the removal
-// experiment cannot discriminate, so minimality is undecidable by it whatever the position. Stating
-// this as a derivation is what stops a future author from recording a confident CloneEmittedRedundant
-// on a scalar row because the delete-and-rebuild arm happened to compile.
-fn copy_minimality_decidable_by_removal(shape: CopyReceiverShape) -> Bool {
-  match shape {
-    ReceiverAggregateNonCopy => true
-    ReceiverMachineScalar => false
-    ReceiverSharedContainer => true
-  }
-}
-
-// Whether the emitter realizes this receiver shape as a shared handle. MEASURED, not predicted:
-// run through the production source->emission path, Widget and FreeMonoid<Widget> both render
-// Rc<...> at the fn signature and Int renders bare. The consequence is the one that matters for the
-// cost axis -- on this population every non-scalar copy the emitter emits is a refcount increment,
-// so there is no realized deep copy here at all.
-fn copy_shape_realizes_shared_handle(shape: CopyReceiverShape) -> Bool {
-  match shape {
-    ReceiverAggregateNonCopy => true
-    ReceiverMachineScalar => false
-    ReceiverSharedContainer => true
-  }
-}
-
-// The cost axis, derived from the measured realization rather than authored per cell. The
-// DeepAggregateCopy arm is deliberately reachable in this vocabulary while being UNINHABITED by
-// this population, and that gap is stated rather than closed: the R1 census in
-// docs/plans/rc-ownership-wrap-decision-design.md measures fourteen bare field occurrences across
-// ten types where the wrap misses, so a deep copy is authorable in the real corpus -- these three
-// receiver shapes simply do not reach one. Deleting the arm would make the vocabulary unable to
-// name the case R1 already found; asserting this population covers it would be the stronger lie.
-fn copy_realization_cost_for(shape: CopyReceiverShape) -> CopyRealizationCost {
-  match shape {
-    ReceiverAggregateNonCopy => ShareHandleBump { realization: "Rc<Widget> at fn signature" }
-    ReceiverMachineScalar => MachineWordCopy { realization: "bare i64 at fn signature" }
-    ReceiverSharedContainer => ShareHandleBump { realization: "Rc<FreeMonoid<Widget>> at fn signature" }
+// THE FOLD TO THE DISPOSITION, replacing three separate coproduct-to-Bool predicates that used to
+// answer "does this position require a copy", "is minimality decidable by removal here" and "is
+// this receiver a shared handle". Each was a hand-rolled match over a closed coproduct producing a
+// bare Bool, none consumed a canonical surface, and -- worse -- they let the two questions be
+// answered INDEPENDENTLY, which is how the witness came to assert a required clone on a receiver
+// the same model typed undecidable. Folding once onto CloneMinimality makes that contradiction
+// unwritable: there is one answer per cell and the undecidable arm is one of its states, not a
+// separate flag a caller may ignore.
+//
+// The oracle is grounded in executed rustc receipts, not in the emitter's output: a direct return
+// needs no copy; a capture by a returned Fn closure provably does (Arm C, rustc E0507, recorded in
+// dag/test/claim/lambda_capture_clone_required_witness_test.dag); a duplicated argument needs one at
+// every use but the last.
+//
+// THE COPY TRAP IS THE SHAPE ARM, and it is why this is keyed on the cell rather than the position.
+// Where the receiver is Copy-eligible, rustc performs an implicit bitwise copy whether or not the
+// clone is written, so an EMITTED clone cannot be established as required -- the removal experiment
+// returns the same answer for a required and a redundant one. That is a property of the instrument,
+// not of the emitter. Note the arm is reached only where a clone is actually emitted: a scalar
+// direct return emits none, and CloneAbsent is decidable by direct observation.
+fn copy_cell_minimality(cell: CopyQualificationCell) -> CloneMinimality {
+  match cell.position {
+    PositionDirectReturn => CloneAbsent
+    PositionReturnedClosureCapture =>
+      match cell.shape {
+        ReceiverMachineScalar =>
+          CloneEmittedUndecidable {
+            reason: "Copy-eligible receiver: rustc copies i64 with or without the clone, so removal cannot discriminate required from redundant",
+          }
+        ReceiverAggregateNonCopy =>
+          CloneEmittedRequired {
+            receipt: "returned Fn closure capture, rustc E0507 on removal (Arm C, lambda_capture_clone_required_witness)",
+          }
+        ReceiverSharedContainer =>
+          CloneEmittedRequired {
+            receipt: "returned Fn closure capture, rustc E0507 on removal (Arm C, lambda_capture_clone_required_witness)",
+          }
+      }
+    PositionDuplicatedArgument =>
+      match cell.shape {
+        ReceiverMachineScalar =>
+          CloneEmittedUndecidable {
+            reason: "Copy-eligible receiver: rustc copies i64 with or without the clone, so removal cannot discriminate required from redundant",
+          }
+        ReceiverAggregateNonCopy =>
+          CloneEmittedRequired { receipt: "non-Copy receiver consumed at more than one argument position" }
+        ReceiverSharedContainer =>
+          CloneEmittedRequired { receipt: "non-Copy receiver consumed at more than one argument position" }
+      }
   }
 }
 
@@ -260,6 +260,37 @@ fn copy_receiver_refuted_spelling(shape: CopyReceiverShape) -> String {
   }
 }
 
+// THE CLONE EXPECTATION, derived from the cell's disposition so that an undecidable cell asserts
+// NOTHING about clone presence in either direction. This is the finding codex/gpt-5.6-sol raised on
+// review 57920 and it was correct: the model typed the scalar cells undecidable while the witness
+// went on enforcing a present .clone() there, which claims the clone is REQUIRED -- a stronger
+// result than the instrument can decide, and exactly the fabricated plausible output DESIGN section
+// 5 forbids.
+//
+// The undecidable cell is WITHHELD, NOT EXCLUDED. It still runs, still asserts its structural
+// anchor, and still asserts both arms of the cost axis; only the one question the instrument cannot
+// answer goes unasserted, and undecidable_cells_withhold_clone_assertion in the witness pins which
+// cells those are, so a future change cannot widen undecidability to buy a green.
+fn copy_cell_clone_present_expectation(cell: CopyQualificationCell) -> List<String> {
+  match copy_cell_minimality(cell: cell) {
+    CloneEmittedRequired { receipt: _ } => [".clone()"]
+    CloneAbsent => []
+    CloneEmittedUndecidable { reason: _ } => []
+    CloneEmittedRedundant { receipt: _ } => []
+    CloneMinimalityUnobserved => []
+  }
+}
+
+fn copy_cell_clone_absent_expectation(cell: CopyQualificationCell) -> List<String> {
+  match copy_cell_minimality(cell: cell) {
+    CloneAbsent => [".clone()"]
+    CloneEmittedRequired { receipt: _ } => []
+    CloneEmittedUndecidable { reason: _ } => []
+    CloneEmittedRedundant { receipt: _ } => []
+    CloneMinimalityUnobserved => []
+  }
+}
+
 // The spellings a cell must contain, derived jointly from the semantic oracle (does this position
 // require a copy) and the measured realization (how is this receiver realized). Nothing here is
 // authored per cell, so the check compares the emitter to a ground rather than to itself.
@@ -267,7 +298,7 @@ fn copy_cell_expected_present(cell: CopyQualificationCell) -> List<String> {
   concat(
     concat(
       [copy_fixture_anchor(position: cell.position)],
-      if copy_position_requires_copy(position: cell.position) { [".clone()"] } else { [] },
+      copy_cell_clone_present_expectation(cell: cell),
     ),
     [copy_receiver_realized_spelling(shape: cell.shape)],
   )
@@ -275,7 +306,7 @@ fn copy_cell_expected_present(cell: CopyQualificationCell) -> List<String> {
 
 fn copy_cell_expected_absent(cell: CopyQualificationCell) -> List<String> {
   concat(
-    if copy_position_requires_copy(position: cell.position) { [] } else { [".clone()"] },
+    copy_cell_clone_absent_expectation(cell: cell),
     [copy_receiver_refuted_spelling(shape: cell.shape)],
   )
 }
