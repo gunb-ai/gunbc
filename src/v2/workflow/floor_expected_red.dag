@@ -1008,9 +1008,9 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // What this roster owns is the RELATION: this row is that stall's executing consumer, so when the
 // stall's trigger is met the witness passes, stale quarantine reds the build naming the row, and
 // the two delete together.
-// ONE ARM OF THE EXPECTED-TYPE PATH WITNESS, ENROLLED BECAUSE THE WALL IT ASSERTS DOES NOT HOLD ON
-// THAT PATH AND WAS NOT BROKEN BY THE BRANCH THAT FOUND IT. The row asserts that a Gibibyte
-// returned from a function declared -> ByteSize produces a blocking declared-type diagnostic. It
+// TWO ARMS OF THE EXPECTED-TYPE PATH WITNESS, ENROLLED BECAUSE THE WALL THEY ASSERT DOES NOT HOLD
+// ON THAT PATH AND WAS NOT BROKEN BY THE BRANCH THAT FOUND IT. Both assert that a generic
+// application reaching a declared return it does not inhabit produces a blocking diagnostic. It
 // does not. The specimen is not synthetic in origin: gunbc.runner_slot_allocation
 // gunbc_runner_memory_per_core carried exactly that shape, typechecked, and yielded
 // Measure { count: 3 } -- three BYTES per core -- which drove the entire fleet to
@@ -1018,34 +1018,54 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // missing conversion.
 //
 // CAUSATION IS SETTLED WITHOUT A MAIN CONTROL BUILD, and the argument is stated so a reader can
-// check it rather than trust it: the branch enrolling this row changes NO compiler source. Its
+// check it rather than trust it: the branch enrolling these rows changes NO compiler source. Its
 // entire diff against b60fc7dd61 under src/ is empty -- only dag/ corpus rows and this roster move
 // -- so no edit on it can have opened a type judgment. The admission predates the fixture.
 //
-// THE MEASURED TABLE, from the required floor at 5c3a31c2, and it is why this row is one identity
-// and not four. Three sibling arms in the same module are GREEN and stay out of this roster:
+// AN EARLIER REVISION OF THIS ROW ENROLLED ONE IDENTITY AND CARRIED A MEASURED TABLE THAT WAS NOT
+// MEASURING ITS SUBJECT, and it is recorded here because the failure is instructive rather than
+// clerical. That row read a Gibibyte against a declared ByteSize through a source importing
+// std.measure, with the verdict filtered to the diagnostic class DeclaredTypeNotInhabited. Both
+// halves were wrong. The census compiles a SYNTHETIC SINGLE-MODULE source, so corpus imports do not
+// resolve -- a trivially VALID std.measure program produces 92 BLOCKING diagnostics -- and the
+// class filter hid every one of them, which is the only reason the pair ever appeared to work. The
+// old red refused because its imports did not resolve, and its own positive control refused for the
+// identical reason while asserting admission. A class name is a fact about diagnostic QUALITY; only
+// the refusal is the admission fact.
 //
-//   w_a_gibibyte_returned_at_a_declared_bytesize_is_refused   FAILED  <- this row
-//   w_a_gibibyte_returned_at_a_declared_gibibyte_is_admitted  passed  (positive control)
-//   w_a_coproduct_at_a_record_parameter_is_refused            passed  (refused, as it should be)
-//   w_a_matched_record_at_a_record_parameter_is_admitted      passed  (positive control)
+// THE REPLACEMENT SPECIMENS IMPORT NOTHING AND THE ORACLE COUNTS BLOCKING ROWS, and with that the
+// matrix locates the cause rather than pointing at a direction:
 //
-// The third line is the informative one and it NARROWS the open question rather than restating it.
-// A minimal two-variant coproduct reaching a one-field record parameter IS refused, while the
-// production specimen -- a resolution coproduct reaching a std.measure alias parameter across a
-// module boundary -- was admitted. So a coproduct producer is not sufficient to explain that
-// admission. Both open specimens go through std.measure aliases; both closed ones do not, which
-// points at transparent alias expansion or applied-generic identity rather than at coproducts.
-// That is a direction, not a cause, and this roster deliberately does not assert one.
+//   w_a_wrong_type_argument_at_a_declared_return_is_refused     FAILED  <- this row
+//   w_a_wrong_type_argument_carried_in_a_field_is_refused       FAILED  <- this row
+//   w_a_matching_type_argument_at_a_declared_return_is_admitted passed  (positive control)
+//   w_a_wrong_constructor_head_at_a_declared_return_is_refused  passed  (the head IS compared)
+//   w_a_non_generic_call_result_mismatch_is_refused             passed  (call results ARE compared)
+//   w_the_census_refuses_a_blatant_non_generic_mismatch         passed  (liveness)
+//   w_the_census_admits_a_valid_source                          passed  (opposite control)
+//   w_a_coproduct_at_a_record_parameter_is_refused              passed  (refused, as it should be)
+//   w_a_matched_record_at_a_record_parameter_is_admitted        passed  (positive control)
 //
-// DISSOLVE-ON: the expected-type matrix -- producer kind x judgment position (return, call
-// argument, record field, typed let) with one-axis reds for quantity, scale and magnitude type --
-// locating the judgment that drops applied-type arguments, and the repair landing. This roster's
+// So: in the declared-return expected-type path, a generic application's CONSTRUCTOR HEAD is
+// compared but its TYPE-ARGUMENT VECTOR is not. Field occupancy, aliases, coproducts and module
+// boundaries are each absent from a specimen that still reproduces, so none is a necessary cause.
+// TWO identities and not one because the phantom and field-carried specimens fail independently: a
+// repair that merely noticed arguments occurring in fields would close one and leave the other, and
+// a single enrolled row could not tell those apart.
+//
+// DISSOLVE-ON: the declared-return expected-type comparison deciding application identity on head,
+// arity, AND every type argument recursively, so that a wrong type argument is refused whether or
+// not the parameter occupies a field. THE TRIGGER NAMES THE CAPABILITY, NOT THE MATRIX THAT FOUND
+// IT: an earlier cut made the trigger "the matrix locating the judgment, and the repair landing",
+// and the matrix half is now DONE while both rows stay red -- which is exactly the grain mismatch
+// DESIGN 4b(3) warns about, a trigger satisfiable while the capability it should restore stays
+// dead. Locating a defect retires nothing; only the comparison does. This roster's
 // self-emptying arm makes that event announce itself: when the wall arrives, this row PASSES,
 // which reds the build and names itself for removal. The witness itself is permanent under
 // DESIGN 4b(4) -- it flips to a regression control rather than retiring.
 fn floor_expected_red_chunk_24() -> List<String> {
-  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_gibibyte_returned_at_a_declared_bytesize_is_refused", tail: Empty {} }
+  Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_carried_in_a_field_is_refused", tail: Empty {} } }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
