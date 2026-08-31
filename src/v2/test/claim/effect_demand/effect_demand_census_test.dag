@@ -20,12 +20,7 @@ import v2.compiler.effect_demand {
   effect_demand_seam_runtime_registry,
   SeamRuntimeBinding,
   seam_realization,
-  seam_has_executed_evidence,
-  seam_is_unrealized,
-  seam_is_unrostered,
   seam_realization_for,
-  seam_is_realized,
-  seam_binding_is_ambiguous,
   SeamRuntimeBindingAmbiguous,
   seam_unrealized_without_executed_evidence,
   seam_unrostered_rows,
@@ -39,11 +34,9 @@ import v2.compiler.effect_demand {
   RootResolutionStanding,
   effect_demand_execute_origin_population,
   effect_demand_local_gate,
-  effect_demand_local_gate_holds,
   EffectDemandEvidenceAdmitted,
   EffectDemandEvidenceRefused,
   effect_demand_realization_key,
-  effect_demand_population_subject_is_complete,
   effect_demand_compiler_entry_module,
   effect_demand_compiler_origin_population,
   BoundCompilerInput,
@@ -66,12 +59,9 @@ import v2.compiler.effect_demand {
   PopulationUnmeasured,
   effect_demand_blocked_operation_count,
   effect_demand_blocked_operations,
-  effect_demand_disposition_blocks_implementation,
   effect_demand_implementable_operation_count,
   effect_demand_implementable_operations,
   effect_demand_operation_classification,
-  effect_demand_operation_is_implementable,
-  effect_demand_population_subject_is_complete,
   effect_demand_population_rows,
   EffectDemandKey,
   EffectDemandRow,
@@ -340,15 +330,27 @@ data effect_demand_probe_lower_bound: DemandPopulation = PopulationMeasuredLower
 test fn effect_demand_witness_zero_rows_measured_and_unmeasured_differ() -> Bool {
   (length(xs: effect_demand_population_rows(population: effect_demand_probe_measured_empty)) == 0)
     && (length(xs: effect_demand_population_rows(population: effect_demand_probe_unmeasured)) == 0)
-    && effect_demand_population_subject_is_complete(population: effect_demand_probe_measured_empty)
-    && !effect_demand_population_subject_is_complete(population: effect_demand_probe_unmeasured)
+    && match effect_demand_probe_measured_empty {
+      PopulationMeasuredComplete { rows, subject_roster_identities } => true,
+      PopulationMeasuredLowerBound { rows, missing_basis } => false,
+      PopulationUnmeasured { reason } => false
+    }
+    && match effect_demand_probe_unmeasured {
+      PopulationMeasuredComplete { rows, subject_roster_identities } => false,
+      PopulationMeasuredLowerBound { rows, missing_basis } => true,
+      PopulationUnmeasured { reason } => true
+    }
 }
 
 // A lower bound is not a completeness claim, and it admits no promotion either -- its unmeasured
 // remainder is exactly where a refusing demand could sit. This is a separate probe from the pair above
 // because a carrier that collapsed lower-bound into complete would still pass that pair.
 test fn effect_demand_witness_lower_bound_admits_no_promotion() -> Bool {
-  !effect_demand_population_subject_is_complete(population: effect_demand_probe_lower_bound)
+  match effect_demand_probe_lower_bound {
+    PopulationMeasuredComplete { rows, subject_roster_identities } => false,
+    PopulationMeasuredLowerBound { rows, missing_basis } => true,
+    PopulationUnmeasured { reason } => true
+  }
 }
 
 // HOLD 3 AND 4's DISCRIMINATING PAIR, over one operation rather than over the live roster, so the
@@ -382,10 +384,10 @@ data effect_demand_probe_classifications: List<EffectOperationClassification> = 
 ]
 
 test fn effect_demand_witness_unclassified_operation_blocks_implementation() -> Bool {
-  effect_demand_disposition_blocks_implementation(disposition: effect_demand_probe_unclassified.disposition)
-    && !effect_demand_disposition_blocks_implementation(disposition: effect_demand_probe_classified.disposition)
-    && !effect_demand_operation_is_implementable(classification: effect_demand_probe_unclassified)
-    && effect_demand_operation_is_implementable(classification: effect_demand_probe_classified)
+  (length(xs: effect_demand_blocked_operations(classifications: [effect_demand_probe_unclassified])) == 1)
+    && (length(xs: effect_demand_implementable_operations(classifications: [effect_demand_probe_unclassified])) == 0)
+    && (length(xs: effect_demand_blocked_operations(classifications: [effect_demand_probe_classified])) == 0)
+    && (length(xs: effect_demand_implementable_operations(classifications: [effect_demand_probe_classified])) == 1)
 }
 
 // A BoundCompilerInput operation is NOT blocked and NOT implementable, and it is the arm that proves
@@ -393,8 +395,8 @@ test fn effect_demand_witness_unclassified_operation_blocks_implementation() -> 
 // means the classification says a transport is the wrong answer. A predicate that conflated them would
 // make bound-input operations look like open questions forever.
 test fn effect_demand_witness_bound_input_is_unblocked_but_not_implementable() -> Bool {
-  !effect_demand_disposition_blocks_implementation(disposition: effect_demand_probe_bound_input.disposition)
-    && !effect_demand_operation_is_implementable(classification: effect_demand_probe_bound_input)
+  (length(xs: effect_demand_blocked_operations(classifications: [effect_demand_probe_bound_input])) == 0)
+    && (length(xs: effect_demand_implementable_operations(classifications: [effect_demand_probe_bound_input])) == 0)
     && (length(xs: effect_demand_blocked_operations(classifications: effect_demand_probe_classifications)) == 1)
     && (length(xs: effect_demand_implementable_operations(classifications: effect_demand_probe_classifications)) == 1)
 }
@@ -679,13 +681,16 @@ data effect_demand_probe_receipt_unresolved_edges: DemandReceipt = effect_demand
 )
 
 test fn effect_demand_witness_local_gate_admits_complete_evidence() -> Bool {
-  effect_demand_local_gate_holds(standing: effect_demand_local_gate(
+  match effect_demand_local_gate(
     left: effect_demand_probe_receipt_modeled,
     right: effect_demand_probe_receipt_realized,
     population: effect_demand_probe_complete_population,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  ))
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => true,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => false
+  }
 }
 
 test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool {
@@ -744,8 +749,16 @@ test fn effect_demand_witness_local_gate_refuses_an_incomplete_subject() -> Bool
 // fact rather than leaving it to prose. Its population is a lower bound and its evidence is a single
 // realization-side producer, so the honest answer today is no.
 test fn effect_demand_witness_live_compiler_origin_is_not_promotable() -> Bool {
-  !effect_demand_population_subject_is_complete(population: effect_demand_compiler_origin_population)
-    && !effect_demand_population_subject_is_complete(population: effect_demand_execute_origin_population)
+  match effect_demand_compiler_origin_population {
+    PopulationMeasuredComplete { rows, subject_roster_identities } => false,
+    PopulationMeasuredLowerBound { rows, missing_basis } => true,
+    PopulationUnmeasured { reason } => true
+  }
+    && match effect_demand_execute_origin_population {
+      PopulationMeasuredComplete { rows, subject_roster_identities } => false,
+      PopulationMeasuredLowerBound { rows, missing_basis } => true,
+      PopulationUnmeasured { reason } => true
+    }
     && (length(xs: effect_demand_population_rows(population: effect_demand_execute_origin_population)) == 2)
 }
 
@@ -785,35 +798,79 @@ test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() 
 test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool {
   !any(
     xs: effect_demand_seam_roster,
-    predicate: fn(seam) { seam_has_executed_evidence(seam: seam) && seam_is_realized(seam: seam, registry: effect_demand_seam_runtime_registry) }
+    predicate: fn(seam) {
+      match seam.evidence {
+        SeamRefusalObservedInClosure { closure_entry } => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+          SeamRealizedByBridge { bridge } => true,
+          SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
+          SeamUnrealized => false
+        },
+        SeamEvidenceDerivedNotExercised { reason } => false
+      }
+    }
   )
 }
 
 test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool {
   !any(
     xs: effect_demand_seam_roster,
-    predicate: fn(seam) { seam_is_unrostered(seam: seam) && !seam_is_unrealized(seam: seam, registry: effect_demand_seam_runtime_registry) }
+    predicate: fn(seam) {
+      match seam.projection {
+        SeamUnrostered => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+          SeamUnrealized => false,
+          SeamRealizedByBridge { bridge } => true,
+          SeamRuntimeBindingAmbiguous { primitive, bridges } => true
+        },
+        ProjectedPrimitive { primitive } => false
+      }
+    }
   )
 }
 
 test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() -> Bool {
   !any(
     xs: seam_unrealized_without_executed_evidence(roster: effect_demand_seam_roster, registry: effect_demand_seam_runtime_registry),
-    predicate: fn(seam) { seam_is_realized(seam: seam, registry: effect_demand_seam_runtime_registry) || seam_has_executed_evidence(seam: seam) }
+    predicate: fn(seam) {
+      match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+        SeamRealizedByBridge { bridge } => true,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => match seam.evidence {
+          SeamRefusalObservedInClosure { closure_entry } => true,
+          SeamEvidenceDerivedNotExercised { reason } => false
+        },
+        SeamUnrealized => match seam.evidence {
+          SeamRefusalObservedInClosure { closure_entry } => true,
+          SeamEvidenceDerivedNotExercised { reason } => false
+        }
+      }
+    }
   )
 }
 
 test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> Bool {
   !any(
     xs: effect_demand_seam_roster,
-    predicate: fn(seam) { seam_is_realized(seam: seam, registry: effect_demand_seam_runtime_registry) && seam_has_executed_evidence(seam: seam) }
+    predicate: fn(seam) {
+      match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+        SeamRealizedByBridge { bridge } => match seam.evidence {
+          SeamRefusalObservedInClosure { closure_entry } => true,
+          SeamEvidenceDerivedNotExercised { reason } => false
+        },
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
+        SeamUnrealized => false
+      }
+    }
   )
 }
 
 test fn effect_demand_witness_every_unrostered_row_is_reported_as_undisposed() -> Bool {
   !any(
     xs: seam_unrostered_rows(roster: effect_demand_seam_roster),
-    predicate: fn(seam) { !seam_is_unrostered(seam: seam) }
+    predicate: fn(seam) {
+      match seam.projection {
+        SeamUnrostered => false,
+        ProjectedPrimitive { primitive } => true
+      }
+    }
   )
 }
 
@@ -875,13 +932,14 @@ test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrea
       evidence: SeamEvidenceDerivedNotExercised { reason: ^synthetic_control_row }
     }],
     predicate: fn(seam) {
-      seam_is_realized(seam: seam, registry: [
+      match seam_realization(seam: seam, registry: [
         SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
         SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
-      ]) || seam_is_unrealized(seam: seam, registry: [
-        SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
-        SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
-      ])
+      ]) {
+        SeamRealizedByBridge { bridge } => true,
+        SeamUnrealized => true,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => false
+      }
     }
   )
 }
@@ -889,7 +947,13 @@ test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrea
 test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per_seam() -> Bool {
   !any(
     xs: effect_demand_seam_roster,
-    predicate: fn(seam) { seam_binding_is_ambiguous(seam: seam, registry: effect_demand_seam_runtime_registry) }
+    predicate: fn(seam) {
+      match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
+        SeamRealizedByBridge { bridge } => false,
+        SeamUnrealized => false
+      }
+    }
   )
 }
 
@@ -912,13 +976,16 @@ test fn effect_demand_witness_admitted_standing_carries_the_agreed_revision() ->
 // ^tree_mismatch. A gate that refused the first or admitted the second would be keyed on the wrong
 // identity, and the pair reads red in exactly one witness each.
 test fn effect_demand_witness_two_commits_over_one_tree_admit() -> Bool {
-  effect_demand_local_gate_holds(standing: effect_demand_local_gate(
+  match effect_demand_local_gate(
     left: effect_demand_probe_receipt_on(producer: ModeledCallReachability, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "commit-before-squash", tree: effect_demand_probe_tree_main),
     right: effect_demand_probe_receipt_on(producer: EmittedRealizationCensus, members: effect_demand_probe_roster_members, roots: effect_demand_probe_roots, root_resolution: RootsResolvedNonEmpty, unresolved: Empty, revision: "commit-after-squash", tree: effect_demand_probe_tree_main),
     population: effect_demand_probe_complete_population,
     agreement: effect_demand_probe_empty_agreement,
     census_is_sound: true
-  ))
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => true,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => false
+  }
 }
 
 test fn effect_demand_witness_one_commit_over_two_trees_refuses_on_the_tree() -> Bool {

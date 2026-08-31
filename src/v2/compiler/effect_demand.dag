@@ -230,30 +230,6 @@ fn effect_demand_operation_realized(
   })
 }
 
-fn effect_demand_row_claims_native(row: EffectDemandRow) -> Bool {
-  match row.disposition {
-    NativeV2 => true
-    RetiredWithConsumer { consumer: _ } => false
-    Unrealized { reason: _ } => false
-  }
-}
-
-fn effect_demand_row_is_retired(row: EffectDemandRow) -> Bool {
-  match row.disposition {
-    NativeV2 => false
-    RetiredWithConsumer { consumer: _ } => true
-    Unrealized { reason: _ } => false
-  }
-}
-
-fn effect_demand_row_is_unrealized(row: EffectDemandRow) -> Bool {
-  match row.disposition {
-    NativeV2 => false
-    RetiredWithConsumer { consumer: _ } => false
-    Unrealized { reason: _ } => true
-  }
-}
-
 type EffectDemandCensusRow
   = DemandDispositioned { key: EffectDemandKey }
   | DemandWithoutRow { key: EffectDemandKey }
@@ -314,9 +290,11 @@ fn effect_demand_census(
         if effect_demand_key_in(key: row.key, keys: observed) {
           acc
         } else {
-          if effect_demand_row_is_retired(row: row) {
-            acc
-          } else { Cons { head: RowWithoutDemand { key: row.key }, tail: acc } }
+          match row.disposition {
+            RetiredWithConsumer { consumer: _ } => acc,
+            NativeV2 => Cons { head: RowWithoutDemand { key: row.key }, tail: acc },
+            Unrealized { reason: _ } => Cons { head: RowWithoutDemand { key: row.key }, tail: acc }
+          }
         }
       }
     )),
@@ -324,11 +302,13 @@ fn effect_demand_census(
       xs: roster,
       empty: Empty,
       cons: fn(acc, row) {
-        if effect_demand_row_claims_native(row: row) {
-          if effect_demand_operation_realized(demand: row.key, realized: realized) {
+        match row.disposition {
+          NativeV2 => if effect_demand_operation_realized(demand: row.key, realized: realized) {
             acc
-          } else { Cons { head: NativeClaimWithoutRealization { key: row.key }, tail: acc } }
-        } else { acc }
+          } else { Cons { head: NativeClaimWithoutRealization { key: row.key }, tail: acc } },
+          RetiredWithConsumer { consumer: _ } => acc,
+          Unrealized { reason: _ } => acc
+        }
       }
     ))
   }
@@ -357,7 +337,13 @@ fn effect_demand_unrealized_rows(roster: List<EffectDemandRow>) -> List<EffectDe
   list_reverse(xs: fold_list(
     xs: roster,
     empty: Empty,
-    cons: fn(acc, row) { if effect_demand_row_is_unrealized(row: row) { Cons { head: row, tail: acc } } else { acc } }
+    cons: fn(acc, row) {
+      match row.disposition {
+        Unrealized { reason: _ } => Cons { head: row, tail: acc },
+        NativeV2 => acc,
+        RetiredWithConsumer { consumer: _ } => acc
+      }
+    }
   ))
 }
 
@@ -471,22 +457,6 @@ fn effect_demand_population_rows(population: DemandPopulation) -> List<EffectDem
   }
 }
 
-// SUBJECT COMPLETENESS IS ONE NECESSARY CONDITION FOR PROMOTION AND IS NOT PROMOTION, and the rename
-// is a repair. This predicate was called admits_promotion and answered true from the constructor
-// alone, which meant promotion could be granted by AUTHORING PopulationMeasuredComplete -- no resolved
-// root, no edge walk, no second producer, nothing. That is the vacuous-zero hazard this module was
-// written to catch, reproduced in its own gate: the check was satisfiable by editing the declaration
-// while the measurement underneath it said nothing, which DESIGN section 5 names as the tell that
-// validation stands where construction was available. It is now one conjunct among several in
-// effect_demand_promotion_admitted, and it answers only the question its name asks.
-fn effect_demand_population_subject_is_complete(population: DemandPopulation) -> Bool {
-  match population {
-    PopulationMeasuredComplete { rows: _, subject_roster_identities: _ } => true
-    PopulationMeasuredLowerBound { rows: _, missing_basis: _ } => false
-    PopulationUnmeasured { reason: _ } => false
-  }
-}
-
 // WHAT THE OPERATION DOES, kept strictly apart from what XL-1 intends to do about it. A boolean
 // effectful flag would have been the obvious carrier and is the wrong one: it conflates an operation
 // that must observe external state with one that merely happens to reach the host through its CURRENT
@@ -542,33 +512,6 @@ fn effect_demand_operation_classification(
   }
 }
 
-fn effect_demand_disposition_blocks_implementation(disposition: EffectOperationDisposition) -> Bool {
-  match disposition {
-    BoundCompilerInput { input_identity: _ } => false
-    NativeDerivedComputation { derived_from: _ } => false
-    NativeHostObservation { operation_identity: _ } => false
-    NativeHostActuation { operation_identity: _ } => false
-    OperationRetired { consumer: _ } => false
-    OperationDispositionUnclassified { blocking_question: _ } => true
-  }
-}
-
-// The roster of operations XL-1 may build a transport for is DERIVED from the classification, never
-// authored beside it. An operation is implementable exactly when its disposition is one of the two
-// native host arms; every other arm means the work is to bind an input, derive the answer, delete a
-// consumer, or answer a question -- and an unclassified operation is implementable by nobody until it
-// is classified.
-fn effect_demand_operation_is_implementable(classification: EffectOperationClassification) -> Bool {
-  match classification.disposition {
-    BoundCompilerInput { input_identity: _ } => false
-    NativeDerivedComputation { derived_from: _ } => false
-    NativeHostObservation { operation_identity: _ } => true
-    NativeHostActuation { operation_identity: _ } => true
-    OperationRetired { consumer: _ } => false
-    OperationDispositionUnclassified { blocking_question: _ } => false
-  }
-}
-
 fn effect_demand_blocked_operations(
   classifications: List<EffectOperationClassification>
 ) -> List<EffectOperationClassification> {
@@ -576,13 +519,23 @@ fn effect_demand_blocked_operations(
     xs: classifications,
     empty: Empty,
     cons: fn(acc, row) {
-      if effect_demand_disposition_blocks_implementation(disposition: row.disposition) {
-        Cons { head: row, tail: acc }
-      } else { acc }
+      match row.disposition {
+        OperationDispositionUnclassified { blocking_question: _ } => Cons { head: row, tail: acc },
+        BoundCompilerInput { input_identity: _ } => acc,
+        NativeDerivedComputation { derived_from: _ } => acc,
+        NativeHostObservation { operation_identity: _ } => acc,
+        NativeHostActuation { operation_identity: _ } => acc,
+        OperationRetired { consumer: _ } => acc
+      }
     }
   ))
 }
 
+// The roster of operations XL-1 may build a transport for is DERIVED from the classification, never
+// authored beside it. An operation is implementable exactly when its disposition is one of the two
+// native host arms; every other arm means the work is to bind an input, derive the answer, delete a
+// consumer, or answer a question -- and an unclassified operation is implementable by nobody until it
+// is classified.
 fn effect_demand_implementable_operations(
   classifications: List<EffectOperationClassification>
 ) -> List<EffectOperationClassification> {
@@ -590,9 +543,14 @@ fn effect_demand_implementable_operations(
     xs: classifications,
     empty: Empty,
     cons: fn(acc, row) {
-      if effect_demand_operation_is_implementable(classification: row) {
-        Cons { head: row, tail: acc }
-      } else { acc }
+      match row.disposition {
+        NativeHostObservation { operation_identity: _ } => Cons { head: row, tail: acc },
+        NativeHostActuation { operation_identity: _ } => Cons { head: row, tail: acc },
+        BoundCompilerInput { input_identity: _ } => acc,
+        NativeDerivedComputation { derived_from: _ } => acc,
+        OperationRetired { consumer: _ } => acc,
+        OperationDispositionUnclassified { blocking_question: _ } => acc
+      }
     }
   ))
 }
@@ -789,7 +747,15 @@ fn effect_demand_unmodeled_host_boundary(
 // an empty one being the vacuous pass this slice already hit once.
 data effect_demand_compiler_entry_module: String = "v2.compiler.compile"
 
-// THE COMPILE PATH'S HOST-EFFECT DEMAND IS ZERO, AND THE FIRST MEASUREMENT THAT SAID SEVEN WAS
+// NO HOST-EFFECT DEMAND WAS OBSERVED ON THE COMPILE PATH BY THIS PRODUCER, WHICH IS A LOWER BOUND AND
+// NOT A ZERO. The carrier below says so in its constructor -- PopulationMeasuredLowerBound with its
+// missing_basis -- and this block says it here too, because the earlier revision of this annotation
+// opened with THE COMPILE PATH'S HOST-EFFECT DEMAND IS ZERO while the carrier underneath it recorded a
+// bound, which is DESIGN section 4b rung inflation in the one place the module was written to prevent
+// it: an empty lower-bound population licenses `none observed by this instrument`, never `none exists`.
+// The excluded basis is named in the constructor and is not incidental -- the seam population omits
+// every whole-body self-call seam, which has no runtime bridge and so cannot appear in a bridge-callee
+// census at all. WHAT FOLLOWS IS THE INSTRUMENT AND ITS CONTROLS. THE FIRST MEASUREMENT THAT SAID SEVEN WAS
 // MEASURING THE WRONG THING. That measurement censused the v1_rt bridge callees PRESENT in the emitted
 // closure of the compiler entry, which is OCCUPANCY -- the symbol is in the tree -- and read it as
 // DEMAND, which is call-reachability from the entry. Those are different questions and this repository
@@ -1022,15 +988,20 @@ fn effect_demand_local_gate(
   else if !effect_demand_receipts_agree_on_membership(left: left, right: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^membership_disagreement } }
   else if length(xs: agreement.modeled_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^modeled_only_nonempty } }
   else if length(xs: agreement.realized_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^realized_only_nonempty } }
-  else if !effect_demand_population_subject_is_complete(population: population) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^subject_incomplete } }
-  else if !census_is_sound { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^census_unsound } }
-  else { EffectDemandEvidenceAdmitted { source_revision: left.source_revision, source_tree: left.source_tree } }
-}
-
-fn effect_demand_local_gate_holds(standing: EffectDemandEvidenceStanding) -> Bool {
-  match standing {
-    EffectDemandEvidenceAdmitted { source_revision, source_tree } => true,
-    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => false
+  else {
+    // SUBJECT COMPLETENESS IS ONE NECESSARY CONDITION FOR PROMOTION AND IS NOT PROMOTION. It was once a
+    // predicate named admits_promotion that answered true from the constructor alone, so promotion was
+    // grantable by AUTHORING PopulationMeasuredComplete -- no resolved root, no edge walk, no second
+    // producer. It is now one arm of this gate's own fold rather than a standalone population-to-Bool
+    // helper: DESIGN section 2 prices the Bool as a second spelling of a fact the coproduct carries,
+    // and the gate re-lifted it into a typed refusal on the next line anyway.
+    match population {
+      PopulationMeasuredComplete { rows: _, subject_roster_identities: _ } =>
+        if !census_is_sound { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^census_unsound } }
+        else { EffectDemandEvidenceAdmitted { source_revision: left.source_revision, source_tree: left.source_tree } },
+      PopulationMeasuredLowerBound { rows: _, missing_basis: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^subject_incomplete },
+      PopulationUnmeasured { reason: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^subject_incomplete }
+    }
   }
 }
 
@@ -1056,8 +1027,8 @@ type SeamProjection
 // section 5 forbids: it cannot compute the answer, so it substitutes one. The arm therefore selects NO
 // bridge and constructs NO realized standing; it carries the primitive and every bridge that claimed
 // it, so the refusal is located and countable rather than silent. Realized and unrealized both remain
-// positive answers, and ambiguous is neither -- which is why seam_is_realized and seam_is_unrealized
-// are separate predicates rather than one negation.
+// positive answers, and ambiguous is neither -- which is why every consumer folds this coproduct
+// directly instead of asking a realized/unrealized boolean whose negation would swallow the fourth arm.
 type SeamRealization
   = SeamRealizedByBridge { bridge: String }
   | SeamRuntimeBindingAmbiguous { primitive: PrimitiveIdentity, bridges: List<String> }
@@ -1140,46 +1111,8 @@ fn seam_realization_from_matches(primitive: PrimitiveIdentity, matches: List<Str
   }
 }
 
-fn seam_is_realized(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> Bool {
-  match seam_realization(seam: seam, registry: registry) {
-    SeamRealizedByBridge { bridge } => true,
-    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealized => false
-  }
-}
-
-fn seam_binding_is_ambiguous(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> Bool {
-  match seam_realization(seam: seam, registry: registry) {
-    SeamRealizedByBridge { bridge } => false,
-    SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
-    SeamUnrealized => false
-  }
-}
-
 fn seam_realization(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> SeamRealization {
   seam_realization_for(projection: seam.projection, registry: registry)
-}
-
-fn seam_is_unrealized(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> Bool {
-  match seam_realization(seam: seam, registry: registry) {
-    SeamRealizedByBridge { bridge } => false,
-    SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealized => true
-  }
-}
-
-fn seam_is_unrostered(seam: SeamStanding) -> Bool {
-  match seam.projection {
-    SeamUnrostered => true,
-    ProjectedPrimitive { primitive } => false
-  }
-}
-
-fn seam_has_executed_evidence(seam: SeamStanding) -> Bool {
-  match seam.evidence {
-    SeamRefusalObservedInClosure { closure_entry } => true,
-    SeamEvidenceDerivedNotExercised { reason } => false
-  }
 }
 
 fn seam_unrealized_without_executed_evidence(
@@ -1189,7 +1122,16 @@ fn seam_unrealized_without_executed_evidence(
   list_reverse(xs: fold_list(
     xs: roster,
     empty: Empty,
-    cons: fn(acc, seam) { if seam_is_unrealized(seam: seam, registry: registry) && !seam_has_executed_evidence(seam: seam) { Cons { head: seam, tail: acc } } else { acc } }
+    cons: fn(acc, seam) {
+      match seam_realization(seam: seam, registry: registry) {
+        SeamUnrealized => match seam.evidence {
+          SeamEvidenceDerivedNotExercised { reason } => Cons { head: seam, tail: acc },
+          SeamRefusalObservedInClosure { closure_entry } => acc
+        },
+        SeamRealizedByBridge { bridge } => acc,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => acc
+      }
+    }
   ))
 }
 
@@ -1197,7 +1139,12 @@ fn seam_unrostered_rows(roster: List<SeamStanding>) -> List<SeamStanding> {
   list_reverse(xs: fold_list(
     xs: roster,
     empty: Empty,
-    cons: fn(acc, seam) { if seam_is_unrostered(seam: seam) { Cons { head: seam, tail: acc } } else { acc } }
+    cons: fn(acc, seam) {
+      match seam.projection {
+        SeamUnrostered => Cons { head: seam, tail: acc },
+        ProjectedPrimitive { primitive } => acc
+      }
+    }
   ))
 }
 
