@@ -121,7 +121,7 @@ import v1.compiler.trait_bound_witness {
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref, declaration_ref_census_file }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
@@ -417,26 +417,19 @@ fn render_rust_optional_carrier_inner(n: Node, generic_param_names: List<String>
 fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ">")
 }
-fn module_binds_bare_string_structurally(env: TypeEnv) -> Bool {
-  match lookup_type_by_name(env: env, name: "String") {
-    Present { value: bound } =>
-      decl_file_declares_structurally(dag_name: "String", decl_file: decl_identity_file(item: bound))
-    Absent => false
-  }
-}
-
 fn render_rust_text_carrier(n: Node, shared_types: Set<String>, env: TypeEnv) -> String {
-  let decl_file = type_reference_decl_file(n: n)
-  if module_binds_bare_string_structurally(env: env)
-    && decl_file != ""
-    && !decl_file_declares_structurally(dag_name: "String", decl_file: decl_file) {
-    "std::string::String"
-  } else {
-    render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
+  match type_reference_declaration_ref(n: n, source_indices: env.source_indices, env: env) {
+    Present { value: d } =>
+      if decl_file_declares_structurally(dag_name: "String", decl_file: declaration_ref_census_file(d: d, env: env)) {
+        concat("crate::", module_to_filename(name: d.module_path), "::String")
+      } else {
+        render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
+      }
+    Absent => render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
   }
 }
 
-data render_rust_text_carrier_identity_note: String = "The rendered spelling for a host-text type position is chosen by DECLARATION IDENTITY, not by the authored spelling alone. A module can carry both a kernel-String data row (bare String resolving to the kernel declaration) and a generated v2_std_text String use line introduced by a transitively referenced structural v2.std.text signature; in that module the bare spelling String is SHADOWED to the structural carrier, so every kernel row rendered bare inherits the wrong realization silently. A reference whose decl_file is known and NOT in structural_declaration_modules_for(String) therefore renders the grounding spelling std::string::String, which no use line can shadow -- but ONLY in a module whose bare String binding IS the structural declaration (module_binds_bare_string_structurally over the emitter scope env): everywhere else the bare reference spelling is correct and idiomatic, and forcing the grounding spelling corpus-wide was measured to red two enrolled witnesses that pin the bare spelling for kernel-only modules. A reference resolving to a structural String declaration, or one whose identity is UNKNOWN (empty decl_file), keeps the bare reference spelling -- unknown identity yields no realization change, per type_reference_identity_note, so the residue of unknown-identity sites is the same counted bypass lookup_checkpoint's first arm already declares, never a new guess."
+data render_rust_text_carrier_identity_note: String = "The rendered spelling for a host-or-structural text type position is answered by the SAME identity reader the literal boundary uses -- type_reference_declaration_ref, with the destination declaration s census file deciding structurality -- so emission and inference cannot disagree about one reference (the prior two-reader states were both measured wrong: a module-binding heuristic split modules into structural annotations beside host values, and a corpus-wide grounding spelling redded two witnesses pinning the bare kernel spelling). A structural destination renders the qualified crate path (crate::v2_std_text::String), which no local binding shadows and which needs no use line; every other answer, including Absent, keeps the bare reference spelling."
 
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
   host_expr
