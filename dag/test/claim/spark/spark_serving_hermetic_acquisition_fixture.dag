@@ -20,7 +20,12 @@ module test.claim.spark.spark_serving_hermetic_acquisition_fixture
 // REFUSES a non-acquired observation needs to author one.
 
 import std.types { Bool, Int, List, NonEmptyStr, String }
-import std.content_hash { serialize_content_hash }
+import std.content_hash { serialize_content_hash, Sha256Hash, Fnv1a64, Sha1Hash, Sha512Hash }
+import gunbc.spark.serving_desired {
+  spark_serving_desired_admission,
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+}
 import product.placement_supply { HostIdentity }
 import extdeps.ssh { SshPublicKey, Ed25519 }
 import extdeps.ssh.session { SshSessionExecResult }
@@ -95,7 +100,11 @@ import gunbc.spark.serving_loaded_release { SparkServingReadback, SparkServingUn
 import gunbc.spark.serving_readback_parse { SparkServingReadbackAbsent }
 import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
-import gunbc.ollama_runtime_bundle { RuntimeMaterializationObservation, ModelStoreObservation }
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationObservation,
+  ModelStoreObservation,
+  ollama_runtime_materialization_identity_for_required_release,
+}
 import gunbc.spark.serving_observed_members {
   SparkServingObservedLingerState,
   LingerObservedEnabled,
@@ -430,15 +439,9 @@ fn hermetic_linger_varied_observation(
   hermetic_acquired_observation(
     host: host,
     phase: SparkServingPlanObservation,
-    captures: concat(
-      filter(
-        hermetic_complete_captures(),
-        c => !spark_serving_probe_leg_eq(
-          a: spark_serving_capture_leg(c: c),
-          b: spark_serving_probe_request_leg(request: LingerRequest),
-        ),
-      ),
-      [hermetic_linger_state_capture(linger: linger)],
+    captures: hermetic_override(
+      base: hermetic_complete_captures(),
+      shaped: [hermetic_linger_state_capture(linger: linger)],
     ),
   )
 }
@@ -474,17 +477,16 @@ fn hermetic_absent_unit_captures() -> List<SparkServingProbeLegCapture> {
 // Every required leg is present, so the transaction admits; the legs that decide the planning-visible
 // state carry chosen results and the rest carry the generic fixture output. The unit and linger arms
 // are parameters because those are the two states the planning claims actually discriminate on.
-fn hermetic_shaped_captures(
-  unit_present: Bool,
-  linger_enabled: Bool,
+// ONE AUTHORITY FOR "REPLACE THESE LEGS, KEEP THE REST". Every shaper below is a choice of which
+// legs to author; none of them re-implements the replacement, so a leg cannot end up duplicated in
+// one shaper and overridden in another.
+fn hermetic_override(
+  base: List<SparkServingProbeLegCapture>,
+  shaped: List<SparkServingProbeLegCapture>,
 ) -> List<SparkServingProbeLegCapture> {
-  let shaped = concat(
-    if unit_present { hermetic_unit_captures() } else { hermetic_absent_unit_captures() },
-    [hermetic_linger_capture(enabled: linger_enabled)],
-  )
   concat(
     filter(
-      hermetic_complete_captures(),
+      base,
       c => length(
         filter(
           shaped,
@@ -496,6 +498,19 @@ fn hermetic_shaped_captures(
       ) == 0,
     ),
     shaped,
+  )
+}
+
+fn hermetic_shaped_captures(
+  unit_present: Bool,
+  linger_enabled: Bool,
+) -> List<SparkServingProbeLegCapture> {
+  hermetic_override(
+    base: hermetic_complete_captures(),
+    shaped: concat(
+      if unit_present { hermetic_unit_captures() } else { hermetic_absent_unit_captures() },
+      [hermetic_linger_capture(enabled: linger_enabled)],
+    ),
   )
 }
 
@@ -512,4 +527,105 @@ fn hermetic_shaped_observation(
     phase: SparkServingPlanObservation,
     captures: hermetic_shaped_captures(unit_present: unit_present, linger_enabled: linger_enabled),
   )
+}
+
+// ── A CONVERGED HOST, ASSEMBLED FROM PROBE OUTPUT AND NOT FROM ASSERTION ────────────────────────
+//
+// The claims that need "this host is already in exactly the desired state" cannot say so. They must
+// hand the production projectors output a converged host would actually produce, and the required
+// model digest is the joint: the manifest names it, the blobs listing carries its file, sha256sum
+// reports it, and the blob digest line agrees. Author any one of those differently and the store
+// projects Incomplete or Corrupt instead -- which is exactly the discrimination a declared
+// ModelStoreComplete would have thrown away.
+fn hermetic_required_model_hex() -> NonEmptyStr? {
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: _ } => none
+    SparkServingDesiredAdmitted { serving_release: r } =>
+      match r.model.identity {
+        Sha256Hash(d) => Present { value: d.hex as NonEmptyStr }
+        Fnv1a64(_) => none
+        Sha1Hash(_) => none
+        Sha512Hash(_) => none
+      }
+  }
+}
+
+fn hermetic_runtime_complete_captures() -> List<SparkServingProbeLegCapture> {
+  [
+    hermetic_leg(request: RuntimeRootRequest, exit_code: 0, out: "runtime-root", err: ""),
+    hermetic_leg(request: RuntimeExecutableRequest, exit_code: 0, out: "runtime-exe", err: ""),
+    hermetic_leg(request: RuntimeExecutableBitRequest, exit_code: 0, out: "x", err: ""),
+    hermetic_leg(
+      request: RuntimeReceiptRequest,
+      exit_code: 0,
+      out: serialize_content_hash(
+        hash: ollama_runtime_materialization_identity_for_required_release().digest,
+      ) as String,
+      err: "",
+    ),
+  ]
+}
+
+fn hermetic_store_complete_captures(hex: NonEmptyStr) -> List<SparkServingProbeLegCapture> {
+  [
+    hermetic_leg(
+      request: ModelManifestRequest,
+      exit_code: 0,
+      out: join(["{\"config\":{\"digest\":\"sha256:", hex as String, "\"}}"], ""),
+      err: "",
+    ),
+    hermetic_leg(
+      request: ModelBlobsListingRequest,
+      exit_code: 0,
+      out: join(["sha256-", hex as String], ""),
+      err: "",
+    ),
+    hermetic_leg(
+      request: ModelManifestDigestRequest,
+      exit_code: 0,
+      out: join([hex as String, "  manifest"], ""),
+      err: "",
+    ),
+    hermetic_leg(
+      request: ModelBlobDigestsRequest { digests: [hex] },
+      exit_code: 0,
+      out: join([hex as String, "  /blobs/sha256-", hex as String], ""),
+      err: "",
+    ),
+  ]
+}
+
+// Captures for a host converged on everything except the linger member, which varies. Absent means
+// the required release itself is unadmitted -- returned rather than swallowed so a broken fixture
+// reddens its claims instead of quietly turning them into refusal tests.
+fn hermetic_converged_captures(
+  linger: SparkServingObservedLingerState,
+) -> List<SparkServingProbeLegCapture>? {
+  match hermetic_required_model_hex() {
+    Absent => none
+    Present { value: hex } =>
+      Present {
+        value: hermetic_override(
+          base: hermetic_complete_captures(),
+          shaped: concat(
+            concat(hermetic_unit_captures(), hermetic_runtime_complete_captures()),
+            concat(
+              hermetic_store_complete_captures(hex: hex),
+              [hermetic_linger_state_capture(linger: linger)],
+            ),
+          ),
+        ),
+      }
+  }
+}
+
+fn hermetic_converged_observation(
+  host: HostIdentity,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingHostObservation? {
+  match hermetic_converged_captures(linger: linger) {
+    Absent => none
+    Present { value: cs } =>
+      hermetic_acquired_observation(host: host, phase: SparkServingPlanObservation, captures: cs)
+  }
 }
