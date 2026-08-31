@@ -172,11 +172,6 @@ fn external_consumers() -> List<BoundaryConsumer> {
       decl_name: "spark_serving_converge_slice_wet_host_report",
       justification: "wet slice host report addressing",
     ),
-    endpoint_consumer(
-      module_path: "gunbc.spark.serving_observe",
-      decl_name: "spark_serving_probe_leg",
-      justification: "serving observation probe endpoint",
-    ),
   ]
 }
 

@@ -1,0 +1,465 @@
+module gunbc.machine_intake_mount_establishment
+
+import std.types { Bool, EpochMs, Int, List, Milliseconds }
+import std.content_hash { ContentHash }
+
+// REMOTE-MEDIA MOUNT IS AN ASYNCHRONOUS ESTABLISHMENT, AND THAT IS NOT A LICENCE
+// TO RETRY UNTIL GREEN (NO-FALLBACK-1). The executed MegaRAC sequence observes a
+// real pending phase: the media config is accepted, the daemon's own retry
+// interval elapses, and the images listing goes from refusing to listing the
+// image. A documented asynchronous PENDING state is legitimate. Repeating an
+// operation until an observation finally agrees is not, and the two look
+// identical in prose -- which is why the sequence used to be described only in
+// prose and this module exists to make the difference structural.
+//
+// The distinction the type enforces: pending is only representable INSIDE a
+// declared bounded window, and every exit from that window is TERMINAL. A green
+// after a timeout is a CONTRADICTION, not a success, because discarding an
+// earlier terminal refusal because a later poll agreed is exactly the
+// instability this model refuses.
+//
+// TERMINAL MEANS NO REVIVAL, NOT ABSOLUTE IMMUTABILITY -- the narrower statement
+// is the true one. A terminal operational answer may be REFINED INTO
+// CONTRADICTION by conflicting later evidence, and that refinement is correct:
+// evidence that the answer was wrong must not be discarded to protect the
+// answer. What no observation can do is revive a terminal standing back into
+// pending or into success. The law the fold implements:
+//
+//   Requested/Pending -> Pending | Established | TimedOut | Contradictory
+//   Established       -> Established | Contradictory
+//   TimedOut          -> TimedOut | Contradictory
+//   Contradictory     -> the identical Contradictory standing
+//
+// Last-wins is therefore unwritable in the direction that matters: no arm
+// replaces a terminal refusal with a later agreement.
+//
+// This is a workflow-layer carrier, not an extdeps one: an observation produced
+// by this repository is a receipt of OUR attempt, never a fact owned by the
+// observed upstream (DESIGN §3, external upstream decomposition). AMI owns the
+// operation contract in extdeps.bmc.megarac; what our polling saw is ours.
+
+type RemoteMediaListing
+  = MediaImageListed
+  | MediaImageAbsentFromListing
+
+// One look at the listing, with the bytes it was read from. There is no
+// observation without evidence: an unevidenced poll cannot move a standing.
+type RemoteMediaListingObservation {
+  observed_at: EpochMs
+  listing: RemoteMediaListing
+  raw_response: ContentHash
+}
+
+// THE BOUND IS DECLARED BEFORE THE FIRST POLL, not discovered by polling. The
+// deadline is a function of the request, so "wait a bit longer" has nowhere to
+// live: every observation is judged against the declared bound rather than
+// against how patient the caller feels.
+//
+// THE WINDOW IS HALF-OPEN: requested_at <= observed_at < deadline. An
+// observation exactly AT the deadline is outside the establishment window, so
+// the bound means what a bound normally means and a budget cannot be spent
+// twice at its own boundary.
+//
+// A ZERO BUDGET IS REPRESENTABLE AND MEANS AN IMMEDIATELY-CLOSED WINDOW: with a
+// half-open window, deadline = requested_at + 0 = requested_at, so the interval
+// [requested_at, requested_at) is empty, admits no observation, and the first
+// observation is judged past the deadline. An earlier version of this annotation
+// claimed a budgetless window was unrepresentable, which was rung inflation
+// (§4b) and is withdrawn.
+//
+// Milliseconds admits zero by its declared range. A second gt_zero refinement
+// would enforce decidable literal constructions but would not establish
+// positivity for genuinely nonliteral inputs, which remain deferred; this module
+// therefore does not claim a total positive-budget construction wall and gives
+// zero an explicit immediately-closed meaning instead. The residual
+// nonliteral-refinement gap belongs to the compiler's refinement lane, not to a
+// local duplicate validator here.
+type RemoteMediaMountWindow {
+  requested_at: EpochMs
+  budget: Milliseconds
+}
+
+fn mount_window_deadline(window: RemoteMediaMountWindow) -> Int {
+  window.requested_at + window.budget
+}
+
+type MountContradiction
+  = EstablishedThenAbsent {
+      established_at: EpochMs,
+      establishing_evidence: ContentHash,
+      contradicted_at: EpochMs,
+      contradicting_evidence: ContentHash
+    }
+  | TimedOutThenListed { deadline: Int, listed_at: EpochMs, listing_evidence: ContentHash }
+  | ObservationBeforeRequest { requested_at: EpochMs, observed_at: EpochMs }
+  | ObservationOutOfOrder { previous_at: EpochMs, observed_at: EpochMs }
+  | ObservationTimestampCollision { previous_at: EpochMs, observed_at: EpochMs }
+  | EvaluationBoundaryBeforeLastObservation { observed_through: EpochMs, last_observed_at: EpochMs }
+  | EvaluationBoundaryBeforeRequest { observed_through: EpochMs, requested_at: EpochMs }
+
+// A TIMEOUT MUST SAY WHAT ESTABLISHED IT, AND MUST NOT INVENT AN OBSERVATION.
+// The unobserved path used to record last_observed_at = window.requested_at,
+// but nothing was observed at the request time -- that is when the request was
+// made. A fabricated plausible timestamp is precisely what DESIGN section 5
+// forbids, and the witness for that path ignored the field, so the fabrication
+// greened.
+//
+// The two ways a window closes are genuinely different facts and are now
+// distinguishable by a consumer: an absence observed past the deadline carries
+// the observation and its bytes, while a clock-only close carries the boundary
+// that closed it and whatever frontier existed, which is honestly absent when
+// nothing was ever seen.
+type MountTimeoutBasis
+  = TimeoutFromAbsentObservation { observed_at: EpochMs, observation_evidence: ContentHash }
+  | TimeoutAtEvaluationBoundary { boundary: EpochMs, last_observed_at: EpochMs? }
+
+type RemoteMediaMountStanding
+  = MountRequested { window: RemoteMediaMountWindow }
+  | MountPending { window: RemoteMediaMountWindow, last_observed_at: EpochMs, observations: Int }
+  | MountEstablished { established_at: EpochMs, establishing_evidence: ContentHash }
+  | MountTimedOut { window: RemoteMediaMountWindow, basis: MountTimeoutBasis }
+  | MountObservationContradictory { cause: MountContradiction }
+
+// TWO FRONTIERS, BECAUSE THEY ARE TWO FACTS. previous_at is the immediately
+// preceding SUPPLIED observation and answers order questions -- is this one out
+// of order, does it collide. frontier_at is the MAXIMUM timestamp any supplied
+// observation carried, and answers the as-of question: what is the latest moment
+// this fold has evidence about.
+//
+// They coincide only while timestamps increase, and this module exists to
+// represent populations where they do not. One field serving both meant a
+// backward observation moved the frontier BACKWARD, so a boundary later than the
+// retreated frontier but earlier than real evidence passed the coherence check --
+// a verdict read before evidence that had already been folded in. frontier_at is
+// monotone by construction: every step takes the maximum, so no observation can
+// retract what the fold already knows.
+type MountFold {
+  standing: RemoteMediaMountStanding
+  previous_at: EpochMs?
+  frontier_at: EpochMs?
+}
+
+fn advance_frontier(frontier_at: EpochMs?, observed_at: EpochMs) -> EpochMs? {
+  match frontier_at {
+    Absent => Present { value: observed_at }
+    Present { value: f } => if (observed_at > f) { Present { value: observed_at } } else { frontier_at }
+  }
+}
+
+// EXHAUSTIVE, NOT WILDCARDED, BECAUSE A NEW STANDING MUST STOP THE LINE HERE.
+// This guard decides whether the fold preserves what it already concluded, so a
+// wildcard would silently classify any future standing as "not contradictory"
+// and let the temporal prechecks overwrite it -- the exact defect this guard was
+// added to close, reintroduced by the next person to extend the coproduct. Listed
+// arms make that a compile error instead of a wrong answer.
+fn standing_is_contradictory(standing: RemoteMediaMountStanding) -> Bool {
+  match standing {
+    MountObservationContradictory { cause: _ } => true
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
+  }
+}
+
+fn mount_observation_is_out_of_order(previous_at: EpochMs?, observed_at: EpochMs) -> Bool {
+  match previous_at {
+    Absent => false
+    Present { value: p } => observed_at < p
+  }
+}
+
+// EQUAL TIMESTAMPS ARE UNORDERED, AND LIST POSITION IS NOT EVIDENCE. Two
+// observations sharing one millisecond were previously interpreted in the
+// order the caller happened to pass them, so absent-then-listed established the
+// mount while listed-then-absent contradicted it -- one clock, two verdicts,
+// decided by an argument's index. The clock proves no order between them, so
+// the pair is refused even when the two observations are byte-identical. A
+// producer that legitimately emits several observations inside one millisecond
+// needs a source-minted monotonic sequence number; until it has one, its
+// ordering is not a fact this model may read.
+fn mount_observation_collides(previous_at: EpochMs?, observed_at: EpochMs) -> Bool {
+  match previous_at {
+    Absent => false
+    Present { value: p } => observed_at == p
+  }
+}
+
+// The one transition. Every arm is decided by the standing it is IN plus the
+// observation, so no path revives a terminal standing into pending or success;
+// the only onward move from a terminal answer is refinement into contradiction.
+fn advance_mount_standing(
+  standing: RemoteMediaMountStanding,
+  window: RemoteMediaMountWindow,
+  observation: RemoteMediaListingObservation,
+) -> RemoteMediaMountStanding {
+  match standing {
+    MountObservationContradictory { cause: c } => MountObservationContradictory { cause: c }
+    MountEstablished { established_at: at, establishing_evidence: ev } =>
+      match observation.listing {
+        MediaImageListed => MountEstablished { established_at: at, establishing_evidence: ev }
+        MediaImageAbsentFromListing =>
+          MountObservationContradictory {
+            cause: EstablishedThenAbsent {
+              established_at: at,
+              establishing_evidence: ev,
+              contradicted_at: observation.observed_at,
+              contradicting_evidence: observation.raw_response,
+            },
+          }
+      }
+    MountTimedOut { window: w, basis: b } =>
+      match observation.listing {
+        MediaImageAbsentFromListing => MountTimedOut { window: w, basis: b }
+        MediaImageListed =>
+          MountObservationContradictory {
+            cause: TimedOutThenListed {
+              deadline: mount_window_deadline(window: w),
+              listed_at: observation.observed_at,
+              listing_evidence: observation.raw_response,
+            },
+          }
+      }
+    MountRequested { window: _ } => pending_or_terminal(window: window, observation: observation, observations: 0)
+    MountPending { window: _, last_observed_at: _, observations: n } =>
+      pending_or_terminal(window: window, observation: observation, observations: n)
+  }
+}
+
+// Inside the window a listing establishes and an absence stays pending; PAST the
+// deadline the window is closed and the standing is terminal, so a listing that
+// arrives late is a contradiction rather than a late success.
+fn pending_or_terminal(
+  window: RemoteMediaMountWindow,
+  observation: RemoteMediaListingObservation,
+  observations: Int,
+) -> RemoteMediaMountStanding {
+  if (observation.observed_at >= mount_window_deadline(window: window)) {
+    match observation.listing {
+      MediaImageAbsentFromListing =>
+        MountTimedOut {
+          window: window,
+          basis: TimeoutFromAbsentObservation { observed_at: observation.observed_at, observation_evidence: observation.raw_response },
+        }
+      MediaImageListed =>
+        MountObservationContradictory {
+          cause: TimedOutThenListed {
+            deadline: mount_window_deadline(window: window),
+            listed_at: observation.observed_at,
+            listing_evidence: observation.raw_response,
+          },
+        }
+    }
+  } else {
+    match observation.listing {
+      MediaImageListed =>
+        MountEstablished {
+          established_at: observation.observed_at,
+          establishing_evidence: observation.raw_response,
+        }
+      MediaImageAbsentFromListing =>
+        MountPending {
+          window: window,
+          last_observed_at: observation.observed_at,
+          observations: observations + 1,
+        }
+    }
+  }
+}
+
+// A CONTRADICTION IS PRESERVED IDENTICALLY, INCLUDING AGAINST A MALFORMED
+// SUCCESSOR. The temporal prechecks run before advance_mount_standing, so
+// without the first arm here an out-of-order, colliding, or before-request
+// observation arriving AFTER a contradiction replaced that contradiction with
+// its own -- losing the original cause and, worse, retracting the frontier to
+// the malformed observation's own timestamp. The declared law is that
+// Contradictory maps to the identical Contradictory standing; the guard is
+// where that becomes true rather than nearly true.
+//
+// THE FRONTIER ADVANCES ON EVERY OBSERVATION, INCLUDING REFUSED ONES. It is the
+// high-water mark of what the fold has SEEN, not of what it accepted, because
+// the boundary check asks whether an as-of read precedes evidence already in
+// hand -- and evidence that provoked a refusal is still evidence in hand.
+fn mount_fold_step(
+  acc: MountFold,
+  window: RemoteMediaMountWindow,
+  observation: RemoteMediaListingObservation,
+) -> MountFold {
+  let frontier = advance_frontier(frontier_at: acc.frontier_at, observed_at: observation.observed_at)
+  let previous = Present { value: observation.observed_at }
+  if standing_is_contradictory(standing: acc.standing) {
+    MountFold { standing: acc.standing, previous_at: previous, frontier_at: frontier }
+  } else if (observation.observed_at < window.requested_at) {
+    MountFold {
+      standing: MountObservationContradictory {
+        cause: ObservationBeforeRequest { requested_at: window.requested_at, observed_at: observation.observed_at },
+      },
+      previous_at: previous,
+      frontier_at: frontier,
+    }
+  } else if mount_observation_collides(previous_at: acc.previous_at, observed_at: observation.observed_at) {
+    MountFold {
+      standing: MountObservationContradictory {
+        cause: ObservationTimestampCollision { previous_at: unwrap_previous(previous_at: acc.previous_at, fallback: observation.observed_at), observed_at: observation.observed_at },
+      },
+      previous_at: previous,
+      frontier_at: frontier,
+    }
+  } else if mount_observation_is_out_of_order(previous_at: acc.previous_at, observed_at: observation.observed_at) {
+    MountFold {
+      standing: MountObservationContradictory {
+        cause: ObservationOutOfOrder { previous_at: unwrap_previous(previous_at: acc.previous_at, fallback: observation.observed_at), observed_at: observation.observed_at },
+      },
+      previous_at: previous,
+      frontier_at: frontier,
+    }
+  } else {
+    MountFold {
+      standing: advance_mount_standing(standing: acc.standing, window: window, observation: observation),
+      previous_at: previous,
+      frontier_at: frontier,
+    }
+  }
+}
+
+fn unwrap_previous(previous_at: EpochMs?, fallback: EpochMs) -> EpochMs {
+  match previous_at {
+    Absent => fallback
+    Present { value: p } => p
+  }
+}
+
+// The standing of one mount attempt over the observations that were actually
+// taken. An empty observation list is MountRequested and NOT established: a
+// mount nobody looked at is not a mount that worked.
+// THE FOLD IS THE ANSWER; THE STANDING IS A PROJECTION OF IT. The fold carries
+// two timestamps because they are two facts. previous_at is the IMMEDIATELY
+// PRECEDING list element, and it exists to decide ordering and collision against
+// the next one. frontier_at is the MONOTONE HIGH-WATER MARK of everything
+// observed, and it exists to decide whether an as-of boundary precedes the
+// evidence. They coincide only while timestamps strictly increase, which is
+// exactly the case the ordering check is there to catch not being universal --
+// so collapsing them let a backward observation retract the frontier and a
+// boundary between the two read as if the later evidence had never arrived.
+// The frontier is not recoverable from the standing alone: MountEstablished carries the moment it was established, not the last thing seen
+// after it, and MountTimedOut and MountObservationContradictory carry no frontier at all. An
+// earlier cut discarded the fold and tried to reconstruct the frontier per standing; that answered
+// only for MountPending, so a boundary earlier than the evidence behind any TERMINAL standing was
+// silently accepted -- a verdict read as of a moment before the observations that produced it.
+// Reconstructing it arm by arm cannot be made total either, because "established at 2000" and
+// "last observed at 4000" are different facts and only the fold holds the second.
+fn remote_media_mount_fold(
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+) -> MountFold {
+  fold(
+    observations,
+    init: MountFold { standing: MountRequested { window: window }, previous_at: none, frontier_at: none },
+    f: fn(acc, o) { mount_fold_step(acc: acc, window: window, observation: o) },
+  )
+}
+
+fn remote_media_mount_standing(
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+) -> RemoteMediaMountStanding {
+  remote_media_mount_fold(window: window, observations: observations).standing
+}
+
+// TIME CLOSES THE WINDOW; POLLING IS NOT WHAT MAKES A DEADLINE REAL. The fold
+// above answers over the observations that were actually taken, so with no
+// later poll a pending attempt stayed Pending and an unobserved one stayed
+// Requested -- indefinitely, past its own deadline. The passage of time never
+// finalized anything, which means the declared bound was only enforced against
+// callers that happened to keep looking.
+//
+// The boundary carries its own clock evidence rather than reading a clock,
+// because a workflow-layer verdict that silently consulted wall time would be
+// unreproducible: the same observations plus the same boundary must always give
+// the same standing. observed_through is how far this evaluation can honestly
+// speak, and it may not precede the last observation -- a boundary claiming to
+// see less than what was already observed is a defect in the caller, not a
+// shorter window, so it is refused rather than clamped.
+type MountEvaluationBoundary {
+  observed_through: EpochMs
+  clock_evidence: ContentHash
+}
+
+// THE BOUNDARY IS JUDGED AGAINST THE FOLD'S FRONTIER, so the refusal is total across every
+// standing rather than only the pending one. Two incoherent boundaries are refused: one that
+// precedes the last observation, which would read a verdict as of a moment before the evidence
+// behind it, and -- when nothing was observed at all -- one that precedes the request itself, which
+// would describe the request as already standing before it occurred.
+// BOTH LOWER BOUNDS, CHECKED INDEPENDENTLY. A boundary must not precede the
+// request, and must not precede the frontier of evidence already folded in.
+// These were one either/or before, with the request compared only when nothing
+// had been observed -- so an observation at 500 against a request at 1000,
+// evaluated at 750, produced an as-of verdict about an attempt that had not yet
+// begun. The request bound holds whether or not anything was observed.
+fn boundary_incoherence(
+  window: RemoteMediaMountWindow,
+  folded: MountFold,
+  boundary: MountEvaluationBoundary,
+) -> MountContradiction? {
+  if (boundary.observed_through < window.requested_at) {
+    Present { value: EvaluationBoundaryBeforeRequest { observed_through: boundary.observed_through, requested_at: window.requested_at } }
+  } else {
+    match folded.frontier_at {
+      Absent => none
+      Present { value: frontier } =>
+        if (boundary.observed_through < frontier) {
+          Present { value: EvaluationBoundaryBeforeLastObservation { observed_through: boundary.observed_through, last_observed_at: frontier } }
+        } else {
+          none
+        }
+    }
+  }
+}
+
+// The standing of one mount attempt as of a declared moment. Terminal standings are preserved
+// exactly; only the nonterminal pair can be closed by the clock, and only once the boundary has
+// actually reached the deadline.
+fn mount_standing_as_of(
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+  boundary: MountEvaluationBoundary,
+) -> RemoteMediaMountStanding {
+  let folded = remote_media_mount_fold(window: window, observations: observations)
+  match boundary_incoherence(window: window, folded: folded, boundary: boundary) {
+    Present { value: cause } => MountObservationContradictory { cause: cause }
+    Absent => close_window_at_boundary(standing: folded.standing, window: window, boundary: boundary)
+  }
+}
+
+fn close_window_at_boundary(
+  standing: RemoteMediaMountStanding,
+  window: RemoteMediaMountWindow,
+  boundary: MountEvaluationBoundary,
+) -> RemoteMediaMountStanding {
+  let reached = boundary.observed_through >= mount_window_deadline(window: window)
+  match standing {
+    MountRequested { window: w } =>
+      if reached {
+        MountTimedOut { window: w, basis: TimeoutAtEvaluationBoundary { boundary: boundary.observed_through, last_observed_at: none } }
+      } else { MountRequested { window: w } }
+    MountPending { window: w, last_observed_at: last, observations: n } =>
+      if reached {
+        MountTimedOut { window: w, basis: TimeoutAtEvaluationBoundary { boundary: boundary.observed_through, last_observed_at: Present { value: last } } }
+      } else { MountPending { window: w, last_observed_at: last, observations: n } }
+    MountEstablished { established_at: at, establishing_evidence: ev } => MountEstablished { established_at: at, establishing_evidence: ev }
+    MountTimedOut { window: w, basis: b } => MountTimedOut { window: w, basis: b }
+    MountObservationContradictory { cause: c } => MountObservationContradictory { cause: c }
+  }
+}
+
+// The only standing a delivery phase may treat as established. Pending is not a
+// green, and neither timeout nor contradiction may be retried past.
+fn mount_is_established(standing: RemoteMediaMountStanding) -> Bool {
+  match standing {
+    MountEstablished { established_at: _, establishing_evidence: _ } => true
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
+    MountObservationContradictory { cause: _ } => false
+  }
+}
