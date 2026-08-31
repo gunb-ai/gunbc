@@ -9,8 +9,10 @@ import std.dissolution {
 import std.algebra {
   Cons,
   Empty,
-  FreeMonoid
+  FreeMonoid,
+  FreeSemigroup
 }
+import v2.std.text { string_replace }
 import v2.std.algebra {
   Equal,
   Greater,
@@ -983,8 +985,24 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
+// The needle is handed to string_replace as the nonempty carrier it demands; an escape row whose
+// `from` is empty names no occurrence (the same reasoning that makes string_split's delimiter a
+// FreeSemigroup), so the fold passes the spelling through unchanged. Below ceiling: the rung-4
+// shape declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb
+// trigger is char-level literal sugar in the .dag realization, without which producers cannot
+// author the nonempty carrier from an escape row's quoted spelling.
 fn apply_emit_spelling_escapes(spelling: String, escapes: List<EmitSpellingEscape>) -> String {
-  fold_list(xs: escapes, empty: spelling, cons: fn(acc, rule) { replace(acc, rule.from, rule.to) })
+  fold_list(
+    xs: escapes,
+    empty: spelling,
+    cons: fn(acc, rule) {
+      match rule.from {
+        Cons { head: h, tail: t } =>
+          string_replace(source: acc, needle: FreeSemigroup { head: h, tail: t }, replacement: rule.to)
+        Empty => acc
+      }
+    }
+  )
 }
 
 fn apply_emit_spelling_transform(
