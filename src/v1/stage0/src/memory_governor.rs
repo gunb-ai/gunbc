@@ -594,17 +594,27 @@ impl HostBudgetSource {
     /// something THIS process cannot exceed, rather than a fact about the machine.
     pub fn bounds_this_process(&self) -> bool {
         match self {
+            HostBudgetSource::CgroupMemoryMax { .. } => true,
             HostBudgetSource::EnvOverride
             | HostBudgetSource::CgroupMemoryHigh { .. }
-            | HostBudgetSource::CgroupMemoryMax { .. } => true,
-            HostBudgetSource::DarwinPhysicalMemory => false,
+            | HostBudgetSource::DarwinPhysicalMemory => false,
         }
     }
 
-    /// Mirror of `host_budget_source_is_degraded` — the complement of `bounds_this_process`,
+    /// Whether this is a kernel observation scoped to this process. `memory.high` is
+    /// included: it is an operating throttle, not a hard cap, but remains an observed
+    /// applicable constraint. An environment request and whole-machine RAM are not.
+    pub fn observes_this_process(&self) -> bool {
+        matches!(
+            self,
+            HostBudgetSource::CgroupMemoryHigh { .. } | HostBudgetSource::CgroupMemoryMax { .. }
+        )
+    }
+
+    /// Mirror of `host_budget_source_is_degraded` — the complement of `observes_this_process`,
     /// asserted as a partition by `test.claim.host_budget_source_witness`.
     pub fn is_degraded(&self) -> bool {
-        !self.bounds_this_process()
+        !self.observes_this_process()
     }
 }
 
@@ -619,6 +629,13 @@ pub enum HostBudgetResolution {
     Unreadable {
         reason: String,
     },
+    /// An operator requested a planning ceiling, but no independently observed limit
+    /// establishes what this process can actually consume.  The declaration is retained
+    /// for the diagnostic, never promoted into a usable number.
+    DeclaredUnverified {
+        requested_bytes: u64,
+        reason: String,
+    },
 }
 
 impl HostBudgetResolution {
@@ -626,7 +643,8 @@ impl HostBudgetResolution {
     pub fn bytes(&self) -> Option<u64> {
         match self {
             HostBudgetResolution::Resolved { bytes, .. } => Some(*bytes),
-            HostBudgetResolution::Unreadable { .. } => None,
+            HostBudgetResolution::Unreadable { .. }
+            | HostBudgetResolution::DeclaredUnverified { .. } => None,
         }
     }
 
@@ -636,6 +654,12 @@ impl HostBudgetResolution {
         match self {
             HostBudgetResolution::Resolved { source, .. } => source.label(),
             HostBudgetResolution::Unreadable { reason } => format!("unreadable: {reason}"),
+            HostBudgetResolution::DeclaredUnverified {
+                requested_bytes,
+                reason,
+            } => format!(
+                "declared-unverified: env GUNBC_MEMORY_BUDGET_BYTES={requested_bytes}; {reason}"
+            ),
         }
     }
 
@@ -644,22 +668,23 @@ impl HostBudgetResolution {
     pub fn degraded_source(&self) -> Option<bool> {
         match self {
             HostBudgetResolution::Resolved { source, .. } => Some(source.is_degraded()),
-            HostBudgetResolution::Unreadable { .. } => None,
+            HostBudgetResolution::Unreadable { .. }
+            | HostBudgetResolution::DeclaredUnverified { .. } => None,
         }
     }
 }
 
-/// The refusal reason. Mirror of `host_budget_unreadable_on_kernel`, and the whole remedy a
-/// stopped operator gets: what was unreadable, and the declaration that supplies the bound.
+/// The refusal reason. Mirror of `host_budget_unreadable_on_kernel`: an operator declaration
+/// cannot repair a missing observation because it supplies a planning request, not enforcement.
 pub fn host_budget_unreadable_reason() -> String {
     format!(
         "no cgroup memory.high or memory.max binds this process and GUNBC_MEMORY_BUDGET_BYTES \
-         is unset (target_os={}), so the admission bound is UNKNOWN. Refusing rather than \
+         cannot verify one (target_os={}), so the planning allowance is UNKNOWN. Refusing rather than \
          admitting against the widest signal available: a host-shared reading is a number \
          about the MACHINE, not about this slot, and admitting against one is the rc=137 \
          SIGKILL this arm exists to prevent (BuildBuddy receipt 2026-08-30, \
-         gunbc.host_budget_source host_budget_unreadable_cgroup_receipt_note). Declare this \
-         slot's bound with GUNBC_MEMORY_BUDGET_BYTES.",
+         gunbc.host_budget_source host_budget_unreadable_cgroup_receipt_note). The executor must \
+         expose an enforceable limit; GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling.",
         std::env::consts::OS
     )
 }
@@ -668,8 +693,10 @@ pub fn host_budget_unreadable_reason() -> String {
 /// reachable from a test on any machine. `read_host_budget_resolution` is this function
 /// applied to the real reads; nothing else composes the precedence.
 ///
-/// Precedence: operator override -> cgroup memory.high -> cgroup memory.max -> Darwin physical
-/// memory -> refuse. There is no meminfo arm: MemAvailable and MemTotal describe a MACHINE, and
+/// The effective planning ceiling is the minimum of the operator request and every observed
+/// applicable cgroup line. An operator request alone is `DeclaredUnverified`: an integer in an
+/// environment variable constrains no allocation and is not evidence of executor provisioning.
+/// There is no meminfo arm: MemAvailable and MemTotal describe a MACHINE, and
 /// on a kernel that can express a private limit, substituting one for the limit this process
 /// failed to read is DESIGN §5's absorbing fallback (answering with a superset). Authority:
 /// `gunbc.host_budget_source` `host_budget_source_admissible_as_bound_on_kernel`.
@@ -679,22 +706,38 @@ pub fn resolve_host_budget(
     cgroup_max: Option<(String, u64)>,
     darwin_physical: Option<u64>,
 ) -> HostBudgetResolution {
-    if let Some(bytes) = env_override {
+    let observed = match (cgroup_high, cgroup_max) {
+        (Some(high), Some(max)) => Some(if high.1 <= max.1 {
+            (
+                HostBudgetSource::CgroupMemoryHigh { cgroup_dir: high.0 },
+                high.1,
+            )
+        } else {
+            (
+                HostBudgetSource::CgroupMemoryMax { cgroup_dir: max.0 },
+                max.1,
+            )
+        }),
+        (Some((cgroup_dir, bytes)), None) => {
+            Some((HostBudgetSource::CgroupMemoryHigh { cgroup_dir }, bytes))
+        }
+        (None, Some((cgroup_dir, bytes))) => {
+            Some((HostBudgetSource::CgroupMemoryMax { cgroup_dir }, bytes))
+        }
+        (None, None) => None,
+    };
+    if let Some((observed_source, observed_bytes)) = observed {
+        if let Some(requested_bytes) = env_override {
+            if requested_bytes < observed_bytes {
+                return HostBudgetResolution::Resolved {
+                    source: HostBudgetSource::EnvOverride,
+                    bytes: requested_bytes,
+                };
+            }
+        }
         return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::EnvOverride,
-            bytes,
-        };
-    }
-    if let Some((cgroup_dir, bytes)) = cgroup_high {
-        return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::CgroupMemoryHigh { cgroup_dir },
-            bytes,
-        };
-    }
-    if let Some((cgroup_dir, bytes)) = cgroup_max {
-        return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::CgroupMemoryMax { cgroup_dir },
-            bytes,
+            source: observed_source,
+            bytes: observed_bytes,
         };
     }
     // Darwin only. `darwin_physical_memory_bytes` is `None` on every other target, so this
@@ -702,9 +745,16 @@ pub fn resolve_host_budget(
     // `host_budget_source_admissible_as_bound_on_kernel` states: a host-shared reading may
     // serve as the budget only where no private-limit mechanism exists.
     if let Some(bytes) = darwin_physical {
-        return HostBudgetResolution::Resolved {
-            source: HostBudgetSource::DarwinPhysicalMemory,
-            bytes,
+        let (source, bytes) = match env_override {
+            Some(requested) if requested < bytes => (HostBudgetSource::EnvOverride, requested),
+            _ => (HostBudgetSource::DarwinPhysicalMemory, bytes),
+        };
+        return HostBudgetResolution::Resolved { source, bytes };
+    }
+    if let Some(requested_bytes) = env_override {
+        return HostBudgetResolution::DeclaredUnverified {
+            requested_bytes,
+            reason: "no observed private memory.high or memory.max verifies the executor allowance; the declaration is a planning request, not an enforced process limit".to_string(),
         };
     }
     HostBudgetResolution::Unreadable {
@@ -712,9 +762,9 @@ pub fn resolve_host_budget(
     }
 }
 
-/// The host memory budget to admit against, as a typed resolution. Single authority shared
+/// The host memory planning ceiling, as a typed resolution. It does not cap RSS. Single authority shared
 /// by the MemoryGovernor (which SCHEDULES against it), the typed-module cache cap (which
-/// BOUNDS resolution with it) and the P4 realize advisory (which PREDICTS against it) — no
+/// bounds an estimated ENTRY COUNT with it) and the P4 realize advisory (which PREDICTS against it) — no
 /// consumer may re-read a partial version of this precedence (§3 single authority).
 pub fn read_host_budget_resolution() -> HostBudgetResolution {
     let env_override = std::env::var("GUNBC_MEMORY_BUDGET_BYTES")
@@ -900,8 +950,8 @@ mod tests {
     /// this change the same observations produced a budget: MemAvailable (a host reading)
     /// capped at the fleet's declared slot line (a declaration about different machines).
     ///
-    /// The refusal must name both halves of the remedy — what was unreadable, and the env var
-    /// that supplies the bound — since a stop that does not say how to restart cannot be
+    /// The refusal must name what was unreadable and explain that the env var can only narrow
+    /// an observation — since a stop that does not say how to restart cannot be
     /// analyzed.
     #[test]
     #[allow(non_snake_case)]
@@ -917,15 +967,16 @@ mod tests {
     }
 
     /// THE POSITIVE CONTROLS, without which the RED above is satisfied by a resolver refusing
-    /// everything. Each readable bound is admitted at its own value, attributed to its own
-    /// source, and the precedence is asserted: an operator override outranks a cgroup limit,
-    /// and `memory.high` (the reclaim throttle) outranks `memory.max` (the kill line).
+    /// everything. Observed lines are admitted at the tightest applicable value; an operator
+    /// request can narrow that value but cannot widen it or establish one by itself.
     #[test]
     fn a_readable_bound_is_admitted_at_its_own_value_and_source() {
         let env = resolve_host_budget(Some(10_737_418_240), None, None, None);
-        assert_eq!(env.bytes(), Some(10_737_418_240));
-        assert_eq!(env.degraded_source(), Some(false));
-        assert_eq!(env.label(), "env GUNBC_MEMORY_BUDGET_BYTES");
+        assert!(matches!(
+            env,
+            HostBudgetResolution::DeclaredUnverified { .. }
+        ));
+        assert_eq!(env.bytes(), None);
 
         let high = resolve_host_budget(
             None,
@@ -946,15 +997,24 @@ mod tests {
         assert_eq!(max.bytes(), Some(9_663_676_416));
         assert!(max.label().contains("memory.max"));
 
-        // An override outranks a cgroup limit: the operator is declaring the bound the
-        // executor knows and this process cannot see, which is the BuildBuddy case.
+        // A declaration cannot widen an observed throttle.
         let both = resolve_host_budget(
             Some(10_737_418_240),
             Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
             None,
             None,
         );
-        assert_eq!(both.bytes(), Some(10_737_418_240));
+        assert_eq!(both.bytes(), Some(8_589_934_592));
+
+        // It can request a narrower planning ceiling once an observed limit verifies the
+        // process is actually bounded.
+        let narrowed = resolve_host_budget(
+            Some(5_368_709_120),
+            Some(("/sys/fs/cgroup/runner.slice".to_string(), 8_589_934_592)),
+            None,
+            None,
+        );
+        assert_eq!(narrowed.bytes(), Some(5_368_709_120));
     }
 
     /// Darwin's physical-memory read stays a source and stays DEGRADED, and it is the only
@@ -968,18 +1028,20 @@ mod tests {
         assert_eq!(darwin.degraded_source(), Some(true));
         assert_eq!(darwin.label(), "sysctl hw.memsize");
         assert!(!HostBudgetSource::DarwinPhysicalMemory.bounds_this_process());
-        for bounding in [
-            HostBudgetSource::EnvOverride,
-            HostBudgetSource::CgroupMemoryHigh {
-                cgroup_dir: "/sys/fs/cgroup".to_string(),
-            },
-            HostBudgetSource::CgroupMemoryMax {
-                cgroup_dir: "/sys/fs/cgroup".to_string(),
-            },
-        ] {
+        for bounding in [HostBudgetSource::CgroupMemoryMax {
+            cgroup_dir: "/sys/fs/cgroup".to_string(),
+        }] {
             assert!(bounding.bounds_this_process(), "{bounding:?}");
             assert!(!bounding.is_degraded(), "{bounding:?}");
         }
+        assert!(!HostBudgetSource::EnvOverride.bounds_this_process());
+        assert!(HostBudgetSource::EnvOverride.is_degraded());
+        let high = HostBudgetSource::CgroupMemoryHigh {
+            cgroup_dir: "/sys/fs/cgroup".to_string(),
+        };
+        assert!(!high.bounds_this_process());
+        assert!(high.observes_this_process());
+        assert!(!high.is_degraded());
     }
 
     /// No arm reports a `/proc` path it did not read. The fabricated-provenance bug this

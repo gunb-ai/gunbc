@@ -9,6 +9,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
+  HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
 }
 
@@ -60,6 +61,7 @@ fn typed_module_cache_entry_cap(r: HostBudgetResolution) -> TypedModuleCacheCap 
   match r {
     HostBudgetResolved { source: _, bytes: b } =>
       CapEntries { entries: clamp_to_declared_band(raw: raw_entry_cap(budget: b)) }
+    HostBudgetDeclaredUnverified { requested_bytes: _, reason: why } => CapEntryRefused { reason: why }
     HostBudgetUnreadable { reason: why } => CapEntryRefused { reason: why }
   }
 }
