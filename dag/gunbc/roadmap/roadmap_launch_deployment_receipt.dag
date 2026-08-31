@@ -178,6 +178,13 @@ type PredecessorRunProvenance {
   workflow_path: String
 }
 
+// THE PROVENANCE SPLIT, STATED AT THE MODEL (review 5063097188 B2 refinement). This fact carries
+// the three PREDECESSOR runs read back through the workflow-runs API -- run id, conclusion,
+// head_sha, workflow path -- plus the CURRENT receipt run's binding admitted against the canonical
+// repository and the generated workflow file. It deliberately does NOT carry the current run's own
+// terminal conclusion: a run cannot observe its own conclusion from inside itself, and representing
+// one here would be a fabricated observation. That conclusion is an explicit POST-RUN manager
+// verification (the RLM-2b sequence's final step) or a later attestation, never an internal claim.
 type RunProvenanceFact
   = RunProvenanceObserved {
       receipt_repository: String,
