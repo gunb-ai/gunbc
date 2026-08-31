@@ -66,8 +66,11 @@ use crate::std_target_representation::ExactBindingResolution::{
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
-pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
+use crate::v1_compiler_artifact::RustModuleRenderSelection::{
+    RenderEveryModule, RenderSelectedMirrors,
+};
+pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::decl_identity_file;
@@ -5906,6 +5909,16 @@ pub fn emit_rust_reference_derived_census(typed: Rc<ResolvedGraph>) -> Reference
 }
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+    emit_rust_selected(
+        typed.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn emit_rust_selected(
+    typed: Rc<ResolvedGraph>,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<EmitResult> {
     {
         let ctx = build_emit_rust_context(typed.clone());
         let emit_info = ctx.emit_info.clone();
@@ -5944,7 +5957,24 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let test_projections = ctx.test_projections.clone();
         let module_emissions = Rc::new({
             let mut __result = Vec::new();
-            for tm in typed.modules.clone().iter().cloned() {
+            for tm in Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    if rust_module_render_selection_renders(
+                        selection.clone(),
+                        crate::v1_std_core::authored_name_at(
+                            tm.type_env.clone().source_indices.clone(),
+                            tm.module.clone(),
+                        ),
+                    ) {
+                        __result.push(tm);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
                 __result.push(emit_module_full_with_dispositions(
                     tm.clone(),
                     ctx.clone(),
@@ -5967,30 +5997,24 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             }
             __result
         });
-        let test_files = Rc::new({
+        let module_paths = Rc::new({
             let mut __result = Vec::new();
-            for f in Rc::new({
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.push(rust_module_emit_path(crate::v1_std_core::authored_name_at(
+                    tm.type_env.clone().source_indices.clone(),
+                    tm.module.clone(),
+                )));
+            }
+            __result
+        });
+        let test_module_names = Rc::new({
+            let mut __result = Vec::new();
+            for name in Rc::new({
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
-                    __result.push(emit_test_file(
-                        crate::v1_std_core::authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
-                            tm.module.clone(),
-                        ),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in test_projections.iter().cloned() {
-                                if (p.module_name.clone()
-                                    == crate::v1_std_core::authored_name_at(
-                                        tm.type_env.clone().source_indices.clone(),
-                                        tm.module.clone(),
-                                    ))
-                                {
-                                    __result.push(p);
-                                }
-                            }
-                            __result
-                        }),
+                    __result.push(crate::v1_std_core::authored_name_at(
+                        tm.type_env.clone().source_indices.clone(),
+                        tm.module.clone(),
                     ));
                 }
                 __result
@@ -5998,9 +6022,56 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (v1_rt::string_length(&f.content.clone()) > 0) {
-                    __result.push(f);
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for p in test_projections.iter().cloned() {
+                        if (p.module_name.clone() == name.clone()) {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    > 0)
+                {
+                    __result.push(name);
                 }
+            }
+            __result
+        });
+        let test_file_paths = Rc::new({
+            let mut __result = Vec::new();
+            for name in test_module_names.iter().cloned() {
+                __result.push(rust_test_file_path(name.clone()));
+            }
+            __result
+        });
+        let test_files = Rc::new({
+            let mut __result = Vec::new();
+            for name in Rc::new({
+                let mut __result = Vec::new();
+                for name in test_module_names.iter().cloned() {
+                    if rust_module_render_selection_renders(selection.clone(), name.clone()) {
+                        __result.push(name);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(emit_test_file(
+                    name.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in test_projections.iter().cloned() {
+                            if (p.module_name.clone() == name.clone()) {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    }),
+                ));
             }
             __result
         });
@@ -6043,16 +6114,20 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             Rc::new(vec![])
         };
-        let v2_std_text_stub = if (module_files_reference_v2_std_text(module_files.clone())
-            && !module_files_include_v2_std_text(module_files.clone()))
-        {
+        let v2_std_text_stub = if closure_needs_module_filename_stub(
+            typed.clone(),
+            ctx.clone(),
+            "v2_std_text".to_string(),
+        ) {
             Rc::new(vec![emit_v2_std_text_closure_stub_module()])
         } else {
             Rc::new(vec![])
         };
-        let v2_std_integer_stub = if (module_files_reference_v2_std_integer(module_files.clone())
-            && !module_files_include_v2_std_integer(module_files.clone()))
-        {
+        let v2_std_integer_stub = if closure_needs_module_filename_stub(
+            typed.clone(),
+            ctx.clone(),
+            "v2_std_integer".to_string(),
+        ) {
             Rc::new(vec![emit_v2_std_integer_closure_stub_module()])
         } else {
             Rc::new(vec![])
@@ -6067,7 +6142,59 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             dry_run_file.clone(),
         );
-        let lib_file = emit_lib_rs_from_files(all_mod_files.clone(), has_pipeline.clone());
+        let all_mod_paths = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        module_paths.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for f in v2_std_text_stub.iter().cloned() {
+                                __result.push(f.path.clone());
+                            }
+                            __result
+                        }),
+                    ),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for f in v2_std_integer_stub.iter().cloned() {
+                            __result.push(f.path.clone());
+                        }
+                        __result
+                    }),
+                ),
+                Rc::new(vec![rt_file.path.clone()]),
+            ),
+            Rc::new({
+                let mut __result = Vec::new();
+                for f in dry_run_file.iter().cloned() {
+                    __result.push(f.path.clone());
+                }
+                __result
+            }),
+        );
+        let lib_file = emit_lib_rs_from_paths(all_mod_paths.clone(), has_pipeline.clone());
+        let emitted_paths = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    Rc::new(vec![
+                        cargo.path.clone(),
+                        lib_file.path.clone(),
+                        main_file.path.clone(),
+                    ]),
+                    all_mod_paths.clone(),
+                ),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for f in compiler_tests_file.iter().cloned() {
+                        __result.push(f.path.clone());
+                    }
+                    __result
+                }),
+            ),
+            test_file_paths.clone(),
+        );
+        let population_manifest = emit_emitted_population_manifest(emitted_paths.clone());
         let emitted_files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -6078,7 +6205,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             test_files.clone(),
         );
-        let population_manifest = emit_emitted_population_manifest(emitted_files.clone());
         let files = v1_rt::concat(
             emitted_files.clone(),
             Rc::new(vec![population_manifest.clone()]),
@@ -6090,20 +6216,62 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
+pub fn rust_module_emit_filename(module_name: String) -> String {
+    {
+        let raw = crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
+        if (raw.clone() == "main".to_string()) {
+            "main_mod".to_string()
+        } else {
+            raw.clone()
+        }
+    }
+}
+
+pub fn rust_module_emit_path(module_name: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            rust_source_root(),
+            rust_module_emit_filename(module_name.clone()),
+        ),
+        rust_source_ext(),
+    )
+}
+
+pub fn rust_module_render_selection_renders(
+    selection: Rc<RustModuleRenderSelection>,
+    module_name: String,
+) -> bool {
+    match (*selection.clone()).clone() {
+        RustModuleRenderSelection::RenderEveryModule => true,
+        RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: basenames,
+            ..
+        } => {
+            let mut __found = false;
+            for b in basenames.iter().cloned() {
+                if (b.clone()
+                    == v1_rt::concat(
+                        rust_module_emit_filename(module_name.clone()),
+                        rust_source_ext(),
+                    ))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
 pub fn emitted_population_manifest_path() -> String {
     v1_rt::concat(rust_source_root(), emitted_population_manifest_basename())
 }
 
-pub fn emit_emitted_population_manifest(files: Rc<Vec<Rc<TextFile>>>) -> Rc<TextFile> {
+pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> {
     {
         let declared = v1_rt::concat(
-            Rc::new({
-                let mut __result = Vec::new();
-                for f in files.iter().cloned() {
-                    __result.push(f.path.clone());
-                }
-                __result
-            }),
+            paths.clone(),
             Rc::new(vec![emitted_population_manifest_path()]),
         );
         let lines = Rc::new({
@@ -6159,14 +6327,122 @@ pub fn emit_compiler_tests_module() -> Rc<TextFile> {
     })
 }
 
-pub fn emitted_files_carry_use_line(files: Rc<Vec<Rc<TextFile>>>, line: String) -> bool {
+pub fn module_reference_candidate_names(
+    typed_module: Rc<TypedModule>,
+    ctx: Rc<EmitRustContext>,
+) -> Rc<Vec<String>> {
+    {
+        let source_indices = typed_module.type_env.clone().source_indices.clone();
+        let emit_info = ctx.emit_info.clone();
+        let this_module_name = crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
+            typed_module.module.clone(),
+        );
+        let items = typed_module.items.clone();
+        let value_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_value_ref_names(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.type_summaries.clone(),
+                        emit_info.variant_to_enum.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
+        let item_emit_surface_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_item_emit_surface_names(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let type_surface_names =
+            crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
+        let field_surface_names = collect_items_field_import_surface_names(
+            item_emit_surface_names.clone(),
+            emit_info.clone(),
+        );
+        let variant_payload_structs = expand_variant_payload_struct_imports(
+            type_surface_names.clone(),
+            emit_info.type_summaries.clone(),
+            emit_info.variant_to_enum.clone(),
+        );
+        let realized_surface_names =
+            crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+                let mut __result = Vec::new();
+                for item in items.iter().cloned() {
+                    __result.extend(
+                        (*collect_item_realized_surface_names(
+                            item.clone(),
+                            emit_info.shared_types.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }));
+        let unlisted_type_names = match v1_rt::map_get(
+            &ctx.unlisted_type_names_by_module.clone(),
+            this_module_name.clone(),
+        ) {
+            Some(v) => v.clone(),
+            None => Rc::new(vec![]),
+        };
+        let origin_candidates = crate::std_repair_input_origin::repair_input_origin_candidates(
+            this_module_name.clone(),
+            unlisted_type_names.clone(),
+            value_names.clone(),
+            type_surface_names.clone(),
+            field_surface_names.clone(),
+            variant_payload_structs.clone(),
+            realized_surface_names.clone(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for name in crate::v1_compiler_emit_core_support::unique_strings(
+                crate::std_repair_input_origin::repair_input_origin_compatibility_names(
+                    origin_candidates.clone(),
+                ),
+            )
+            .iter()
+            .cloned()
+            {
+                if !reference_is_host_realized_builtin(name.clone()) {
+                    __result.push(name);
+                }
+            }
+            __result
+        })
+    }
+}
+
+pub fn registry_declares_module_filename(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    filename: String,
+) -> bool {
     {
         let mut __found = false;
-        for f in files.iter().cloned() {
-            if v1_rt::string_contains(
-                &f.content.clone(),
-                v1_rt::concat("\n".to_string(), line.clone()),
-            ) {
+        for info in Rc::new(v1_rt::map_values(&registry)).iter().cloned() {
+            if (crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
+                == filename.clone())
+            {
                 __found = true;
                 break;
             }
@@ -6175,36 +6451,38 @@ pub fn emitted_files_carry_use_line(files: Rc<Vec<Rc<TextFile>>>, line: String) 
     }
 }
 
-pub fn module_files_reference_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
-    emitted_files_carry_use_line(
-        files.clone(),
-        v1_rt::concat(
-            rust_visibility_prefix(),
-            "use crate::v2_std_text::".to_string(),
-        ),
-    )
-}
-
-pub fn module_files_reference_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
-    emitted_files_carry_use_line(
-        files.clone(),
-        v1_rt::concat(
-            rust_visibility_prefix(),
-            "use crate::v2_std_integer::".to_string(),
-        ),
-    )
-}
-
-pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn closure_references_module_filename(
+    typed: Rc<ResolvedGraph>,
+    ctx: Rc<EmitRustContext>,
+    filename: String,
+) -> bool {
     {
-        let expected = v1_rt::concat(
-            v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
-            rust_source_ext(),
-        );
+        if !registry_declares_module_filename(ctx.registry.clone(), filename.clone()) {
+            return false;
+        }
         {
             let mut __found = false;
-            for f in files.iter().cloned() {
-                if (f.path.clone() == expected.clone()) {
+            for tm in typed.modules.clone().iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for name in module_reference_candidate_names(tm.clone(), ctx.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if match v1_rt::map_get(&ctx.registry.clone(), name.clone()) {
+                            Some(info) => {
+                                (crate::v1_compiler_emit_core_support::module_to_filename(
+                                    info.module_name.clone(),
+                                ) == filename.clone())
+                            }
+                            None => false,
+                        } {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
                     __found = true;
                     break;
                 }
@@ -6214,23 +6492,17 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
     }
 }
 
-pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
-    {
-        let expected = v1_rt::concat(
-            v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()),
-            rust_source_ext(),
-        );
-        {
-            let mut __found = false;
-            for f in files.iter().cloned() {
-                if (f.path.clone() == expected.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    }
+pub fn closure_needs_module_filename_stub(
+    typed: Rc<ResolvedGraph>,
+    ctx: Rc<EmitRustContext>,
+    filename: String,
+) -> bool {
+    (closure_references_module_filename(typed.clone(), ctx.clone(), filename.clone())
+        && !typed_closure_includes_module_filename(
+            typed.modules.clone(),
+            filename.clone(),
+            merged_module_source_indices(typed.modules.clone()),
+        ))
 }
 
 pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
@@ -6256,13 +6528,13 @@ pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
     })
 }
 
-pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> String {
+pub fn lib_rs_mod_name_from_path(path: String) -> String {
     {
         let src_prefix_len = v1_rt::string_length(&rust_source_root());
         let ext_len = v1_rt::string_length(&rust_source_ext());
-        let path_len = v1_rt::string_length(&f.path.clone());
+        let path_len = v1_rt::string_length(&path);
         v1_rt::substring(
-            &f.path.clone(),
+            &path,
             src_prefix_len.clone(),
             (path_len.clone() - ext_len.clone()),
         )
@@ -6340,16 +6612,16 @@ pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<Stri
     )
 }
 
-pub fn emit_lib_rs_from_files(
-    all_module_files: Rc<Vec<Rc<TextFile>>>,
+pub fn emit_lib_rs_from_paths(
+    all_module_paths: Rc<Vec<String>>,
     has_compiler_tests: bool,
 ) -> Rc<TextFile> {
     {
         let file_derived_names = Rc::new(
-            all_module_files
+            all_module_paths
                 .iter()
                 .cloned()
-                .map(lib_rs_mod_name_from_file)
+                .map(lib_rs_mod_name_from_path)
                 .collect::<Vec<_>>(),
         );
         let mod_names = if has_compiler_tests.clone() {
@@ -9475,14 +9747,10 @@ pub fn emit_module_full(
         } else {
             v1_rt::concat("\n\n".to_string(), phantom_zst_markers.clone())
         };
-        let raw_filename = crate::v1_compiler_emit_core_support::module_to_filename(
-            crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
-        );
-        let filename = if (raw_filename.clone() == "main".to_string()) {
-            "main_mod".to_string()
-        } else {
-            raw_filename.clone()
-        };
+        let module_emit_path = rust_module_emit_path(crate::v1_compiler_infer_env::authored_name(
+            scope.type_env.clone(),
+            m.clone(),
+        ));
         let module_attrs =
             if (crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone())
                 == "std.error_primitives".to_string())
@@ -9494,10 +9762,7 @@ pub fn emit_module_full(
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs.clone()), prelude.clone()), imports_section.clone()), svc_imports_str.clone()), local_uses_str.clone()), "\n\n".to_string()), coproduct_wire_contract_validation_section.clone()), items_str.clone()), phantom_section.clone()), "\n".to_string());
         Rc::new(ModuleEmission {
             file: Rc::new(TextFile {
-                path: v1_rt::concat(
-                    v1_rt::concat(rust_source_root(), filename.clone()),
-                    rust_source_ext(),
-                ),
+                path: module_emit_path.clone(),
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
