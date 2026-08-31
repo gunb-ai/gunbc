@@ -163,6 +163,30 @@ test fn exact_identity_removal_with_repair_provenance_closes_an_open_regression(
   }
 }
 
+test fn a_line_relocation_cannot_close_an_open_regression() -> Bool {
+  let opened = OpenUnadmittedRegression {
+    identity: "src/a.rs:1:1\tE0308\tmismatched types",
+    introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+  }
+  match advance_open_unadmitted(
+    open: [opened],
+    current_identities: ["src/a.rs:2:1\tE0308\tmismatched types"],
+    introduced: [],
+    repairs: [
+      ClosedUnadmittedRegression {
+        identity: opened.identity,
+        repaired_by: "2222222222222222222222222222222222222222" as CommitSha,
+        observed_removed_at: "3333333333333333333333333333333333333333" as CommitSha
+      }
+    ],
+    revision: "3333333333333333333333333333333333333333" as CommitSha
+  ) {
+    RegressionTransitionMalformed { reason: why } =>
+      string_contains(s: why as String, pattern: "exact-identity repair provenance")
+    verdict => false
+  }
+}
+
 // FALSIFIER 1: a phase already closed at zero cannot regain an identity. The refusal names both
 // the phase and the exact identity so a red never degrades into an unexplained Bool.
 test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool {
