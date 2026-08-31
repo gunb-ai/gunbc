@@ -154,7 +154,7 @@ fn per_vcpu_magnitude(numeral: Nat, unit_label: NonEmptyStr, basis: SampleQuoted
   }
 }
 
-// THE SAMPLE'S BASIS, FOLDED THE SAME WAY ITS UNIT WORD IS. A quotient of two figures a vendor
+// THE SAMPLE'S BASIS TRAVELS WITH ITS RATIO. A quotient of two figures a vendor
 // quoted in one basis is a figure per vCPU in THAT basis, so discarding the basis here was not
 // caution -- it manufactured an unresolvable magnitude out of rows that had already stated their
 // answer, and every consumer wanting bytes then had to re-guess what the census had thrown away.
@@ -169,58 +169,42 @@ type SampleQuotedBasis
   | SampleBasisUnstated
   | SampleBasisMixed
 
-fn row_quoted_basis(row: RunnerShapeRow) -> SampleQuotedBasis {
+// THE SAMPLE'S BASIS IS COUNTED, NOT COMPARED PAIRWISE. An earlier revision folded an accumulator
+// and asked whether each row's basis equalled it, which needed a hand-rolled equality over the
+// coproduct and carried the asymmetry every accumulator-versus-element comparison carries -- the
+// first row is privileged and the predicate has to say what "not yet seen" means. Counting each
+// arm removes the predicate and the asymmetry together: unanimity is then a statement about the
+// tallies, decided the same way whichever order the rows arrive in.
+type BasisTally {
+  decimal: Nat
+  binary: Nat
+  unstated: Nat
+}
+
+fn basis_tally_step(acc: BasisTally, row: RunnerShapeRow) -> BasisTally {
   match row.memory {
-    QuotedDecimalGigabytes { value } => SampleBasisDecimalGigabytes
-    QuotedBinaryGibibytes { value } => SampleBasisBinaryGibibytes
-    QuotedWithoutBasis { numeral, unit_label } => SampleBasisUnstated
-  }
-}
-
-fn sample_quoted_basis_step(acc: SampleBasisAccum, row: RunnerShapeRow) -> SampleBasisAccum {
-  let b = row_quoted_basis(row: row)
-  if !acc.seen {
-    SampleBasisAccum { seen: true, basis: b }
-  } else {
-    if sample_quoted_basis_eq(a: acc.basis, b: b) { acc } else { SampleBasisAccum { seen: true, basis: SampleBasisMixed } }
-  }
-}
-
-type SampleBasisAccum {
-  seen: Bool
-  basis: SampleQuotedBasis
-}
-
-fn sample_quoted_basis_eq(a: SampleQuotedBasis, b: SampleQuotedBasis) -> Bool {
-  match a {
-    SampleBasisDecimalGigabytes =>
-      match b {
-        SampleBasisDecimalGigabytes => true
-        SampleBasisBinaryGibibytes => false
-        SampleBasisUnstated => false
-        SampleBasisMixed => false
-      }
-    SampleBasisBinaryGibibytes =>
-      match b {
-        SampleBasisDecimalGigabytes => false
-        SampleBasisBinaryGibibytes => true
-        SampleBasisUnstated => false
-        SampleBasisMixed => false
-      }
-    SampleBasisUnstated =>
-      match b {
-        SampleBasisDecimalGigabytes => false
-        SampleBasisBinaryGibibytes => false
-        SampleBasisUnstated => true
-        SampleBasisMixed => false
-      }
-    SampleBasisMixed => false
+    QuotedDecimalGigabytes { value } =>
+      BasisTally { decimal: acc.decimal + 1, binary: acc.binary, unstated: acc.unstated }
+    QuotedBinaryGibibytes { value } =>
+      BasisTally { decimal: acc.decimal, binary: acc.binary + 1, unstated: acc.unstated }
+    QuotedWithoutBasis { numeral, unit_label } =>
+      BasisTally { decimal: acc.decimal, binary: acc.binary, unstated: acc.unstated + 1 }
   }
 }
 
 fn sample_quoted_basis(rows: List<RunnerShapeRow>) -> SampleQuotedBasis {
-  let acc = fold(rows, init: SampleBasisAccum { seen: false, basis: SampleBasisUnstated }, f: (a, r) => sample_quoted_basis_step(acc: a, row: r))
-  acc.basis
+  let t = fold(rows, init: BasisTally { decimal: 0, binary: 0, unstated: 0 }, f: (a, r) => basis_tally_step(acc: a, row: r))
+  if t.unstated != 0 {
+    SampleBasisUnstated
+  } else if t.decimal != 0 && t.binary != 0 {
+    SampleBasisMixed
+  } else if t.decimal != 0 {
+    SampleBasisDecimalGigabytes
+  } else if t.binary != 0 {
+    SampleBasisBinaryGibibytes
+  } else {
+    SampleBasisUnstated
+  }
 }
 
 // THE SAMPLE'S UNIT WORD, checked for unanimity rather than taken from
