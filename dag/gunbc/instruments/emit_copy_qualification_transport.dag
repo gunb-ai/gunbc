@@ -22,8 +22,8 @@ import gunbc.emit_copy_qualification {
   BehaviorAgreement, BehaviorAgreed, BehaviorDisagreed, BehaviorUnavailable,
   StaticCloneObservation, NoRedundantCloneReported, RedundantCloneReported, StaticObservationUnavailable,
   RuntimeObservation, RuntimeRowsObserved, RuntimeObservationUnavailable,
-  AllocObservationRow, EmitCopyQualification, judge_case, qualification_is_qualified,
-  qualification_slug
+  AllocObservationRow, EmitCopyQualification, QualificationRefusedObservationUnavailable,
+  judge_case, qualification_is_qualified, qualification_slug
 }
 import gunbc.emit_copy_qualification_fixture_gen {
   MutantPlan, CleanSubject, DisconnectCounter, mutant_plan_slug,
@@ -505,6 +505,7 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                     let emitted_module = Filesystem.Read(path: a.emitted_module_path)
                     let verdicts = judge_shard(
                       rows: rows,
+                      emitted_module_suffix: concat("/src/test_fixture_emit_copy_", concat(carrier_realization_slug(c: c), ".rs")),
                       runner_suffix: concat("/src/bin/", concat(shard_runner_bin_name(c: c, mutant: mutant), ".rs")),
                       native_success: native.success, native_stdout: native.stdout,
                       interp_success: interp.success && interp_report.success,
@@ -526,6 +527,7 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
 
 fn judge_shard(
   rows: List<EmitCopyQualificationCaseRow>,
+  emitted_module_suffix: String,
   runner_suffix: String,
   native_success: Bool,
   native_stdout: String,
@@ -538,6 +540,13 @@ fn judge_shard(
   runner_text: String
 ) -> List<EmitCopyQualification> {
   let counter_disconnected = (split(s: native_stdout, delimiter: "counter=disconnected") |> count) > 1
+  if counter_disconnected {
+    // The startup connectivity control fired before any case window opened: no case has a
+    // runtime observation, and the ruling's calibration matrix types this arm as an
+    // observation-unavailable refusal (the dead-counter precedent made a control), not as
+    // case-not-executable — the fixture and runner are fine; the INSTRUMENT is not.
+    rows |> map(row => QualificationRefusedObservationUnavailable { case: row.id, cause: "counter=disconnected" })
+  } else {
   let native_lines = parsed_case_lines(stdout: native_stdout)
   let interp_lines = parsed_case_lines(stdout: interp_stdout)
   let findings = clippy_findings_from_stdout(stdout: clippy_stdout)
@@ -552,7 +561,7 @@ fn judge_shard(
         findings: findings,
         emitted_anchors: emitted_anchors,
         runner_anchors: runner_anchors,
-        emitted_module_suffix: ".rs",
+        emitted_module_suffix: emitted_module_suffix,
         runner_suffix: runner_suffix,
         slug: slug
       )
@@ -573,6 +582,7 @@ fn judge_shard(
     }
     judge_case(id: row.id, behavior: behavior, static_obs: static_obs, runtime_obs: runtime_obs)
   )
+  }
 }
 
 // ── Receipt rendering (instrument-named lines; numbers live in the run, not in prose) ────────
