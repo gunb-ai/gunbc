@@ -26,6 +26,7 @@ import gunbc.actions_run_binding {
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
   admit_run_revision, RunRevisionAdmitted, RunRevisionRefused,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  run_binding_names_workflow_file,
 }
 import gunbc.fleet_converge_receipt {
   fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
@@ -53,7 +54,7 @@ import gunbc.live_deploy.release_binding { deployed_release_binding, ReleaseBind
 import gunbc.roadmap_site_surface_observe { materialize_live_roadmap_site_surface_bundle }
 import gunbc.running_release_identity { RunningReleaseIdentified, RunningReleaseUnidentified }
 import gunbc.live_deploy.readiness { running_release_unidentified_detail }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_belt_service_unit_name, deployment_belt_timer_unit_name }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_belt_service_unit_name, deployment_belt_timer_unit_name, deployment_tailnet_url }
 import gunbc.live_deploy.emit {
   RevisionBoundAtEmission, live_deploy_serve_unit_file, live_deploy_belt_service_unit_file, live_deploy_belt_timer_unit_file,
 }
@@ -76,6 +77,9 @@ import gunbc.roadmap_launch_deployment_observe {
   observe_instance_document, InstanceDocumentServed, InstanceDocumentRefused,
   observe_workflow_document, WorkflowDocumentServed, WorkflowDocumentRefused,
   belt_tick_freshness,
+  observe_healthz_routed,
+  observe_instance_document_routed,
+  observe_workflow_document_routed,
 }
 import gunbc.roadmap_launch_deployment_receipt {
   RoadmapLaunchDeploymentSubject, RoadmapLaunchDeploymentFacts, RoadmapLaunchDeploymentVerdict,
@@ -90,8 +94,14 @@ import gunbc.roadmap_launch_deployment_receipt {
   WindowSnapshot, observation_window_fact, WindowUnobserved,
   roadmap_launch_deployment_verdict, roadmap_launch_deployment_receipt_document, verdict_blockers, verdict_receipt_identity,
   RoadmapLaunchDeploymentVerdict, DeploymentComplete, DeploymentIncomplete,
+  RunProvenanceFact,
+  RunProvenanceObserved,
+  RunProvenanceUnobserved,
+  PredecessorRunProvenance,
 }
 import gunbc.generated_artifact { artifact_path, FleetConvergeYamlArtifact }
+import gunbc.repository { gunbc_repository }
+import extdeps.github.workflow_runs { workflow_run_conclusion_wire_label }
 
 // The one fleet workflow file, named through the generated-artifact authority so the subject and
 // every witness cite the same path.
@@ -418,6 +428,46 @@ func rlm_launch_deployment_receipt_wet() -> ProcessExit
   }
 }
 
+// The routed production base URL, DERIVED from the deployment authority; Absent means the spec
+// declares no tailnet domain, and the routed endpoint facts refuse rather than fall back to
+// localhost (review 5061891290 P1-6 -- localhost stays complementary, never authoritative).
+fn rlm_routed_base_url() -> String? {
+  deployment_tailnet_url(spec: deployment_spec_srv1())
+}
+
+// One predecessor run record, read back from the workflow-runs API by run id (review 5061891290
+// P1-4). A missing conclusion (run not completed) or missing path refuses as its own wire text.
+func rlm_predecessor_run(run_id: String) -> PredecessorRunProvenance
+  uses net: Network
+{
+  let got = github.WorkflowRuns.GetRun(
+    auth_token: "",
+    owner: gunbc_repository.owner,
+    repo: gunbc_repository.name,
+    run_id: run_id,
+  )
+  PredecessorRunProvenance {
+    run_id: run_id,
+    conclusion_wire: (match got.run.conclusion {
+      Present { value: c } => workflow_run_conclusion_wire_label(conclusion: c)
+      Absent => "null (run not completed)"
+    }),
+    head_sha: got.run.head_sha as String,
+    workflow_path: (match got.run.path { Present { value: wp } => wp  Absent => "(path absent from run record)" }),
+  }
+}
+
+func rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_run_id: String, dashboard_run_id: String) -> RunProvenanceFact
+  uses net: Network
+{
+  RunProvenanceObserved {
+    plan: rlm_predecessor_run(run_id: plan_run_id),
+    apply: rlm_predecessor_run(run_id: apply_run_id),
+    dashboard: rlm_predecessor_run(run_id: dashboard_run_id),
+    receipt_workflow_ref_names_path: run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()),
+  }
+}
+
 func rlm_launch_deployment_receipt_bound(
   run: ActionsRunBinding,
   revision: String,
@@ -439,7 +489,7 @@ func rlm_launch_deployment_receipt_bound(
     host: rlm_receipt_host,
     active_instance: instance.instance_id as String,
     service_principal: spec.service.service_user as String,
-    repository: run.repository,
+    repository: gunbc_repository.full_name,
     workflow_path: rlm_workflow_file_path(),
     plan_run_id: plan_run_id,
     apply_run_id: apply_run_id,
@@ -466,7 +516,12 @@ func rlm_launch_deployment_receipt_bound(
     target: fleet_locus_ssh_target(host: rlm_receipt_host as HostIdentity),
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
   ))
+  let routed_base = rlm_routed_base_url()
   let healthz = observe_healthz(port: instance.listen_port)
+  let healthz_routed = match routed_base {
+    Absent => HealthzRefused { detail: "tailnet route underivable: the deployment spec declares no tailnet domain" }
+    Present { value: base } => observe_healthz_routed(base_url: base)
+  }
   let binding = match healthz {
     HealthzServed { body: _, identity: id } =>
       deployed_release_binding(
@@ -476,7 +531,7 @@ func rlm_launch_deployment_receipt_bound(
       )
     HealthzRefused { detail: d } => ReleaseBindingUnobserved { cause: join(["healthz probe refused: ", d], "") }
   }
-  let readiness = match healthz {
+  let readiness = match healthz_routed {
     HealthzRefused { detail: d } => ReadinessRefused { detail: d }
     HealthzServed { body: _, identity: id } =>
       match id {
@@ -485,11 +540,17 @@ func rlm_launch_deployment_receipt_bound(
       }
   }
   let now = clock_now_probed_at_or_unknown() as String
-  let workflow = match observe_workflow_document(port: instance.listen_port) {
+  let workflow = match (match routed_base {
+    Absent => WorkflowDocumentRefused { detail: "tailnet route underivable: the deployment spec declares no tailnet domain" }
+    Present { value: base } => observe_workflow_document_routed(base_url: base)
+  }) {
     WorkflowDocumentServed { document: d } => WorkflowServedFact { observe_refused: d.observe_refused, tick: d.belt_tick }
     WorkflowDocumentRefused { detail: d } => WorkflowRefusedFact { detail: d }
   }
-  let instance_doc = match observe_instance_document(port: instance.listen_port) {
+  let instance_doc = match (match routed_base {
+    Absent => InstanceDocumentRefused { detail: "tailnet route underivable: the deployment spec declares no tailnet domain" }
+    Present { value: base } => observe_instance_document_routed(base_url: base)
+  }) {
     InstanceDocumentServed { document: d } => InstanceServedFact { instance_id: d.instance_id, host_identity: d.host_identity, actuation: d.actuation, repo_root: d.repo_root }
     InstanceDocumentRefused { detail: d } => InstanceRefusedFact { detail: d }
   }
@@ -523,6 +584,7 @@ func rlm_launch_deployment_receipt_bound(
     principal: principal_fact(),
     observed_host: host,
     observation_window: observation_window_fact(opened: opened, closed: window_snapshot(context: context, instance: instance)),
+    run_provenance: rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id),
   }
   let verdict = roadmap_launch_deployment_verdict(subject: subject, facts: facts)
   let document = roadmap_launch_deployment_receipt_document(v: verdict)

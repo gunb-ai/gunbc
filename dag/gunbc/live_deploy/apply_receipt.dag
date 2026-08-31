@@ -59,10 +59,18 @@ type LiveDeployFleetProvenance {
   plan_run_id: String
   apply_run_id: String
   plan_artifact_hash: String
+  plan_receipt_identity: String
+  apply_receipt_identity: String
+}
+
+type LiveDeployFleetProvenanceInputs {
+  plan_run_id: String
+  apply_run_id: String
+  plan_artifact_hash: String
 }
 
 type LiveDeployFleetProvenanceRead
-  = FleetProvenancePresent { provenance: LiveDeployFleetProvenance }
+  = FleetProvenancePresent { inputs: LiveDeployFleetProvenanceInputs }
   | FleetProvenanceAbsent { variable: String, detail: String }
 
 fn read_live_deploy_fleet_provenance() -> LiveDeployFleetProvenanceRead {
@@ -76,7 +84,7 @@ fn read_live_deploy_fleet_provenance() -> LiveDeployFleetProvenanceRead {
             ActionsVariableAbsent { variable: v, detail: d } => FleetProvenanceAbsent { variable: v, detail: d }
             ActionsVariablePresent { value: hash } =>
               FleetProvenancePresent {
-                provenance: LiveDeployFleetProvenance {
+                inputs: LiveDeployFleetProvenanceInputs {
                   plan_run_id: plan_run_id,
                   apply_run_id: apply_run_id,
                   plan_artifact_hash: hash,
@@ -149,6 +157,7 @@ fn live_deploy_apply_receipt_identity_text(r: LiveDeployApplyReceipt) -> String 
     target_decision_label_text(d: r.target_decision), "|", live_deploy_apply_outcome_text(o: r.apply_outcome), "|",
     live_deploy_readiness_text(o: r.readiness), "|",
     r.provenance.plan_run_id, "|", r.provenance.apply_run_id, "|", r.provenance.plan_artifact_hash, "|",
+    r.provenance.plan_receipt_identity, "|", r.provenance.apply_receipt_identity, "|",
     r.completed_at,
   ], "")
 }
@@ -203,6 +212,8 @@ fn live_deploy_apply_receipt_json(r: LiveDeployApplyReceipt) -> JsonValue {
       json_kv(key: "plan_run_id", value: json_string(s: r.provenance.plan_run_id)),
       json_kv(key: "apply_run_id", value: json_string(s: r.provenance.apply_run_id)),
       json_kv(key: "plan_artifact_hash", value: json_string(s: r.provenance.plan_artifact_hash)),
+      json_kv(key: "plan_receipt_identity", value: json_string(s: r.provenance.plan_receipt_identity)),
+      json_kv(key: "apply_receipt_identity", value: json_string(s: r.provenance.apply_receipt_identity)),
     ])),
     json_kv(key: "completed_at", value: json_string(s: r.completed_at)),
     json_kv(key: "receipt_identity", value: json_string(s: live_deploy_apply_receipt_identity_hex(r: r))),
@@ -296,8 +307,19 @@ fn live_deploy_provenance_of_member(doc: JsonValue) -> LiveDeployProvenanceDecod
               match json_required_string_member(doc: inner, key: "plan_artifact_hash") {
                 JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
                 JsonStringMemberFound { value: hash } =>
-                  ProvenanceDecoded {
-                    provenance: LiveDeployFleetProvenance { plan_run_id: plan_run_id, apply_run_id: apply_run_id, plan_artifact_hash: hash },
+                  match json_required_string_member(doc: inner, key: "plan_receipt_identity") {
+                    JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+                    JsonStringMemberFound { value: plan_rid } =>
+                      match json_required_string_member(doc: inner, key: "apply_receipt_identity") {
+                        JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
+                        JsonStringMemberFound { value: apply_rid } =>
+                          ProvenanceDecoded {
+                            provenance: LiveDeployFleetProvenance {
+                              plan_run_id: plan_run_id, apply_run_id: apply_run_id, plan_artifact_hash: hash,
+                              plan_receipt_identity: plan_rid, apply_receipt_identity: apply_rid,
+                            },
+                          }
+                      }
                   }
               }
           }

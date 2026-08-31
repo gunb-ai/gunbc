@@ -25,6 +25,10 @@ fn fixture_plan_receipt() -> FleetConvergePlanReceipt {
     prior_generation: 4,
     planned_generation: 5,
     lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+    lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 5,
+    apply_terminal: FullyApplied,
   }
 }
 
@@ -37,6 +41,8 @@ fn fixture_apply_receipt() -> FleetConvergeApplyReceipt {
     observed_host: "srv1",
     prior_generation: 4,
     planned_generation: 5,
+    expected_revision_admitted: receipt_fixture_r,
+    terminal: FullyApplied,
     locked_apply_exit_code: 0,
   }
 }
@@ -171,4 +177,67 @@ test fn witness_admit_run_revision_is_a_comparison_of_two_origins() -> Bool {
   let run = fixture_run(run_id: "1", revision: receipt_fixture_r)
   (match admit_run_revision(binding: run, expected: receipt_fixture_r) { RunRevisionAdmitted { revision: r } => r == receipt_fixture_r  RunRevisionRefused { expected: _, observed: _ } => false })
     && (match admit_run_revision(binding: run, expected: receipt_fixture_other_r) { RunRevisionAdmitted { revision: _ } => false  RunRevisionRefused { expected: e, observed: o } => e == receipt_fixture_other_r && o == receipt_fixture_r })
+}
+
+// (5) The full lease epoch is carried and identity-bound: a tampered member refuses (review
+// 5061891290 P1-5), one control per member.
+test fn witness_plan_receipt_with_tampered_lease_resource_fingerprint_refuses() -> Bool {
+  let wire = serialize_json(v: fleet_converge_plan_receipt_json(r: fixture_plan_receipt()))
+  let tampered = replace(wire, "fnv1a64:aaaaaaaaaaaaaaaa", "fnv1a64:cccccccccccccccc")
+  tampered != wire
+    && (match fleet_converge_plan_receipt_decode(raw: tampered) {
+      FleetConvergePlanReceiptDecoded { receipt: _ } => false
+      FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}
+
+test fn witness_plan_receipt_with_tampered_lease_owner_fingerprint_refuses() -> Bool {
+  let wire = serialize_json(v: fleet_converge_plan_receipt_json(r: fixture_plan_receipt()))
+  let tampered = replace(wire, "fnv1a64:bbbbbbbbbbbbbbbb", "fnv1a64:dddddddddddddddd")
+  tampered != wire
+    && (match fleet_converge_plan_receipt_decode(raw: tampered) {
+      FleetConvergePlanReceiptDecoded { receipt: _ } => false
+      FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}
+
+test fn witness_plan_receipt_with_tampered_lease_generation_refuses() -> Bool {
+  let wire = serialize_json(v: fleet_converge_plan_receipt_json(r: fixture_plan_receipt()))
+  let tampered = replace(wire, "\"lease_generation\": \"5\"", "\"lease_generation\": \"6\"")
+  tampered != wire
+    && (match fleet_converge_plan_receipt_decode(raw: tampered) {
+      FleetConvergePlanReceiptDecoded { receipt: _ } => false
+      FleetConvergePlanReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match")
+    })
+}
+
+// (6) The typed apply terminal survives the wire in both arms, and an unknown wire refuses.
+test fn witness_apply_receipt_partially_applied_round_trips() -> Bool {
+  let base = fixture_apply_receipt()
+  let r = FleetConvergeApplyReceipt {
+    run: base.run, plan_run_id: base.plan_run_id, plan_receipt_identity: base.plan_receipt_identity,
+    plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
+    prior_generation: base.prior_generation, planned_generation: base.planned_generation,
+    expected_revision_admitted: base.expected_revision_admitted,
+    terminal: PartiallyApplied { refused_axis_count: 2, detail: "slot=1 cap=0 timer=1 fabric-cell=0 activation=0" },
+    locked_apply_exit_code: 0,
+  }
+  match fleet_converge_apply_receipt_decode(raw: serialize_json(v: fleet_converge_apply_receipt_json(r: r))) {
+    FleetConvergeApplyReceiptDecoded { receipt: back } =>
+      match back.terminal {
+        PartiallyApplied { refused_axis_count: n, detail: d } => n == 2 && string_contains(s: d, pattern: "timer=1")
+        FullyApplied => false
+      }
+    FleetConvergeApplyReceiptUnreadable { reason: _ } => false
+  }
+}
+
+test fn witness_apply_receipt_with_unknown_terminal_wire_refuses() -> Bool {
+  let wire = serialize_json(v: fleet_converge_apply_receipt_json(r: fixture_apply_receipt()))
+  let tampered = replace(wire, "\"terminal\": \"fully_applied\"", "\"terminal\": \"mostly_applied\"")
+  tampered != wire
+    && (match fleet_converge_apply_receipt_decode(raw: tampered) {
+      FleetConvergeApplyReceiptDecoded { receipt: _ } => false
+      FleetConvergeApplyReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "identity does not match") || string_contains(s: r, pattern: "terminal wire is unknown")
+    })
 }

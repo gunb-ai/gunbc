@@ -59,7 +59,27 @@ fn rlm_plan(run: ActionsRunBinding, host: String) -> FleetConvergePlanReceipt {
     prior_generation: 4,
     planned_generation: 5,
     lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+    lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 5,
+    apply_terminal: FullyApplied,
   }
+}
+
+fn rlm_fixture_plan() -> FleetConvergePlanReceipt {
+  rlm_plan(run: rlm_run(run_id: "1001", revision: rlm_fixture_r), host: "srv1")
+}
+
+fn rlm_plan_identity() -> String {
+  fleet_converge_plan_receipt_identity_hex(r: rlm_fixture_plan())
+}
+
+fn rlm_fixture_apply() -> FleetConvergeApplyReceipt {
+  rlm_apply(run: rlm_run(run_id: "1002", revision: rlm_fixture_r), plan_identity: rlm_plan_identity())
+}
+
+fn rlm_apply_identity() -> String {
+  fleet_converge_apply_receipt_identity_hex(r: rlm_fixture_apply())
 }
 
 fn rlm_apply(run: ActionsRunBinding, plan_identity: String) -> FleetConvergeApplyReceipt {
@@ -71,6 +91,8 @@ fn rlm_apply(run: ActionsRunBinding, plan_identity: String) -> FleetConvergeAppl
     observed_host: "srv1",
     prior_generation: 4,
     planned_generation: 5,
+    expected_revision_admitted: rlm_fixture_r,
+    terminal: FullyApplied,
     locked_apply_exit_code: 0,
   }
 }
@@ -86,7 +108,10 @@ fn rlm_dashboard(run: ActionsRunBinding, expected: String) -> LiveDeployApplyRec
     target_decision: DecisionProceed,
     apply_outcome: LiveDeployApplyConverged,
     readiness: LiveDeployReadinessObserved { revision: expected, surface: rlm_fixture_surface },
-    provenance: LiveDeployFleetProvenance { plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash },
+    provenance: LiveDeployFleetProvenance {
+      plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
+      plan_receipt_identity: rlm_plan_identity(), apply_receipt_identity: rlm_apply_identity(),
+    },
     completed_at: rlm_fixture_deploy_completed_at,
   }
 }
@@ -119,6 +144,24 @@ fn rlm_release_binding(revision_hex: String) -> DeployedReleaseBinding {
   match git_object_id_from_untagged_hex(hex: revision_hex) {
     Present { value: oid } => ReleaseBoundToTree { revision: oid, surface: Fnv1a64Structural { digest: rlm_fixture_surface as Fnv1a64StructuralDigestHex } }
     Absent => ReleaseBindingUnobserved { cause: "fixture revision undecodable" }
+  }
+}
+
+fn rlm_predecessor(run_id: String) -> PredecessorRunProvenance {
+  PredecessorRunProvenance {
+    run_id: run_id,
+    conclusion_wire: "success",
+    head_sha: rlm_fixture_r,
+    workflow_path: rlm_workflow_file_path(),
+  }
+}
+
+fn rlm_provenance() -> RunProvenanceFact {
+  RunProvenanceObserved {
+    plan: rlm_predecessor(run_id: "1001"),
+    apply: rlm_predecessor(run_id: "1002"),
+    dashboard: rlm_predecessor(run_id: "1003"),
+    receipt_workflow_ref_names_path: true,
   }
 }
 
@@ -156,6 +199,7 @@ fn rlm_complete_facts() -> RoadmapLaunchDeploymentFacts {
     principal: PrincipalObserved { name: rlm_service_principal() },
     observed_host: HostObserved { name: "srv1" },
     observation_window: observation_window_fact(opened: rlm_snapshot(), closed: rlm_snapshot()),
+    run_provenance: rlm_provenance(),
   }
 }
 
@@ -169,46 +213,50 @@ fn incomplete_at(facts: RoadmapLaunchDeploymentFacts, member: String) -> Bool {
 }
 
 fn with_plan(f: RoadmapLaunchDeploymentFacts, plan: PlanReceiptFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: plan, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: plan, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_apply(f: RoadmapLaunchDeploymentFacts, apply: ApplyReceiptFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: apply, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: apply, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_dashboard(f: RoadmapLaunchDeploymentFacts, d: DashboardReceiptFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: d, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: d, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_tree(f: RoadmapLaunchDeploymentFacts, t: DeployedRootTreeStanding) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: t, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: t, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_transition(f: RoadmapLaunchDeploymentFacts, t: ActuationStanding) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: t, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: t, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_units(f: RoadmapLaunchDeploymentFacts, u: LaunchUnitStanding) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: u, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: u, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_tick(f: RoadmapLaunchDeploymentFacts, t: TickFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: t, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: t, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_footprint(f: RoadmapLaunchDeploymentFacts, a: BeltFootprintAdmission) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: a, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: a, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_provider(f: RoadmapLaunchDeploymentFacts, p: BeltProviderPreflight) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: p, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: p, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_workflow(f: RoadmapLaunchDeploymentFacts, w: WorkflowEndpointFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: w, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: w, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_principal(f: RoadmapLaunchDeploymentFacts, p: PrincipalFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: p, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: p, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_host(f: RoadmapLaunchDeploymentFacts, h: HostFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: h, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: h, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 fn with_window(f: RoadmapLaunchDeploymentFacts, w: ObservationWindowFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: w }
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: w, run_provenance: f.run_provenance }
 }
+fn with_run_provenance(f: RoadmapLaunchDeploymentFacts, rp: RunProvenanceFact) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: rp }
+}
+
 fn with_desired(f: RoadmapLaunchDeploymentFacts, d: DesiredRevisionFact) -> RoadmapLaunchDeploymentFacts {
-  RoadmapLaunchDeploymentFacts { desired_revision: d, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window }
+  RoadmapLaunchDeploymentFacts { desired_revision: d, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
 
 // ---------------------------------------------------------------- POSITIVE CONTROL
@@ -391,4 +439,142 @@ test fn witness_receipt_identity_is_stable_and_discriminating() -> Bool {
   let b = roadmap_launch_deployment_receipt_identity_hex(subject: rlm_subject(), facts: rlm_complete_facts())
   let c = roadmap_launch_deployment_receipt_identity_hex(subject: rlm_subject(), facts: with_host(f: rlm_complete_facts(), h: HostObserved { name: "srv2" }))
   a == b && a != c
+}
+
+// ---------------------------------------------------------------- review 5061891290 RED CONTROLS
+
+// P0-2: an exit-0 PartiallyApplied fleet apply cannot certify completion.
+test fn witness_partially_applied_exit_zero_is_incomplete_at_apply_receipt() -> Bool {
+  let base = rlm_fixture_apply()
+  let a = FleetConvergeApplyReceipt {
+    run: base.run, plan_run_id: base.plan_run_id, plan_receipt_identity: base.plan_receipt_identity,
+    plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
+    prior_generation: base.prior_generation, planned_generation: base.planned_generation,
+    expected_revision_admitted: base.expected_revision_admitted,
+    terminal: PartiallyApplied { refused_axis_count: 1, detail: "slot=0 cap=0 timer=1 fabric-cell=0 activation=0" },
+    locked_apply_exit_code: 0,
+  }
+  incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: a }), member: "apply_receipt")
+}
+
+// P0-1: an apply whose admitted expected revision is not R cannot certify completion, even when
+// the plan and apply agree with each other.
+test fn witness_apply_admitted_against_q_is_incomplete_at_apply_receipt() -> Bool {
+  let base = rlm_fixture_apply()
+  let a = FleetConvergeApplyReceipt {
+    run: base.run, plan_run_id: base.plan_run_id, plan_receipt_identity: base.plan_receipt_identity,
+    plan_artifact_hash: base.plan_artifact_hash, observed_host: base.observed_host,
+    prior_generation: base.prior_generation, planned_generation: base.planned_generation,
+    expected_revision_admitted: rlm_fixture_other_r,
+    terminal: FullyApplied,
+    locked_apply_exit_code: 0,
+  }
+  incomplete_at(facts: with_apply(f: rlm_complete_facts(), apply: ApplyReceiptRead { receipt: a }), member: "apply_receipt")
+}
+
+// P1-4: each leg of the four-run provenance chain blocks on its own defect.
+fn rlm_provenance_with_plan(p: PredecessorRunProvenance) -> RunProvenanceFact {
+  RunProvenanceObserved { plan: p, apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: true }
+}
+
+test fn witness_predecessor_non_success_conclusion_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: PredecessorRunProvenance { run_id: "1001", conclusion_wire: "failure", head_sha: rlm_fixture_r, workflow_path: rlm_workflow_file_path() })), member: "run_provenance")
+}
+
+test fn witness_predecessor_at_another_sha_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: PredecessorRunProvenance { run_id: "1001", conclusion_wire: "success", head_sha: rlm_fixture_other_r, workflow_path: rlm_workflow_file_path() })), member: "run_provenance")
+}
+
+test fn witness_predecessor_on_another_workflow_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: PredecessorRunProvenance { run_id: "1001", conclusion_wire: "success", head_sha: rlm_fixture_r, workflow_path: ".github/workflows/witnesses.yml" })), member: "run_provenance")
+}
+
+test fn witness_predecessor_run_id_substitution_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: rlm_provenance_with_plan(p: rlm_predecessor(run_id: "1099"))), member: "run_provenance")
+}
+
+test fn witness_receipt_workflow_ref_not_named_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: false }), member: "run_provenance")
+}
+
+test fn witness_provenance_unobserved_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceUnobserved { detail: "workflow-runs API unreachable" }), member: "run_provenance")
+}
+
+// P1-4: the dashboard receipt must cite the exact predecessor receipts this join read.
+test fn witness_dashboard_citing_another_plan_receipt_is_incomplete_at_dashboard_receipt() -> Bool {
+  let base = rlm_dashboard(run: rlm_run(run_id: "1003", revision: rlm_fixture_r), expected: rlm_fixture_r)
+  let d = LiveDeployApplyReceipt {
+    run: base.run, target: base.target, expected_revision: base.expected_revision, candidate_revision: base.candidate_revision,
+    candidate_surface_identity: base.candidate_surface_identity, candidate_tree_oid: base.candidate_tree_oid,
+    target_decision: base.target_decision, apply_outcome: base.apply_outcome, readiness: base.readiness,
+    provenance: LiveDeployFleetProvenance {
+      plan_run_id: "1001", apply_run_id: "1002", plan_artifact_hash: rlm_fixture_plan_hash,
+      plan_receipt_identity: "9999999999999999", apply_receipt_identity: rlm_apply_identity(),
+    },
+    completed_at: base.completed_at,
+  }
+  incomplete_at(facts: with_dashboard(f: rlm_complete_facts(), d: DashboardReceiptRead { receipt: d }), member: "dashboard_receipt")
+}
+
+// P1-7: the durable document's facts member is a STRUCTURED object -- every frozen-join member is
+// recoverable by JSON navigation, never by parsing prose.
+fn rlm_doc_member(doc: JsonValue, key: String) -> JsonValue? {
+  match json_object_unique_member(v: doc, key: key) {
+    JsonMemberFound { value: v } => Present { value: v }
+    JsonMemberAbsent => Absent
+    JsonMemberDuplicated { count: _ } => Absent
+    JsonMemberNotAnObject => Absent
+  }
+}
+
+fn rlm_doc_string(doc: JsonValue, key: String) -> String {
+  match json_required_string_member(doc: doc, key: key) {
+    JsonStringMemberFound { value: v } => v
+    JsonStringMemberRefused { reason: r } => join(["<refused: ", r, ">"], "")
+  }
+}
+
+test fn witness_receipt_document_facts_are_machine_readable() -> Bool {
+  let v = roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts())
+  let doc = roadmap_launch_deployment_receipt_document(v: v)
+  match parse_json_document(s: doc) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: root } =>
+      match rlm_doc_member(doc: root, key: "facts") {
+        Absent => false
+        Present { value: facts } =>
+          (match rlm_doc_member(doc: facts, key: "tick_standing") {
+            Absent => false
+            Present { value: tick } =>
+              rlm_doc_string(doc: tick, key: "arm") == "observed"
+                && (match rlm_doc_member(doc: tick, key: "execution") {
+                  Absent => false
+                  Present { value: ex } => rlm_doc_string(doc: ex, key: "deployed_revision") == rlm_fixture_r && rlm_doc_string(doc: ex, key: "spawn_mode") == "manual_ready"
+                })
+          })
+            && (match rlm_doc_member(doc: facts, key: "plan_receipt") {
+              Absent => false
+              Present { value: pr } =>
+                rlm_doc_string(doc: pr, key: "arm") == "read"
+                  && (match rlm_doc_member(doc: pr, key: "receipt") {
+                    Absent => false
+                    Present { value: prr } => rlm_doc_string(doc: prr, key: "receipt_identity") == rlm_plan_identity()
+                  })
+            })
+            && (match rlm_doc_member(doc: facts, key: "run_provenance") {
+              Absent => false
+              Present { value: rp } =>
+                rlm_doc_string(doc: rp, key: "arm") == "observed"
+                  && (match rlm_doc_member(doc: rp, key: "plan") {
+                    Absent => false
+                    Present { value: rpp } => rlm_doc_string(doc: rpp, key: "conclusion") == "success"
+                  })
+            })
+            && (match rlm_doc_member(doc: facts, key: "observation_window") {
+              Absent => false
+              Present { value: w } => rlm_doc_string(doc: w, key: "arm") == "stable"
+            })
+      }
+  }
 }

@@ -215,6 +215,7 @@ fn fleet_converge_plan_step() -> Step {
     env: Present {
       value: [
         kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
       ]
     },
     working_directory: none,
@@ -251,6 +252,7 @@ fn fleet_converge_apply_step() -> Step {
           value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}"),
         ),
         kv(key: fleet_converge_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
       ]
     },
     working_directory: none,
@@ -382,6 +384,20 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+        fleet_converge_receipt_download_step(
+          id: "dashboard_plan_receipt_download",
+          name: "Download the plan artifact (carries the plan receipt) from the plan run",
+          artifact: gunbc_fleet_converge_plan_artifact_name,
+          path: fleet_converge_plan_artifact_dir,
+          run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
+        ),
+        fleet_converge_receipt_download_step(
+          id: "dashboard_apply_receipt_download",
+          name: "Download the fleet apply receipt from the apply run",
+          artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
+          path: fleet_converge_apply_receipt_dir,
+          run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
+        ),
         fleet_converge_dashboard_deploy_step(),
         fleet_converge_receipt_upload_step(
           id: "dashboard_receipt_upload",

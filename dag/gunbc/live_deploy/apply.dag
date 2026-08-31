@@ -82,10 +82,16 @@ import gunbc.actions_run_binding {
   read_expected_revision, ExpectedRevisionPresent, ExpectedRevisionAbsent,
   admit_run_revision, RunRevisionAdmitted, RunRevisionRefused,
 }
+import gunbc.fleet_converge_receipt {
+  read_fleet_converge_plan_receipt_at, FleetConvergePlanReceiptDecoded, FleetConvergePlanReceiptUnreadable,
+  read_fleet_converge_apply_receipt_at, FleetConvergeApplyReceiptDecoded, FleetConvergeApplyReceiptUnreadable,
+  fleet_converge_plan_receipt_identity_hex, fleet_converge_apply_receipt_identity_hex,
+  fleet_converge_plan_receipt_path, fleet_converge_apply_receipt_path,
+}
 import gunbc.live_deploy.apply_receipt {
   LiveDeployApplyReceipt, LiveDeployFleetProvenance,
   LiveDeployTargetDecisionLabel, LiveDeployApplyOutcome, LiveDeployReadinessOutcome,
-  read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent,
+  read_live_deploy_fleet_provenance, FleetProvenancePresent, FleetProvenanceAbsent, LiveDeployFleetProvenance,
   DecisionProceed, DecisionTerminalNoOp, DecisionRefused,
   LiveDeployApplyConverged, LiveDeployApplyNotConverged,
   LiveDeployReadinessObserved, LiveDeployReadinessRefused,
@@ -715,10 +721,28 @@ fn live_deploy_transaction_wet_with_access(access: DeployAccess) -> ProcessExit 
               match read_live_deploy_fleet_provenance() {
                 FleetProvenanceAbsent { variable: v, detail: d } =>
                   exit_failure(reason: join(["live_deploy transaction: FleetProvenanceAbsent — ", v, " ", d], ""))
-                FleetProvenancePresent { provenance: provenance } =>
+                FleetProvenancePresent { inputs: inputs } =>
+                  match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
+                    FleetConvergePlanReceiptUnreadable { reason: why } =>
+                      exit_failure(reason: join(["live_deploy transaction: PlanReceiptUnreadable — ", why, "; the dashboard transaction refuses to run without the predecessor receipts it must cite"], ""))
+                    FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
+                  match read_fleet_converge_apply_receipt_at(path: fleet_converge_apply_receipt_path) {
+                    FleetConvergeApplyReceiptUnreadable { reason: why } =>
+                      exit_failure(reason: join(["live_deploy transaction: FleetApplyReceiptUnreadable — ", why], ""))
+                    FleetConvergeApplyReceiptDecoded { receipt: fleet_apply_receipt } => {
+                  let provenance = LiveDeployFleetProvenance {
+                    plan_run_id: inputs.plan_run_id,
+                    apply_run_id: inputs.apply_run_id,
+                    plan_artifact_hash: inputs.plan_artifact_hash,
+                    plan_receipt_identity: fleet_converge_plan_receipt_identity_hex(r: plan_receipt),
+                    apply_receipt_identity: fleet_converge_apply_receipt_identity_hex(r: fleet_apply_receipt),
+                  }
                   match repository_transition_admission(realization: deployed_tree_repository_transition) {
                     LegacyGitFileSyncNotAdmitted { reason: why } => exit_failure(reason: why)
                     RepositoryTransitionAdmitted => live_deploy_transaction_admitted(access: access, run: run, expected: expected, provenance: provenance)
+                  }
+                  }
+                  }
                   }
               }
           }

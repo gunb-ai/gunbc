@@ -78,6 +78,12 @@ import gunbc.spark.serving_execution_schedule {
 import gunbc.actions_run_binding {
   ActionsRunBinding, observe_actions_run_binding, ActionsRunBound, ActionsRunUnbound,
   actions_variable_read, ActionsVariablePresent, ActionsVariableAbsent,
+  read_expected_revision,
+  ExpectedRevisionPresent,
+  ExpectedRevisionAbsent,
+  admit_run_revision,
+  RunRevisionAdmitted,
+  RunRevisionRefused,
 }
 import gunbc.fleet_converge_receipt {
   FleetConvergePlanReceipt, FleetConvergeApplyReceipt,
@@ -282,11 +288,21 @@ func fleet_converge_plan_wet() -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_plan: RunUnbound — ", v, " ", d, "; the plan mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
+      match read_expected_revision() {
+        ExpectedRevisionAbsent =>
+          exit_failure(reason: "fleet_converge_plan: ExpectedRevisionAbsent — RLM_EXPECTED_REVISION is required so the plan run is bound to the operator-selected R, not merely to whatever ref was dispatched")
+        ExpectedRevisionPresent { revision: expected_r } =>
+          match admit_run_revision(binding: run, expected: expected_r) {
+            RunRevisionRefused { expected: e, observed: o } =>
+              exit_failure(reason: join(["fleet_converge_plan: RunRevisionRefused — expected ", e, " but this run checked out ", o], ""))
+            RunRevisionAdmitted { revision: _ } =>
       match actions_variable_read(name: fleet_converge_expected_host_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_plan: ExpectedHostAbsent — ", v, " ", d], ""))
         ActionsVariablePresent { value: expected_host } =>
           fleet_converge_plan_bound_wet(run: run, expected_host: expected_host)
+      }
+          }
       }
   }
 }
@@ -396,6 +412,10 @@ func fleet_converge_plan_bound_wet(run: ActionsRunBinding, expected_host: String
                   prior_generation: prior_generation,
                   planned_generation: planned_generation,
                   lease_key: artifact.plan_lease.epoch.lease_key as String,
+                  lease_resource_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.resource_fingerprint) as String,
+                  lease_owner_fingerprint: serialize_content_hash(hash: artifact.plan_lease.epoch.owner_fingerprint) as String,
+                  lease_generation: artifact.plan_lease.epoch.generation,
+                  apply_terminal: artifact.apply_terminal,
                 }
                 match write_fleet_converge_plan_receipt(r: receipt) {
                   ReceiptWriteRefused { path: p, error: e } =>
@@ -437,6 +457,14 @@ func fleet_converge_apply_wet() -> ProcessExit
     ActionsRunUnbound { variable: v, detail: d } =>
       exit_failure(reason: join(["fleet_converge_apply: RunUnbound — ", v, " ", d, "; the apply mode mints a run-bound receipt and runs only inside the fleet-converge workflow"], ""))
     ActionsRunBound { binding: run } =>
+      match read_expected_revision() {
+        ExpectedRevisionAbsent =>
+          exit_failure(reason: "fleet_converge_apply: ExpectedRevisionAbsent — RLM_EXPECTED_REVISION is required; without it apply can mutate srv1 at a revision the operator never selected")
+        ExpectedRevisionPresent { revision: expected_r } =>
+          match admit_run_revision(binding: run, expected: expected_r) {
+            RunRevisionRefused { expected: e, observed: o } =>
+              exit_failure(reason: join(["fleet_converge_apply: RunRevisionRefused — expected ", e, " but this run checked out ", o, "; refusing before the locked actuator"], ""))
+            RunRevisionAdmitted { revision: admitted_r } =>
       match actions_variable_read(name: fleet_converge_plan_run_id_env_name) {
         ActionsVariableAbsent { variable: v, detail: d } =>
           exit_failure(reason: join(["fleet_converge_apply: PlanRunIdAbsent — ", v, " ", d], ""))
@@ -445,7 +473,9 @@ func fleet_converge_apply_wet() -> ProcessExit
             FleetConvergePlanReceiptUnreadable { reason: why } =>
               exit_failure(reason: join(["fleet_converge_apply: PlanReceiptUnreadable — ", why, " (a plan artifact minted before the typed plan receipt joined the bundle will not carry one)"], ""))
             FleetConvergePlanReceiptDecoded { receipt: plan_receipt } =>
-              fleet_converge_apply_bound_wet(run: run, plan_run_id: plan_run_id, plan_receipt: plan_receipt)
+              fleet_converge_apply_bound_wet(run: run, plan_run_id: plan_run_id, plan_receipt: plan_receipt, expected_revision_admitted: admitted_r)
+          }
+      }
           }
       }
   }
@@ -455,6 +485,7 @@ func fleet_converge_apply_bound_wet(
   run: ActionsRunBinding,
   plan_run_id: String,
   plan_receipt: FleetConvergePlanReceipt,
+  expected_revision_admitted: String,
 ) -> ProcessExit
   uses net: Network
 {
@@ -578,6 +609,8 @@ func fleet_converge_apply_bound_wet(
                       observed_host: observed_host as String,
                       prior_generation: prior_generation,
                       planned_generation: planned_generation,
+                      expected_revision_admitted: expected_revision_admitted,
+                      terminal: plan_receipt.apply_terminal,
                       locked_apply_exit_code: exit_code,
                     }
                     match run_shell_commands(commands: [mkdir_parents_command(path: fleet_converge_apply_receipt_dir)], transport: LocalExec) {

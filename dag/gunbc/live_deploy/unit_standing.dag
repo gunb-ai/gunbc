@@ -1,16 +1,19 @@
 module gunbc.live_deploy.unit_standing
 
-import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.types { String, Bool, NonEmptyStr, Int, List, list_length }
 import std.algebra { trim }
 import extdeps.systemd.systemctl
 import extdeps.systemd {
-  SystemdUnitProperty,
+  SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
   LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit, TimersMonotonic,
   systemd_unit_property_wire,
 }
 import extdeps.systemd.unit_file {
   SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
   SystemdServiceDirective, SystemdTimerDirective,
+  OnBootSec,
+  OnUnitInactiveSec,
+  AccuracySec,
 }
 
 // EXACT SYSTEMD SERVICE AND TIMER STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE.
@@ -75,6 +78,7 @@ type TimerUnitObserved {
   sub_state: String
   unit: String
   timers_monotonic: String
+  accuracy_usec_value: String
 }
 
 type ServiceUnitObservation
@@ -156,15 +160,20 @@ fn observe_timer_unit(unit: NonEmptyStr) -> TimerUnitObservation {
                       match read_unit_property(unit: unit, property: TimersMonotonic) {
                         UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
                         UnitPropertyValue { value: timers } =>
-                          TimerUnitObservedOk {
-                            observed: TimerUnitObserved {
-                              load_state: load_state,
-                              unit_file_state: unit_file_state,
-                              active_state: active_state,
-                              sub_state: sub_state,
-                              unit: target,
-                              timers_monotonic: timers,
-                            },
+                          match read_unit_property(unit: unit, property: AccuracyUSec) {
+                            UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+                            UnitPropertyValue { value: accuracy } =>
+                              TimerUnitObservedOk {
+                                observed: TimerUnitObserved {
+                                  load_state: load_state,
+                                  unit_file_state: unit_file_state,
+                                  active_state: active_state,
+                                  sub_state: sub_state,
+                                  unit: target,
+                                  timers_monotonic: timers,
+                                  accuracy_usec_value: accuracy,
+                                },
+                              }
                           }
                       }
                   }
@@ -238,6 +247,37 @@ fn service_unit_expectation_of(file: SystemdUnitFile) -> ServiceUnitExpectationD
 
 type TimerUnitExpectation {
   target_unit: String
+  on_boot_usec: Int
+  on_unit_inactive_usec: Int
+  accuracy_usec: Int
+}
+
+// The value rendered after `Name=` in a systemctl show composite like
+// `{ OnBootUSec=2min ; next_elapse=... }, { OnUnitInactiveUSec=1min ; ... }`: the token between
+// the prefix and the next ` ;`, `,` or `}` boundary, normalized through systemd.time(7).
+fn show_rendered_duration_usec(rendering: String, prefix: String) -> Int? {
+  let parts = split(s: rendering, delimiter: prefix)
+  if list_length(items: parts) < 2 {
+    none
+  } else {
+    let tail = fold(parts, init: "", f: (a, seg) => seg)
+    let token = fold(split(s: tail, delimiter: " ; "), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    systemd_duration_usec(text: trim(s: fold(split(s: token, delimiter: "}"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })))
+  }
+}
+
+fn timer_directive_duration_usec(directives: List<SystemdTimerDirective>, which: String) -> Int? {
+  fold(directives, init: none, f: (acc, d) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent =>
+        match d {
+          OnBootSec { duration: t } => if which == "OnBootSec" { systemd_duration_usec(text: t as String) } else { none }
+          OnUnitInactiveSec { duration: t } => if which == "OnUnitInactiveSec" { systemd_duration_usec(text: t as String) } else { none }
+          AccuracySec { duration: t } => if which == "AccuracySec" { systemd_duration_usec(text: t as String) } else { none }
+          _ => none
+        }
+    })
 }
 
 type TimerUnitExpectationDerivation
@@ -259,7 +299,22 @@ fn timer_unit_expectation_of(file: SystemdUnitFile) -> TimerUnitExpectationDeriv
     TimerUnitFile { unit: _, timer: directives, install: _ } =>
       match timer_directive_target(directives: directives) {
         Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no Unit= target" }
-        Present { value: t } => TimerExpectationDerived { expectation: TimerUnitExpectation { target_unit: t } }
+        Present { value: t } =>
+          match timer_directive_duration_usec(directives: directives, which: "OnBootSec") {
+            Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable OnBootSec" }
+            Present { value: boot } =>
+              match timer_directive_duration_usec(directives: directives, which: "OnUnitInactiveSec") {
+                Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable OnUnitInactiveSec" }
+                Present { value: inactive } =>
+                  match timer_directive_duration_usec(directives: directives, which: "AccuracySec") {
+                    Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable AccuracySec" }
+                    Present { value: accuracy } =>
+                      TimerExpectationDerived { expectation: TimerUnitExpectation {
+                        target_unit: t, on_boot_usec: boot, on_unit_inactive_usec: inactive, accuracy_usec: accuracy,
+                      } }
+                  }
+              }
+          }
       }
     ServiceUnitFile { unit: _, service: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a service" }
     SliceUnitFile { unit: _, slice: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a slice" }
@@ -337,12 +392,32 @@ fn judge_belt_timer(unit: String, expect: TimerUnitExpectation, o: TimerUnitObse
     BeltTimerRefused { unit: unit, property: "SubState", expected: "waiting|running", observed: o.sub_state }
   } else if o.unit != expect.target_unit {
     BeltTimerRefused { unit: unit, property: "Unit", expected: expect.target_unit, observed: o.unit }
-  } else if !string_contains(s: o.timers_monotonic, pattern: "OnBootUSec=") {
-    BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "an OnBootUSec entry", observed: o.timers_monotonic }
-  } else if !string_contains(s: o.timers_monotonic, pattern: "OnUnitInactiveUSec=") {
-    BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "an OnUnitInactiveUSec entry", observed: o.timers_monotonic }
   } else {
-    BeltTimerConverged { unit: unit }
+    match show_rendered_duration_usec(rendering: o.timers_monotonic, prefix: "OnBootUSec=") {
+      Absent => BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "a normalizable OnBootUSec entry", observed: o.timers_monotonic }
+      Present { value: boot } =>
+        if boot != expect.on_boot_usec {
+          BeltTimerRefused { unit: unit, property: "OnBootUSec", expected: to_string(expect.on_boot_usec), observed: to_string(boot) }
+        } else {
+          match show_rendered_duration_usec(rendering: o.timers_monotonic, prefix: "OnUnitInactiveUSec=") {
+            Absent => BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "a normalizable OnUnitInactiveUSec entry", observed: o.timers_monotonic }
+            Present { value: inactive } =>
+              if inactive != expect.on_unit_inactive_usec {
+                BeltTimerRefused { unit: unit, property: "OnUnitInactiveUSec", expected: to_string(expect.on_unit_inactive_usec), observed: to_string(inactive) }
+              } else {
+                match systemd_duration_usec(text: trim(s: o.accuracy_usec_value)) {
+                  Absent => BeltTimerRefused { unit: unit, property: "AccuracyUSec", expected: "a normalizable duration", observed: o.accuracy_usec_value }
+                  Present { value: accuracy } =>
+                    if accuracy != expect.accuracy_usec {
+                      BeltTimerRefused { unit: unit, property: "AccuracyUSec", expected: to_string(expect.accuracy_usec), observed: to_string(accuracy) }
+                    } else {
+                      BeltTimerConverged { unit: unit }
+                    }
+                }
+              }
+          }
+        }
+    }
   }
 }
 

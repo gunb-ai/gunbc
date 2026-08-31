@@ -204,6 +204,7 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
         env:
           FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
       - name: Fleet allocation-store substrate plan
@@ -245,6 +246,7 @@ jobs:
         env:
           EXPECTED_HASH: ${{ github.event.inputs.plan_artifact_hash }}
           FLEET_CONVERGE_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'apply'
         timeout-minutes: 5
       - name: Upload fleet converge apply receipt
@@ -358,6 +360,24 @@ jobs:
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
         timeout-minutes: 5
+      - name: Download the plan artifact (carries the plan receipt) from the plan run
+        id: dashboard_plan_receipt_download
+        uses: actions/download-artifact@v4
+        with:
+          name: fleet-converge-plan
+          path: /tmp/fleet-converge-plan
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.plan_workflow_run_id }}
+        timeout-minutes: 10
+      - name: Download the fleet apply receipt from the apply run
+        id: dashboard_apply_receipt_download
+        uses: actions/download-artifact@v4
+        with:
+          name: fleet-converge-apply-receipt
+          path: /tmp/fleet-converge-apply
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.apply_workflow_run_id }}
+        timeout-minutes: 10
       - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_transaction_wet, receipted)
         id: dashboard_deploy
         run: |

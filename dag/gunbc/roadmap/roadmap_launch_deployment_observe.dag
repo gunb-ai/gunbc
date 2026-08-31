@@ -1,5 +1,8 @@
 module gunbc.roadmap_launch_deployment_observe
 
+import extdeps.systemd { systemd_duration_usec }
+import gunbc.live_deploy.emit { belt_tick_cadence }
+
 import std.types { String, Bool, NonEmptyStr, Int, List }
 import std.algebra { trim }
 import extdeps.http.client
@@ -58,6 +61,19 @@ fn observe_local_route(port: Int, path: String) -> HttpBodyRead {
   }
 }
 
+// THE ROUTED READ IS THE AUTHORITATIVE ONE (review 5061891290 P1-6): localhost proves the local
+// process, not that the deployed production route serves the release. The base URL is DERIVED from
+// the deployment authority (gunbc.live_deploy.spec deployment_tailnet_url), never typed here.
+fn observe_routed_route(base_url: String, path: String) -> HttpBodyRead {
+  let url = concat(base_url, path)
+  let got = http.Client.GetBounded(url: url as NonEmptyStr)
+  if got.success {
+    HttpBodyServed { body: got.body }
+  } else {
+    HttpBodyRefused { url: url, detail: "http client GET failed" }
+  }
+}
+
 data healthz_route_path: String = "/healthz"
 data instance_route_path: String = "/instance.json"
 data workflow_route_path: String = "/workflow.json"
@@ -76,6 +92,10 @@ fn healthz_observation_of_read(read: HttpBodyRead) -> HealthzObservation {
 
 fn observe_healthz(port: Int) -> HealthzObservation {
   healthz_observation_of_read(read: observe_local_route(port: port, path: healthz_route_path))
+}
+
+fn observe_healthz_routed(base_url: String) -> HealthzObservation {
+  healthz_observation_of_read(read: observe_routed_route(base_url: base_url, path: healthz_route_path))
 }
 
 // ---------------------------------------------------------------- /instance.json
@@ -142,6 +162,13 @@ fn dashboard_instance_document_decode(raw: String) -> DashboardInstanceObservati
 
 fn observe_instance_document(port: Int) -> DashboardInstanceObservation {
   match observe_local_route(port: port, path: instance_route_path) {
+    HttpBodyRefused { url: u, detail: d } => InstanceDocumentRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => dashboard_instance_document_decode(raw: b)
+  }
+}
+
+fn observe_instance_document_routed(base_url: String) -> DashboardInstanceObservation {
+  match observe_routed_route(base_url: base_url, path: instance_route_path) {
     HttpBodyRefused { url: u, detail: d } => InstanceDocumentRefused { detail: join([u, ": ", d], "") }
     HttpBodyServed { body: b } => dashboard_instance_document_decode(raw: b)
   }
@@ -227,6 +254,13 @@ fn observe_workflow_document(port: Int) -> RoadmapWorkflowObservation {
   }
 }
 
+fn observe_workflow_document_routed(base_url: String) -> RoadmapWorkflowObservation {
+  match observe_routed_route(base_url: base_url, path: workflow_route_path) {
+    HttpBodyRefused { url: u, detail: d } => WorkflowDocumentRefused { detail: join([u, ": ", d], "") }
+    HttpBodyServed { body: b } => roadmap_workflow_document_decode(raw: b)
+  }
+}
+
 // ---------------------------------------------------------------- instants
 // `%Y-%m-%dT%H:%M:%SZ` to seconds since 1970-01-01T00:00:00Z. Days-from-civil is the proleptic
 // Gregorian algorithm (Howard Hinnant, "chrono-Compatible Low-Level Date Algorithms"), exact for
@@ -291,11 +325,22 @@ fn iso8601_utc_epoch_seconds(text: String) -> Int? {
 // tick completes, so a live timer produces a receipt at most one cadence plus one tick duration
 // old. Three cadences is the admission; a receipt older than that came from a timer that is not
 // running now, whatever the unit file says.
-data belt_tick_cadence_seconds: Int = 60
+// Derived from the ONE emitted cadence authority (gunbc.live_deploy.emit belt_tick_cadence),
+// normalized through systemd.time(7); a spelling that stops normalizing refuses freshness rather
+// than silently keeping an out-of-date number here.
+fn belt_tick_cadence_seconds_derived() -> Int? {
+  match systemd_duration_usec(text: belt_tick_cadence) {
+    Absent => Absent
+    Present { value: usec } => Present { value: usec / 1000000 }
+  }
+}
 data belt_tick_freshness_cadence_multiplier: Int = 3
 
-fn belt_tick_freshness_bound_seconds() -> Int {
-  belt_tick_cadence_seconds * belt_tick_freshness_cadence_multiplier
+fn belt_tick_freshness_bound_seconds() -> Int? {
+  match belt_tick_cadence_seconds_derived() {
+    Absent => Absent
+    Present { value: cadence } => Present { value: cadence * belt_tick_freshness_cadence_multiplier }
+  }
 }
 
 type TickFreshness
@@ -303,6 +348,7 @@ type TickFreshness
   | TickStale { age_seconds: Int, bound_seconds: Int }
   | TickBeforeDeploy { observed_at: String, deploy_completed_at: String }
   | TickInstantUnparseable { which: String, text: String }
+  | TickCadenceUnnormalizable { text: String }
 
 fn belt_tick_freshness(observed_at: String, deploy_completed_at: String, now: String) -> TickFreshness {
   match iso8601_utc_epoch_seconds(text: observed_at) {
@@ -317,11 +363,16 @@ fn belt_tick_freshness(observed_at: String, deploy_completed_at: String, now: St
               if tick_s < deploy_s {
                 TickBeforeDeploy { observed_at: observed_at, deploy_completed_at: deploy_completed_at }
               } else {
-                let age = now_s - tick_s
-                if age > belt_tick_freshness_bound_seconds() {
-                  TickStale { age_seconds: age, bound_seconds: belt_tick_freshness_bound_seconds() }
-                } else {
-                  TickFresh { age_seconds: age }
+                match belt_tick_freshness_bound_seconds() {
+                  Absent => TickCadenceUnnormalizable { text: belt_tick_cadence }
+                  Present { value: bound } => {
+                    let age = now_s - tick_s
+                    if age > bound {
+                      TickStale { age_seconds: age, bound_seconds: bound }
+                    } else {
+                      TickFresh { age_seconds: age }
+                    }
+                  }
                 }
               }
           }
@@ -335,5 +386,6 @@ fn tick_freshness_text(f: TickFreshness) -> String {
     TickStale { age_seconds: a, bound_seconds: b } => join(["stale: ", to_string(a), "s old, bound ", to_string(b), "s"], "")
     TickBeforeDeploy { observed_at: o, deploy_completed_at: d } => join(["observed at ", o, ", before the dashboard deployment completed at ", d], "")
     TickInstantUnparseable { which: w, text: t } => join([w, " is not a %Y-%m-%dT%H:%M:%SZ instant: ", t], "")
+    TickCadenceUnnormalizable { text: t } => join(["the emitted timer cadence does not normalize under systemd.time(7): ", t], "")
   }
 }
