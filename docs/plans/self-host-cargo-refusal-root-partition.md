@@ -2795,26 +2795,44 @@ claimed victim, and the green arm's zero is a real zero, not an absent subject.
   does not divert `type_reference_decl_file` to the RHS's declaring module. Green arm emits
   `pub type Nat = i64` and the victim compiles; forced-miss arm (above) reds. Measured in both
   directions.
-- *bare-vs-qualified spelling (key A):* NOT REACHABLE AT FIELD GRAIN. A fixture declaring the
-  same field twice — `bare_field: Nat` and `qualified_field: std.nat.Nat` — emits byte-identical
-  code for both, green. Mechanism, from the code rather than asserted:
-  `field_access_field_is_boxed` (v1.compiler.emit_rust) does pass raw `authored_name_at` where
-  its siblings peel via `qualified_last_segment`, but a miss there only matters if
-  `needs_box_wrapping` would box — and `needs_box_wrapping` performs its own
-  `qualified_last_segment` peel and boxes only recursive non-shared carriers, which a numeric
-  alias cannot be. The un-peeled comparison is real and is NOT a live defect: its RED is not
-  authorable at this grain, so a check written against it today would be permanently green
-  (DESIGN §4b — decoration). It becomes authorable only if a recursive carrier ever gains a
-  native-scalar realization; the family's carrier and stated ceiling remain the note above
-  `rust_carrier_realizes_as_machine_scalar` ("keys on a NAME plus a declaring-file check, not on
-  resolved declaration identity"), rung Mitigatable, unchanged by this reading.
+- *bare-vs-qualified spelling (key A), first reading — RETRACTED SAME DAY, boundary error:* a
+  fixture declaring the same field twice — `bare_field: Nat` and `qualified_field: std.nat.Nat`
+  — emits byte-identical code, green, and this section first concluded the un-peeled
+  `authored_name_at` in `field_access_field_is_boxed` had "no authorable RED at field grain"
+  because `needs_box_wrapping` peels and boxes only recursive carriers, "which a numeric alias
+  cannot be". That sentence measured the wrong boundary — CORPUS OCCUPANCY, not FIXTURE
+  REACHABILITY (`reachability_read_as_occupancy` in the failure roster, caught by the XL-N
+  manager before censusing). The alias cannot be recursive; a DIFFERENT declaration sharing its
+  bare spelling can be, and the layer sets are keyed on the bare string.
+- *the authorable RED, executed.* Two fixture modules: A declares
+  `type Nat = ProbeNatLeaf | ProbeNatNode { next: Nat }` (recursive, deliberately sharing the
+  spelling); B imports `std.nat { Nat, nat_max }` plus one symbol from A, declares
+  `type NumericCarrier { amount: Nat }` and `fn clamp_amount(c) -> Nat { nat_max(a: c.amount,
+  b: 0) }`. gunbc accepts the closure (12 files, 0 blocking); the emitted B carries
+  `pub use crate::std_nat::{Nat}` (= i64) yet renders the field `amount: Rc<Nat>` — the
+  reference resolves to std.nat and the numeric guard HITS, while the reference-layer decision
+  keyed on the bare string "Nat" is polluted by module A's unrelated recursive declaration.
+  cargo: 3 E0308 including the exact claimed diagnostic, `expected i64, found Rc<i64>`. So the
+  class is LIVE at the fixture boundary and the earlier decline to enroll was
+  specification-without-execution. Note the mechanism this red isolates is the bare-string
+  keying of the recursive/shared layer sets — one more face of the same name-plus-file keying
+  family the `rust_carrier_realizes_as_machine_scalar` note rates Mitigatable with ceiling
+  "resolved declaration identity"; the census closure OCCUPIES the collision too
+  (`v2.std.nat.Nat` is recursive and shares the spelling), which is the standing candidate
+  mechanism for the archived observation. Enrolling this two-module reproducer as an
+  expected-red row, and the identity-keyed repair, are follow-up work — deliberately not
+  shipped here, because a repair without its enrolled red would green nothing and the
+  enrollment is its own increment.
 
 **Census cross-check.** The assembled `03_normalize` closure (`cssl_assemble` PASS) refuses with
 88 errors — 65 in `v2_extdeps_languages_dag.rs`, zero mentioning `Rc<i64>` and zero in
 `std_checked_arithmetic.rs`; the emitted victim is byte-identical between its own-entry closure
 and the census closure. Whatever produced the archived "expected `Rc<i64>`, found `i64` at
 `src/std_checked_arithmetic.rs`" observation, it is not reproducible on current main by any of
-these routes; #9813 (kernel-precedence repair, one shared type-env producer) landed between the
-observation and this reading and is the plausible mover. No emitter or resolver edit ships with
-this section: repairing the un-peeled comparison without an authorable RED would be
-specification-without-execution.
+these routes. Two candidate explanations, stated as hypotheses because the whole-corpus receipt
+(the declared attribution boundary) has not published and no error identity may be attributed
+across it: (a) #9813 (kernel-precedence repair) moved the subject — discriminated by re-running
+the 03_normalize census probe on the pre-#9813 parent commit; (b) the observation came from a
+closure whose bare-name collision engaged the layer-set pollution the fixture above reproduces
+— discriminated by the same probe over the closure the archived observation actually measured,
+once its entry is recovered. No emitter or resolver edit ships with this section.
