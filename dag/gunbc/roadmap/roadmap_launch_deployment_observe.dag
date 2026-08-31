@@ -281,6 +281,14 @@ fn days_from_civil(y: Int, m: Int, d: Int) -> Int {
   era * 146097 + doe - 719468
 }
 
+// systemd-independent Gregorian day-in-month bound with the leap rule; a calendar-impossible day
+// (Feb 30, Apr 31) must refuse rather than normalize silently through days_from_civil (review 57773).
+fn gregorian_days_in_month(y: Int, m: Int) -> Int {
+  if m == 2 {
+    if y - (y / 4) * 4 == 0 && (y - (y / 100) * 100 != 0 || y - (y / 400) * 400 == 0) { 29 } else { 28 }
+  } else if m == 4 || m == 6 || m == 9 || m == 11 { 30 } else { 31 }
+}
+
 fn iso8601_utc_epoch_seconds(text: String) -> Second? {
   let t = trim(s: text)
   if string_length(s: t) != 20 {
@@ -308,7 +316,7 @@ fn iso8601_utc_epoch_seconds(text: String) -> Second? {
                         match two_digits_at(s: t, i: 17) {
                           Absent => none
                           Present { value: ss } =>
-                            if m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 60 {
+                            if m < 1 || m > 12 || d < 1 || d > gregorian_days_in_month(y: y, m: m) || hh > 23 || mm > 59 || ss > 60 {
                               none
                             } else {
                               {

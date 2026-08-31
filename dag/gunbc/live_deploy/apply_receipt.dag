@@ -47,7 +47,6 @@ import gunbc.actions_run_binding {
 // (gunbc.live_deploy.deployed_tree_observation deployed_tree_root_tree_argv) read the same object
 // the same way.
 data live_deploy_apply_receipt_schema: String = "live-deploy-apply-receipt/v1"
-data live_deploy_apply_receipt_path: String = "target/live-deploy-srv1-receipt.json"
 data live_deploy_apply_receipt_dir: String = "target/live-deploy-srv1-receipt"
 data live_deploy_apply_receipt_artifact_path: String = "target/live-deploy-srv1-receipt/live_deploy_receipt.json"
 
@@ -229,9 +228,11 @@ type LiveDeployOutcomeDecode
   | OutcomeUnreadable { reason: String }
 
 fn live_deploy_apply_outcome_of_member(doc: JsonValue) -> LiveDeployOutcomeDecode {
-  match json_object_member_value(doc: doc, key: "apply_outcome") {
-    Absent => OutcomeUnreadable { reason: "apply_outcome is missing or not unique" }
-    Present { value: inner } =>
+  match json_object_unique_member(v: doc, key: "apply_outcome") {
+    JsonMemberAbsent => OutcomeUnreadable { reason: "apply_outcome is missing" }
+    JsonMemberDuplicated { count: c } => OutcomeUnreadable { reason: join(["apply_outcome appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => OutcomeUnreadable { reason: "the receipt document is not an object at apply_outcome" }
+    JsonMemberFound { value: inner } =>
       match json_required_string_member(doc: inner, key: "outcome") {
         JsonStringMemberRefused { reason: r } => OutcomeUnreadable { reason: join(["apply_outcome: ", r], "") }
         JsonStringMemberFound { value: label } =>
@@ -253,9 +254,11 @@ type LiveDeployReadinessDecode
   | ReadinessUnreadable { reason: String }
 
 fn live_deploy_readiness_of_member(doc: JsonValue) -> LiveDeployReadinessDecode {
-  match json_object_member_value(doc: doc, key: "readiness") {
-    Absent => ReadinessUnreadable { reason: "readiness is missing or not unique" }
-    Present { value: inner } =>
+  match json_object_unique_member(v: doc, key: "readiness") {
+    JsonMemberAbsent => ReadinessUnreadable { reason: "readiness is missing" }
+    JsonMemberDuplicated { count: c } => ReadinessUnreadable { reason: join(["readiness appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => ReadinessUnreadable { reason: "the receipt document is not an object at readiness" }
+    JsonMemberFound { value: inner } =>
       match json_required_string_member(doc: inner, key: "outcome") {
         JsonStringMemberRefused { reason: r } => ReadinessUnreadable { reason: join(["readiness: ", r], "") }
         JsonStringMemberFound { value: label } =>
@@ -281,23 +284,16 @@ fn live_deploy_readiness_of_member(doc: JsonValue) -> LiveDeployReadinessDecode 
   }
 }
 
-fn json_object_member_value(doc: JsonValue, key: String) -> JsonValue? {
-  match json_object_unique_member(v: doc, key: key) {
-    JsonMemberFound { value: v } => Present { value: v }
-    JsonMemberAbsent => none
-    JsonMemberDuplicated { count: _ } => none
-    JsonMemberNotAnObject => none
-  }
-}
-
 type LiveDeployProvenanceDecode
   = ProvenanceDecoded { provenance: LiveDeployFleetProvenance }
   | ProvenanceUnreadable { reason: String }
 
 fn live_deploy_provenance_of_member(doc: JsonValue) -> LiveDeployProvenanceDecode {
-  match json_object_member_value(doc: doc, key: "provenance") {
-    Absent => ProvenanceUnreadable { reason: "provenance is missing or not unique" }
-    Present { value: inner } =>
+  match json_object_unique_member(v: doc, key: "provenance") {
+    JsonMemberAbsent => ProvenanceUnreadable { reason: "provenance is missing" }
+    JsonMemberDuplicated { count: c } => ProvenanceUnreadable { reason: join(["provenance appears ", to_string(c), " times; the member must be unique"], "") }
+    JsonMemberNotAnObject => ProvenanceUnreadable { reason: "the receipt document is not an object at provenance" }
+    JsonMemberFound { value: inner } =>
       match json_required_string_member(doc: inner, key: "plan_run_id") {
         JsonStringMemberRefused { reason: r } => ProvenanceUnreadable { reason: join(["provenance: ", r], "") }
         JsonStringMemberFound { value: plan_run_id } =>

@@ -92,7 +92,7 @@ import gunbc.roadmap_launch_deployment_receipt {
   DispatchPreflightFact, DispatchPreflightAdmittedFact, DispatchPreflightRefusedFact, PrincipalFact,
   WorkflowServedFact, WorkflowRefusedFact, InstanceServedFact, InstanceRefusedFact,
   PrincipalObserved, PrincipalUnobserved, HostObserved, HostUnobserved,
-  WindowSnapshot, observation_window_fact, WindowUnobserved,
+  WindowSnapshot, observation_window_fact,
   roadmap_launch_deployment_verdict, roadmap_launch_deployment_receipt_document, verdict_blockers, verdict_receipt_identity,
   RoadmapLaunchDeploymentVerdict, DeploymentComplete, DeploymentIncomplete,
   RunProvenanceFact,

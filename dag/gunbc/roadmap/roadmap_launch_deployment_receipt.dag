@@ -143,7 +143,6 @@ type WindowSnapshot {
 type ObservationWindowFact
   = WindowStable { opened: WindowSnapshot, closed: WindowSnapshot }
   | WindowChanged { opened: WindowSnapshot, closed: WindowSnapshot, changed: List<String> }
-  | WindowUnobserved { detail: String }
 
 type RoadmapLaunchDeploymentFacts {
   desired_revision: DesiredRevisionFact
@@ -525,7 +524,6 @@ fn window_blockers(f: ObservationWindowFact) -> List<RoadmapLaunchDeploymentBloc
   match f {
     WindowStable { opened: _, closed: _ } => []
     WindowChanged { opened: _, closed: _, changed: c } => blocker(member: "observation_window", detail: join(["production state changed during capture: ", join(c, ", ")], ""))
-    WindowUnobserved { detail: d } => blocker(member: "observation_window", detail: d)
   }
 }
 
@@ -784,7 +782,6 @@ fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
     join(["observation_window: ", match f.observation_window {
       WindowStable { opened: o, closed: _ } => join(["stable; ", window_snapshot_text(w: o)], "")
       WindowChanged { opened: o, closed: c, changed: ch } => join(["changed (", join(ch, ", "), "); opened ", window_snapshot_text(w: o), "; closed ", window_snapshot_text(w: c)], "")
-      WindowUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
   ]
 }
@@ -921,7 +918,6 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
     json_kv(key: "observation_window", value: match f.observation_window {
       WindowStable { opened: o, closed: c } => fact_arm(arm: "stable", members: [json_kv(key: "opened", value: window_snapshot_json(w: o)), json_kv(key: "closed", value: window_snapshot_json(w: c))])
       WindowChanged { opened: o, closed: c, changed: ch } => fact_arm(arm: "changed", members: [json_kv(key: "changed", value: json_array(elements: ch |> map(x => json_string(s: x)))), json_kv(key: "opened", value: window_snapshot_json(w: o)), json_kv(key: "closed", value: window_snapshot_json(w: c))])
-      WindowUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "run_provenance", value: match f.run_provenance {
       RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref: named } =>
