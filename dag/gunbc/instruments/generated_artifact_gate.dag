@@ -17,6 +17,7 @@ import gunbc.generated_artifact_emit {
 import gunbc.generated_artifact_observation {
   observe_generated_artifact_population
 }
+import v2.std.algebra { fold_list, length }
 import gunbc.generated_artifact_assessment {
   generated_artifact_population_findings,
   generated_artifact_population_findings_empty,
@@ -103,6 +104,103 @@ fn generated_artifact_drift_failure_reason(exit: ProcessExit) -> String {
 
 func generated_artifact_drift_failure_receipt() -> String {
   gate_receipt_failure_detail(r: consume_generated_artifact_drift_gate_receipt())
+}
+
+// REGENERATING ONE ARTIFACT, AS A PROJECTION OF main_wet'S ROSTER AND NEVER A SECOND ROSTER.
+//
+// WHY IT EXISTS, AND IT IS NOT THE REASON I FIRST WROTE HERE. The first draft of this paragraph
+// said the whole-roster fold had outgrown the sanctioned remote executor and that a smaller fold
+// would fit. The first half is true; THE SECOND IS FALSE AND WAS MEASURED FALSE BEFORE THIS
+// LANDED, which is why the corrected version is recorded rather than the tidy one.
+//
+// THE CEILING, stated at the grain that is actually true (measured 2026-08-31, this tree, by
+// polling VmHWM to completion):
+//   main_wet      -- all 35 artifacts -- peak RSS 7.55 GiB
+//   main_wet_one  -- exactly one      -- peak RSS 7.54 GiB
+//   ctrl-build --remote runner VM     -- 7.86 GB TOTAL
+// Regenerating one artifact costs what regenerating thirty-five costs. The generation fold is NOT
+// where the memory goes: the shared WHOLE-TREE RESOLUTION is, and every path reaching the
+// generation stage pays it in full, so ROSTER SIZE IS NOT THE VARIABLE. main_wet is SIGKILLed on
+// that executor (RUN_EXIT=137) at every GUNBC_MEMORY_BUDGET_BYTES setting -- that variable gates
+// the governor's ENTRY refusal and does not cap live allocation -- and THIS ENTRY WOULD BE KILLED
+// THERE TOO. It does not restore remote regeneration and must not be cited as doing so. What
+// shrinks whole-tree resolution retires this ceiling; nothing in this function does.
+//
+// SO WHAT THIS IS ACTUALLY FOR, priced smaller than its first draft claimed: BLAST RADIUS.
+// main_wet rewrites all 35 artifacts whatever you came for, so it can silently resurrect a file
+// someone deliberately deleted, or sweep in drift from an unrelated model that happens to be stale
+// in the working tree. Those arrive with no conflict and no author error. A route that writes
+// exactly the artifact named removes that class wherever it runs, which is a property of the route
+// and not of the executor -- so it survives the ceiling being fixed, or not being fixed.
+//
+// WHAT MAKES IT A PROJECTION RATHER THAN A FORK. It selects from `committed_generated_artifacts()`
+// -- the same list main_wet folds -- keyed by `artifact_path`, and generates through the same
+// `artifact_generate`. There is no second producer selection and no second roster to drift from,
+// so an artifact reachable by main_wet is reachable here by construction and a new registry row
+// needs no edit in this function. main_wet REMAINS the whole-roster authority.
+//
+// THE UNROSTED ARM REFUSES AND DOES NOT REGENERATE NOTHING QUIETLY. A path the registry does not
+// carry is a typed, located refusal naming the path and the roster size, never exit zero having
+// written no file -- which would be strictly worse than the all-or-nothing fold, because a silent
+// no-op LOOKS like a successful regeneration and would be cited as one. That is the
+// empty-observation-narrow and absorbing-fallback pair from DESIGN's roster, and the failure arm
+// here refuses rather than widening or defaulting.
+//
+// THE AMBIGUOUS ARM IS NOT DEAD CODE, and it is why selection counts rather than stopping at the
+// first hit. Two registry rows claiming one path is a real defect -- main_wet would write both and
+// the last would win silently -- so this entry refuses instead of picking. A `fold_list` that
+// short-circuited on the first match could not see the second and would have made the defect
+// unobservable from here.
+type ArtifactSelection
+  = ArtifactSelected { artifact: GeneratedArtifact, matches: Int }
+  | ArtifactSelectionEmpty { matches: Int }
+
+fn artifact_selection_for_path(path: String) -> ArtifactSelection {
+  fold_list(
+    xs: committed_generated_artifacts(),
+    empty: ArtifactSelectionEmpty { matches: 0 },
+    cons: fn(acc, a) {
+      if artifact_path(a: a) == path {
+        match acc {
+          ArtifactSelectionEmpty { matches: n } => ArtifactSelected { artifact: a, matches: n + 1 }
+          ArtifactSelected { artifact: prior, matches: n } => ArtifactSelected { artifact: prior, matches: n + 1 }
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+func main_wet_one(path: String) -> ProcessExit {
+  match artifact_selection_for_path(path: path) {
+    ArtifactSelectionEmpty { matches: _ } => exit_failure(
+      reason: concat(
+        concat("GeneratedArtifactPathUnrostered: no committed generated artifact is declared at ", path),
+        concat(
+          concat(" -- gunbc.generated_artifact committed_generated_artifacts carries ", length(xs: committed_generated_artifacts()) as String),
+          " row(s), and this path is not one of them; regenerating nothing and reporting success would report a repair that did not happen"
+        )
+      )
+    )
+    ArtifactSelected { artifact: a, matches: n } =>
+      if n > 1 {
+        exit_failure(
+          reason: concat(
+            concat("GeneratedArtifactPathAmbiguous: ", path),
+            " is claimed by more than one registry row, so which producer owns it is undecided here; main_wet would write both and silently keep the last"
+          )
+        )
+      } else {
+        match artifact_generate(a: a) {
+          ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", path), concat(": ", reason)))
+          ArtifactGenerated { content } => {
+            let w = Filesystem.Write(path: path, content: content)
+            if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", path), concat(": ", w.error))) }
+          }
+        }
+      }
+  }
 }
 
 func main_wet() -> ProcessExit {

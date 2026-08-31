@@ -214,6 +214,7 @@ fn bmc_token_smoke_job() -> Job {
 
 data bmc_token_smoke_workflow: Workflow = {
   name: "bmc-token-smoke",
+  run_name: none,
   on: [
     WorkflowDispatch { inputs: [] }
   ],

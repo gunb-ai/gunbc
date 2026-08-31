@@ -16,6 +16,7 @@ import gunbc.shared_fill_attribution_seed_growth { shared_fill_attribution_seed_
 import gunbc.roadmap_authority { observation_scoped_run_seed_growth_justification }
 import gunbc.target_invocation_seed_growth { target_invocation_seed_growth_justification }
 import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
+import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
@@ -46,6 +47,7 @@ import gunbc.stage0_rust_host_observation { stage0_rust_observation_seed_growth_
 import gunbc.floor_non_verdict_enrollment { floor_non_verdict_seed_growth_justification }
 import gunbc.floor_route_gap_seed_growth { floor_route_gap_seed_growth_justification }
 import gunbc.cross_claim_pure_share_seed_growth { cross_claim_pure_share_seed_growth_justification }
+import gunbc.frame_independent_symbol_seed_growth { frame_independent_symbol_seed_growth_justification }
 import gunbc.floor_cost_debt_seed_growth { floor_cost_debt_seed_growth_justification }
 import gunbc.floor_cost_debt_standing_seed_growth { floor_cost_debt_standing_seed_growth_justification }
 import gunbc.floor_population_projection_seed_growth { floor_population_projection_seed_growth_justification }
@@ -188,6 +190,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     floor_route_gap_seed_growth_justification,
     floor_cost_debt_seed_growth_justification,
     cross_claim_pure_share_seed_growth_justification,
+    frame_independent_symbol_seed_growth_justification,
     floor_cost_debt_standing_seed_growth_justification,
     floor_population_projection_seed_growth_justification,
     stage0_rust_observation_seed_growth_justification,
@@ -207,6 +210,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     qualified_pipe_callee_seed_growth_justification,
     target_invocation_seed_growth_justification,
     generated_artifact_boundary_seed_growth_justification,
+    regen_convergence_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification
   ]
 }

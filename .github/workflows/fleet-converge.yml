@@ -1,4 +1,5 @@
 name: fleet-converge
+run-name: fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}
 on:
   workflow_dispatch:
     inputs:
@@ -8,9 +9,9 @@ on:
         options: [srv1, srv2, srv3, srv4]
         type: choice
       mode:
-        description: plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks
+        description: plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark
         required: true
-        options: [plan, allocation_store_plan, apply, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy]
+        options: [plan, allocation_store_plan, apply, org_actions_observe, spark_linger, spark_observe, spark_reboot, spark_grants, spark_durability, dashboard_deploy, rlm_launch_deployment_receipt]
         type: choice
       target:
         description: Spark target host for spark_linger mode (srv5 or srv6)
@@ -22,7 +23,23 @@ on:
         required: false
         type: string
       plan_workflow_run_id:
-        description: Workflow run id that produced the plan artifact — required for apply
+        description: Workflow run id that produced the plan artifact — required for apply, dashboard_deploy and rlm_launch_deployment_receipt
+        required: false
+        type: string
+      expected_revision:
+        description: R — the exact main revision this transaction installs and proves; every run of the transaction must execute at it (RLM_EXPECTED_REVISION). Required for dashboard_deploy and rlm_launch_deployment_receipt
+        required: false
+        type: string
+      apply_workflow_run_id:
+        description: Workflow run id of the fleet apply — required for dashboard_deploy and rlm_launch_deployment_receipt
+        required: false
+        type: string
+      dashboard_workflow_run_id:
+        description: Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt
+        required: false
+        type: string
+      transaction_nonce:
+        description: Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step
         required: false
         type: string
 jobs:
@@ -125,6 +142,9 @@ jobs:
       contents: read
       actions: read
       id-token: write
+    concurrency:
+      group: gunbc-host-mutation-${{ github.event.inputs.host }}
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -156,6 +176,7 @@ jobs:
         timeout-minutes: 5
       - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
         run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
           set -euo pipefail
           umask 077
           KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
@@ -186,6 +207,9 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_plan_wet
+        env:
+          FLEET_CONVERGE_EXPECTED_HOST: ${{ github.event.inputs.host }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
       - name: Fleet allocation-store substrate plan
@@ -226,8 +250,41 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/fleet_converge_plan_cli.dag --function fleet_converge_apply_wet
         env:
           EXPECTED_HASH: ${{ github.event.inputs.plan_artifact_hash }}
+          FLEET_CONVERGE_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'apply'
         timeout-minutes: 5
+      - name: Upload fleet converge apply receipt
+        id: apply_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: fleet-converge-apply-receipt
+          path: /tmp/fleet-converge-apply
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: github.event.inputs.mode == 'apply'
+        timeout-minutes: 10
+      - name: Org Actions credential validation + read-only settings diff
+        id: org_actions_observe
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/fleet/org_actions_converge.dag --function org_actions_converge_wet
+        env:
+          GUNBC_ORG_ADMIN_TOKEN: ${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}
+          GH_TOKEN: ${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}
+        if: github.event.inputs.mode == 'org_actions_observe'
+        timeout-minutes: 5
+      - name: Upload org Actions credential validation receipt
+        id: org_actions_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: org-actions-credential-validation
+          path: target/org-actions-credential-validation-receipt.txt
+          if-no-files-found: error
+          retention-days: 30
+        if: github.event.inputs.mode == 'org_actions_observe'
+        timeout-minutes: 10
       - name: Spark serving linger converge (executor→target FleetSsh typed argv)
         id: spark_linger
         run: |
@@ -306,7 +363,7 @@ jobs:
     timeout-minutes: 50
     if: github.event.inputs.mode == 'dashboard_deploy'
     concurrency:
-      group: srv1-dashboard-deploy
+      group: gunbc-host-mutation-${{ github.event.inputs.host }}
       cancel-in-progress: false
     steps:
       - name: Checkout
@@ -328,10 +385,168 @@ jobs:
           rm -f "$ROOT/release-bins.tgz"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
         timeout-minutes: 5
-      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
+      - name: Download the plan artifact (carries the plan receipt) from the plan run
+        id: dashboard_plan_receipt_download
+        uses: actions/download-artifact@v4
+        with:
+          name: fleet-converge-plan
+          path: /tmp/fleet-converge-plan
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.plan_workflow_run_id }}
+        timeout-minutes: 10
+      - name: Download the fleet apply receipt from the apply run
+        id: dashboard_apply_receipt_download
+        uses: actions/download-artifact@v4
+        with:
+          name: fleet-converge-apply-receipt
+          path: /tmp/fleet-converge-apply
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.apply_workflow_run_id }}
+        timeout-minutes: 10
+      - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_transaction_wet, receipted)
         id: dashboard_deploy
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
-          cat "$ROOT/target/live-deploy-srv1-receipt.txt"
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_transaction_wet
+          cat "$ROOT/target/live-deploy-srv1-receipt/live_deploy_receipt.json"
+        env:
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
+          RLM_PLAN_ARTIFACT_HASH: ${{ github.event.inputs.plan_artifact_hash }}
         timeout-minutes: 30
+      - name: Upload live-deploy transaction receipt
+        id: dashboard_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-deploy-srv1-receipt
+          path: target/live-deploy-srv1-receipt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always()
+        timeout-minutes: 10
+  rlm-launch-deployment-receipt:
+    runs-on: ${{ fromJSON(format('["self-hosted","linux","arm64","{0}"]', github.event.inputs.host)) }}
+    needs: [build]
+    timeout-minutes: 80
+    if: github.event.inputs.mode == 'rlm_launch_deployment_receipt'
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    concurrency:
+      group: gunbc-host-mutation-${{ github.event.inputs.host }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Download release-bins artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-bins
+        timeout-minutes: 10
+      - name: Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)
+        id: release_bins
+        run: |
+          # 🟡 dissolve-on: ci_release_bins_unpack_verify_script — concat-built foreign-executor (GitHub Actions run:) release-bins unpack + claim_executor --verify-build-artifacts runner; membership of verified paths is derived from gunbc.ci_release_bins, but the unpack/verify transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the unpack/verify runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          mkdir -p "$ROOT/target/release"
+          tar -xzf "$ROOT/release-bins.tgz" -C "$ROOT/target/release"
+          rm -f "$ROOT/release-bins.tgz"
+          "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc" "$ROOT/target/release/discover_source_root_ingest" "$ROOT/target/release/claim_batch" "$ROOT/target/release/interp_recorded_fixture_witness" "$ROOT/target/release/v1_src_dag_parse" "$ROOT/target/release/auth_declared_but_unwired_witness" "$ROOT/target/release/bootstrap_witness" "$ROOT/target/release/dag_collect_fingerprint_witness" "$ROOT/target/release/diagnostics_witness" "$ROOT/target/release/effects_rest_transport_witness" "$ROOT/target/release/infer_semantics_witness" "$ROOT/target/release/parse_witness" "$ROOT/target/release/cssl_assemble" "$ROOT/target/release/namespace_structural_root_exposure_generated_witness" "$ROOT/target/release/codex_app_server_stdio_session"
+        timeout-minutes: 5
+      - name: WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)
+        id: wif_auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/582015116396/locations/global/workloadIdentityPools/github-actions/providers/github-oidc
+          service_account: fleet-cloud-convergence@gunbai-secrets.iam.gserviceaccount.com
+          token_format: access_token
+          create_credentials_file: false
+        timeout-minutes: 5
+      - name: Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)
+        run: |
+          # 🟡 dissolve-on: gunbc_ci_fleet_key_agent_script - orch-emitted foreign-executor (GitHub Actions run:) credential runner: WIF access token by env, one PINNED secret version fetched over curl, a 0600 key file under RUNNER_TEMP with a trap armed BEFORE the credential touches disk, fingerprint verified against the modeled authority, ssh-agent load, file wipe. The pipeline steps are modeled (gunbc_ci_fleet_key_agent_prelude) but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell-to-intent Phase 2) realizes the credential runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold
+          set -euo pipefail
+          umask 077
+          KEY_FILE="$RUNNER_TEMP/fleet-automation-key"
+          HDR_FILE="$RUNNER_TEMP/fleet-automation-auth-header"
+          AGENT_STARTED=0
+          cleanup() { rm -f "$KEY_FILE" "$HDR_FILE"; if [ "$AGENT_STARTED" = 1 ] && [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k >/dev/null 2>&1 || true; fi; }
+          trap cleanup EXIT
+          printf 'Authorization: Bearer %s\n' "$WIF_ACCESS_TOKEN" > "$HDR_FILE"
+          curl -sSf -H @"$HDR_FILE" "https://secretmanager.googleapis.com/v1/projects/gunbai-secrets/secrets/fleet-automation-ssh-key/versions/1:access" | python3 -c 'import sys,json,base64; sys.stdout.buffer.write(base64.b64decode(json.load(sys.stdin)["payload"]["data"]))' > "$KEY_FILE"
+          rm -f "$HDR_FILE"
+          chmod 600 "$KEY_FILE"
+          EXPECTED_FP="SHA256:mGT7qJsh36VsVb8OPh3m8br3oHedQHxRukRkW5P0CoQ"
+          OBSERVED_FP="$(ssh-keygen -y -f "$KEY_FILE" | ssh-keygen -lf - | awk '{print $2}')"
+          if [ "$OBSERVED_FP" != "$EXPECTED_FP" ]; then echo "ProbeCredentialIdentityMismatch: fetched secret versions/1 fingerprint $OBSERVED_FP != modeled $EXPECTED_FP; contacting NO host" >&2; exit 1; fi
+          eval "$(ssh-agent -s)" >/dev/null
+          AGENT_STARTED=1
+          ssh-add "$KEY_FILE" 2>/dev/null
+          rm -f "$KEY_FILE"
+          trap - EXIT
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          echo "fleet-key: agent loaded (identity fleet-automation@gunbc; secret versions/1 pinned; fingerprint verified against modeled authority; key file wiped)"
+        env:
+          WIF_ACCESS_TOKEN: ${{ steps.wif_auth.outputs.access_token }}
+        timeout-minutes: 5
+      - name: Download fleet converge plan artifact (plan run)
+        id: rlm_plan_download
+        uses: actions/download-artifact@v4
+        with:
+          name: fleet-converge-plan
+          path: /tmp/fleet-converge-plan
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.plan_workflow_run_id }}
+        timeout-minutes: 10
+      - name: Download fleet converge apply receipt (apply run)
+        id: rlm_apply_download
+        uses: actions/download-artifact@v4
+        with:
+          name: fleet-converge-apply-receipt
+          path: /tmp/fleet-converge-apply
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.apply_workflow_run_id }}
+        timeout-minutes: 10
+      - name: Download live-deploy transaction receipt (dashboard run)
+        id: rlm_dashboard_download
+        uses: actions/download-artifact@v4
+        with:
+          name: live-deploy-srv1-receipt
+          path: target/live-deploy-srv1-receipt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.dashboard_workflow_run_id }}
+        timeout-minutes: 10
+      - name: Roadmap launch deployment receipt (rlm_launch_deployment_receipt_wet)
+        id: rlm_receipt
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          "$ROOT/target/release/gunbc" run --source-root "$ROOT/dag" --source-root "$ROOT/src/v2" --entry dag/gunbc/roadmap/roadmap_launch_deployment_cli.dag --function rlm_launch_deployment_receipt_wet
+          cat "$ROOT/target/rlm-launch-deployment-receipt/receipt.json"
+        env:
+          RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
+          RLM_PLAN_RUN_ID: ${{ github.event.inputs.plan_workflow_run_id }}
+          RLM_APPLY_RUN_ID: ${{ github.event.inputs.apply_workflow_run_id }}
+          RLM_DASHBOARD_RUN_ID: ${{ github.event.inputs.dashboard_workflow_run_id }}
+        timeout-minutes: 5
+      - name: Upload roadmap launch deployment receipt
+        id: rlm_receipt_upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: rlm-launch-deployment-receipt
+          path: target/rlm-launch-deployment-receipt
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+        if: always()
+        timeout-minutes: 10
+      - name: Kill the in-run ssh-agent (key never outlives the job)
+        run: |
+          if [ -n "${SSH_AGENT_PID:-}" ]; then ssh-agent -k || true; fi
+        if: always()
+        timeout-minutes: 5

@@ -4623,7 +4623,7 @@ fn parse_expr_loop(tokens: TokenStream, ctx: ParseContext, lhs: Node, min_bp: In
                   match binop_opt {
                     Present { value: binop } => {
                       let minted = mint_parsed_node_identity(ctx: r.ctx)
-                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
                       parse_expr_loop(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
                     }
                     Absent => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }
@@ -5279,7 +5279,7 @@ fn parse_expr_loop_no_brace(tokens: TokenStream, ctx: ParseContext, lhs: Node, m
                   match binop_opt {
                     Present { value: binop } => {
                       let minted = mint_parsed_node_identity(ctx: r.ctx)
-                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
+                      let new_lhs = make_expr_node(occurrence_identity: minted.identity, expr_data: ExprBinOp { op: binop, algebra_field: none, operand: none }, children: [lhs, r.expr], inferred: none, span: loop_span)
                       parse_expr_loop_no_brace(tokens: r.tokens, ctx: minted.ctx, lhs: new_lhs, min_bp: min_bp)
                     }
                     Absent => ExprResult { expr: lhs, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: concat("unknown binary operator: ", op_tok.text), span: loop_span) } }

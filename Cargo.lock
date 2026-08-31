@@ -851,6 +851,7 @@ dependencies = [
  "unicode-ident",
  "unicode-properties",
  "ureq",
+ "v1-stage0-v1-infer",
 ]
 
 [[package]]

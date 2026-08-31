@@ -139,7 +139,7 @@ test fn bootstrap_footprint_bad_runtime_same_identity_violates() -> Bool {
   let bad_runtime = bootstrap_footprint_anchor_bad_runtime_model()
   let canonical_runtime = v2_evaluator_runtime()
   (bad_runtime.runtime_identity == canonical_runtime.runtime_identity)
-    && (bad_runtime != canonical_runtime)
+    && !v4_evaluator_runtime_models_equal(a: bad_runtime, b: canonical_runtime)
     && (match bootstrap_footprint(inputs: bootstrap_footprint_anchor_bad_runtime_projection_inputs()) {
       Holds { value: _ } => false
       Violates { diagnostic: d } => d.reason == ^bootstrap_footprint_not_realized

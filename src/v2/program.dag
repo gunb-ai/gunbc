@@ -376,7 +376,12 @@ fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
 
 fn program_branch_effect_io_holds() -> Bool {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
-    Accepted { value: v, diagnostics: None } => v == program_unit_value()
+    Accepted { value: v, diagnostics: None } =>
+      match runtime_value_equality(a: v, b: program_unit_value()) {
+        RuntimeValuesEqual => true
+        RuntimeValuesDiffer => false
+        RuntimeValueEqualityUnavailable { reason: _ } => false
+      }
     _ => false
   }
 }
@@ -413,7 +418,12 @@ fn program_pick_if_arrow_holds() -> Bool {
         context: program_context_with_effect_io(),
         inputs: inputs_root_only(root: call)
       ) {
-        Accepted { value: v, diagnostics: None } => v == program_int_one_value()
+        Accepted { value: v, diagnostics: None } =>
+          match runtime_value_equality(a: v, b: program_int_one_value()) {
+            RuntimeValuesEqual => true
+            RuntimeValuesDiffer => false
+            RuntimeValueEqualityUnavailable { reason: _ } => false
+          }
         _ => false
       }
     }
