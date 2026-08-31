@@ -20,6 +20,7 @@ import gunbc.bootstrap_operation_seed_growth {
   cli_dispatch_host_boundary_seed_growth_justification
 }
 import gunbc.generated_artifact_boundary_seed_growth { generated_artifact_boundary_seed_growth_justification }
+import gunbc.regen_convergence_seed_growth { regen_convergence_seed_growth_justification }
 import gunbc.witness_runtime_cause_seed_growth { witness_runtime_cause_seed_growth_justification }
 import gunbc.rust_item_host_observation {
   ItemDeclarationRefProjection,
@@ -215,6 +216,7 @@ fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
     bootstrap_operation_seed_growth_justification,
     cli_dispatch_host_boundary_seed_growth_justification,
     generated_artifact_boundary_seed_growth_justification,
+    regen_convergence_seed_growth_justification,
     decl_facts_shared_memo_seed_growth_justification
   ]
 }

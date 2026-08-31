@@ -28,6 +28,15 @@ import gunbc.plans.md_helpers { h2, h3, p, li, ul, hr }
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.recurring_failure_mode { recurring_failure_mode_roster }
 import gunbc.rung_drop { rung_drop_roster }
+import v2.workflow.floor_discovery { floor_discovery_tree_identity }
+import gunbc.self_host_compile_phase_frontier {
+  CompilePhaseFrontierEmpty,
+  CompilePhaseFrontierValidated,
+  CompilePhaseFrontierInvalid,
+  compile_phase_frontier_standing,
+  render_phase_board,
+  self_host_compile_phase_frontier_receipts,
+}
 
 fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
@@ -56,13 +65,49 @@ fn rung_drop_blocks() -> List<MarkdownBlock> {
         h2(text: "Declared rung drops (§4b(3))"),
         p(text: "Each row declares a safety guarantee that was lowered: what stood before, what stands now, why, over what population, and the trigger that restores it. A drop is retired by its trigger and by nothing else."),
       ],
-      flat_map(rung_drop_roster, d => [
+      flat_map(rung_drop_roster, d => concat([
         h3(text: concat(concat(d.subject, " — declared "), d.declared)),
         p(text: d.authored),
-      ]),
+      ], if (d.identity as String) == "measurement_bankruptcy" {
+        compile_phase_frontier_blocks()
+      } else { [] })),
     ],
     bs => bs
   )
+}
+
+fn compile_phase_frontier_blocks() -> List<MarkdownBlock> {
+  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+    CompilePhaseFrontierEmpty => [
+      h3(text: "Whole-corpus compile-phase frontier receipts"),
+      p(text: "No complete instrument observation has been appended; the next valid row must be the typed genesis receipt."),
+    ]
+    CompilePhaseFrontierInvalid { reason } => [
+      h3(text: "Whole-corpus compile-phase frontier receipts — INVALID"),
+      p(text: reason as String),
+    ]
+    CompilePhaseFrontierValidated { latest } => [
+      h3(text: "Whole-corpus compile-phase frontier receipts — latest validated row"),
+      p(text: concat("Milestones: ", render_phase_board(board: latest.board))),
+      p(text: concat("Tree: `", concat(floor_discovery_tree_identity(tree: latest.subject.git_tree_object), "`"))),
+      p(text: concat("Invocation: `", concat(latest.invocation as String, "`"))),
+      p(text: concat("Census identity digest: `", concat(latest.board.census_identity_digest.digest as String, "`"))),
+      p(text: concat(
+        "Error identities: ",
+        concat(
+          to_string(latest.board.total_error_diagnostics),
+          concat(
+            " total = ",
+            concat(
+              to_string(latest.board.coded_error_diagnostics),
+              concat(" coded + ", concat(to_string(latest.board.codeless_error_diagnostics), " codeless"))
+            )
+          )
+        )
+      )),
+      p(text: concat("Producer: `", concat(latest.producer.module_path, concat("::", concat(latest.producer.function, "`"))))),
+    ]
+  }
 }
 
 fn ledger_blocks() -> List<MarkdownBlock> {

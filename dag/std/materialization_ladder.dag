@@ -621,14 +621,22 @@ fn discharge_verdict(identity: String, lca: List<Frame>, providers: List<CachePr
   }
 }
 
+// The cost-floor roster is consulted only after nature and topology have established that the
+// recurrence is unavoidable — a non-shared-state obligation LCA (isolation boundary or declared
+// emergence). A shared-state LCA is authored duplication whatever the roster says; an unmodeled
+// world read refuses whatever the roster says; a single undeclared pure demand never needed the
+// roster at all. The roster prices the discharge, it never re-classifies the demand.
 fn group_redundant_verdict(
   identity: String,
   group: List<FrameDemand>,
-  providers: List<CacheProvider>
+  providers: List<CacheProvider>,
+  cost_floor_exempt: List<String>
 ) -> LadderVerdict {
   let lca = group_obligation_lca(group: group)
   if frame_path_last_is_shared_state(path: lca) {
     AuthoredDuplication { identity: identity, lca: lca, site_count: group.count() }
+  } else if string_list_contains(xs: cost_floor_exempt, wanted: identity) {
+    AcceptedBelowCostFloor { identity: identity }
   } else {
     discharge_verdict(identity: identity, lca: lca, providers: providers)
   }
@@ -642,8 +650,6 @@ fn group_verdict(
 ) -> LadderVerdict {
   if group_has_nature_conflict(group: group) {
     RefusedNatureConflict { identity: identity }
-  } else if string_list_contains(xs: cost_floor_exempt, wanted: identity) {
-    AcceptedBelowCostFloor { identity: identity }
   } else {
     match group_nature(group: group) {
       FreshEffect => ExemptFreshEffect { identity: identity }
@@ -651,19 +657,19 @@ fn group_verdict(
         if !group_is_redundant(group: group) {
           AcceptedSingleRecompute { identity: identity }
         } else if declared {
-          group_redundant_verdict(identity: identity, group: group, providers: providers)
+          group_redundant_verdict(identity: identity, group: group, providers: providers, cost_floor_exempt: cost_floor_exempt)
         } else {
           RefusedUnmodeledWorldRead { identity: identity, lca: group_obligation_lca(group: group) }
         }
       PureComputation =>
         if group_is_redundant(group: group) {
-          group_redundant_verdict(identity: identity, group: group, providers: providers)
+          group_redundant_verdict(identity: identity, group: group, providers: providers, cost_floor_exempt: cost_floor_exempt)
         } else {
           AcceptedSingleRecompute { identity: identity }
         }
       IdempotentEffect =>
         if group_is_redundant(group: group) {
-          group_redundant_verdict(identity: identity, group: group, providers: providers)
+          group_redundant_verdict(identity: identity, group: group, providers: providers, cost_floor_exempt: cost_floor_exempt)
         } else {
           AcceptedSingleRecompute { identity: identity }
         }

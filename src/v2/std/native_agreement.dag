@@ -11,7 +11,7 @@ import v2.std.optional {
   Absent
 }
 import v2.std.logic { Bool }
-import v2.std.integer { integer_nat_to_decimal_string }
+import v2.std.integer { integer_int_to_decimal_string }
 import v2.std.runtime { RuntimePrimitive, RuntimePrimitiveValue, RuntimeValue }
 import v2.std.text { String }
 
@@ -31,13 +31,7 @@ type NativeAgreementDivergence {
 // std cannot import compiler back).
 
 fn octet_display(octet: Int) -> String {
-  if octet == 0 {
-    "0"
-  } else if octet == 1 {
-    "1"
-  } else {
-    integer_nat_to_decimal_string(value: octet)
-  }
+  integer_int_to_decimal_string(value: octet)
 }
 
 fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {

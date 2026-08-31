@@ -58,14 +58,7 @@ type RegenRoundPhase
   | Digest
   | Install
   | RebuildFromInstalled
-  | SecondGeneration
   | Diff
-
-// SecondGeneration IS A PHASE, not an unattributed mark, and it became one the moment a round
-// actually ran it. The round's shape used to end at the rebuild -- build, emit, install, rebuild,
-// diff -- because there was nothing to run the rebuilt compiler for; a partitioned executable made
-// the second generation a real phase with real wall and CPU, and leaving it in the Unattributed
-// bucket would price the round's largest post-install phase under no name at all.
 
 // A drained ledger row. `label` is the trace_mark label with its `.done` suffix removed (a plain
 // mark keeps its label whole); the wall duration is the elapsed since the matching `.begin`, or
@@ -120,6 +113,7 @@ type RegenRoundCostReceipt {
   rustfmt_spawns: Nat
   marks: List<TraceMark>
   changed_paths: List<String>
+  convergence_stage_receipt_ids: List<String>
   installed_mirrors: List<String>
   rebuild_packages: List<String>
   executable_digest: String
@@ -142,7 +136,6 @@ fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
     Digest => "digest"
     Install => "install"
     RebuildFromInstalled => "rebuild_from_installed"
-    SecondGeneration => "second_generation"
     Diff => "diff"
   }
 }
@@ -168,13 +161,12 @@ fn regen_round_phase_label(phase: RegenRoundPhase) -> String {
     Digest => "regen.digest"
     Install => "round.install"
     RebuildFromInstalled => "round.rebuild_from_installed"
-    SecondGeneration => "round.second_generation"
     Diff => "round.diff"
   }
 }
 
 fn regen_round_phases() -> List<RegenRoundPhase> {
-  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, SecondGeneration, Diff]
+  [SeedBuild, CorpusLoad, Frontend, Normalize, Reconcile, Analyses, Emit, MirrorWrite, CandidateVerify, Adjudicate, HandVerify, Digest, Install, RebuildFromInstalled, Diff]
 }
 
 fn regen_round_phase_of_label(label: String) -> RegenRoundPhaseAttribution {
@@ -248,13 +240,29 @@ fn regen_round_total_line(receipt: RegenRoundCostReceipt) -> String {
   )
 }
 
-// WHAT THE REBUILD IS DENOMINATED IN, printed beside what it cost. `installed_mirrors` is the
-// regen's own drift answer -- the basenames it just copied into the seed tree -- so the scope is
-// derived from the round's real input, not from a fixture. The line reports which packages the
-// changed mirrors own, the reverse package closure those force, and the executable assembled from
-// them. The empty `unlocatable` argument is a fact and not a convenience: every element of the
-// drift answer is a basename the installer resolved to a file it copied, so at this boundary
-// there is nothing the selection could fail to name.
+fn regen_round_changed_paths_line(receipt: RegenRoundCostReceipt) -> String {
+  let listed = fold(receipt.changed_paths, init: "", f: fn(acc, path) {
+    if acc == "" { path } else { concat(concat(acc, ", "), path) }
+  })
+  concat(
+    concat("regen-round-cost: changed_paths=", to_string(count(receipt.changed_paths))),
+    concat(concat(" [", listed), "]")
+  )
+}
+
+fn regen_round_convergence_stages_line(receipt: RegenRoundCostReceipt) -> String {
+  let listed = fold(receipt.convergence_stage_receipt_ids, init: "", f: fn(acc, id) {
+    if acc == "" { id } else { concat(acc, concat(", ", id)) }
+  })
+  concat(
+    concat("regen-round-cost: convergence_stages=", to_string(count(receipt.convergence_stage_receipt_ids))),
+    concat(" [", concat(listed, "]"))
+  )
+}
+
+// The partition-cost projection consumes the exact surface population installed across the
+// convergence stages. It supplements the actual full-seed rebuild receipt; it does not replace
+// the transaction's requirement to rebuild the executable that performs the next generation.
 fn regen_round_partition_rebuild_line(receipt: RegenRoundCostReceipt) -> String {
   stage0_partition_rebuild_decision_line(
     decision: stage0_partition_rebuild_decision_today(
@@ -264,13 +272,6 @@ fn regen_round_partition_rebuild_line(receipt: RegenRoundCostReceipt) -> String 
   )
 }
 
-// THE EXECUTION IDENTITY OF THE SECOND GENERATION, which is the fact a package count cannot
-// carry. `rebuild_compiled_crates=3` says three of something were compiled; it does not say WHICH
-// packages, nor whether the binary that then emitted the second generation was built from them.
-// These three fields are the evidence: the package identities cargo actually compiled, the digest
-// of the executable those artifacts linked, and the digest of the candidate that executable
-// produced. A round whose rebuild silently ran a different compiler shows a digest that does not
-// move; a round that rebuilt the wrong packages shows them by name.
 fn regen_round_execution_identity_line(receipt: RegenRoundCostReceipt) -> String {
   let listed = fold(receipt.rebuild_packages, init: "", f: fn(acc, pkg) {
     if acc == "" { pkg } else { concat(concat(acc, ", "), pkg) }
@@ -287,16 +288,6 @@ fn regen_round_execution_identity_line(receipt: RegenRoundCostReceipt) -> String
   )
 }
 
-fn regen_round_changed_paths_line(receipt: RegenRoundCostReceipt) -> String {
-  let listed = fold(receipt.changed_paths, init: "", f: fn(acc, path) {
-    if acc == "" { path } else { concat(concat(acc, ", "), path) }
-  })
-  concat(
-    concat("regen-round-cost: changed_paths=", to_string(count(receipt.changed_paths))),
-    concat(concat(" [", listed), "]")
-  )
-}
-
 // The whole receipt as the lines the host prints, in ledger order. Rendered here and read by
 // the host through the interpreter, so there is no Rust mirror of this format to drift.
 fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
@@ -306,10 +297,16 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
   concat(
     concat(concat(regen_round_header_line(receipt: receipt), "\n"), mark_lines),
     concat(
-      concat(concat(regen_round_total_line(receipt: receipt), "\n"), concat(regen_round_changed_paths_line(receipt: receipt), "\n")),
+      concat(regen_round_total_line(receipt: receipt), "\n"),
       concat(
-        concat(regen_round_partition_rebuild_line(receipt: receipt), "\n"),
-        concat(regen_round_execution_identity_line(receipt: receipt), "\n")
+        concat(regen_round_changed_paths_line(receipt: receipt), "\n"),
+        concat(
+          concat(regen_round_convergence_stages_line(receipt: receipt), "\n"),
+          concat(
+            concat(regen_round_partition_rebuild_line(receipt: receipt), "\n"),
+            concat(regen_round_execution_identity_line(receipt: receipt), "\n")
+          )
+        )
       )
     )
   )
