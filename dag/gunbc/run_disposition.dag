@@ -20,7 +20,8 @@ import extdeps.github.actions_runs {
   run_conclusion_wire,
   workflow_run_settlement
 }
-import gunbc.witness_floor_workflow { witness_floor_cancel_in_progress_event }
+import gunbc.witness_floor_workflow { witness_floor_cancel_in_progress }
+import extdeps.github.actions { CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression }
 
 // `cancelled` IS ONE WORD OVER AT LEAST TWO STATES WITH OPPOSITE OWNERS AND OPPOSITE REMEDIES.
 //
@@ -55,12 +56,39 @@ import gunbc.witness_floor_workflow { witness_floor_cancel_in_progress_event }
 // cancellation CANNOT be a supersession no matter what else is observed -- and a push run is
 // therefore structurally incapable of the benign explanation.
 //
-// The event name comes from gunbc.witness_floor_workflow, which owns the expression the workflow
-// actually emits. Restating `pull_request` here would be a second spelling of one fact that
-// nothing relates back to the emitted YAML, so a change to the workflow would silently leave this
-// classifier answering for a configuration that no longer exists.
+// The policy comes from gunbc.witness_floor_workflow, which owns the value the workflow actually
+// emits. Restating it here would be a second spelling of one fact that nothing relates back to the
+// emitted YAML, so a change to the workflow would silently leave this classifier answering for a
+// configuration that no longer exists.
+//
+// IT READS THE SPEC AND NOT AN EVENT NAME, which is what lets the containment change propagate
+// rather than being restated. The predecessor compared the event against a declared
+// `pull_request` row, so it answered "supersession was available" for the event the EXPRESSION
+// happened to name -- correct while a per-event expression was the only representable policy, and
+// silently wrong the moment the policy became an unconditional false. Matching the spec makes the
+// two arms answer from the same value the YAML carries: an unconditional bool is the answer for
+// every event, and an expression is consulted for whether it names this one.
+//
+// Under the current containment row this returns false for every event, which is the intended
+// consequence rather than a side effect: while nothing may lawfully supersede, ANY cancelled run
+// is an unexplained eviction and is classified as one.
 fn supersession_available_for_event(event: String) -> Bool {
-  event == witness_floor_cancel_in_progress_event
+  supersession_available_under(spec: witness_floor_cancel_in_progress, event: event)
+}
+
+// THE SPEC IS A PARAMETER SO THE CLASSIFIER'S SUPERSESSION ARM KEEPS A REACHABLE RED.
+//
+// While the live policy is an unconditional false, no production input can reach
+// DispositionSuperseded -- so a witness asserting that a lawful supersession is recognised, and
+// excluded from the verdict-bearing denominator, would be permanently green by construction if it
+// could only ask the live policy. DESIGN 4b says to ask whether the RED is authorable before
+// writing the check; taking the spec is what keeps it authorable, exactly as the fixture-authored
+// slot shape does for the runner width.
+fn supersession_available_under(spec: CancelInProgressSpec, event: String) -> Bool {
+  match spec {
+    CancelInProgressBool { value: b } => b
+    CancelInProgressExpression { expression: e } => string_contains(s: e, pattern: event)
+  }
 }
 
 // WHETHER A REPLACEMENT RUN WAS OBSERVED IS THREE STATES, AND COLLAPSING THE LAST TWO IS THE
@@ -146,13 +174,18 @@ type RunDisposition
 // spelling lands in DispositionOtherSettlement carrying its own name rather than inheriting a
 // neighbour's remedy.
 fn classify_run(record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+  classify_run_under(spec: witness_floor_cancel_in_progress, record: record, replacement: replacement)
+}
+
+fn classify_run_under(spec: CancelInProgressSpec, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
   match workflow_run_settlement(record: record) {
     RunSettlementInFlight => DispositionInFlight
-    RunSettled { conclusion: c } => classify_settled(record: record, conclusion: c, replacement: replacement)
+    RunSettled { conclusion: c } => classify_settled(spec: spec, record: record, conclusion: c, replacement: replacement)
   }
 }
 
 fn classify_settled(
+  spec: CancelInProgressSpec,
   record: WorkflowRunRecord,
   conclusion: RunConclusion,
   replacement: ReplacementObservation
@@ -160,7 +193,7 @@ fn classify_settled(
   match conclusion {
     RunSuccess => DispositionVerdictGreen
     RunFailure => DispositionVerdictRed
-    RunCancelled => classify_cancellation(record: record, replacement: replacement)
+    RunCancelled => classify_cancellation(spec: spec, record: record, replacement: replacement)
     RunSkipped => DispositionOtherSettlement { conclusion: conclusion }
     RunTimedOut => DispositionOtherSettlement { conclusion: conclusion }
     RunActionRequired => DispositionOtherSettlement { conclusion: conclusion }
@@ -178,8 +211,8 @@ fn classify_settled(
 // run report `supersession_was_available: false` -- a strictly stronger statement than "no
 // replacement was found", and the reason the two main-branch specimens in the measured window are
 // non-benign by construction rather than merely unexplained.
-fn classify_cancellation(record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
-  if !supersession_available_for_event(event: record.event) {
+fn classify_cancellation(spec: CancelInProgressSpec, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+  if !supersession_available_under(spec: spec, event: record.event) {
     DispositionExternallyCancelled { supersession_was_available: false }
   } else {
     match replacement {
