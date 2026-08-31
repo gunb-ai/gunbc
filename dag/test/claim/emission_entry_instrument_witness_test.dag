@@ -65,7 +65,7 @@ test fn cargo_population_carries_identity_and_location_per_finding() -> Bool {
 
 test fn the_primary_span_is_selected_by_its_flag_not_by_position() -> Bool {
   scanned_rows(lines: [e0599_line_secondary_first, build_finished_line])
-    == ["E0599\terror\tsrc/a.rs:12:7\tprobe diagnostic"]
+    == ["src/a.rs:12:7\tE0599\tprobe diagnostic"]
 }
 
 // RED: an UNREADABLE primary flag is not a well-formed `false`. The pair below is the whole point:
@@ -83,7 +83,7 @@ test fn a_well_formed_false_primary_flag_still_reads_as_an_unlocated_finding() -
 
 test fn an_uncoded_diagnostic_is_a_member_not_an_absence() -> Bool {
   scanned_rows(lines: [uncoded_line, build_finished_line])
-    == ["uncoded\terror\t(no span)\tprobe diagnostic"]
+    == ["(no span)\tuncoded\tprobe diagnostic"]
 }
 
 test fn every_message_is_kept_so_two_findings_are_two_rows() -> Bool {
