@@ -340,12 +340,29 @@ fn disposition_in_verdict_bearing_denominator(disposition: RunDisposition) -> Bo
 // stating what it partitioned on. So the report carries the rule as data rather than leaving it to
 // a reader's recollection, and a consumer changing the rule changes the text that ships with the
 // number.
+// THE RULE TEXT IS DERIVED FROM THE POLICY, NOT RESTATED BESIDE IT. It previously interpolated the
+// declared event name, which read correctly only while the policy could name an event. Under an
+// unconditional false the honest sentence is a different one, and a consumer reading the report
+// must be told which regime produced the numbers.
+fn supersession_availability_rule_text() -> String {
+  match witness_floor_cancel_in_progress {
+    CancelInProgressBool { value: b } =>
+      if b {
+        "cancellation may be lawful for EVERY event (witnesses.yml cancel-in-progress is unconditionally true)"
+      } else {
+        "no cancellation can be lawful: witnesses.yml cancel-in-progress is unconditionally false, so every cancelled run is an eviction by construction"
+      }
+    CancelInProgressExpression { expression: e } =>
+      concat("cancellation can be lawful only where this expression holds: ", concat(e, "; any other event is external by construction"))
+  }
+}
+
 fn classifier_rule_rows() -> List<String> {
   [
     "rule\tsettled-only\ta run with status != completed is in-flight and is not classified",
     concat(
-      "rule\tsupersession-availability\tcancellation can be lawful only for event=",
-      concat(witness_floor_cancel_in_progress_event, " (witnesses.yml cancel-in-progress); any other event is external by construction")
+      "rule\tsupersession-availability\t",
+      supersession_availability_rule_text()
     ),
     "rule\treplacement-sign\tlag = (this run concluded) - (replacement created); lag >= 0 is supersession, lag < 0 is a retry AFTER the cancel and is external",
     "rule\tunobserved-is-not-absent\ta replacement that could not be observed is attribution-unestablished, never external",
