@@ -29,6 +29,17 @@ import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedIt
 // refuses a withdrawal whose node is still declared. The seed only transports the arm across the
 // JSONL boundary. If any policy about withdrawal were ever decided inside these items, this
 // classification would be wrong and the row would have to change with it.
+// THE PREFIX LAW THE RENAMED TEST NOW CHECKS. Its own authority, not the disposition arm's: the
+// test asserts gunbc.roadmap_model acceptance_history_extends_prior, which is a different question
+// from which revocation arm a node took.
+fn roadmap_acceptance_prefix_law_dag_authority() -> DeclarationRef {
+  DeclarationRef {
+    module_path: "gunbc.roadmap_model",
+    decl_name: "acceptance_history_extends_prior",
+    field: WholeDeclaration
+  }
+}
+
 fn roadmap_acceptance_disposition_dag_authority() -> DeclarationRef {
   DeclarationRef {
     module_path: "gunbc.roadmap_model",
@@ -38,6 +49,8 @@ fn roadmap_acceptance_disposition_dag_authority() -> DeclarationRef {
 }
 
 data roadmap_acceptance_codec_boundary: String = "JSONL <-> typed RoadmapAcceptanceEvent transport only. The codec maps each AcceptanceRevocationDisposition arm to and from its internally tagged snake_case wire spelling and refuses an unrecognised variant name rather than defaulting to one. It decides no lifecycle question: whether a withdrawal is legitimate, whether its node may still be declared, and whether the history extends its prior prefix are all answered in gunbc.roadmap_model by acceptance_disposition_agreement, acceptance_history_integrity_verdict and replay_acceptance_event, none of which the seed implements."
+
+data roadmap_acceptance_prefix_test_boundary: String = "Asserts one property of the committed carrier: the merge-base bootstrap projection is an exact SERIALIZED PREFIX of the current carrier, so no prior event may be edited, reordered or dropped while an append is admitted. THE RENAME IS THE FOURTH ROW'S WHOLE CONTENT AND IS WHY IT IS DISPOSITIONED RATHER THAN LEFT SILENT: at item-identity grain merge_base_authority_projection_matches_jsonl_carrier departed and bootstrap_authority_projection_is_jsonl_carrier_prefix arrived, so a census reading identities sees an addition even though no capability was added and no second authority was minted. The old name asserted EQUALITY, which had never been asked of a carrier that moved and which would have refused every future acceptance as well as this withdrawal; keeping that name over prefix behaviour would have left the identity lying about the assertion. It decides no lifecycle question -- acceptance_history_extends_prior in gunbc.roadmap_model owns the law and this item only executes it against the committed bytes."
 
 data roadmap_acceptance_codec_seed_dispositions: List<SeedGrowthChangeDisposition> = [
   ExistingSeedItemModified {
@@ -57,5 +70,11 @@ data roadmap_acceptance_codec_seed_dispositions: List<SeedGrowthChangeDispositio
     dag_authority: roadmap_acceptance_disposition_dag_authority(),
     capability_origin: NoNewCapability,
     current_boundary: roadmap_acceptance_codec_boundary
+  },
+  ExistingSeedItemModified {
+    item: DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "bootstrap_authority_projection_is_jsonl_carrier_prefix", field: WholeDeclaration },
+    dag_authority: roadmap_acceptance_prefix_law_dag_authority(),
+    capability_origin: NoNewCapability,
+    current_boundary: roadmap_acceptance_prefix_test_boundary
   }
 ]
