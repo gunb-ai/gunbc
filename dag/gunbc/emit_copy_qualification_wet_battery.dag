@@ -85,9 +85,9 @@ fn runner_file_redundant_clone_count(verdicts: List<EmitCopyQualification>) -> I
   ) |> count
 }
 
-// Redundant SHARE clone shard: the plant is a pre-window String-typed redundant clone in the
-// runner (instrument boundary: clippy's redundant_clone does not report Rc-family clones, so a
-// carrier-typed share clone is invisible to the static arm — see the plant note in
+// Redundant SHARE clone shard: the plant is a pre-window String-typed redundant clone hoisted
+// above the case loops (instrument boundary: clippy's redundant_clone does not fire on the same
+// clone-last-use shape inside a loop — see the plant note in
 // gunbc.emit_copy_qualification_fixture_gen). The calibration proves the static arm reds on a
 // planted redundant clone in the runner file while the runtime arm stays unmoved.
 fn ecq_calibration_redundant_share_clone_reds_static_only_holds() -> Bool {

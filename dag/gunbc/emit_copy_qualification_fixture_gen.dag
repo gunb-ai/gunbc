@@ -492,13 +492,13 @@ fn runner_arg_expr(mutant: MutantPlan, c: CarrierRealization, subject_arg_is_car
   }
 }
 
-// The pre-window plant is String-typed on purpose (instrument boundary, measured 2026-08-31):
-// clippy's redundant_clone is MIR-based and does not report clones of Rc-family values (that
-// class belongs to clone_on_ref_ptr), so a carrier-typed plant on a share-realized carrier is
-// invisible to the static arm — clean and mutant shards produced byte-equal finding counts.
-// A String clone whose binding's last use is the clone is the repro-proven shape that fires
-// inside src/bin targets. The plant sits before the window opens, so the runtime arm is
-// untouched and the share calibration stays static-only.
+// The pre-window plant is String-typed and hoisted above the case loops on purpose (instrument
+// boundary, measured 2026-08-31): clippy's redundant_clone did not report the planted clone when
+// it sat inside the case's for-loops — the identical clone-last-use shape fires at fn top level
+// (matrix: LOOP_CASE=0, TOP_CASE=2, global allocator innocent at ALLOC_CASE=2) — so a plant
+// inside the repeat loop is invisible to the static arm regardless of its type. The plant sits
+// before any window opens, so the runtime arm is untouched and the share calibration stays
+// static-only.
 fn mutant_plants_pre_call_clone(mutant: MutantPlan) -> Bool {
   match mutant {
     PlantRedundantShareClone => true
@@ -524,14 +524,14 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let l_rep = concat("        for _rep in 0..", concat(to_string(runner_repeat_count), " {\n"))
   let l_input = concat("            let input = ", concat(input_expr, ";\n"))
   let l_plant = if mutant_plants_pre_call_clone(mutant: mutant) {
-    "            let planted = format!(\"{:?}\", n); ecq_sink(planted.clone());\n"
+    "    let planted = format!(\"{:?}\", 0i64); ecq_sink(planted.clone());\n"
   } else { "" }
   let l_window = concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
   let l_scalar = "            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n"
   let l_push = "            seen.push((r_scalar, o, b));\n        }\n"
   let l_ok = concat("        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, " n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n"))
   let l_bad = concat("        } else {\n            println!(\"case=", concat(slug, " n={} observation=nondeterministic\", n);\n        }\n    }\n"))
-  concat(l_for, concat(l_seen, concat(l_rep, concat(l_input, concat(l_plant, concat(l_window, concat(l_scalar, concat(l_push, concat(l_ok, l_bad)))))))))
+  concat(l_plant, concat(l_for, concat(l_seen, concat(l_rep, concat(l_input, concat(l_window, concat(l_scalar, concat(l_push, concat(l_ok, l_bad)))))))))
 }
 
 // The subject's return is Int-realized; the scalar reader tolerates either the bare or the
