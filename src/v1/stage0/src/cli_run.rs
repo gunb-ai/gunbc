@@ -15784,6 +15784,47 @@ pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result
     Ok(subject_digest_for_closure(&sources))
 }
 
+/// THE TREE-ONLY CLOSURE SUBJECT OF ONE ENTRY, and it is deliberately NOT
+/// `closure_subject_for_entry` above.
+///
+/// `subject_digest_for_closure` folds TWO axes: the closure's `.dag` content and
+/// `transform_content_digest()`, which hashes the bytes of the RUNNING EXECUTABLE
+/// (`/proc/self/exe`). In a resolve CACHE key that second axis is correct and load-bearing — an
+/// artifact produced by one compiler must not be served to another — which is why the shared
+/// function keeps it and this one does not replace it.
+///
+/// It is wrong in a SEMANTIC SUBJECT, and measurably so. The wet-lane receipt's
+/// candidate-exactness test is `envelope.subject_digest == computed_subject_digest`, where the
+/// envelope is written by `claim_batch` and the equality is checked by `claim_executor`. Two
+/// different executables hash to two different transform digests, so that equality was
+/// UNSATISFIABLE BY CONSTRUCTION on every tree, in every event, for as long as the subject
+/// carried the transform axis — the floor refused seven consecutive landing cycles for a
+/// staleness that never existed. The receipt that pinned it: a one-line edit to a `.rs` file
+/// touching zero `.dag` moved the "semantic" subject digest from 5cc866cd221e7b56 to
+/// 846ead7b689b7ead on one commit and one pristine checkout, while
+/// `wet_executor_contract_digest` moved too — correctly, that one is ABOUT the seed bytes.
+///
+/// The executor axis is not lost by removing it here: `wet_executor_contract_digest` carries it
+/// as its own declared axis over its own declared input roster, checked by its own standing arm
+/// (`ReceiptExecutorSnapshotDifferent`). Folding the running image into the semantic subject
+/// double-counted that axis and destroyed the semantic one; this restores the §3 split the wet
+/// route's own carrier already describes. The enrolled RED is
+/// `v2.test.floor_wet_route.wet_subject_is_independent_of_the_running_binary`.
+pub fn wet_closure_subject_for_entry(
+    index: &MultiEntryIndex,
+    entry: &str,
+) -> Result<String, String> {
+    let sources = load_sources_for_entry_with_pool(index, entry)?;
+    Ok(wet_closure_subject(&sources))
+}
+
+/// The tree-only subject itself, split out from the entry loader so the wall that keeps it
+/// tree-only is assertable on synthetic sources without resolving the corpus. Enrolled RED:
+/// `wet_subject_is_independent_of_the_running_binary`.
+pub fn wet_closure_subject(sources: &[Rc<v1_compiler_compile::SourceFile>]) -> String {
+    crate::resolved_graph_cache::closure_content_digest(sources)
+}
+
 pub fn failure_receipt_companion(function: &str) -> FailureReceiptCompanionLookup {
     test_module_hygiene_bridge::failure_receipt_companion_from_authority(function)
 }

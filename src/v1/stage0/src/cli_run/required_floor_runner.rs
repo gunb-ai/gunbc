@@ -352,16 +352,19 @@ pub fn wet_receipt_tsv_projection(envelope: &WetReceiptEnvelope) -> String {
     out
 }
 
-/// THE WET SUBJECT DIGEST — the receipt's validity key (parent amendment 2026-08-30):
-/// sha256 over the sorted per-entry closure subjects of every roster row plus the closure
-/// subject of the route authority module itself, so a change to any routed witness, its
-/// import closure, the harness .dag implementation, the roster, or the receipt contract
-/// moves the digest, while a change outside those closures does not. Computed identically by
-/// the lane (producer) and the required floor (consumer) from the same resolver, which is
-/// what makes candidate-exactness a decidable equality. The DECLARED subject-universe
-/// exclusion is `v2.workflow.floor_wet_route.wet_subject_digest_exclusions`: the seed-Rust
-/// harness binaries are outside it.
-pub fn wet_subject_digest(source_roots: &[String]) -> Result<String, String> {
+/// THE PER-ENTRY WET SUBJECT — the named instrument behind `wet_subject_digest` (DESIGN §6:
+/// name the producer, never transcribe its output).
+///
+/// The aggregate sha can say only THAT a producer and a consumer disagree; it cannot say WHERE,
+/// and a disagreement whose locus is unreadable is the one that survives. This one did, for
+/// seven landing cycles: the floor printed `envelope carries X but this tree computes Y` every
+/// run, and there was no way to ask which entry moved. Every caller of the digest folds THIS,
+/// so the producer's list and the consumer's list diff directly, entry by entry.
+///
+/// Returned sorted and deduplicated by entry, so two runs' lists are comparable positionally.
+pub fn wet_subject_entry_subjects(
+    source_roots: &[String],
+) -> Result<Vec<(String, String)>, String> {
     let rows = wet_route_lane_rows(source_roots)?;
     let index = process_shared_index(source_roots);
     let mut entries: Vec<&str> = vec!["src/v2/workflow/floor_wet_route.dag"];
@@ -370,12 +373,40 @@ pub fn wet_subject_digest(source_roots: &[String]) -> Result<String, String> {
     }
     entries.sort_unstable();
     entries.dedup();
-    let mut subjects: Vec<String> = Vec::new();
+    let mut pairs: Vec<(String, String)> = Vec::new();
     for entry in entries {
-        let subject = closure_subject_for_entry(&index, entry)
+        let subject = wet_closure_subject_for_entry(&index, entry)
             .map_err(|e| format!("wet_subject_digest: closure subject for {entry}: {e}"))?;
-        subjects.push(subject);
+        pairs.push((entry.to_string(), subject));
     }
+    Ok(pairs)
+}
+
+/// THE WET SUBJECT DIGEST — the receipt's validity key (parent amendment 2026-08-30):
+/// sha256 over the sorted per-entry closure subjects of every roster row plus the closure
+/// subject of the route authority module itself, so a change to any routed witness, its
+/// import closure, the harness .dag implementation, the roster, or the receipt contract
+/// moves the digest, while a change outside those closures does not. The DECLARED
+/// subject-universe exclusion is `v2.workflow.floor_wet_route.wet_subject_digest_exclusions`:
+/// the seed-Rust harness binaries are outside it.
+///
+/// IT IS A FUNCTION OF THE TREE AND OF NOTHING ELSE, which is what makes candidate-exactness a
+/// decidable equality — and which this function did NOT establish until 2026-08-31. It folded
+/// `closure_subject_for_entry`, whose digest mixes in the bytes of the running executable, so
+/// the producer (`claim_batch`) and the consumer (`claim_executor`) — different binaries —
+/// could never agree, on any tree. An earlier revision of this note asserted the two computed
+/// it "identically from the same resolver": true about the resolver, false about the
+/// conclusion, and the false half is what every session planned against. It now folds
+/// `wet_closure_subject_for_entry`, which carries the `.dag` closure content alone; the seed
+/// executor keeps its own axis in `wet_executor_contract_digest`. The wall that keeps this
+/// honest is the enrolled RED
+/// `v2.test.floor_wet_route.wet_subject_is_independent_of_the_running_binary`.
+pub fn wet_subject_digest(source_roots: &[String]) -> Result<String, String> {
+    let pairs = wet_subject_entry_subjects(source_roots)?;
+    for (entry, subject) in &pairs {
+        eprintln!("[wet-subject] entry={entry} closure_subject={subject}");
+    }
+    let mut subjects: Vec<String> = pairs.into_iter().map(|(_, subject)| subject).collect();
     subjects.sort_unstable();
     use sha2::Digest as _;
     let mut hasher = sha2::Sha256::new();
@@ -907,6 +938,95 @@ pub fn write_wet_receipt_envelope(
     std::fs::write(tsv_path, wet_receipt_tsv_projection(&envelope))
         .map_err(|e| format!("write_wet_receipt_envelope: write {tsv_path}: {e}"))?;
     Ok(())
+}
+
+#[cfg(test)]
+mod wet_subject_transform_independence_tests {
+    use super::*;
+    use crate::resolved_graph_cache::{
+        derive_subject_digest, subject_digest_for_closure, KeyInputMaterials,
+    };
+
+    // A NON-DEGENERATE CLOSURE. An empty source list makes both digests fold to their seed
+    // constant, and two constants comparing unequal would prove nothing about real content —
+    // the assertions below would hold by construction and keep holding after the wall was gone.
+    fn two_module_closure() -> Vec<std::rc::Rc<v1_compiler_compile::SourceFile>> {
+        vec![
+            std::rc::Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/test/claim/a_test.dag".to_string(),
+                content: "module test.claim.a\nfn holds() -> Bool { true }\n".to_string(),
+            }),
+            std::rc::Rc::new(v1_compiler_compile::SourceFile {
+                path: "dag/test/claim/b_test.dag".to_string(),
+                content: "module test.claim.b\nfn holds() -> Bool { false }\n".to_string(),
+            }),
+        ]
+    }
+
+    // THE DISCRIMINATING RED FOR THE SEVEN-CYCLE DEFECT, enrolled permanently rather than
+    // retired now that it greens (DESIGN 4b, dissolution-on-climb: the production machinery
+    // dissolves, the evidence stays).
+    //
+    // WHAT WENT WRONG. The wet-lane receipt's candidate-exactness test is
+    // `envelope.subject_digest == computed_subject_digest`. The envelope is written by
+    // `claim_batch`; the equality is checked by `claim_executor`. The subject folded
+    // `subject_digest_for_closure`, which mixes `transform_content_digest()` — the bytes of the
+    // RUNNING EXECUTABLE — into the digest. Two binaries, two digests, so that equality was
+    // unsatisfiable BY CONSTRUCTION on every tree in every event, and the floor refused seven
+    // consecutive landing cycles for a staleness that did not exist.
+    //
+    // WHY THIS SHAPE. Spawning two real executables inside a lib test would measure the build
+    // rather than the property, so the transform axis is varied directly and the wet subject is
+    // required not to move with it. Each assertion is paired with the positive control that
+    // makes it discriminating: without them a wall that had been removed would still read green.
+    #[test]
+    fn wet_subject_is_independent_of_the_running_binary() {
+        let sources = two_module_closure();
+        let closure = wet_closure_subject(&sources);
+        let transform_a = crate::v1_rt::atom_identity_hash("binary-claim-batch".to_string());
+        let transform_b = crate::v1_rt::atom_identity_hash("binary-claim-executor".to_string());
+
+        // POSITIVE CONTROL: varying the transform digest genuinely moves a digest that folds
+        // it. Correct for the resolve cache — an artifact built by one compiler must not be
+        // served to another — and it proves the variation below is real rather than inert.
+        assert_ne!(
+            derive_subject_digest(&KeyInputMaterials::new(closure.clone(), transform_a)),
+            derive_subject_digest(&KeyInputMaterials::new(closure.clone(), transform_b)),
+            "positive control failed: varying the transform digest did not move a subject that              folds it, so this test cannot discriminate and the wall below proves nothing"
+        );
+
+        // THE WALL. The wet semantic subject is the .dag closure content and nothing else, so
+        // it is NOT the cache subject. Re-pointing `wet_closure_subject` at
+        // `subject_digest_for_closure` — which is exactly the defect — reds this line.
+        assert_ne!(
+            wet_closure_subject(&sources),
+            subject_digest_for_closure(&sources),
+            "the wet semantic subject folded the running executable's bytes: producer and              consumer are different binaries, so candidate-exactness is now unsatisfiable on              every tree"
+        );
+    }
+
+    // THE SUBJECT MOVES ON WHAT IT CLAIMS TO MEASURE. A tree-only digest that ignored content
+    // would satisfy the test above trivially, so the same wall needs its other half: .dag
+    // content changes the subject, and nothing else does.
+    #[test]
+    fn the_wet_subject_moves_on_dag_content() {
+        let sources = two_module_closure();
+        let mut edited = two_module_closure();
+        std::rc::Rc::get_mut(&mut edited[1]).unwrap().content =
+            "module test.claim.b\nfn holds() -> Bool { true }\n".to_string();
+        assert_ne!(
+            wet_closure_subject(&sources),
+            wet_closure_subject(&edited),
+            "the wet subject did not move when a routed module's .dag content changed, so it              cannot detect the staleness it exists to detect"
+        );
+        // And it is stable across repeated computation on identical content — the property the
+        // producer and the consumer rely on when they compare across two processes.
+        assert_eq!(
+            wet_closure_subject(&sources),
+            wet_closure_subject(&two_module_closure()),
+            "the wet subject is not a function of content alone"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -542,6 +542,34 @@ data wet_time_scalar_dissolve_on: DissolutionCondition = unbound_dissolution(
   description: "🟡 workaround: wet_time_scalar parameter-position identity bridging refined time scalars (EpochSecs/Seconds) to Int arithmetic. dissolve-on: refined-scalar coercion is modeled in the interpreter — an `as` cast (or subtype-widening rule) from a where-refined scalar to its base Int that evaluates, sufficient for `EpochSecs as Int` and `Seconds as Int` to run under gunbc run — at which point every wet_time_scalar call site converts to the modeled coercion and this function deletes; the roadmap_forecast EpochMs-difference-into-millisecond(count:) site is the same debt and dissolves on the same capability." as NonEmptyStr,
 )
 
+// THE HAND-COMMITTED ENVELOPE ON A PULL-REQUEST BRANCH — a declared out-of-band actuation,
+// not a silent one (DESIGN §6: a hand-authored actuation step is presumed scaffold until it
+// carries its dissolution).
+//
+// WHAT IS HAND-ACTUATED. `gunbc.witness_floor_workflow`'s wet-receipts job commits the receipt
+// pair and opens its pull request only under `github.ref == refs/heads/main`. On a PR branch the
+// lane still EXECUTES and still uploads the pair as the `wet-lane-receipt` artifact, but nothing
+// commits it — so a candidate whose landing requires a fresh envelope has its receipt fetched
+// from the run artifact and committed by hand. That is a human step inside a mechanism whose
+// whole purpose is that no verdict is hand-supplied, and it is declared here rather than left to
+// be rediscovered.
+//
+// WHY IT IS NOT A HOLE. The committed bytes are not trusted for being committed: the floor
+// re-projects the TSV from the JSON and refuses on drift, re-computes the subject and executor
+// digests from the tree and refuses on mismatch, and joins the roster at identity grain. A
+// hand-committed envelope that says anything the tree does not support is refused exactly as a
+// lane-committed one would be. What the hand step can do is DELAY a receipt, never fabricate one.
+//
+// DISSOLVES WHEN the wet-receipts commit step's ref gate widens from `refs/heads/main` to the
+// candidate branch — the capability being: the lane itself commits its receipt pair onto the head
+// it executed, on any branch a required floor can gate, with no human retrieval step between
+// execution and receipt. A change that merely uploads the artifact more conveniently, or that
+// automates the fetch from outside the lane, does NOT retire this row: the trigger is the lane
+// writing its own receipt where it ran.
+data wet_receipt_pr_branch_hand_commit_dissolve_on: DissolutionCondition = unbound_dissolution(
+  description: "🟡 out-of-band actuation: the wet-lane receipt envelope is fetched from the run artifact and committed by hand on a pull-request branch, because gunbc.witness_floor_workflow gates its commit-and-open-PR step to refs/heads/main. dissolve-on: that ref gate widens so the wet-receipts lane commits its own receipt pair onto the head it executed on any branch a required floor gates — no human retrieval between execution and receipt. Conveniences around the fetch do not retire this row." as NonEmptyStr,
+)
+
 // THE GATE DISPOSITION — the canonical fold the blocking polarity consumes (review 57656:
 // a coproduct must not be flattened to Bool at the consumer; the algebra lives here).
 // Exactly one arm admits, carrying the admission's own evidence; `WetFloorRefused` carries
