@@ -1,0 +1,57 @@
+module test.claim.spark.spark_serving_fixture_admission_witness_test
+
+import std.types { Bool, Int, String }
+import gunbc.compile_diagnostic_census {
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count,
+}
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// The census compiles the sources below against the live tree, which is why this evidence lives in
+// its own entry rather than beside the transaction claims: those are pure and must stay pure.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+// ── THE FIXTURE'S OWN ADMISSION WALL, EXECUTED ─────────────────────────────────────────────────
+//
+// Every fixture function that returns a production-accepted capture, request, transaction,
+// provenance or observation carries admit_callers naming its exact consumers. That seal is a
+// CLAIM until something is refused by it: "no production module imports the fixture today" is
+// occupancy, and occupancy is not a wall -- the next module to import it would be admitted by
+// the same silence.
+//
+// So the red below hands the compiler a module that explicitly imports and calls
+// hermetic_acquired_observation from a declaration no roster names. It must refuse
+// ConstructorCallAdmissionRefused on the real acceptance path. The green control beside it is
+// what keeps this from being a wall that refuses everyone: an identical call shape reaching the
+// same fixture through a route the roster DOES admit compiles clean.
+//
+// PATH SCOPE, per DESIGN 4b: this is source -> .dag acceptance. The wall sits in inference's
+// admission arm, so nothing reaches emission through an unadmitted caller, but that is where the
+// wall sits rather than a second measurement and is not claimed as one.
+fn fixture_violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } =>
+      census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+data unadmitted_fixture_caller_source: String = "module probe_spark_fixture_trampoline\nimport test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_acquired_observation }\nimport gunbc.spark.serving_observe { SparkServingHostObservation }\nimport gunbc.spark.serving_observation_transaction { SparkServingPlanObservation }\nimport product.placement_supply { HostIdentity }\nfn unadmitted_acquire() -> SparkServingHostObservation? {\n  hermetic_acquired_observation(host: \"srv5\" as HostIdentity, phase: SparkServingPlanObservation, captures: [])\n}\n"
+
+data admitted_fixture_caller_source: String = "module probe_spark_fixture_admitted\nimport test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }\nimport gunbc.spark.serving_observe { SparkServingHostObservation }\nimport gunbc.spark.serving_observed_members { LingerObservedEnabled }\nimport product.placement_supply { HostIdentity }\nfn through_an_admitted_route() -> SparkServingHostObservation? {\n  hermetic_converged_observation(host: \"srv5\" as HostIdentity, linger: LingerObservedEnabled)\n}\n"
+
+test fn an_unadmitted_caller_of_the_acquisition_fixture_is_refused() -> Bool {
+  fixture_violation_count(
+    source: unadmitted_fixture_caller_source,
+    wanted: "ConstructorCallAdmissionRefused",
+  ) >= 1
+}
+
+test fn an_admitted_route_into_the_same_fixture_compiles_clean() -> Bool {
+  fixture_violation_count(
+    source: admitted_fixture_caller_source,
+    wanted: "ConstructorCallAdmissionRefused",
+  ) == 0
+}
