@@ -691,7 +691,7 @@ func fci1_live_reserve_and_observe_available(
   }
 }
 
-func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
+func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) {
   match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(root: root)) {
     RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
     RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
