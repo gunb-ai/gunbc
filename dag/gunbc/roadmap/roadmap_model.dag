@@ -711,10 +711,19 @@ fn acceptance_disposition_agreement(
 
 // THE LOCATED CAUSE, DERIVED FROM THE SAME COPRODUCT THE WITNESS MATCHES. A witness returning
 // Bool(false) is not diagnosable on its own: both refusal arms carry the offending node, and a
-// Bool discards it. claim_executor invokes the `_failure_receipt` companion on Bool(false), and the
-// companion asks THIS function, so the node reaches the operator without re-deriving the agreement
-// by hand. It is a projection to String, not a fold to Bool -- the three-arm distinction stays
-// readable in the value itself, exactly as acceptance_history_integrity_verdict_detail does below.
+// Bool discards it. This projection recovers it -- a projection to String, not a fold to Bool, so
+// the three-arm distinction stays readable in the value itself, exactly as
+// acceptance_history_integrity_verdict_detail does below.
+//
+// WHO CONSUMES IT, STATED EXACTLY, BECAUSE AN EARLIER VERSION OF THIS COMMENT CLAIMED MORE THAN WAS
+// TRUE. Its consumers are the three required-floor witnesses in test.claim.roadmap_authority:
+// withdrawn-but-still-declared and reopened-but-missing each read their node back out of this
+// String, and a third asserts the empty projection when agreement holds. It is NOT operator-facing
+// failure loudness: the required-floor failure terminal formats "<qualified> returned Bool(false)"
+// and routes no companion detail, measured on a real --required-floor run with a planted red whose
+// failure line carried none. Operator visibility is a separate runner-plumbing gap, and its trigger
+// is that a required-floor Bool(false) terminal derive and append the witness's typed diagnostic
+// through the actual gating path, with positive and missing-companion controls.
 fn acceptance_disposition_agreement_detail(agreement: AcceptanceDispositionAgreement) -> String {
   match agreement {
     AcceptanceDispositionAgreementHolds => ""
