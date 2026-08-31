@@ -7,6 +7,9 @@ import gunbc.stage0_crate_partition_generated {
   generated_partition_crate_rows
 }
 import gunbc.stage0_partition_package_graph {
+  stage0_host_shell_dependency_names,
+  stage0_host_shell_package_name,
+  stage0_next_pass_executable_bin_name,
   stage0_partition_package_dependency_names,
   stage0_partition_row_is_module_bearing_package
 }
@@ -68,7 +71,8 @@ type WholeCompilerRebuildCause
   | SharedCompilerBuildInputChanged { mirrors: List<String> }
 
 type RebuildScopeRefusalCause
-  = ChangedMirrorUnlocatable { mirrors: List<String>, reason: String }
+  = NoChangedMirrorsToRebuild
+  | ChangedMirrorUnlocatable { mirrors: List<String>, reason: String }
   | MirrorHasNoOwningPackage { mirror: String }
   | MirrorHasMultipleOwningPackages { mirror: String, packages: List<String> }
   | PackageDependencyClosureUnderivable { package_name: String, detail: String }
@@ -110,18 +114,57 @@ data rebuild_scope_shared_build_input_mirrors: List<String> = [
 
 // THE EXECUTABLE THE SECOND GENERATION RUNS, stated as a typed state rather than assumed.
 //
-// TODAY THERE IS NONE, and saying so is the whole point of the row. claim_executor is a [[bin]]
-// of the v1-compiler package, whose library declares the entire stage0 population -- including
-// every module the partition crates also compile by path include. Compiling an owning partition
-// crate and then running that binary would build one subset for validation and run a compiler
-// built from a second declaration of the same mirrors, so it is not the fixed-point proof the
-// round claims to perform and this module must not let a consumer mistake it for one.
+// IT IS ASSEMBLED NOW, and the capability its old trigger named is what changed. The host shell
+// package no longer declares the partition-owned mirrors a second time: it takes one path
+// dependency on the top module-bearing partition package and re-exports it
+// (v2.compiler.self_host.stage0_executable_assembly), so every module in the executable's closure
+// is compiled through exactly one admitted assembly surface and the binary cargo links from those
+// artifacts IS the next-pass compiler. The identities are read from the package graph rather than
+// spelled here, so a renamed shell or binary cannot leave a stale name in this arm.
+//
+// THE DECLARED DEBT THAT STOOD HERE IS RETIRED BY ITS TRIGGER AND BY NOTHING ELSE.
+// rebuild_scope_executable_assembly_dissolve_on named one capability, and the row is deleted
+// rather than kept with a satisfied condition, because a dissolution row that outlives its
+// trigger is a second, stale answer to a question the code now answers by executing. The
+// ExecutableAssemblyUnavailable ARM survives in the type and stays reachable through the
+// executable parameter, which keeps the refusing path under test rather than deleted with the
+// debt it used to describe.
 fn stage0_next_pass_executable_assembly() -> PartitionExecutableAssembly {
-  ExecutableAssemblyUnavailable {
-    trigger: PartitionedClaimExecutorAssembly {
-      capability: "building and running the next-pass claim_executor from partition artifacts alone, with every module in its closure owned by exactly one admitted assembly surface"
-    },
-    detail: "claim_executor is a bin of the monolithic v1-compiler package, whose library declares the partition-owned mirrors a second time; no executable can be assembled from the partition packages alone"
+  PartitionAssembledExecutable {
+    package_name: stage0_host_shell_package_name(),
+    bin_name: stage0_next_pass_executable_bin_name()
+  }
+}
+
+// THE EXECUTABLE IS A NODE OF THE SAME GRAPH, reached by the same rule as every other package: it
+// joins the rebuild set when one of ITS dependencies is already in it. Kept as a separate step
+// after the partition closure because the host shell is not a partition row -- it owns no mirror
+// the partition owns and no manifest is rendered for it -- so folding it into the row walk would
+// require fabricating a row whose only true field is its name.
+//
+// WHEN IT IS NOT REACHED, THE DECISION REFUSES rather than relinking anyway: an executable whose
+// closure does not contain the changed bytes would run the second generation on stale code, which
+// is the one outcome this whole transaction exists to make unwritable.
+//
+// ONLY THE HOST SHELL IS EXTENDED, because the graph knows edges for exactly two kinds of node:
+// the partition rows, and the shell. An executable declared as some OTHER package is left to the
+// coverage check below, which refuses unless the partition closure already reaches it -- the
+// alternative, assuming every declared executable inherits the shell's edges, would silently
+// admit a package whose dependencies nothing here has read.
+fn rebuild_scope_extend_with_executable(
+  closure: List<String>,
+  executable: PartitionExecutableAssembly
+) -> List<String> {
+  match executable {
+    ExecutableAssemblyUnavailable { trigger: _, detail: _ } => closure
+    PartitionAssembledExecutable { package_name: p, bin_name: _ } =>
+      if p != stage0_host_shell_package_name() {
+        closure
+      } else if count(rebuild_scope_intersect(left: stage0_host_shell_dependency_names(), right: closure)) > 0 {
+        rebuild_scope_push_new(items: closure, item: p)
+      } else {
+        closure
+      }
   }
 }
 
@@ -256,6 +299,13 @@ fn rebuild_scope_changed_in_roster(changed_mirrors: List<String>, roster: List<S
 // THE DECISION. `unlocatable` is the host's list of changed paths it could not name as a compared
 // mirror; a non-empty list refuses before anything else is asked, exactly as
 // gunbc.regen_affected_set EditedSetUnlocatable does, and for the same reason.
+//
+// AN EMPTY CHANGED SET IS ITS OWN ANSWER, asked SECOND -- after the unlocatable check, because a
+// path the host could not name is a failure to read the edit, not evidence that nothing changed. With nothing installed, no package can
+// have gone stale and no executable needs relinking -- and the arms below would otherwise reach
+// the executable-coverage check with an empty closure and report ExecutableAssemblyNotCovered,
+// which is a true sentence about a question nobody asked and a false one about the tree. A round
+// that installed nothing is not a round whose executable is uncovered.
 fn stage0_partition_rebuild_decision(
   changed_mirrors: List<String>,
   unlocatable: List<String>,
@@ -269,6 +319,8 @@ fn stage0_partition_rebuild_decision(
         reason: "a changed path could not be named as a compared mirror; the rebuild scope cannot answer, and it does not widen to the whole compiler"
       }
     }
+  } else if count(changed_mirrors) == 0 {
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild }
   } else {
     let generation = rebuild_scope_changed_in_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_partition_generation_mirrors)
     let shared = rebuild_scope_changed_in_roster(changed_mirrors: changed_mirrors, roster: rebuild_scope_shared_build_input_mirrors)
@@ -289,7 +341,8 @@ fn stage0_partition_rebuild_decision(
         match rebuild_scope_resolve_owners(changed_mirrors: changed_mirrors, rows: rows) {
           OwnerRefused { cause: c } => RebuildScopeRefused { cause: c }
           OwnerResolved { packages: owners } => {
-            let closure = rebuild_scope_reverse_closure(seeds: owners, rows: rows)
+            let partition_closure = rebuild_scope_reverse_closure(seeds: owners, rows: rows)
+            let closure = rebuild_scope_extend_with_executable(closure: partition_closure, executable: executable)
             match executable {
               ExecutableAssemblyUnavailable { trigger: t, detail: d } =>
                 PartitionRebuildScopeDerived {
@@ -376,6 +429,8 @@ fn stage0_partition_rebuild_decision_line(decision: PartitionRebuildDecision) ->
       concat("partition-rebuild: WholeCompilerRebuildRequired partition_generation_authority=[", concat(rebuild_scope_join(items: ms), "]"))
     WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: ms } } =>
       concat("partition-rebuild: WholeCompilerRebuildRequired shared_build_input=[", concat(rebuild_scope_join(items: ms), "]"))
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } =>
+      "partition-rebuild: RebuildScopeRefused NoChangedMirrorsToRebuild"
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: ms, reason: r } } =>
       concat(concat("partition-rebuild: RebuildScopeRefused ChangedMirrorUnlocatable mirrors=[", rebuild_scope_join(items: ms)), concat("] reason=", r))
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } =>
@@ -391,4 +446,68 @@ fn stage0_partition_rebuild_decision_line(decision: PartitionRebuildDecision) ->
 
 data rebuild_scope_owner_resolution_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: rebuild_scope_resolve_owners — repoint v1.compiler.stage0_crates stage0_lookup_module_owner_package_name at this refusing resolver so one answer serves both consumers. Held back here because that lookup is on the partition EMIT path, where a duplicate owner is already caught by rustc as a duplicated pub mod, and moving it is a change to a load-bearing generated-artifact producer rather than to this selector.")
 
-data rebuild_scope_executable_assembly_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_next_pass_executable_assembly — flips ExecutableAssemblyUnavailable to PartitionAssembledExecutable when the CAPABILITY named by its trigger exists: building and running the next-pass claim_executor from partition artifacts alone, with every module in its closure owned by exactly one admitted assembly surface and the monolithic v1-compiler library no longer declaring the partition-owned mirrors a second time. Until then stage0_partition_rebuild_is_actuatable is false for every live decision, and the authoritative rebuild_from_installed path stays the monolithic build.")
+
+// THE THREE QUESTIONS A HOST ASKS BEFORE IT SPAWNS cargo, each answered by the model and none of
+// them re-derived on the Rust side. The host owns the actuation -- spawning the build, reading
+// what cargo says it compiled -- and owns no part of the decision.
+//
+// THEY ARE SEPARATE ENTRY POINTS AND NOT ONE RENDERED STRING because the host must COMPARE, not
+// print: the exclusion is the guarantee this transaction makes, so the packages that must not be
+// compiled have to arrive as identities the host can join against cargo's own output. The
+// decision line stays the receipt's rendering; these are its actuation surface.
+//
+// A CLOSURE IS READ ONLY AFTER `is_actuatable` SAYS YES. The empty list an unactuatable decision
+// returns is not an answer and the host must not treat it as one -- it refuses on the decision
+// line instead, with no build attempted and no monolithic fallback.
+fn stage0_partition_rebuild_is_actuatable_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>
+) -> Bool {
+  stage0_partition_rebuild_is_actuatable(
+    decision: stage0_partition_rebuild_decision_today(
+      changed_mirrors: changed_mirrors,
+      unlocatable: unlocatable
+    )
+  )
+}
+
+fn stage0_partition_rebuild_packages_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>
+) -> List<String> {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: changed_mirrors, unlocatable: unlocatable) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: c, executable_assembly: _ } => c
+    WholeCompilerRebuildRequired { cause: _ } => []
+    RebuildScopeRefused { cause: _ } => []
+  }
+}
+
+// THE PACKAGES THAT MUST NOT BE COMPILED. Reported to the host as identities so a build that
+// touches one of them is a located refusal rather than an unnoticed widening: an exclusion no
+// consumer can read is not evidence of anything, and this is the exclusion the whole
+// change-denominated claim rests on. The emit shell is a partition package, so it appears here
+// whenever the changed mirrors do not reach it.
+fn stage0_partition_rebuild_excluded_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>
+) -> List<String> {
+  rebuild_scope_excluded_packages(
+    closure: stage0_partition_rebuild_packages_today(
+      changed_mirrors: changed_mirrors,
+      unlocatable: unlocatable
+    ),
+    rows: generated_partition_crate_rows
+  )
+}
+
+fn stage0_partition_rebuild_decision_line_today(
+  changed_mirrors: List<String>,
+  unlocatable: List<String>
+) -> String {
+  stage0_partition_rebuild_decision_line(
+    decision: stage0_partition_rebuild_decision_today(
+      changed_mirrors: changed_mirrors,
+      unlocatable: unlocatable
+    )
+  )
+}

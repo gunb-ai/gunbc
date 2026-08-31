@@ -8,6 +8,10 @@ use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::
 pub use crate::gunbc_stage0_crate_partition_generated::{
     GeneratedPartitionCrateKind, GeneratedPartitionCrateRow,
 };
+pub use crate::gunbc_stage0_executable_assembly_generated::{
+    generated_host_shell_package_name, generated_host_shell_partition_dependencies,
+    generated_next_pass_bin_name,
+};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List};
 use crate::v1_rt;
@@ -56,4 +60,16 @@ pub fn stage0_partition_package_dependency_names(
             stage0_partition_module_bearing_package_names()
         }
     }
+}
+
+pub fn stage0_host_shell_package_name() -> String {
+    generated_host_shell_package_name()
+}
+
+pub fn stage0_host_shell_dependency_names() -> Rc<Vec<String>> {
+    generated_host_shell_partition_dependencies()
+}
+
+pub fn stage0_next_pass_executable_bin_name() -> String {
+    generated_next_pass_bin_name()
 }
