@@ -1,0 +1,153 @@
+module test.claim.emit_copy_qualification_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.emit_copy_qualification {
+  CopyQualificationCell,
+  CopyReceiverShape,
+  PositionDirectReturn,
+  PositionDuplicatedArgument,
+  PositionReturnedClosureCapture,
+  ReceiverAggregateNonCopy,
+  ReceiverMachineScalar,
+  ReceiverSharedContainer,
+  copy_cell_expected_absent,
+  copy_cell_expected_present,
+  copy_cells_for_shape,
+  copy_fixture_path,
+  copy_fixture_source
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Executing floor witness qualifying the PRODUCTION Rust emitter's copy/share behavior over a
+// DERIVED population -- the product of gunbc.emit_copy_qualification's two axes, three receiver
+// shapes by three use positions, nine cells with no cell authored and no cell excluded. The
+// consumer is compile_dag_rust_emit_check, the per-PR enrolled real-emitter arm, so every row runs
+// the source->Rust-emission path the `gunbc compile --target rust` binary reaches (v1.compiler.
+// emit_rust; the v2 wrap_decision_gate is not compiled into the binary and is not qualified here).
+//
+// WHAT THIS QUALIFIES, on two axes that a bare ".clone() is present" observation collapses into
+// one. CloneMinimality: the emitter must emit a copy exactly where the position semantically needs
+// one -- bare on a direct return, cloned into a returned closure's capture and at a duplicated
+// argument. CopyRealizationCost: what that copy costs once realized. Both expectations are DERIVED
+// in the model from a semantic oracle and a measured realization, never authored per cell, so the
+// check compares the emitter to a ground rather than to its own output.
+//
+// THE MEASURED RESULT THIS LOCKS IN, and it is a qualification rather than an indictment: over all
+// nine cells the emitter's copy decision tracks the position oracle exactly, and it is INDEPENDENT
+// of the receiver shape -- the same three answers on an aggregate, a scalar and a container. On the
+// cost axis Widget and FreeMonoid<Widget> both realize Rc<...> while Int realizes bare, so every
+// non-scalar copy emitted here is a refcount increment. NO REDUNDANT CLONE AND NO REALIZED DEEP
+// COPY EXISTS IN THIS POPULATION. This file therefore defends that behavior against a future change
+// rather than reporting a defect, exactly as lambda_capture_clone_required_witness_test came to.
+//
+// WHAT IT DOES NOT ESTABLISH, stated so the greens are not read wider than they reach. The
+// DeepAggregateCopy arm of CopyRealizationCost is UNINHABITED here: these three shapes never reach
+// a bare aggregate, so this population cannot see the fourteen bare field occurrences the R1 census
+// in docs/plans/rc-ownership-wrap-decision-design.md measures. That is a gap in the population, not
+// evidence of absence, and it is the next receiver shape this axis should grow. Minimality is
+// established DIFFERENTIALLY -- the emitter's decision varies correctly across positions -- not by
+// a delete-the-clone-and-rebuild experiment; on the scalar row that experiment could not decide
+// anything anyway (the Copy trap: rustc copies an Int with or without the clone), which is why the
+// model types that cell undecidable rather than reporting it minimal.
+//
+// ONE MEASUREMENT DEFECT IS RECORDED HERE because it nearly landed as an emitter finding. The cost
+// axis was first probed as a bare "Rc<" occurring anywhere in the emitted file, and the scalar shard
+// went red. The emitter was not at fault: the returned-closure cell realizes the CLOSURE as
+// Rc<dyn Fn...>, so the probe was a correct answer about the wrong subject, while the receiver in
+// all three scalar cells is a bare `w: i64`. Every cost-axis assertion is now bound to the parameter
+// it is about, and each cell carries a confirmed positive and a refuted negative on that axis.
+
+// SHARDED BY RECEIVER SHAPE, one test fn per shape over that shape's full position row, so a
+// failure localizes to a realization arm instead of to "the population", and the three shards run
+// independently.
+
+fn ecq_cell_holds(cell: CopyQualificationCell) -> Bool {
+  compile_dag_rust_emit_check(
+    copy_fixture_source(cell: cell),
+    copy_fixture_path(cell: cell),
+    copy_cell_expected_present(cell: cell),
+    copy_cell_expected_absent(cell: cell)
+  )
+}
+
+fn ecq_shard_holds(shape: CopyReceiverShape) -> Bool {
+  fold(
+    copy_cells_for_shape(shape: shape),
+    init: true,
+    f: (acc, cell) => acc && ecq_cell_holds(cell: cell),
+  )
+}
+
+test fn shard_aggregate_non_copy_receiver() -> Bool {
+  ecq_shard_holds(shape: ReceiverAggregateNonCopy)
+}
+
+test fn shard_machine_scalar_receiver() -> Bool {
+  ecq_shard_holds(shape: ReceiverMachineScalar)
+}
+
+test fn shard_shared_container_receiver() -> Bool {
+  ecq_shard_holds(shape: ReceiverSharedContainer)
+}
+
+// THE CALIBRATION MATRIX. Nine greens from an instrument never observed to go red are not a
+// measurement, and each falsifier below inverts exactly ONE derived expectation while running the
+// identical path, so a green shard cannot be explained by the harness answering true to everything.
+//
+// Each falsifier asserts the NEGATION of a measured fact and must therefore return false; a test fn
+// wrapping it asserts that it does. If the emitter's behavior changes, the matching shard reddens
+// AND its falsifier greens -- two independent signals, which is what separates a real behavior
+// change from the harness having gone inert.
+
+fn ecq_falsifier_direct_return_clones() -> Bool {
+  compile_dag_rust_emit_check(
+    copy_fixture_source(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionDirectReturn }),
+    copy_fixture_path(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionDirectReturn }),
+    ["fn cell_direct", ".clone()"],
+    []
+  )
+}
+
+fn ecq_falsifier_closure_capture_is_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    copy_fixture_source(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionReturnedClosureCapture }),
+    copy_fixture_path(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionReturnedClosureCapture }),
+    ["fn cell_lambda"],
+    [".clone()"]
+  )
+}
+
+fn ecq_falsifier_scalar_realizes_shared_handle() -> Bool {
+  compile_dag_rust_emit_check(
+    copy_fixture_source(cell: CopyQualificationCell { shape: ReceiverMachineScalar, position: PositionDirectReturn }),
+    copy_fixture_path(cell: CopyQualificationCell { shape: ReceiverMachineScalar, position: PositionDirectReturn }),
+    ["fn cell_direct", "w: Rc<"],
+    []
+  )
+}
+
+fn ecq_falsifier_container_realizes_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    copy_fixture_source(cell: CopyQualificationCell { shape: ReceiverSharedContainer, position: PositionDuplicatedArgument }),
+    copy_fixture_path(cell: CopyQualificationCell { shape: ReceiverSharedContainer, position: PositionDuplicatedArgument }),
+    ["fn cell_dup"],
+    ["w: Rc<"]
+  )
+}
+
+test fn calibration_direct_return_clone_falsifier_is_red() -> Bool {
+  !ecq_falsifier_direct_return_clones()
+}
+
+test fn calibration_closure_capture_bare_falsifier_is_red() -> Bool {
+  !ecq_falsifier_closure_capture_is_bare()
+}
+
+test fn calibration_scalar_shared_handle_falsifier_is_red() -> Bool {
+  !ecq_falsifier_scalar_realizes_shared_handle()
+}
+
+test fn calibration_container_bare_falsifier_is_red() -> Bool {
+  !ecq_falsifier_container_realizes_bare()
+}

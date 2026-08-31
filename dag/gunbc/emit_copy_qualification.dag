@@ -1,0 +1,281 @@
+module gunbc.emit_copy_qualification
+
+import std.types { Bool, List, NonEmptyStr, String }
+
+// WHY THIS MODULE EXISTS, in one sentence: the production Rust emitter decides at every value use
+// site whether to copy or to share, and nothing in the corpus could say what a given copy COSTS or
+// whether it was NEEDED -- two different questions that a single ".clone() is present" observation
+// silently conflates.
+//
+// The two axes are independent and neither implies the other. A clone that is load-bearing may
+// still be free (the receiver was realized Rc<T>, so the copy is a refcount increment). A clone
+// that is redundant may still be free for the same reason. And a clone that is redundant on a bare
+// aggregate is the one cell that is an actual cost defect. Reading only clone presence collapses a
+// 2-axis space onto one bit, and the bit that survives is the one that does not decide anything.
+//
+// DISJOINT FROM THE CARRIER-COST VOCABULARY, stated because the names are near neighbours and a
+// silent fork here would be exactly DESIGN section 3's failure. std.primitives
+// CarrierCostSensitivity and v2.std.value_carrier CarrierCost describe the asymptotics of a
+// PERSISTENT COLLECTION CARRIER -- the update and lookup work of a hash-array-mapped trie against a
+// relaxed-radix-balanced tree. This module describes what one COPY OF ONE VALUE costs once the Rust
+// emitter has chosen a realization for it. Different subject, different authority; a FreeMonoid's
+// lookup work is not a fact about what cloning a handle to it costs.
+//
+// SUBJECT, named so this vocabulary is not read as covering more than it does. The production
+// source->Rust-emission path is the v1 seed emitter (v1.compiler.emit_rust), which is what
+// `gunbc compile --target rust` reaches end to end; the R1 census in
+// docs/plans/rc-ownership-wrap-decision-design.md establishes that the v2 wrap_decision_gate is not
+// compiled into the binary and was dormant while the measured sites were produced. v2's
+// v2.compiler.use_site_verdict UseSiteVerdict is a DIFFERENT path and is not qualified here.
+
+// What one copy costs once the emitter has realized the receiver. Grounded in the realization the
+// emitter actually chose, not in the authored type: the same authored type reaches Rc<T> at one
+// occurrence and bare at another (the fourteen bare field occurrences R1 measured), so the cost is
+// a property of the occurrence's realization and cannot be read off the declaration.
+type CopyRealizationCost
+  = ShareHandleBump { realization: NonEmptyStr }
+  | DeepAggregateCopy { realization: NonEmptyStr }
+  | MachineWordCopy { realization: NonEmptyStr }
+  | CopyRealizationUnobserved
+
+// Whether an emitted copy was needed. CloneEmittedUndecidable is the axis's load-bearing arm and
+// not a catch-all: where the receiver is Copy-eligible, rustc performs an implicit bitwise copy
+// whether or not the clone is written, so DELETING THE CLONE COMPILES EITHER WAY and the removal
+// experiment returns the same answer for a required and a redundant clone. That is a property of
+// the experiment, not of the emitter -- the question is genuinely not decidable by that instrument,
+// and answering it anyway would be the fabricated plausible output DESIGN section 5 forbids. This
+// is the Copy-trap the lambda_capture_clone_required witness names as the reason its own receipt is
+// trustworthy rather than vacuous.
+//
+// CloneMinimalityUnobserved is a different fact with a different remedy: nobody ran the experiment.
+// Collapsing it into CloneEmittedRequired would let an unmeasured clone read as defended.
+type CloneMinimality
+  = CloneAbsent
+  | CloneEmittedRequired { receipt: NonEmptyStr }
+  | CloneEmittedRedundant { receipt: NonEmptyStr }
+  | CloneEmittedUndecidable { reason: NonEmptyStr }
+  | CloneMinimalityUnobserved
+
+// The receiver shapes the derived population ranges over. Closed, and each is chosen because it
+// forces a DIFFERENT arm of CopyRealizationCost out of the emitter -- the axis is the realization
+// trichotomy, so a shape that could not distinguish two arms would add a row without adding a
+// question.
+type CopyReceiverShape
+  = ReceiverAggregateNonCopy
+  | ReceiverMachineScalar
+  | ReceiverSharedContainer
+
+// The use positions the derived population ranges over. Each is chosen for its KNOWN semantic
+// answer, which is what makes a differential over the population informative: a direct return needs
+// no copy, and a capture by a returned Fn closure provably does (Arm C, rustc E0507, recorded in
+// dag/test/claim/lambda_capture_clone_required_witness_test.dag). A duplicated use needs a copy at
+// every use but the last.
+type CopyUsePosition
+  = PositionDirectReturn
+  | PositionReturnedClosureCapture
+  | PositionDuplicatedArgument
+
+data copy_receiver_shapes_all: List<CopyReceiverShape> = [
+  ReceiverAggregateNonCopy,
+  ReceiverMachineScalar,
+  ReceiverSharedContainer,
+]
+
+data copy_use_positions_all: List<CopyUsePosition> = [
+  PositionDirectReturn,
+  PositionReturnedClosureCapture,
+  PositionDuplicatedArgument,
+]
+
+// One cell of the derived population. Authored nowhere: cells come from the product below, so a
+// shape the axes admit has no way to be left out and no way to be spelled twice.
+type CopyQualificationCell {
+  shape: CopyReceiverShape
+  position: CopyUsePosition
+}
+
+fn copy_cells_for_shape(shape: CopyReceiverShape) -> List<CopyQualificationCell> {
+  map(copy_use_positions_all, p => CopyQualificationCell { shape: shape, position: p })
+}
+
+// THE POPULATION, derived rather than rostered. An exclusion list here would make this a hand
+// roster with extra steps; a cell the emitter cannot yet satisfy is a finding below, never a
+// removed row.
+fn copy_qualification_population() -> List<CopyQualificationCell> {
+  fold(
+    copy_receiver_shapes_all,
+    init: [],
+    f: (acc, s) => concat(acc, copy_cells_for_shape(shape: s)),
+  )
+}
+
+// Whether the position semantically REQUIRES a copy, independent of what the emitter did. This is
+// the oracle the population is measured against, and it is grounded in executed rustc receipts
+// rather than in the emitter's own output -- reading the requirement off the emitter would make the
+// check compare the emitter to itself.
+fn copy_position_requires_copy(position: CopyUsePosition) -> Bool {
+  match position {
+    PositionDirectReturn => false
+    PositionReturnedClosureCapture => true
+    PositionDuplicatedArgument => true
+  }
+}
+
+// THE COPY-TRAP LAW, derived rather than authored per cell: on a Copy-eligible receiver the removal
+// experiment cannot discriminate, so minimality is undecidable by it whatever the position. Stating
+// this as a derivation is what stops a future author from recording a confident CloneEmittedRedundant
+// on a scalar row because the delete-and-rebuild arm happened to compile.
+fn copy_minimality_decidable_by_removal(shape: CopyReceiverShape) -> Bool {
+  match shape {
+    ReceiverAggregateNonCopy => true
+    ReceiverMachineScalar => false
+    ReceiverSharedContainer => true
+  }
+}
+
+// Whether the emitter realizes this receiver shape as a shared handle. MEASURED, not predicted:
+// run through the production source->emission path, Widget and FreeMonoid<Widget> both render
+// Rc<...> at the fn signature and Int renders bare. The consequence is the one that matters for the
+// cost axis -- on this population every non-scalar copy the emitter emits is a refcount increment,
+// so there is no realized deep copy here at all.
+fn copy_shape_realizes_shared_handle(shape: CopyReceiverShape) -> Bool {
+  match shape {
+    ReceiverAggregateNonCopy => true
+    ReceiverMachineScalar => false
+    ReceiverSharedContainer => true
+  }
+}
+
+// The cost axis, derived from the measured realization rather than authored per cell. The
+// DeepAggregateCopy arm is deliberately reachable in this vocabulary while being UNINHABITED by
+// this population, and that gap is stated rather than closed: the R1 census in
+// docs/plans/rc-ownership-wrap-decision-design.md measures fourteen bare field occurrences across
+// ten types where the wrap misses, so a deep copy is authorable in the real corpus -- these three
+// receiver shapes simply do not reach one. Deleting the arm would make the vocabulary unable to
+// name the case R1 already found; asserting this population covers it would be the stronger lie.
+fn copy_realization_cost_for(shape: CopyReceiverShape) -> CopyRealizationCost {
+  match shape {
+    ReceiverAggregateNonCopy => ShareHandleBump { realization: "Rc<Widget> at fn signature" }
+    ReceiverMachineScalar => MachineWordCopy { realization: "bare i64 at fn signature" }
+    ReceiverSharedContainer => ShareHandleBump { realization: "Rc<FreeMonoid<Widget>> at fn signature" }
+  }
+}
+
+fn copy_shape_token(shape: CopyReceiverShape) -> String {
+  match shape {
+    ReceiverAggregateNonCopy => "aggregate"
+    ReceiverMachineScalar => "scalar"
+    ReceiverSharedContainer => "shared"
+  }
+}
+
+fn copy_position_token(position: CopyUsePosition) -> String {
+  match position {
+    PositionDirectReturn => "direct"
+    PositionReturnedClosureCapture => "lambda"
+    PositionDuplicatedArgument => "dup"
+  }
+}
+
+fn copy_receiver_type_spelling(shape: CopyReceiverShape) -> String {
+  match shape {
+    ReceiverAggregateNonCopy => "Widget"
+    ReceiverMachineScalar => "Int"
+    ReceiverSharedContainer => "FreeMonoid<Widget>"
+  }
+}
+
+fn copy_fixture_header(shape: CopyReceiverShape) -> String {
+  match shape {
+    ReceiverAggregateNonCopy => "\n\ntype Widget {\n  tag: String\n}\n\n"
+    ReceiverMachineScalar => "\n\n"
+    ReceiverSharedContainer => "\nimport std.algebra { FreeMonoid }\n\ntype Widget {\n  tag: String\n}\n\n"
+  }
+}
+
+// The function under emission, one per use position. The anchor name is derived from the same token
+// the path is, so a cell cannot assert against a function it did not emit.
+fn copy_fixture_body(position: CopyUsePosition, ty: String) -> String {
+  match position {
+    PositionDirectReturn =>
+      "fn cell_direct(w: " + ty + ") -> " + ty + " {\n  w\n}\n"
+    PositionReturnedClosureCapture =>
+      "fn cell_lambda(w: " + ty + ") -> fn(Int) -> " + ty + " {\n  fn(u) { w }\n}\n"
+    PositionDuplicatedArgument =>
+      "fn cell_pick(a: " + ty + ", b: " + ty + ") -> " + ty + " {\n  a\n}\n\nfn cell_dup(w: " + ty + ") -> " + ty + " {\n  cell_pick(w, w)\n}\n"
+  }
+}
+
+fn copy_cell_slug(cell: CopyQualificationCell) -> String {
+  copy_shape_token(shape: cell.shape) + "_" + copy_position_token(position: cell.position)
+}
+
+// THE FIXTURE IS DERIVED FROM THE CELL, which is what makes the population a product rather than a
+// roster: there is no place to author a source for a cell the axes do not admit, and no way to omit
+// one they do.
+fn copy_fixture_source(cell: CopyQualificationCell) -> String {
+  "module emit_copy_qual." + copy_cell_slug(cell: cell)
+    + copy_fixture_header(shape: cell.shape)
+    + copy_fixture_body(position: cell.position, ty: copy_receiver_type_spelling(shape: cell.shape))
+}
+
+fn copy_fixture_path(cell: CopyQualificationCell) -> String {
+  "src/emit_copy_qual_" + copy_cell_slug(cell: cell) + ".rs"
+}
+
+// A positive structural anchor, always asserted present. Without it a cell whose only assertion is
+// an ABSENT .clone() cannot tell a real bare emission from the harness silently emitting nothing --
+// compile_dag_rust_emit_check returns false for a refusal and for a missing file alike.
+fn copy_fixture_anchor(position: CopyUsePosition) -> String {
+  match position {
+    PositionDirectReturn => "fn cell_direct"
+    PositionReturnedClosureCapture => "fn cell_lambda"
+    PositionDuplicatedArgument => "fn cell_dup"
+  }
+}
+
+// THE RECEIVER-BOUND REALIZATION SPELLING, and the reason it is spelled with the parameter name
+// rather than as a bare "Rc<". Asserting "Rc< occurs somewhere in the emitted file" is a correct
+// answer about the WRONG SUBJECT: the returned-closure cell realizes the closure itself as
+// Rc<dyn Fn...>, so a bare Rc< probe reports present on a scalar receiver whose parameter is a bare
+// i64. That is measured, not hypothetical -- it produced a false shard failure before the
+// assertions were bound to the receiver. Every cost-axis assertion below therefore names the
+// parameter it is about.
+fn copy_receiver_realized_spelling(shape: CopyReceiverShape) -> String {
+  match shape {
+    ReceiverAggregateNonCopy => "w: Rc<Widget>"
+    ReceiverMachineScalar => "w: i64"
+    ReceiverSharedContainer => "w: Rc<"
+  }
+}
+
+// The spelling the receiver must NOT carry -- the other arm of the realization it was measured to
+// take. Paired with the one above so every cell asserts a confirmed positive and a refuted negative
+// on the cost axis, rather than an absence that a silently-empty emission would also satisfy.
+fn copy_receiver_refuted_spelling(shape: CopyReceiverShape) -> String {
+  match shape {
+    ReceiverAggregateNonCopy => "w: Widget"
+    ReceiverMachineScalar => "w: Rc<"
+    ReceiverSharedContainer => "w: FreeMonoid"
+  }
+}
+
+// The spellings a cell must contain, derived jointly from the semantic oracle (does this position
+// require a copy) and the measured realization (how is this receiver realized). Nothing here is
+// authored per cell, so the check compares the emitter to a ground rather than to itself.
+fn copy_cell_expected_present(cell: CopyQualificationCell) -> List<String> {
+  concat(
+    concat(
+      [copy_fixture_anchor(position: cell.position)],
+      if copy_position_requires_copy(position: cell.position) { [".clone()"] } else { [] },
+    ),
+    [copy_receiver_realized_spelling(shape: cell.shape)],
+  )
+}
+
+fn copy_cell_expected_absent(cell: CopyQualificationCell) -> List<String> {
+  concat(
+    if copy_position_requires_copy(position: cell.position) { [] } else { [".clone()"] },
+    [copy_receiver_refuted_spelling(shape: cell.shape)],
+  )
+}
