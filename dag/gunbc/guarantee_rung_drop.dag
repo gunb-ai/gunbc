@@ -269,20 +269,29 @@ fn stall_report_message(s: GuaranteeStall) -> String {
 // 57758 correctly refused a version of it that was narrated in prose beside one of the two nat_max
 // declarations. The fork predates this lane; what this lane changed is that the Peano side now
 // carries real operations, so the fork is load-bearing rather than latent.
+//
+// ClimbableButUnbuilt, NOT AwaitsOneGrounding, and review 57807 was right to refuse the first
+// version of this row for saying otherwise. The modeling direction is already decided and its
+// prerequisites discharged: gunbc.plans.dag_v2_defork_audit records the nat census complete with
+// the per-concept design DESIGN READY (FreeMonoid shadow #6341 merged, generic-alias coproduct
+// keystone green) and names the atomic wave file-by-file -- dag/std/nat.dag takes the coproduct and
+// the Peano ops, the semiring alias is deleted, v2.std.nat becomes a thin reimport plus the law
+// roster, integer and float repoint GroupCompletion<Nat> to std.nat.Nat, every importer in the same
+// push. Classifying that as awaiting a ruling would convert scheduled work into an indefinite
+// decision stall, which is exactly the untracked stall DESIGN section 4b forbids, and would dilute
+// the canonical plan by implying the question is still open.
 data two_nat_authorities_stall: GuaranteeStall = GuaranteeStall {
   subject: "std.nat Nat (CommutativeSemiring<Magnitude>, realizing natively as a machine scalar) and v2.std.nat Nat (the Peano coproduct Zero | Succ) are two declarations answering for one name, so nat_add / nat_mul / nat_max / nat_compare each exist twice and a bare reference in a closure containing both modules is ambiguous",
   current: Mitigatable,
   ceiling: StructurallyImpossible,
-  blocker: AwaitsOneGrounding {
-    grounding: "one Nat authority: the numeric tower deciding whether the Peano coproduct IS the declaration and the semiring alias is derived from it, or the reverse -- a modeling ruling this lane cannot make from an operator-realization change",
-  },
+  blocker: ClimbableButUnbuilt,
   population: BoundedPopulation {
     members: [
       "std.nat and v2.std.nat both declaring Nat, with per-operation forks (nat_add, nat_mul, nat_max, nat_compare) that no single function can serve because the two are different types",
       "every reference site in a closure containing both modules, which must qualify the name (v2.lens.cost.valuation does) or resolve by pool precedence",
     ],
   },
-  next_rung_trigger: "one Nat declaration in the corpus, with the other side derived from it rather than declared beside it -- retired by that capability and by nothing less, since deleting either declaration without deriving its operations would remove the operations its consumers call rather than unify the authority"
+  next_rung_trigger: "the atomic Nat unification wave specified in gunbc.plans.dag_v2_defork_audit: dag/std/nat.dag carrying the coproduct and the Peano operations with the semiring alias deleted, v2.std.nat reduced to a thin reimport plus the node-bound law roster, integer and float repointing GroupCompletion<Nat> to std.nat.Nat, and every importer repointed in the same push -- retired by that wave landing and by nothing less, since deleting either declaration without deriving its operations would remove the operations its consumers call rather than unify the authority"
 }
 
 data import_eligibility_resolution_stall: GuaranteeStall = GuaranteeStall {
