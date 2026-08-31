@@ -19,7 +19,7 @@ import std.operator_realization {
   operator_realization_for
 }
 import std.syntax { BinOp, Lt, Le, Gt, Ge, Eq, Div, Mod, Sub, And, Add }
-import gunbc.structural_realization_bindings { literal_homomorphism_rows, structural_ordering_rows }
+import gunbc.structural_realization_bindings { literal_homomorphism_rows, structural_ordering_rows, structural_connective_rows }
 import v2.std.nat {
   Nat, Zero, Succ,
   NatDifference, NatSubtrahendExceedsMinuend,
@@ -207,7 +207,7 @@ test fn duplicated_row_refuses() -> Bool {
 
 test fn ordering_on_the_peano_operand_calls_the_declared_comparison() -> Bool {
   let nat = decl_ref(module_path: "v2.std.nat", decl_name: "Nat")
-  match operator_realization_for(op: Lt, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: Lt, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     StructuralComparison { declaration: _, binding: b, test: t } =>
       (b.compare.decl_name as String) == "nat_compare"
         && (b.ordering.module_path as String) == "std.algebra"
@@ -218,7 +218,7 @@ test fn ordering_on_the_peano_operand_calls_the_declared_comparison() -> Bool {
 
 test fn non_strict_ordering_negates_the_opposite_variant() -> Bool {
   let nat = decl_ref(module_path: "v2.std.nat", decl_name: "Nat")
-  match operator_realization_for(op: Le, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: Le, operand: StructuralOperand { declaration: nat }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     StructuralComparison { declaration: _, binding: _, test: t } =>
       match t { OrderingIs { variant: _ } => false  OrderingIsNot { variant: v } => (v as String) == "Greater" }
     _ => false
@@ -226,7 +226,7 @@ test fn non_strict_ordering_negates_the_opposite_variant() -> Bool {
 }
 
 test fn equality_on_the_peano_operand_is_structural() -> Bool {
-  match operator_realization_for(op: Eq, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: Eq, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     StructuralEquality { declaration: d } => (d.decl_name as String) == "Nat"
     _ => false
   }
@@ -235,7 +235,7 @@ test fn equality_on_the_peano_operand_is_structural() -> Bool {
 // FORCING HOST ARITHMETIC ONTO A PEANO OPERAND REDS: the decision refuses, typed, naming the
 // declaration and the operator. The emitted-bytes form of this row is in the emit-check witness.
 fn host_arithmetic_on_peano_refuses(op: BinOp) -> Bool {
-  match operator_realization_for(op: op, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: op, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: d, operator: _ } } => (d.decl_name as String) == "Nat"
     _ => false
   }
@@ -247,18 +247,18 @@ test fn host_arithmetic_on_the_peano_operand_refuses() -> Bool {
 
 // A structural declaration with NO ordering row refuses `<` rather than emitting the host token.
 test fn ordering_without_a_declared_comparison_refuses() -> Bool {
-  match operator_realization_for(op: Gt, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.text", decl_name: "String") }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: Gt, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.text", decl_name: "String") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     OperatorRealizationRefused { cause: _ } => true
     _ => false
   }
 }
 
 test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
-  let native_holds = match operator_realization_for(op: Div, operand: HostNumericOperand, ordering_rows: structural_ordering_rows) {
+  let native_holds = match operator_realization_for(op: Div, operand: HostNumericOperand, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     HostOperator => true
     _ => false
   }
-  let by_construction_holds = match operator_realization_for(op: Ge, operand: HostRealizedOperand { reason: KernelMintedType }, ordering_rows: structural_ordering_rows) {
+  let by_construction_holds = match operator_realization_for(op: Ge, operand: HostRealizedOperand { reason: KernelMintedType }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     HostOperator => true
     _ => false
   }
@@ -271,11 +271,11 @@ test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
 // token rustc refuses later. This row pins that the unknown arm is a refusal, not a widen.
 test fn operand_without_a_readable_declaration_refuses() -> Bool {
   let facts = OperandShapeFacts { authored_name: "Nat", connective: "NoConnective", child_count: 0, resolved: false, decl_file: "probe.dag" }
-  let ordering_refuses = match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
+  let ordering_refuses = match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: f } } => o == "<" && f.authored_name == "Nat"
     _ => false
   }
-  let arithmetic_refuses = match operator_realization_for(op: Div, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
+  let arithmetic_refuses = match operator_realization_for(op: Div, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: _ } } => o == "/"
     _ => false
   }
@@ -289,7 +289,7 @@ test fn operand_without_a_readable_declaration_refuses() -> Bool {
 // match arm over the generic ListHeadResult<T>), which this lane's own refusal arm reddened before
 // the arm was narrowed to named operands.
 test fn an_unnamed_synthesized_operand_is_host_under_arithmetic() -> Bool {
-  match operator_realization_for(op: Add, operand: HostRealizedOperand { reason: UnnamedSynthesizedType }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: Add, operand: HostRealizedOperand { reason: UnnamedSynthesizedType }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     HostOperator => true
     _ => false
   }
@@ -300,14 +300,32 @@ test fn an_unnamed_synthesized_operand_is_host_under_arithmetic() -> Bool {
 // not the widen above -- ordering on the same operand refuses (the row before this one).
 test fn equality_without_a_readable_declaration_is_host_by_construction() -> Bool {
   let facts = OperandShapeFacts { authored_name: "", connective: "NoConnective", child_count: 0, resolved: true, decl_file: "" }
-  match operator_realization_for(op: Eq, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: Eq, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     HostOperator => true
     _ => false
   }
 }
 
 test fn logical_connective_on_a_structural_operand_stays_host() -> Bool {
-  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.logic", decl_name: "Bool") }, ordering_rows: structural_ordering_rows) {
+  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.logic", decl_name: "Bool") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+    HostOperator => true
+    _ => false
+  }
+}
+
+// A connective over a structural operand that declares no connective realization REFUSES (the
+// review-57746 red): a Peano-shaped operand under `&&` must not receive the host token.
+test fn w_connective_over_an_undeclared_structural_operand_refuses() -> Bool {
+  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.nat", decl_name: "Nat") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
+    OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: _, operator: _ } } => true
+    _ => false
+  }
+}
+
+// The positive control on the same arm: the declared connective carrier (v2.std.logic Bool, the
+// corpus's ordinary Bool) still realizes on the host through its row.
+test fn w_connective_over_the_declared_bool_carrier_stays_host() -> Bool {
+  match operator_realization_for(op: And, operand: StructuralOperand { declaration: decl_ref(module_path: "v2.std.logic", decl_name: "Bool") }, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows) {
     HostOperator => true
     _ => false
   }

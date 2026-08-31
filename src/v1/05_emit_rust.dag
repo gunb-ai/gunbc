@@ -130,7 +130,7 @@ import std.operator_realization {
   StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
   operator_realization_for, operator_realization_refusal_message
 }
-import gunbc.structural_realization_bindings { structural_ordering_rows }
+import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -12713,7 +12713,7 @@ fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Nod
       }
     Absent => rust_operand_realization(operand: left, scope: scope)
   }
-  operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
+  operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows)
 }
 
 fn rust_declaration_path(module_path: String, decl_name: String) -> String {
