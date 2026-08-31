@@ -11276,10 +11276,19 @@ fn dispatch_shell(
                     .iter()
                     .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
                     .and_then(|(_, value)| match value {
-                        Value::Int(n) => Some(*n as usize),
+                        Value::Record { fields: mfields, .. } => mfields
+                            .iter()
+                            .find(|(mname, _)| ctx.resolve(*mname).as_str() == "count")
+                            .and_then(|(_, mv)| match mv {
+                                Value::Int(n) if *n >= 0 => Some(*n as usize),
+                                _ => None,
+                            }),
                         _ => None,
                     })
-                    .unwrap_or(bounded_shell_host_drain::DEFAULT_SHELL_STDERR_TAIL_BYTES);
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with a non-negative integer count); refusing rather than defaulting"
+                            .to_string(),
+                    })?;
                 bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
                     max_tail_bytes: bytes,
                 }
@@ -11291,10 +11300,19 @@ fn dispatch_shell(
                     .iter()
                     .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
                     .and_then(|(_, value)| match value {
-                        Value::Int(n) => Some(*n as usize),
+                        Value::Record { fields: mfields, .. } => mfields
+                            .iter()
+                            .find(|(mname, _)| ctx.resolve(*mname).as_str() == "count")
+                            .and_then(|(_, mv)| match mv {
+                                Value::Int(n) if *n >= 0 => Some(*n as usize),
+                                _ => None,
+                            }),
                         _ => None,
                     })
-                    .unwrap_or(bounded_shell_host_drain::DEFAULT_SHELL_STDERR_TAIL_BYTES);
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with a non-negative integer count); refusing rather than defaulting"
+                            .to_string(),
+                    })?;
                 bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
                     max_tail_bytes: bytes,
                 }
