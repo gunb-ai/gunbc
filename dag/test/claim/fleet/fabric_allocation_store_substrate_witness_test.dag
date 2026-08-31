@@ -175,14 +175,12 @@ test fn witness_allocation_store_prestate_drift_refuses_with_typed_location() ->
             let appeared_refuses = allocation_store_changed_admission_is_located(
               artifact: artifact,
               observed: AllocationStoreNamespacePresent { namespace: namespace_appeared, store: target_absent },
-              expected_path: spec.namespace_path,
               expected_tag: "present-expected",
               expected_mode: "mode=700",
             )
             let changed_refuses = allocation_store_changed_admission_is_located(
               artifact: artifact,
               observed: AllocationStoreNamespacePresent { namespace: namespace_changed, store: target_absent },
-              expected_path: spec.namespace_path,
               expected_tag: "present-unexpected",
               expected_mode: "mode=777",
             )
@@ -226,13 +224,11 @@ test fn witness_allocation_store_target_prestate_drift_remains_refusing() -> Boo
         allocation_store_changed_admission_is_located(
           artifact: artifact,
           observed: AllocationStoreNamespacePresent { namespace: namespace, store: appeared },
-          expected_path: spec.path,
           expected_tag: "present-expected",
           expected_mode: "mode=700",
         ) && allocation_store_changed_admission_is_located(
           artifact: artifact,
           observed: AllocationStoreNamespacePresent { namespace: namespace, store: changed },
-          expected_path: spec.path,
           expected_tag: "present-unexpected",
           expected_mode: "mode=777",
         )
@@ -244,7 +240,6 @@ test fn witness_allocation_store_target_prestate_drift_remains_refusing() -> Boo
 fn allocation_store_changed_admission_is_located(
   artifact: FleetConvergePlanArtifact,
   observed: AllocationStoreSubstratePrestate,
-  expected_path: NonEmptyStr,
   expected_tag: String,
   expected_mode: String,
 ) -> Bool {
@@ -258,7 +253,8 @@ fn allocation_store_changed_admission_is_located(
     },
   ) {
     ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
-      (n == expected_path || p == expected_path)
+      n == fabric_allocation_store_substrate_spec().namespace_path
+        && p == fabric_allocation_store_substrate_spec().path
         && string_contains(s: o, pattern: expected_tag)
         && string_contains(s: o, pattern: expected_mode)
     ApplyAdmitted => false

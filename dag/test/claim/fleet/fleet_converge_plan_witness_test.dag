@@ -1797,12 +1797,14 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
 fn line_is_a_scope_row(l: String) -> Bool {
   l == fleet_converge_scope_wire(scope: FullHost)
     || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
+    || l == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)
 }
 
 fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
   match s {
     FullHost => true
     FabricExecutionCellsOnly => false
+    FabricAllocationStoreOnly => false
   }
 }
 
@@ -1810,6 +1812,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
   match s {
     FabricExecutionCellsOnly => true
     FullHost => false
+    FabricAllocationStoreOnly => false
   }
 }
 
