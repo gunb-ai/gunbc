@@ -16,6 +16,31 @@ use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::{ErrorNode, NewlineIndex};
 use im::Vector;
 
+struct BytesIdentityHasher(u64);
+
+impl BytesIdentityHasher {
+    fn new() -> Self {
+        Self(0xcbf29ce484222325)
+    }
+    fn update(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 ^= *byte as u64;
+            self.0 = self.0.wrapping_mul(0x100000001b3);
+        }
+    }
+    fn finish(self) -> Hash {
+        format!("{:016x}", self.0)
+    }
+}
+
+fn bytes_identity_hash_parts(parts: &[&[u8]]) -> Hash {
+    let mut hasher = BytesIdentityHasher::new();
+    for bytes in parts {
+        hasher.update(bytes);
+    }
+    hasher.finish()
+}
+
 /// v5: graph JSON is zlib-compressed and streamed through bounded temporary
 /// parts, so encoding cannot retain a corpus-sized JSON DOM or byte buffer.
 /// Persisted graphs remain assembly-final for import-str identity. Decode no
@@ -404,7 +429,11 @@ fn validate_declared_artifact_len(
 }
 
 const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 3;
-const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
+// A part cannot exceed the whole artifact. There is no independent per-part
+// limit in the cache model; the former hand-Rust 512 MiB constant had no
+// authority or consumer constraint and rejected valid artifacts below the
+// modeled 10 GiB total cap.
+const MAX_PART_BYTES: u64 = RESOLVED_GRAPH_CACHE_CAP_BYTES;
 
 struct BoundedWriter<W> {
     inner: W,
@@ -1006,7 +1035,7 @@ fn digest_file(path: &Path) -> Result<(Hash, u64), String> {
         .metadata()
         .map_err(|e| format!("stat encoded cache part: {e}"))?
         .len();
-    let mut hasher = v1_rt::BytesIdentityHasher::new();
+    let mut hasher = BytesIdentityHasher::new();
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
         let n = file
@@ -1166,7 +1195,7 @@ pub fn write_prepared(
         .iter()
         .try_fold(0u64, |a, n| a.checked_add(*n))
         .ok_or_else(|| "cache payload length overflow".to_string())?;
-    let mut aggregate = v1_rt::BytesIdentityHasher::new();
+    let mut aggregate = BytesIdentityHasher::new();
     let mut buf = vec![0u8; 1024 * 1024];
     for path in &prepared.paths {
         let mut part = File::open(path).map_err(|e| format!("open encoded cache part: {e}"))?;
@@ -1270,7 +1299,7 @@ pub fn write_encoded(
         .iter()
         .try_fold(0u64, |total, bytes| total.checked_add(bytes.len() as u64))
         .ok_or_else(|| "cache payload length overflow".to_string())?;
-    let payload_integrity_digest = v1_rt::bytes_identity_hash_parts(&payload_slices);
+    let payload_integrity_digest = bytes_identity_hash_parts(&payload_slices);
     let parts = [
         V3PartDescriptor {
             offset: 0,
