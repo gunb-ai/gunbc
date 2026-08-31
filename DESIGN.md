@@ -205,6 +205,8 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `surface_shorthand_preempts_resolved_identity`
 - `meaning_fork`
 - `externalized_degradation`
+- `instrument_output_read_as_subject_content`
+- `executed_conjunct_discriminates_nothing`
 
 ## Building & checks
 
