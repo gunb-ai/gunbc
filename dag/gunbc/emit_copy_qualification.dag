@@ -565,13 +565,13 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
             whole_value_materializations: 0
           } }
         AliasThenMutate =>
+          let growth = match realization {
+            StructuralShareRealization => LinearAllocGrowth
+            other => materialization_alloc_growth(f: other)
+          }
           DerivedExpectation { expected: ExpectedCopyCost {
             cost_class: materialization_cost_class(f: realization),
-            alloc_growth:
-              match realization {
-                StructuralShareRealization => LinearAllocGrowth
-                other => materialization_alloc_growth(f: other)
-              },
+            alloc_growth: growth,
             whole_value_materializations: 1
           } }
         _ =>
