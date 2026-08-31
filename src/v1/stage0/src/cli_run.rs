@@ -7306,7 +7306,14 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             just_saw_colon = false;
             continue;
         }
-        if !is_ident_start(bytes[i]) || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.'))
+        // `^name` is a SYMBOL LITERAL, not a reference to a declaration. Skipping it byte
+        // by byte here (the same mechanism this guard already uses for `.`) keeps a
+        // Symbol's spelling out of the reference set. Receipt: `^probe`, `^check` and
+        // `^unit` in the caret-lex and lens-discriminator tests were reported AMBIGUOUS
+        // against unrelated modules that happen to declare `fn probe` / `fn check` /
+        // `data unit` -- a fork over a name these files use only as a symbol.
+        if !is_ident_start(bytes[i])
+            || (i > 0 && (is_ident(bytes[i - 1]) || bytes[i - 1] == b'.' || bytes[i - 1] == b'^'))
         {
             if bytes[i] == b'(' {
                 if prev_token == Some("fn") || lambda_paren_starts.contains(&i) {
@@ -7385,6 +7392,26 @@ fn bare_identifier_candidates(content: &str) -> BareCandidates {
             arrow && matches!(prev, b'(' | b',' | b':')
         };
         if is_bare_arrow_lambda_param {
+            out.bound.insert(name.to_string());
+            prev_token = Some(name);
+            just_saw_colon = false;
+            continue;
+        }
+        // `name = expr` binds, with no `let` keyword for the binder-keyword rule to catch
+        // -- the workflow binding form (`page = ebay.Inventory.GetInventoryItems(...)` in
+        // gunbc.tools.ebay_listing, then `page.total`). The bound name leaked into the
+        // reference set and resolved against the whole pool. `==` and `=>` are excluded:
+        // the first is a comparison, the second a lambda or match arm.
+        let is_bare_assignment_binder = {
+            let mut j = i;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            j < bytes.len()
+                && bytes[j] == b'='
+                && !matches!(bytes.get(j + 1), Some(b'=') | Some(b'>'))
+        };
+        if is_bare_assignment_binder {
             out.bound.insert(name.to_string());
             prev_token = Some(name);
             just_saw_colon = false;
@@ -7841,8 +7868,46 @@ fn bare_reference_pull_paths_for_source(
                             // remedy is authorable at every site: name the module you mean
                             // with an explicit import, which `explicit_import_member_names`
                             // then treats as the authority and this census is never asked.
-                            let mut modules: Vec<String> =
-                                candidates.iter().map(|c| c.module_path.clone()).collect();
+                            // ASK THE QUESTION THE TYPE ENV ASKS (§3 single authority).
+                            // NameResolutionPolicy = NamespaceOnlyY is the ratified rule
+                            // for what a bare homonym means (namespace-resolution-design.md
+                            // §13, operator-ratified 2026-07-21): a candidate counts only
+                            // if its declaring module path is a leading-segment prefix of
+                            // the referencing module's, and exactly one such candidate
+                            // resolves. That is CONTAINMENT -- the referencing module is
+                            // inside the declaring one -- not the proximity the deleted
+                            // heuristic scored, and it is grounded: a submodule referring
+                            // to a name its own parent declares means its parent's.
+                            //
+                            // Receipt: v2.lens.identity_captured_navigation.analyze
+                            // references `Finding`, which its parent
+                            // v2.lens.identity_captured_navigation declares and which
+                            // v2.lens.complexity_accumulator_copy also declares. Only the
+                            // parent is on the chain, so this resolves with no edit --
+                            // whereas refusing on the raw candidate count would have
+                            // demanded a rename or an import for a reference that was
+                            // never actually ambiguous.
+                            let on_chain =
+                                crate::v1_compiler_infer_env::global_bare_chain_candidates(
+                                    referencing_module.clone(),
+                                    candidates.clone(),
+                                );
+                            if on_chain.len() == 1 {
+                                let cand = on_chain[0].clone();
+                                return Ok((
+                                    if pullable(&cand.binding) {
+                                        Some(cand.module_path.clone())
+                                    } else {
+                                        None
+                                    },
+                                    "unique-on-chain",
+                                ));
+                            }
+                            let mut modules: Vec<String> = if on_chain.is_empty() {
+                                candidates.iter().map(|c| c.module_path.clone()).collect()
+                            } else {
+                                on_chain.iter().map(|c| c.module_path.clone()).collect()
+                            };
                             modules.sort();
                             modules.dedup();
                             return Err(format!(
