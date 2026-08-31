@@ -4,7 +4,8 @@ import std.types { Bool, List, String }
 import gunbc.regen_affected_set {
   regen_generation_role_modules,
   regen_generated_product_owner_paths,
-  regen_generated_product_source_modules
+  regen_generated_product_source_modules,
+  regen_generated_product_generation_role_labels
 }
 
 import v2.workflow.regen_convergence_transaction {
@@ -426,4 +427,18 @@ test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
   count(regen_generated_product_owner_paths() |> filter(path => path == "compiler_tests.rs")) == 1
     && regen_generated_product_source_modules(product: "compiler_tests.rs")
       == ["v1.compiler.compiler_tests_rust"]
+}
+
+// Seed-manifest absence is not itself an OutsideSeed fact. The generated-product authority
+// explicitly classifies publishable aggregates, while the seed crate root remains an input.
+test fn aggregate_product_roles_make_non_seed_publication_reachable() -> Bool {
+  regen_generated_product_generation_role_labels(product: "compiler_tests.rs")
+      == ["NonSeedGeneratedOutput"]
+    && regen_generated_product_generation_role_labels(product: "emitted_population.rs")
+      == ["NonSeedGeneratedOutput"]
+    && regen_generated_product_generation_role_labels(product: "main.rs")
+      == ["NonSeedGeneratedOutput"]
+    && regen_generated_product_generation_role_labels(product: "lib.rs")
+      == ["GenerationInput"]
+    && regen_generated_product_generation_role_labels(product: "unowned.rs") == []
 }

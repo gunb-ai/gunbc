@@ -65,8 +65,13 @@ type BootstrapSourceMirror {
 type GeneratedAggregateProductOwner {
   source_module: String
   product: String
+  generation_role: GeneratedAggregateProductGenerationRole
   reason: String
 }
+
+type GeneratedAggregateProductGenerationRole
+  = AggregateGenerationInput
+  | AggregateNonSeedGeneratedOutput
 
 // Compiler substrate whose generated representation is itself an input to the next seed. These
 // are explicit bootstrap-source facts, not a std_ prefix: std.measure is seed-compiled and called
@@ -102,21 +107,25 @@ data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwn
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.compiler_tests_rust",
     product: "compiler_tests.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
     reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module; the generated product therefore has no module-line mirror identity of its own"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "emitted_population.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
     reason: "emit_emitted_population_manifest derives this aggregate from the complete emitted file list; the manifest is deliberately not a Rust module and therefore has no same-named DAG module identity"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "lib.rs",
+    generation_role: AggregateGenerationInput,
     reason: "emit_lib_rs_from_files derives the crate module surface from the emitted module population; lib.rs is an aggregate product rather than a same-named DAG module mirror"
   },
   GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "main.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
     reason: "emit_main_rs derives the executable entry surface from the workflow population; main.rs is an aggregate product rather than a same-named DAG module mirror"
   }
 ]
@@ -210,6 +219,17 @@ fn regen_generated_product_source_modules(product: String) -> List<String> {
       |> filter(row => row.product == product)
       |> map(row => row.source_module)
   )
+}
+
+// Host-boundary projection of the closed aggregate role. A product absent from these rows has
+// no role answer; callers must refuse rather than infer OutsideSeed from seed-manifest absence.
+fn regen_generated_product_generation_role_labels(product: String) -> List<String> {
+  regen_generated_aggregate_product_owners
+    |> filter(row => row.product == product)
+    |> map(row => match row.generation_role {
+      AggregateGenerationInput => "GenerationInput"
+      AggregateNonSeedGeneratedOutput => "NonSeedGeneratedOutput"
+    })
 }
 
 fn regen_bootstrap_products(reached: List<String>) -> List<String> {

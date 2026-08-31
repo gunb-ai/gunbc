@@ -511,7 +511,7 @@ pub fn run_required_regen_scoped(
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    let (basename_to_module, _, _, _, _) =
+    let (basename_to_module, _, _, _, _, _) =
         convergence_surface_roles(&workspace, &convergence_roots)?;
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
@@ -3391,6 +3391,7 @@ fn convergence_surface_roles(
         BTreeSet<String>,
         BTreeSet<String>,
         BTreeSet<String>,
+        HashMap<String, String>,
     ),
     String,
 > {
@@ -3403,8 +3404,13 @@ fn convergence_surface_roles(
         .map(|module| (format!("{}.rs", module.replace('.', "_")), module.clone()))
         .collect::<HashMap<_, _>>();
     let mut basename_to_module = basename_to_module;
-    let (generation, bootstrap_sources, bootstrap_products, generated_product_owners) =
-        regen_generation_role_population(source_roots, &modules)?;
+    let (
+        generation,
+        bootstrap_sources,
+        bootstrap_products,
+        generated_product_owners,
+        generated_product_roles,
+    ) = regen_generation_role_population(source_roots, &modules)?;
     for (product, source_module) in generated_product_owners {
         match basename_to_module.insert(product.clone(), source_module.clone()) {
             Some(existing) if existing != source_module => {
@@ -3443,6 +3449,7 @@ fn convergence_surface_roles(
         bootstrap_sources,
         bootstrap_products,
         seed_embedded_basenames,
+        generated_product_roles,
     ))
 }
 
@@ -3460,6 +3467,7 @@ fn convergence_plan_from_model(
     bootstrap_sources: &BTreeSet<String>,
     bootstrap_products: &BTreeSet<String>,
     seed_embedded_basenames: &BTreeSet<String>,
+    generated_product_roles: &HashMap<String, String>,
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
@@ -3550,6 +3558,8 @@ fn convergence_plan_from_model(
             }
             let role = if bootstrap_products.contains(basename) {
                 "BootstrapSourceMirror"
+            } else if let Some(role) = generated_product_roles.get(basename) {
+                role.as_str()
             } else if generation_modules.contains(&module) {
                 "GenerationInput"
             } else if bootstrap_sources.contains(&module) {
@@ -3605,6 +3615,12 @@ fn convergence_plan_from_model(
                             Value::Variant {
                                 type_name: ctx.sym("RegenSeedMembership"),
                                 variant_name: ctx.sym("SeedEmbedded"),
+                                fields: Rc::new(vec![]),
+                            }
+                        } else if role == "NonSeedGeneratedOutput" {
+                            Value::Variant {
+                                type_name: ctx.sym("RegenSeedMembership"),
+                                variant_name: ctx.sym("OutsideSeed"),
                                 fields: Rc::new(vec![]),
                             }
                         } else {
@@ -4132,6 +4148,7 @@ pub fn run_regen_round_cost(
         bootstrap_sources,
         bootstrap_products,
         seed_embedded_basenames,
+        generated_product_roles,
     ) = convergence_surface_roles(&workspace, source_roots)?;
     let scope = if affected_scope {
         regen_emission_scope_for_diff(&workspace, source_roots)?
@@ -4180,6 +4197,7 @@ pub fn run_regen_round_cost(
             &bootstrap_sources,
             &bootstrap_products,
             &seed_embedded_basenames,
+            &generated_product_roles,
             &scope,
             &seen_state_keys,
             &current_seed_digest,
@@ -4815,6 +4833,34 @@ mod regen_convergence_host_instrument_tests {
         let seed_members = [rows[0].0.to_string()].into_iter().collect::<BTreeSet<_>>();
         let empty = BTreeSet::new();
         let digest = bytes_digest(b"generation-state");
+        // Publication is reachable only from an explicit generated-product role. Merely being
+        // absent from the seed manifest remains unresolved for unclassified surfaces.
+        let non_seed_roles = [(rows[0].0.to_string(), "NonSeedGeneratedOutput".to_string())]
+            .into_iter()
+            .collect::<HashMap<_, _>>();
+        let (publish_kind, publish_paths) = convergence_plan_from_model(
+            &roots,
+            1,
+            "generation-publish",
+            "tree-publish",
+            &digest,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &stage0,
+            &modules,
+            &empty,
+            &empty,
+            &empty,
+            &empty,
+            &non_seed_roles,
+            &RegenEmissionScope::WholePopulation,
+            &[],
+            "seed-publish",
+        )
+        .unwrap();
+        assert_eq!(publish_kind, "PublishNonSeedOutputs");
+        assert_eq!(publish_paths, vec![rows[0].0.to_string()]);
+
         let cycle = convergence_plan_from_model(
             &roots,
             2,
@@ -4829,6 +4875,7 @@ mod regen_convergence_host_instrument_tests {
             &empty,
             &empty,
             &seed_members,
+            &HashMap::new(),
             &RegenEmissionScope::WholePopulation,
             &[format!("seed-0:{digest}")],
             "seed-0",
@@ -4849,6 +4896,7 @@ mod regen_convergence_host_instrument_tests {
             &empty,
             &empty,
             &seed_members,
+            &HashMap::new(),
             &RegenEmissionScope::WholePopulation,
             &[],
             "seed-new",
@@ -5063,6 +5111,7 @@ pub fn regen_generation_role_population(
         BTreeSet<String>,
         BTreeSet<String>,
         HashMap<String, String>,
+        HashMap<String, String>,
     ),
     String,
 > {
@@ -5107,6 +5156,7 @@ pub fn regen_generation_role_population(
     let bootstrap_products = list_result("regen_bootstrap_product_paths", vec![])?;
     let owned_products = list_result("regen_generated_product_owner_paths", vec![])?;
     let mut generated_product_owners = HashMap::new();
+    let mut generated_product_roles = HashMap::new();
     for product in &owned_products {
         let owners = list_result(
             "regen_generated_product_source_modules",
@@ -5119,12 +5169,31 @@ pub fn regen_generation_role_population(
             ));
         }
         generated_product_owners.insert(product.clone(), owners.into_iter().next().unwrap());
+        let roles = list_result(
+            "regen_generated_product_generation_role_labels",
+            vec![(Some("product".to_string()), str_value(product))],
+        )?;
+        if bootstrap_products.contains(product) {
+            if !roles.is_empty() {
+                return Err(format!(
+                    "SurfaceInIncompatibleStageRoles: bootstrap product {product} also has aggregate roles {roles:?}"
+                ));
+            }
+        } else if roles.len() != 1 {
+            return Err(format!(
+                "GenerationRoleUnresolved: aggregate product {product} has {} declared roles",
+                roles.len()
+            ));
+        } else {
+            generated_product_roles.insert(product.clone(), roles.into_iter().next().unwrap());
+        }
     }
     Ok((
         generation,
         bootstrap_sources,
         bootstrap_products,
         generated_product_owners,
+        generated_product_roles,
     ))
 }
 
