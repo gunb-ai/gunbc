@@ -371,7 +371,7 @@ pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -
         });
         match matching.clone().first().cloned() {
             Some(f) => f.keyword.clone(),
-            None => "__MISSING_ITEM_KEYWORD__".to_string(),
+            std::option::Option::None => "__MISSING_ITEM_KEYWORD__".to_string(),
         }
     }
 }
@@ -504,7 +504,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         }),
         scaffold: Rc::new(ProjectScaffold {
             manifest_file: Some("Cargo.toml".to_string()),
-            module_init_file: None,
+            module_init_file: std::option::Option::None,
             source_file_extension: rust_source_extension(),
             source_dir: Some(rust_source_dir()),
         }),
@@ -515,8 +515,8 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
             enum_derives_copy: Some(rust_enum_derives_copy()),
             tag_attribute: Some(rust_serde_tag()),
             rename_attribute_template: Some(rust_serde_rename_template()),
-            derive_attribute: None,
-            default_value: None,
+            derive_attribute: std::option::Option::None,
+            default_value: std::option::Option::None,
         }),
         test_conventions: Rc::new(TestConventions {
             file_prefix: "".to_string(),
@@ -608,7 +608,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: None,
+            wildcard_case: std::option::Option::None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -693,15 +693,15 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             manifest_file: Some("requirements.txt".to_string()),
             module_init_file: Some(python_module_init()),
             source_file_extension: python_source_extension(),
-            source_dir: None,
+            source_dir: std::option::Option::None,
         }),
         serialization: Rc::new(SerializationSpec {
-            struct_derives: None,
-            struct_derives_copy: None,
-            enum_derives: None,
-            enum_derives_copy: None,
-            tag_attribute: None,
-            rename_attribute_template: None,
+            struct_derives: std::option::Option::None,
+            struct_derives_copy: std::option::Option::None,
+            enum_derives: std::option::Option::None,
+            enum_derives_copy: std::option::Option::None,
+            tag_attribute: std::option::Option::None,
+            rename_attribute_template: std::option::Option::None,
             derive_attribute: Some(python_derive_attribute()),
             default_value: Some(python_default_value()),
         }),
@@ -711,7 +711,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
             file_dir: Some("tests/".to_string()),
             function_prefix: "test_".to_string(),
             name_style: TestNameStyle::SnakeCaseTestNames,
-            async_decorator: None,
+            async_decorator: std::option::Option::None,
         }),
         visibility: Rc::new(VisibilitySpec::KeywordVisibility {
             prefix: "".to_string(),
@@ -795,7 +795,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::ConditionalTernary,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
-            wildcard_case: None,
+            wildcard_case: std::option::Option::None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: "(".to_string(),
                 close: ")".to_string(),
@@ -839,8 +839,8 @@ pub fn python_spec() -> Rc<LanguageSpec> {
                 }),
             ]),
         }),
-        callable_type_template: None,
-        callable_value_wrap_template: None,
+        callable_type_template: std::option::Option::None,
+        callable_value_wrap_template: std::option::Option::None,
         naming_case: NamingCase::SnakeCase,
         async_call_prefix: "await ".to_string(),
         bridge_method_prefix: "".to_string(),
@@ -880,27 +880,27 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         }),
         scaffold: Rc::new(ProjectScaffold {
             manifest_file: Some("go.mod".to_string()),
-            module_init_file: None,
+            module_init_file: std::option::Option::None,
             source_file_extension: ".go".to_string(),
-            source_dir: None,
+            source_dir: std::option::Option::None,
         }),
         serialization: Rc::new(SerializationSpec {
-            struct_derives: None,
-            struct_derives_copy: None,
-            enum_derives: None,
-            enum_derives_copy: None,
-            tag_attribute: None,
-            rename_attribute_template: None,
-            derive_attribute: None,
-            default_value: None,
+            struct_derives: std::option::Option::None,
+            struct_derives_copy: std::option::Option::None,
+            enum_derives: std::option::Option::None,
+            enum_derives_copy: std::option::Option::None,
+            tag_attribute: std::option::Option::None,
+            rename_attribute_template: std::option::Option::None,
+            derive_attribute: std::option::Option::None,
+            default_value: std::option::Option::None,
         }),
         test_conventions: Rc::new(TestConventions {
             file_prefix: "".to_string(),
             file_suffix: "_test".to_string(),
-            file_dir: None,
+            file_dir: std::option::Option::None,
             function_prefix: "Test".to_string(),
             name_style: TestNameStyle::PascalCaseTestNames,
-            async_decorator: None,
+            async_decorator: std::option::Option::None,
         }),
         visibility: Rc::new(VisibilitySpec::CaseVisibility {
             export_case: NamingCase::PascalCase,
@@ -982,8 +982,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
             if_value_form: IfValueForm::IfStatement,
             match_value_form: MatchValueForm::MatchStatementArmReturn,
             wildcard_case: Some("default".to_string()),
-            variant_pattern: None,
-            guard_prefix: None,
+            variant_pattern: std::option::Option::None,
+            guard_prefix: std::option::Option::None,
             empty_return_value: "struct{}{}, nil".to_string(),
             return_suffix: ", nil".to_string(),
             suppress_unit_return: true,
@@ -1016,8 +1016,8 @@ pub fn go_spec() -> Rc<LanguageSpec> {
                 to: "%%".to_string(),
             })]),
         }),
-        callable_type_template: None,
-        callable_value_wrap_template: None,
+        callable_type_template: std::option::Option::None,
+        callable_value_wrap_template: std::option::Option::None,
         naming_case: NamingCase::CamelCase,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "v2rt.".to_string(),
@@ -1052,20 +1052,20 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             strategy: Rc::new(ReservedWordStrategy::NoEscape),
         }),
         scaffold: Rc::new(ProjectScaffold {
-            manifest_file: None,
-            module_init_file: None,
+            manifest_file: std::option::Option::None,
+            module_init_file: std::option::Option::None,
             source_file_extension: dag_source_extension(),
-            source_dir: None,
+            source_dir: std::option::Option::None,
         }),
         serialization: Rc::new(SerializationSpec {
-            struct_derives: None,
-            struct_derives_copy: None,
-            enum_derives: None,
-            enum_derives_copy: None,
-            tag_attribute: None,
-            rename_attribute_template: None,
-            derive_attribute: None,
-            default_value: None,
+            struct_derives: std::option::Option::None,
+            struct_derives_copy: std::option::Option::None,
+            enum_derives: std::option::Option::None,
+            enum_derives_copy: std::option::Option::None,
+            tag_attribute: std::option::Option::None,
+            rename_attribute_template: std::option::Option::None,
+            derive_attribute: std::option::Option::None,
+            default_value: std::option::Option::None,
         }),
         test_conventions: Rc::new(TestConventions {
             file_prefix: "test_".to_string(),
@@ -1073,7 +1073,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
             file_dir: Some("tests/".to_string()),
             function_prefix: "test_".to_string(),
             name_style: TestNameStyle::SnakeCaseTestNames,
-            async_decorator: None,
+            async_decorator: std::option::Option::None,
         }),
         visibility: Rc::new(VisibilitySpec::KeywordVisibility {
             prefix: "".to_string(),
@@ -1154,7 +1154,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         expression_semantics: Rc::new(ExpressionSemantics {
             if_value_form: IfValueForm::IfExpression,
             match_value_form: MatchValueForm::MatchExpression,
-            wildcard_case: None,
+            wildcard_case: std::option::Option::None,
             variant_pattern: Some(Rc::new(VariantPatternSyntax {
                 open: " { ".to_string(),
                 close: " }".to_string(),
@@ -1198,8 +1198,8 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
                 }),
             ]),
         }),
-        callable_type_template: None,
-        callable_value_wrap_template: None,
+        callable_type_template: std::option::Option::None,
+        callable_value_wrap_template: std::option::Option::None,
         naming_case: NamingCase::AsAuthored,
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
@@ -1237,15 +1237,15 @@ pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target.clone() {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
-            None => key.clone(),
+            std::option::Option::None => key.clone(),
         },
         RenderTarget::Go => match v1_rt::lookup(&go_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
-            None => key.clone(),
+            std::option::Option::None => key.clone(),
         },
         RenderTarget::Python => match v1_rt::lookup(&python_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
-            None => key.clone(),
+            std::option::Option::None => key.clone(),
         },
         RenderTarget::Dag => key.clone(),
     }
@@ -1272,7 +1272,7 @@ pub fn binop_symbol(
             for spec in ops.iter().cloned() {
                 if match spec.binop.clone() {
                     Some(b) => (b.clone() == op.clone()),
-                    None => false,
+                    std::option::Option::None => false,
                 } {
                     __result.push(spec);
                 }
@@ -1294,14 +1294,14 @@ pub fn binop_symbol(
             })
             .first()
             .cloned(),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         };
         let result = match specific.clone() {
             Some(_) => specific.clone(),
-            None => Rc::new({
+            std::option::Option::None => Rc::new({
                 let mut __result = Vec::new();
                 for spec in op_matching.iter().cloned() {
-                    if (spec.algebra_field.clone() == None) {
+                    if (spec.algebra_field.clone() == std::option::Option::None) {
                         __result.push(spec);
                     }
                 }
@@ -1312,7 +1312,7 @@ pub fn binop_symbol(
         };
         match result.clone() {
             Some(spec) => Some(spec.symbol.clone()),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }

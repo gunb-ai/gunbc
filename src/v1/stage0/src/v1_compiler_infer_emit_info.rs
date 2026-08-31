@@ -115,7 +115,7 @@ pub fn collect_type_node_import_surface_names(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let peeled = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
         let name = crate::v1_std_core::authored_name_at(source_indices.clone(), peeled.clone());
-        let is_tv = if (peeled.inferred.clone() != None) {
+        let is_tv = if (peeled.inferred.clone() != std::option::Option::None) {
             is_type_variable(peeled.inferred.clone().clone().unwrap())
         } else {
             false
@@ -154,15 +154,6 @@ pub fn collect_type_node_import_surface_names(
     })
 }
 
-pub fn emit_graph_fn_decl_items_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup into the SAME typed (post-04_infer, .inferred-populated) module items build_emit_graph_info already folds over, so a caller-side Clone-bound derivation (v1.compiler.trait_bound_witness) can resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration Node — never a second, parallel re-parse or re-inference of the callee.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
@@ -184,6 +175,7 @@ pub struct EmitGraphInfo {
     pub fn_generic_param_names: Rc<Vec<String>>,
     pub fn_type_env: Rc<TypeEnv>,
     pub fn_return_type: Option<Rc<Node>>,
+    pub expected_type: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -215,7 +207,8 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         clone_impl_required_type_params: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         fn_generic_param_names: Rc::new(vec![]),
         fn_type_env: crate::v1_compiler_infer_env::empty_type_env(),
-        fn_return_type: None,
+        fn_return_type: std::option::Option::None,
+        expected_type: std::option::Option::None,
     })
 }
 
@@ -244,6 +237,7 @@ pub fn emit_info_with_fn_type_context(
         fn_generic_param_names: generic_param_names.clone(),
         fn_type_env: env.clone(),
         fn_return_type: emit_info.fn_return_type.clone(),
+        expected_type: emit_info.expected_type.clone(),
     })
 }
 
@@ -271,6 +265,35 @@ pub fn emit_info_with_fn_return(
         fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
         fn_type_env: emit_info.fn_type_env.clone(),
         fn_return_type: fn_return_type.clone(),
+        expected_type: fn_return_type.clone(),
+    })
+}
+
+pub fn emit_info_with_expected_type(
+    emit_info: Rc<EmitGraphInfo>,
+    expected_type: Option<Rc<Node>>,
+) -> Rc<EmitGraphInfo> {
+    Rc::new(EmitGraphInfo {
+        type_summaries: emit_info.type_summaries.clone(),
+        type_decl_items: emit_info.type_decl_items.clone(),
+        fn_decl_items: emit_info.fn_decl_items.clone(),
+        recursive_type_set: emit_info.recursive_type_set.clone(),
+        fielded_variants: emit_info.fielded_variants.clone(),
+        positional_payload_variants: emit_info.positional_payload_variants.clone(),
+        shared_types: emit_info.shared_types.clone(),
+        ownership_index: emit_info.ownership_index.clone(),
+        movable: emit_info.movable.clone(),
+        variant_to_enum: emit_info.variant_to_enum.clone(),
+        owned_bindings: emit_info.owned_bindings.clone(),
+        read_only_params_index: emit_info.read_only_params_index.clone(),
+        read_only_params: emit_info.read_only_params.clone(),
+        clone_bounded_type_params: emit_info.clone_bounded_type_params.clone(),
+        map_key_required_type_names: emit_info.map_key_required_type_names.clone(),
+        clone_impl_required_type_params: emit_info.clone_impl_required_type_params.clone(),
+        fn_generic_param_names: emit_info.fn_generic_param_names.clone(),
+        fn_type_env: emit_info.fn_type_env.clone(),
+        fn_return_type: emit_info.fn_return_type.clone(),
+        expected_type: expected_type.clone(),
     })
 }
 
@@ -312,26 +335,18 @@ pub fn emit_graph_records_type_decl(
 ) -> bool {
     match build_type_summary(item.clone(), source_indices.clone()) {
         Some(_) => true,
-        None => {
+        std::option::Option::None => {
             ((((item.connective.clone() == Connective::NoConnective)
                 && ((item.children.clone().len() as i64) == 0))
                 && ((item.params.clone().len() as i64) == 0))
-                && (item.transport.clone() == None))
+                && (item.transport.clone() == std::option::Option::None))
         }
     }
 }
 
-pub fn emit_graph_records_fn_decl_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info) is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export').".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
+    ((item.body.clone() != std::option::Option::None)
+        && (item.type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn derive_variant_to_enum(
@@ -360,7 +375,7 @@ pub fn derive_variant_to_enum(
                                 Some(_) => {
                                     v1_rt::rc_map_insert(inner.clone(), vn.clone(), "".to_string())
                                 }
-                                None => v1_rt::rc_map_insert(
+                                std::option::Option::None => v1_rt::rc_map_insert(
                                     inner.clone(),
                                     vn.clone(),
                                     summary.name.clone(),
@@ -412,7 +427,7 @@ pub fn variant_belongs_to_enum(
             }
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -425,7 +440,7 @@ pub fn is_enum_in_summaries(
             TypeRepr::EnumRepr { unit_only: _, .. } => true,
             _ => false,
         },
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -460,7 +475,8 @@ pub fn field_value_shape_from_type_node(type_node: Rc<Node>) -> FieldValueShape 
 }
 
 pub fn is_tuple_type(n: Rc<Node>) -> bool {
-    (((n.connective.clone() == Connective::Conj) && (n.ident_span.clone() == None))
+    (((n.connective.clone() == Connective::Conj)
+        && (n.ident_span.clone() == std::option::Option::None))
         && ((n.children.clone().len() as i64) == 2))
 }
 
@@ -487,7 +503,7 @@ pub fn build_struct_field_summaries(
             |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
                 let idx = pair.0.clone();
                 let child = pair.1.clone();
-                if (child.inferred.clone() == None) {
+                if (child.inferred.clone() == std::option::Option::None) {
                     acc.clone()
                 } else {
                     {
@@ -533,9 +549,9 @@ pub fn find_first_enum_field_node(
             source_indices.clone(),
         ) {
             Some(field_child) => Some(field_child.clone()),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -579,7 +595,7 @@ pub fn enum_field_type_consistent(
                     expected.clone(),
                     source_indices.clone(),
                 ),
-                None => false,
+                std::option::Option::None => false,
             }) {
                 __all = false;
                 break;
@@ -605,7 +621,7 @@ pub fn build_enum_field_summaries(
                 }
                 __result
             }),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let shared = Rc::new({
             let mut __result = Vec::new();
@@ -634,7 +650,7 @@ pub fn build_enum_field_summaries(
                         crate::v1_compiler_infer_types::child_type_node(first_field.clone()),
                         source_indices.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 } {
                     __result.push(field_name);
                 }
@@ -661,7 +677,7 @@ pub fn build_enum_field_summaries(
                             ),
                         }),
                     ),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             },
         )
@@ -688,7 +704,7 @@ pub fn build_field_type_map(
                     source_indices.clone(),
                     crate::v1_compiler_infer_types::normalize_access_type_node(ft.clone()),
                 );
-                let ft_is_type_var = if (ft.inferred.clone() != None) {
+                let ft_is_type_var = if (ft.inferred.clone() != std::option::Option::None) {
                     is_type_variable(ft.inferred.clone().clone().unwrap())
                 } else {
                     false
@@ -729,9 +745,9 @@ pub fn build_type_summary(
     {
         if (((item.connective.clone() == Connective::NoConnective)
             || (item.connective.clone() == Connective::Arrow))
-            || (item.transport.clone() != None))
+            || (item.transport.clone() != std::option::Option::None))
         {
-            return None;
+            return std::option::Option::None;
         }
         let gpn = Rc::new({
             let mut __result = Vec::new();
@@ -916,7 +932,7 @@ pub fn type_summary_or_structural_alias_reaches_fn(
                             __found
                         })
                     }
-                    None => {
+                    std::option::Option::None => {
                         (v1_rt::set_contains(&structural_alias_direct_fn_names, name.clone())
                             || match v1_rt::map_get(
                                 &structural_alias_fn_surface_names,
@@ -938,7 +954,7 @@ pub fn type_summary_or_structural_alias_reaches_fn(
                                     }
                                     __found
                                 }
-                                None => false,
+                                std::option::Option::None => false,
                             })
                     }
                 }
@@ -986,7 +1002,7 @@ pub fn close_fn_fields(
                     acc.clone()
                 }
             }
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -1016,9 +1032,9 @@ pub fn add_emit_item_summary(
             crate::v1_std_core::authored_name_at(source_indices.clone(), alias_rhs.clone());
         let is_type_alias = (((((((decl_name.clone() != "".to_string())
             && (item.connective.clone() == Connective::NoConnective))
-            && (item.body.clone() == None))
+            && (item.body.clone() == std::option::Option::None))
             && ((item.params.clone().len() as i64) == 0))
-            && (item.transport.clone() == None))
+            && (item.transport.clone() == std::option::Option::None))
             && ((item.children.clone().len() as i64) == 0))
             && (alias_rhs_name.clone() != "Unit".to_string()));
         let is_structural_alias = if is_type_alias.clone() {
@@ -1028,7 +1044,7 @@ pub fn add_emit_item_summary(
                 item_decl_file.clone(),
             ) {
                 Some(_) => false,
-                None => true,
+                std::option::Option::None => true,
             }
         } else {
             false
@@ -1175,7 +1191,7 @@ pub fn add_emit_item_summary(
                         .clone(),
                 })
             }
-            None => state.clone(),
+            std::option::Option::None => state.clone(),
         }
     }
 }
@@ -1183,7 +1199,7 @@ pub fn add_emit_item_summary(
 pub fn emit_dependency_registration_dissolve_on_note() -> Rc<DissolutionCondition> {
     thread_local! {
         static CACHED: Rc<DissolutionCondition> = {
-            crate::std_dissolution::unbound_dissolution("dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string())
+            crate::std_dissolution::unbound_dissolution("dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_paths from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.".to_string())
         };
     }
     CACHED.with(|c: &Rc<DissolutionCondition>| c.clone())

@@ -32,7 +32,14 @@ import gunbc.spark.training_ready {
   SparkUnifiedPoolUnread,
 }
 
-data spark_training_ready_witness_note: String = "SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the corpus can still author — an unreached probe read as absence, a reading paired with an unestablished retirement, a capture whose body is not a count, a serving cell presented as trainable — so none of these claims is green by construction. Three states that USED to be authorable are absent from this file rather than asserted: a pool measured before the retirement, a pool naming a different host than its retirement, and a capacity passed beside the capture instead of parsed from it. Each lost its constructor when the carrier absorbed the fact, and the refusals they used to prove moved into the producer's claims."
+// SPARK-PAIR-0 P0. The readiness gate's discriminating evidence. Every red here is a state the
+// corpus can still author — an unreached probe read as absence, a reading paired with an
+// unestablished retirement, a capture whose body is not a count, a serving cell presented as
+// trainable — so none of these claims is green by construction. Three states that USED to be
+// authorable are absent from this file rather than asserted: a pool measured before the retirement,
+// a pool naming a different host than its retirement, and a capacity passed beside the capture
+// instead of parsed from it. Each lost its constructor when the carrier absorbed the fact, and the
+// refusals they used to prove moved into the producer's claims.
 
 // THE FIXTURES GO THROUGH THE PRODUCERS, BECAUSE THE CARRIERS REFUSED TO BE FABRICATED.
 //

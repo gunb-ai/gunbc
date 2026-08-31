@@ -23,7 +23,20 @@ fn interaction_cause_key(c: InteractionCause) -> String {
   }
 }
 
-data machine_observed_note: String = "The semantic reading of the split the register already relied on: PointerApproach, FocusAcquired and PressEngaged are things a PERSON does to a control; ObservedStateEntered is something the MACHINE did to it. The still-until-touched amendment (material.dag) turned on exactly this distinction — motion on user touch OR observed state change, never ambient — and it stated the distinction in terms of pseudo-class versus class, which is the realization's way of seeing it. This is the same fact said in the interface's terms, so a non-CSS renderer can honour the law without inheriting the vocabulary that happened to express it first."
+// The semantic reading of the split the register already relied on: PointerApproach, FocusAcquired
+// and PressEngaged are things a PERSON does to a control; ObservedStateEntered is something the
+// MACHINE did to it. The still-until-touched amendment (material.dag) turned on exactly this
+// distinction — motion on user touch OR observed state change, never ambient — and it stated the
+// distinction in terms of pseudo-class versus class, which is the realization's way of seeing it.
+// This is the same fact said in the interface's terms, so a non-CSS renderer can honour the law
+// without inheriting the vocabulary that happened to express it first.
+
+// There is still no ambient constructor, and that is load-bearing rather than incidental. Every
+// variant here names a CAUSE, so motion with no cause cannot be expressed in this vocabulary at all
+// — the same construction wall MotionTrigger carried, preserved verbatim across the de-fusion. The
+// instrument-motion lane (InstrumentDrift) is the declared exception and it does NOT widen this
+// coproduct: bounded instrument character is a property of the enclosing instrument, not a response
+// of a semantic control, so it gets its own carrier rather than an ambient arm here.
 
 fn cause_is_machine_observed(c: InteractionCause) -> Bool {
   match c {
@@ -33,5 +46,3 @@ fn cause_is_machine_observed(c: InteractionCause) -> Bool {
     ObservedStateEntered { state_name } => true
   }
 }
-
-data ambient_remains_unwritable_note: String = "There is still no ambient constructor, and that is load-bearing rather than incidental. Every variant here names a CAUSE, so motion with no cause cannot be expressed in this vocabulary at all — the same construction wall MotionTrigger carried, preserved verbatim across the de-fusion. The instrument-motion lane (InstrumentDrift) is the declared exception and it does NOT widen this coproduct: bounded instrument character is a property of the enclosing instrument, not a response of a semantic control, so it gets its own carrier rather than an ambient arm here."

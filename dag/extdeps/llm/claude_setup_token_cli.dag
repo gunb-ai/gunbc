@@ -25,7 +25,12 @@ data claude_setup_token_command: NonEmptyStr = "setup-token" as NonEmptyStr
 
 data claude_code_oauth_token_env_var: NonEmptyStr = "CLAUDE_CODE_OAUTH_TOKEN" as NonEmptyStr
 
-data claude_setup_token_cli_authority_note: String = "Upstream Claude Code setup-token (code.claude.com/docs/en/cli-reference): generates a long-lived OAuth token for CI/scripts, prints to terminal, requires subscription. Managed enrollment uses ONLY this path plus CLAUDE_CODE_OAUTH_TOKEN — never ambient ~/.claude OAuth refresh home, never ANTHROPIC_API_KEY alongside it. Token prefix/length bounds are NOT assumed here; gunbc.claude_setup_token_enrollment admits captures only against ClaudeSetupTokenFormatMeasured receipts from the pinned executable."
+// Upstream Claude Code setup-token (code.claude.com/docs/en/cli-reference): generates a long-lived
+// OAuth token for CI/scripts, prints to terminal, requires subscription. Managed enrollment uses
+// ONLY this path plus CLAUDE_CODE_OAUTH_TOKEN — never ambient ~/.claude OAuth refresh home, never
+// ANTHROPIC_API_KEY alongside it. Token prefix/length bounds are NOT assumed here;
+// gunbc.claude_setup_token_enrollment admits captures only against ClaudeSetupTokenFormatMeasured
+// receipts from the pinned executable.
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
@@ -41,7 +46,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data claude_config_dir_env_var: NonEmptyStr = "CLAUDE_CONFIG_DIR" as NonEmptyStr
 
-data claude_config_dir_consistency_gap_note: String = "CLAUDE_CONFIG_DIR has known upstream consistency issues (anthropics/claude-code issue 4739). Isolation for managed enrollment is established by execution-time path observation receipts, never by assuming this env var redirects every file Claude reads."
+// CLAUDE_CONFIG_DIR has known upstream consistency issues (anthropics/claude-code issue 4739).
+// Isolation for managed enrollment is established by execution-time path observation receipts,
+// never by assuming this env var redirects every file Claude reads.
 
 fn shape_claude_setup_token_argv(executable: NonEmptyStr) -> List<String> {
   [executable as String, claude_setup_token_command as String]

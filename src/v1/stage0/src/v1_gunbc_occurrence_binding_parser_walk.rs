@@ -3,8 +3,6 @@
 
 use self::ParsedOccurrenceBindingSource::*;
 pub use crate::std_occurrence_binding_candidates::declaration_exposure_from_containment;
-pub use crate::std_occurrence_binding_candidates::DeclarationExposure;
-use crate::std_occurrence_binding_candidates::DeclarationExposure::*;
 use crate::std_occurrence_binding_candidates::DeclarationExposureGrounding::ModuleLocalMemberExposure;
 pub use crate::std_occurrence_binding_candidates::{
     AuthoredOrderRow, DeclarationExposureGrounding, DeclarationExposureRow,
@@ -27,15 +25,6 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
-
-pub fn occurrence_binding_parser_walk_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Parser-to-P2-walk bridge (namespace-reference-derived-closure slice B): authored source is parsed through v1.compiler.parse.parse_with_table; OccurrenceTransport and module path come from the parser only. OccurrenceBindingCandidateInputs are projected from parser facts — module paths for every indexed occurrence, authored order from diagnostic_span.start (never OccurrenceId.value), and DeclarationExposure from containment shape (empty / single-ancestor => ModuleExposure, else LexicalExposure with parent scope). Category is never read for exposure. Index-build refusals are carried intact as StructuralBindingWalkRefused — never coarsened to a unit variant (blocker 6).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
@@ -87,7 +76,9 @@ pub fn parse_authored_occurrence_binding_source(
             crate::v1_std_core::empty_intern_table(),
         );
         match crate::v1_compiler_parse::parse_with_table_ready_module_path(parsed.clone()) {
-            None => Rc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused),
+            std::option::Option::None => {
+                Rc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused)
+            }
             Some(module_path) => Rc::new(
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
                     transport: parsed.occurrence_transport.clone(),
@@ -120,15 +111,6 @@ pub fn authored_order_row_from_entry(entry: Rc<OccurrenceIndexEntry>) -> Rc<Auth
                 .clone(),
         },
     })
-}
-
-pub fn occurrence_binding_inputs_accumulator_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_binding_inputs_from_transport(
@@ -167,7 +149,7 @@ pub fn reference_named(
         .cloned()
     {
         Some(reference) => Some(reference.clone()),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -179,7 +161,7 @@ pub fn references_named(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
                         true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
@@ -199,7 +181,7 @@ pub fn declarations_named(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), declaration.occurrence.clone()) {
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
                         true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
@@ -223,15 +205,17 @@ pub fn index_entry_for_occurrence(
         .iter()
         .cloned()
         .fold(
-            None,
+            std::option::Option::None,
             |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
-                None => match (entry.projection.clone().occurrence.clone().value.clone()
-                    == occurrence.value.clone())
-                {
-                    true => Some(entry.clone()),
-                    false => None,
-                },
+                std::option::Option::None => {
+                    match (entry.projection.clone().occurrence.clone().value.clone()
+                        == occurrence.value.clone())
+                    {
+                        true => Some(entry.clone()),
+                        false => std::option::Option::None,
+                    }
+                }
             },
         )
 }
@@ -248,16 +232,18 @@ pub fn occurrence_id_for_authored_name(
         .iter()
         .cloned()
         .fold(
-            None,
+            std::option::Option::None,
             |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
-                None => match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                    true => Some(entry.projection.clone().occurrence.clone()),
-                    false => None,
-                },
+                std::option::Option::None => {
+                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
+                        true => Some(entry.projection.clone().occurrence.clone()),
+                        false => std::option::Option::None,
+                    }
+                }
             },
         ) {
         Some(occurrence) => Some(occurrence.clone()),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }

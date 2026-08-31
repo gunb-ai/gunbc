@@ -32,7 +32,15 @@ import extdeps.languages.json.emit {
   json_int,
   json_array,
 }
-import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority_observed }
+import gunbc.roadmap_launch_admission {
+  LaunchRefusal,
+  LaunchNoActuatingInstance, LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchNodeSuperseded, LaunchAlreadyAccepted, LaunchReviewRequired,
+  LaunchSizeMissing, LaunchExecutionContractMissing, LaunchDependenciesBlocked, LaunchSessionsUnobservable,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  LaunchNoCapacity, LaunchCauseNotPermitted, LaunchGateNotEvaluated,
+}
+import gunbc.roadmap_page { roadmap_page_for_authority_launch, roadmap_daily_workspace_page_for_authority_observed }
 import gunbc.roadmap_component {
   dispatch_client_js_source, roadmap_dispatch_asset_path,
   sandbox_client_js_source, sandbox_asset_path,
@@ -53,15 +61,9 @@ import gunbc.roadmap_static_site {
 }
 import gunbc.roadmap_site_surface_render { page_render_refusal_body }
 import gunbc.roadmap_belt_actuate {
-  BeltDispatchResult,
-  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchStaleSession, DispatchSessionLivenessUnobserved,
-  DispatchRevisionDrifted, DispatchRevisionUnobserved,
-  DispatchTransitionInhibited,
-  DispatchSessionMultiplicityConflict,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  belt_spawn_outcome_json, belt_launch_host_standing_for_page,
   belt_dispatch_node, belt_dispatch_node_for_instance,
-  belt_dispatch_result_json_value,
   belt_dispatch_result_for_label,
   belt_dispatch_all_status_labels,
   BeltObserve, Observed, ObserveRefused,
@@ -98,7 +100,16 @@ import gunbc.roadmap_dashboard_instance {
   dashboard_instance_dispatch_attempt_state_root,
 }
 
-data roadmap_serve_note: String = "The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B, parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the artifact table and this serve table are two projections of one authority set, never two copies of content, and every body is computed at request time so the served page is the LIVE roadmap, not a deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove). Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel. The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page (lane agreement 2026-07-20): the page never knows which backend answers."
+// The gunbc-served dashboard instantiation (docs/plans/gunbc-served-dashboard-design.md; belt B,
+// parent-approved 2026-07-20). H = RoadmapServeHandler: every row is a DynamicRoute whose handler
+// calls the SAME authority the static-site artifacts call (roadmap_page, roadmap_static_site) — the
+// artifact table and this serve table are two projections of one authority set, never two copies of
+// content, and every body is computed at request time so the served page is the LIVE roadmap, not a
+// deploy-frozen snapshot (the section-3 dual-representation cost this module exists to remove).
+// Dispatch: POST /dispatch/NODE_ID invokes gunbc.roadmap_belt_actuate.belt_dispatch_node IN-PROCESS
+// — the single dispatch authority (#6914), no emitted JS, no subprocess exec, no env-var channel.
+// The launch button that POSTs here is transport-agnostic and lands with belt A in roadmap_page
+// (lane agreement 2026-07-20): the page never knows which backend answers.
 
 data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -109,10 +120,56 @@ data roadmap_serve_interpreted_scaffold: Disposition = Scaffold {
   }
 }
 
-data roadmap_serve_interpreted_scaffold_note: String = "ROADMAP section-4 rules a NEW long-running interpreted workload a review reject, routed through emit-on-demand. gunbc serve under the tree-walker is exactly that workload, so it lands as this DECLARED scaffold: dissolution = emit-on-demand of the serve closure (emit -> build -> run native, artifact shared by content-hash — the same lane as the S1 parse census receipt). Interim cost is bounded and strictly better than the belt-A alternative it supersedes: A pays a full CLI startup (load + compile + resolve) per dispatch click; this process pays it once at bind time."
+// ROADMAP section-4 rules a NEW long-running interpreted workload a review reject, routed through
+// emit-on-demand. gunbc serve under the tree-walker is exactly that workload, so it lands as this
+// DECLARED scaffold: dissolution = emit-on-demand of the serve closure (emit -> build -> run
+// native, artifact shared by content-hash — the same lane as the S1 parse census receipt). Interim
+// cost is bounded and strictly better than the belt-A alternative it supersedes: A pays a full CLI
+// startup (load + compile + resolve) per dispatch click; this process pays it once at bind time.
 
-
-data roadmap_serve_seam_restoration_note: String = "THE SOCKET SEAM WAS RESTORED ON 2026-08-19, AND THIS ROW RECORDS WHY THAT IS A REPAIR RATHER THAN NEW DEBT. #8286 deleted the cli_run driver surface and took `serve` and `converge` out as ONE population; the two are not the same case, and deleting them together is what made it wrong. Converge has a successor that EXISTS -- the modeled convergence spine, fleet_converge_timer -> fleet_converge_apply -> host_effect_realize -- so its verb can refuse and route there. Serve's declared successor is the scaffold ABOVE, roadmap_serve_interpreted_scaffold, dissolving to emit-on-demand of the serve closure, and it was never built. So the deletion removed a live outward-facing production route with no minimal Y able to hold the boundary, which is precisely the case DESIGN section 3 carves out: a gap-intolerant boundary keeps the staged form, and where no Y can hold it at all X stays but stays FROZEN. What the restore does is put X back and freeze it.\n\nMEASURED, NOT ASSUMED, because the cost of the repair turned on one fact. The retained engine still evaluates this module completely: roadmap_serve_witness_test runs 16/16 green against a binary built from the post-deletion tree, covering route selection, 404 and 501 folding, and dispatch-refuses-before-effects. What #8286 removed was the SOCKET SEAM only -- accept, minimal HTTP/1.1 parse, response write -- which its own surviving doc comment still described after the code was gone. The deletion left the prose and took the machinery, so the restore is a quarry revert into comments that already marked the insertion points, not new authoring.\n\nNO SECOND OBLIGATION IS REGISTERED, DELIBERATELY. The scaffold above already binds roadmap_serve_handle and already names the correct terminal, so its dissolution IS this seam's restoration trigger; a fresh row beside it would be two obligations over one independently removable unit, which DESIGN section 5 forbids. FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter, no completion work, no flag or environment gate re-opening it -- an escape hatch is refused outright and would be a NewEscapeHatchOrAdmissionRow under gunbc.v1_maintenance_standing besides.\n\nTHE DELETED REFUSAL'S SUBSTANTIVE CLAIM IS NOT RETRACTED. Serve remains a desired SERVICE OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be modeled that way today because gunbc.host_effect carries only the LiveDeployApply / LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic service-occurrence member exists. That absence is why BOTH bring-up paths must name a command: the systemd unit through gunbc.live_deploy.emit, and the tmux path through gunbc.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is separate work and is the thing that stops this recurring.\n\nTHE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN section 3 names. It is not a NEW dependency; it is the one that stood until #8286. But if this route begins attracting completion work or performance work on the interpreted loop, the freeze has been repealed by drift, which is the standing danger gunbc.v1_maintenance_standing v1_seed_standing already warns about for the active-maintenance arm."
+// THE SOCKET SEAM WAS RESTORED ON 2026-08-19, AND THIS ROW RECORDS WHY THAT IS A REPAIR RATHER THAN
+// NEW DEBT. #8286 deleted the cli_run driver surface and took `serve` and `converge` out as ONE
+// population; the two are not the same case, and deleting them together is what made it wrong.
+// Converge has a successor that EXISTS -- the modeled convergence spine, fleet_converge_timer ->
+// fleet_converge_apply -> host_effect_realize -- so its verb can refuse and route there. Serve's
+// declared successor is the scaffold ABOVE, roadmap_serve_interpreted_scaffold, dissolving to
+// emit-on-demand of the serve closure, and it was never built. So the deletion removed a live
+// outward-facing production route with no minimal Y able to hold the boundary, which is precisely
+// the case DESIGN section 3 carves out: a gap-intolerant boundary keeps the staged form, and where
+// no Y can hold it at all X stays but stays FROZEN. What the restore does is put X back and freeze
+// it.
+//
+// MEASURED, NOT ASSUMED, because the cost of the repair turned on one fact. The retained engine
+// still evaluates this module completely: roadmap_serve_witness_test runs 16/16 green against a
+// binary built from the post-deletion tree, covering route selection, 404 and 501 folding, and
+// dispatch-refuses-before-effects. What #8286 removed was the SOCKET SEAM only -- accept, minimal
+// HTTP/1.1 parse, response write -- which its own surviving doc comment still described after the
+// code was gone. The deletion left the prose and took the machinery, so the restore is a quarry
+// revert into comments that already marked the insertion points, not new authoring.
+//
+// NO SECOND OBLIGATION IS REGISTERED, DELIBERATELY. The scaffold above already binds
+// roadmap_serve_handle and already names the correct terminal, so its dissolution IS this seam's
+// restoration trigger; a fresh row beside it would be two obligations over one independently
+// removable unit, which DESIGN section 5 forbids. FROZEN MEANS: no new options, no new verbs, no
+// new routes into the interpreter, no completion work, no flag or environment gate re-opening it --
+// an escape hatch is refused outright and would be a NewEscapeHatchOrAdmissionRow under
+// gunbc.v1_maintenance_standing besides.
+//
+// THE DELETED REFUSAL'S SUBSTANTIVE CLAIM IS NOT RETRACTED. Serve remains a desired SERVICE
+// OCCURRENCE that convergence should observe and reconcile rather than a command, and it cannot be
+// modeled that way today because gunbc.host_effect carries only the LiveDeployApply /
+// LiveDeployRetract / LiveDeployEnsureDependency triple and the runner-slot family -- no generic
+// service-occurrence member exists. That absence is why BOTH bring-up paths must name a command:
+// the systemd unit through gunbc.live_deploy.emit, and the tmux path through
+// gunbc.roadmap_dashboard_instance dashboard_instance_serve_argv. Registering that member is
+// separate work and is the thing that stops this recurring.
+//
+// THE ENGINE OBJECTION IS RECORDED RATHER THAN ARGUED AWAY. This does make the interpreter
+// load-bearing for a capability two lanes are deleting -- the propagation consequence DESIGN
+// section 3 names. It is not a NEW dependency; it is the one that stood until #8286. But if this
+// route begins attracting completion work or performance work on the interpreted loop, the freeze
+// has been repealed by drift, which is the standing danger gunbc.v1_maintenance_standing
+// v1_seed_standing already warns about for the active-maintenance arm.
 
 type RoadmapServeHandler
   = RoadmapDailyPageHandler
@@ -139,7 +196,15 @@ type RoadmapServeHandler
   | BeltStopHandler
   | BeltPublishHandler
 
-data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
+// Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped
+// MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo
+// in any route literal would have silently become a second root matcher, a widen at the very seam
+// §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table
+// (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry
+// answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken
+// dashboard, never silently wrong routing. The RED control is
+// witness_malformed_route_literal_refuses_table (a bad literal through the same build fold ->
+// Refused).
 
 type RoadmapServeRouteSpec {
   method: HttpMethod
@@ -184,7 +249,12 @@ type RoadmapServeRouteRow
   = RouteRow { route: ServedRoute<RoadmapServeHandler> }
   | RouteRowRefused { raw: String, segment: String, reason: String }
 
-data roadmap_serve_build_shape_note: String = "Cost-shape per DESIGN §6 bare-minimum-cost (review 40297 note: the first cut grew the route list by concat inside a fold — the copied-accumulator class that is always fixed regardless of realized n): the build is now map (per-spec row sum) + a scalar first-refusal fold (no list accumulation) + flat_map projection — linear by construction. The projection's RouteRowRefused arm contributes nothing and is reached only in the refusal-free branch (the scalar fold structurally excludes refused rows there), so it is a projection, never a fabricated value."
+// Cost-shape per DESIGN §6 bare-minimum-cost (review 40297 note: the first cut grew the route list
+// by concat inside a fold — the copied-accumulator class that is always fixed regardless of
+// realized n): the build is now map (per-spec row sum) + a scalar first-refusal fold (no list
+// accumulation) + flat_map projection — linear by construction. The projection's RouteRowRefused
+// arm contributes nothing and is reached only in the refusal-free branch (the scalar fold
+// structurally excludes refused rows there), so it is a projection, never a fabricated value.
 
 fn roadmap_serve_route_row(spec: RoadmapServeRouteSpec) -> RoadmapServeRouteRow {
   match parse_path_template(raw: spec.raw) {
@@ -230,7 +300,14 @@ fn serve_text_response(status: HttpStatus, content_type: MediaType, body: String
   ServeHttpResponse { status: status, content_type: content_type, body: body }
 }
 
-data serve_page_response_note: String = "A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and never a dropped route (the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy; DESIGN 5). The BODY of both arms is roadmap_static_site.served_page_body, shared with the healthz digest map rather than spelled twice: healthz publishes the digest of the served surface so a deploy can prove the running process is serving THIS tree, and a digest taken over a body that is merely supposed to match the route's would be validation standing where construction was available — the check would go green while the route lied. Only the STATUS split lives here, because a digest has no status."
+// A page render refusal is a TYPED 500 carrying the emitter's reason — never an empty page and
+// never a dropped route (the EmitRejected => [] route-drop in node_http_server_emit is a silent
+// widen this path deliberately does not copy; DESIGN 5). The BODY of both arms is
+// roadmap_static_site.served_page_body, shared with the healthz digest map rather than spelled
+// twice: healthz publishes the digest of the served surface so a deploy can prove the running
+// process is serving THIS tree, and a digest taken over a body that is merely supposed to match the
+// route's would be validation standing where construction was available — the check would go green
+// while the route lied. Only the STATUS split lives here, because a digest has no status.
 
 fn serve_page_response(page: Fragment) -> ServeHttpResponse {
   match try_serialize_html_source(node: page) {
@@ -256,36 +333,65 @@ fn serve_page_response_with_status(page: Fragment, status: HttpStatus) -> ServeH
   }
 }
 
-data belt_dispatch_status_note: String = "TOTAL per-variant status mapping — every BeltDispatchResult arm has its own row, no lazy 200-or-500 collapse (DESIGN 5; parent review 2026-07-20). Spawned/AlreadyLive = 200 (the click achieved or already holds the desired state — the same idempotent-success fold the CLI's exit map uses); NodeNotFound = 404; AlreadyDone = 409 (the operator's signoff makes the node undisp atchable — a conflict with current state, retryable never); ObserveRefused = 503 (the live session set was unknowable, retry can succeed); SpawnFailed = 502 (actuation behind the server failed; the receipt carries step + detail)."
+// TOTAL per-arm status mapping over the route's outcome (DESIGN 5): every BeltSpawnOutcome arm and
+// every LaunchRefusal arm has its own row in launch_refusal_http_status -- no lazy 200-or-500
+// collapse. Spawned and LaunchAlreadyLive = 200 (the click achieved or already holds the desired
+// state, the same idempotent-success fold the CLI exit map uses); LaunchNoActuatingInstance and
+// LaunchInstanceActuationRefused = 403 (no actuating instance stands behind the request);
+// LaunchNodeUnknown = 404; the state conflicts (superseded, accepted, review-only, unsized,
+// contract missing, dependencies blocked, stale or conflicting session, capacity, cause not
+// permitted by mode) = 409, retryable only after the state changes; the observation refusals
+// (transition inhibited, revision unobserved or drifted, authority unobserved, sessions
+// unobservable, liveness unobserved, gate not evaluated) = 503, a retry can succeed; SpawnFailed =
+// 502 (actuation behind the server failed; the receipt carries step, detail and the admitted launch
+// identity).
 
-fn belt_dispatch_status(r: BeltDispatchResult) -> HttpStatus {
+fn launch_refusal_http_status(r: LaunchRefusal) -> HttpStatus {
   match r {
-    DispatchSpawned { node_id: _, session_name: _, provider: _ } => 200
-    DispatchAlreadyLive { node_id: _, session_name: _ } => 200
-    DispatchDisabled { node_id: _, instance_id: _, reason: _ } => 403
-    DispatchNodeNotFound { node_id: _ } => 404
-    DispatchNodeAlreadyDone { node_id: _ } => 409
-    DispatchObserveRefused { node_id: _, reason: _ } => 503
-    DispatchAuthorityRefused { node_id: _, detail: _ } => 503
-    DispatchSpawnFailed { node_id: _, step: _, detail: _, provider: _ } => 502
-    DispatchStaleSession { node_id: _, session_name: _, detail: _ } => 409
-    DispatchRevisionDrifted { node_id: _, desired: _, local: _ } => 409
-    DispatchRevisionUnobserved { node_id: _, cause: _ } => 503
-    DispatchTransitionInhibited { node_id: _, reason: _ } => 409
-    DispatchSessionMultiplicityConflict { node_id: _, session_names: _, session_count: _ } => 409
-    DispatchSessionLivenessUnobserved { node_id: _, session_name: _, reason: _ } => 503
+    LaunchAlreadyLive { session_name: _ } => 200
+    LaunchNoActuatingInstance { reason: _ } => 403
+    LaunchInstanceActuationRefused { instance_id: _, reason: _ } => 403
+    LaunchNodeUnknown => 404
+    LaunchAlreadyAccepted => 409
+    LaunchNodeSuperseded { by: _ } => 409
+    LaunchReviewRequired => 409
+    LaunchSizeMissing => 409
+    LaunchExecutionContractMissing { reason: _ } => 409
+    LaunchDependenciesBlocked { blockers: _ } => 409
+    LaunchNoCapacity { occupied: _, max_concurrent: _ } => 409
+    LaunchCauseNotPermitted { cause: _, mode: _ } => 409
+    LaunchStaleSession { session_name: _, detail: _ } => 409
+    LaunchRevisionDrift { desired: _, local: _ } => 409
+    LaunchTransitionInhibited { reason: _ } => 409
+    LaunchSessionMultiplicityConflict { session_names: _, session_count: _ } => 409
+    LaunchSessionsUnobservable { reason: _ } => 503
+    LaunchAuthorityUnobserved { detail: _ } => 503
+    LaunchRevisionUnobserved { cause: _ } => 503
+    LaunchLivenessUnobserved { session_name: _, reason: _ } => 503
+    LaunchGateNotEvaluated { gate: _ } => 503
   }
 }
 
-fn belt_dispatch_response(r: BeltDispatchResult) -> ServeHttpResponse {
+fn belt_dispatch_status(r: BeltSpawnOutcome) -> HttpStatus {
+  match r {
+    Spawned { node_id: _, session_name: _, provider: _, launch: _ } => 200
+    SpawnFailed { node_id: _, step: _, detail: _, provider: _, launch: _ } => 502
+    SpawnNotAdmitted { node_id: _, refusal } => launch_refusal_http_status(r: refusal)
+  }
+}
+
+fn belt_dispatch_response(r: BeltSpawnOutcome) -> ServeHttpResponse {
   serve_text_response(
     status: belt_dispatch_status(r: r),
     content_type: application_json_utf8,
-    body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+    body: serialize_json(v: belt_spawn_outcome_json(o: r)),
   )
 }
 
-data serve_dispatch_param_note: String = "The node_id param is bound by the route template, so an empty value is unreachable by construction (match_path_template refuses empty segments); the empty-check below is the typed backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN 5: an unreachable arm refuses, never fabricates)."
+// The node_id param is bound by the route template, so an empty value is unreachable by
+// construction (match_path_template refuses empty segments); the empty-check below is the typed
+// backstop for that unreachable arm — a 400 refusal, never a dispatch with a fabricated id (DESIGN
+// 5: an unreachable arm refuses, never fabricates).
 
 fn serve_dispatch_handler_response_for_instance(
   instance: HostDashboardInstance,
@@ -305,7 +411,16 @@ fn serve_dispatch_handler_response_for_instance(
   }
 }
 
-data serve_publish_note: String = "POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick has none. Publication is wired into that actuation pass beside verification and nothing drives it, so without this route the receipt would never be written in production and the row's lamp could never move off pending - the same never-runs defect one layer out from the one this lane fixed.\\n\\nIT IS A POST BECAUSE IT WRITES. The workflow route reads and paints; this one observes two remote surfaces and persists a judgment, and putting that on the read path would make the browser poll the thing that queries GitHub - the split serve_workflow_note already draws for verification.\\n\\nTHE STATUS COMES FROM THE OUTCOME, not from whether the handler ran. A deferral is 409 and a belt-side failure is 500, so a caller can tell `the attempt is not ready` from `the belt could not do its job` without reading prose."
+// POST /publish/NODE_ID is the publication producer's live trigger, and it exists because belt_tick
+// has none. Publication is wired into that actuation pass beside verification and nothing drives
+// it, so without this route the receipt would never be written in production and the row's lamp
+// could never move off pending - the same never-runs defect one layer out from the one this lane
+// fixed.\n\nIT IS A POST BECAUSE IT WRITES. The workflow route reads and paints; this one observes
+// two remote surfaces and persists a judgment, and putting that on the read path would make the
+// browser poll the thing that queries GitHub - the split serve_workflow_note already draws for
+// verification.\n\nTHE STATUS COMES FROM THE OUTCOME, not from whether the handler ran. A deferral
+// is 409 and a belt-side failure is 500, so a caller can tell `the attempt is not ready` from `the
+// belt could not do its job` without reading prose.
 
 fn serve_publish_handler_response_for_instance(
   instance: HostDashboardInstance,
@@ -374,7 +489,13 @@ fn dashboard_instance_json(instance: HostDashboardInstance) -> String {
   ]))
 }
 
-data sandbox_echo_note: String = "The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param — the query survives in request.path; match_path_template strips it only for routing) and maps it to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a 400 that names the valid label set, never a fabricated arm."
+// The /sandbox echo handler answers ANY wire arm on demand so every dispatch state is pressable
+// without spawning a session (P4). It reads ?status=LABEL from the request path (uri_query_param —
+// the query survives in request.path; match_path_template strips it only for routing) and maps it
+// to the belt result exemplar via belt_dispatch_result_for_label, serializing the SAME
+// belt_dispatch_result_json_value the real dispatch returns — so the sandbox JSON shape is
+// identical to production, never a mock. Fail-closed: an unknown or missing status refuses with a
+// 400 that names the valid label set, never a fabricated arm.
 
 fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
   let status = uri_query_param(path: request.path, key: "status")
@@ -383,7 +504,7 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
       serve_text_response(
         status: 200,
         content_type: application_json_utf8,
-        body: serialize_json(v: belt_dispatch_result_json_value(r: r)),
+        body: serialize_json(v: belt_spawn_outcome_json(o: r)),
       )
     Absent =>
       serve_text_response(
@@ -397,7 +518,9 @@ fn sandbox_echo_response(request: ServeHttpRequest) -> ServeHttpResponse {
   }
 }
 
-data serve_invoke_request_note: String = "Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would have silently seen the empty string — a latent widen)."
+// Every handler receives the FULL modeled ServeHttpRequest (review 40314: the request body was
+// formerly accepted at the seam and dropped before invoke, so a body-reading POST handler would
+// have silently seen the empty string — a latent widen).
 
 fn roadmap_serve_invoke_for_instance(
   instance: HostDashboardInstance,
@@ -408,7 +531,7 @@ fn roadmap_serve_invoke_for_instance(
 ) -> ServeHttpResponse {
   match handler {
     RoadmapDailyPageHandler => serve_daily_page_response_for_instance(instance: instance)
-    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority())
+    RoadmapFullPageHandler => serve_page_response(page: roadmap_page_for_authority_launch(launch: belt_launch_host_standing_for_page(instance: instance)))
     RoadmapMdHandler => serve_text_response(status: 200, content_type: text_plain_utf8, body: roadmap_site_roadmap_md_body())
     DispatchJsonHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_dispatch_json_body())
     HealthzHandler => serve_text_response(status: 200, content_type: application_json_utf8, body: roadmap_site_healthz_body_for_release(release_revision: release_revision))
@@ -500,20 +623,68 @@ fn serve_attempts_response() -> ServeHttpResponse {
   serve_attempts_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-data serve_workflow_note: String = "GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current modeled state, a bounded jq projection of complete Codex attempt evidence, retained process exit, and the node's declared validation contract. The exact projector executable is an ensured platform capability. It validates each raw JSON value while omitting unbounded command payloads from the synchronous interpreted handler; projector absence or malformed input remains an explicit per-attempt refusal. The observed facts reconcile by fold against the shared desired obligation roster and expose desired/observed/remaining counts plus distinct observed-failure, observed-refusal, and unsafe-plan-refusal counts; they never upgrade provider completion into verification, publication, review, or goal audit. A refused attempts ledger returns 503; per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged attempt cannot erase evidence from every other row."
+// GET /workflow.json is the evidence-derived attempt pipeline. One observation joins current
+// modeled state, a bounded jq projection of complete Codex attempt evidence, retained process exit,
+// and the node's declared validation contract. The exact projector executable is an ensured
+// platform capability. It validates each raw JSON value while omitting unbounded command payloads
+// from the synchronous interpreted handler; projector absence or malformed input remains an
+// explicit per-attempt refusal. The observed facts reconcile by fold against the shared desired
+// obligation roster and expose desired/observed/remaining counts plus distinct observed-failure,
+// observed-refusal, and unsafe-plan-refusal counts; they never upgrade provider completion into
+// verification, publication, review, or goal audit. A refused attempts ledger returns 503;
+// per-attempt event/process refusals remain explicit segment states in a 200 body so one damaged
+// attempt cannot erase evidence from every other row.
 
-data serve_daily_page_observed_note: String = "The daily page consumes the SAME attempt observation the /workflow.json wire serves (one observing authority, two projections): an observed ledger renders real activity regions and the active band; a refused ledger renders the page with the ONE workspace observation banner carrying the located reason — the page itself stays a 200 because the roadmap authority rendered fine; what failed is the activity channel, and that failure is narrated once, in place, exactly as the client would narrate it on a later poll."
+// The daily page consumes the SAME attempt observation the /workflow.json wire serves (one
+// observing authority, two projections): an observed ledger renders real activity regions and the
+// active band; a refused ledger renders the page with the ONE workspace observation banner carrying
+// the located reason — the page itself stays a 200 because the roadmap authority rendered fine;
+// what failed is the activity channel, and that failure is narrated once, in place, exactly as the
+// client would narrate it on a later poll.
 
-data roadmap_serve_host_shell_bounded_drain_receipt_note: String = "HOST-BOUNDARY AMPLIFIER REPAIR (PR #8087, operator ruling 2026-08-10): v1_interpreter dispatch_shell drains child stdout/stderr concurrently while the child runs. Bounded the stderr buffer+clone amplifier on the shell success path — stderr retains bounded tail (16 KiB) with total_bytes, truncated, and FNV digest_hex surfaced via CapturedStreamEvidence / map_shell_outputs from_key fields; stdout complete-within 8 MiB or typed ShellOutputLimitExceeded refusal (never a silent prefix). TWO WEDGES, TWO ATTEMPTS — this note originally attributed the 59.5 MB figure to the profiled recurrence, which was wrong: attempt-state holds several attempts per node and only the -current one is projected (the gate is <instance_root>/attempt-state/<node>-current/attempt-key), and for node v2-emitter-direct-rust-door that key's mtime is 2026-08-09 17:52:15, 8m41s BEFORE the 18:00:56 wedge, naming 677905e3704d70a3. So the 2026-08-08 wedge selected ...-acc0923494fc8b9cb (60,257,673 B raw / 831 lines / 308 non-JSON / jq stdout 30,770 B / jq stderr 59,522,411 B) while the profiled 2026-08-09 recurrence selected ...-a677905e3704d70a3 (20,511,073 B raw / 355 lines / 101 non-JSON / jq stdout 15,034 B / jq stderr 18,421,072 B). Both exit 0, so both take the ExecOk arm where map_shell_outputs clones stderr into a Value::Str — the repair is correct for both, and 59,522,411 B remains the witness's legitimate worst-observed STRESS SPECIMEN rather than the recurrence's fixture. INCIDENT NOT CLOSED: wedge was finite/self-recovered; wedged route unproven — and the two candidate routes are NOT rival cost centers, because serve_daily_page_response_for_instance and serve_workflow_response_for_instance both call belt_workflow_attempts_observe_for_instance (one observing authority, two projections), so they share the projection cost and differ only in that the daily page adds the render; interpreter-concat hypothesis live and may be primary; share of two-hour peg versus queued duplicate polls unmeasured, and the share attributable to stream capture is unestablished in BOTH directions (an arithmetic argument that 18.4 MB is too small to explain the peg assumed a fixed two copies, which the profile does not support — Value::clone/String::clone sat inside the repeating evaluator path, so the multiplier is per-iteration and unmeasured). FIXTURE PROVENANCE: the pointer proves which ATTEMPT was selected at onset, not that the retained file is byte-identical to what the wedged request read — that attempt was in flight (events mtime 18:35:37, i.e. during the 18:00:56-to-~19:52 wedge), so the file grew while the route was polled and was smaller at onset; the artifact is the retained final state of the attempt selected at wedge onset, never the exact historical request input. Witness: bounded_shell_stream_capture_replay. Dissolve-on: emit-on-demand native serve and shared CapturedProcessStream carrier subsume this seed-only drain."
+// HOST-BOUNDARY AMPLIFIER REPAIR (PR #8087, operator ruling 2026-08-10): v1_interpreter
+// dispatch_shell drains child stdout/stderr concurrently while the child runs. Bounded the stderr
+// buffer+clone amplifier on the shell success path — stderr retains bounded tail (16 KiB) with
+// total_bytes, truncated, and FNV digest_hex surfaced via CapturedStreamEvidence /
+// map_shell_outputs from_key fields; stdout complete-within 8 MiB or typed ShellOutputLimitExceeded
+// refusal (never a silent prefix). TWO WEDGES, TWO ATTEMPTS — this note originally attributed the
+// 59.5 MB figure to the profiled recurrence, which was wrong: attempt-state holds several attempts
+// per node and only the -current one is projected (the gate is
+// <instance_root>/attempt-state/<node>-current/attempt-key), and for node
+// v2-emitter-direct-rust-door that key's mtime is 2026-08-09 17:52:15, 8m41s BEFORE the 18:00:56
+// wedge, naming 677905e3704d70a3. So the 2026-08-08 wedge selected ...-acc0923494fc8b9cb
+// (60,257,673 B raw / 831 lines / 308 non-JSON / jq stdout 30,770 B / jq stderr 59,522,411 B) while
+// the profiled 2026-08-09 recurrence selected ...-a677905e3704d70a3 (20,511,073 B raw / 355 lines /
+// 101 non-JSON / jq stdout 15,034 B / jq stderr 18,421,072 B). Both exit 0, so both take the ExecOk
+// arm where map_shell_outputs clones stderr into a Value::Str — the repair is correct for both, and
+// 59,522,411 B remains the witness's legitimate worst-observed STRESS SPECIMEN rather than the
+// recurrence's fixture. INCIDENT NOT CLOSED: wedge was finite/self-recovered; wedged route unproven
+// — and the two candidate routes are NOT rival cost centers, because
+// serve_daily_page_response_for_instance and serve_workflow_response_for_instance both call
+// belt_workflow_attempts_observe_for_instance (one observing authority, two projections), so they
+// share the projection cost and differ only in that the daily page adds the render;
+// interpreter-concat hypothesis live and may be primary; share of two-hour peg versus queued
+// duplicate polls unmeasured, and the share attributable to stream capture is unestablished in BOTH
+// directions (an arithmetic argument that 18.4 MB is too small to explain the peg assumed a fixed
+// two copies, which the profile does not support — Value::clone/String::clone sat inside the
+// repeating evaluator path, so the multiplier is per-iteration and unmeasured). FIXTURE PROVENANCE:
+// the pointer proves which ATTEMPT was selected at onset, not that the retained file is
+// byte-identical to what the wedged request read — that attempt was in flight (events mtime
+// 18:35:37, i.e. during the 18:00:56-to-~19:52 wedge), so the file grew while the route was polled
+// and was smaller at onset; the artifact is the retained final state of the attempt selected at
+// wedge onset, never the exact historical request input. Witness:
+// bounded_shell_stream_capture_replay. Dissolve-on: emit-on-demand native serve and shared
+// CapturedProcessStream carrier subsume this seed-only drain.
 
 fn serve_daily_page_response_for_instance(
   instance: HostDashboardInstance,
 ) -> ServeHttpResponse {
+  let launch = belt_launch_host_standing_for_page(instance: instance)
   let page = match belt_workflow_attempts_observe_for_instance(instance: instance) {
     WorkflowAttemptsObserved { attempts } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none)
+      roadmap_daily_workspace_page_for_authority_observed(attempts: attempts, attempts_refused: none, launch: launch)
     WorkflowAttemptsRefused { reason } =>
-      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason })
+      roadmap_daily_workspace_page_for_authority_observed(attempts: [], attempts_refused: Present { value: reason }, launch: launch)
   }
   serve_page_response(page: page)
 }
@@ -538,7 +709,11 @@ fn serve_workflow_response() -> ServeHttpResponse {
   serve_workflow_response_for_instance(instance: srv1_live_dashboard_instance())
 }
 
-data serve_sessions_note: String = "GET /sessions.json performs one session-container observation and one independently adjudicated pane/process observation. Session-list refusal serves 503 because container presence is unknowable. Pane refusal stays in each known session as process unobserved and cleanup unavailable; it cannot erase session presence. The same combined observation feeds both status and body so the route never races two reads."
+// GET /sessions.json performs one session-container observation and one independently adjudicated
+// pane/process observation. Session-list refusal serves 503 because container presence is
+// unknowable. Pane refusal stays in each known session as process unobserved and cleanup
+// unavailable; it cannot erase session presence. The same combined observation feeds both status
+// and body so the route never races two reads.
 
 fn serve_sessions_response_for_instance(
   instance: HostDashboardInstance,
@@ -674,7 +849,6 @@ fn roadmap_serve_handle(
     release_revision: release_revision,
   ))
 }
-
 
 fn roadmap_serve_handle_srv1_lab(
   method: String,

@@ -83,7 +83,7 @@ pub struct ResolveAccum {
 pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -169,7 +169,7 @@ pub fn resolve_modules_with_occurrence_transport(
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
             Some(diag) => Rc::new(vec![diag.clone()]),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let sorted_names = topo_result.sorted.clone();
         let sorted_order_map = Rc::new(
@@ -214,9 +214,9 @@ pub fn resolve_modules_with_occurrence_transport(
                                         input.clone(),
                                     ),
                                 })]),
-                                None => Rc::new(vec![]),
+                                std::option::Option::None => Rc::new(vec![]),
                             },
-                            None => Rc::new(vec![]),
+                            std::option::Option::None => Rc::new(vec![]),
                         }
                     })
                     .iter()
@@ -335,7 +335,7 @@ pub fn resolve_module_imports(
             for r in Rc::new({
                 let mut __result = Vec::new();
                 for r in results.iter().cloned() {
-                    if ((r.resolved.clone().target_module.clone() != None)
+                    if ((r.resolved.clone().target_module.clone() != std::option::Option::None)
                         && ((r.diagnostics.clone().len() as i64) == 0))
                     {
                         __result.push(r);
@@ -383,7 +383,7 @@ pub fn resolve_import(
             crate::v1_std_core::authored_name_at(source_indices.clone(), import.clone());
         let target = find_module(module_index.clone(), import_path.clone());
         match target.clone() {
-            None => {
+            std::option::Option::None => {
                 let diag = crate::v1_std_core::make_error_node(
                     Rc::new(CompilerDiagnostic::UnresolvedImport {
                         module_path: import_path.clone(),
@@ -400,7 +400,7 @@ pub fn resolve_import(
                             import.clone(),
                             source_indices.clone(),
                         ),
-                        target_module: None,
+                        target_module: std::option::Option::None,
                     }),
                     diagnostics: Rc::new(vec![diag.clone()]),
                 })
@@ -408,7 +408,7 @@ pub fn resolve_import(
             Some(target_mod) => {
                 let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
                     Some(set) => set.clone(),
-                    None => v1_rt::rc_empty_map::<String, bool>(),
+                    std::option::Option::None => v1_rt::rc_empty_map::<String, bool>(),
                 };
                 let shadow_diags = if crate::v1_std_core::import_is_all(import.clone()) {
                     Rc::new(vec![])
@@ -709,7 +709,7 @@ pub fn adjacency_add_edge(
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
             Some(lst) => lst.clone(),
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
             adjacency.clone(),
@@ -864,7 +864,7 @@ pub fn topological_sort(
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
             Rc::new(TopoResult {
                 sorted: result.sorted.clone(),
-                cycle_error: None,
+                cycle_error: std::option::Option::None,
             })
         } else {
             {
@@ -930,14 +930,14 @@ pub fn kahn_drain(
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
                     let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                         Some(ns) => ns.clone(),
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     };
                     let new_degrees = neighbors.iter().cloned().fold(
                         state.in_degree_map,
                         |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
                             let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
                                 Some(d) => d.clone(),
-                                None => 0,
+                                std::option::Option::None => 0,
                             };
                             v1_rt::rc_map_insert(
                                 deg_map.clone(),
@@ -961,7 +961,7 @@ pub fn kahn_drain(
                     __result.extend(
                         (*match v1_rt::map_get(&adjacency, node.clone()) {
                             Some(ns) => ns.clone(),
-                            None => Rc::new(vec![]),
+                            std::option::Option::None => Rc::new(vec![]),
                         })
                         .iter()
                         .cloned(),

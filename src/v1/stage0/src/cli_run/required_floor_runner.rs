@@ -811,7 +811,8 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
 pub(crate) struct ChangedWitnessProjectionRow {
     pub identity: String,
     /// Wire name of the `ChangedWitnessExecutionStanding` arm: `planned-and-passed`,
-    /// `planned-without-terminal-verdict`, `declined`, `missing-disposition`.
+    /// `planned-and-known-red-held`, `planned-without-terminal-verdict`, `declined`,
+    /// `missing-disposition`.
     pub standing: &'static str,
     /// The disposition receipt's label for the identity (`required_floor_disposition_label`),
     /// or `absent` when no row exists.
@@ -819,8 +820,13 @@ pub(crate) struct ChangedWitnessProjectionRow {
     /// The terminal ledger's outcome wire (`claim_disposition_wire`), `not_executed` for a row
     /// that never ran, `absent` when there is no disposition row to speak for it.
     pub outcome: String,
-    /// `changed_witness_standing_blocks` realized: exactly `planned-and-passed` is green.
+    /// `changed_witness_standing_blocks` realized: passed, known-red-held, and a verdict-only
+    /// pass with its cost published are green.
     pub blocks: bool,
+    /// The published cost observation, present exactly for a row that executed under
+    /// `ChangedCostDebtVerdictOnly` and reached a verdict. `None` on every ordinary row, and on
+    /// an override that published nothing — which is why that case reds rather than passing.
+    pub cost: Option<ChangedWitnessCostObservation>,
 }
 
 /// THE CHANGED IDENTITIES, at the disposition receipt's own grain. The diff attribution is the
@@ -894,6 +900,8 @@ pub(crate) fn changed_witness_projection_rows(
     changed: &[String],
     disposition_rows: &[RequiredFloorDispositionRow],
     terminal: &[ClaimTerminalRow],
+    verdict_only: &HashSet<String>,
+    observations: &HashMap<String, ChangedWitnessCostObservation>,
 ) -> Vec<ChangedWitnessProjectionRow> {
     let dispositions: std::collections::HashMap<&str, &RequiredFloorDisposition> = disposition_rows
         .iter()
@@ -908,6 +916,7 @@ pub(crate) fn changed_witness_projection_rows(
         .map(|identity| match dispositions.get(identity.as_str()) {
             None => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
+                cost: None,
                 standing: "missing-disposition",
                 disposition: "absent".to_string(),
                 outcome: "absent".to_string(),
@@ -918,28 +927,51 @@ pub(crate) fn changed_witness_projection_rows(
                 | RequiredFloorDisposition::PlannedAsChangedWitness,
             ) => {
                 let outcome = outcomes.get(identity.as_str()).copied();
+                // THE COST POLICY THIS IDENTITY EXECUTED UNDER, and the measurement published
+                // for it. Under `ChangedCostDebtVerdictOnly` the CPU line was observed and not
+                // gating, so a verdict that was reached is green and CARRIES its cost; an
+                // override with no published measurement is the one new red
+                // (`v2.workflow.floor_changed_witness` `changed_witness_planned_standing`).
+                let policy = if verdict_only.contains(identity.as_str()) {
+                    ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
+                } else {
+                    ChangedWitnessCostPolicy::Ordinary
+                };
+                let observation = observations.get(identity.as_str()).copied();
                 // The green set mirrors the .dag fold exactly: an ordinary Pass, an enrolled
                 // expected-red failing as enrolled (§4b keeps discriminating REDs enrolled, so
                 // touching one is sanctioned), and an enrolled row that passed (the stale
                 // roster reds the floor at its own grain with its own remedy).
-                let passed = matches!(
+                let verdict_only_policy =
+                    policy == ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly;
+                // The verdict arms, before the cost policy is applied: an ordinary Pass, an
+                // enrolled row that passed, and — ONLY under the override — a pass that ran past
+                // the CPU line.
+                let reached_pass = matches!(
                     outcome,
-                    Some(
-                        ClaimDisposition::Passed
-                            | ClaimDisposition::KnownRedHeld
-                            | ClaimDisposition::KnownRedNowPassing
-                    )
-                );
+                    Some(ClaimDisposition::Passed | ClaimDisposition::KnownRedNowPassing)
+                ) || (verdict_only_policy
+                    && matches!(outcome, Some(ClaimDisposition::PassedOverBudget)));
+                let cost_missing = verdict_only_policy && reached_pass && observation.is_none();
+                let green = (reached_pass && !cost_missing)
+                    || matches!(outcome, Some(ClaimDisposition::KnownRedHeld));
                 ChangedWitnessProjectionRow {
                     identity: identity.clone(),
-                    standing: if passed {
-                        "planned-and-passed"
-                    } else {
-                        // "No terminal Passed verdict stands", deliberately covering a failed
-                        // or refused verdict too — each of those already reds the floor by its
-                        // own mechanism, and this projection reds it again at the changed-set
-                        // grain, naming the identity the change touched.
-                        "planned-without-terminal-verdict"
+                    cost: observation,
+                    standing: match outcome {
+                        Some(ClaimDisposition::KnownRedHeld) => "planned-and-known-red-held",
+                        _ if cost_missing => "cost-observation-missing-under-verdict-only",
+                        _ if reached_pass && verdict_only_policy => {
+                            "planned-and-passed-with-cost-debt-observed"
+                        }
+                        _ if reached_pass => "planned-and-passed",
+                        _ => {
+                            // "No terminal Passed verdict stands", deliberately covering a failed
+                            // or refused verdict too — each of those already reds the floor by its
+                            // own mechanism, and this projection reds it again at the changed-set
+                            // grain, naming the identity the change touched.
+                            "planned-without-terminal-verdict"
+                        }
                     },
                     disposition: required_floor_disposition_label(dispositions[identity.as_str()])
                         .to_string(),
@@ -947,11 +979,12 @@ pub(crate) fn changed_witness_projection_rows(
                         .map(claim_disposition_wire)
                         .unwrap_or("not_executed")
                         .to_string(),
-                    blocks: !passed,
+                    blocks: !green,
                 }
             }
             Some(declined) => ChangedWitnessProjectionRow {
                 identity: identity.clone(),
+                cost: None,
                 standing: "declined",
                 disposition: required_floor_disposition_label(declined).to_string(),
                 outcome: "not_executed".to_string(),
@@ -972,9 +1005,21 @@ pub(crate) fn emit_changed_witness_projection(
     rows: &[ChangedWitnessProjectionRow],
 ) -> Result<(), String> {
     for row in rows {
+        // THE COST TRAVELS WITH THE LINE THAT CLAIMS IT WAS OBSERVED. A standing named
+        // "...with-cost-debt-observed" printed beside no figures would assert an observation the
+        // reader cannot see; the receipt is the numbers, not the label.
+        let cost = match row.cost {
+            Some(observation) => format!(
+                " marginal_cpu_ms={} wall_ms={} cpu_line_ms={}",
+                observation.cpu_clock_nanos / 1_000_000,
+                observation.wall_clock_nanos / 1_000_000,
+                observation.cpu_line_ms
+            ),
+            None => String::new(),
+        };
         eprintln!(
-            "[changed-witness] identity={} standing={} disposition={} outcome={}",
-            row.identity, row.standing, row.disposition, row.outcome
+            "[changed-witness] identity={} standing={} disposition={} outcome={}{}",
+            row.identity, row.standing, row.disposition, row.outcome, cost
         );
     }
     let blocking = rows.iter().filter(|r| r.blocks).count();
@@ -991,7 +1036,8 @@ pub(crate) fn emit_changed_witness_projection(
                 "One row per ADDED/MODIFIED witness identity in this change, at the disposition \
                  receipt's own grain (qualified `module.function`). Standing vocabulary: \
                  `v2.workflow.floor_changed_witness.ChangedWitnessExecutionStanding`; every \
-                 standing except planned-and-passed reds the required floor.\n\n",
+                 standing except planned-and-passed and planned-and-known-red-held reds the \
+                 required floor.\n\n",
             );
             text.push_str("| identity | disposition | outcome | standing |\n|---|---|---|---|\n");
             for row in rows {
@@ -1912,6 +1958,15 @@ pub(crate) fn run_discovery_rows(
     if let Some(prev) = schedule_prev_entry.take() {
         index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
+    if let Some(ctx) = ctx.as_ref() {
+        let stats = ctx.interner_stats_snapshot();
+        eprintln!(
+            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+            stats.canonical_entries,
+            stats.canonical_retained_spelling_bytes,
+            stats.canonical_spelling_cap_bytes,
+        );
+    }
     summary.roster_closure_nodes = closure_modules.len();
     Ok(summary)
 }
@@ -2451,22 +2506,30 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
         let producer_frame = &resolution_frames[&module];
         let warm_started = std::time::Instant::now();
         match v1_interpreter::warm_cross_claim_pure_producer(producer_frame, qualified) {
-            Ok(stored) => {
-                // `stored=false` means the value was refused by the store (unportable,
-                // duplicate, cap) — the roster promised a servable producer, so a silent
-                // decline would relocate the fill onto the first toucher. Stop the line.
-                if !stored {
-                    let detail = match v1_interpreter::cross_claim_take_last_unportable() {
-                        Some((_, refusal)) => format!(
-                            "ServeCacheValueNotPortable path={} kind={}",
+            Ok(outcome) => {
+                // A NON-SERVABLE outcome means nothing is retained for later claims, so a
+                // silent decline would relocate the fill onto the first toucher: stop the
+                // line, naming the ONE cause rather than a disjunction of three. An
+                // `AlreadyPresent` outcome is servable and therefore not a refusal — a
+                // rostered producer reachable from an earlier rostered producer is stored
+                // by that traversal, and its own warm correctly finds the work done.
+                if !outcome.is_servable() {
+                    // The located detail comes from the OUTCOME, so a cause can only ever be
+                    // paired with its own evidence. Reading the retained slot here instead
+                    // would decorate a byte-budget or entry-cap refusal with a stale path
+                    // left by an earlier producer's unportable value (review 57554).
+                    let detail = match outcome.not_portable_detail() {
+                        Some(refusal) => format!(
+                            "{} path={} kind={}",
+                            outcome.cause(),
                             if refusal.path_into_value.is_empty() {
-                                "<root>".to_string()
+                                "<root>"
                             } else {
-                                refusal.path_into_value
+                                refusal.path_into_value.as_str()
                             },
                             refusal.encountered_kind
                         ),
-                        None => "duplicate key, entry cap, or byte budget".to_string(),
+                        None => outcome.cause().to_string(),
                     };
                     return Err(format!(
                         "REQUIRED-FLOOR REFUSAL cause=PureProducerShareWarmNotStored \
@@ -2476,7 +2539,8 @@ pub(crate) fn install_pure_producer_share(prepared: &PreparedRepository) -> Resu
                 }
                 eprintln!(
                     "[floor-phase] phase=pure-producer-share-warm state=completed \
-                     producer={qualified} wall_ms={}",
+                     producer={qualified} disposition={} wall_ms={}",
+                    outcome.cause(),
                     warm_started.elapsed().as_millis()
                 );
             }
@@ -3525,6 +3589,16 @@ pub fn run_required_floor(
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
     let mut planned_identities: HashSet<String> = HashSet::new();
     let mut cost_debt_seen: HashSet<String> = HashSet::new();
+    // THE OVERRIDE POPULATION: enrolled identities this change touched, which therefore execute
+    // for their verdict instead of being withheld. Kept beside `cost_debt_seen` rather than
+    // inside it — a withhold and an override are different acts, and the reconciliation below
+    // asserts that the withheld set and the `DeclinedCostDebt` dispositions name the same
+    // identities, which an override is by construction not one of.
+    let mut cost_debt_verdict_only: HashSet<String> = HashSet::new();
+    // WHAT EACH OVERRIDDEN ROW ACTUALLY COST, keyed by the debt identity. Minted at execution,
+    // consumed by the changed-witness projection and by the published receipt line; never read
+    // to decide admission, and never written back onto the authored roster.
+    let mut cost_debt_observations: HashMap<String, ChangedWitnessCostObservation> = HashMap::new();
     let mut outcome_withheld_cost_debt: Vec<String> = Vec::new();
     // THE POPULATION, AT IDENTITY GRAIN. The discovery authority above answered over the FULL
     // module index, so this loop sees every DECLARED witness identity in the tree and classifies
@@ -3605,6 +3679,20 @@ pub fn run_required_floor(
                     identity: identity.clone(),
                     disposition: RequiredFloorDisposition::PlannedAsChangedWitness,
                 });
+                // THE TYPED JOIN OF TWO AUTHORITIES, DERIVED HERE AND NOWHERE ELSE
+                // (`v2.workflow.required_floor` `changed_witness_cost_policy`,
+                // FLOOR-CHANGED-COST-0, operator ruling 2026-08-30). A changed identity the
+                // cost-debt roster enrolls runs FOR ITS VERDICT: the same 500ms CPU figure is
+                // measured against and published against the debt identity, and the wall
+                // deadline stays armed. A changed identity the roster does not enroll takes the
+                // ordinary policy and still reds when it crosses that line, so this is one
+                // intersection rather than a widening of the floor.
+                let cost_policy = if cost_debt_roster.contains(&identity) {
+                    cost_debt_verdict_only.insert(identity.clone());
+                    ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly
+                } else {
+                    ChangedWitnessCostPolicy::Ordinary
+                };
                 claims.push(RequiredFloorClaim {
                     qualified: identity,
                     module_path: file.module_path.clone(),
@@ -3613,6 +3701,7 @@ pub fn run_required_floor(
                     cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
                     wall_safety_limit_ms: claim_wall_safety_limit_ms,
                     cost_line_ms: claim_cost_line_ms,
+                    cost_policy,
                 });
                 continue;
             }
@@ -3686,6 +3775,7 @@ pub fn run_required_floor(
                 cpu_safety_limit_ms: claim_cpu_safety_limit_ms,
                 wall_safety_limit_ms: claim_wall_safety_limit_ms,
                 cost_line_ms: claim_cost_line_ms,
+                cost_policy: ChangedWitnessCostPolicy::Ordinary,
             });
         }
     }
@@ -3908,18 +3998,37 @@ pub fn run_required_floor(
         .iter()
         .filter(|(_, s)| *s == CostDebtRosterStanding::Withheld)
         .count();
+    // THE OVERRIDDEN POPULATION IS REPORTED SEPARATELY FROM BOTH NEIGHBOURS, because it is
+    // neither (FLOOR-CHANGED-COST-0). Counted as withheld it would overstate what this run
+    // actually froze; counted as declared-not-withheld it would be told to delete a roster line
+    // that still describes the tree.
+    let cost_debt_overridden: Vec<&str> = cost_debt_standings
+        .iter()
+        .filter(|(_, s)| *s == CostDebtRosterStanding::WithholdOverriddenForChangedVerdict)
+        .map(|(q, _)| *q)
+        .collect();
     // THE PARTITION IS THE RECEIPT, AT IDENTITY GRAIN AND ON ONE LINE. The previous report was a
     // bare count of the outside-gate arm; a count cannot be joined against a roster, and the arm
     // it counted silently contained both legitimate rows and unrefusable fabrications.
     eprintln!(
-        "[floor-cost-debt] roster standing: enrolled={} withheld={} outside_this_runs_universe={} \
+        "[floor-cost-debt] roster standing: enrolled={} withheld={} \
+         withhold_overridden_for_changed_verdict={} outside_this_runs_universe={} \
          undeclared={} declared_not_withheld={}",
         cost_debt_standings.len(),
         cost_debt_withheld_count,
+        cost_debt_overridden.len(),
         cost_debt_outside_universe.len(),
         cost_debt_undeclared.len(),
         cost_debt_declared_not_withheld.len()
     );
+    if !cost_debt_overridden.is_empty() {
+        eprintln!(
+            "[floor-cost-debt] withhold overridden for a changed verdict, still valid debt and \
+             NOT stale (this change touched them, so they execute for their verdict while the \
+             500ms CPU line is observed and published rather than gating): {}",
+            cost_debt_overridden.join(", ")
+        );
+    }
     if !cost_debt_outside_universe.is_empty() {
         eprintln!(
             "[floor-cost-debt] outside this run's universe, kept as record and NOT counted as \
@@ -4501,6 +4610,17 @@ pub fn run_required_floor(
     // memory and why its census survives without it.
     let mut current_scope: Option<(String, PreparedClaimScope)> = None;
     let mut scope_constructions: usize = 0;
+    // TIME BESIDE MEMORY, BECAUSE THE MEMORY HALF ALONE COULD NOT SIZE A FIX. The scope note
+    // below reads RSS either side of the one construction, so scope COST was observable and
+    // scope TIME was not; likewise the per-claim frame was untimed entirely. Measured on run
+    // 33366134453 that left ~150s of a 336.5s fold attributable to neither the shared-fill
+    // ledger (~85s, and nine fills are almost all of it) nor the per-claim cost receipt
+    // (~100s) -- a plurality of the fold's wall with no instrument pointing at it. These two
+    // counters close that, and they are deliberately the same shape as the RSS pair: read
+    // either side of the one call, so the delta is that call and not a sample near it.
+    let mut scope_build_nanos: u128 = 0;
+    let mut frame_build_nanos: u128 = 0;
+    let mut frame_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
     let mut terminal_rows: Vec<ClaimTerminalRow> = Vec::new();
@@ -4543,6 +4663,7 @@ pub fn run_required_floor(
     let mut scopes_with_ambiguity: usize = 0;
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
             eprintln!("floor: evaluating {index} / {claims_planned}");
@@ -4560,7 +4681,9 @@ pub fn run_required_floor(
             // the question stops being inferential. Taken with the old scope already dropped, so
             // the delta is this scope's cost and not the difference between two.
             let rss_before = current_rss_bytes().unwrap_or(0) / 1024;
+            let scope_build_started = std::time::Instant::now();
             let built = claim_scope_for(&prepared, &claim.module_path)?;
+            scope_build_nanos += scope_build_started.elapsed().as_nanos();
             let rss_after = current_rss_bytes().unwrap_or(0) / 1024;
             let scope_kb = rss_after.saturating_sub(rss_before);
             if scope_kb > scope_kb_max {
@@ -4586,7 +4709,10 @@ pub fn run_required_floor(
         // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
         // evaluation caches a context owns, or one witness contaminates the next through a
         // memo rather than through anything it declared.
+        let frame_build_started = std::time::Instant::now();
         let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
+        frame_build_nanos += frame_build_started.elapsed().as_nanos();
+        frame_constructions += 1;
         // ARM THE WALL CEILING, which is what the operator's rule has always been about and
         // what this path was not doing. `run_claim_measured` already arms the deadline and
         // applies a completion-side backstop when a wall budget is set -- the mechanism was
@@ -4602,7 +4728,18 @@ pub fn run_required_floor(
         // deliberately looser than the CPU limit so ordinary host scheduling delay on a pure
         // in-process claim cannot itself trip an interrupt while the claim is still within its
         // CPU envelope.
-        frame.set_witness_eval_budget(Some(claim.cpu_safety_limit_ms));
+        //
+        // WHICH CLOCK IS ARMED IS THE CLAIM'S COST POLICY, and only the CPU one moves
+        // (`v2.workflow.required_floor` `changed_witness_cpu_deadline`, FLOOR-CHANGED-COST-0).
+        // Under `ChangedCostDebtVerdictOnly` the CPU deadline is NOT armed, so the interrupt
+        // cannot preempt the verdict the changed set exists to learn; the same 500ms figure is
+        // still carried on the claim and is published against the debt identity below. The wall
+        // budget is armed identically under both policies — a claim that is blocked or stuck
+        // still reaches no verdict, and that is still a red.
+        frame.set_witness_eval_budget(match claim.cost_policy {
+            ChangedWitnessCostPolicy::Ordinary => Some(claim.cpu_safety_limit_ms),
+            ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly => None,
+        });
         frame.set_witness_wall_budget(Some(claim.wall_safety_limit_ms));
         // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
         // it rather than to nobody. The wall time this row is about to be charged is not
@@ -4625,6 +4762,7 @@ pub fn run_required_floor(
         let claim_rss_before = current_rss_bytes().unwrap_or(0) / 1024;
         let (result, receipt) =
             run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
+        final_symbol_retention = Some(frame.interner_stats_snapshot());
         let claim_rss_after = current_rss_bytes().unwrap_or(0) / 1024;
         let claim_rss_kb = claim_rss_after.saturating_sub(claim_rss_before);
         if claim_rss_kb > claim_rss_kb_max {
@@ -4670,6 +4808,33 @@ pub fn run_required_floor(
             verdict_reached: matches!(terminality, ClaimTerminality::VerdictReached { .. }),
             cost_line_ms: claim.cost_line_ms,
         });
+        // PUBLISH THE COST AGAINST THE DEBT IDENTITY (FLOOR-CHANGED-COST-0, operator ruling
+        // 2026-08-30). Standing down a gate without putting a measurement in its place is the
+        // absorbing-fallback shape DESIGN §5 forbids — the deficit stops being counted at the
+        // moment it stops blocking — so an override that publishes nothing is refused by the
+        // projection below (`CostObservationMissingUnderVerdictOnly`) rather than passing as an
+        // ordinary green. The figures are the marginal ones `run_claim_measured` netted, which
+        // is the same quantity the CPU deadline would have enforced against.
+        if claim.cost_policy == ChangedWitnessCostPolicy::ChangedCostDebtVerdictOnly {
+            let observation = ChangedWitnessCostObservation {
+                cpu_clock_nanos: receipt.cpu_nanos,
+                wall_clock_nanos: receipt.wall_nanos,
+                cpu_line_ms: claim.cpu_safety_limit_ms,
+            };
+            eprintln!(
+                "[floor-cost-debt-observation] identity={} standing={} marginal_cpu_ms={} \
+                 wall_ms={} cpu_line_ms={} verdict={} roster_row=retained",
+                claim.qualified,
+                cost_debt_roster_standing_label(
+                    &CostDebtRosterStanding::WithholdOverriddenForChangedVerdict
+                ),
+                observation.cpu_clock_nanos / 1_000_000,
+                observation.wall_clock_nanos / 1_000_000,
+                observation.cpu_line_ms,
+                witness_execution_outcome_label(&result),
+            );
+            cost_debt_observations.insert(claim.qualified.clone(), observation);
+        }
         // RETURN WHAT THE FRAME NO LONGER OWNS, on a cadence rather than every row.
         //
         // The frame is dropped at the end of this iteration, so by the next trim its caches are
@@ -5196,6 +5361,14 @@ pub fn run_required_floor(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
     );
+    if let Some(stats) = final_symbol_retention {
+        eprintln!(
+            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+            stats.canonical_entries,
+            stats.canonical_retained_spelling_bytes,
+            stats.canonical_spelling_cap_bytes,
+        );
+    }
     // WHAT THE PER-ROW NUMBERS ABOVE DO NOT SAY. Each line names one shared computation, what
     // its fill cost, which claim paid it, and how many claims and modules read that same fill
     // for free. A `shared` fill does not go away when its payer is removed from the floor — the
@@ -5235,6 +5408,32 @@ pub fn run_required_floor(
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
     // quantity the terminal one-corpus-index correction removes entirely — a scope that is a
     // view rather than a rebuild costs nothing to enter.
+    // THE FOLD'S TIME, PARTITIONED AT THE TWO CONSTRUCTIONS THE OTHER RECEIPTS CANNOT SEE.
+    // The shared-fill ledger above accounts for the fills; the per-claim cost receipt accounts
+    // for the claims. Neither can see scope or frame construction, so this line is what makes
+    // the fold's wall add up. It reports both totals AND their per-construction means, because
+    // the remedies differ: a large scope total over 656 constructions is a per-MODULE cost that
+    // tracks distinct scopes, while a large frame total over 3146 is a per-CLAIM cost that
+    // tracks the manifest's length -- and only the second would grow by adding witnesses to a
+    // module that already has some.
+    eprintln!(
+        "[floor-fold-time] scope_build={:.1}s over {} construction(s) (mean={:.0}ms) \
+         frame_build={:.1}s over {} construction(s) (mean={:.1}ms)",
+        scope_build_nanos as f64 / 1_000_000_000.0,
+        scope_constructions,
+        if scope_constructions == 0 {
+            0.0
+        } else {
+            scope_build_nanos as f64 / scope_constructions as f64 / 1_000_000.0
+        },
+        frame_build_nanos as f64 / 1_000_000_000.0,
+        frame_constructions,
+        if frame_constructions == 0 {
+            0.0
+        } else {
+            frame_build_nanos as f64 / frame_constructions as f64 / 1_000_000.0
+        }
+    );
     eprintln!(
         "[floor-scope-cost] max={:.2}GB at={} ({} modules) total_built={:.2}GB over {} construction(s)",
         scope_kb_max as f64 / 1048576.0,
@@ -5801,7 +6000,8 @@ pub fn run_required_floor(
     // the facts, and nothing projected them for the changed set. So: derive the ADDED/MODIFIED
     // test-declaration identities from the run's own diff observation, join each against the
     // disposition and terminal populations this function just published, print one line per
-    // CHANGED identity, and let any standing except planned-and-passed red the required context
+    // CHANGED identity, and let any standing except passed or enrolled-held red the required
+    // context
     // through `changed_witness_blocking` (read by `required_floor_outcome_is_clean`).
     //
     // ON CI THE OBSERVATION IS REQUIRED: a diff that cannot be observed means the floor cannot
@@ -5814,6 +6014,8 @@ pub fn run_required_floor(
             &changed_witnesses,
             &outcome.required_floor_disposition,
             &terminal_rows,
+            &cost_debt_verdict_only,
+            &cost_debt_observations,
         );
         emit_changed_witness_projection(&rows)?;
         outcome.changed_witness_rows = rows.len();
@@ -5824,6 +6026,21 @@ pub fn run_required_floor(
             .collect();
     }
     Ok(outcome)
+}
+
+/// The wire label of one `CostDebtRosterStanding` arm. Modeled authority:
+/// `v2.workflow.required_floor` `CostDebtRosterStanding`; one spelling per arm, so the published
+/// receipt line and the roster report cannot name the same standing two ways.
+pub(crate) fn cost_debt_roster_standing_label(standing: &CostDebtRosterStanding) -> &'static str {
+    match standing {
+        CostDebtRosterStanding::Withheld => "withheld",
+        CostDebtRosterStanding::WithholdOverriddenForChangedVerdict => {
+            "withhold-overridden-for-changed-verdict"
+        }
+        CostDebtRosterStanding::OutsideThisRunsUniverse => "outside-this-runs-universe",
+        CostDebtRosterStanding::Undeclared => "undeclared",
+        CostDebtRosterStanding::DeclaredButNotWithheld => "declared-not-withheld",
+    }
 }
 
 pub(crate) fn required_floor_disposition_label(
@@ -5968,6 +6185,24 @@ mod changed_witness_projection_tests {
         }
     }
 
+    /// Every pre-FLOOR-CHANGED-COST-0 witness projects under the ORDINARY cost policy: no
+    /// identity is in the verdict-only population and nothing is published. The override's own
+    /// witnesses call `changed_witness_projection_rows` directly with those populations
+    /// non-empty, so the two shapes stay distinguishable here rather than sharing a default.
+    fn ordinary_projection(
+        changed: &[String],
+        dispositions: &[RequiredFloorDispositionRow],
+        terminal: &[ClaimTerminalRow],
+    ) -> Vec<ChangedWitnessProjectionRow> {
+        changed_witness_projection_rows(
+            changed,
+            dispositions,
+            terminal,
+            &HashSet::new(),
+            &HashMap::new(),
+        )
+    }
+
     fn terminal(identity: &str, outcome: ClaimOutcome) -> ClaimTerminalRow {
         ClaimTerminalRow {
             qualified: identity.to_string(),
@@ -5981,7 +6216,7 @@ mod changed_witness_projection_tests {
     /// gate prefix executes and projects green).
     #[test]
     fn planned_and_passed_changed_identity_is_green() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.a".to_string()],
             &[disposition("m.a", RequiredFloorDisposition::Planned)],
             &[terminal("m.a", ClaimOutcome::Pass)],
@@ -5993,7 +6228,7 @@ mod changed_witness_projection_tests {
 
     #[test]
     fn changed_sublane_pass_is_green_and_keeps_its_selector_disposition() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.a".to_string()],
             &[disposition(
                 "m.a",
@@ -6013,7 +6248,7 @@ mod changed_witness_projection_tests {
     /// green.
     #[test]
     fn declined_outside_gate_closure_changed_identity_blocks_and_names_itself() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["outside.gate.witness".to_string()],
             &[disposition(
                 "outside.gate.witness",
@@ -6030,7 +6265,7 @@ mod changed_witness_projection_tests {
     /// A changed identity absent from the disposition receipt is MissingDisposition, blocking.
     #[test]
     fn changed_identity_absent_from_receipt_is_missing_disposition() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.gone".to_string()],
             &[disposition("m.other", RequiredFloorDisposition::Planned)],
             &[],
@@ -6043,7 +6278,7 @@ mod changed_witness_projection_tests {
     /// no terminal verdict — blocking.
     #[test]
     fn planned_changed_identity_without_terminal_row_blocks() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.a".to_string()],
             &[disposition("m.a", RequiredFloorDisposition::Planned)],
             &[],
@@ -6057,7 +6292,7 @@ mod changed_witness_projection_tests {
     /// no terminal Passed verdict stands, and the changed-set grain reds it by name.
     #[test]
     fn planned_changed_identity_with_failed_verdict_blocks() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.a".to_string()],
             &[disposition("m.a", RequiredFloorDisposition::Planned)],
             &[terminal("m.a", ClaimOutcome::Fail)],
@@ -6071,7 +6306,7 @@ mod changed_witness_projection_tests {
     /// green at this grain, so the sanctioned add-a-discriminating-RED move is not vetoed.
     #[test]
     fn known_red_held_changed_identity_is_green() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.red".to_string()],
             &[disposition("m.red", RequiredFloorDisposition::Planned)],
             &[ClaimTerminalRow {
@@ -6080,7 +6315,7 @@ mod changed_witness_projection_tests {
                 outcome: ClaimOutcome::Fail,
             }],
         );
-        assert_eq!(rows[0].standing, "planned-and-passed");
+        assert_eq!(rows[0].standing, "planned-and-known-red-held");
         assert_eq!(rows[0].outcome, "known-red-held");
         assert!(
             !rows[0].blocks,
@@ -6092,7 +6327,7 @@ mod changed_witness_projection_tests {
     /// lines, nothing blocking, the required context stays green.
     #[test]
     fn empty_changed_set_projects_zero_rows() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &[],
             &[disposition(
                 "m.a",
@@ -6110,7 +6345,7 @@ mod changed_witness_projection_tests {
     /// declined corpus cannot red a PR that did not touch it.
     #[test]
     fn unchanged_declined_identities_project_nothing() {
-        let rows = changed_witness_projection_rows(
+        let rows = ordinary_projection(
             &["m.mine".to_string()],
             &[
                 disposition("m.mine", RequiredFloorDisposition::Planned),
@@ -6171,5 +6406,145 @@ mod changed_witness_projection_tests {
             .expect_err("headerless file must refuse");
         assert!(err.contains("no module header"), "cause named: {err}");
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// FLOOR-CHANGED-COST-0 host arms. The model fold is witnessed in
+    /// `v2.test.floor_changed_witness`; these assert that the HOST realization joins the same
+    /// two populations onto it, which is the seam the .dag fold cannot reach.
+    fn observation(cpu: u64) -> HashMap<String, ChangedWitnessCostObservation> {
+        let mut map = HashMap::new();
+        map.insert(
+            "m.a".to_string(),
+            ChangedWitnessCostObservation {
+                cpu_clock_nanos: u128::from(cpu) * 1_000_000,
+                wall_clock_nanos: u128::from(cpu + 15) * 1_000_000,
+                cpu_line_ms: 500,
+            },
+        );
+        map
+    }
+
+    fn verdict_only_set() -> HashSet<String> {
+        let mut set = HashSet::new();
+        set.insert("m.a".to_string());
+        set
+    }
+
+    /// A changed cost-debt identity that PASSED past the CPU line is green, and the row carries
+    /// the published measurement rather than laundering it into an ordinary pass.
+    #[test]
+    fn verdict_only_pass_over_the_line_is_green_and_carries_its_cost() {
+        let rows = changed_witness_projection_rows(
+            &["m.a".to_string()],
+            &[disposition(
+                "m.a",
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &[terminal(
+                "m.a",
+                ClaimOutcome::CompletedOverBudget {
+                    elapsed_ms: 505,
+                    budget_ms: 500,
+                    kind: BudgetKind::Cpu,
+                },
+            )],
+            &verdict_only_set(),
+            &observation(505),
+        );
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0].standing,
+            "planned-and-passed-with-cost-debt-observed"
+        );
+        assert!(!rows[0].blocks);
+        assert_eq!(
+            rows[0].cost.expect("cost published").cpu_clock_nanos,
+            505_000_000
+        );
+    }
+
+    /// THE DISCRIMINATING CONTROL: the identical terminal outcome for an identity the cost-debt
+    /// roster does NOT enroll still reds. One population membership separates the two.
+    #[test]
+    fn ordinary_changed_identity_over_the_line_still_reds() {
+        let rows = ordinary_projection(
+            &["m.a".to_string()],
+            &[disposition(
+                "m.a",
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &[terminal(
+                "m.a",
+                ClaimOutcome::CompletedOverBudget {
+                    elapsed_ms: 505,
+                    budget_ms: 500,
+                    kind: BudgetKind::Cpu,
+                },
+            )],
+        );
+        assert_eq!(rows[0].standing, "planned-without-terminal-verdict");
+        assert!(rows[0].blocks);
+        assert!(rows[0].cost.is_none());
+    }
+
+    /// A stood-down gate with nothing published in its place REFUSES.
+    #[test]
+    fn verdict_only_without_a_published_cost_reds() {
+        let rows = changed_witness_projection_rows(
+            &["m.a".to_string()],
+            &[disposition(
+                "m.a",
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &[terminal("m.a", ClaimOutcome::Pass)],
+            &verdict_only_set(),
+            &HashMap::new(),
+        );
+        assert_eq!(
+            rows[0].standing,
+            "cost-observation-missing-under-verdict-only"
+        );
+        assert!(rows[0].blocks);
+    }
+
+    /// The override moves the COST arm and nothing else: a semantic failure is still red.
+    #[test]
+    fn verdict_only_semantic_failure_still_reds() {
+        let rows = changed_witness_projection_rows(
+            &["m.a".to_string()],
+            &[disposition(
+                "m.a",
+                RequiredFloorDisposition::PlannedAsChangedWitness,
+            )],
+            &[terminal("m.a", ClaimOutcome::Fail)],
+            &verdict_only_set(),
+            &observation(505),
+        );
+        assert_eq!(rows[0].standing, "planned-without-terminal-verdict");
+        assert!(rows[0].blocks);
+    }
+
+    /// A cost-debt row planned by the changed override is NOT stale, and an ordinarily planned
+    /// one still is — the pair is what keeps the new arm from silencing the refusal.
+    #[test]
+    fn overridden_roster_row_is_not_stale_but_an_ordinary_planned_one_is() {
+        let mut roster = HashSet::new();
+        roster.insert("m.a".to_string());
+        roster.insert("m.b".to_string());
+        let mut dispositions = HashMap::new();
+        dispositions.insert(
+            "m.a".to_string(),
+            RequiredFloorDisposition::PlannedAsChangedWitness,
+        );
+        dispositions.insert("m.b".to_string(), RequiredFloorDisposition::Planned);
+        let rows = partition_cost_debt_roster(&roster, &dispositions);
+        assert_eq!(
+            rows.iter().find(|(q, _)| *q == "m.a").map(|(_, s)| *s),
+            Some(CostDebtRosterStanding::WithholdOverriddenForChangedVerdict)
+        );
+        assert_eq!(
+            rows.iter().find(|(q, _)| *q == "m.b").map(|(_, s)| *s),
+            Some(CostDebtRosterStanding::DeclaredButNotWithheld)
+        );
     }
 }

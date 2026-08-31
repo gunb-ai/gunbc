@@ -77,6 +77,16 @@ import gunbc.fabric_cell_effect {
 }
 import gunbc.runner_host_grants {
   fabric_cell_effect_operations,
+  fabric_allocation_store_effect_operations,
+}
+import gunbc.fabric_allocation_store_substrate {
+  fabric_allocation_store_substrate_spec,
+  fabric_allocation_store_ensure_effect,
+  AllocationStoreSubstratePrestate,
+  AllocationStoreDirectoryAbsent,
+  AllocationStoreDirectoryPresentExpected,
+  AllocationStoreDirectoryPresentUnexpected,
+  allocation_store_substrate_prestate_wire,
 }
 import gunbc.executor_privileged_operation { executor_privileged_operation_shell_command }
 import gunbc.fabric_cell_observation_admission {
@@ -184,7 +194,16 @@ import gunbc.remote_operation {
 
 type TimerRetirementMemberAt = NonEmptyStr
 
-data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218): membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved, MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at different poles; this module owns serialization, the content-addressed artifact, subject identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and mints a generation-scoped lease so two applies against the same observed baseline cannot both act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are precisely what a reviewer needs to see before approving."
+// On-demand fleet converge PLAN authority (operator directive 2026-08-13, sleek-heron-218):
+// membership_reconcile computes the typed hunks — MemberAdded, MemberChanged, MemberRemoved,
+// MemberRemovalRefused — that a human reviews BEFORE apply. Plan and apply are the same spine at
+// different poles; this module owns serialization, the content-addressed artifact, subject
+// identity, std.temporal_effect LeaseEpoch generation protection, and the observed baseline
+// fingerprint apply must CAS against. A plan names its subject (host + member-set fingerprint) and
+// mints a generation-scoped lease so two applies against the same observed baseline cannot both
+// act. Timer retirement: desired has NO fleet-converge timers; observed lists legacy units still on
+// the host. MemberRemovalRefused arms are rendered in plan output and never filtered — they are
+// precisely what a reviewer needs to see before approving.
 
 // SCOPE IS A PROPERTY OF THE REQUEST, NOT A FLAG BESIDE IT. A fleet converge answers for a set of
 // resource families, and the fabric-execution-cells cut needs to answer for exactly one of them.
@@ -216,6 +235,7 @@ data fleet_converge_plan_authority_note: String = "On-demand fleet converge PLAN
 type FleetConvergeScope
   = FullHost
   | FabricExecutionCellsOnly
+  | FabricAllocationStoreOnly
 
 type FleetConvergeRequest
   = FullHostConverge {
@@ -230,11 +250,16 @@ type FleetConvergeRequest
       host: NonEmptyStr
       observed_fabric_cells: FabricCellObservationDecision
     }
+  | FabricAllocationStoreConverge {
+      host: NonEmptyStr
+      observed_allocation_store: AllocationStoreSubstratePrestate
+    }
 
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => FullHost
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
+    FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
   }
 }
 
@@ -242,6 +267,7 @@ fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
     FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
+    FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
   }
 }
 
@@ -253,6 +279,7 @@ fn fleet_converge_scope_wire(scope: FleetConvergeScope) -> String {
   match scope {
     FullHost => "scope:full-host"
     FabricExecutionCellsOnly => "scope:fabric-execution-cells-only"
+    FabricAllocationStoreOnly => "scope:fabric-allocation-store-only"
   }
 }
 
@@ -333,6 +360,7 @@ fn fleet_converge_apply_subject_admits(
     ApplyScopeUndecodable { cause: _ } => false
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
   }
 }
 
@@ -348,6 +376,7 @@ type FleetConvergeApplyAdmission
   | ApplyScopeUndecodable { cause: String }
   | ApplyScopeMismatch { planned_wire: String, observed_wire: String }
   | ApplyMemberSetMismatch
+  | ApplyAllocationStorePrestateMismatch { namespace_path: NonEmptyStr, store_path: NonEmptyStr, observed: String }
 
 // THE CANONICAL APPLY ADMISSION, OVER EXACTLY WHAT THE ARTIFACT CARRIES. Host, scope and member
 // set are judged together in one place, so a caller cannot check two of three and still reach the
@@ -380,7 +409,16 @@ fn fleet_converge_apply_artifact_admits(
           planned_fingerprint_text: planned_fingerprint_text,
           observed: observed,
         ) {
-          ApplyMemberSetMismatch
+          match observed {
+            FabricAllocationStoreConverge { host: _, observed_allocation_store: prestate } =>
+              ApplyAllocationStorePrestateMismatch {
+                namespace_path: fabric_allocation_store_substrate_spec().namespace_path,
+                store_path: fabric_allocation_store_substrate_spec().path,
+                observed: allocation_store_substrate_prestate_wire(prestate: prestate),
+              }
+            FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+            FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+          }
         } else {
           ApplyAdmitted
         }
@@ -409,6 +447,8 @@ fn fleet_converge_scope_of_wire(wire: String) -> FleetConvergeScopeDecode {
     ScopeDecoded { scope: FullHost }
   } else if w == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly) {
     ScopeDecoded { scope: FabricExecutionCellsOnly }
+  } else if w == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly) {
+    ScopeDecoded { scope: FabricAllocationStoreOnly }
   } else {
     ScopeUndecodable {
       cause: concat("the planned scope artifact names no scope this build knows: ", w),
@@ -429,6 +469,8 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
       )
     ApplyMemberSetMismatch =>
       "SubjectIdentityMismatch — member set drifted since plan; rerun plan and review"
+    ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
+      join(["AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], "")
   }
 }
 
@@ -441,11 +483,19 @@ fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConv
       match observed {
         FullHost => true
         FabricExecutionCellsOnly => false
+        FabricAllocationStoreOnly => false
       }
     FabricExecutionCellsOnly =>
       match observed {
         FabricExecutionCellsOnly => true
         FullHost => false
+        FabricAllocationStoreOnly => false
+      }
+    FabricAllocationStoreOnly =>
+      match observed {
+        FabricAllocationStoreOnly => true
+        FullHost => false
+        FabricExecutionCellsOnly => false
       }
   }
 }
@@ -602,7 +652,22 @@ fn membership_plan_lines_cap(plan: MembershipPlan<CapMember, CapMemberAt>) -> Li
   map(plan.actions, a => cap_action_line(action: a))
 }
 
-data slot_family_is_the_third_member_family_note: String = "THE SLOT ROSTER IS RECONCILED HERE RATHER THAN STOOD UP BY A SEPARATE SCRIPT, which is the whole point of the consolidation (operator directive 2026-08-22: this all belongs in fleet convergence). Timers and caps already flowed through membership_reconcile and slot standup did not, so the fleet had two ways to change a host: a reviewed plan artifact with a lease, a member-set fingerprint and a CAS against the observed baseline, and a hand-run provisioning path with none of those. A width change landing through the second one is unreviewed by construction.\n\nDESIRED COMES FROM THE DEPLOY ROW AND THE DEPLOY ROW DERIVES ITS WIDTH, so the roster this plan proposes is the width the admission axes committed -- not a number authored beside them. An unmodeled host emits a REFUSED line and no actions; it does not fall through to zero desired members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is the absorbing failure arm pointed the destructive direction.\n\nOBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been established to be a genuine reading of the host rather than an unread one rendered as empty."
+// THE SLOT ROSTER IS RECONCILED HERE RATHER THAN STOOD UP BY A SEPARATE SCRIPT, which is the whole
+// point of the consolidation (operator directive 2026-08-22: this all belongs in fleet
+// convergence). Timers and caps already flowed through membership_reconcile and slot standup did
+// not, so the fleet had two ways to change a host: a reviewed plan artifact with a lease, a
+// member-set fingerprint and a CAS against the observed baseline, and a hand-run provisioning path
+// with none of those. A width change landing through the second one is unreviewed by construction.
+//
+// DESIRED COMES FROM THE DEPLOY ROW AND THE DEPLOY ROW DERIVES ITS WIDTH, so the roster this plan
+// proposes is the width the admission axes committed -- not a number authored beside them. An
+// unmodeled host emits a REFUSED line and no actions; it does not fall through to zero desired
+// members, because zero desired against a populated host reconciles to REMOVE EVERY SLOT, which is
+// the absorbing failure arm pointed the destructive direction.
+//
+// OBSERVATION REFUSAL IS UPSTREAM. gunbc.runner_slot_provision RunnerSlotsUnobserved is resolved by
+// the caller before it reaches this module; a List<RunnerSlotMember> arriving here has already been
+// established to be a genuine reading of the host rather than an unread one rendered as empty.
 
 fn slot_action_line(action: MemberAction<RunnerSlotMember, RunnerSlotMemberAt>) -> String {
   match action {
@@ -1051,6 +1116,34 @@ fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> S
   }
 }
 
+// The terminal's wire spelling, carried by the plan artifact and both fleet receipts so the RLM-2
+// join can require FullyApplied without re-deriving refusal counts it cannot observe.
+fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "fully_applied"
+    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
+  }
+}
+
+fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
+  if text == "fully_applied" {
+    Present { value: FullyApplied }
+  } else if starts_with(s: text, prefix: "partially_applied|") {
+    let rest = substring(s: text, start: 18, end: string_length(s: text))
+    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    match parse_int(s: n_text) {
+      Absent => none
+      Present { value: n } =>
+        Present { value: PartiallyApplied {
+          refused_axis_count: n,
+          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
+        } }
+    }
+  } else {
+    none
+  }
+}
+
 fn fleet_converge_activation_declaration_lines() -> List<String> {
   [
     concat("# activation-reachability: ", runner_activation_reachability_report()),
@@ -1393,6 +1486,15 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
         ),
         "\n",
       )
+    FabricAllocationStoreConverge { host: host, observed_allocation_store: observed } =>
+      join(
+        [
+          fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+          concat("host:", host as String),
+          allocation_store_substrate_prestate_wire(prestate: observed),
+        ],
+        "\n",
+      )
   }
 }
 
@@ -1491,6 +1593,7 @@ type FleetConvergePlanArtifact {
   subject: FleetConvergePlanSubject
   prior_generation: Int
   plan_lease: HeldLease
+  apply_terminal: FleetConvergeApplyTerminal
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
@@ -2296,21 +2399,22 @@ fn fleet_converge_plan_artifact(
     prior_generation: prior_generation,
     owner_fingerprint: owner_fp,
   )
+  let planned_terminal = fleet_converge_apply_terminal(
+    host: host,
+    observed_slots: observed_slots,
+    observed_caps: observed_caps,
+    timer_plan: timer_plan,
+    cap_plan: cap_plan,
+    observed_fabric_cells: observed_fabric_cells,
+    observed_activation_readiness: observed_activation_readiness,
+  )
   let apply_shell = fleet_converge_apply_shell(
     timer_plan: timer_plan,
     host: host,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
     observed_activation_readiness: observed_activation_readiness,
-    terminal: fleet_converge_apply_terminal(
-      host: host,
-      observed_slots: observed_slots,
-      observed_caps: observed_caps,
-      timer_plan: timer_plan,
-      cap_plan: cap_plan,
-      observed_fabric_cells: observed_fabric_cells,
-      observed_activation_readiness: observed_activation_readiness,
-    ),
+    terminal: planned_terminal,
   )
   match content_hash_of_value(value: baseline as NonEmptyStr) {
     Fnv1a64(structural) =>
@@ -2319,6 +2423,7 @@ fn fleet_converge_plan_artifact(
           subject: subject,
           prior_generation: prior_generation,
           plan_lease: lease,
+          apply_terminal: planned_terminal,
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,
@@ -2326,6 +2431,78 @@ fn fleet_converge_plan_artifact(
         },
       }
     _ => Absent
+  }
+}
+
+// The allocation store has its own host-scoped transaction. It is not a cell member and therefore
+// cannot disappear when an already-converged cell family produces an empty action population.
+fn fleet_converge_allocation_store_plan_artifact(
+  host: NonEmptyStr,
+  prior_generation: Int,
+  observed_allocation_store: AllocationStoreSubstratePrestate,
+) -> FleetConvergePlanArtifact? {
+  let request = FabricAllocationStoreConverge {
+    host: host,
+    observed_allocation_store: observed_allocation_store,
+  }
+  let subject = fleet_converge_plan_subject(request: request)
+  let spec = fabric_allocation_store_substrate_spec()
+  let baseline = observed_baseline_text(request: request)
+  let planned_generation = prior_generation + 1
+  match runner_host_deploy_for(host: host as HostIdentity) {
+    RunnerHostDeployUnmodeled { host: _ } => Absent
+    RunnerHostDeployFound { deploy: deploy } => {
+      let operations = fabric_allocation_store_effect_operations(
+        effect: fabric_allocation_store_ensure_effect(),
+        job_user: deploy.job_user,
+      )
+      let body = join(
+        [
+          "# fleet-converge allocation-store plan",
+          concat("subject_host:", subject.host as String),
+          concat("subject_scope:", fleet_converge_scope_wire(scope: subject.scope)),
+          concat("subject_member_set:", serialize_content_hash(hash: subject.member_set_fingerprint) as String),
+          concat("plan_generation:", to_string(planned_generation)),
+          "# allocation-store",
+          allocation_store_substrate_prestate_wire(prestate: observed_allocation_store),
+          concat("ensure-directory:path=", spec.namespace_path as String),
+          concat("ensure-directory:mode=", spec.namespace_mode as String),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          concat("ensure-directory:path=", spec.path as String),
+          concat("ensure-directory:mode=", spec.mode as String),
+          "ensure-directory:owner=CellSubstrateRootOwned",
+          "# allocation-store-refusals=0",
+          "apply-admission:ready",
+        ],
+        "\n",
+      )
+      let apply_shell = join(
+        concat(
+          ["set -euo pipefail", "# allocation-store substrate (gunbc.fabric_allocation_store_substrate)"],
+          map(operations, op => executor_privileged_operation_shell_command(op: op)),
+        ),
+        "\n",
+      )
+      let owner_fp = content_hash_of_value(value: body as NonEmptyStr)
+      let lease = fleet_converge_plan_held_lease(
+        subject: subject,
+        prior_generation: prior_generation,
+        owner_fingerprint: owner_fp,
+      )
+      match content_hash_of_value(value: baseline as NonEmptyStr) {
+        Fnv1a64(structural) => Present { value: FleetConvergePlanArtifact {
+          subject: subject,
+          prior_generation: prior_generation,
+          plan_lease: lease,
+          apply_terminal: FullyApplied,
+          observed_baseline_hex: structural.digest,
+          plan_body: body,
+          apply_shell: apply_shell,
+          spark_serving_typed_actions: scheduled_rows_empty(),
+        } }
+        _ => Absent
+      }
+    }
   }
 }
 

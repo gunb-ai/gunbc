@@ -174,15 +174,6 @@ pub fn typed_module_key_note() -> NonEmptyStr {
     CACHED.with(|c: &NonEmptyStr| c.clone())
 }
 
-pub fn typed_module_key_v1_seed_bridge_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Seed-retained hand-Rust bridge (review 45298): src/v1/stage0/src/cli_run.rs typed_module_content_key is the v1 host realization of std.interface_summary.module_key and typed_module_key — the only adaptation is wrapping reconcile-path digest strings via std.content_hash.structural_content_hash before the .dag authority runs, because the v1 store boundary still carries interface hashes as digest strings. DELETE SCAFFOLD — this is not a new digest concept; it is the string→Fnv1a64Structural coercion the authority already requires. CENSUS SHRINK — one call site (typed_module_content_key); no parallel key authority. EXPLICIT DEFERRAL — dissolves when cross-entry typed-module memo routes through emitted typed_module_key end-to-end without cli_run string wrapping; ROADMAP row 'Make native materialization the shared execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and gunbc.v1_deletion_plan ^witness_realization_kernel; aligns with docs/plans/cross-entry-typed-module-memo-sketch.md Half B.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn typed_module_key(
     interface_key: Rc<Fnv1a64Structural>,
     compiler_identity: Rc<Fnv1a64Structural>,

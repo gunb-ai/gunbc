@@ -231,7 +231,10 @@ data lotes_part_attestations: List<PartNumberCandidate> = [
   },
 ]
 
-data lotes_azif0222_catalogue_note: String = "Lotes catalogue page for ARM P/N AZIF0222. Product Overview: SKT 4926 ILM and BP, Top-mount, HF. Component Type: CPU Socket ILM and BP. RoHS/Halogen-Free: HF. Packaging: Tray. The page states no dimensions, contact count, pitch, land pattern or mating socket-body part number, so it establishes the retention assembly's identity and nothing about board geometry."
+// Lotes catalogue page for ARM P/N AZIF0222. Product Overview: SKT 4926 ILM and BP, Top-mount, HF.
+// Component Type: CPU Socket ILM and BP. RoHS/Halogen-Free: HF. Packaging: Tray. The page states no
+// dimensions, contact count, pitch, land pattern or mating socket-body part number, so it
+// establishes the retention assembly's identity and nothing about board geometry.
 
 // THE SOCKET BODY IS A SEPARATE, UNNAMED PART, and this row exists so that resolving the
 // retention assembly cannot be mistaken for resolving the attachment. It is the layer that
@@ -242,7 +245,11 @@ data lotes_azif0222_catalogue_note: String = "Lotes catalogue page for ARM P/N A
 // of one fact. What the old row got RIGHT is preserved: the socket body is a different item from
 // AZIF0222, and resolving it is what made the land pattern obtainable. That is exactly what
 // happened, by exactly the route lga4926_land_pattern_public_route predicted.
-data socket_body_part_resolution_note: String = "Lotes supplied AZIFA072-P001CCS, drawing GAP-AZIFA072 rev 2, in direct response to the request recorded in lga4926_land_pattern_public_route: the socket-body part that mates with AZIF0222, with its customer drawing and the board land pattern. The part, its geometry and its remaining gaps are modelled in extdeps.cpu_attachment.lotes_azifa072. The public route resolved and the access-gated route was never taken, so the geometry is carriable rather than merely known."
+// Lotes supplied AZIFA072-P001CCS, drawing GAP-AZIFA072 rev 2, in direct response to the request
+// recorded in lga4926_land_pattern_public_route: the socket-body part that mates with AZIF0222,
+// with its customer drawing and the board land pattern. The part, its geometry and its remaining
+// gaps are modelled in extdeps.cpu_attachment.lotes_azifa072. The public route resolved and the
+// access-gated route was never taken, so the geometry is carriable rather than merely known.
 
 // THE MECHANICAL DRAWING THE SAME THREAD CARRIES, AND WHAT IT IS NOT. A dimensioned plan view of
 // the retention frame was posted alongside the part numbers: a bezel with a central opening, a cam
@@ -259,7 +266,11 @@ type MechanicalDrawingScope
 
 data lga4926_retention_drawing_scope: MechanicalDrawingScope = MountingAndOutlineGeometry
 
-data lga4926_retention_drawing_note: String = "Community-posted dimensioned plan view of the LGA4926 retention frame: twelve mounting holes, datums A and B, symmetric callouts 2X97.00 +/-0.1 and 2X94.00 +/-0.05 across the width, 2X72.00 +/-0.1 and 2X60.00 +/-0.05 vertically, 150 degree corner chamfer. Mounting and outline geometry only. It carries no pad array, pitch or contact count, so it establishes nothing about the board land pattern."
+// Community-posted dimensioned plan view of the LGA4926 retention frame: twelve mounting holes,
+// datums A and B, symmetric callouts 2X97.00 +/-0.1 and 2X94.00 +/-0.05 across the width, 2X72.00
+// +/-0.1 and 2X60.00 +/-0.05 vertically, 150 degree corner chamfer. Mounting and outline geometry
+// only. It carries no pad array, pitch or contact count, so it establishes nothing about the board
+// land pattern.
 
 fn part_candidate_is_officially_attested(c: PartNumberCandidate) -> Bool {
   match c.standing {
@@ -433,6 +444,27 @@ data lga4926_land_pattern_public_route: LandPatternRoute = PublicSocketVendorDra
 data lga4926_land_pattern_gated_route: LandPatternRoute = AccessGatedReferenceCollateral {
   access_route: ampere_customer_reference_boards_authority,
   why_not_carriable: "Ampere reference materials are released under NDA through Customer Connect. This repository is public, so geometry taken from that package could not be carried here even once obtained -- the acquisition would resolve the question for a reader and leave the model exactly as unresolved as before.",
+}
+
+// THE RETENTION ASSEMBLY IS A SECOND REQUEST ON THE SAME ROUTE, NOT A RESOLVED FACT. The socket
+// body resolved on 2026-08-22 (socket_body_part_resolution_note); the drawing delivered then was
+// socket-body-only across all five sheets, so the loading-mechanism and mounting layers that
+// product.altra_motherboard.attachment_stack carries as FactUnresolved stay unresolved. This row
+// records that the ask was MADE and when, so a reader distinguishes an outstanding request from a
+// request nobody sent -- and it lands here rather than in attachment_stack because a vendor
+// correspondence is a fact about the upstream route, not about the product's standing.
+type VendorDocumentRequest {
+  vendor_authority: ExternalAuthority
+  part_number: NonEmptyStr
+  what_to_request: NonEmptyStr
+  requested_on: NonEmptyStr
+}
+
+data azif0222_retention_drawing_request: VendorDocumentRequest = VendorDocumentRequest {
+  vendor_authority: lotes_azif0222_product_authority,
+  part_number: "AZIF0222",
+  what_to_request: "the AZIF0222 ILM and backplate customer drawing and STEP: backplate and loading-frame mounting-hole pattern, PCB keepouts and stack height; clamping load and screw torque; the PCB thickness range the backplate assumes; kit contents; whether a heatsink mounts to the ILM; confirmation that AZIF0222 mates AZIFA072-P001CCS; plus, from GAP-AZIFA072, the sheet-4 stencil aperture, the pin A1 corner, and the identity of the ~0.75 mm sheet-3 circles",
+  requested_on: "2026-08-30",
 }
 
 fn route_yields_a_carriable_fact(r: LandPatternRoute) -> Bool {

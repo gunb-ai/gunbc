@@ -78,7 +78,7 @@ pub fn generic_use_slot_bindings(
                     .next()
                 {
                     Some(arg) => v1_rt::rc_map_insert(acc.clone(), slot.clone(), arg.clone()),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             },
         )
@@ -93,7 +93,7 @@ pub fn expand_scrut_from_decl(
 ) -> Rc<Node> {
     {
         let decl_is_disj = (decl.connective.clone() == Connective::Disj);
-        let has_inferred_alias = (((decl.inferred.clone() != None)
+        let has_inferred_alias = (((decl.inferred.clone() != std::option::Option::None)
             && (decl.connective.clone() == Connective::NoConnective))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj.clone() {
@@ -181,7 +181,8 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                 } else {
                     {
                         let def_is_disj = (decl.connective.clone() == Connective::Disj);
-                        let has_inferred_body = ((decl.inferred.clone() != None)
+                        let has_inferred_body = ((decl.inferred.clone()
+                            != std::option::Option::None)
                             && (decl.connective.clone() == Connective::NoConnective));
                         if def_is_disj.clone() {
                             decl.clone()
@@ -223,7 +224,7 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                     }
                 }
             }
-            None => scrut_node.clone(),
+            std::option::Option::None => scrut_node.clone(),
         }
     }
 }
@@ -311,13 +312,13 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -329,16 +330,16 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -350,7 +351,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
             Some(child) => crate::v1_compiler_infer_types::child_type_node(child.clone()),
-            None => error_type(),
+            std::option::Option::None => error_type(),
         };
         let value_field = Rc::new(Node {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -365,13 +366,13 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -383,16 +384,16 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![value_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -409,16 +410,16 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -435,13 +436,13 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
@@ -453,16 +454,16 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             children: Rc::new(vec![diagnostic_field.clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -488,7 +489,7 @@ pub fn pattern_subject_preserving_outer_optional(
 
 pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let is_error = if (n.inferred.clone() != None) {
+        let is_error = if (n.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
@@ -498,7 +499,7 @@ pub fn pattern_subject_from_node(n: Rc<Node>) -> Rc<PatternSubject> {
         } else {
             if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
-                && (n.inferred.clone() != None))
+                && (n.inferred.clone() != std::option::Option::None))
             {
                 match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
@@ -618,9 +619,11 @@ pub fn lookup_variant_in_type(
                                     source_indices.clone(),
                                 ) {
                                     Some(scrut_child) => node_lookup_resolved(scrut_child.clone()),
-                                    None => node_lookup_resolved(variant_child.clone()),
+                                    std::option::Option::None => {
+                                        node_lookup_resolved(variant_child.clone())
+                                    }
                                 },
-                                None => variant_not_found_result(
+                                std::option::Option::None => variant_not_found_result(
                                     scrut_node.clone(),
                                     variant_name.clone(),
                                     module_name.clone(),
@@ -631,7 +634,7 @@ pub fn lookup_variant_in_type(
                             node_lookup_resolved(resolved.clone())
                         }
                     }
-                    None => variant_not_found_result(
+                    std::option::Option::None => variant_not_found_result(
                         scrut_node.clone(),
                         variant_name.clone(),
                         module_name.clone(),
@@ -747,7 +750,7 @@ pub fn lookup_variant_in_type(
                                                 };
                                                 match direct_match.clone() {
                                                     Some(v) => node_lookup_resolved(v.clone()),
-                                                    None => fallback,
+                                                    std::option::Option::None => fallback,
                                                 }
                                             }
                                         }
@@ -791,17 +794,19 @@ pub fn lookup_field_in_variant(
                 let resolved = crate::v1_compiler_infer_types::child_type_node(field_child.clone());
                 node_lookup_resolved(resolved.clone())
             }
-            None => node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
-                Rc::new(CompilerDiagnostic::FieldNotFound {
-                    field: field_name.clone(),
-                    type_name: crate::v1_std_core::authored_name_at(
-                        source_indices.clone(),
-                        variant_node.clone(),
-                    ),
-                    span: variant_node.span.clone(),
-                }),
-                module_name.clone(),
-            )])),
+            std::option::Option::None => {
+                node_lookup_failed(Rc::new(vec![crate::v1_std_core::make_error_node(
+                    Rc::new(CompilerDiagnostic::FieldNotFound {
+                        field: field_name.clone(),
+                        type_name: crate::v1_std_core::authored_name_at(
+                            source_indices.clone(),
+                            variant_node.clone(),
+                        ),
+                        span: variant_node.span.clone(),
+                    }),
+                    module_name.clone(),
+                )]))
+            }
         },
     }
 }
@@ -841,7 +846,7 @@ pub fn check_match_exhaustiveness(
             match crate::v1_compiler_infer_env::lookup_type_for(env.clone(), scrutinee_type.clone())
             {
                 Some(def) => def.clone(),
-                None => scrutinee_type.clone(),
+                std::option::Option::None => scrutinee_type.clone(),
             }
         };
         let resolved = if scrut_is_optional.clone() {

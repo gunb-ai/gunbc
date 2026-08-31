@@ -1,0 +1,338 @@
+module test.claim.self_host_symbol_identity_binding_witness
+
+import std.types { List, String, Bool, Int, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq, declaration_ref_in_list }
+import std.coercion { TypeCheckpoint, TypeRealizationDecision, Realized }
+import std.target_representation {
+  SourceTypeTargetBinding, ExactBindingResolution,
+  ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable,
+  resolve_exact_binding, exact_binding_is_resolved,
+  CheckpointRowDisposition, MigratedToExactBinding, ProvenUniqueKernelBinding, StillBareNameDebt,
+  checkpoint_row_migration_for, checkpoint_row_disposition_keeps_bare_row
+}
+import extdeps.languages.rust.representation {
+  RustRepresentation, RustStdString, RustSymbolNewtype, RustInternedSymbol,
+  rust_representation_eq, rust_representation_realization_for, rust_representation_realizations,
+  rust_exact_type_checkpoint
+}
+import extdeps.languages.rust.types { rust_type_checkpoints }
+import gunbc.rust_source_type_bindings {
+  rust_source_type_binding_rows, checkpoint_row_migration_rows, rust_bound_declaration_refs, symbol_capture_declarers
+}
+import gunbc.symbol_identity_census {
+  symbol_identity_subject, symbol_identity_decision, symbol_representation_ruling,
+  symbol_identity_census_blocks_decision
+}
+import std.symbol_semantics {
+  symbol_semantics_decision_coherent, symbol_value_semantics_coherent, symbol_nominality_coherent,
+  SymbolSemanticsDecision, LexemeBacked, InternedIdentity, NominalityEnforced, NominalityNotEnforced
+}
+import std.reference_realization {
+  ReferencePositionRendering, RenderProviderDeclarationByPolicy, RenderProviderDeclarationNoRealization,
+  RenderTargetRepresentation, ReferenceRenderingRefused
+}
+import gunbc.reference_realization_policy { reference_realization_rendering }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE FALSIFIERS FOR THE SYMBOL IDENTITY AUTHORITY, at the layer the required floor can execute
+// (dag/ is a floor source root; v1.compiler.coercion is not, and its two exact-path functions are
+// thin derivations of the functions exercised here -- rust_lookup_exact_binding of
+// resolve_exact_binding over rust_source_type_binding_rows, rust_exact_realization_decision of
+// rust_exact_type_checkpoint). The byte-level fixtures the brief names -- an import-collision module
+// emitted with distinct correct target types, and the dominant E0308 population returning when the
+// renderer drops identity -- execute on the XL-0B instrument (emit + cargo check over the freeze,
+// gunbc.rust_source_type_bindings symbol_capture_declarers), because the renderer that threads
+// DeclarationRef into the checkpoint-spelling callers is XL-0B's first commit by agreement with
+// bold-carp-449; until it lands no emitted byte can discriminate the two paths.
+//
+// PERTURBATIONS THAT MUST TURN EXACTLY THE NAMED ROW RED (run them rather than trusting this list):
+//   swap v2.std.node Symbol's row to RustSymbolNewtype       -> w_symbol_binding_realizes_on_rust,
+//                                                              w_symbol_ruling_names_a_realizable_representation
+//   spell RustStdString's reference position "String"        -> w_symbol_spelling_is_qualified_in_both_positions,
+//                                                              w_no_realization_spells_the_bare_string_token
+//   restore the Symbol row to rust_type_checkpoints           -> w_migrated_names_are_absent_from_the_bare_table
+//   add a bare row with no verdict                            -> w_every_bare_row_carries_a_verdict
+//   bind v2.std.logic Bool beside std.types Bool             -> w_sibling_declarations_of_one_spelling_receive_no_binding
+//   resolve Absent identity by falling to a bare spelling     -> w_missing_source_identity_refuses
+//   duplicate the Symbol row in rust_source_type_binding_rows -> w_corpus_bindings_are_unambiguous
+//   answer InternedIdentity while every law says lexeme       -> w_symbol_decision_is_coherent
+//   claim NominalityEnforced while text flows are admitted    -> w_symbol_decision_is_coherent
+
+// THE SAME-SPELLING SIBLINGS, all REAL declarations (the cited-declaration gate refuses a citation
+// of a declaration that does not exist, so the "another module declaring Symbol" falsifier is
+// asked of the declarations the corpus actually has two of): v2.std.text String and std.string_type
+// String beside the kernel String row, v2.std.logic Bool beside std.types Bool (which HAS an exact
+// row), and v2.std.node Hash, declared in Symbol's own module one line below it. None may receive a
+// binding authored for a different declaration -- module-path and decl-name discrimination both.
+fn sibling_declarations_without_bindings() -> List<DeclarationRef> {
+  [
+    decl_ref(module_path: "v2.std.text", decl_name: "String"),
+    decl_ref(module_path: "std.string_type", decl_name: "String"),
+    decl_ref(module_path: "v2.std.logic", decl_name: "Bool"),
+    decl_ref(module_path: "v2.std.node", decl_name: "Hash")
+  ]
+}
+
+fn resolution_is_std_string(resolution: ExactBindingResolution<RustRepresentation>) -> Bool {
+  match resolution {
+    ResolvedExactBinding { binding: b } => rust_representation_eq(a: b.representation, b: RustStdString)
+    ExactBindingAbsent => false
+    ExactBindingAmbiguous { candidate_count: _ } => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+  }
+}
+
+fn resolution_is_absent(resolution: ExactBindingResolution<RustRepresentation>) -> Bool {
+  match resolution {
+    ResolvedExactBinding { binding: _ } => false
+    ExactBindingAbsent => true
+    ExactBindingAmbiguous { candidate_count: _ } => false
+    ExactSourceIdentityUnavailable { cause: _ } => false
+  }
+}
+
+fn resolution_is_ambiguous(resolution: ExactBindingResolution<RustRepresentation>) -> Bool {
+  match resolution {
+    ResolvedExactBinding { binding: _ } => false
+    ExactBindingAbsent => false
+    ExactBindingAmbiguous { candidate_count: n } => n == 2
+    ExactSourceIdentityUnavailable { cause: _ } => false
+  }
+}
+
+fn resolution_is_identity_unavailable(resolution: ExactBindingResolution<RustRepresentation>) -> Bool {
+  match resolution {
+    ResolvedExactBinding { binding: _ } => false
+    ExactBindingAbsent => false
+    ExactBindingAmbiguous { candidate_count: _ } => false
+    ExactSourceIdentityUnavailable { cause: _ } => true
+  }
+}
+
+test fn w_symbol_declaration_resolves_to_std_string() -> Bool {
+  resolution_is_std_string(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: rust_source_type_binding_rows))
+}
+
+test fn w_sibling_declarations_of_one_spelling_receive_no_binding() -> Bool {
+  sibling_declarations_without_bindings() |> all(d => resolution_is_absent(resolution: resolve_exact_binding(source: Present { value: d }, rows: rust_source_type_binding_rows)))
+    && exact_binding_is_resolved(resolution: resolve_exact_binding(source: Present { value: decl_ref(module_path: "std.types", decl_name: "Bool") }, rows: rust_source_type_binding_rows))
+}
+
+test fn w_missing_source_identity_refuses() -> Bool {
+  resolution_is_identity_unavailable(resolution: resolve_exact_binding(source: none, rows: rust_source_type_binding_rows))
+}
+
+fn duplicated_symbol_rows() -> List<SourceTypeTargetBinding<RustRepresentation>> {
+  [
+    SourceTypeTargetBinding { source: symbol_identity_subject, representation: RustStdString },
+    SourceTypeTargetBinding { source: symbol_identity_subject, representation: RustSymbolNewtype }
+  ]
+}
+
+test fn w_two_rows_for_one_declaration_refuse_as_ambiguous() -> Bool {
+  resolution_is_ambiguous(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: duplicated_symbol_rows()))
+}
+
+test fn w_corpus_bindings_are_unambiguous() -> Bool {
+  rust_bound_declaration_refs() |> all(r => exact_binding_is_resolved(resolution: resolve_exact_binding(source: Present { value: r }, rows: rust_source_type_binding_rows)))
+}
+
+fn symbol_checkpoint() -> TypeCheckpoint? {
+  match resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: rust_source_type_binding_rows) {
+    ResolvedExactBinding { binding: b } => rust_exact_type_checkpoint(binding: b)
+    ExactBindingAbsent => none
+    ExactBindingAmbiguous { candidate_count: _ } => none
+    ExactSourceIdentityUnavailable { cause: _ } => none
+  }
+}
+
+test fn w_symbol_binding_realizes_on_rust() -> Bool {
+  match symbol_checkpoint() {
+    Present { value: cp } => cp.dag_name == "Symbol" && cp.is_copy != none
+    Absent => false
+  }
+}
+
+test fn w_symbol_spelling_is_qualified_in_both_positions() -> Bool {
+  match symbol_checkpoint() {
+    Present { value: cp } =>
+      cp.target_type == "std::string::String"
+        && cp.grounding_type == "std::string::String"
+        && cp.target_type != "String"
+    Absent => false
+  }
+}
+
+test fn w_no_realization_spells_the_bare_string_token() -> Bool {
+  rust_representation_realizations |> all(r =>
+    (r.spelling.reference_position as String) != "String" && (r.spelling.grounding_position as String) != "String")
+}
+
+test fn w_next_rung_representations_have_no_realization_yet() -> Bool {
+  rust_representation_realization_for(representation: RustSymbolNewtype) == none
+    && rust_representation_realization_for(representation: RustInternedSymbol) == none
+}
+
+fn bare_row_verdict_keeps_it(dag_name: String) -> Bool {
+  match checkpoint_row_migration_for(dag_name: dag_name as NonEmptyStr, migrations: checkpoint_row_migration_rows()) {
+    Present { value: m } => checkpoint_row_disposition_keeps_bare_row(disposition: m.disposition)
+    Absent => false
+  }
+}
+
+test fn w_every_bare_row_carries_a_verdict() -> Bool {
+  rust_type_checkpoints |> all(cp => bare_row_verdict_keeps_it(dag_name: cp.dag_name))
+}
+
+fn migrated_bindings(disposition: CheckpointRowDisposition) -> List<DeclarationRef> {
+  match disposition {
+    MigratedToExactBinding { bindings: b } => b
+    ProvenUniqueKernelBinding { proof: _ } => []
+    StillBareNameDebt { reason: _, restoration_trigger: _ } => []
+  }
+}
+
+fn bare_table_has_name(dag_name: NonEmptyStr) -> Bool {
+  rust_type_checkpoints |> any(cp => cp.dag_name == (dag_name as String))
+}
+
+test fn w_migrated_names_are_absent_from_the_bare_table() -> Bool {
+  checkpoint_row_migration_rows() |> all(m =>
+    if migrated_bindings(disposition: m.disposition) |> count == 0 { bare_table_has_name(dag_name: m.dag_name) }
+    else { !bare_table_has_name(dag_name: m.dag_name) })
+}
+
+test fn w_migrated_bindings_have_exact_rows() -> Bool {
+  checkpoint_row_migration_rows() |> all(m =>
+    migrated_bindings(disposition: m.disposition) |> all(b => declaration_ref_in_list(target: b, refs: rust_bound_declaration_refs())))
+}
+
+test fn w_symbol_verdict_is_migrated_not_debt() -> Bool {
+  match checkpoint_row_migration_for(dag_name: "Symbol" as NonEmptyStr, migrations: checkpoint_row_migration_rows()) {
+    Present { value: m } => migrated_bindings(disposition: m.disposition) |> any(b => declaration_ref_eq(a: b, b: symbol_identity_subject))
+    Absent => false
+  }
+}
+
+fn decision_claims_lexeme_backed() -> Bool {
+  match symbol_identity_decision.semantics {
+    LexemeBacked => true
+    InternedIdentity => false
+  }
+}
+
+fn decision_admits_nominality_not_enforced() -> Bool {
+  match symbol_identity_decision.nominality {
+    NominalityEnforced => false
+    NominalityNotEnforced { cause: _, next_rung_trigger: _ } => true
+  }
+}
+
+test fn w_symbol_decision_is_coherent() -> Bool {
+  symbol_semantics_decision_coherent(decision: symbol_identity_decision)
+    && decision_claims_lexeme_backed()
+    && decision_admits_nominality_not_enforced()
+}
+
+// THE TWO CLAIMS MOVE INDEPENDENTLY. Mutating the nominality standing alone (claim enforcement while
+// the checker still admits text flows) breaks the nominality half and leaves the value half true;
+// mutating the value semantics alone (claim an intern table while every law says lexeme) breaks the
+// value half and leaves the nominality half true. A fused variant could not express either state.
+fn decision_with_nominality_claimed() -> SymbolSemanticsDecision {
+  SymbolSemanticsDecision {
+    semantics: symbol_identity_decision.semantics,
+    nominality: NominalityEnforced,
+    equality: symbol_identity_decision.equality,
+    ordering: symbol_identity_decision.ordering,
+    hashing: symbol_identity_decision.hashing,
+    serialization: symbol_identity_decision.serialization,
+    intern_table: symbol_identity_decision.intern_table,
+    text_operations_permitted_on_symbol: symbol_identity_decision.text_operations_permitted_on_symbol,
+    literals_canonicalized_beyond_lexeme: symbol_identity_decision.literals_canonicalized_beyond_lexeme,
+    distinct_lexemes_yield_distinct_symbols: symbol_identity_decision.distinct_lexemes_yield_distinct_symbols
+  }
+}
+
+fn decision_with_interning_claimed() -> SymbolSemanticsDecision {
+  SymbolSemanticsDecision {
+    semantics: InternedIdentity,
+    nominality: symbol_identity_decision.nominality,
+    equality: symbol_identity_decision.equality,
+    ordering: symbol_identity_decision.ordering,
+    hashing: symbol_identity_decision.hashing,
+    serialization: symbol_identity_decision.serialization,
+    intern_table: symbol_identity_decision.intern_table,
+    text_operations_permitted_on_symbol: symbol_identity_decision.text_operations_permitted_on_symbol,
+    literals_canonicalized_beyond_lexeme: symbol_identity_decision.literals_canonicalized_beyond_lexeme,
+    distinct_lexemes_yield_distinct_symbols: symbol_identity_decision.distinct_lexemes_yield_distinct_symbols
+  }
+}
+
+test fn w_nominality_standing_changes_independently_of_value_semantics() -> Bool {
+  !symbol_nominality_coherent(decision: decision_with_nominality_claimed())
+    && symbol_value_semantics_coherent(decision: decision_with_nominality_claimed())
+    && !symbol_semantics_decision_coherent(decision: decision_with_nominality_claimed())
+}
+
+test fn w_value_semantics_changes_independently_of_nominality_standing() -> Bool {
+  !symbol_value_semantics_coherent(decision: decision_with_interning_claimed())
+    && symbol_nominality_coherent(decision: decision_with_interning_claimed())
+    && !symbol_semantics_decision_coherent(decision: decision_with_interning_claimed())
+}
+
+test fn w_symbol_ruling_names_a_realizable_representation() -> Bool {
+  rust_representation_realization_for(representation: symbol_representation_ruling.chosen) != none
+    && rust_representation_realization_for(representation: symbol_representation_ruling.next_rung) == none
+    && resolution_is_std_string(resolution: resolve_exact_binding(source: Present { value: symbol_identity_subject }, rows: rust_source_type_binding_rows))
+    && rust_representation_eq(a: symbol_representation_ruling.chosen, b: RustStdString)
+}
+
+test fn w_census_has_no_blocking_use() -> Bool {
+  !symbol_identity_census_blocks_decision()
+}
+
+// THE JOIN WITH std.reference_realization: the exact decision for an OPAQUE provider renders the
+// provider's own declaration at the reference (preserve), which is the second closure of the capture
+// -- a reference spelled `Symbol` cannot be captured by an import named String -- and the qualified
+// spelling closes the declaration side. Both are asserted because they are independent.
+fn symbol_reference_rendering() -> ReferencePositionRendering? {
+  match symbol_checkpoint() {
+    Present { value: cp } => Present { value: reference_realization_rendering(provider: symbol_identity_subject, decision: Realized { checkpoint: cp }) }
+    Absent => none
+  }
+}
+
+test fn w_symbol_reference_preserves_the_provider_declaration() -> Bool {
+  match symbol_reference_rendering() {
+    Present { value: r } =>
+      match r {
+        RenderProviderDeclarationByPolicy => true
+        RenderProviderDeclarationNoRealization => false
+        RenderTargetRepresentation { spelling: _ } => false
+        ReferenceRenderingRefused { refusal: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn w_capture_acceptance_roster_is_populated() -> Bool {
+  symbol_capture_declarers() |> count > 0
+}
+
+// THE IMPORT-COLLISION FIXTURE, retained here as the specification of the byte-level falsifier and
+// consumed by the XL-0B instrument rather than by a test fn in this file: compile_dag_rust_emit_check
+// over a fixture importing v2.std.node pulls the node closure into the fast lane (the same cost class
+// that removed the Int row from test.claim.checkpoint_identity_keying_witness's executing set), and
+// before the renderer threads DeclarationRef the emitted bytes cannot discriminate the exact path from
+// the bare one. Under the threaded renderer the emitted module must contain `std::string::String` at
+// takes_symbol's declaration site (or the preserved provider name `Symbol` behind a v2_std_node
+// use-line) and must NOT contain `identity: String`; takes_text must keep the text carrier.
+fn symbol_import_collision_fixture_source() -> String {
+  "module test.claim.symbol_import_collision\nimport v2.std.node { Symbol }\nimport v2.std.text { String }\n\nfn takes_symbol(identity: Symbol) -> Symbol {\n  identity\n}\n\nfn takes_text(text: String) -> String {\n  text\n}\n"
+}
+
+fn symbol_import_collision_must_not_contain() -> List<String> {
+  ["identity: String"]
+}

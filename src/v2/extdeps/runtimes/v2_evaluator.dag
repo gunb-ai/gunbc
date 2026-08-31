@@ -6,6 +6,7 @@ import v2.std.collection {
   List,
   Map,
   Present,
+  empty_map,
   list_at_optional,
   map_insert
 }
@@ -33,12 +34,10 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected,
   node_locus,
-  invariant_port_locus,
   Diagnostic,
   ExternalContractUnknown,
   Unavailable,
-  None,
-  AmbiguousIntent
+  None
 }
 import v2.std.logic { Bool }
 import v2.std.machine { Byte }
@@ -91,13 +90,23 @@ import v2.std.runtime {
   runtime_reject_match_arm,
   runtime_value_resolved_type
 }
-import v2.std.witness { Violates, Witness }
 type V4EvaluatorRuntime {
   runtime_identity: Symbol
   core: ModelCore
   values: ValueRepresentationModel
   execution: ExecutionSemantics
   boundary: ResourceEffectBoundary
+}
+
+// XL-0E ruling (2026-08-30): '==' on V4EvaluatorRuntime has no denotation -- values and execution
+// carry raw function slots with no declared slot identities. Runtime-model equality is therefore
+// the declared runtime_identity plus the structural boundary slot (the discriminator the bootstrap
+// footprint anchor relies on). Next-rung trigger: declared slot identities on
+// ValueRepresentationModel / ExecutionSemantics / ModelCore, at which point this comparator widens
+// to the full slot-identity conjunction (the InterpretationAlgebra precedent).
+fn v4_evaluator_runtime_models_equal(a: V4EvaluatorRuntime, b: V4EvaluatorRuntime) -> Bool {
+  (a.runtime_identity == b.runtime_identity)
+    && (a.boundary == b.boundary)
 }
 
 fn v2_eval_unit_type_node() -> Node {
@@ -161,20 +170,8 @@ fn v2_eval_runtime_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-fn v2_eval_binding_lookup_miss(_key: EnvironmentBindingKey) -> Witness<RuntimeValue> {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^v2_eval_binding_miss,
-      at: invariant_port_locus(port: ^v2_eval_binding_lookup_port, invariant: ^v2_eval_binding_miss),
-      correction: Unavailable { reason: AmbiguousIntent }
-    }
-  }
-}
-
-fn v2_eval_empty_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
-  PartialFunction {
-    lookup: v2_eval_binding_lookup_miss
-  }
+fn v2_eval_empty_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  empty_map()
 }
 
 fn v2_eval_empty_environment() -> EvaluationEnvironment {
@@ -288,7 +285,12 @@ fn v2_eval_runtime_value_as_int(value: RuntimeValue) -> Outcome<Int> {
   }
 }
 
-data v2_eval_runtime_bool_predicate_dissolution_note: String = "🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) — parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes."
+// 🟡 dissolve-on: v2_eval_runtime_bool_is_true and v2_eval_runtime_bool_is_false are coproduct
+// RuntimeValue→Bool predicates (RuntimePrimitive bool-literal pin, one arm true / others false) —
+// parallel to lazy_arm_runtime_bool_true/false in branch_lazy_arm_eval_acceptance_test.dag; NFR
+// roster listing alone is not a predicate-dissolution receipt. DISSOLVES WHEN std/runtime carries
+// canonical RuntimeValue bool decode/eq (single authority for branch condition discrimination) and
+// v2_evaluator branch dispatch routes through it instead of hand-rolled byte probes.
 
 fn v2_eval_runtime_bool_is_true(value: RuntimeValue) -> Bool {
   match value {
@@ -340,7 +342,6 @@ fn v2_eval_transform_is_int_add(node: Node) -> Bool {
     Absent => false
   }
 }
-
 
 fn v2_eval_call_primitive(
   node: Node,

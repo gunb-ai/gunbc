@@ -9,7 +9,6 @@ import v2.compiler.name_resolve {
   Import,
   ModuleRootMissing,
   ResolutionSubject,
-  admission_from_module_root,
   module_root_lookup,
   resolve_diagnostics,
   validate_module_roots
@@ -50,33 +49,35 @@ import v2.compiler.source_authority {
   DiscoveredSourceRefsDigestUnavailable,
   FrontierProbeDiscoveredClosure,
   SourceRef,
-  SourceRefFilesystemReadRefused,
   SourceRefListDigestNonStructuralRefused,
   SourceRefListDigestOk,
-  SourceRefReadAccepted,
-  SourceRefReadHashMismatch,
-  SourceRefReadResult,
   SourceRootCoverage,
   SourceRootCoverageComplete,
   SourceRootIngest,
-  SourceRootIngestBuildOk,
-  SourceRootIngestBuildReadFailed,
   SourceRootManifestAbsent,
   SourceRootManifestElided,
   SourceRootRowsMissing,
   discovered_source_refs_digest_eq,
   frontier_probe_discovered_closure_seal,
-  source_ref_content_hash_mismatch,
   source_ref_count_in_list,
   source_ref_list_digest_build,
-  source_ref_read_refused,
-  source_root_ingest_build_from_source_refs,
   source_storage_hash_conflict_in_list,
   source_storage_list_has_duplicate_storage
 }
+import v2.compiler.source_authority_read {
+  SourceRefFilesystemReadRefused,
+  SourceRefReadAccepted,
+  SourceRefReadHashMismatch,
+  SourceRefReadResult,
+  SourceRootIngestBuildOk,
+  SourceRootIngestBuildReadFailed,
+  source_ref_content_hash_mismatch,
+  source_ref_read_refused,
+  source_root_ingest_build_from_source_refs
+}
 import v2.extdeps.languages.dag { dag_language_model }
 import v2.extdeps.languages.rust { rust_target_model }
-import v2.lens.reference_deps { reference_deps_ingest_source_text }
+import v2.lens.reference_deps { admission_from_module_root, reference_deps_ingest_source_text }
 import std.algebra { Cons, Empty, FreeMonoid }
 import std.content_hash {
   ContentHash,
@@ -128,7 +129,18 @@ data frontier_probe_coverage_refused_reason: Symbol = ^frontier_probe_coverage_r
 
 data frontier_probe_empty_ingest_reason: Symbol = ^frontier_probe_empty_ingest
 
-data frontier_probe_empty_ingest_refusal_note: String = "An empty ingest is the absence of a closure, never a closure containing nothing, and the two have different remedies. MEASURED, not hypothesised: an over-cap manifest emits SourceRootManifestElided with produced_row_count 0 and host_source_root_ingest = Empty, and this entry answered ^resolve_module_not_found with cause MissingModuleIdentityUnavailable — a survey row asserting the module is missing when what actually happened is that its sources were never supplied. Executed against src/v2/compiler/03_resolve.dag at 71 reads against the 64 cap. The gate that already classifies this correctly, frontier_probe_coverage_gate, guards only the discovery path; this entry receives the ingest directly and never consults coverage, so the conflation was reachable from every from_ingest caller. RESIDUE, stated rather than closed: emptiness is decidable here and coverage is not, because this entry is not given the SourceRootCoverage — so a PARTIAL closure still answers, and a wrong-but-populated ingest is outside this wall. Dissolve-on: the entry takes the coverage receipt beside the ingest and routes it through frontier_probe_coverage_gate, at which point this refusal becomes one arm of that gate rather than a separate check."
+// An empty ingest is the absence of a closure, never a closure containing nothing; the two have
+// different remedies. MEASURED: an over-cap manifest emits SourceRootManifestElided with
+// produced_row_count 0 and host_source_root_ingest = Empty, and this entry answered
+// ^resolve_module_not_found with cause MissingModuleIdentityUnavailable — a survey row asserting the
+// module is missing when its sources were never supplied. Executed against
+// src/v2/compiler/03_resolve.dag at 71 reads against the 64 cap. frontier_probe_coverage_gate
+// already classifies this correctly but guards only the discovery path; this entry receives the
+// ingest directly and never consults coverage, so the conflation was reachable from every
+// from_ingest caller. RESIDUE: emptiness is decidable here and coverage is not, because this entry
+// is not given the SourceRootCoverage — a PARTIAL closure still answers, and a wrong-but-populated
+// ingest is outside this wall. Dissolve-on: the entry takes the coverage receipt beside the ingest
+// and routes it through frontier_probe_coverage_gate, making this refusal one arm of that gate.
 
 type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
@@ -136,7 +148,11 @@ type FrontierProbeCoverageGate
 
 data frontier_probe_subject_digest_mismatch_reason: Symbol = ^frontier_probe_subject_digest_mismatch
 
-data frontier_probe_ingest_subject_note: String = "Single ingest authority for frontier probe (operator ruling 2026-08-04): FrontierProbeDiscoveredClosureSubject carries ONE sealed closure (refs + population_digest + entry bound at seal). Host manifest consumption verifies receipt digest matches the sealed population before probe execution. Population gates run read-through with content-hash verification. FrontierProbeFixture is explicit hermetic harness ingest."
+// Single ingest authority for frontier probe (operator ruling 2026-08-04):
+// FrontierProbeDiscoveredClosureSubject carries ONE sealed closure (refs + population_digest +
+// entry bound at seal). Host manifest consumption verifies receipt digest matches the sealed
+// population before probe execution. Population gates run read-through with content-hash
+// verification. FrontierProbeFixture is explicit hermetic harness ingest.
 
 type FrontierProbeIngestSubject
   = FrontierProbeDiscoveredClosureSubject {

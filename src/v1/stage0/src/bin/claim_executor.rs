@@ -162,6 +162,9 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
     let mut required_regen_fixed_point_mode = false;
+    let mut regen_round_cost_mode = false;
+    let mut regen_affected_set_mode = false;
+    let mut regen_affected_scope = false;
     let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
     let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
@@ -225,6 +228,28 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-regen-fixed-point" => {
                 required_regen_fixed_point_mode = true;
+            }
+            // ONE PRICED REGEN ROUND: seed build, the same `--required-regen` emit, install of
+            // what drifted, rebuild from the installed seed, diff — every phase on two clocks,
+            // rendered by `gunbc.regen_round_cost`. It installs into src/v1/stage0/src, which
+            // is what a round IS; the receipt names the tree and every installed path.
+            "--regen-round-cost" => {
+                regen_round_cost_mode = true;
+            }
+            // THE AFFECTED SET OF THE FLOOR'S DIFF RANGE: which committed mirrors can change
+            // for the .dag modules this edit touched, as `gunbc.regen_affected_set` bounds it.
+            // Reports; it installs nothing. An edited path the tree cannot name refuses.
+            "--regen-affected-set" => {
+                regen_affected_set_mode = true;
+            }
+            // CONSUME the bound rather than report it: the round adjudicates, writes and digests
+            // only the mirrors `--regen-affected-set` names for this edit, and REFUSES when that
+            // bound cannot locate an edited path. Opt-in and narrowing: without it the round is
+            // whole-population, which is what the required CI phase runs and what establishes
+            // the fixed point a scoped round starts from (v2.workflow.required_regen
+            // RegenEmissionScope).
+            "--regen-affected-scope" => {
+                regen_affected_scope = true;
             }
             "--regen-candidate-dir" => {
                 i += 1;
@@ -834,11 +859,63 @@ fn run() -> Result<ExitCode, ExitCode> {
     // outside `//:required` by construction there -- `gunbc.discovery_census` derives that
     // aggregate from discovered witness sites, and no fold feeds the instrument population into it.
 
-    if required_regen_mode {
-        return match v1_compiler::cli_run::run_required_regen(
+    if regen_affected_set_mode {
+        return match v1_compiler::cli_run::run_regen_affected_set(&source_roots) {
+            Ok(outcome) => {
+                eprint!("{}", outcome.rendered);
+                if outcome.arm == "EditedSetUnlocatable" {
+                    Err(ExitCode::from(1))
+                } else {
+                    Ok(ExitCode::SUCCESS)
+                }
+            }
+            Err(e) => {
+                eprintln!("regen-affected-set: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if regen_round_cost_mode {
+        return match v1_compiler::cli_run::run_regen_round_cost(
             &regen_candidate_dir,
             &regen_receipt_path,
+            &source_roots,
+            regen_affected_scope,
         ) {
+            Ok(outcome) => {
+                eprint!("{}", outcome.rendered);
+                eprintln!(
+                    "regen-round-cost: receipt={}",
+                    outcome.receipt_path.display()
+                );
+                for failure in &outcome.round_failures {
+                    eprintln!("regen-round-cost: FAIL {failure}");
+                }
+                if outcome.round_failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("regen-round-cost: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if required_regen_mode {
+        let regen = if regen_affected_scope {
+            v1_compiler::cli_run::run_required_regen_scoped(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+                &source_roots,
+            )
+        } else {
+            v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path)
+        };
+        return match regen {
             Ok(outcome) => {
                 // Both values here ARE measured by this pass, so they print unqualified. Read
                 // through accessors rather than by matching the variant: the
@@ -1188,7 +1265,12 @@ fn report_wave_admission_outcome(
             eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
-        nwa::WaveAdmissionOutcome::Adjudicated { base, head, report } => {
+        nwa::WaveAdmissionOutcome::Adjudicated {
+            base,
+            head,
+            report,
+            roster_touched,
+        } => {
             let p = &report.population;
             eprintln!(
                 "required-ci: namespace-wave-admission base={base} head={head} \
@@ -1212,11 +1294,23 @@ fn report_wave_admission_outcome(
             for stale in &report.stale_admissions {
                 eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
             }
+            for consumed in &report.consumed_admissions {
+                eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
+            }
             let unadjudicated = nwa::report_unadjudicated(report);
-            // A STALE ADMISSION REFUSES TOO. A row that matches no delta is a permission
-            // standing over nothing, and leaving it means the roster stops being a fact about
-            // the corpus and becomes a list someone forgot to prune.
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() {
+            // AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a
+            // permission standing over nothing — author error, and leaving it means the roster
+            // stops being a fact about the corpus.
+            //
+            // A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already
+            // holds at the base (a positive proof, printed above), so for an unrelated run it is
+            // an inert typed receipt; billing its cleanup to that run was the externalized
+            // degradation eight dissolution PRs paid for. The deletion is due — and enforced —
+            // on the first change that touches the roster file itself, which every future
+            // relocation PR does by construction. The window is honest: consumed rows persist,
+            // visible in every run's receipts, until the roster's next touch.
+            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
                 eprintln!(
                     "required-ci: namespace-wave-admission ADMITTED — every delta is \
                      auto-admitted or named by a transition admission"
@@ -1224,9 +1318,16 @@ fn report_wave_admission_outcome(
                 return None;
             }
             Some(format!(
-                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s))",
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
+                 consumed admission(s){})",
                 unadjudicated.len(),
-                report.stale_admissions.len()
+                report.stale_admissions.len(),
+                report.consumed_admissions.len(),
+                if consumed_due {
+                    " due for deletion on this roster-touching change"
+                } else {
+                    ""
+                }
             ))
         }
     }

@@ -10,7 +10,8 @@ import v2.test.long.loop_eval_by_execution {
 }
 import v2.std.logic { Bool }
 
-data wave1_gate1_d_ingested_bind_loop_eval_note: String = "Wave 1 Gate 1 Stage D long lane: census-ingest bind/loop execute through eval with wrong-value RED controls (ingested_fixture_arrows path)."
+// Wave 1 Gate 1 Stage D long lane: census-ingest bind/loop execute through eval with wrong-value
+// RED controls (ingested_fixture_arrows path).
 
 test fn wave1_gate1_d_ingested_bind_executes_witness_holds() -> Bool {
   bind_census_ingested_executes_holds()

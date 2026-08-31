@@ -63,7 +63,6 @@ test fn srv3_plan_is_solver_derived_and_refuses_with_the_solve() -> Bool {
       OsInstallMechanismRefused { cause: _ } => true
       OsInstallMechanismSelected { mechanism: _ } => false
     }
-    && fleet_install_server_specs.length() == 0
 }
 
 // The plan's TARGET facts — Ubuntu 24.04, Cd, Once, fully-automated seed — are

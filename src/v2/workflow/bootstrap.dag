@@ -134,7 +134,8 @@ data seed_honesty_decision: SeedHonestyDecision = FixedPointTrustSufficient {
 
 data independent_compiler_evidence_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a future Available arm requires grounded independent-compiler provenance plus executed output bytes/digests under a separately ruled DDC/reference-compiler slice. Until then the evidence carrier is Unavailable-only, and the bootstrap discharge wall must refuse every current construction.")
 
-data bootstrap_seed_honesty_disconnected_digest_note: String = "The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR."
+// The self_host_bytes_digest_source_perturb_teeth_holds witness stays green; this unavailable-only
+// seed-honesty carrier is disconnected from canonical_emitted_bytes_digest in this PR.
 
 fn independent_compiler_evidence_unavailable() -> IndependentCompilerEvidence {
   IndependentCompilerEvidenceUnavailable {
@@ -537,10 +538,10 @@ fn bootstrap_projection_closure_node(inputs: BootstrapProjectionInputs) -> Node 
 
 fn bootstrap_projection_inputs_well_formed(inputs: BootstrapProjectionInputs) -> Bool {
   (inputs.snapshot.root == bootstrap_source_snapshot_root())
-    && (inputs.snapshot.language_model == seed_capability_language_model())
+    && (inputs.snapshot.language_model.language_identity == seed_capability_language_model().language_identity)
     && (inputs.snapshot.content_hash == bootstrap_canonical_snapshot_content_hash())
     && (inputs.target_model == rust_target_model())
-    && (inputs.runtime_model == v2_evaluator_runtime())
+    && v4_evaluator_runtime_models_equal(a: inputs.runtime_model, b: v2_evaluator_runtime())
 }
 
 fn bootstrap_footprint(inputs: BootstrapProjectionInputs) -> Witness<BootstrapFootprint> {

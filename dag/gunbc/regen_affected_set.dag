@@ -1,0 +1,293 @@
+module gunbc.regen_affected_set
+
+import std.types { String, List, Bool }
+
+// THE AFFECTED SET OF ONE EDIT: which committed mirrors can change when these .dag modules
+// change. This is the bound gunbc.regen_round_cost regen_affected_set_disposition scoped
+// (DerivableNow, with its residual), made into an authority a regen can consume, and it is a
+// BOUND -- a structural over-approximation computed AS the answer (DESIGN section 5) -- never an
+// exact set: exactness needs the per-module emit itself.
+//
+// THREE SOURCES, ALL DECLARED, NONE A FILENAME EXCEPTION.
+//
+// 1. The dependency closure the regen already builds, read in reverse. The seed's closure
+//    authority is cli_run extend_sources_to_both_closure_fixpoint over both_closure_edge_index
+//    (dotted references, which include every `import` line, plus bare references), and the
+//    affected modules are every module from which an edited module is reachable along those
+//    edges. Measured 2026-08-30 (tree 677988a2, srv1 and BuildBuddy): a data row added to
+//    std.content_hash drifted exactly {std_content_hash.rs} against 72 predicted by the import
+//    lines alone -- contained, over-approximate.
+//
+// 2. The bootstrap edge. v1_rt.rs is a generated dependent of v1.compiler.runtime_rust that is
+//    NOT a module's mirror and is NOT reachable through any import: it is the runtime template's
+//    product, emitted from the string baked into the emitting seed. Measured 2026-08-30 (tree
+//    0fe2c517): editing the template drifted {v1_compiler_runtime_rust.rs, v1_rt.rs}, and only the
+//    first is in the graph. The edge is a declared row here (regen_bootstrap_edges), so a reader
+//    of the authority sees it and the host cannot carry it as an undocumented special case
+//    (operator ruling 2026-08-30).
+//
+// 3. The generation-level input. Every mirror is emitted by a seed compiled FROM the mirrors, so
+//    an edit to a module the emitter itself is made of changes every emitted byte's producer. No
+//    reverse closure sees that -- nothing imports the emitter -- so it is a declared prefix roster
+//    (regen_generation_input_prefixes): an edit under one of them answers WholePopulation, and the
+//    consumer regenerates everything. This arm is what keeps the bound honest for the edits that
+//    matter most; it is deliberately wide (a std module the compiler merely calls is NOT under
+//    it, because the measured std.content_hash edit did not propagate).
+//
+// REFUSAL, NEVER WIDENING. When an edited path cannot be located as a module -- a departed .dag
+// whose module name is no longer readable from the tree, or a .dag under no source root -- the
+// answer is EditedSetUnlocatable naming the paths. It does not fall back to WholePopulation:
+// "whole rebuild required" and "the selection could not answer" are different states, and
+// collapsing them would erase the only signal that the locator has a deficit (DESIGN section 5,
+// the absorbing fallback; operator ruling 2026-08-30).
+
+type DependencyEdge {
+  from: String
+  to: String
+}
+
+type MirrorRow {
+  module: String
+  basename: String
+}
+
+type BootstrapEdge {
+  source_module: String
+  product: String
+  reason: String
+}
+
+type BootstrapSourceMirror {
+  source_module: String
+  reason: String
+}
+
+type GeneratedAggregateProductOwner {
+  source_module: String
+  product: String
+  generation_role: GeneratedAggregateProductGenerationRole
+  reason: String
+}
+
+type GeneratedAggregateProductGenerationRole
+  = AggregateGenerationInput
+  | AggregateNonSeedGeneratedOutput
+
+// Compiler substrate whose generated representation is itself an input to the next seed. These
+// are explicit bootstrap-source facts, not a std_ prefix: std.measure is seed-compiled and called
+// by the emitter but is not a compiler-transport mirror, which is the discriminator that forced
+// staged convergence to keep generation role separate from seed membership.
+data regen_bootstrap_source_mirrors: List<BootstrapSourceMirror> = [
+  BootstrapSourceMirror {
+    source_module: "std.decl_ref",
+    reason: "declaration identity is carried by resolver and emitter seed structures"
+  },
+  BootstrapSourceMirror {
+    source_module: "std.occurrence_identity",
+    reason: "parser-minted occurrence and constructor identities are carried by compiler seed structures"
+  },
+  BootstrapSourceMirror {
+    source_module: "std.repair_input_origin",
+    reason: "repair-input origin carriers are assembled by the emitter seed"
+  }
+]
+
+data regen_bootstrap_edges: List<BootstrapEdge> = [
+  BootstrapEdge {
+    source_module: "v1.compiler.runtime_rust",
+    product: "v1_rt.rs",
+    reason: "the runtime shim is the template's product, emitted from the string the emitting seed carries; it is a compared mirror with no module and no import edge (measured drift on tree 0fe2c517: v1_compiler_runtime_rust.rs and v1_rt.rs)"
+  }
+]
+
+// Generated aggregates have declaration ownership but are not affected-set bootstrap edges:
+// their producer modules retain their ordinary generation roles. Keeping ownership separate
+// prevents naming an aggregate from demoting its emitter out of the generation-input roster.
+data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwner> = [
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.compiler_tests_rust",
+    product: "compiler_tests.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
+    reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module; the generated product therefore has no module-line mirror identity of its own"
+  },
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "emitted_population.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
+    reason: "emit_emitted_population_manifest derives this aggregate from the complete emitted file list; the manifest is deliberately not a Rust module and therefore has no same-named DAG module identity"
+  },
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "lib.rs",
+    generation_role: AggregateGenerationInput,
+    reason: "emit_lib_rs_from_files derives the crate module surface from the emitted module population; lib.rs is an aggregate product rather than a same-named DAG module mirror"
+  },
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "main.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
+    reason: "emit_main_rs derives the executable entry surface from the workflow population; main.rs is an aggregate product rather than a same-named DAG module mirror"
+  }
+]
+
+data regen_generation_input_prefixes: List<String> = ["v1.compiler.", "extdeps.languages."]
+
+type AffectedSetBound
+  = AffectedMirrors { edited: List<String>, mirrors: List<String>, bootstrap_products: List<String> }
+  | WholePopulation { edited: List<String>, generation_inputs: List<String> }
+  | EditedSetUnlocatable { unlocatable: List<String>, reason: String }
+
+fn regen_list_has(items: List<String>, item: String) -> Bool {
+  items |> any(x => x == item)
+}
+
+// ONE STEP of the reverse walk: every module with an edge INTO the current set joins it.
+fn regen_reverse_step(reached: List<String>, edges: List<DependencyEdge>) -> List<String> {
+  fold(edges, init: reached, f: fn(acc, edge) {
+    if regen_list_has(items: acc, item: edge.to) && !regen_list_has(items: acc, item: edge.from) {
+      list_push(acc, edge.from)
+    } else {
+      acc
+    }
+  })
+}
+
+// THE REVERSE CLOSURE, as a bounded iteration: a path in a graph of n modules has at most n
+// edges, so n steps reach the fixpoint by construction (execution is bounded and forward,
+// DESIGN section 4). The host realizes the same walk over its edge index; the lockstep test
+// holds the two to one answer on a fixture graph.
+fn regen_reverse_closure(edited: List<String>, edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
+  fold(modules, init: edited, f: fn(acc, m) { regen_reverse_step(reached: acc, edges: edges) })
+}
+
+// A DECLARED BOOTSTRAP SOURCE IS NOT A GENERATION INPUT, and the exclusion is the declaration's
+// content: the bootstrap row says, with its measurement, that this module's effect on the
+// population is its reverse closure plus its named product -- so it takes the AffectedMirrors
+// arm. Without the exclusion the prefix roster would answer WholePopulation for the runtime
+// template, against the measured two-file drift.
+fn regen_generation_inputs(edited: List<String>) -> List<String> {
+  edited |> filter(m =>
+    (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
+      && !(regen_bootstrap_edges |> any(edge => edge.source_module == m)))
+}
+
+// Explicit-roster authority: generation role is a property of the emitter/bootstrap surface, not
+// a reachability answer. Dependency edges bound affectedness elsewhere in this module; they are
+// intentionally not an input here, so the interface cannot imply they decide this role.
+fn regen_generation_role_modules(modules: List<String>) -> List<String> {
+  let roots = modules |> filter(m =>
+    (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
+      && !(regen_bootstrap_edges |> any(edge => edge.source_module == m))
+  )
+  fold(regen_bootstrap_source_mirrors, init: roots, f: fn(acc, row) {
+    if regen_list_has(items: modules, item: row.source_module)
+      && !regen_list_has(items: acc, item: row.source_module) {
+      list_push(acc, row.source_module)
+    } else {
+      acc
+    }
+  })
+}
+
+fn regen_bootstrap_source_modules() -> List<String> {
+  concat(
+    regen_bootstrap_edges |> map(edge => edge.source_module),
+    regen_bootstrap_source_mirrors |> map(row => row.source_module)
+  )
+}
+
+fn regen_bootstrap_product_paths() -> List<String> {
+  regen_bootstrap_edges |> map(edge => edge.product)
+}
+
+fn regen_generated_product_owner_paths() -> List<String> {
+  concat(
+    regen_bootstrap_edges |> map(edge => edge.product),
+    regen_generated_aggregate_product_owners |> map(row => row.product)
+  )
+}
+
+// The host asks this projection for every member of regen_generated_product_owner_paths. Both
+// answers come from the declared row authorities, so a non-module product retains its producer;
+// a synthesized basename-to-module fallback is refused.
+fn regen_generated_product_source_modules(product: String) -> List<String> {
+  concat(
+    regen_bootstrap_edges
+      |> filter(edge => edge.product == product)
+      |> map(edge => edge.source_module),
+    regen_generated_aggregate_product_owners
+      |> filter(row => row.product == product)
+      |> map(row => row.source_module)
+  )
+}
+
+// Host-boundary projection of the closed aggregate role. A product absent from these rows has
+// no role answer; callers must refuse rather than infer OutsideSeed from seed-manifest absence.
+fn regen_generated_product_generation_role_labels(product: String) -> List<String> {
+  regen_generated_aggregate_product_owners
+    |> filter(row => row.product == product)
+    |> map(row => match row.generation_role {
+      AggregateGenerationInput => "GenerationInput"
+      AggregateNonSeedGeneratedOutput => "NonSeedGeneratedOutput"
+    })
+}
+
+fn regen_bootstrap_products(reached: List<String>) -> List<String> {
+  regen_bootstrap_edges
+    |> filter(edge => regen_list_has(items: reached, item: edge.source_module))
+    |> map(edge => edge.product)
+}
+
+// THE BOUND. `unlocatable` is the host's list of edited paths it could not name as modules; a
+// non-empty list is the refusal arm before any closure is taken. `compared` is the committed
+// mirror population with each row's module; `modules` is the closure's module list (the walk's
+// step bound). The bootstrap rows are this module's own declaration, read here, never passed:
+// a caller that could hand in a different roster would be a second authority for the edge.
+fn regen_affected_set(
+  edited: List<String>,
+  unlocatable: List<String>,
+  edges: List<DependencyEdge>,
+  compared: List<MirrorRow>,
+  modules: List<String>
+) -> AffectedSetBound {
+  if count(unlocatable) > 0 {
+    EditedSetUnlocatable {
+      unlocatable: unlocatable,
+      reason: "an edited path could not be named as a module in the tree; the selection cannot answer, and it does not widen to the population"
+    }
+  } else {
+    let generation = regen_generation_inputs(edited: edited)
+    if count(generation) > 0 {
+      WholePopulation { edited: edited, generation_inputs: generation }
+    } else {
+      let reached = regen_reverse_closure(edited: edited, edges: edges, modules: modules)
+      AffectedMirrors {
+        edited: edited,
+        mirrors: compared |> filter(row => regen_list_has(items: reached, item: row.module)) |> map(row => row.basename),
+        bootstrap_products: regen_bootstrap_products(reached: reached)
+      }
+    }
+  }
+}
+
+fn regen_affected_set_bound_line(bound: AffectedSetBound) -> String {
+  match bound {
+    AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } =>
+      concat(
+        concat(concat("regen-affected-set: AffectedMirrors edited=", to_string(count(e))), concat(" mirrors=", to_string(count(m)))),
+        concat(" bootstrap_products=", to_string(count(b)))
+      )
+    WholePopulation { edited: e, generation_inputs: g } =>
+      concat(concat("regen-affected-set: WholePopulation edited=", to_string(count(e))), concat(" generation_inputs=", to_string(count(g))))
+    EditedSetUnlocatable { unlocatable: u, reason: r } =>
+      concat(concat("regen-affected-set: EditedSetUnlocatable unlocatable=", to_string(count(u))), concat(" reason=", r))
+  }
+}
+
+fn regen_affected_set_members(bound: AffectedSetBound) -> List<String> {
+  match bound {
+    AffectedMirrors { edited: e, mirrors: m, bootstrap_products: b } => concat(m, b)
+    WholePopulation { edited: e, generation_inputs: g } => []
+    EditedSetUnlocatable { unlocatable: u, reason: r } => []
+  }
+}

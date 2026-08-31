@@ -1,7 +1,14 @@
 module v1.compiler.emit_rust
 
 import std.occurrence_identity { OccurrenceSynthetic }
-import std.decl_ref { decl_ref }
+import std.decl_ref { decl_ref, DeclarationRef }
+import std.target_representation { ResolvedExactBinding, ExactBindingAbsent, ExactBindingAmbiguous, ExactSourceIdentityUnavailable }
+import extdeps.languages.rust.representation { rust_exact_type_checkpoint }
+import std.repair_input_origin {
+  repair_input_origin_candidates,
+  repair_input_origin_compatibility_names,
+  qualified_item_emit_surface_compatibility_names,
+}
 import std.primitive_projection {
   primitive_identity_runtime_name, primitive_projection_row_for_declaration
 }
@@ -45,7 +52,7 @@ import v1.std.core {
   transport_base_path, empty_intern_table
 }
 
-import v1.compiler.artifact { RenderTarget, Rust }
+import v1.compiler.artifact { RenderTarget, Rust, RustModuleRenderSelection, RenderEveryModule, RenderSelectedMirrors }
 import extdeps.languages.rust.emit {
   rust_trait_derive_attr_from_traits,
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result, rust_method_templates,
@@ -54,6 +61,16 @@ import extdeps.languages.rust.emit {
 }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 import gunbc.stage0_crate_layout_generated { generated_pub_mod_block }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+import gunbc.stage0_executable_assembly_generated {
+  generated_host_shell_partition_dependencies
+}
+import gunbc.stage0_partition_package_graph {
+  stage0_partition_row_is_module_bearing_package
+}
 import gunbc.rust_decl_type_overlay { rust_decl_type_container_overlay_is_admitted }
 import gunbc.cli_dispatch_surface {
   CliAtMostOne,
@@ -87,9 +104,11 @@ import v1.compiler.compiler_tests_rust { compiler_tests_source }
 import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_integer_source }
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
-  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file,
-  rust_seed_host_numeric_alias, target_callable
+  coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file, decl_identity_file,
+  rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding,
+  declaration_realizes_natively_on_rust, is_kernel_minted_file
 }
+import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
@@ -98,6 +117,7 @@ import v1.compiler.trait_derive_emit {
   v1_clone_bounded_type_params, v1_item_clone_bounded_param_names, v1_item_clone_undecided_head,
   v1_item_wf_propagated_clone_bounded_param_names,
   v1_map_key_required_type_names, v1_item_field_type_exprs, v1_with_map_key_requirement,
+  v1_map_key_head_names_in_type_expr,
   v1_clone_impl_required_type_params,
   v1_trait_derive_refuse,
   trait_derive_emit_fn_clone_bound_keyed_carrier_module,
@@ -111,7 +131,16 @@ import v1.compiler.trait_bound_witness {
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
+import std.operator_realization {
+  OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
+  OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
+  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType,
+  OperandShapeFacts, OperandDeclaration,
+  StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
+  operator_realization_for, operator_realization_refusal_message
+}
+import gunbc.structural_realization_bindings { structural_ordering_rows, structural_connective_rows }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -144,7 +173,7 @@ import v1.compiler.infer {
 import v1.compiler.infer_emit_info {
   EmitGraphInfo, TypeSummary, StructRepr, EnumRepr,
   lookup_emit_type_summary, lookup_emit_type_decl, empty_emit_graph_info,
-  emit_info_with_fn_type_context, emit_info_with_fn_return,
+  emit_info_with_fn_type_context, emit_info_with_fn_return, emit_info_with_expected_type,
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
@@ -251,12 +280,21 @@ fn rust_type_node_is_arrow(n: Node) -> Bool {
 }
 
 fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
+  render_rust_arrow_type_in_scope(n: n, generic_param_names: emit_info.fn_generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: emit_info.fn_type_env)
+}
+
+// The arrow renderer keyed on the SCOPE it renders in rather than on EmitGraphInfo, so the
+// type-argument position -- which carries the scope's parts but no EmitGraphInfo -- asks the same
+// renderer instead of falling through: `Map<Symbol, fn(String) -> String>` at a record field
+// rendered its value type by the arrow's RESOLVED inference, i.e. the return type, as
+// `HashMap<Symbol, String>` (E0277 x2 at v2.std.compilers.target_model apply_emit_spelling_transform).
+fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let repr = target_callable(target: Rust)
-  let param_strs = n.params |> map(p => render_rust_arrow_position(n: param_node_type_expr(n: p), shared_types: shared_types, source_indices: source_indices, emit_info: emit_info))
+  let param_strs = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
   let param_str = param_strs |> join(separator: repr.param_separator)
   let spec = language_spec(target: Rust)
   let ret_str = match n.inferred {
-    Present { value: Resolved { node: rt } } => render_rust_arrow_position(n: rt, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
+    Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
     _ => spec.void_type
   }
   match spec.callable_type_template {
@@ -270,13 +308,19 @@ fn render_rust_arrow_type(n: Node, shared_types: Set<String>, source_indices: Ma
   }
 }
 
-// ZERO-PARAMETER ALIAS AT THE EXPRESSION-TYPE POSITION (the closed_alias_peels_zero_param arm below):
-// A ZERO-PARAMETER ALIAS NEVER TAKES THE ARGUMENTS OF WHAT IT ABBREVIATES. The resolver hands an
-// alias reference back carrying its right-hand side's children, and rendering name-plus-children
-// wrote `CompileLensOutcome<Rc<Witness<Rc<Node>>>>` for `type CompileLensOutcome =
-// Outcome<Witness<Node>>` (E0107, and the E0391 variance cycle rustc reports beside it). The
-// fn-signature renderer already answers this position bare via closed_alias_peels_zero_param;
-// this is the same verdict asked at the expression-type position.
+// ZERO-PARAMETER ALIAS AT THE EXPRESSION-TYPE POSITION has no arm of its own here: the applied
+// route below reaches render_rust_applied_type, whose closed_alias_peel_verdict answers the alias
+// bare, so a second peel arm ahead of it answered nothing the route did not (measured on the XL-0A
+// falsifier batch: deleting it changed no emitted byte of the compiler closure, and
+// w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments stayed green).
+// Two 4h facts about this renderer, at module grain (in-body annotations refuse regen, DESIGN 4c):
+// its keyed- and element-collection branches keep a raw Arrow child, because child_type_node
+// projects the RESOLVED type and an arrow's resolved type is its return (Map<Symbol,
+// fn(String) -> String> rendered HashMap<Symbol, String>, E0277 x2); and its leaf arm consults the
+// native-alias row (env-resolved declaring module) BEFORE render_node_type, whose shared wrap
+// otherwise renders `predecessor: Nat` as `Rc<Nat>` at a variant record field while the
+// constructor passes i64 -- a layer below the field-carrier decision
+// rust_field_carrier_final_type projects (E0308 x2, E0369 x1).
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -287,9 +331,6 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   }
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
-  } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) && closed_alias_peels_zero_param(env: emit_info.fn_type_env, n: n) {
-    let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
-    render_rust_shared_type_with_optional(n: n, type_name: leaf, rendered: leaf, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
     render_rust_applied_via_emit_info(n: n, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
@@ -312,7 +353,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
       Present { value: key_child } =>
         let key_node = child_type_node(ch: key_child)
         let val_node = match n.children |> skip(1) |> first {
-          Present { value: val_child } => child_type_node(ch: val_child)
+          Present { value: val_child } => if rust_type_node_is_arrow(n: val_child) { val_child } else { child_type_node(ch: val_child) }
           Absent => type_variable_node(id: "map_value")
         }
         let key_str = render_rust_type(n: key_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
@@ -325,7 +366,7 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
   } else if node_is_element_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
-        let elem_node = child_type_node(ch: elem_child)
+        let elem_node = if rust_type_node_is_arrow(n: elem_child) { elem_child } else { child_type_node(ch: elem_child) }
         let inner_str = render_rust_type(n: elem_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
         let base = emit_container(name: tn, inner: inner_str, target: Rust)
@@ -339,7 +380,10 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
-      render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      match rust_seed_host_numeric_alias(name: qualified_last_segment(name: tn), decl_file: type_reference_decl_file_in_env(n: n, env: emit_info.fn_type_env, source_indices: source_indices)) {
+        Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
+        Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
+      }
     }
   }
 }
@@ -520,8 +564,11 @@ fn rust_opaque_kernel_alias_carrier(name: String) -> String? {
   }
 }
 
-fn rust_opaque_kernel_alias_type_decl(name: String) -> String {
-  let carrier = coerce_primitive_type(target: Rust, dag_name: name, decl_file: "")
+fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
+  let carrier = match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: name) }, grounding: true) {
+    Present { value: exact } => exact
+    Absent => coerce_primitive_type(target: Rust, dag_name: name, decl_file: "")
+  }
   concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", name, " = ", carrier, ";")
 }
 
@@ -532,7 +579,15 @@ fn rust_ground_opaque_kernel_type_name(name: String) -> String {
   }
 }
 
-data reference_use_lines_representation_invariant_note: String = "Use-lines are derived from RESOLVED REFERENCES for every module, import-bearing or not. Import synthesis was formerly gated on the same closure-provenance flag as primitive realization, with import-bearing modules on one arm receiving an EMPTY list -- which made what a module imports a function of WHICH OTHER SOURCES SHARED ITS CLOSURE rather than of what it actually references. Both halves of that fused flag are deleted: what a module must import is a derivation from its own resolved reference graph, exactly as what a type realizes as is a fact about its own declaration. Once the gate was removed the two former arms called reference_derived_use_lines with byte-identical arguments, so the conditional collapsed to one call -- the branch existed only to serve the distinction being deleted."
+// Use-lines are derived from RESOLVED REFERENCES for every module, import-bearing or not. Import
+// synthesis was formerly gated on the same closure-provenance flag as primitive realization, with
+// import-bearing modules on one arm receiving an EMPTY list -- which made what a module imports a
+// function of WHICH OTHER SOURCES SHARED ITS CLOSURE rather than of what it actually references.
+// Both halves of that fused flag are deleted: what a module must import is a derivation from its
+// own resolved reference graph, exactly as what a type realizes as is a fact about its own
+// declaration. Once the gate was removed the two former arms called reference_derived_use_lines
+// with byte-identical arguments, so the conditional collapsed to one call -- the branch existed
+// only to serve the distinction being deleted.
 
 data numeric_realization_relocation_note: String = "RELOCATED to v1.compiler.coercion (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335): numeric_realization_identity_note, numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias moved there in full, completing the relocation checkpoint_table_bypasses_identity_note's structural_declaration_modules_for precedent already established for the negative-form (structural) half of this same two-authority shape -- this was the positive-form (native) half, still sitting in this module and reached back into by v1.compiler.coercion type_realization_decision, an import cycle DESIGN section 3 forbids (emit_rust already imports FROM coercion; coercion calling back into emit_rust closes the cycle). This module now imports only rust_seed_host_numeric_alias back from v1.compiler.coercion, exactly as it already imports lookup_checkpoint from there -- one direction, no cycle; numeric_realization_declaring_modules and decl_file_realizes_natively have no consumer left in this module, since rust_seed_host_numeric_alias was their only caller here and it moved with them. Agreed with swift-moth-294 (msg_502982ac, 2026-08-21) and sequenced behind gunbc#8716 (merged 2026-08-21T06:19:19Z), which is why the move landed now rather than when first proposed."
 
@@ -591,7 +646,15 @@ fn rust_scalar_checkpoint_spelling(dag_name: String, decl_file: String, groundin
   }
 }
 
-data rust_checkpoint_scalar_declared_arity_guard_note: String = "The strip below reads table MEMBERSHIP as the proposition 'this leaf has arity 0 in Rust'. A TypeCheckpoint row cannot state arity — it states target spelling — so the two facts 'this is a scalar' and 'I have a spelling for this name' arrive as one Present, and the arm answers 'drop every type argument' to both. That is DESIGN section 5's widening failure arm: the dropped argument leaves plausible output rather than a diagnostic, so the deficit's frequency was zero by construction until rustc reported E0107. The guard consults the single arity authority (std.types is_container_type / container_expected_arity) FIRST, so a leaf with declared arity can never be classified scalar however the target's spelling table is edited. Receipt: docs/probes/root_d_generic_arity_2026-08-16.md."
+// The strip below reads table MEMBERSHIP as the proposition 'this leaf has arity 0 in Rust'. A
+// TypeCheckpoint row cannot state arity — it states target spelling — so the two facts 'this is a
+// scalar' and 'I have a spelling for this name' arrive as one Present, and the arm answers 'drop
+// every type argument' to both. That is DESIGN section 5's widening failure arm: the dropped
+// argument leaves plausible output rather than a diagnostic, so the deficit's frequency was zero by
+// construction until rustc reported E0107. The guard consults the single arity authority (std.types
+// is_container_type / container_expected_arity) FIRST, so a leaf with declared arity can never be
+// classified scalar however the target's spelling table is edited. Receipt:
+// docs/probes/root_d_generic_arity_2026-08-16.md.
 
 data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for E0109 (type arguments are not allowed on builtin type i64). A checkpoint scalar (lookup_checkpoint / rust_seed_host_numeric_alias — Int, Nat, i64, etc.) has arity 0 in Rust; DAG phantom params from GroupCompletion<Nat> or Compose<Int, MachineWidth<>> must not surface as i64<T>. Root fix: refuse phantom arg emission at the type-node renderer when the leaf is a checkpoint scalar and children > 0 — not a post-hoc string strip on the rendered output (DESIGN section 5: widening instead of refusing)."
 
@@ -607,15 +670,47 @@ data rust_checkpoint_scalar_phantom_params_note: String = "Construction wall for
 // authority suppresses the wrap. rust_scalar_checkpoint_reference_base also answers for
 // lookup_checkpoint rows that are NOT machine scalars (String is the live one), and those may
 // legitimately be shared, so widening this to every checkpoint row is a separate cut.
-fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>) -> String? {
+// type_reference_decl_file reads the DECLARING module off the reference's resolved inference, and
+// falls back to the reference's own file when no inference is bound -- which is every type
+// argument inside a record FIELD's type expression (field type exprs are not inferred). At that
+// position `Nat` in `Measure<Time, S, Nat>` therefore answered dag/std/realization_schedule.dag,
+// not dag/std/nat.dag, so the native-alias row could not fire and the argument rendered as the
+// shared carrier `Rc<Nat>` while every signature rendered it `i64` (E0308 x8 across std_measure,
+// std_realization_schedule, std_cache_interface, std_realization_measurement; E0369 x1). The
+// binding is still decidable from the env: the reference's leaf name resolves to one declaration
+// in the referencing module's scope. Accepted only when that declaration IS named by the leaf,
+// so an alias's right-hand side node can never stand in for the alias.
+fn type_reference_decl_file_in_env(n: Node, env: TypeEnv, source_indices: Map<String, NewlineIndex>) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: _ } } => type_reference_decl_file(n: n)
+    _ =>
+      let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+      if leaf == "" { type_reference_decl_file(n: n) }
+      else {
+        match lookup_type_by_name(env: env, name: leaf) {
+          Present { value: decl } =>
+            if authored_name_at(source_indices: source_indices, node: decl) == leaf {
+              decl_identity_file(item: decl)
+            } else { type_reference_decl_file(n: n) }
+          Absent => type_reference_decl_file(n: n)
+        }
+      }
+  }
+}
+
+fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, NewlineIndex>, shared_types: Set<String>, env: TypeEnv) -> String? {
   if n.children |> count == 0 { none }
   else {
     let leaf = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
     if is_container_type(name: leaf) { return none }
-    match rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n)) {
+    let decl_file = type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices)
+    match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
+      Present { value: exact } => Present { value: exact }
+      Absent =>
+    match rust_seed_host_numeric_alias(name: leaf, decl_file: decl_file) {
       Present { value: numeric } => Present { value: numeric }
       Absent =>
-        match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+        match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: decl_file) {
           Present { value: scalar } =>
             if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: scalar) {
               Present { value: wrap_shared_type(target: Rust, inner: scalar) }
@@ -625,6 +720,62 @@ fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, Newli
           Absent => none
         }
     }
+    }
+  }
+}
+
+// THE EXACT PATH, AT THE RENDERER. A type reference carries its resolved declaration
+// (`inferred: Resolved { node }`); the declaration's module is the containment fact the corpus-wide
+// bare-name census already holds (v1.compiler.infer_env SymbolIndex.global_bare, one row per declared
+// name with its module_path and the declaration node), so the DeclarationRef is read from that
+// census by identity -- the candidate whose declaration node IS the resolved node, by ident_span --
+// and never minted from a spelling. A second file->module map beside the census would be the
+// parallel representation DESIGN section 3 forbids. Identity that the census cannot supply (a
+// kernel mint, a variant alias, an unresolved reference) is absent, and absent identity is the
+// ExactSourceIdentityUnavailable arm of the resolver: the spelling-keyed path answers or refuses
+// for it exactly as before, which is the residue v1.compiler.coercion type_realization_decision declares for an empty decl_file.
+// binding_declares_span and type_reference_declaration_ref are RELOCATED to v1.compiler.infer_env
+// (XL-0N, adhoc-aec65f93-b00): inference now asks the same exact-identity question at every literal
+// boundary, and infer_env is the module both stages already import -- one reader, two consumers.
+
+// The four arms of the exact resolver, rendered. Two answer a spelling; two are LOUD in the emitted
+// bytes -- a declaration bound to a representation with no realization row, and two rows for one
+// declaration -- because both are authoring defects a silent fall-through would hide behind the
+// structural rendering. Absent and identity-unavailable answer none so the caller's spelling-keyed
+// path runs, which for a Migrated name refuses (v1.compiler.coercion type_realization_decision).
+fn rust_exact_binding_spelling(source: DeclarationRef?, grounding: Bool) -> String? {
+  match rust_lookup_exact_binding(source: source) {
+    ResolvedExactBinding { binding: b } =>
+      match rust_exact_type_checkpoint(binding: b) {
+        Present { value: cp } => Present { value: if grounding { cp.grounding_type } else { cp.target_type } }
+        Absent => Present { value: emit_rust_compile_error_expr(message: concat("declaration '", b.source.decl_name as String, "' is bound to a Rust representation with no realization row")) }
+      }
+    ExactBindingAmbiguous { candidate_count: k } =>
+      Present { value: emit_rust_compile_error_expr(message: concat("ambiguous exact Rust binding: ", to_string(value: k), " rows for one declaration")) }
+    ExactBindingAbsent => none
+    ExactSourceIdentityUnavailable { cause: _ } => none
+  }
+}
+
+fn rust_exact_reference_spelling(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+  rust_exact_binding_spelling(source: type_reference_declaration_ref(n: n, source_indices: source_indices, env: env), grounding: false)
+}
+
+// REFERENCE position, node-bearing: exact first, then the spelling-keyed reference base.
+fn rust_reference_checkpoint_spelling_at(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+  match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) {
+    Present { value: exact } => Present { value: exact }
+    Absent => rust_scalar_checkpoint_reference_base(dag_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), decl_file: type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices))
+  }
+}
+
+// DECLARATION right-hand side, declaration-keyed: the declaring module is the env's own, so the
+// DeclarationRef is constructed rather than looked up. Exact first, then the spelling-keyed
+// grounding base.
+fn rust_declaration_checkpoint_grounding_at(module_path: String, decl_name: String, decl_file: String) -> String? {
+  match rust_exact_binding_spelling(source: Present { value: decl_ref(module_path: module_path, decl_name: decl_name) }, grounding: true) {
+    Present { value: exact } => Present { value: exact }
+    Absent => rust_scalar_checkpoint_grounding_base(dag_name: decl_name, decl_file: decl_file)
   }
 }
 
@@ -651,7 +802,11 @@ fn rust_host_text_carrier_elem_name(n: Node, source_indices: Map<String, Newline
   }
 }
 
+// An arrow is never a text carrier, whatever its authored name resolves to: `fn(String) -> String`
+// answered true here (its name reads as its return leaf) ahead of every Arrow arm, so the type
+// argument rendered `String` (E0277 x2 at v2.std.compilers.target_model).
 fn is_host_text_carrier_type(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if n.connective == Arrow { return false }
   let nm = authored_name_at(source_indices: source_indices, node: n)
   if nm == "String" {
     true
@@ -685,7 +840,11 @@ fn rust_witness_parent_leaf(parent: String) -> Bool {
   qualified_last_segment(name: parent) == "Witness"
 }
 
-data rust_witness_variant_arm_names_note: String = "Holds/Violates literals below are the two arms of v2.std.witness.Witness<C> (src/v2/std/witness.dag; this citation read std.witness / dag/std/witness.dag until 2026-08-16, naming a module that does not exist in the tree) — not minted nicknames. Pattern position routes via rust_variant_path like any other modeled enum; construction turbofish here keys type-arg resolution off the modeled arm names only."
+// Holds/Violates literals below are the two arms of v2.std.witness.Witness<C>
+// (src/v2/std/witness.dag; this citation read std.witness / dag/std/witness.dag until 2026-08-16,
+// naming a module that does not exist in the tree) — not minted nicknames. Pattern position routes
+// via rust_variant_path like any other modeled enum; construction turbofish here keys type-arg
+// resolution off the modeled arm names only.
 
 fn rust_peel_one_rc_type_node(type_node: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let seg = qualified_last_segment(name: type_node.name)
@@ -779,14 +938,14 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
       let val_rt = resolved_type(n: field_init_node_value(n: f))
       match rust_witness_carrier_from_type_node(type_node: val_rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
         Present { value: arg } => Present { value: arg }
-        Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+        Absent => rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
       }
     Absent => none
   }
 }
 
-fn rust_witness_type_arg_from_fn_return(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
-  match emit_info.fn_return_type {
+fn rust_witness_type_arg_from_expected_type(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
+  match emit_info.expected_type {
     Present { value: rt } => rust_witness_carrier_from_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     Absent => none
   }
@@ -796,10 +955,10 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   if variant_name == "Holds" {
     match rust_witness_type_arg_from_holds_value_field(fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
+      Absent => rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices)
     }
   } else if variant_name == "Violates" {
-    match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
+    match rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
       Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
@@ -977,7 +1136,9 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 }
 
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
+  if rust_type_node_is_arrow(n: n) {
+    render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  } else if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
     "()"
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
     "_"
@@ -986,7 +1147,7 @@ fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shar
       Present { value: TypeVariable { id: tv } } =>
         if type_var_in_fn_generic_scope(id: tv, generic_param_names: generic_param_names) { to_pascal(name: tv) } else { "_" }
       _ =>
-        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types) {
+        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => scalar
           Absent => render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
         }
@@ -1011,7 +1172,7 @@ fn render_rust_applied_type(n: Node, generic_param_names: List<String>, shared_t
     }
   } else {
 
-    match rust_scalar_checkpoint_reference_base(dag_name: base_name, decl_file: type_reference_decl_file(n: n)) {
+    match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: env) {
       Present { value: scalar } => scalar
       Absent =>
     match closed_alias_peel_verdict(env: env, n: n) {
@@ -1183,6 +1344,9 @@ fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, s
 }
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
+  if rust_type_node_is_arrow(n: n) {
+    return render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
+  }
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
     return render_rust_optional_carrier_applied(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
@@ -1215,15 +1379,24 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
       }
     Absent =>
       let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+      let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+      let bare_native_alias = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) {
+        rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file_in_env(n: n, env: env, source_indices: source_indices))
+      } else { none }
+      match exact_leaf {
+        Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+        Absent =>
       if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
         to_pascal(name: name)
+      } else if bare_native_alias != none {
+        rust_carrier_optional_wrap(n: n, rendered: bare_native_alias.value)
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && is_host_text_carrier_type(n: n, source_indices: source_indices) {
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
         render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
-        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types) {
+        match rust_render_checkpoint_scalar_bare(n: n, source_indices: source_indices, shared_types: shared_types, env: env) {
           Present { value: scalar } => render_rust_shared_type_with_optional(n: n, type_name: rust_fn_sig_leaf_name(source_indices: source_indices, n: n), rendered: scalar, shared_types: shared_types)
           Absent =>
         if !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) {
@@ -1238,7 +1411,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           } else if rust_type_arg_renders_as_unit(n: typed_arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
             "()"
           } else {
-            match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types) {
+            match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types, env: env) {
               Present { value: scalar } => scalar
               Absent => render_rust_decl_type(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
             }
@@ -1269,6 +1442,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         "_"
       } else {
         render_rust_type_with_applied_binding_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, env: env)
+      }
       }
   }
 }
@@ -1306,6 +1480,10 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     return render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
   let name = rust_fn_sig_leaf_name(source_indices: source_indices, n: n)
+  let exact_leaf = if n.connective == NoConnective && n.children |> count == 0 && !(generic_param_names |> any(g => g == name)) { rust_exact_reference_spelling(n: n, source_indices: source_indices, env: env) } else { none }
+  match exact_leaf {
+    Present { value: exact } => rust_carrier_optional_wrap(n: n, rendered: exact)
+    Absent =>
   if n.connective == NoConnective && n.children |> count == 0 && is_host_text_carrier_type(n: n, source_indices: source_indices) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && closed_alias_peels_zero_param(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, decl_file: type_reference_decl_file(n: n)) {
@@ -1316,6 +1494,7 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
     render_rust_fn_sig_type_applied_binding(n: n, shared_types: shared_types, source_indices: source_indices, env: env)
+  }
   }
 }
 
@@ -1405,6 +1584,33 @@ The v2 corpus authors qualified names in type position only rarely today, which 
 // The env travels: an alias right-hand side that is an Arrow renders its return through
 // render_rust_type, and the zero-param-alias verdict there is asked of emit_info.fn_type_env. An
 // empty env answered ClosedAliasBindingAbsent for every alias and the arm could never fire.
+// THE ALIAS RHS IS A DECLARATION POSITION, AND A CONTAINER THERE LOWERS EXACTLY AS IT DOES IN A
+// FIELD. render_rust_decl_type asks node_is_keyed_collection / node_is_collection and renders the
+// host template (`HashMap<K, V>`, `Vec<T>`); this branch rendered the authored base instead, so
+// `type Map<key, value> = FinitelySupportedFunction<key, value>` became the algebra STRUCT and
+// `type X = Map<A, B>` became `Rc<crate::std_types::Map<..>>` -- a second storage representation
+// for one carrier, met by rustc wherever an X flowed into a HashMap parameter (E0308
+// `expected Rc<Rc<..>>, found Rc<HashMap<_, _>>`; the derive rows on any struct holding an X).
+// One template, consulted from the same predicate the field renderer uses.
+fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String, arg_list: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  if node_is_keyed_collection(n: n, source_indices: source_indices) {
+    match arg_list |> first {
+      Present { value: k } => match arg_list |> skip(1) |> first {
+        Present { value: v } => emit_map_type(key_type: k, val_type: v, target: Rust)
+        Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+      }
+      Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+    }
+  } else if node_is_collection(n: n, source_indices: source_indices) && (arg_list |> count) == 1 {
+    match arg_list |> first {
+      Present { value: inner } => emit_container(name: leaf, inner: inner, target: Rust)
+      Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
+    }
+  } else {
+    concat(base, "<", arg_list |> join(separator: ", "), ">")
+  }
+}
+
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_where_refinement_type(ty: n) {
     match n.children |> first {
@@ -1417,6 +1623,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
+    match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
+      Present { value: exact } => exact
+      Absent =>
     match rust_seed_host_numeric_alias(name: name, decl_file: type_reference_decl_file(n: n)) {
       Present { value: host } => host
       Absent =>
@@ -1434,9 +1643,10 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         }
       }
     }
+    }
   } else if n.connective == NoConnective && n.children |> count > 0 {
     let leaf = qualified_last_segment(name: name)
-    let numeric_host_alias = match rust_scalar_checkpoint_reference_base(dag_name: leaf, decl_file: type_reference_decl_file(n: n)) {
+    let numeric_host_alias = match rust_reference_checkpoint_spelling_at(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: scalar } => Present { value: scalar }
       Absent => rust_seed_host_numeric_alias(name: leaf, decl_file: type_reference_decl_file(n: n))
     }
@@ -1462,14 +1672,15 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
             if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: base) { wrap_shared_type(target: Rust, inner: base) } else { base }
           AliasDeclArityHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let args = n.children |> map(arg =>
+    let arg_list = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
         render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
-    ) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
+    )
+    let args = arg_list |> join(separator: ", ")
+    let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
     if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
@@ -1480,14 +1691,15 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
         }
       ClosedAliasHasParams => {
     let peel = is_parametric_opaque_type_base(type_name: leaf, def_mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
-    let args = n.children |> map(arg =>
+    let arg_list = n.children |> map(arg =>
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
         render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
-    ) |> join(separator: ", ")
-    let applied_ty = concat(base, "<", args, ">")
+    )
+    let args = arg_list |> join(separator: ", ")
+    let applied_ty = rust_alias_rhs_applied_container_or_base(n: n, leaf: leaf, base: base, arg_list: arg_list, source_indices: source_indices)
     if set_contains(shared_types, leaf) && !rust_type_is_rc_wrapped(type_name: applied_ty) {
       wrap_shared_type(target: Rust, inner: applied_ty)
     } else {
@@ -1519,7 +1731,22 @@ fn value_ref_qualified_leaf(name: String) -> String {
   if string_contains(s: name, pattern: ".") { qualified_last_segment(name: name) } else { name }
 }
 
-data value_ref_self_module_normalization_note: String = "Construction wall for the SAME-MODULE half of the qualified-value-reference dotted-render class (sibling of value_ref_ident_dotted_fallback_note, which covers the general dotted-render/registry-miss case). A fully-qualified reference whose module qualifier names the CURRENT module (e.g. extdeps.container.oci.digest.extdeps_external_authority_anchor written inside extdeps.container.oci.digest itself) previously reached the bare-name registry (last-write-wins across every module sharing that leaf, since ordinary decl names are not disambiguated by qualifier) and resolved to whichever unrelated module happened to be inserted last, then rendered as a plain crate::wrong_module::ident value (never the is_data call-suffix decision, which is keyed on the still-dotted name and so never matches) wrapped in .clone() by the surrounding resolved_type sharing template — wrong module AND a fn-item value instead of the intended call. A same-module qualified reference names nothing a bare reference does not already name (the containment tree binds it to the enclosing module's own declaration, DESIGN §4), so the fix is to normalize it to the identical bare spelling before any registry lookup runs, rather than teaching the registry to disambiguate by qualifier — same-module resolution reuses the already-correct bare-name path instead of forking a second one. A genuine cross-module qualified reference (qualifier != current module) is untouched by this wall and keeps today's behavior."
+// Construction wall for the SAME-MODULE half of the qualified-value-reference dotted-render class
+// (sibling of value_ref_ident_dotted_fallback_note, which covers the general
+// dotted-render/registry-miss case). A fully-qualified reference whose module qualifier names the
+// CURRENT module (e.g. extdeps.container.oci.digest.extdeps_external_authority_anchor written
+// inside extdeps.container.oci.digest itself) previously reached the bare-name registry
+// (last-write-wins across every module sharing that leaf, since ordinary decl names are not
+// disambiguated by qualifier) and resolved to whichever unrelated module happened to be inserted
+// last, then rendered as a plain crate::wrong_module::ident value (never the is_data call-suffix
+// decision, which is keyed on the still-dotted name and so never matches) wrapped in .clone() by
+// the surrounding resolved_type sharing template — wrong module AND a fn-item value instead of the
+// intended call. A same-module qualified reference names nothing a bare reference does not already
+// name (the containment tree binds it to the enclosing module's own declaration, DESIGN §4), so the
+// fix is to normalize it to the identical bare spelling before any registry lookup runs, rather
+// than teaching the registry to disambiguate by qualifier — same-module resolution reuses the
+// already-correct bare-name path instead of forking a second one. A genuine cross-module qualified
+// reference (qualifier != current module) is untouched by this wall and keeps today's behavior.
 
 fn value_ref_qualifier_prefix(name: String) -> String {
   let leaf = value_ref_qualified_leaf(name: name)
@@ -2235,7 +2462,17 @@ fn merge_item_registries(bare: Map<String, ItemInfo>, qualified: Map<String, Ite
   )
 }
 
-data value_ref_leaf_key_collision_note: String = "Construction wall for the cross-module half of the qualified-value-reference dotted-render class (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references, but the flat item_registry is keyed by bare name with last-write-wins across the closure — so module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf. Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module) at emit time and key cross-module lookups on the full normalized spelling; same-module references still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH declaration kind and declaring module — never the authored qualifier string alone (§5 fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via duplicate_qualified_item_registry_marker rather than last-write-wins."
+// Construction wall for the cross-module half of the qualified-value-reference dotted-render class
+// (sibling of value_ref_self_module_normalization_note for the same-module half). #7685 keyed
+// registry lookup on the leaf name so the is_data call-suffix decision fired for dotted references,
+// but the flat item_registry is keyed by bare name with last-write-wins across the closure — so
+// module_a.homonym_value could consult module_b's ItemInfo when both modules declare the same leaf.
+// Fix: merge a qualified-name overlay (module.leaf -> ItemInfo, one authority per declaring module)
+// at emit time and key cross-module lookups on the full normalized spelling; same-module references
+// still normalize to bare before lookup. Rendering uses the exact qualified registry row for BOTH
+// declaration kind and declaring module — never the authored qualifier string alone (§5
+// fabricated-plausible-output refusal). Duplicate exact module.leaf overlay keys refuse via
+// duplicate_qualified_item_registry_marker rather than last-write-wins.
 
 data duplicate_qualified_item_registry_marker_note: String = "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. Consumers: emit_qualified_value_ref_crate_ident (dotted Present path), value_ref_item_info_refusal (emit_var_ref / emit_typed_expr_base Present arms) — both refuse via emit_error_expr when is_duplicate_qualified_item_registry_marker holds. DEFINE-AND-CONSUME, not define-only."
 
@@ -2732,7 +2969,8 @@ fn build_emit_rust_context(typed: ResolvedGraph) -> EmitRustContext {
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
   let registry = merge_item_registries(
     bare: typed.item_registry,
@@ -2790,6 +3028,33 @@ fn emit_rust_reference_derived_census(typed: ResolvedGraph) -> ReferenceDerivedC
 // therefore joins the two diagnostic guards that already sit after the context, and the
 // preamble's binding order is untouched.
 fn emit_rust(typed: ResolvedGraph) -> EmitResult {
+  emit_rust_selected(typed: typed, selection: RenderEveryModule)
+}
+
+// THE EMISSION, DENOMINATED IN THE CHANGE.
+//
+// Under RenderSelectedMirrors only the selected modules are RENDERED. Everything else this
+// function returns is derived from the resolved graph or from paths, so it is identical under
+// both arms of the selection -- which is what makes a scoped emission a subset of a whole one
+// rather than a different answer:
+//
+//   * the crate's module list (lib.rs) and the emitted-population manifest are computed from
+//     `module_paths`, one path per module in `typed.modules` whether or not it was rendered.
+//     Their inputs are `List<String>`, so no rendered byte can reach them -- content
+//     independence is the parameter type rather than a claim about the body.
+//   * the two closure-stub decisions are asked of the RESOLVED GRAPH (see
+//     `closure_references_module_filename`), never of emitted text, so a module the selection
+//     declined to render still counts toward whether the crate needs a stub.
+//   * `import_refusals` are observed only for rendered modules, and that is exact rather than
+//     partial. `emit_resolved_for_target_selected` in `v1.compiler.compile` carries the
+//     argument: an emit with any error diagnostic returns NO files, so a committed tree is one
+//     whose whole closure emitted clean and the unrendered modules had nothing to say.
+//
+// The selection is a LIST of mirror basenames -- the exact derived closure of an edit. It is
+// never "the one module that changed": a change reaches every mirror its reverse closure names,
+// and a selector that could carry only one member would be a bound that cannot express its own
+// answer.
+fn emit_rust_selected(typed: ResolvedGraph, selection: RustModuleRenderSelection) -> EmitResult {
   let ctx = build_emit_rust_context(typed: typed)
   let emit_info = ctx.emit_info
   let registry = ctx.registry
@@ -2813,14 +3078,24 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     return EmitResult { files: [], diagnostics: filename_collisions }
   }
   let test_projections = ctx.test_projections
-  let module_emissions = typed.modules |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
+  let module_emissions = typed.modules
+    |> filter(tm => rust_module_render_selection_renders(
+      selection: selection,
+      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+    |> map(tm => emit_module_full_with_dispositions(typed_module: tm, ctx: ctx, typed_modules: typed.modules))
   let module_files = module_emissions |> map(e => e.file)
   let import_refusals = module_emissions |> flat_map(e => e.import_refusals)
-  let test_files = typed.modules
-    |> map(tm => emit_test_file(
-      module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
-      projections: test_projections |> filter(p => p.module_name == authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))))
-    |> filter(f => string_length(s: f.content) > 0)
+  let module_paths = typed.modules |> map(tm => rust_module_emit_path(
+    module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)))
+  let test_module_names = typed.modules
+    |> map(tm => authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module))
+    |> filter(name => (test_projections |> filter(p => p.module_name == name)) |> count > 0)
+  let test_file_paths = test_module_names |> map(name => rust_test_file_path(module_name: name))
+  let test_files = test_module_names
+    |> filter(name => rust_module_render_selection_renders(selection: selection, module_name: name))
+    |> map(name => emit_test_file(
+      module_name: name,
+      projections: test_projections |> filter(p => p.module_name == name)))
   let has_services = has_service_items(typed: typed)
   let has_pipeline = typed.modules |> any(m => authored_name_at(source_indices: m.type_env.source_indices, node: m.module) == "v1.compiler.compile")
   let crate_name = if has_pipeline { "v1_compiler" } else { "v1_compiled" }
@@ -2834,24 +3109,56 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     []
   }
 
-  let v2_std_text_stub = if module_files_reference_v2_std_text(files: module_files)
-    && !module_files_include_v2_std_text(files: module_files) {
+  let v2_std_text_stub = if closure_needs_module_filename_stub(typed: typed, ctx: ctx, filename: "v2_std_text") {
     [emit_v2_std_text_closure_stub_module()]
   } else {
     []
   }
-  let v2_std_integer_stub = if module_files_reference_v2_std_integer(files: module_files)
-    && !module_files_include_v2_std_integer(files: module_files) {
+  let v2_std_integer_stub = if closure_needs_module_filename_stub(typed: typed, ctx: ctx, filename: "v2_std_integer") {
     [emit_v2_std_integer_closure_stub_module()]
   } else {
     []
   }
   let all_mod_files = concat(module_files, v2_std_text_stub, v2_std_integer_stub, [rt_file], dry_run_file)
-  let lib_file = emit_lib_rs_from_files(all_module_files: all_mod_files, has_compiler_tests: has_pipeline)
+  let all_mod_paths = concat(
+    module_paths,
+    v2_std_text_stub |> map(f => f.path),
+    v2_std_integer_stub |> map(f => f.path),
+    [rt_file.path],
+    dry_run_file |> map(f => f.path)
+  )
+  let lib_file = emit_lib_rs_from_paths(all_module_paths: all_mod_paths, has_compiler_tests: has_pipeline)
+  let emitted_paths = concat(
+    [cargo.path, lib_file.path, main_file.path],
+    all_mod_paths,
+    compiler_tests_file |> map(f => f.path),
+    test_file_paths
+  )
+  let population_manifest = emit_emitted_population_manifest(paths: emitted_paths)
   let emitted_files = concat([cargo, lib_file, main_file], all_mod_files, compiler_tests_file, test_files)
-  let population_manifest = emit_emitted_population_manifest(files: emitted_files)
   let files = concat(emitted_files, [population_manifest])
   EmitResult { files: files, diagnostics: import_refusals }
+}
+
+// THE ONE PLACE A MODULE'S EMITTED FILENAME IS DECIDED, read by the renderer and by every
+// population-denominated aggregate that must name a module it did not render. `main` collides
+// with the crate's own entry file, so it renders as `main_mod`; that rename used to live inside
+// `emit_module_full` alone, where a second reader of the same fact had no way to reach it.
+fn rust_module_emit_filename(module_name: String) -> String {
+  let raw = module_to_filename(name: module_name)
+  if raw == "main" { "main_mod" } else { raw }
+}
+
+fn rust_module_emit_path(module_name: String) -> String {
+  concat(rust_source_root(), rust_module_emit_filename(module_name: module_name), rust_source_ext())
+}
+
+fn rust_module_render_selection_renders(selection: RustModuleRenderSelection, module_name: String) -> Bool {
+  match selection {
+    RenderEveryModule => true
+    RenderSelectedMirrors { basenames: basenames } =>
+      basenames |> any(b => b == concat(rust_module_emit_filename(module_name: module_name), rust_source_ext()))
+  }
 }
 
 // THE EMITTER DECLARES THE POPULATION IT PRODUCED. This is the one place in the repository
@@ -2879,8 +3186,8 @@ fn emitted_population_manifest_path() -> String {
   concat(rust_source_root(), emitted_population_manifest_basename)
 }
 
-fn emit_emitted_population_manifest(files: List<TextFile>) -> TextFile {
-  let declared = concat(files |> map(f => f.path), [emitted_population_manifest_path()])
+fn emit_emitted_population_manifest(paths: List<String>) -> TextFile {
+  let declared = concat(paths, [emitted_population_manifest_path()])
   let lines = declared
     |> sort_by(path => path)
     |> map(path => concat(emitted_population_manifest_line_prefix, path))
@@ -2901,28 +3208,112 @@ fn emit_compiler_tests_module() -> TextFile {
   TextFile { path: concat(rust_source_root(), "compiler_tests", rust_source_ext()), content: compiler_tests_source() }
 }
 
-data closure_stub_reference_self_match_note: String = "The v2 closure-stub triggers scan EMITTED TEXT for a module reference, and the emitter's own emitted file contains every such pattern as a STRING LITERAL -- both the pattern being searched for and the use line being generated. So the predicate matched itself, and any crate containing the emitter emitted stubs for modules nothing actually used. This was latent, not new: the deleted corpus_repr_is_faithful conjunct happened to be false on the seed regen closure and suppressed the self-match there, so removing the corpus mode surfaced it as a fail-closed emission-plan refusal rather than as wrong output. Anchoring on a leading newline discriminates a real emitted use line (line start) from the emitter's literal (always preceded by a quote). WHAT THIS DOES NOT DO: it does not climb the rung. The grain is still a text scan over emitted content, which cannot in general distinguish a program from the compiler that writes it; it only removes the one false-positive class that is decidable by anchoring. The stub's own dissolve-on stands unchanged -- derive the condition from the emitted reference SET, a produced structural fact, rather than re-scanning the output for it."
-
-fn emitted_files_carry_use_line(files: List<TextFile>, line: String) -> Bool {
-  files |> any(f => string_contains(s: f.content, pattern: concat("\n", line)))
+// THE CLOSURE-STUB DECISION IS ASKED OF THE RESOLVED GRAPH, AND THAT IS WHAT MAKES IT TOTAL.
+//
+// It used to be a text scan over the files this emission had just rendered: does any emitted
+// byte carry a line `pub use crate::v2_std_text::`. Two things are wrong with that, and only the
+// second is new.
+//
+// The old one, recorded because it is the reason the scan grew its anchor: the emitter's OWN
+// emitted file contains every such pattern as a string literal, both the pattern searched for and
+// the use line generated, so the predicate matched itself and any crate containing the emitter
+// stubbed modules nothing used. Anchoring on a leading newline removed that class without
+// climbing the rung -- a text scan cannot in general distinguish a program from the compiler that
+// writes it.
+//
+// The new one is decisive: a scan over rendered bytes cannot answer for a module that was not
+// rendered. Under `RenderSelectedMirrors` the emitter renders a subset, so the old predicate
+// would answer about the SUBSET and drop a stub the crate needs -- an E0583 in a crate nobody
+// re-rendered, produced silently. The question is about the CLOSURE, so it is asked of the
+// closure.
+//
+// WHAT IT ASKS. A use line `use crate::<filename>::<name>` is produced in exactly one place --
+// `reference_derived_use_line_plan`, from a candidate name whose registry provider is the module
+// with that filename. (The other producer, `emit_faithful_text_carrier_import_lines`, is the
+// hardcoded carrier family; its gate `module_needs_faithful_carrier_imports` currently answers
+// `false` unconditionally, so it emits nothing and contributes no reference at all.) So the
+// question is: does any module in the closure carry a reference candidate whose provider is that
+// filename. The candidates come from the SAME collectors the plan seeds itself from, through the
+// same `repair_input_origin_candidates` authority -- not a second reading of them.
+//
+// IT IS A SUPERSET, COMPUTED AS THE ANSWER, AND THE DIRECTION IS THE SAFE ONE. The plan narrows
+// its candidates by the module's own emitted tokens, by names already imported and by an export
+// proof; those filters are downstream of rendering, so an exact predicate would cost the whole
+// render and leave nothing to save. This omits them, so it can name a provider the plan would
+// have dropped. Paired with an EXACT `includes` half, the only reachable error is one stub module
+// too many -- an unused `pub mod`, which compiles -- while the error it forecloses is a missing
+// module, which does not. This is a structural over-approximation standing as the answer, with no
+// failure arm to widen: there is no input on which it declines to decide.
+fn module_reference_candidate_names(typed_module: TypedModule, ctx: EmitRustContext) -> List<String> {
+  let source_indices = typed_module.type_env.source_indices
+  let emit_info = ctx.emit_info
+  let this_module_name = authored_name_at(source_indices: source_indices, node: typed_module.module)
+  let items = typed_module.items
+  let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
+  let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
+  let type_surface_names = unique_strings(items: item_emit_surface_names)
+  let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
+  let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
+  let realized_surface_names = unique_strings(items: items |> flat_map(item => collect_item_realized_surface_names(item: item, shared_types: emit_info.shared_types, source_indices: source_indices, emit_info: emit_info)))
+  let unlisted_type_names = match map_get(ctx.unlisted_type_names_by_module, this_module_name) {
+    Present { value: v } => v
+    Absent => []
+  }
+  let origin_candidates = repair_input_origin_candidates(
+    emitting_module: this_module_name,
+    unlisted_type_names: unlisted_type_names,
+    value_reference_names: value_names,
+    item_emit_surface_names: type_surface_names,
+    field_import_surface_names: field_surface_names,
+    variant_payload_surface_names: variant_payload_structs,
+    rendered_type_surface_names: realized_surface_names,
+  )
+  unique_strings(items: repair_input_origin_compatibility_names(candidates: origin_candidates))
+    |> filter(name => !reference_is_host_realized_builtin(name: name))
 }
 
-fn module_files_reference_v2_std_text(files: List<TextFile>) -> Bool {
-  emitted_files_carry_use_line(files: files, line: concat(rust_visibility_prefix(), "use crate::v2_std_text::"))
+// THE NECESSARY CONDITION, ASKED FIRST BECAUSE IT IS THE CHEAP ONE AND IT IS EXACT.
+//
+// A `use crate::<filename>::<name>` line exists only if `name` resolves through the item registry
+// to a module with that filename. So a registry carrying no such provider admits no such line,
+// whatever any module references -- this is an implication, not a heuristic, and answering `false`
+// here is answering the question rather than declining it.
+//
+// IT IS ALSO THE WHOLE COST OF THIS PREDICATE. Without it the reference half walks every module in
+// the closure through `repair_input_origin_candidates`, twice -- once per stub filename -- and that
+// walk MEASURED 288 s on the seed regen closure, taking compile.emit from 258 s to 546 s. The
+// modules it walks for are absent from the registry in every closure that is not a narrow one, so
+// the walk was paid in full to answer `false` on the common path. The instrument is
+// `claim_executor --regen-round-cost`, phase=compile.emit; the isolation was a probe that
+// short-circuited this predicate and left emitted bytes unchanged (changed_paths=0).
+fn registry_declares_module_filename(registry: Map<String, ItemInfo>, filename: String) -> Bool {
+  map_values(registry) |> any(info => module_to_filename(name: info.module_name) == filename)
 }
 
-fn module_files_reference_v2_std_integer(files: List<TextFile>) -> Bool {
-  emitted_files_carry_use_line(files: files, line: concat(rust_visibility_prefix(), "use crate::v2_std_integer::"))
+fn closure_references_module_filename(typed: ResolvedGraph, ctx: EmitRustContext, filename: String) -> Bool {
+  if !registry_declares_module_filename(registry: ctx.registry, filename: filename) {
+    return false
+  }
+  typed.modules |> any(tm =>
+    module_reference_candidate_names(typed_module: tm, ctx: ctx) |> any(name =>
+      match map_get(ctx.registry, name) {
+        Present { value: info } => module_to_filename(name: info.module_name) == filename
+        Absent => false
+      }
+    )
+  )
 }
 
-fn module_files_include_v2_std_text(files: List<TextFile>) -> Bool {
-  let expected = concat(rust_source_root(), "v2_std_text", rust_source_ext())
-  files |> any(f => f.path == expected)
-}
-
-fn module_files_include_v2_std_integer(files: List<TextFile>) -> Bool {
-  let expected = concat(rust_source_root(), "v2_std_integer", rust_source_ext())
-  files |> any(f => f.path == expected)
+// REFERENCED BUT ABSENT, and both halves read the resolved graph. `includes` is exact -- a module
+// is in the closure or it is not -- so the superset lives entirely in the reference half and the
+// conjunction inherits its one-sided direction.
+fn closure_needs_module_filename_stub(typed: ResolvedGraph, ctx: EmitRustContext, filename: String) -> Bool {
+  closure_references_module_filename(typed: typed, ctx: ctx, filename: filename)
+    && !typed_closure_includes_module_filename(
+      typed_modules: typed.modules,
+      filename: filename,
+      source_indices: merged_module_source_indices(modules: typed.modules)
+    )
 }
 
 fn emit_v2_std_integer_closure_stub_module() -> TextFile {
@@ -2939,14 +3330,23 @@ fn emit_v2_std_text_closure_stub_module() -> TextFile {
   }
 }
 
-fn lib_rs_mod_name_from_file(f: TextFile) -> String {
+fn lib_rs_mod_name_from_path(path: String) -> String {
   let src_prefix_len = string_length(s: rust_source_root())
   let ext_len = string_length(s: rust_source_ext())
-  let path_len = string_length(s: f.path)
-  substring(s: f.path, start: src_prefix_len, end: path_len - ext_len)
+  let path_len = string_length(s: path)
+  substring(s: path, start: src_prefix_len, end: path_len - ext_len)
 }
 
-data hand_maintained_map_key_required_type_names_note: String = "v1_map_key_required_type_names discovers a declared type's map-key Hash+Eq requirement by scanning .dag-source-visible type-expression positions (declared fields, fn params/returns, alias right-hand sides) — a type used as a map key only inside HAND-MAINTAINED Rust is invisible to that scan by construction. src/v1/stage0/src/coproduct_reflection.rs declares `StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>`, a map keyed on a tuple containing ItemKind, requiring ItemKind: Hash + Eq — no .dag declaration anywhere positions ItemKind as a map key, so the scan alone drops the derive on every regen. This roster is the declared complement: caller-supplied extra roots fed into the SAME fixpoint the scan seeds, not a derive override or a special case inside the generic mechanism. Grows only when a new hand-maintained consumer requires it, cited here at the point of use."
+// v1_map_key_required_type_names discovers a declared type's map-key Hash+Eq requirement by
+// scanning .dag-source-visible type-expression positions (declared fields, fn params/returns, alias
+// right-hand sides) — a type used as a map key only inside HAND-MAINTAINED Rust is invisible to
+// that scan by construction. src/v1/stage0/src/coproduct_reflection.rs declares
+// `StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>`, a map keyed on a tuple
+// containing ItemKind, requiring ItemKind: Hash + Eq — no .dag declaration anywhere positions
+// ItemKind as a map key, so the scan alone drops the derive on every regen. This roster is the
+// declared complement: caller-supplied extra roots fed into the SAME fixpoint the scan seeds, not a
+// derive override or a special case inside the generic mechanism. Grows only when a new
+// hand-maintained consumer requires it, cited here at the point of use.
 
 data hand_maintained_map_key_required_type_names: List<String> = ["ItemKind"]
 
@@ -2998,12 +3398,71 @@ fn order_partial_lib_rs_mod_names(mod_names: List<String>) -> List<String> {
 // which is E0583. It surfaced on the falsifier's wet witnesses, whose lib.rs is a
 // dozen lines: two of them died on the missing module before reaching the behaviour
 // they exist to measure. A partial crate now declares exactly what this emit produced.
-fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: Bool) -> TextFile {
-  let file_derived_names = all_module_files |> map(lib_rs_mod_name_from_file)
-  let mod_names = if has_compiler_tests {
-    order_lib_rs_mod_names(mod_names: file_derived_names)
+// THE HOST SHELL DECLARES WHAT THE PARTITION DOES NOT OWN, and the subtraction is what makes the
+// duplicate unwritable. Before this cut the stage0 lib.rs declared every emitted mirror AND the
+// partition crates compiled seventy-one of them again by path include -- one file with two
+// compilation stories, so `claim_executor` was a binary of a package that re-declared the modules
+// the partition had already built. A second generation run from that binary was not the compiler
+// the installed mirrors produce, whatever the package receipt said.
+//
+// Membership is DERIVED from the partition rows here rather than authored beside them: a module
+// moving into a partition crate leaves this declaration surface in the same edit that gives it an
+// owner, so the two can never disagree. v2.compiler.self_host.stage0_executable_assembly is the
+// authority that says the same thing at module grain and refuses a module owned twice or not at
+// all; this function is its rendering.
+fn lib_rs_module_is_partition_owned(mod_name: String) -> Bool {
+  generated_partition_crate_rows
+    |> any(row =>
+      stage0_partition_row_is_module_bearing_package(row: row)
+        && (row.modules |> any(m => m == mod_name))
+    )
+}
+
+fn stage0_package_name_to_crate_ident(package_name: String) -> String {
+  replace(package_name, "-", "_")
+}
+
+// ONE `pub use` PER LINKED PARTITION PACKAGE. The layered partition crates already re-export the
+// crates below them, so the single edge the host shell declares carries the whole chain: the
+// `crate::std_types::...` paths in the modules that stay resolve to the partition's definitions
+// rather than to a second copy.
+//
+// THE NonEmpty* WRAPPERS ARE DELIBERATELY NOT DROPPED, and they are the one name this glob does
+// not supply. The host shell aliases `Vec` to `im::Vector` at its root and the foundation crate
+// does not, so the two crates' `NonEmptyVec` wrap different carriers -- they are same-named,
+// same-shaped and DIFFERENT types. A local item shadows a glob import in Rust, so keeping the
+// shell's own definition leaves every `crate::NonEmptyVec` in the modules that stay bound to
+// exactly the type it was bound to before this cut. Deleting it would silently repoint them at
+// the foundation's, which is a carrier change wearing a re-export's clothes.
+fn stage0_host_shell_partition_reexport_block() -> String {
+  generated_host_shell_partition_dependencies
+    |> map(pkg => concat("pub use ", stage0_package_name_to_crate_ident(package_name: pkg), "::*;"))
+    |> join(separator: "\n")
+}
+
+// PATH-ONLY, AND THE SIGNATURE IS THE PROOF. A crate's `mod` block is a statement about which
+// FILES exist, never about what is in them, and this function once took the files themselves --
+// so a reader had to check the body to know that only `.path` was read, and a later edit could
+// have reached for content without anything refusing. Taking `List<String>` makes content
+// independence structural: there is no content here to depend on. That is what lets a
+// change-denominated emission declare modules it did not render.
+//
+// THE PARTITION SUBTRACTION PRESERVES THAT PROPERTY, which is why it sits here rather than
+// upstream of the call. `lib_rs_module_is_partition_owned` reads the generated ownership ROWS and
+// the module NAME; it reads no module content and no rendered file, so a scoped emission still
+// declares the whole population minus the partition-owned names. Ownership and scope are decided
+// by different inputs and neither can shadow the other.
+fn emit_lib_rs_from_paths(all_module_paths: List<String>, has_compiler_tests: Bool) -> TextFile {
+  let file_derived_names = all_module_paths |> map(lib_rs_mod_name_from_path)
+  let shell_names = if has_compiler_tests {
+    file_derived_names |> filter(n => !lib_rs_module_is_partition_owned(mod_name: n))
   } else {
-    order_partial_lib_rs_mod_names(mod_names: file_derived_names)
+    file_derived_names
+  }
+  let mod_names = if has_compiler_tests {
+    order_lib_rs_mod_names(mod_names: shell_names)
+  } else {
+    order_partial_lib_rs_mod_names(mod_names: shell_names)
   }
   let mod_decls = mod_names |> map(emit_lib_rs_mod_decl)
 
@@ -3017,12 +3476,18 @@ fn emit_lib_rs_from_files(all_module_files: List<TextFile>, has_compiler_tests: 
   } else {
     ""
   }
+  let partition_reexports = if has_compiler_tests {
+    concat(stage0_host_shell_partition_reexport_block(), "\n\n")
+  } else {
+    ""
+  }
   let shared_types = emit_non_empty_wrappers()
   let content = concat("// Generated by v1 compiler -- do not edit.\n\n",
     "#![allow(unused_imports, unused_variables, unused_mut, unused_parens, dead_code, non_shorthand_field_patterns, suspicious_double_ref_op, clippy::all)]\n#![deny(unreachable_patterns)]\n",
 
     "#![recursion_limit = \"256\"]\n\n",
     "use im::\{OrdSet as BTreeSet, Vector as Vec\};\n\n",
+    partition_reexports,
     mod_decls |> join(separator: "\n"),
     hand_maintained_mods,
     "\n\n", shared_types,
@@ -3066,7 +3531,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     clone_impl_required_type_params: clone_impl_required,
     fn_generic_param_names: base_info.fn_generic_param_names,
     fn_type_env: base_info.fn_type_env,
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
   let shared_types = emit_info.shared_types
   let export_sets = build_module_export_sets(modules: [typed_module])
@@ -3202,7 +3668,24 @@ fn record_lit_ref_names(n: Node, source_indices: Map<String, NewlineIndex>, type
   }
 }
 
-data emitter_attested_anonymous_head_note: String = "ROOT-3 THIRD ATTESTATION ARM (board row 3, materialization_carriers 51-site census): an ANONYMOUS record literal (no authored type name at the literal) is rendered by emit_typed_record_lit with a head the EMITTER decides — the resolved/inferred nominal type, or a fields-signature lookup — so the emitted text spells a name the authored source never does (compile_stage_memo `retention: \{...\}` renders `ProviderRetention \{ .. \}`). The authored-source text gate (reference_derived_candidate_authored) therefore refuses exactly the candidate whose use-line the emitted bytes need, and rustc reports E0422 on the head the emitter itself wrote. The correction is not a widened text gate: attestation for this class comes from the same decision chain the candidate proposer uses for the tn-Absent arm (emit_inferred_type_leaf_name when the summary is known, else anonymous_record_lit_surface_name — both already consulted by record_lit_ref_names), so the admitted set is precisely `heads the emitter will render for anonymous literals in this module's items`, never a deep-inferred over-collection (the AuthoredTokenOrdinal fabrication class enters via type-surface collection, not via this walk, and stays refused). Registry resolution, export proof, local-decl, kernel and already-imported filters all still apply downstream — this arm only replaces WHICH evidence attests the reference: the emitted occurrence rather than an authored spelling that structurally cannot exist. Dissolve-on: the same trigger the text gate declares (P2a candidate-producer / BoundReferenceProvider deriving use-lines from bound-reference structure)."
+// ROOT-3 THIRD ATTESTATION ARM (board row 3, materialization_carriers 51-site census): an ANONYMOUS
+// record literal (no authored type name at the literal) is rendered by emit_typed_record_lit with a
+// head the EMITTER decides — the resolved/inferred nominal type, or a fields-signature lookup — so
+// the emitted text spells a name the authored source never does (compile_stage_memo `retention:
+// {...}` renders `ProviderRetention { .. }`). The authored-source text gate
+// (reference_derived_candidate_authored) therefore refuses exactly the candidate whose use-line the
+// emitted bytes need, and rustc reports E0422 on the head the emitter itself wrote. The correction
+// is not a widened text gate: attestation for this class comes from the same decision chain the
+// candidate proposer uses for the tn-Absent arm (emit_inferred_type_leaf_name when the summary is
+// known, else anonymous_record_lit_surface_name — both already consulted by record_lit_ref_names),
+// so the admitted set is precisely `heads the emitter will render for anonymous literals in this
+// module's items`, never a deep-inferred over-collection (the AuthoredTokenOrdinal fabrication
+// class enters via type-surface collection, not via this walk, and stays refused). Registry
+// resolution, export proof, local-decl, kernel and already-imported filters all still apply
+// downstream — this arm only replaces WHICH evidence attests the reference: the emitted occurrence
+// rather than an authored spelling that structurally cannot exist. Dissolve-on: the same trigger
+// the text gate declares (P2a candidate-producer / BoundReferenceProvider deriving use-lines from
+// bound-reference structure).
 
 fn collect_anonymous_record_lit_heads(n: Node, source_indices: Map<String, NewlineIndex>, type_summaries: Map<String, TypeSummary>) -> List<String> {
   let self_head = match n.expr_data {
@@ -3637,7 +4120,6 @@ fn reference_derived_candidate_authored(module_source: String, name: String, typ
   reference_derived_candidate_spelled_in_module(module_source: module_source, name: name)
     || reference_derived_variant_induced_parent_spelled(module_source: module_source, enum_name: name, type_summaries: type_summaries, variant_to_enum: variant_to_enum)
 }
-
 
 // THE CANDIDATE PRODUCER FOR NAMES THE SOURCE NEVER SPELLS.
 //
@@ -4180,7 +4662,16 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let emitted_source_tokens = rust_identifier_tokens(s: emitted_source)
     let emitted_source_token_set = emitted_source_tokens
       |> fold(init: empty_map(), f: (acc, t) => map_insert(acc, t, true))
-    let candidates = unique_strings(items: concat(concat(concat(concat(concat(unlisted_type_names, value_names), type_surface_names), field_surface_names), variant_payload_structs), realized_surface_names))
+    let origin_candidates = repair_input_origin_candidates(
+      emitting_module: this_module_name,
+      unlisted_type_names: unlisted_type_names,
+      value_reference_names: value_names,
+      item_emit_surface_names: type_surface_names,
+      field_import_surface_names: field_surface_names,
+      variant_payload_surface_names: variant_payload_structs,
+      rendered_type_surface_names: realized_surface_names,
+    )
+    let candidates = unique_strings(items: repair_input_origin_compatibility_names(candidates: origin_candidates))
       |> filter(name =>
         reference_derived_candidate_authored(module_source: module_source, name: name, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
           || emitter_attested_anon_heads |> any(h => h == name)
@@ -4236,7 +4727,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
       concat(block_lines, fallback)
     )
     let names_already_in_lines = lines |> flat_map(l => imported_names_in_use_line(line: l))
-    let qualified_rows = qualified_type_reference_rows(names: type_surface_names |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+    let qualified_rows = qualified_type_reference_rows(names: qualified_item_emit_surface_compatibility_names(candidates: origin_candidates) |> filter(nm => emit_map_has(m: emitted_source_token_set, key: qualified_last_segment(name: nm))), this_module_name: this_module_name, already: already, names_already_in_lines: names_already_in_lines, registry: registry, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let qualified_lines = qualified_type_reference_use_lines(rows: qualified_rows, registry: registry)
     ReferenceDerivedUseLinePlan { lines: concat(lines, qualified_lines), rows: concat(rows, qualified_rows) }
   }
@@ -4438,8 +4929,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   let phantom_zst_markers = emit_module_phantom_zst_markers(items: typed_module.items, env: scope.type_env)
   let phantom_section = if phantom_zst_markers == "" { "" } else { concat("\n\n", phantom_zst_markers) }
-  let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
-  let filename = if raw_filename == "main" { "main_mod" } else { raw_filename }
+  let module_emit_path = rust_module_emit_path(module_name: authored_name(env: scope.type_env, node: m))
   let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {
     "#![allow(non_camel_case_types)]\n\n"
   } else { "" }
@@ -4448,7 +4938,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     coproduct_wire_contract_validation_section, items_str, phantom_section, "\n")
   ModuleEmission {
-    file: TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content },
+    file: TextFile { path: module_emit_path, content: content },
     reference_rows: reference_plan.rows,
     import_refusals: reference_derived_row_diagnostics(rows: reference_plan.rows, module_span: m.span)
   }
@@ -5598,7 +6088,30 @@ fn rust_use_bound_symbol(entry: String) -> String {
   }
 }
 
-data strip_repeated_use_symbols_note: String = "Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds through exactly ONE crate-use line — the first line to bind it keeps it, a later line re-importing the same bound name through a different transitive path (Optional via v2_std_grammar AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) — mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports + carrier + reference-derived streams selecting from the same map, so a duplicate binding is unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired zero times first. Cost shape: one symbol-to-owning-line map built in a single pass, then a per-line projection against it — linear in total bound symbols (an owner line always retains its owned symbols, so first-binder-wins and the owner map agree); the earlier per-iteration recomputation of the seen set from all prior kept lines was a quadratic fold (bare-minimum-cost rule, 2026-07-10)."
+// Cross-line symbol-ownership pass (the emitter-side construction fix for the last cssl sanitize
+// rule, cssl_emit_artifact_sanitize_scaffold_debt): within one module header, a symbol binds
+// through exactly ONE crate-use line — the first line to bind it keeps it, a later line
+// re-importing the same bound name through a different transitive path (Optional via v2_std_grammar
+// AND v2_std_collection, the measured 2026-07-22 emit_produced firing) drops the repeat, and a line
+// reduced to zero symbols disappears. Glob lines (::*) and non-crate imports pass through unbound
+// (glob shadowing is legal rust and the prelude is out of scope). The subset/equal coverage filters
+// above drop whole redundant lines; this pass makes the residual PARTIAL overlap across two
+// provider paths unwritable, so rustc E0252/E0255 duplicate-binding classes cannot be authored by
+// the import merge. Coarser than rustc's per-namespace rule (one seen-set, not type/value split) —
+// mirrors the sanitize rule it replaces; .dag naming (CamelCase types, snake_case values) keeps
+// cross-namespace same-name pairs out of real emissions, and the seed (green, so free of duplicate
+// bindings) is byte-inert under it by construction. This pass is post-hoc over rendered lines, not
+// construction (DESIGN section 5) — a bounded scaffold. dissolve-on: the import surface derives
+// from ONE symbol-to-provider ownership map built BEFORE any use-line renders (emit_imports +
+// carrier + reference-derived streams selecting from the same map, so a duplicate binding is
+// unwritable), OR the resolver step-2 typed refusal replaces reference-derived synthesis entirely
+// (the nic_scaffold_dissolution_trigger event) — at either point this strip reduces to a dead
+// assertion and is deleted; the raw_dup_pub_use sweep column is the census that proves it fired
+// zero times first. Cost shape: one symbol-to-owning-line map built in a single pass, then a
+// per-line projection against it — linear in total bound symbols (an owner line always retains its
+// owned symbols, so first-binder-wins and the owner map agree); the earlier per-iteration
+// recomputation of the seen set from all prior kept lines was a quadratic fold (bare-minimum-cost
+// rule, 2026-07-10).
 
 fn rust_use_line_bound_symbols(line: String) -> List<String> {
   if rust_use_crate_marker(line: line) == "" || contains(line, "::*") {
@@ -6003,11 +6516,11 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
 
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text)
+      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
     } else if is_zero_param_self_referential_opaque_decl(item: item, source_indices: env.source_indices) {
       emit_zero_param_phantom_opaque_struct(item: item, map_key_required: set_contains(emit_info.map_key_required_type_names, item_text), source_indices: env.source_indices)
     } else {
-      match rust_scalar_checkpoint_grounding_base(dag_name: item_text, decl_file: decl_identity_file(item: item)) {
+      match rust_declaration_checkpoint_grounding_at(module_path: module_name, decl_name: item_text, decl_file: decl_identity_file(item: item)) {
         Present { value: host } =>
           concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", host, ";")
         Absent =>
@@ -6028,7 +6541,7 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
     }
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
     if (item.params |> count) == 0 && rust_opaque_kernel_alias_type_eligible(name: item_text) {
-      rust_opaque_kernel_alias_type_decl(name: item_text)
+      rust_opaque_kernel_alias_type_decl(name: item_text, module_path: module_name)
     } else {
 
       match rust_seed_host_container_base(name: item_text) {
@@ -6118,7 +6631,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
       fn_generic_param_names: emit_info.fn_generic_param_names,
       fn_type_env: emit_info.fn_type_env,
-      fn_return_type: emit_info.fn_return_type
+      fn_return_type: emit_info.fn_return_type,
+      expected_type: emit_info.expected_type
     }
 
     let is_effectful = match lookup_item(registry: registry, name: authored_name(env: env, node: item)) {
@@ -6230,6 +6744,7 @@ fn emit_item_header_clone_param_names(
       item: item,
       generic_param_names: generic_param_names,
       bounds: emit_info.clone_bounded_type_params,
+      type_decl_items: emit_info.type_decl_items,
       source_indices: source_indices
     )
   } else {
@@ -6598,7 +7113,24 @@ fn emit_struct_from_children(name: String, type_params: String, generic_param_na
   }
 }
 
-data render_rust_type_applied_binding_env_note: String = "Construction wall for the zero-parameter-alias applied-argument class (E0107 'type alias takes 0 generic arguments but N were supplied'). A reference to a closed alias arrives at the emitter carrying the RESOLVED DEFINITION's type arguments as its children while its authored spelling is still the alias name, so a renderer that prints name-plus-children emits ClosedCarrierAlias<Q, S, M> for a Rust alias declared with no parameters. Four renderers already refuse that shape by asking the single peel authority closed_alias_peel_verdict: render_rust_applied_type, render_rust_decl_type, render_rust_fn_sig_type and render_rust_alias_rhs_type. This function is the fifth path, and it did NOT lack the guard -- it reached render_rust_applied_type, which asked, and was answered with an EMPTY TypeEnv this function constructed inline plus an empty_emit_graph_info() it passed to render_rust_type. An empty env resolves no binding, and the peel predicate renders 'I could not look this up' identically to 'this declaration has parameters' -- the state-space conflation DESIGN section 5 names, failing open into the widened applied form rather than refusing. Every one of this function's callers already holds the TypeEnv it was discarding, so the fix is to stop discarding it: the peel authority stays the single authority and is simply answered truthfully. Measured on the src/v2/compiler/03_ingest.dag closure. The next rung is upstream and not taken here: an alias reference that preserved its AUTHORED arity would make the bad shape unwritable rather than merely refused, at which point no renderer would need to ask at all."
+// Construction wall for the zero-parameter-alias applied-argument class (E0107 'type alias takes 0
+// generic arguments but N were supplied'). A reference to a closed alias arrives at the emitter
+// carrying the RESOLVED DEFINITION's type arguments as its children while its authored spelling is
+// still the alias name, so a renderer that prints name-plus-children emits ClosedCarrierAlias<Q, S,
+// M> for a Rust alias declared with no parameters. Four renderers already refuse that shape by
+// asking the single peel authority closed_alias_peel_verdict: render_rust_applied_type,
+// render_rust_decl_type, render_rust_fn_sig_type and render_rust_alias_rhs_type. This function is
+// the fifth path, and it did NOT lack the guard -- it reached render_rust_applied_type, which
+// asked, and was answered with an EMPTY TypeEnv this function constructed inline plus an
+// empty_emit_graph_info() it passed to render_rust_type. An empty env resolves no binding, and the
+// peel predicate renders 'I could not look this up' identically to 'this declaration has
+// parameters' -- the state-space conflation DESIGN section 5 names, failing open into the widened
+// applied form rather than refusing. Every one of this function's callers already holds the TypeEnv
+// it was discarding, so the fix is to stop discarding it: the peel authority stays the single
+// authority and is simply answered truthfully. Measured on the src/v2/compiler/03_ingest.dag
+// closure. The next rung is upstream and not taken here: an alias reference that preserved its
+// AUTHORED arity would make the bad shape unwritable rather than merely refused, at which point no
+// renderer would need to ask at all.
 
 // THE FN'S GENERIC SCOPE MUST SURVIVE THIS HOP. render_rust_decl_type reaches here from a fn
 // signature carrying generic_param_names, and the EmitGraphInfo rebuilt below used to carry an
@@ -6647,11 +7179,32 @@ fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names:
   }
 }
 
-data rust_field_carrier_final_type_note: String = "ONE field-carrier layer decision, asked once and projected at every field position. rust_carrier_is_at_shared_layer already unified the four positions that used to answer 'is this carrier at the shared reference layer?' from a rendering or an authored spelling; the ENUM VARIANT RECORD FIELD position was not among them and kept a needs_box_wrapping-only rule, so it rendered a shared cross-module carrier BARE while every other position -- the constructor, the destructuring, the callee signature -- rendered it Rc-wrapped. MEASURED at d72ffe8708b on the src/v2/compiler/03_ingest.dag closure: SymbolicCost::ConstantCost declared `value: Nat` while constant_cost took Rc<Nat>, constructed it with an Rc, and passed the destructured field to nat_dominates(Rc<Nat>); the nested-pattern lowering then emitted `value.as_ref()` against a bare &Nat, which is 18 of that board's 41 E0599 (9 sites x guard + prelude), all in v2_lens_cost.rs. The bareness is not the pattern lowering's defect -- the lowering is right about the layer and the declaration is wrong -- so the repair is at the declaration, and it is shared with the struct-field position rather than copied to it. SCOPE, stated so it is not read as wider: this covers the RECORD-field positions (struct fields and variant record fields). The positional (tuple) payload position renders through render_variant_payload_type and is a distinct path whose layer decision has to be established on its own evidence, not asserted here. RUNG (DESIGN 4b): mitigatable, inherited unchanged from rust_carrier_is_at_shared_layer -- nothing stops a sixth field position from re-deriving the layer locally; the next rung is the same modeled layer transition that predicate names."
+// ONE field-carrier layer decision, asked once and projected at every field position.
+// rust_carrier_is_at_shared_layer already unified the four positions that used to answer 'is this
+// carrier at the shared reference layer?' from a rendering or an authored spelling; the ENUM
+// VARIANT RECORD FIELD position was not among them and kept a needs_box_wrapping-only rule, so it
+// rendered a shared cross-module carrier BARE while every other position -- the constructor, the
+// destructuring, the callee signature -- rendered it Rc-wrapped. MEASURED at d72ffe8708b on the
+// src/v2/compiler/03_ingest.dag closure: SymbolicCost::ConstantCost declared `value: Nat` while
+// constant_cost took Rc<Nat>, constructed it with an Rc, and passed the destructured field to
+// nat_dominates(Rc<Nat>); the nested-pattern lowering then emitted `value.as_ref()` against a bare
+// &Nat, which is 18 of that board's 41 E0599 (9 sites x guard + prelude), all in v2_lens_cost.rs.
+// The bareness is not the pattern lowering's defect -- the lowering is right about the layer and
+// the declaration is wrong -- so the repair is at the declaration, and it is shared with the
+// struct-field position rather than copied to it. SCOPE, stated so it is not read as wider: this
+// covers the RECORD-field positions (struct fields and variant record fields). The positional
+// (tuple) payload position renders through render_variant_payload_type and is a distinct path whose
+// layer decision has to be established on its own evidence, not asserted here. RUNG (DESIGN 4b):
+// mitigatable, inherited unchanged from rust_carrier_is_at_shared_layer -- nothing stops a sixth
+// field position from re-deriving the layer locally; the next rung is the same modeled layer
+// transition that predicate names.
 
-fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String {
+fn rust_field_carrier_final_type(rt_field: Node, ty: String, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String {
+  let native_scalar = rust_seed_host_numeric_alias(name: rust_fn_sig_leaf_name(source_indices: source_indices, n: rt_field), decl_file: type_reference_decl_file_in_env(n: rt_field, env: env, source_indices: source_indices))
   if needs_box_wrapping(n: rt_field, recursive_types: recursive_types, shared_types: shared_types, source_indices: source_indices) {
     concat("Box<", ty, ">")
+  } else if native_scalar != none {
+    ty
   } else if rust_carrier_is_at_shared_layer(n: rt_field, source_indices: source_indices, shared_types: shared_types) && !rust_type_is_rc_wrapped(type_name: ty) {
     wrap_shared_type(target: Rust, inner: ty)
   } else { ty }
@@ -6685,7 +7238,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   } else {
     render_rust_type(n: rt_child, shared_types: shared_types, source_indices: env.source_indices, emit_info: emit_info)
   }
-  let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
+  let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env)
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
     match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
@@ -6763,6 +7316,9 @@ fn find_shared_enum_fields(children: List<Node>, env: TypeEnv) -> List<String> {
   )
 }
 
+// THE ACCESSOR RETURNS T BY VALUE FROM &self, so `__val.clone()` must be T::clone, not the
+// reference's; without `T: Clone` on the impl rustc clones the `&T` (E0308 expected `T`, found
+// `&T`, six generic carriers). The bound is on the impl the accessor lives in, not on the enum.
 fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_names: List<String>, children: List<Node>, recursive_types: Set<String>, shared_types: Set<String>, env: TypeEnv, emit_info: EmitGraphInfo) -> String {
   let all_shared = find_shared_enum_fields(children: children, env: env)
   if all_shared |> count == 0 { return "" }
@@ -6808,7 +7364,10 @@ fn emit_enum_shared_accessors(name: String, type_params: String, generic_param_n
   )
   let fns_str = accessor_fns |> join(separator: "\n")
   let type_application_params = emit_bare_type_params(generic_param_names: generic_param_names)
-  concat("impl", type_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
+  let impl_params = if (generic_param_names |> count) == 0 { type_params } else {
+    concat("<", generic_param_names |> map(g => concat(to_pascal(name: g), ": Clone")) |> join(separator: ", "), ">")
+  }
+  concat("impl", impl_params, " ", name, type_application_params, " {\n", fns_str, "\n}")
 }
 
 fn string_without_prefix(value: String, prefix: String) -> String? {
@@ -7024,7 +7583,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
       let field_lines = child.children |> map(f =>
         let rt_f = resolved_type(n: f)
         let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-        let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
+        let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env)
         emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
       )
       let fields_str = field_lines |> join(separator: "\n")
@@ -7034,7 +7593,7 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
     let field_lines = child.children |> map(f =>
       let rt_f = resolved_type(n: f)
       let ty = render_rust_field_type_with_applied_binding(field: f, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: env.source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-      let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices)
+      let final_ty = rust_field_carrier_final_type(rt_field: rt_f, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env)
       emit_rust_field_definition(authored: authored_name(env: env, node: f), final_ty: final_ty, rename_attr: "", indent: "        ", visibility: "", needs_serde: true)
     )
     let fields_str = field_lines |> join(separator: "\n")
@@ -7042,7 +7601,16 @@ fn emit_variant_from_child(child: Node, enum_name: String, generic_param_names: 
   }
 }
 
-data v1_fn_body_derived_clone_param_names_note: String = "Extracted from emit_fn_def (dashboard node adhoc-574e999b-39c, Row 1b) rather than duplicated: this is the SAME derivation emit_fn_def already ran for the function being emitted -- structural (v1_generic_params_needing_clone_bound) unioned with RC-match-scrutinee (v1_rc_match_scrutinee_clone_bound_param_names, trait_bound_witness.dag) -- now callable a second time on a CALLEE's own declared params/inferred/body (looked up via emit_info.fn_decl_items), so a wrapper fn that forwards its args directly into an already-Clone-bounded callee can derive its own bound from that callee's real requirement (DESIGN.md S5 construction-over-validation: the fact already exists on the callee's declaration Node, never a text scan of emitted Rust) instead of the emitter reasoning about it ad hoc at each call site (DESIGN.md S2 -- one derivation, two call sites)."
+// Extracted from emit_fn_def (dashboard node adhoc-574e999b-39c, Row 1b) rather than duplicated:
+// this is the SAME derivation emit_fn_def already ran for the function being emitted -- structural
+// (v1_generic_params_needing_clone_bound) unioned with RC-match-scrutinee
+// (v1_rc_match_scrutinee_clone_bound_param_names, trait_bound_witness.dag) -- now callable a second
+// time on a CALLEE's own declared params/inferred/body (looked up via emit_info.fn_decl_items), so
+// a wrapper fn that forwards its args directly into an already-Clone-bounded callee can derive its
+// own bound from that callee's real requirement (DESIGN.md S5 construction-over-validation: the
+// fact already exists on the callee's declaration Node, never a text scan of emitted Rust) instead
+// of the emitter reasoning about it ad hoc at each call site (DESIGN.md S2 -- one derivation, two
+// call sites).
 
 fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body: Node, emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let si = source_indices
@@ -7094,21 +7662,61 @@ fn v1_fn_body_derived_clone_param_names(params: List<Node>, inferred: Node, body
   )
 }
 
+// A GENERIC STORED INTO A `dyn Fn` MUST OUTLIVE IT. The arrow carrier is `Rc<dyn Fn(..)>`, which
+// defaults to `'static`; a fn returning an arrow, or a record whose fields are arrows
+// (`Monoid { op: verdict_combine, .. }`), moves its generics into that object. The bound lands on
+// the generics only for the RECORD return: a fn item stored into a field is `'static` only when
+// its generics are (E0310 on `Subj`, `T` at verdict_monoid), while a returned closure captures
+// only its `impl Fn + 'static` parameters, so `compose<A, B, C>` stays bare -- pinned by
+// w_generic_forwarded_by_a_returned_closure_carries_clone, which went red when this gate was
+// first written over both surfaces.
 // Joins the two derivations onto one per-param trait list so a param earning both renders
 // `K: Clone + PartialEq`. Clone is listed first so the Clone-only case is byte-identical to what
 // the previous single-trait renderer emitted, which is what lets the regen fixed point act as the
 // oracle for "equality changed nothing that did not need changing".
 fn v1_fn_bounds_by_param(
   clone_param_names: List<String>,
-  eq_param_names: List<String>
+  eq_param_names: List<String>,
+  map_key_param_names: List<String>,
+  static_param_names: List<String>
 ) -> Map<String, List<String>> {
   let with_clone = clone_param_names |> fold(init: empty_map(), f: (m, n) => map_insert(m, n, ["Clone"]))
-  eq_param_names |> fold(init: with_clone, f: (m, n) =>
+  let with_eq = eq_param_names |> fold(init: with_clone, f: (m, n) =>
     match map_get(m, n) {
       Present { value: traits } => map_insert(m, n, concat(traits, ["PartialEq"]))
       Absent => map_insert(m, n, ["PartialEq"])
     }
   )
+  let with_key = map_key_param_names |> fold(init: with_eq, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, rust_map_key_bound_traits()))
+      Absent => map_insert(m, n, rust_map_key_bound_traits())
+    }
+  )
+  static_param_names |> fold(init: with_key, f: (m, n) =>
+    match map_get(m, n) {
+      Present { value: traits } => map_insert(m, n, concat(traits, ["'static"]))
+      Absent => map_insert(m, n, ["'static"])
+    }
+  )
+}
+
+// A GENERIC IN KEY POSITION OF A KEYED COLLECTION CARRIES THE HOST KEY BOUNDS. The Rust row for
+// FinitelySupportedFunction / PartialFunction is `HashMap<K, V>`, whose every bridge
+// (v1_rt::lookup, rc_map_insert, rc_map_merge) declares `K: Eq + Hash`; a fn generic over the key
+// that emitted only `K: Clone` refused at each bridge call (E0277 on map_insert / map_lookup /
+// map_get in v2_std_collection, three sites, one class). The bound is read from the SIGNATURE --
+// parameters and return type -- through the same keyed-map walker the struct derive path uses
+// (v1_map_key_head_names_in_type_expr), so a key generic is decided by the declared carrier, not
+// by inspecting the body for a bridge call.
+fn rust_map_key_bound_traits() -> List<String> {
+  ["std::cmp::Eq", "std::hash::Hash"]
+}
+
+fn v1_fn_signature_map_key_param_names(value_params: List<Node>, ret: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  let from_params = value_params |> flat_map(p => v1_map_key_head_names_in_type_expr(type_expr: param_node_type_expr(n: p), source_indices: source_indices))
+  let from_ret = v1_map_key_head_names_in_type_expr(type_expr: ret, source_indices: source_indices)
+  unique_strings(items: concat(from_params, from_ret) |> filter(n => generic_param_names |> any(g => g == n)))
 }
 
 // Node-consuming extraction for the equality bound, kept here rather than in
@@ -7515,17 +8123,28 @@ fn emit_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, reg
     base: self_eq_param_names,
     extra: call_forwarding_eq_param_names
   )
+  let map_key_param_names = v1_fn_signature_map_key_param_names(
+    value_params: value_params,
+    ret: inferred,
+    generic_param_names: generic_param_names,
+    source_indices: si
+  )
+  let returns_fn_field_record = type_has_fn_fields(name: rust_fn_sig_leaf_name(source_indices: si, n: inferred), emit_info: emit_info)
+  let returns_arrow_or_fn_field_record = (inferred.params |> count) > 0 || returns_fn_field_record
+  let static_param_names = if returns_fn_field_record { generic_param_names } else { [] }
   let bounds_by_param = v1_fn_bounds_by_param(
     clone_param_names: clone_param_names,
-    eq_param_names: eq_param_names
+    eq_param_names: eq_param_names,
+    map_key_param_names: map_key_param_names,
+    static_param_names: static_param_names
   )
-  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0
+  let needs_bound = (clone_param_names |> count) > 0 || (eq_param_names |> count) > 0 || (map_key_param_names |> count) > 0 || (static_param_names |> count) > 0
   let type_params_str = if needs_bound {
     v1_emit_type_params_with_bounds(params: type_params, bounds_by_param: bounds_by_param, source_indices: si)
   } else {
     emit_type_params(params: type_params, source_indices: si)
   }
-  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: (inferred.params |> count) > 0)
+  let params_str = emit_params(params: value_params, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, read_only_params: emit_info.read_only_params, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env, enclosing_returns_arrow: returns_arrow_or_fn_field_record)
   let ret_str = emit_inferred(inferred: inferred, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: si, variant_to_enum: emit_info.variant_to_enum, env: scope.type_env)
   let body_scope = build_params_scope(scope: scope, params: value_params)
   let depth = 0
@@ -8056,6 +8675,16 @@ fn unique_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name:
     none
   }
 }
+// THE HOST OPTIONAL'S VARIANT SPELLINGS, ONE AUTHORITY. Six sites spelled `Some`/`None` inline; a
+// module declaring a nullary variant named `None` (std.cache_interface `AuthScope`) also emits
+// `pub struct None;` at module scope, and a bare `None` PATTERN there binds the unit struct
+// (E0308 "`None` is interpreted as a unit struct", five arms on the first regen after the null
+// keyword row was qualified). The keyword row covers the expression; this covers the pattern and
+// the constructor, by path. `Some` stays bare: no corpus module declares a `Some`.
+fn rust_optional_variant_spelling(name: String) -> String {
+  if is_some_like_variant_name(name: name) { "Some" } else { "std::option::Option::None" }
+}
+
 
 fn is_optional_variant_name(name: String) -> Bool {
   name == "Present" || name == "Absent" || name == "Some" || name == "None"
@@ -8101,9 +8730,44 @@ fn positional_payload_scrut_type(parent_enum: String?, variant_name: String, fie
   }
 }
 
-data optional_pattern_unknown_parent_note: String = "Present/Absent patterns with an UNRESOLVED parent enum lower to Some/None (kernel Optional): a bare Present/Absent struct pattern is never valid emitted Rust (no bare variant of that name exists in any emitted scope), so the raw fallback arm could only ever produce a compile error. A modeled optional carrier (e.g. OptionalNode) still resolves its parent via pattern_parent_enum and takes the qualified path; only the parent-unknown residue (an unstamped scrutinee, e.g. a let-in-lambda pipeline) reroutes."
+// Present/Absent patterns with an UNRESOLVED parent enum lower to Some/None (kernel Optional): a
+// bare Present/Absent struct pattern is never valid emitted Rust (no bare variant of that name
+// exists in any emitted scope), so the raw fallback arm could only ever produce a compile error. A
+// modeled optional carrier (e.g. OptionalNode) still resolves its parent via pattern_parent_enum
+// and takes the qualified path; only the parent-unknown residue (an unstamped scrutinee, e.g. a
+// let-in-lambda pipeline) reroutes.
 
-data variant_pattern_dotted_qualification_note: String = "Construction wall for the dotted-render class in every position that emits a Rust Parent::Variant path. A namespace-QUALIFIED variant/parent name (post source_authority, e.g. v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent from annotate_pattern_parent_enums's authored_name_at, from derive_variant_to_enum's summary.name, or from resolved_type_name) is not a valid Rust path component: rustc reports 'expected one of ..., found {' or 'found .', a PARSE error that then masks every later error in the module. Emitted Rust never needs a crate::-qualified path here (only import-line synthesis, a separate seam, brings the bare enum into scope), so both halves route through qualified_last_segment (v1.std.core, the single authority) via rust_variant_path -- identity on an already-bare name, so every previously-correct render is byte-identical. THE COVERAGE RULE THIS WALL IS SCOPED BY, corrected 2026-08-21: a wall's coverage is over PRODUCERS of the output shape, not over POSITIONS in the source. The earlier revision of this note claimed PATTERN position and named alias_rhs_qualified_name_routing_note (TYPE) and value_ref_ident_dotted_fallback_note (VALUE) as the siblings that closed the rest -- a partition by position, which is not the partition the defect lives in. Enumerating instead by output shape (every site that concatenates a parent and a variant name into one Rust path) found five producers of that one shape, of which the position-partitioned account had walled two: emit_variant_pattern and emit_variant_pattern_rc_aware (authored patterns, walled) versus emit_discriminant_call_lowering (SYNTHESIZES match arms for a discriminant lowering -- no authored pattern exists at that site at all, so no caller of the pattern wall ever reaches it), emit_value_ref_ident and its rc-aware sibling (VALUE position was declared walled, but only the LEAF half was: the parent came from effective_variant_parent, i.e. authored_name_at, and rode out dotted), rust_qualify_type_leaf_name (TYPE position, parent from derive_variant_to_enum), emit_enum_shared_accessors (SYNTHESIZES the accessor match arms), and rust_witness_variant_ctor_path (parent reduced, variant half not). A synthesizing producer is invisible to a position census by construction, because the position it writes into has no authored source to census. The two byte-identical helpers variant_pattern_qualified_path and variant_pattern_shape_key were one concept under two names (DESIGN section 3) and are folded into rust_variant_path / rust_variant_path_opt, named for the output shape rather than for one of the positions that emits it -- a position-named authority is what licensed the position-partitioned coverage claim above."
+// Construction wall for the dotted-render class in every position that emits a Rust Parent::Variant
+// path. A namespace-QUALIFIED variant/parent name (post source_authority, e.g.
+// v2.extdeps.languages.dag.ParseSubtreeFound, or a dotted parent from
+// annotate_pattern_parent_enums's authored_name_at, from derive_variant_to_enum's summary.name, or
+// from resolved_type_name) is not a valid Rust path component: rustc reports 'expected one of ...,
+// found {' or 'found .', a PARSE error that then masks every later error in the module. Emitted
+// Rust never needs a crate::-qualified path here (only import-line synthesis, a separate seam,
+// brings the bare enum into scope), so both halves route through qualified_last_segment
+// (v1.std.core, the single authority) via rust_variant_path -- identity on an already-bare name, so
+// every previously-correct render is byte-identical. THE COVERAGE RULE THIS WALL IS SCOPED BY,
+// corrected 2026-08-21: a wall's coverage is over PRODUCERS of the output shape, not over POSITIONS
+// in the source. The earlier revision of this note claimed PATTERN position and named
+// alias_rhs_qualified_name_routing_note (TYPE) and value_ref_ident_dotted_fallback_note (VALUE) as
+// the siblings that closed the rest -- a partition by position, which is not the partition the
+// defect lives in. Enumerating instead by output shape (every site that concatenates a parent and a
+// variant name into one Rust path) found five producers of that one shape, of which the
+// position-partitioned account had walled two: emit_variant_pattern and
+// emit_variant_pattern_rc_aware (authored patterns, walled) versus emit_discriminant_call_lowering
+// (SYNTHESIZES match arms for a discriminant lowering -- no authored pattern exists at that site at
+// all, so no caller of the pattern wall ever reaches it), emit_value_ref_ident and its rc-aware
+// sibling (VALUE position was declared walled, but only the LEAF half was: the parent came from
+// effective_variant_parent, i.e. authored_name_at, and rode out dotted),
+// rust_qualify_type_leaf_name (TYPE position, parent from derive_variant_to_enum),
+// emit_enum_shared_accessors (SYNTHESIZES the accessor match arms), and
+// rust_witness_variant_ctor_path (parent reduced, variant half not). A synthesizing producer is
+// invisible to a position census by construction, because the position it writes into has no
+// authored source to census. The two byte-identical helpers variant_pattern_qualified_path and
+// variant_pattern_shape_key were one concept under two names (DESIGN section 3) and are folded into
+// rust_variant_path / rust_variant_path_opt, named for the output shape rather than for one of the
+// positions that emits it -- a position-named authority is what licensed the position-partitioned
+// coverage claim above.
 
 fn rust_variant_path(parent: String, rust_name: String) -> String {
   concat(qualified_last_segment(name: parent), "::", qualified_last_segment(name: rust_name))
@@ -8132,7 +8796,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
+    rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
@@ -8146,7 +8810,7 @@ fn emit_variant_pattern(name: String, parent_enum: String?, field_bindings: List
         if is_string_lit_pattern(p: fb_pat) {
           "Some(ref __some_val)"
         } else {
-          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: scrut_type, source_indices: source_indices, emit_info: emit_info)
+          let inner_pat = emit_pattern(pattern: fb_pat, path_prefix: list_push(path_prefix, rust_name), shared_types: shared_types, scrut_type: "", source_indices: source_indices, emit_info: emit_info)
           concat("Some(", inner_pat, ")")
         }
       Absent => qualified
@@ -8244,6 +8908,10 @@ fn field_needs_rc_ref(field_name: String, rc_analysis: RcPatternAnalysis) -> Boo
   rc_analysis.ref_bound_fields |> any(name => name == field_name)
 }
 
+// A RECORD PATTERN HAS NO PARENT ENUM, BUT ITS CARRIER IS STILL SHARED. `Record { f, .. }`
+// over a scrutinee that renders `Rc<Record>` needs the same deref a shared enum's variant
+// gets; without it the pattern met the Rc (E0308 expected `Rc<AdmitExportsFold>`, found
+// `AdmitExportsFold`, four record sites). The record is decided by the same shared set.
 fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> RcPatternAnalysis {
   match pattern {
     VariantPattern { name: n, parent_enum: parent_enum, field_bindings: fbs } =>
@@ -8266,7 +8934,11 @@ fn analyze_rc_pattern(pattern: MatchPattern, scrut_type: String, shared_types: S
         let resolved_parent = pattern_parent_enum(name: bare_n, parent_enum: parent_enum, scrut_type: scrut_type, type_summaries: emit_info.type_summaries)
         let matches_rc_variant = match resolved_parent {
           Present { value: enum_name } => set_contains(shared_types, enum_name)
-          Absent => false
+          Absent =>
+            match map_get(emit_info.type_summaries, bare_n) {
+              Present { value: _ } => set_contains(shared_types, bare_n)
+              Absent => false
+            }
         }
         let ref_bound_fields = fbs |> flat_map(fb =>
           let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
@@ -8375,7 +9047,7 @@ fn emit_variant_pattern_rc_aware(name: String, parent_enum: String?, field_bindi
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
+    rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
@@ -8485,7 +9157,7 @@ fn variant_pattern_shape_for(name: String, parent_enum: String?, scrut_type: Str
   let optional_variant = is_optional_variant_name(name: bare_name)
     && (is_optional_parent(parent_enum: resolved_parent) || resolved_parent == none)
   let rust_name = if optional_variant {
-    if is_some_like_variant_name(name: bare_name) { "Some" } else { "None" }
+    rust_optional_variant_spelling(name: bare_name)
   } else { bare_name }
   let qualified = if optional_variant {
     rust_name
@@ -8690,9 +9362,31 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   freemonoid_empty_from_variant_parent(leaf_name: name, enum_name: enum_name) || set_contains(shared_types, enum_name)
 }
 
-data value_ref_ident_dotted_fallback_note: String = "Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g. v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name: name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope', E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core) reduction the Present arm already keys its registry lookup on — not a new fallback, the existing one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee` binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
+// Construction wall for the dotted-render class in VALUE-EXPRESSION position (sibling of
+// variant_pattern_dotted_qualification_note/PATTERN, bare_qualified_name in
+// emit_typed_record_lit/CONSTRUCTION, coerce_primitive_type_dotted_fallback_note/TYPE, and
+// rust_fn_sig_leaf_name_dotted_note/FN-SIG TYPE). A namespace-qualified dotted name (e.g.
+// v2.std.node.Edge) whose leaf misses the registry previously fell through to emit_ident(name:
+// name, ...) with the FULL dotted string still attached — emit_ident has no dot-awareness (pure
+// case-conversion/sanitization), so the dots rode straight into the emitted Rust as a bare
+// field-access chain starting at the first segment (rustc: 'cannot find value v2 in this scope',
+// E0425). Fixed by passing the already-computed leaf, the same qualified_last_segment (v1.std.core)
+// reduction the Present arm already keys its registry lookup on — not a new fallback, the existing
+// one corrected to use the value already in scope. The CALL-callee sibling (emit_typed_call's
+// func_ident, e.g. a bare dotted function reference like v2.std.staging.resolve_probe(..) rendered
+// verbatim) reuses this same fn directly rather than re-deriving the leaf a third time (DESIGN
+// section 2/3: one shared helper, not a forked per-seam patch); its registry lookup (the `callee`
+// binding) is likewise re-keyed on qualified_last_segment(func) so a dotted cross-module call
+// resolves the same ItemInfo a bare call would. Every already-bare name renders exactly as before
+// (qualified_last_segment is the identity on an unqualified name).
 
-data value_ref_cross_module_qualifier_routing_note: String = "Construction wall for cross-module qualified VALUE references when the flat item_registry leaf key collides (post-#7685 class, witness qualified_leaf_registry_collision_emit_witness_test): map_get(registry, leaf) returns whichever module won the last-write-wins insert, so emit_value_ref_ident must render crate paths from the authored qualifier prefix (value_ref_qualifier_prefix) rather than info.module_name from the collision winner. Same-module normalization (value_ref_normalize_self_module) remains the sibling wall for the qualifier == current-module case."
+// Construction wall for cross-module qualified VALUE references when the flat item_registry leaf
+// key collides (post-#7685 class, witness qualified_leaf_registry_collision_emit_witness_test):
+// map_get(registry, leaf) returns whichever module won the last-write-wins insert, so
+// emit_value_ref_ident must render crate paths from the authored qualifier prefix
+// (value_ref_qualifier_prefix) rather than info.module_name from the collision winner. Same-module
+// normalization (value_ref_normalize_self_module) remains the sibling wall for the qualifier ==
+// current-module case.
 
 fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo) -> String {
   if string_contains(s: name, pattern: ".") {
@@ -8719,7 +9413,15 @@ fn emit_value_ref_ident(name: String, registry: Map<String, ItemInfo>, emit_info
   }
 }
 
-data none_undetermined_carrier_refuse_note: String = "Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved variant_parent, the emitter previously emitted Rust null as a fabricated plausible default. variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold a named counted interim INSIDE this single decision with an explicit dissolution trigger — never restore an escaping Optional default at callers."
+// Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved
+// variant_parent, the emitter previously emitted Rust null as a fabricated plausible default.
+// variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier
+// and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined
+// non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed
+// refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic
+// text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold
+// a named counted interim INSIDE this single decision with an explicit dissolution trigger — never
+// restore an escaping Optional default at callers.
 
 fn emit_none_keyword_for_resolved_type(resolved_type: InferredNode?) -> String {
   match resolved_type {
@@ -8747,7 +9449,7 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
         let body = if freemonoid_empty_from_variant_parent(leaf_name: leaf_name, enum_name: enum_name) {
           emit_freemonoid_empty_variant_body()
         } else if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
-          if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
+          rust_optional_variant_spelling(name: leaf_name)
         } else {
           rust_variant_path(parent: enum_name, rust_name: leaf_name)
         }
@@ -8810,7 +9512,7 @@ fn emit_typed_expr_base(texpr: Node, registry: Map<String, ItemInfo>, scope: Inf
               emit_freemonoid_empty_rc_value()
             } else {
             let qualified = if is_optional_variant_name(name: leaf_name) && is_optional_like_parent_name(name: enum_name) {
-              if is_some_like_variant_name(name: leaf_name) { "Some" } else { "None" }
+              rust_optional_variant_spelling(name: leaf_name)
             } else {
               rust_variant_path(parent: enum_name, rust_name: leaf_name)
             }
@@ -9303,7 +10005,41 @@ fn emit_rust_expr_let(expr: Node, registry: Map<String, ItemInfo>, scope: InferS
   }
 }
 
-data concrete_peel_optional_ctor_note: String = "The concrete-type peel below replaces the AUTHORED record-literal name with the resolved concrete type name, which is right for an ordinary record literal whose type resolved to a nominal carrier. It was WRONG for the built-in optional constructors: a cast reaching the payload (Present { value: text as Carrier }) gives the literal a concrete resolved type, so the peel fired and overwrote the authored `Present` with the payload's concrete name, and emit_typed_record_lit then never recognised the literal as an optional constructor. The lowering fell through to the generic arm and fabricated `Optional::String { value: .. }` — not a Rust constructor, so the emitted crate failed with E0433. This was the actual name-loss point (gunbc#7480); it is in the CALLER, not in emit_typed_record_lit's variant_surface_name fallback, which was the standing hypothesis until the peel was read. The gate is deliberately narrow: the peel is suppressed ONLY when the authored name is a built-in optional constructor AND the concrete type does not itself declare a variant of that name. A user-defined enum that declares its own `Present` still peels exactly as before, because variant_belongs_to_enum finds it there — so the special case keys on the resolved parent genuinely being the built-in Optional rather than on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved rather than inferred from the payload type. Evidence: dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must stay green. A SECOND, independently required narrowing landed beside the peel guard (review on gunbc#7480, 2026-08-01): the optional classification in emit_typed_record_lit briefly carried a function-wide `fn_returns_optional` disjunct, read off emit_info.fn_return_type. That is a fact about the ENCLOSING FUNCTION, not about this record literal's position, so it misclassified any optional-looking user constructor appearing anywhere inside an optional-returning function -- MyOpt::Present built inside `fn f(..) -> String?` emitted `Some(..)`, overriding an effective_parent that had ALREADY correctly resolved to the user enum. It also falsified this note's own claim to key on the resolved parent rather than the spelling. The disjunct was deleted rather than gated: `resolved_type.return_cardinality == CardOptional` is the expression-local statement of the same fact, and executing all seven poles with the function-wide arm removed showed it was load-bearing for NONE of them -- it was a second representation of an expression-local fact (DESIGN section 3), not a needed fallback. Its negative control is user_defined_present_inside_optional_returning_fn_is_unaffected, which requires MyOpt::Present and forbids `Some(`, and which was confirmed RED against the emitter before the removal. This does NOT address nested-refinement lowering, which remains separately tracked by emitter_nested_refinement_cast_witness_test.dag."
+// The concrete-type peel below replaces the AUTHORED record-literal name with the resolved concrete
+// type name, which is right for an ordinary record literal whose type resolved to a nominal
+// carrier. It was WRONG for the built-in optional constructors: a cast reaching the payload
+// (Present { value: text as Carrier }) gives the literal a concrete resolved type, so the peel
+// fired and overwrote the authored `Present` with the payload's concrete name, and
+// emit_typed_record_lit then never recognised the literal as an optional constructor. The lowering
+// fell through to the generic arm and fabricated `Optional::String { value: .. }` — not a Rust
+// constructor, so the emitted crate failed with E0433. This was the actual name-loss point
+// (gunbc#7480); it is in the CALLER, not in emit_typed_record_lit's variant_surface_name fallback,
+// which was the standing hypothesis until the peel was read. The gate is deliberately narrow: the
+// peel is suppressed ONLY when the authored name is a built-in optional constructor AND the
+// concrete type does not itself declare a variant of that name. A user-defined enum that declares
+// its own `Present` still peels exactly as before, because variant_belongs_to_enum finds it there —
+// so the special case keys on the resolved parent genuinely being the built-in Optional rather than
+// on the spelling alone. Ordinary variants are untouched: is_optional_variant_name is false for
+// them, so the guard collapses and the peel proceeds unchanged. The variant identity is preserved
+// rather than inferred from the payload type. Evidence:
+// dag/test/claim/emitter_optional_payload_cast_witness_test.dag, whose cast poles flip from
+// known-red to green with this repair, alongside the ordinary-enum Wrap::Holds control that must
+// stay green. A SECOND, independently required narrowing landed beside the peel guard (review on
+// gunbc#7480, 2026-08-01): the optional classification in emit_typed_record_lit briefly carried a
+// function-wide `fn_returns_optional` disjunct, read off emit_info.fn_return_type. That is a fact
+// about the ENCLOSING FUNCTION, not about this record literal's position, so it misclassified any
+// optional-looking user constructor appearing anywhere inside an optional-returning function --
+// MyOpt::Present built inside `fn f(..) -> String?` emitted `Some(..)`, overriding an
+// effective_parent that had ALREADY correctly resolved to the user enum. It also falsified this
+// note's own claim to key on the resolved parent rather than the spelling. The disjunct was deleted
+// rather than gated: `resolved_type.return_cardinality == CardOptional` is the expression-local
+// statement of the same fact, and executing all seven poles with the function-wide arm removed
+// showed it was load-bearing for NONE of them -- it was a second representation of an
+// expression-local fact (DESIGN section 3), not a needed fallback. Its negative control is
+// user_defined_present_inside_optional_returning_fn_is_unaffected, which requires MyOpt::Present
+// and forbids `Some(`, and which was confirmed RED against the emitter before the removal. This
+// does NOT address nested-refinement lowering, which remains separately tracked by
+// emitter_nested_refinement_cast_witness_test.dag.
 
 fn emit_rust_expr_record_lit(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
@@ -9414,8 +10150,8 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBinOp { op: op, algebra_field: algebra } =>
-      emit_typed_bin_op(op: op, algebra_field: algebra, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprBinOp { op: op, algebra_field: algebra, operand: od } =>
+      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
   }
 }
@@ -9594,12 +10330,18 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
   } else { call_str }
 }
 
-fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String) -> String {
+// A PARAMETER DECLARED `Optional<T>` IS OPTIONAL. The cardinality flag marks the `T?` sugar; the
+// applied carrier spelling carries no flag, so a caller passing an optional into
+// `witness_from_optional(opt: Optional<T>, ..)` earned a fail-closed `.expect(..)` that unwrapped
+// the very value the callee exists to inspect (E0308 expected Option<..>, found .. at six sites).
+// Both spellings name one carrier; the predicate asks both.
+fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String, source_indices: Map<String, NewlineIndex>) -> String {
   match callee {
     Present { value: info } =>
       match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
-          let param_required = param_node_type_expr(n: param).return_cardinality != CardOptional
+          let param_type = param_node_type_expr(n: param)
+          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices)
           let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
@@ -9829,7 +10571,7 @@ fn emit_typed_call(func: String, args: List<Node>, callee_is_function_value: Boo
       concat("&", base)
     } else {
       let base = emit_cloned_arg(texpr: arg_value(n: a), registry: registry, scope: arg_scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-      let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func)
+      let unwrapped = rust_call_arg_fail_closed_unwrap(arg_str: base, arg: arg_value(n: a), callee: callee, idx: idx, func: func, source_indices: scope.type_env.source_indices)
       rust_call_arg_function_value_adapt(arg_str: unwrapped, arg: arg_value(n: a), callee: callee, idx: idx)
     }
   )
@@ -9935,7 +10677,30 @@ type IterOwnedReceiverCloneDisposition
   | IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String }
   | IterOwnedReceiverCloneRetainedNotSimpleIdentifier
 
-data iter_owned_receiver_clone_disposition_note: String = "Every sharing.iter_owned call site (for-each, fold, sort_by, map, the higher-order dispatch) renders its receiver through the general identifier renderer (emit_var_ref), which clones any resolved-type, non-moved identifier unconditionally -- correct in owned position, but sharing.iter_owned ('{0}.iter().cloned()' on Rust) only ever borrows the receiver, so that pre-clone is a no-op EXCEPT where a downstream expression evaluated in the same scope (a for-each body; a fold/sort_by/map/higher-order lambda or sibling argument, which may close over the receiver by name) separately reads the receiver's root identifier again -- a real borrow-conflict risk if the pre-clone were dropped there. This is decided syntactically, not by dataflow: a simple ExprVar receiver whose name never recurs as an ExprVar anywhere in the supplied downstream subtrees (expr_references_var) drops the clone via emit_typed_expr_base, the existing borrow-position renderer that never applies sharing.clone_value. Any shape this cannot prove safe -- a non-ExprVar receiver (field access, call, ...), or a downstream subtree that mentions the same name (even if shadowed by an inner let/lambda/for-each -- expr_references_var is a textual subtree walk, not scope-resolved, so a shadowed same-name binding is indistinguishable from a real reference and is treated as one) -- retains today's clone. Fail-open by construction: the disposition can only ever retain an unnecessary clone, never drop a needed one. Named per DESIGN.md section 5's no-silent-skip rule: each non-drop case is a distinct, typed variant rather than a single collapsed default, so the retained-for-downstream-reference population (must never be silently indistinguishable from an ordinary unoptimized site) is separately countable from the retained-for-non-simple-receiver population. The decision never consults movable, Read, or any ownership classification -- the syntactic position of the receiver as a sharing.iter_owned argument is itself the borrow-position proof, which is what keeps this sound where a disposition keyed on the ownership pass's Read edge kind would not be (Read fires on genuine by-value-consuming positions too, not only borrow positions)."
+// Every sharing.iter_owned call site (for-each, fold, sort_by, map, the higher-order dispatch)
+// renders its receiver through the general identifier renderer (emit_var_ref), which clones any
+// resolved-type, non-moved identifier unconditionally -- correct in owned position, but
+// sharing.iter_owned ('{0}.iter().cloned()' on Rust) only ever borrows the receiver, so that
+// pre-clone is a no-op EXCEPT where a downstream expression evaluated in the same scope (a for-each
+// body; a fold/sort_by/map/higher-order lambda or sibling argument, which may close over the
+// receiver by name) separately reads the receiver's root identifier again -- a real borrow-conflict
+// risk if the pre-clone were dropped there. This is decided syntactically, not by dataflow: a
+// simple ExprVar receiver whose name never recurs as an ExprVar anywhere in the supplied downstream
+// subtrees (expr_references_var) drops the clone via emit_typed_expr_base, the existing
+// borrow-position renderer that never applies sharing.clone_value. Any shape this cannot prove safe
+// -- a non-ExprVar receiver (field access, call, ...), or a downstream subtree that mentions the
+// same name (even if shadowed by an inner let/lambda/for-each -- expr_references_var is a textual
+// subtree walk, not scope-resolved, so a shadowed same-name binding is indistinguishable from a
+// real reference and is treated as one) -- retains today's clone. Fail-open by construction: the
+// disposition can only ever retain an unnecessary clone, never drop a needed one. Named per
+// DESIGN.md section 5's no-silent-skip rule: each non-drop case is a distinct, typed variant rather
+// than a single collapsed default, so the retained-for-downstream-reference population (must never
+// be silently indistinguishable from an ordinary unoptimized site) is separately countable from the
+// retained-for-non-simple-receiver population. The decision never consults movable, Read, or any
+// ownership classification -- the syntactic position of the receiver as a sharing.iter_owned
+// argument is itself the borrow-position proof, which is what keeps this sound where a disposition
+// keyed on the ownership pass's Read edge kind would not be (Read fires on genuine
+// by-value-consuming positions too, not only borrow positions).
 
 fn iter_owned_receiver_clone_disposition(receiver: Node, downstream: List<Node>, source_indices: Map<String, NewlineIndex>) -> IterOwnedReceiverCloneDisposition {
   match receiver.expr_data {
@@ -10248,7 +11013,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type
+              fn_return_type: emit_info.fn_return_type,
+              expected_type: emit_info.expected_type
             }
           Absent => emit_info
         }
@@ -10279,7 +11045,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               clone_impl_required_type_params: emit_info.clone_impl_required_type_params,
               fn_generic_param_names: emit_info.fn_generic_param_names,
               fn_type_env: emit_info.fn_type_env,
-              fn_return_type: emit_info.fn_return_type
+              fn_return_type: emit_info.fn_return_type,
+              expected_type: emit_info.expected_type
             }
           Absent => emit_info
         }
@@ -10359,7 +11126,13 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
       let elem_is_type_var = if elem.inferred != none { is_type_variable(inferred: elem.inferred.value) } else { false }
       if elem.ident_span != none && !elem_is_type_var {
         render_rust_type(n: elem, shared_types: shared_types, source_indices: scope.type_env.source_indices, emit_info: emit_info)
-      } else { "_" }
+      } else {
+        match elem.inferred {
+          Present { value: TypeVariable { id: tv } } =>
+            if type_var_in_fn_generic_scope(id: tv, generic_param_names: emit_info.fn_generic_param_names) { to_pascal(name: tv) } else { "_" }
+          _ => "_"
+        }
+      }
     _ => "_"
   }
   let sort_key_fn = match args |> first {
@@ -10372,12 +11145,19 @@ fn emit_rust_sort_by_method_call(receiver: Node, args: List<Node>, registry: Map
   let iter_str = apply_type_template1(template: sharing.iter_owned, arg0: recv_str)
   let a_clone = apply_type_template1(template: sharing.clone_value, arg0: "a")
   let b_clone = apply_type_template1(template: sharing.clone_value, arg0: "b")
-  if elem_type_str == "_" {
-    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a, b| { a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+  let closure_params = if elem_type_str == "_" {
+    "|a, b|"
   } else {
-    rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(|a: &", elem_type_str, ", b: &", elem_type_str, "| { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
+    concat("|a: &", elem_type_str, ", b: &", elem_type_str, "|")
   }
+  rust_shared_wrap_ctor(inner_expr: concat("{ let mut __sorted: Vec<_> = ", iter_str, ".collect(); __sorted.sort_by(", closure_params, " { let __ka = (", sort_key_fn, ")(", a_clone, "); let __kb = (", sort_key_fn, ")(", b_clone, "); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) }); __sorted }"))
 }
+
+// The element-type-unknown arm used to emit `sort_by(|a, b| a.partial_cmp(b))` -- it DROPPED the
+// authored key function and compared elements directly, which is a fabricated plausible output
+// (DESIGN 5): rustc reported it only where T carried no PartialOrd (E0599 at v2.std.node
+// sort_labeled), and where T happened to be ordered it would have sorted by the wrong key with no
+// diagnostic at all. The key function is the semantics; only the closure annotations are optional.
 
 fn emit_rust_map_method_call(receiver: Node, args: List<Node>, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
@@ -10703,7 +11483,7 @@ fn emit_typed_first_arg(args: List<Node>, registry: Map<String, ItemInfo>, scope
 
 fn freemonoid_match_arm_for(arms: List<Node>, variant: String) -> Node? {
   arms |> filter(arm => match arm_pattern(n: arm) {
-    VariantPattern { name: n, parent_enum: _, field_bindings: _ } => n == variant
+    VariantPattern { name: n, parent_enum: _, field_bindings: _ } => qualified_last_segment(name: n) == variant
     _ => false
   }) |> first
 }
@@ -10731,9 +11511,13 @@ fn arm_resolved_parent_enum(arm: Node, scrut_type: String, type_summaries: Map<S
   }
 }
 
+// The parent arrives QUALIFIED under namespace-only resolution (a module with no import block
+// binds `Empty` to std.algebra.FreeMonoid by path), so the exact comparison refused the native
+// lowering and the arms fell to `FreeMonoid::Empty` over a host Vec (E0599/E0223/E0282 at
+// v2.std.cross_tree.resolution); an imported spelling of the same match lowered natively.
 fn parent_enum_is_freemonoid(p: String?) -> Bool {
   match p {
-    Present { value: nm } => nm == "FreeMonoid"
+    Present { value: nm } => qualified_last_segment(name: nm) == "FreeMonoid"
     Absent => false
   }
 }
@@ -10850,6 +11634,17 @@ type RcGroupedArmPlan {
   pat_str: String
   ref_field: String
   inner_pat_str: String
+  plain_bindings: List<RcPlainFieldBinding>
+  plain_refutable: Bool
+}
+
+// A field of the outer pattern that is NOT the discriminated Rc field and is bound irrefutably to
+// an identifier. Two arms of one variant may bind different such fields (`target: magnitude` in one,
+// `target: _` in the next); the arm binding the superset carries the outer pattern for the whole
+// group, because a plain binding selects nothing -- it only names a component the body may read.
+type RcPlainFieldBinding {
+  field: String
+  ident: String
 }
 
 type RcGroupedArmEntry {
@@ -10863,7 +11658,61 @@ type RcGroupedArmAcc {
 }
 
 fn ungroupable_arm_plan(variant: String, pat_str: String) -> RcGroupedArmPlan {
-  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "" }
+  RcGroupedArmPlan { groupable: false, variant: variant, pat_str: pat_str, ref_field: "", inner_pat_str: "", plain_bindings: [], plain_refutable: false }
+}
+
+fn rc_arm_plain_bindings(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> List<RcPlainFieldBinding> {
+  match pattern {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      fbs |> flat_map(fb =>
+        let fb_name = field_binding_name_at(n: fb, source_indices: source_indices)
+        if fb_name == ref_field { [] }
+        else {
+          match field_binding_pattern(n: fb) {
+            Bind { declaration: d } => [RcPlainFieldBinding { field: fb_name, ident: d.name }]
+            _ => []
+          }
+        }
+      )
+    _ => []
+  }
+}
+
+fn rc_arm_has_refutable_plain_field(pattern: MatchPattern, ref_field: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match pattern {
+    VariantPattern { name: _, parent_enum: _, field_bindings: fbs } =>
+      fbs |> any(fb =>
+        field_binding_name_at(n: fb, source_indices: source_indices) != ref_field
+          && !match_pattern_is_irrefutable(pattern: field_binding_pattern(n: fb))
+      )
+    _ => false
+  }
+}
+
+// `member` may take `rep`'s outer pattern when the two agree byte-for-byte (the #8570 rule), or when
+// neither discriminates on a plain field and every plain binding of `member` is one `rep` also
+// makes under the same identifier -- then `rep`'s pattern binds a superset and selects the same
+// values, so the inner match is exhaustive exactly where the source arms were.
+fn rc_plan_bindings_within(member: RcGroupedArmPlan, rep: RcGroupedArmPlan) -> Bool {
+  member.pat_str == rep.pat_str
+    || (!member.plain_refutable && !rep.plain_refutable
+        && (member.plain_bindings |> all(b => rep.plain_bindings |> any(r => r.field == b.field && r.ident == b.ident))))
+}
+
+fn rc_group_representative(entries: List<RcGroupedArmEntry>, variant: String) -> RcGroupedArmPlan? {
+  let members = rc_group_members(entries: entries, variant: variant)
+  match members |> first {
+    Present { value: head } =>
+      let all_groupable = members |> all(e => e.plan.groupable && e.plan.ref_field == head.plan.ref_field)
+      if !all_groupable { none }
+      else {
+        match members |> filter(cand => members |> all(e => rc_plan_bindings_within(member: e.plan, rep: cand.plan))) |> first {
+          Present { value: rep } => Present { value: rep.plan }
+          Absent => none
+        }
+      }
+    Absent => none
+  }
 }
 
 fn variant_pattern_field_binding_named(pattern: MatchPattern, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
@@ -10909,7 +11758,15 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
               ungroupable_arm_plan(variant: variant, pat_str: pat_str)
             } else {
               let inner_pat_str = emit_pattern(pattern: fb_pat, path_prefix: list_push(list_push([], variant), field_name), shared_types: shared_types, scrut_type: "", source_indices: si, emit_info: emit_info)
-              RcGroupedArmPlan { groupable: true, variant: variant, pat_str: pat_str, ref_field: field_name, inner_pat_str: inner_pat_str }
+              RcGroupedArmPlan {
+                groupable: true,
+                variant: variant,
+                pat_str: pat_str,
+                ref_field: field_name,
+                inner_pat_str: inner_pat_str,
+                plain_bindings: rc_arm_plain_bindings(pattern: arm_pat, ref_field: field_name, source_indices: si),
+                plain_refutable: rc_arm_has_refutable_plain_field(pattern: arm_pat, ref_field: field_name, source_indices: si)
+              }
             }
           Absent => ungroupable_arm_plan(variant: variant, pat_str: pat_str)
         }
@@ -10927,20 +11784,18 @@ fn rc_grouped_arm_plan(arm: Node, scope: InferScope, shared_types: Set<String>, 
 // `unreachable pattern` errors, at v2.compiler.normalize, v2.compiler.resolve, v2.compiler.eval,
 // v2.compiler.translate, v2.std.compilers.target_model and v2.extdeps.languages.dag.
 //
-// So a variant is grouped only when EVERY arm carrying it is groupable AND agrees on both the
-// emitted outer pattern and the discriminated field. One dissenting arm -- a wildcard field, a
-// second Rc-bound field, an authored guard -- and the whole variant keeps the #8570 guard, which
-// is the honest arm: the guards are what make those arms selectable in the first place.
+// So a variant is grouped only when EVERY arm carrying it is groupable, agrees on the discriminated
+// field, and can take one representative's outer pattern (rc_plan_bindings_within: byte-equal, or a
+// plain-binding subset of it). One dissenting arm -- a refutable plain field, a second Rc-bound
+// field, an authored guard -- and the whole variant keeps the #8570 guard, which is the honest arm:
+// the guards are what make those arms selectable in the first place. The subset rule exists because
+// the guard form is invisible to rustc's exhaustiveness check: `Edge { label: Named {..}, target: t }`
+// beside `Edge { label: Positional, target: _ }` disagreed only on a plain binding and produced two
+// guarded arms, E0004 at v2.extdeps.languages.dag and v2.std.compilers.target_model.
 fn rc_group_members(entries: List<RcGroupedArmEntry>, variant: String) -> List<RcGroupedArmEntry> {
   entries |> filter(e => e.plan.variant == variant)
 }
 
-fn rc_group_is_whole_coverage(entries: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan) -> Bool {
-  let members = rc_group_members(entries: entries, variant: plan.variant)
-  (members |> all(e =>
-    e.plan.groupable && e.plan.ref_field == plan.ref_field && e.plan.pat_str == plan.pat_str
-  ))
-}
 
 fn emit_rc_grouped_match_arm(members: List<RcGroupedArmEntry>, plan: RcGroupedArmPlan, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo, match_result_type: Node) -> String {
   let inner_arms = members |> map(e =>
@@ -10959,20 +11814,22 @@ fn emit_typed_match_arm_strs(arms: List<Node>, registry: Map<String, ItemInfo>, 
       plan: rc_grouped_arm_plan(arm: arm, scope: scope, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type)
     })
     let folded = entries |> fold(init: RcGroupedArmAcc { seen: [], out: [] }, f: (acc, e) =>
-      if e.plan.groupable && rc_group_is_whole_coverage(entries: entries, plan: e.plan) {
-        if acc.seen |> any(s => s == e.plan.variant) {
-          acc
-        } else {
-          RcGroupedArmAcc {
-            seen: list_push(acc.seen, e.plan.variant),
-            out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: e.plan, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
+      let representative = if e.plan.groupable { rc_group_representative(entries: entries, variant: e.plan.variant) } else { none }
+      match representative {
+        Present { value: rep } =>
+          if acc.seen |> any(s => s == e.plan.variant) {
+            acc
+          } else {
+            RcGroupedArmAcc {
+              seen: list_push(acc.seen, e.plan.variant),
+              out: list_push(acc.out, emit_rc_grouped_match_arm(members: rc_group_members(entries: entries, variant: e.plan.variant), plan: rep, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, match_result_type: match_result_type))
+            }
           }
-        }
-      } else {
-        RcGroupedArmAcc {
-          seen: acc.seen,
-          out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
-        }
+        Absent =>
+          RcGroupedArmAcc {
+            seen: acc.seen,
+            out: list_push(acc.out, emit_typed_match_arm(arm: e.arm, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, scrut_type: scrut_type, match_result_type: match_result_type, string_from_mode: false))
+          }
       }
     )
     folded.out
@@ -11432,7 +12289,8 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               } else { pe }
             Absent => pe
           }
-          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let nested_rt = expand_type_for_field_access(n: resolved_type(n: field_value), env: scope.type_env, module_name: scope.module_name).resolved
+          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: nested_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let rc_name = match corrected_parent {
             Present { value: en } => en
             Absent => variant_name
@@ -11441,10 +12299,25 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
             rust_shared_wrap_ctor(inner_expr: raw)
           } else { raw }
         Absent =>
-          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+          emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
       }
     _ =>
-      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
+      emit_typed_expr(texpr: field_value, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info_with_expected_type(emit_info: emit_info, expected_type: record_field_expected_type(struct_node: struct_node, outer_type_name: outer_type_name, field_name: field_name, scope: scope, emit_info: emit_info)), fuel: 1024)
+  }
+}
+
+// The declared type of a record-literal field: the resolved product node first, then the named
+// struct or variant declaration when the literal's node does not carry the field. None when
+// neither names it -- a field value never inhabits the enclosing fn's return type, so the
+// expectation is cleared rather than inherited.
+fn record_field_expected_type(struct_node: Node, outer_type_name: String?, field_name: String, scope: InferScope, emit_info: EmitGraphInfo) -> Node? {
+  match rust_struct_field_type_node_from_container(container: struct_node, field_name: field_name, source_indices: scope.type_env.source_indices) {
+    Present { value: n } => Present { value: n }
+    Absent =>
+      match outer_type_name {
+        Present { value: sn } => rust_struct_field_type_node_variant_aware(scope: scope, emit_info: emit_info, struct_name: sn, field_name: field_name)
+        Absent => none
+      }
   }
 }
 
@@ -11681,7 +12554,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
       let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == CardOptional)
       let rust_tn = if optional_variant {
-        if is_some_like_variant_name(name: variant_surface_name) { "Some" } else { "None" }
+        rust_optional_variant_spelling(name: variant_surface_name)
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
@@ -11801,12 +12674,130 @@ fn rust_zero_value(type_name: String) -> String? {
   else { none }
 }
 
-fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else {
+    match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
+      OperatorRealizationRefused { cause: c } =>
+        emit_rust_compile_error_expr(message: operator_realization_refusal_message(cause: c))
+      StructuralComparison { declaration: _, binding: b, test: t } =>
+        emit_rust_structural_comparison(l_str: l_str, r_str: r_str, binding: b, test: t)
+      StructuralEquality { declaration: _ } =>
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      HostOperator =>
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+    }
+  }
+}
+
+// OPERATOR REALIZATION BY EXACT OPERAND STRUCTURE (std.operator_realization). The operand's
+// declaration is read by identity (v1.compiler.infer_env type_reference_declaration_ref) and its
+// native realization asked of the same authority the type renderer asks (v1.compiler.coercion):
+// a host numeric keeps the host token; a structural declaration renders equality structurally
+// (the emitted enum derives PartialEq over its own constructors) and an ordering as a call to its
+// declared comparison tested against std.algebra Ordering; arithmetic on a structural operand
+// refuses, typed and located, instead of emitting a token rustc refuses under E0369 later.
+fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealization {
+  rust_operand_realization_of_type(rt: resolved_type(n: operand), scope: scope, fuel: 8)
+}
+
+// AN ALIAS OR REFINEMENT DECLARATION REALIZES AS ITS TARGET. `type NonEmptyStr = String where
+// non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are alias items
+// (is_type_alias_item: a bare-leaf item whose resolved type is a type-alias return node) whose Rust
+// realization IS the right-hand side's -- the type renderer already renders them that way -- so the
+// operand decision hops to the right-hand side (resolved_type of the declaration) before judging,
+// exactly as the derive lane's alias hop does (v1.compiler.trait_derive_emit
+// v1_item_alias_hop_type_exprs). The seed's own semver and unicode modules compare NonEmptyStr and
+// add to Char; without the hop those were refused as structural. Fuel bounds an alias chain; a
+// chain longer than it is judged at its last declaration.
+// A `where`-refined declaration resolves to the parser's refinement wrapper -- a one-child Conj
+// carrying the predicate as its type_annotation (v1.compiler.parse try_where_clause), which is what
+// the operand's resolved node IS at these sites (measured under regen: Conj, one child, no inferred),
+// never an alias item. The type renderer already realizes such a node as its base
+// (render_rust_alias_rhs_type hops is_where_refinement_type to the first child), so the operand
+// decision hops the same way, resolving the base through the env as where_refinement_chain does.
+fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
+  let decl_file = type_reference_decl_file(n: rt)
+  let authored = authored_name_at(source_indices: scope.type_env.source_indices, node: rt)
+  let rt_is_type_var = match rt.inferred { Present { value: i } => is_type_variable(inferred: i)  Absent => false }
+  if is_kernel_minted_file(file: decl_file) {
+    HostRealizedOperand { reason: KernelMintedType }
+  } else if rt_is_type_var {
+    HostRealizedOperand { reason: GenericTypeParameter }
+  } else if is_container_type(name: qualified_last_segment(name: authored)) {
+    HostRealizedOperand { reason: HostContainer }
+  } else if authored == "" {
+    HostRealizedOperand { reason: UnnamedSynthesizedType }
+  } else {
+  match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    Absent => OperandIdentityUnavailable { facts: OperandShapeFacts {
+      authored_name: authored,
+      connective: connective_name(value: rt.connective),
+      child_count: rt.children |> count,
+      resolved: rt.inferred != none,
+      decl_file: decl_file
+    } }
+    Present { value: d } =>
+      if declaration_realizes_natively_on_rust(declaration: d, decl_file: type_reference_decl_file(n: rt)) {
+        HostNumericOperand
+      } else {
+        let decl = match rt.inferred {
+          Present { value: Resolved { node: r } } => r
+          _ => rt
+        }
+        if fuel > 0 && is_where_refinement_type(ty: rt) {
+          match rt.children |> first {
+            Present { value: base } =>
+              let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
+                Present { value: r } => r
+                Absent => base
+              }
+              rust_operand_realization_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
+            Absent => StructuralOperand { declaration: d }
+          }
+        } else if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
+          rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
+        } else {
+          StructuralOperand { declaration: d }
+        }
+      }
+  }
+  }
+}
+
+
+// The operand's declaration is the one inference stamped on the node (std.operator_realization
+// OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
+fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
+  let realization = match operand {
+    Present { value: od } =>
+      if declaration_realizes_natively_on_rust(declaration: od.declaration, decl_file: od.decl_file) {
+        HostNumericOperand
+      } else {
+        StructuralOperand { declaration: od.declaration }
+      }
+    Absent => rust_operand_realization(operand: left, scope: scope)
+  }
+  operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows, connective_rows: structural_connective_rows)
+}
+
+fn rust_declaration_path(module_path: String, decl_name: String) -> String {
+  concat("crate::", module_to_filename(name: module_path), "::", emit_ident(name: decl_name, target: Rust))
+}
+
+fn emit_rust_structural_comparison(l_str: String, r_str: String, binding: StructuralOrderingBinding, test: OrderingTest) -> String {
+  let call = concat(rust_declaration_path(module_path: binding.compare.module_path as String, decl_name: binding.compare.decl_name as String), "(", l_str, ", ", r_str, ")")
+  let ordering = concat("crate::", module_to_filename(name: binding.ordering.module_path as String), "::", binding.ordering.decl_name as String)
+  match test {
+    OrderingIs { variant: v } => concat("(", call, " == ", ordering, "::", v as String, ")")
+    OrderingIsNot { variant: v } => concat("(", call, " != ", ordering, "::", v as String, ")")
+  }
+}
+
+fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, l_str: String, r_str: String, scope: InferScope) -> String {
     let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra_field)
     if is_string_comparison(op: op, left: left, right: right, source_indices: scope.type_env.source_indices) {
       let l_optional = is_optional_typed_expr(e: left)
@@ -11827,7 +12818,6 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
         concat("(", l_str, " ", op_str, " ", r_str, ")")
       }
     }
-  }
 }
 
 fn is_optional_typed_expr(e: Node) -> Bool {

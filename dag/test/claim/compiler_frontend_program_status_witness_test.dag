@@ -75,10 +75,9 @@ import gunbc.compiler_frontend_program_status {
   Outstanding,
   NotDerivable,
   MissingInstrument,
-  WholeCorpusEmissionBoard,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
-  CarrierOriginRosterProducer,
+  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   all_missing_instruments,
   conditionally_awaited_instruments,
@@ -460,14 +459,6 @@ test fn the_report_renders() -> Bool {
 // alone, moves nothing. Counted honestly: the board independently answers two milestones and is
 // co-required for a third; the gate-enrolment fact independently answers NONE and is only
 // co-required. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
-test fn the_whole_corpus_board_is_awaited_by_exactly_these_three() -> Bool {
-  let waiting = milestones_awaiting(i: WholeCorpusEmissionBoard)
-  count(waiting) == 3
-    && any(waiting, l => l == milestone_label(m: SelfHostWholeCorpusPopulationDerived))
-    && any(waiting, l => l == milestone_label(m: SelfHostRatchetGateEnrolled))
-    && any(waiting, l => l == milestone_label(m: SelfHostCorpusEmitsCleanly))
-}
-
 // THE THREE DELETION MILESTONES ARE WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
 // the S4a arm: the milestone's members equal its stage's declared-subject fold, re-derived here
 // from the roster's own sources (subjects_deleted_at + subject_probe_list) rather than obtained
@@ -511,18 +502,18 @@ test fn no_subject_is_scheduled_for_the_waves_and_xl5_is_not_derivable_from_the_
     && standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL5Waves))
 }
 
-// F1 -- XL-0 IS THE CARRIER-ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
+// F1 -- XL-0 IS THE REPAIR-INPUT ORIGIN DENOMINATOR AND NOTHING ELSE ANSWERS IT.
 //
 // The arm this replaced read the subject roster's unobservable host probes, so making every host
-// probe observable would have flipped XL-0 to CLEAR while no carrier-origin roster had ever been
+// probe observable would have flipped XL-0 to CLEAR while no repair-input origin roster had been
 // produced. That is the falsifier stated as a rule: XL-0's standing may not be a function of probe
 // observability at all. Asserting NOT-DERIVABLE with this exact cause holds it, because a rewiring
 // back onto any observable population would have to abandon the cause to change the standing.
-test fn xl0_is_not_derivable_and_awaits_the_carrier_origin_producer() -> Bool {
+test fn xl0_is_not_derivable_and_awaits_the_repair_input_origin_producer() -> Bool {
   standing_is(want: ClassNotDerivable, s: stage_status(s: StageXL0Denominator))
-    && any(stages_awaiting(i: CarrierOriginRosterProducer),
+    && any(stages_awaiting(i: RepairInputOriginRosterProducer),
          l => l == namespace_cut_stage_label(s: StageXL0Denominator))
-    && count(milestones_awaiting(i: CarrierOriginRosterProducer)) == 0
+    && count(milestones_awaiting(i: RepairInputOriginRosterProducer)) == 0
 }
 
 // F2 -- XL-1 IS THE CAPABILITY, THE BASELINE MILESTONE IS THE BASE-SPECIFIC FACT, AND THEY ARE NOT
@@ -751,16 +742,6 @@ test fn the_obstacle_axis_renders_its_three_arms_distinguishably() -> Bool {
 //
 // NotBuilt still answers false, and that is not laxity: a row with no citation cannot satisfy a
 // claim about which authority it names, and the board row is not in that state.
-test fn the_board_obstacle_cites_the_authority_it_is_about() -> Bool {
-  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
-    NotBuilt => false
-    RefusedByAuthority { authority, why: _ } =>
-      authority.module_path == "gunbc.whole_corpus_compile_admission"
-    NotBuiltRefusalFalsified { authority, falsified_by: _ } =>
-      authority.module_path == "gunbc.whole_corpus_compile_admission"
-  }
-}
-
 // THE CENSUS FIXTURE AUTHORS ITS ROWS, STATES INCLUDED. The previous pair of arms named real
 // milestones and asserted their live standings -- controlling MEMBERSHIP while reading STATE from
 // the tree. That made them live snapshot pins wearing a fixture's clothes, and their closing move

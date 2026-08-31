@@ -113,9 +113,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   },
 }
 
-data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
+// SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct
+// openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection;
+// openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam
+// under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness
+// realization runs the parse-grain corpus witness.
 
-data openbmc_systemctl_is_active_authority_note: String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
+// The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status
+// when no named unit is active. This decoder admits only the exact inactive token as the typed
+// false observation; other non-active states remain typed refusals rather than being collapsed into
+// inactive.
 
 data openbmc_systemctl_is_active_authority: ExternalAuthority = systemctl_authority
 
@@ -1821,6 +1828,13 @@ fn openbmc_wait_seconds(
   openbmc_execute(session: session, operation: OpenBmcWaitSeconds { duration: duration })
 }
 
+// OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer
+// operations. ObjectMapper and sensor values are requested from busctl as JSON and projected
+// through typed local jq operations; no consumer parses busctl's presentation text. The jq programs
+// are confined to this extdeps realizer as fixed semantic projections; gunbc intent never
+// constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models
+// which file-publication operations establish a durability commit barrier.
+
 fn openbmc_upload_file(
   session: PasswordSshSession,
   local_path: NonEmptyStr,
@@ -1832,5 +1846,3 @@ fn openbmc_upload_file(
     destination_path: remote_path,
   )
 }
-
-data openbmc_fan_typed_operation_note: String = "OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer operations. ObjectMapper and sensor values are requested from busctl as JSON and projected through typed local jq operations; no consumer parses busctl's presentation text. The jq programs are confined to this extdeps realizer as fixed semantic projections; gunbc intent never constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models which file-publication operations establish a durability commit barrier."

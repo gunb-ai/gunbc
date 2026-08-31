@@ -95,7 +95,11 @@ import gunbc.roadmap_validation_oracle {
   ValidationReceiptUndecodable,
 }
 
-data oracle_fixture_note: String = "The fixtures model the exact situation this lane exists for: ONE attempt, whose diff touches a subject file and — in the discriminating case — the witness that judges it. The oracle entry and function are held constant across every case below, so the only thing that varies is the witness SOURCE. That is what makes the pair of cases discriminating rather than merely different: a mechanism that greened both would be reading the contract, not the oracle."
+// The fixtures model the exact situation this lane exists for: ONE attempt, whose diff touches a
+// subject file and — in the discriminating case — the witness that judges it. The oracle entry and
+// function are held constant across every case below, so the only thing that varies is the witness
+// SOURCE. That is what makes the pair of cases discriminating rather than merely different: a
+// mechanism that greened both would be reading the contract, not the oracle.
 
 data oracle_entry_path: FilePath = "src/v2/compiler/self_host/frontier_witness_test.dag" as FilePath
 
@@ -163,7 +167,13 @@ fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservat
   ]
 }
 
-data pinned_identity_authority_note: String = "The fixture derives the pinned identity through validation_oracle_set_observe — the SAME fold the dispatch side records and the verification side recomputes — rather than re-spelling the digest here. An earlier version of this fixture pinned a single source digest while the gate adjudicated the tagged set fold, so the clean case refused: the fixture had quietly become a second definition of the identity, which is the fork these witnesses exist to catch. The unobservable arm returns a deliberately foreign value so that, if it were ever reached, every assertion below fails loudly instead of comparing two fabrications."
+// The fixture derives the pinned identity through validation_oracle_set_observe — the SAME fold the
+// dispatch side records and the verification side recomputes — rather than re-spelling the digest
+// here. An earlier version of this fixture pinned a single source digest while the gate adjudicated
+// the tagged set fold, so the clean case refused: the fixture had quietly become a second
+// definition of the identity, which is the fork these witnesses exist to catch. The unobservable
+// arm returns a deliberately foreign value so that, if it were ever reached, every assertion below
+// fails loudly instead of comparing two fabrications.
 
 fn identity_of_source(source: String) -> ContentHash {
   match validation_oracle_set_observe(
@@ -203,7 +213,12 @@ fn gate_refusal_key(gate: ValidationOracleGate) -> String {
   }
 }
 
-data subject_only_diff_note: String = "The green half of the discriminating pair. The attempt's diff edited the SUBJECT the witness tests, not the witness, so the oracle source at verification time is byte-identical to the source pinned at dispatch and the gate admits. Nothing about the subject enters the identity — that is deliberate and is the whole reason a closure-wide pin would be wrong: the subject is IN the witness's import closure, so pinning the closure would refuse exactly this case, which is the case the node exists to produce."
+// The green half of the discriminating pair. The attempt's diff edited the SUBJECT the witness
+// tests, not the witness, so the oracle source at verification time is byte-identical to the source
+// pinned at dispatch and the gate admits. Nothing about the subject enters the identity — that is
+// deliberate and is the whole reason a closure-wide pin would be wrong: the subject is IN the
+// witness's import closure, so pinning the closure would refuse exactly this case, which is the
+// case the node exists to produce.
 
 test fn diff_touching_only_the_subject_verifies_clean() -> Bool {
   match gate_for(
@@ -215,7 +230,14 @@ test fn diff_touching_only_the_subject_verifies_clean() -> Bool {
   }
 }
 
-data self_edited_witness_note: String = "The RED control, and the reason the whole lane exists. The attempt edited its own witness — here by collapsing the assertion body to `true`, the cheapest way for an agent to make its own verification pass — and BOTH receipts still pass when run: the weakened witness returns true, and the declared command exits 0. A verification that only ran the command would report green. The gate refuses because the oracle it would have run against is not the oracle that was pinned before the agent started. Flip the expected identity to be recomputed at verification time instead of read from the dispatch pin and this witness goes green while the one above stays green, which is exactly the version that has proven nothing."
+// The RED control, and the reason the whole lane exists. The attempt edited its own witness — here
+// by collapsing the assertion body to `true`, the cheapest way for an agent to make its own
+// verification pass — and BOTH receipts still pass when run: the weakened witness returns true, and
+// the declared command exits 0. A verification that only ran the command would report green. The
+// gate refuses because the oracle it would have run against is not the oracle that was pinned
+// before the agent started. Flip the expected identity to be recomputed at verification time
+// instead of read from the dispatch pin and this witness goes green while the one above stays
+// green, which is exactly the version that has proven nothing.
 
 test fn diff_editing_its_own_witness_refuses_with_oracle_moved() -> Bool {
   match gate_for(
@@ -236,7 +258,11 @@ test fn diff_editing_its_own_witness_refuses_with_oracle_moved() -> Bool {
   }
 }
 
-data pin_must_be_sensitive_note: String = "Non-vacuity for the pair above. If validation_oracle_source_identity collapsed every input to one value — the failure a digest silently degrading to a constant would produce — the clean case would still admit and the self-edit case would ALSO admit, so the pair would agree while proving nothing. This asserts the identity actually separates the two sources, so the discrimination above rests on a measured difference rather than on the arms happening to be written differently."
+// Non-vacuity for the pair above. If validation_oracle_source_identity collapsed every input to one
+// value — the failure a digest silently degrading to a constant would produce — the clean case
+// would still admit and the self-edit case would ALSO admit, so the pair would agree while proving
+// nothing. This asserts the identity actually separates the two sources, so the discrimination
+// above rests on a measured difference rather than on the arms happening to be written differently.
 
 test fn oracle_identity_separates_the_two_witness_sources() -> Bool {
   let pinned = validation_oracle_source_identity(
@@ -248,7 +274,12 @@ test fn oracle_identity_separates_the_two_witness_sources() -> Bool {
   pinned != weakened
 }
 
-data deleted_witness_note: String = "The second oracle control from the brief, and it is about the DIFFERENCE between two answers rather than about refusing. A deleted witness must answer that the oracle is missing — not that the witness failed. The remedies are opposite: a red witness means fix the subject, a missing oracle means find out who removed the thing that was judging it. Collapsing the first into the second is the state-space conflation that would send a human to debug a subject that was never tested."
+// The second oracle control from the brief, and it is about the DIFFERENCE between two answers
+// rather than about refusing. A deleted witness must answer that the oracle is missing — not that
+// the witness failed. The remedies are opposite: a red witness means fix the subject, a missing
+// oracle means find out who removed the thing that was judging it. Collapsing the first into the
+// second is the state-space conflation that would send a human to debug a subject that was never
+// tested.
 
 test fn deleted_witness_answers_oracle_missing_not_red() -> Bool {
   let gate = gate_for(source_readable: false, source: "")
@@ -267,7 +298,11 @@ test fn deleted_witness_answers_oracle_missing_not_red() -> Bool {
     && gate_refusal_key(gate: gate) != "failed"
 }
 
-data present_file_missing_declaration_note: String = "The other producer of the missing arm, kept because it is the likelier real case: the witness FILE survives and the declaration the contract names does not, which a whole-file read reports as a successful read of a document that no longer contains the oracle. A mechanism that only checked readability would run the claim runner against a function that is not there and adjudicate whatever the runner said about that."
+// The other producer of the missing arm, kept because it is the likelier real case: the witness
+// FILE survives and the declaration the contract names does not, which a whole-file read reports as
+// a successful read of a document that no longer contains the oracle. A mechanism that only checked
+// readability would run the claim runner against a function that is not there and adjudicate
+// whatever the runner said about that.
 
 test fn readable_source_without_the_declaration_is_also_missing() -> Bool {
   gate_refusal_key(gate: gate_for(
@@ -310,7 +345,15 @@ test fn declaration_scan_ignores_the_name_inside_a_note() -> Bool {
   ) == 1
 }
 
-data unpinned_dependency_note: String = "review 45278. The entry-file pin closes the direct attack but leaves a witness's IMPORTED test modules — fixtures and shared assertions, which are oracle rather than subject — outside the digest. The fixture below is the reviewer's own measured specimen reproduced in shape: dag/test/claim/scm/scm_compatibility_shape_witness_test.dag imports four test.claim modules, so weakening one of them would green Verify without moving the pinned entry's digest. The residue is therefore made unreachable rather than deferred: such an oracle refuses. The paired green is what keeps this from being a blanket rejection — a witness importing only subject and std modules still verifies, so the refusal discriminates on the oracle-side dependency rather than on having imports at all."
+// review 45278. The entry-file pin closes the direct attack but leaves a witness's IMPORTED test
+// modules — fixtures and shared assertions, which are oracle rather than subject — outside the
+// digest. The fixture below is the reviewer's own measured specimen reproduced in shape:
+// dag/test/claim/scm/scm_compatibility_shape_witness_test.dag imports four test.claim modules, so
+// weakening one of them would green Verify without moving the pinned entry's digest. The residue is
+// therefore made unreachable rather than deferred: such an oracle refuses. The paired green is what
+// keeps this from being a blanket rejection — a witness importing only subject and std modules
+// still verifies, so the refusal discriminates on the oracle-side dependency rather than on having
+// imports at all.
 
 fn witness_source_importing_test_helpers() -> String {
   join([
@@ -454,7 +497,9 @@ test fn attempt_without_a_recorded_pin_refuses() -> Bool {
   }
 }
 
-data refusal_is_not_a_red_note: String = "The refusal/red separation carried through to the persisted verdict, because the receipt is what a human and the Verify lamp both read. A refused verdict and a failed verdict must not serialize to the same word, or the distinction the arms establish is lost at the seam where it matters."
+// The refusal/red separation carried through to the persisted verdict, because the receipt is what
+// a human and the Verify lamp both read. A refused verdict and a failed verdict must not serialize
+// to the same word, or the distinction the arms establish is lost at the seam where it matters.
 
 test fn refused_and_failed_verdicts_are_distinct_on_the_wire() -> Bool {
   let refused = ValidationRefused {
@@ -476,7 +521,12 @@ test fn refused_and_failed_verdicts_are_distinct_on_the_wire() -> Bool {
     && refused_key != failed_key
 }
 
-data receipt_positional_identity_note: String = "The same defect the environment-admission receipt already closed, asserted here before this receipt can repeat it. The verdict is read back from disk by a different process, so nothing guarantees the bytes came from this emitter; a reader that SCANNED the document for `passed` would be satisfied by a refusal whose detail quotes the word — and a refusal detail quotes plenty. The emitter always writes schema then verdict first, so the passed document's prefix is derivable from the emitter itself and no nested value can occupy it."
+// The same defect the environment-admission receipt already closed, asserted here before this
+// receipt can repeat it. The verdict is read back from disk by a different process, so nothing
+// guarantees the bytes came from this emitter; a reader that SCANNED the document for `passed`
+// would be satisfied by a refusal whose detail quotes the word — and a refusal detail quotes
+// plenty. The emitter always writes schema then verdict first, so the passed document's prefix is
+// derivable from the emitter itself and no nested value can occupy it.
 
 test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
   let forgery = validation_receipt_json(
@@ -510,7 +560,11 @@ test fn refusal_quoting_passed_does_not_decode_as_passed() -> Bool {
     }
 }
 
-data truncated_receipt_note: String = "Self-review catch, mirroring the control the admission receipt already carries: a prefix match alone was never the claim. A receipt truncated mid-write — the ordinary outcome of a belt killed while writing it — carries the passed prefix verbatim and is still not a passed receipt, because the document does not parse. Without the parse guard this fixture decodes as passed, which is a fabricated green produced by an interrupted write rather than by any validation."
+// Self-review catch, mirroring the control the admission receipt already carries: a prefix match
+// alone was never the claim. A receipt truncated mid-write — the ordinary outcome of a belt killed
+// while writing it — carries the passed prefix verbatim and is still not a passed receipt, because
+// the document does not parse. Without the parse guard this fixture decodes as passed, which is a
+// fabricated green produced by an interrupted write rather than by any validation.
 
 test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
   let genuine = receipt_for(verdict: ValidationPassed {
@@ -527,7 +581,15 @@ test fn truncated_receipt_with_passed_prefix_is_not_passed() -> Bool {
     && exact_head_receipt_is_undecodable(receipt: truncated)
 }
 
-data structural_decode_note: String = "These pin what the byte-prefix reader structurally COULD NOT decide, which is why they are the receipt for replacing it rather than decoration on top of it. A prefix reader answers one question - does the document open with these exact bytes - so it necessarily conflates `the members are in a different order` with `this is not our receipt`, and it cannot see a second verdict member at all because a duplicate sits past the prefix it compares. Reading the document as a value makes member ORDER irrelevant and member COUNT decidable, and the pair below is stated as a control: the same document decodes when its identity members occur once and refuses when one of them occurs twice, so duplication is isolated as the cause rather than inferred from a refusal that could have come from anywhere."
+// These pin what the byte-prefix reader structurally COULD NOT decide, which is why they are the
+// receipt for replacing it rather than decoration on top of it. A prefix reader answers one
+// question - does the document open with these exact bytes - so it necessarily conflates `the
+// members are in a different order` with `this is not our receipt`, and it cannot see a second
+// verdict member at all because a duplicate sits past the prefix it compares. Reading the document
+// as a value makes member ORDER irrelevant and member COUNT decidable, and the pair below is stated
+// as a control: the same document decodes when its identity members occur once and refuses when one
+// of them occurs twice, so duplication is isolated as the cause rather than inferred from a refusal
+// that could have come from anywhere.
 
 fn decodes_as(receipt: String, expected: String) -> Bool {
   match validation_receipt_decode(receipt: receipt) {
@@ -611,7 +673,11 @@ test fn members_after_the_identity_pair_do_not_disturb_the_decode() -> Bool {
   )
 }
 
-data forged_escape_note: String = "review 45642, stated at the boundary that would have been fooled rather than only at the parser. `p\\assed` is not JSON, but the unescaper's unknown-escape arm dropped the backslash and produced exactly the string this reader accepts as a verdict - so a malformed receipt decoded as a pass. The positive control beside it is what makes the claim about the FORGERY rather than about the decoder refusing things generally."
+// review 45642, stated at the boundary that would have been fooled rather than only at the parser.
+// `p\assed` is not JSON, but the unescaper's unknown-escape arm dropped the backslash and produced
+// exactly the string this reader accepts as a verdict - so a malformed receipt decoded as a pass.
+// The positive control beside it is what makes the claim about the FORGERY rather than about the
+// decoder refusing things generally.
 
 test fn a_verdict_forged_with_an_unknown_escape_is_undecodable() -> Bool {
   is_undecodable(
@@ -623,7 +689,16 @@ test fn a_verdict_forged_with_an_unknown_escape_is_undecodable() -> Bool {
     )
 }
 
-data verdict_key_agreement_note: String = "validation_verdict_key is the emitter's authority for a verdict's wire key, and validation_receipt_verdict_keys is the reader's list of the keys it accepts. Those are two surfaces over one fact and they can drift: adding a fifth ValidationVerdict variant updates the emitter by exhaustiveness, because the match must gain an arm, but the reader's list is an ordinary data row that nothing forces anyone to extend - so the emitter would write a receipt its own reader refuses, and the failure would surface as an undecodable verdict rather than as a missing case. This pins them to each other by round-tripping every verdict the emitter can produce, which is the same shape as witness_json_text_parse_agrees_with_lexeme_surface_on_exponents: the forked surfaces are the thing under test, not either surface alone."
+// validation_verdict_key is the emitter's authority for a verdict's wire key, and
+// validation_receipt_verdict_keys is the reader's list of the keys it accepts. Those are two
+// surfaces over one fact and they can drift: adding a fifth ValidationVerdict variant updates the
+// emitter by exhaustiveness, because the match must gain an arm, but the reader's list is an
+// ordinary data row that nothing forces anyone to extend - so the emitter would write a receipt its
+// own reader refuses, and the failure would surface as an undecodable verdict rather than as a
+// missing case. This pins them to each other by round-tripping every verdict the emitter can
+// produce, which is the same shape as
+// witness_json_text_parse_agrees_with_lexeme_surface_on_exponents: the forked surfaces are the
+// thing under test, not either surface alone.
 
 fn verdict_round_trips(verdict: ValidationVerdict) -> Bool {
   decodes_as(
@@ -672,7 +747,10 @@ test fn moved_oracle_detail_locates_both_identities() -> Bool {
     && string_contains(s: detail, pattern: "proves nothing")
 }
 
-data cross_family_pin_refusal_note: String = "Cross-family incomparable is NOT oracle drift. Collapsing it into ValidationOracleMoved would send a human to re-run CI against a moved witness when the real fault is that the pin channel stored one hash family and the observation carried another — a modeling error upstream, not staleness."
+// Cross-family incomparable is NOT oracle drift. Collapsing it into ValidationOracleMoved would
+// send a human to re-run CI against a moved witness when the real fault is that the pin channel
+// stored one hash family and the observation carried another — a modeling error upstream, not
+// staleness.
 
 test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
   let expected = content_hash_of_value(value: "pinned-structural-oracle")
@@ -701,7 +779,11 @@ test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
   }
 }
 
-data verify_lamp_note: String = "The lamp is the seam where the distinction has to survive, because it is what a human actually looks at. These assert the three verdicts land on three DIFFERENT segment states and that an absent receipt still reads pending — the last one being the property the old hardcoded lamp had for free and that a receipt-reading lamp could easily lose, since the tempting shortcut is to paint Verify from the agent's own completion."
+// The lamp is the seam where the distinction has to survive, because it is what a human actually
+// looks at. These assert the three verdicts land on three DIFFERENT segment states and that an
+// absent receipt still reads pending — the last one being the property the old hardcoded lamp had
+// for free and that a receipt-reading lamp could easily lose, since the tempting shortcut is to
+// paint Verify from the agent's own completion.
 
 data verify_fixture_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
 
@@ -870,7 +952,14 @@ test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
   )) == "refused"
 }
 
-data not_run_receipt_note: String = "review 45271. The receipt-presence seam used to ask whether the receipt TEXT was empty, which answered the same way for three different worlds — no file, an unreadable file, an empty one — and then ran the validation and overwrote whatever was there. Absent and unreadable have opposite correct actions, so dispatch now writes a not-run receipt and absence stops being a state the seam has to interpret. These assert the two halves that makes true: a not-run receipt is DISTINGUISHABLE from every recorded verdict (so the belt can tell 'never ran' from 'already ran' without consulting the filesystem's error string), and it reads as pending at the lamp rather than as a verdict."
+// review 45271. The receipt-presence seam used to ask whether the receipt TEXT was empty, which
+// answered the same way for three different worlds — no file, an unreadable file, an empty one —
+// and then ran the validation and overwrote whatever was there. Absent and unreadable have opposite
+// correct actions, so dispatch now writes a not-run receipt and absence stops being a state the
+// seam has to interpret. These assert the two halves that makes true: a not-run receipt is
+// DISTINGUISHABLE from every recorded verdict (so the belt can tell 'never ran' from 'already ran'
+// without consulting the filesystem's error string), and it reads as pending at the lamp rather
+// than as a verdict.
 
 test fn not_run_receipt_is_distinct_from_every_recorded_verdict() -> Bool {
   let not_run = receipt_for(verdict: ValidationNotRun)

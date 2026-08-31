@@ -33,7 +33,7 @@ pub fn frontend_phase_receipt(frontend: Rc<FrontendResult>) -> FrontendPhaseRece
     FrontendPhaseReceipt {
         module_count: match frontend.graph.clone() {
             Some(graph) => (graph.modules.clone().len() as i64),
-            None => 0,
+            std::option::Option::None => 0,
         },
         occurrence_count: (frontend
             .occurrence_transport
@@ -55,7 +55,7 @@ pub fn frontend_phase_receipt(frontend: Rc<FrontendResult>) -> FrontendPhaseRece
             .references
             .clone()
             .len() as i64),
-        graph_present: (frontend.graph.clone() != None),
+        graph_present: (frontend.graph.clone() != std::option::Option::None),
     }
 }
 

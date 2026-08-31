@@ -35,9 +35,27 @@ import v2.std.optional { Absent }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data instrument_sandbox_witness_note: String = "RESHAPED AROUND THE PRODUCTION JOINS, because the first set proved less than it claimed (review finding, 2026-08-05). Three of its claims were substring theatre: the role witness searched the page for the words focal / supporting / ground / critical, which any page mentioning salience contains whether or not a single role was derived; the theme-block helper checked that one variable existed somewhere and that three selectors existed somewhere, never that the variable appeared INSIDE each block; and the press witness equated one translateY rule with a realized CRT glitch. Worst of all, nothing tested the property that turned out to be broken — that a REFUSED audition cannot paint."
+// RESHAPED AROUND THE PRODUCTION JOINS, because the first set proved less than it claimed (review
+// finding, 2026-08-05). Three of its claims were substring theatre: the role witness searched the
+// page for the words focal / supporting / ground / critical, which any page mentioning salience
+// contains whether or not a single role was derived; the theme-block helper checked that one
+// variable existed somewhere and that three selectors existed somewhere, never that the variable
+// appeared INSIDE each block; and the press witness equated one translateY rule with a realized CRT
+// glitch. Worst of all, nothing tested the property that turned out to be broken — that a REFUSED
+// audition cannot paint.
 
-data mechanism_half_note: String = "THE MECHANISM HALF, and the split is measured rather than aesthetic. Every claim below is a property of the register's own gates — which role the projection derives, whether emission is granted, whether a refused role can paint, whether the emission variable lands inside each theme block — and each measured 0-2ms by execution (claim_batch attribution, 2026-08-05). None of them renders the served page or reads the live program view, which is why they are cheap and why they belong per-PR: the 2026-08-04 admission ruling holds that the mechanism half of a live-population subject is NEVER the part that gets deferred. The page-rendering and live-view claims measured 5074ms thread-CPU together, exceeded the fast-lane budget, and moved to dag/test/claim/long/instrument_sandbox_live_witness_test.dag with a declared ceiling and a named executing consumer — not deleted, and not left in a directory that quietly removes them from discovery. Read that file's header for the cost attribution and the dissolve-on that brings these back together."
+// THE MECHANISM HALF, and the split is measured rather than aesthetic. Every claim below is a
+// property of the register's own gates — which role the projection derives, whether emission is
+// granted, whether a refused role can paint, whether the emission variable lands inside each theme
+// block — and each measured 0-2ms by execution (claim_batch attribution, 2026-08-05). None of them
+// renders the served page or reads the live program view, which is why they are cheap and why they
+// belong per-PR: the 2026-08-04 admission ruling holds that the mechanism half of a live-population
+// subject is NEVER the part that gets deferred. The page-rendering and live-view claims measured
+// 5074ms thread-CPU together, exceeded the fast-lane budget, and moved to
+// dag/test/claim/long/instrument_sandbox_live_witness_test.dag with a declared ceiling and a named
+// executing consumer — not deleted, and not left in a directory that quietly removes them from
+// discovery. Read that file's header for the cost attribution and the dissolve-on that brings these
+// back together.
 
 fn emission_var_ref(i: AuditionIntensity) -> String {
   concat("--", concat(audition_emission_var(i: i), ":"))
@@ -82,7 +100,10 @@ fn witness_emission_is_present_exactly_when_the_admission_grants_it() -> Bool {
     && emission_is_none_for(role: role, i: AuditionRestrained)
 }
 
-data refused_cannot_paint_note: String = "THE CONTROL THE FIRST WITNESS SET DID NOT HAVE. Render the same study at a role the register refuses emission for; no emission may appear in the emitted CSS at all. This is the property that was actually broken — the glow painted while the verdict printed refused underneath it — so it is the one claim here whose failure would have caught the original defect."
+// THE CONTROL THE FIRST WITNESS SET DID NOT HAVE. Render the same study at a role the register
+// refuses emission for; no emission may appear in the emitted CSS at all. This is the property that
+// was actually broken — the glow painted while the verdict printed refused underneath it — so it is
+// the one claim here whose failure would have caught the original defect.
 
 fn witness_red_a_refused_audition_paints_nothing() -> Bool {
   !admission_grants(role: SalienceSupporting, i: AuditionHero)
@@ -108,7 +129,10 @@ fn witness_the_emission_var_occurs_inside_every_theme_block() -> Bool {
     && string_contains(s: media_block, pattern: ":root:not([data-theme])")
 }
 
-data press_css_note: String = "The CSS half of the press specimen — the bounded translation on the focusable control and the displacement budget behind it. The markup half (that the rendered page actually carries a button) needs the page, so it lives with the live claims; keeping the two halves apart is what lets the cheap half stay per-PR instead of riding the expensive one's budget."
+// The CSS half of the press specimen — the bounded translation on the focusable control and the
+// displacement budget behind it. The markup half (that the rendered page actually carries a button)
+// needs the page, so it lives with the live claims; keeping the two halves apart is what lets the
+// cheap half stay per-PR instead of riding the expensive one's budget.
 
 fn witness_the_press_response_is_a_bounded_translation() -> Bool {
   let css = instrument_css()
@@ -117,7 +141,14 @@ fn witness_the_press_response_is_a_bounded_translation() -> Bool {
     && instrument_displacement_px(p: preference_default) == 6
 }
 
-data program_grain_fixture_note: String = "A PLANTED VIEW, because this claim's oracle must be independent of the live roadmap. The fixture's PROGRAM remaining and its one FINISH LINE's remaining are deliberately different numbers (open_fronts 7 versus 1, startable_now 5 versus 0), so a reader that collapses program grain onto outcome grain is caught by VALUE and not merely by variant — asserting the variant alone would still pass if some future arm returned a program-shaped reading built from the line's own shape. Cheap by construction: the record is built directly rather than derived through program_view, so this mechanism claim costs microseconds and stays per-PR while the live half runs on the falsifier lane."
+// A PLANTED VIEW, because this claim's oracle must be independent of the live roadmap. The
+// fixture's PROGRAM remaining and its one FINISH LINE's remaining are deliberately different
+// numbers (open_fronts 7 versus 1, startable_now 5 versus 0), so a reader that collapses program
+// grain onto outcome grain is caught by VALUE and not merely by variant — asserting the variant
+// alone would still pass if some future arm returned a program-shaped reading built from the line's
+// own shape. Cheap by construction: the record is built directly rather than derived through
+// program_view, so this mechanism claim costs microseconds and stays per-PR while the live half
+// runs on the falsifier lane.
 
 fn fixture_line_remaining() -> RemainingShape {
   RemainingShape {
@@ -158,7 +189,12 @@ fn focused_camera(m: ProgramMode, d: ProgramDepth) -> ProgramCamera {
   ProgramCamera { depth: d, mode: m, focus: FinishLineFocused { line_key: "compiler-fixed-point" } }
 }
 
-data program_grain_witness_note: String = "The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce because it only ever saw the line's 1."
+// The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read
+// the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into
+// read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page
+// rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it
+// demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce
+// because it only ever saw the line's 1.
 
 fn witness_the_program_detent_reads_program_grain_even_when_focused() -> Bool {
   let status = read_camera(camera: focused_camera(m: ModeStatus, d: DepthProgram), view: fixture_view())
@@ -185,7 +221,9 @@ fn witness_the_program_detent_reads_program_grain_even_when_focused() -> Bool {
     }
 }
 
-data outcome_grain_still_line_scoped_note: String = "The other half of the same law, so the fix cannot be satisfied by making EVERY depth answer program-grain: at outcome depth the reading must still be the LINE's shape (open_fronts 1), not the program's 7."
+// The other half of the same law, so the fix cannot be satisfied by making EVERY depth answer
+// program-grain: at outcome depth the reading must still be the LINE's shape (open_fronts 1), not
+// the program's 7.
 
 fn witness_red_the_outcome_detent_still_reads_the_line() -> Bool {
   match read_camera(camera: focused_camera(m: ModeRemaining, d: DepthOutcome), view: fixture_view()) {

@@ -96,7 +96,7 @@ pub fn rust_realization(
 pub fn rust_representation_realizations() -> Rc<Vec<Rc<RustRepresentationRealization>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<RustRepresentationRealization>>> = {
-            Rc::new(vec![rust_realization(RustRepresentation::RustStdString, "std::string::String".to_string(), "std::string::String".to_string(), Some("std::string::String::new()".to_string()), false, Some(".to_string()".to_string())), rust_realization(RustRepresentation::RustI64, "i64".to_string(), "i64".to_string(), Some("0".to_string()), true, None), rust_realization(RustRepresentation::RustF64, "f64".to_string(), "f64".to_string(), Some("0.0".to_string()), true, None), rust_realization(RustRepresentation::RustBool, "bool".to_string(), "bool".to_string(), Some("false".to_string()), true, None), rust_realization(RustRepresentation::RustUnit, "()".to_string(), "()".to_string(), Some("()".to_string()), true, None), rust_realization(RustRepresentation::RustVecU8, "std::vec::Vec<u8>".to_string(), "std::vec::Vec<u8>".to_string(), Some("std::vec::Vec::new()".to_string()), false, None), rust_realization(RustRepresentation::RustSerdeJsonValue, "serde_json::Value".to_string(), "serde_json::Value".to_string(), Some("serde_json::Value::Null".to_string()), false, None)])
+            Rc::new(vec![rust_realization(RustRepresentation::RustStdString, "std::string::String".to_string(), "std::string::String".to_string(), Some("std::string::String::new()".to_string()), false, Some(".to_string()".to_string())), rust_realization(RustRepresentation::RustI64, "i64".to_string(), "i64".to_string(), Some("0".to_string()), true, std::option::Option::None), rust_realization(RustRepresentation::RustF64, "f64".to_string(), "f64".to_string(), Some("0.0".to_string()), true, std::option::Option::None), rust_realization(RustRepresentation::RustBool, "bool".to_string(), "bool".to_string(), Some("false".to_string()), true, std::option::Option::None), rust_realization(RustRepresentation::RustUnit, "()".to_string(), "()".to_string(), Some("()".to_string()), true, std::option::Option::None), rust_realization(RustRepresentation::RustVecU8, "std::vec::Vec<u8>".to_string(), "std::vec::Vec<u8>".to_string(), Some("std::vec::Vec::new()".to_string()), false, std::option::Option::None), rust_realization(RustRepresentation::RustSerdeJsonValue, "serde_json::Value".to_string(), "serde_json::Value".to_string(), Some("serde_json::Value::Null".to_string()), false, std::option::Option::None)])
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<RustRepresentationRealization>>>| c.clone())
@@ -133,7 +133,7 @@ pub fn rust_exact_type_checkpoint(
             is_copy: Some(r.is_copy.clone()),
             literal_suffix: r.literal_suffix.clone(),
         })),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 

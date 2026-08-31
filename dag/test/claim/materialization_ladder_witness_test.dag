@@ -1,9 +1,13 @@
 module test.claim.materialization_ladder_witness
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-data ladder_witness_note: String = "Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for. Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame (unbounded sibling runs over time)."
+// Each test is one cell of the operator's state x decision table (2026-07-09): the decision is a
+// function of WHEN the redundancy is knowable and WHETHER what was knowable was prepared for.
+// Errors fire only on knowable-but-unprepared; genuine emergence and declared triviality are typed
+// acceptances, never silence. Fixtures mirror the live worked example: a workflow (isolated
+// children) over jobs (shared-state steps), a retry frame (declared replay), a fleet frame
+// (unbounded sibling runs over time).
 
 fn wf() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "workflow", kind: IsolatedChildrenFrame } }
 fn job(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: SharedStateFrame } }
@@ -266,7 +270,12 @@ test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
   deploy_ok && measure_ok
 }
 
-data value_tier_witness_note: String = "Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof) is asserted at the conservative pre-unwrap semantics."
+// Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with
+// v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed
+// only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access
+// readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The
+// fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof)
+// is asserted at the conservative pre-unwrap semantics.
 
 fn rust_value_providers() -> List<CacheProvider> {
   [rust_reference_provider(), rust_clone_provider()]
@@ -362,6 +371,43 @@ test fn below_cost_floor_duplication_is_typed_acceptance() -> Bool {
     cost_floor_exempt: no_cost_floor_exemptions
   )
   accepted && red_without_roster
+}
+
+// Decision-order discriminators (2026-08-30): the cost-floor roster is consulted only after nature
+// and topology establish unavoidable recurrence. Each cell puts the identity ON the roster and
+// asserts the roster does not re-classify the demand.
+
+test fn cost_floor_row_does_not_excuse_shared_state_duplication() -> Bool {
+  let vs = materialization_ladder(
+    demands: two_steps_same_job(),
+    providers: [root_content_provider(id: "sccache")],
+    cost_floor_exempt: ["cargo-release-build"]
+  )
+  count_matching(vs: vs, matched: v => verdict_is_authored_duplication(v: v, identity: "cargo-release-build", site_count: 2)) == 1
+}
+
+test fn cost_floor_row_does_not_excuse_unmodeled_world_read() -> Bool {
+  let vs = materialization_ladder(
+    demands: duplicated_world_read(declared: false),
+    providers: [root_content_provider(id: "dns-cache")],
+    cost_floor_exempt: ["dns-lookup"]
+  )
+  count_matching(vs: vs, matched: v => verdict_is_refused_unmodeled_world_read(v: v, identity: "dns-lookup")) == 1
+}
+
+test fn cost_floor_row_on_single_pure_demand_is_still_single_recompute() -> Bool {
+  let one = [demand(identity: "one-off-transform", site: [wf(), job(name: "ci"), step(name: "emit")], nature: PureComputation)]
+  let vs = materialization_ladder(demands: one, providers: no_cache_providers, cost_floor_exempt: ["one-off-transform"])
+  count_matching(vs: vs, matched: v => verdict_is_accepted_single_recompute(v: v, identity: "one-off-transform")) == 1
+}
+
+test fn cost_floor_row_prices_unavoidable_emergent_recurrence() -> Bool {
+  let vs = materialization_ladder(
+    demands: single_demand_under_fleet(),
+    providers: no_cache_providers,
+    cost_floor_exempt: ["cargo-release-build"]
+  )
+  count_matching(vs: vs, matched: v => verdict_is_accepted_below_cost_floor(v: v, identity: "cargo-release-build")) == 1
 }
 
 test fn conflicting_natures_on_one_identity_are_refused() -> Bool {

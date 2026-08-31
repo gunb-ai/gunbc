@@ -13,7 +13,11 @@ import gunbc.runner_connectivity_recovery {
   recovery_runner_slot_unit_name,
 }
 
-data runner_repair_effect_authority_note: String = "REPAIR CHOREOGRAPHY over the shared HostEffect arms still-ram-738 lands on gunbc.host_effect — NOT a second effect coproduct. RunnerRepairEffectStep names the operator-specified arms (ObserveRunnerLocalState, ObserveGitHubRunnerRegistration, ReplaceRunnerIncarnation) in apply order. This module sequences them; host_effect_realize owns realization cells. ctrl is dead — no script delegation."
+// REPAIR CHOREOGRAPHY over the shared HostEffect arms still-ram-738 lands on gunbc.host_effect —
+// NOT a second effect coproduct. RunnerRepairEffectStep names the operator-specified arms
+// (ObserveRunnerLocalState, ObserveGitHubRunnerRegistration, ReplaceRunnerIncarnation) in apply
+// order. This module sequences them; host_effect_realize owns realization cells. ctrl is dead — no
+// script delegation.
 
 data observe_runner_local_state_host_effect_scaffold: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -51,7 +55,10 @@ data runner_jit_installation_token_cache_scaffold: Disposition = Scaffold {
   }
 }
 
-data runner_jit_installation_token_cache_note: String = "LIMIT FANOUT (operator ruling 2026-08-06): cache GitHub JIT installation tokens until near expiry rather than minting a fresh token on every two-minute watchdog tick across every host. Realization lives with EnsureRunnerJitWrapper in gunbc.runner_lifecycle — this repair plan names the choreography only."
+// LIMIT FANOUT (operator ruling 2026-08-06): cache GitHub JIT installation tokens until near expiry
+// rather than minting a fresh token on every two-minute watchdog tick across every host.
+// Realization lives with EnsureRunnerJitWrapper in gunbc.runner_lifecycle — this repair plan names
+// the choreography only.
 
 type RunnerRepairEffectStep
   = ObserveRunnerLocalState { slot: RunnerSlotIdentity }

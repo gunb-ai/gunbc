@@ -49,7 +49,7 @@ struct LegReceipt {
 
 impl LegReceipt {
     fn log(&self) {
-        eprintln!(
+        println!(
             "host_boundary_receipt: {} wall={}ms stdout={} stderr_total={} stderr_retained={} \
              runtime_stderr_string_bytes={} truncated={}",
             self.label,
@@ -179,7 +179,7 @@ fn host_boundary_regression_receipt_records_three_legs_honestly() {
     assert!(c.wall_ms < 5, "protocol-only leg should be negligible");
 
     if b.wall_ms > a.wall_ms {
-        eprintln!(
+        println!(
             "receipt note: bounded wall {}ms > legacy {}ms at {}MiB fixture; \
              production stderr is {} bytes — this receipt does not claim incident causal closure",
             b.wall_ms, a.wall_ms, STDERR_MEBIBYTES, INCIDENT_STDERR_BYTES
@@ -200,7 +200,7 @@ fn sequential_eleven_bounded_requests_do_not_multiply_retained_stderr() {
     let one = leg_b_bounded_capture(1);
     let wall_1 = one.wall_ms;
 
-    eprintln!(
+    println!(
         "receipt: sequential wall_1={}ms wall_11={}ms total_runtime_stderr_string_bytes={}",
         wall_1, wall_11, total_runtime_string_bytes
     );
@@ -222,7 +222,7 @@ fn bounded_capture_rss_growth_not_proportional_to_child_stderr() {
     let _ = leg_b_bounded_capture(STDERR_MEBIBYTES);
     let rss_after = current_rss_kib().expect("VmRSS on linux");
     let delta_kib = rss_after.saturating_sub(rss_before);
-    eprintln!(
+    println!(
         "receipt: rss_before={}KiB rss_after={}KiB delta={}KiB child_stderr_mib={}",
         rss_before, rss_after, delta_kib, STDERR_MEBIBYTES
     );

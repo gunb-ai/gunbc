@@ -19,17 +19,17 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // THE SUBJECT. v1.compiler.emit_core_support module_to_filename maps '.' to '_', so it is
 // MANY-TO-ONE: `mmfc.a_b` and `mmfc_a.b` both render `mmfc_a_b`. Every target emitter names one
-// emitted file per module by that mapping, so before this wall the two modules wrote the same
-// path and whichever was emitted second silently replaced the first -- a wrong artifact with no
-// diagnostic anywhere. The mapping cannot be made injective without changing every emitted path
-// and every cross-module reference derived from one, so the residue is REFUSED rather than
-// absorbed, and this file is its executing evidence.
+// emitted file per module by that mapping, so before this wall the two modules wrote the same path
+// and whichever was emitted second silently replaced the first -- a wrong artifact with no
+// diagnostic. The mapping cannot be made injective without changing every emitted path and every
+// cross-module reference derived from one, so the residue is REFUSED rather than absorbed, and this
+// file is its executing evidence.
 //
 // WHY THE MULTI-MODULE FIXTURE AND NOT THE SINGLE-MODULE CENSUS. The subject IS a relationship
 // between two modules: no one-module source can express it, and gunbc.compile_diagnostic_census
 // resolves its one synthetic module against the live checkout, so a second module cannot be
-// authored there at all. tools.multi_module_compile_fixture compiles a caller-authored manifest
-// in isolation, which is exactly the boundary at which this RED is authorable.
+// authored there. tools.multi_module_compile_fixture compiles a caller-authored manifest in
+// isolation, exactly the boundary at which this RED is authorable.
 
 data collide_peer_source: String = "module mmfc_a.b\nfn collide_peer_answer() -> Int { 7 }\n"
 data collide_entry_source: String = "module mmfc.a_b\nimport mmfc_a.b { collide_peer_answer }\nfn collide_entry_answer() -> Int { collide_peer_answer() }\n"

@@ -21,7 +21,8 @@ import v2.test.complexity_gate.table_fixture_match_subject_producer {
   table_fixture_match_arrow_with_body
 }
 
-data wave1_gate1_d_table_fixture_note: String = "Wave 1 Gate 1 Stage D fast-lane helpers: static table_fixture producers only (no census-ingest import closure). Census ingest + behavioral proofs live in long/ witnesses."
+// Wave 1 Gate 1 Stage D fast-lane helpers: static table_fixture producers only (no census-ingest
+// import closure). Census ingest + behavioral proofs live in long/ witnesses.
 
 fn wave1_gate1_d_table_fixture_arrow_accepts(o: Outcome<Node>) -> Bool {
   match o {

@@ -29,6 +29,14 @@ import gunbc.compiler_frontend_program_interlock {
 }
 import gunbc.cli_dispatch_surface { gunbc_cli_emitter_gap }
 import gunbc.emit_subject_clean_frontier { emit_ratchet_runner_cadence }
+import gunbc.self_host_compile_phase_frontier {
+  CompilePhaseFrontierEmpty,
+  CompilePhaseFrontierValidated,
+  CompilePhaseFrontierInvalid,
+  compile_phase_frontier_standing,
+  self_host_compile_phase_frontier_receipts,
+  self_host_compile_phase_ratchet_enrolment,
+}
 import v2.compiler.self_host.stage0_crate_layout { emitter_produced_divergent_registrations }
 import v2.workflow.legacy_baseline_capture {
   CaptureAvailable,
@@ -156,24 +164,20 @@ fn observe_outstanding(subject: NonEmptyStr, outstanding: List<String>) -> Miles
 // cargo. DeclaringIdentitySpellingCensus is awaited by the stage chain (XL-3), not by any
 // milestone -- stages_awaiting joins it.
 type MissingInstrument
-  = WholeCorpusEmissionBoard
-  | PhaseCargoExecutionFact
-  | RatchetGateEnrolmentFact
+  = PhaseCargoExecutionFact
   | PersistedLegacyBaselineObservation
   | DeclaringIdentitySpellingCensus
-  | CarrierOriginRosterProducer
+  | RepairInputOriginRosterProducer
   | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
 
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
-    WholeCorpusEmissionBoard => "a persisted whole-corpus emission measurement at identity grain"
     PhaseCargoExecutionFact => "a per-phase cargo-execution fact on gunbc.required_ci_phase_roster"
-    RatchetGateEnrolmentFact => "the ratchet's merge-blocking enrolment as a fact distinct from its cadence"
     PersistedLegacyBaselineObservation => "an admitted CompleteLegacyObservation persisted against a named base"
     DeclaringIdentitySpellingCensus => "a census of occurrences not spelled at their declaring identity (XL-3's population)"
-    CarrierOriginRosterProducer => "a carrier-origin roster producer: emitting module x imported target or member x producer origin, over one base, before any disposition is asked (XL-0's population)"
+    RepairInputOriginRosterProducer => "a repair-input origin roster producer: source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition (XL-0's population)"
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
@@ -244,19 +248,10 @@ type InstrumentObstacle
 
 fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
   match i {
-    WholeCorpusEmissionBoard =>
-      NotBuiltRefusalFalsified {
-        authority: decl_ref(
-          module_path: "gunbc.whole_corpus_compile_admission",
-          decl_name: "whole_corpus_compile_admission_at_budget"
-        ),
-        falsified_by: "THE REFUSAL THIS ARM USED TO CARRY HAS BEEN FALSIFIED BY EXECUTION, on exactly the terms it demanded. It said the predicate is a function of the HOST, that it had refused on the hosts its receipts were taken on, that it had NOT been attempted on one whose budget it admits, and that the falsification must record EXIT STATUS AND PEAK RESIDENT SET TOGETHER because a SIGKILL and a clean empty population are the same bytes.\n\nAttempted 2026-08-28 on srv1 (502 GiB total, ~334 GiB available, aarch64 -- a host the predicate admits by three orders of magnitude), three whole-corpus runs under /usr/bin/time -v with the exit status captured beside the peak: --target dag EXIT=1 peak 13008052 kB wall 25:04; --target rust EXIT=1 peak 13005964 kB wall 27:44; --target rust with the parameter-default gate cleared EXIT=1 peak 12986524 kB wall 25:05. NONE was SIGKILLed and NONE was refused by admission -- each ran frontend, normalize and reconcile and reached emit, then refused on DIAGNOSTICS. So the compile is not memory-refused on an admitting host, and the sentence three milestones were waiting on is answered.\n\nWHAT IS STILL MISSING IS THE BOARD, AND THAT IS WHY THIS IS STILL A NOT-BUILT. No completing whole-corpus run has been obtained on the rust route: clearing the three parameter-default sites revealed EIGHT anonymous-record refusals behind them, reproducing the three-then-eight prefix gunbc.emit_stage_blocking_population_census already records, so the blocking population is still unbounded. And no typed measurement is persisted anywhere a consumer can read, which is the condition milestone_status states in its own words. The remedy is now to WRITE THE INSTRUMENT AND ITS CARRIER -- two constructions, not one -- rather than to find a bigger machine.\n\nWHY THE OLD REFUSAL TEXT IS DELETED RATHER THAN KEPT BESIDE THIS. It argued that the instrument is not unbuilt and that the remedy is not to write a tool. Both halves are now false, and a superseded explanation retained next to its refutation is two accounts of one fact (DESIGN section 3). Its two corrections -- the routing story and the wall-clock authority substitution -- are preserved in this type's header, because those were lessons about how the row went wrong rather than claims about the compile." as NonEmptyStr
-      }
     PhaseCargoExecutionFact => NotBuilt
-    RatchetGateEnrolmentFact => NotBuilt
     PersistedLegacyBaselineObservation => NotBuilt
     DeclaringIdentitySpellingCensus => NotBuilt
-    CarrierOriginRosterProducer => NotBuilt
+    RepairInputOriginRosterProducer => NotBuilt
     ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
@@ -423,9 +418,19 @@ fn stage_subject_outstanding(stage: NamespaceCutStage) -> List<String> {
 fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
   match m {
     SelfHostWholeCorpusPopulationDerived =>
-      NotDerivable {
-        why: "no persisted whole-corpus emission board exists. tools.emission_entry_instrument measure_entry_emission answers PER ENTRY, and the union of per-entry closures is not the corpus. Derivable once a whole-corpus run's typed measurement is persisted in a carrier this module can read." as NonEmptyStr,
-        cause: needs(i: WholeCorpusEmissionBoard)
+      match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host S2: whole-corpus compile-phase population derived from the latest validated frontier receipt" as NonEmptyStr,
+          outstanding: if latest.board.partition_complete { [] } else { latest.unplaced_identities }
+        ))
+        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host S2: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
+          outstanding: ["frontier receipt series is empty"]
+        ))
+        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host S2: whole-corpus compile-phase frontier validation" as NonEmptyStr,
+          outstanding: [reason as String]
+        ))
       }
     SelfHostCargoPhaseEnrolled =>
       NotDerivable {
@@ -440,9 +445,19 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         )
       )
     SelfHostRatchetGateEnrolled =>
-      NotDerivable {
-        why: "a gate is meaningless without the identity-grain population it gates against, and S2's population has no producer. The cadence row that answers S4a cannot answer this one: it cannot distinguish an observation from a merge-blocking gate. Derivable once S2's population is persisted AND the ratchet's merge-blocking enrolment is a fact distinct from its cadence." as NonEmptyStr,
-        cause: MissingInstruments { first: WholeCorpusEmissionBoard, rest: [RatchetGateEnrolmentFact] }
+      match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+        CompilePhaseFrontierValidated { latest: _ } => standing_from_evidence(e: observe_outstanding(
+          subject: self_host_compile_phase_ratchet_enrolment.witness,
+          outstanding: []
+        ))
+        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
+          subject: self_host_compile_phase_ratchet_enrolment.witness,
+          outstanding: ["ratchet has no persisted baseline to gate"]
+        ))
+        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
+          subject: self_host_compile_phase_ratchet_enrolment.witness,
+          outstanding: [reason as String]
+        ))
       }
     NamespaceWaveAdmissionEnrolled =>
       standing_from_evidence(
@@ -486,9 +501,19 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         )
       )
     SelfHostCorpusEmitsCleanly =>
-      NotDerivable {
-        why: "this is S2's population driven to zero, and S2 has no producer. Any figure quoted for the current rustc population today is unsourced -- the 2026-08-24 measurement bankruptcy deleted the boards and the instrument was restored without one. Derivable exactly when S2 is." as NonEmptyStr,
-        cause: needs(i: WholeCorpusEmissionBoard)
+      match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+        CompilePhaseFrontierValidated { latest } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: error diagnostics in the latest validated whole-corpus compile-phase receipt (coded and codeless)" as NonEmptyStr,
+          outstanding: latest.raw_error_diagnostic_identities
+        ))
+        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: whole-corpus compile-phase frontier has no genesis receipt" as NonEmptyStr,
+          outstanding: ["frontier receipt series is empty"]
+        ))
+        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
+          subject: "self-host: whole-corpus compile-phase frontier validation" as NonEmptyStr,
+          outstanding: [reason as String]
+        ))
       }
     SelfHostBehavioralEquivalenceReestablished =>
       NotDerivable {
@@ -679,12 +704,10 @@ fn join_names(names: List<String>) -> String {
 // and is deliberately not built here rather than approximated by this count.
 // ---------------------------------------------------------------------------------------------
 data all_missing_instruments: List<MissingInstrument> = [
-  WholeCorpusEmissionBoard,
   PhaseCargoExecutionFact,
-  RatchetGateEnrolmentFact,
   PersistedLegacyBaselineObservation,
   DeclaringIdentitySpellingCensus,
-  CarrierOriginRosterProducer,
+  RepairInputOriginRosterProducer,
   ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
@@ -868,8 +891,8 @@ fn stage_status(s: NamespaceCutStage) -> MilestoneStanding {
       )
     StageXL0Denominator =>
       NotDerivable {
-        why: "XL-0 is the CARRIER-ORIGIN DENOMINATOR -- emitting module x imported target or member x producer origin, over one base, recording which source carriers existed BEFORE any disposition was asked. Nothing in this tree produces that population. The arm that used to stand here read gunbc.namespace_cut_subject_roster's unobservable host probes instead, which answered a different question entirely: the subject roster is the cut's ROOT-AUTHORITY denominator, one row per family, and probe observability is a property of the instrument rather than a measure of the denominator's completeness. Deriving XL-0 from it let a join repair (see the roster's host probes, now joined) read as the denominator being produced. Derivable once a carrier-origin roster producer exists." as NonEmptyStr,
-        cause: needs(i: CarrierOriginRosterProducer)
+        why: "XL-0 is the REPAIR-INPUT ORIGIN DENOMINATOR -- source-declaration carriers plus rendered target-vocabulary carriers, separately typed, over one base, before eligibility or repair disposition. XL-0A splits and tags the six producer channels before their compatibility projection, but it deliberately does not claim the source declaration continuity or subject-bound roster that XL-0B-D owe. The arm that used to stand here read gunbc.namespace_cut_subject_roster's unobservable host probes instead, which answered a different question entirely: the subject roster is the cut's ROOT-AUTHORITY denominator, one row per family, and probe observability is a property of the instrument rather than a measure of the denominator's completeness. Deriving XL-0 from it let a join repair read as the denominator being produced. Derivable once the repair-input origin roster producer is complete." as NonEmptyStr,
+        cause: needs(i: RepairInputOriginRosterProducer)
       }
     StageXL1BaselineCapture =>
       standing_from_evidence(

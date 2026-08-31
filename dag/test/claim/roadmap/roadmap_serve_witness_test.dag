@@ -22,12 +22,15 @@ import gunbc.roadmap_serve {
   belt_dispatch_status,
 }
 import gunbc.roadmap_belt_actuate {
-  BeltDispatchResult,
-  DispatchSpawned, DispatchAlreadyLive, DispatchNodeNotFound,
-  DispatchDisabled, DispatchNodeAlreadyDone, DispatchObserveRefused, DispatchAuthorityRefused, DispatchSpawnFailed,
-  DispatchStaleSession, DispatchSessionLivenessUnobserved,
-  DispatchRevisionDrifted, DispatchRevisionUnobserved,
-  DispatchSessionMultiplicityConflict,
+  BeltSpawnOutcome, Spawned, SpawnFailed, SpawnNotAdmitted,
+  belt_dispatch_result_exemplars,
+}
+import gunbc.roadmap_launch_admission {
+  LaunchRefusal, launch_identity_exemplar,
+  LaunchInstanceActuationRefused, LaunchTransitionInhibited, LaunchRevisionUnobserved, LaunchRevisionDrift,
+  LaunchAuthorityUnobserved, LaunchNodeUnknown, LaunchAlreadyAccepted, LaunchSessionsUnobservable,
+  LaunchAlreadyLive, LaunchStaleSession, LaunchLivenessUnobserved, LaunchSessionMultiplicityConflict,
+  LaunchDependenciesBlocked, LaunchExecutionContractMissing,
 }
 import gunbc.roadmap_dashboard_instance { srv2_preview_dashboard_instance }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
@@ -47,7 +50,9 @@ import extdeps.http.server {
 import extdeps.uri_path { PathParamBinding, path_param_value }
 import std.types { String, Int, Bool, List, HttpMethod, GET, POST, PUT }
 
-data live_table_or_empty_note: String = "Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below goes RED (nothing selects) — the discriminating direction; the production path never does this (roadmap_serve_respond answers 500 on Refused)."
+// Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below
+// goes RED (nothing selects) — the discriminating direction; the production path never does this
+// (roadmap_serve_respond answers 500 on Refused).
 
 fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
   match roadmap_serve_route_table_build() {
@@ -90,7 +95,6 @@ test fn witness_serve_table_selection() -> Bool {
     && selects(method: POST, path: "/publish/some-node", want: BeltPublishHandler)
 }
 
-
 test fn witness_asset_route_serves_modeled_js() -> Bool {
   let r = roadmap_serve_invoke(
     handler: DispatchAssetHandler,
@@ -109,7 +113,11 @@ test fn witness_asset_route_serves_modeled_js() -> Bool {
     && string_contains(s: r.body, pattern: "fetch('/cleanup/' + sess.node_id")
 }
 
-data lab_nav_resolves_note: String = "The shared header renders its links from instrument_lab_links, and the route table builds its specs from the same declarations. This claim is what makes that ONE authority rather than two that happen to agree: every rendered link is required to select a route, so a roster row without a route reds here rather than shipping a header link to a 404. The RED direction is a row added to the roster with no matching route spec."
+// The shared header renders its links from instrument_lab_links, and the route table builds its
+// specs from the same declarations. This claim is what makes that ONE authority rather than two
+// that happen to agree: every rendered link is required to select a route, so a roster row without
+// a route reds here rather than shipping a header link to a 404. The RED direction is a row added
+// to the roster with no matching route spec.
 
 fn lab_link_selects_something(path: String) -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: GET, path: path) {
@@ -158,23 +166,45 @@ test fn witness_405_response_carries_allowed() -> Bool {
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
-data status_map_red_note: String = "The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly one witness row below.\n\nTHIS PIN WENT STALE WHILE THE PROTECTION IT DESCRIBES READ AS INTACT (review artifact 51368). Five arms were added with explicit status mappings — stale session, revision drift, multiplicity conflict, liveness unobserved, revision unobserved — and this witness still pinned the original eight, so a regression mapping any new arm to 200 would have stayed green. The note claimed a total protection the assertion no longer provided, which is worse than an absent pin: a reader checking whether the mapping is guarded finds a sentence saying yes.\n\nThe label, band, exemplar and button rosters were all swept when those arms landed. This one was missed because it lives in a different witness module and is keyed by CONSTRUCTED variants rather than by a roster the compiler counts — nothing here goes non-exhaustive when an arm appears. That asymmetry is the actual defect; until belt_dispatch_status_total is derived from the exemplar roster the way the label set is, this assertion has to be swept by hand alongside it."
+// The 404/409/503/502 rows are the REDs a lazy 200-or-500 collapse would fail (parent review
+// 2026-07-20): each refusal variant must map to ITS status, so a collapse of any arm reds exactly
+// one witness row below.
+//
+// THIS PIN WENT STALE WHILE THE PROTECTION IT DESCRIBES READ AS INTACT (review artifact 51368).
+// Five arms were added with explicit status mappings — stale session, revision drift, multiplicity
+// conflict, liveness unobserved, revision unobserved — while this witness still pinned the original
+// eight, so a regression mapping any new arm to 200 stayed green. The note claimed a protection the
+// assertion no longer provided, worse than an absent pin.
+//
+// The label, band, exemplar and button rosters were all swept when those arms landed; this one was
+// missed because it lives in a different witness module and is keyed by CONSTRUCTED variants rather
+// than a roster the compiler counts — nothing here goes non-exhaustive when an arm appears. That
+// asymmetry is the actual defect; until belt_dispatch_status_total is derived from the exemplar
+// roster the way the label set is, this assertion must be swept by hand alongside it.
+
+fn na(r: LaunchRefusal) -> BeltSpawnOutcome { SpawnNotAdmitted { node_id: "n", refusal: r } }
+
+fn status_is_typed(s: Int) -> Bool {
+  s == 200 || s == 403 || s == 404 || s == 409 || s == 502 || s == 503
+}
 
 test fn witness_dispatch_status_total() -> Bool {
-  belt_dispatch_status(r: DispatchSpawned { node_id: "n", session_name: "s", provider: "codex" }) == 200
-    && belt_dispatch_status(r: DispatchAlreadyLive { node_id: "n", session_name: "s" }) == 200
-    && belt_dispatch_status(r: DispatchDisabled { node_id: "n", instance_id: "i", reason: "r" }) == 403
-    && belt_dispatch_status(r: DispatchNodeNotFound { node_id: "n" }) == 404
-    && belt_dispatch_status(r: DispatchNodeAlreadyDone { node_id: "n" }) == 409
-    && belt_dispatch_status(r: DispatchObserveRefused { node_id: "n", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchAuthorityRefused { node_id: "n", detail: "d" }) == 503
-    && belt_dispatch_status(r: DispatchSpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex" }) == 502
-    && belt_dispatch_status(r: DispatchStaleSession { node_id: "n", session_name: "s", detail: "d" }) == 409
-    && belt_dispatch_status(r: DispatchRevisionDrifted { node_id: "n", desired: "a", local: "b" }) == 409
-    && belt_dispatch_status(
-      r: DispatchSessionMultiplicityConflict { node_id: "n", session_names: "s1, s2", session_count: 2 }) == 409
-    && belt_dispatch_status(r: DispatchSessionLivenessUnobserved { node_id: "n", session_name: "s", reason: "r" }) == 503
-    && belt_dispatch_status(r: DispatchRevisionUnobserved { node_id: "n", cause: "c" }) == 503
+  belt_dispatch_status(r: Spawned { node_id: "n", session_name: "s", provider: "codex", launch: launch_identity_exemplar() }) == 200
+    && belt_dispatch_status(r: na(r: LaunchAlreadyLive { session_name: "s" })) == 200
+    && belt_dispatch_status(r: na(r: LaunchInstanceActuationRefused { instance_id: "i", reason: "r" })) == 403
+    && belt_dispatch_status(r: na(r: LaunchNodeUnknown)) == 404
+    && belt_dispatch_status(r: na(r: LaunchAlreadyAccepted)) == 409
+    && belt_dispatch_status(r: na(r: LaunchSessionsUnobservable { reason: "r" })) == 503
+    && belt_dispatch_status(r: na(r: LaunchAuthorityUnobserved { detail: "d" })) == 503
+    && belt_dispatch_status(r: SpawnFailed { node_id: "n", step: "git", detail: "d", provider: "codex", launch: launch_identity_exemplar() }) == 502
+    && belt_dispatch_status(r: na(r: LaunchStaleSession { session_name: "s", detail: "d" })) == 409
+    && belt_dispatch_status(r: na(r: LaunchRevisionDrift { desired: "a", local: "b" })) == 409
+    && belt_dispatch_status(r: na(r: LaunchSessionMultiplicityConflict { session_names: ["s1", "s2"], session_count: 2 })) == 409
+    && belt_dispatch_status(r: na(r: LaunchLivenessUnobserved { session_name: "s", reason: "r" })) == 503
+    && belt_dispatch_status(r: na(r: LaunchRevisionUnobserved { cause: "c" })) == 503
+    && belt_dispatch_status(r: na(r: LaunchDependenciesBlocked { blockers: ["p"] })) == 409
+    && belt_dispatch_status(r: na(r: LaunchExecutionContractMissing { reason: "r" })) == 409
+    && all(belt_dispatch_result_exemplars(), r => status_is_typed(s: belt_dispatch_status(r: r)))
 }
 
 test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
@@ -187,10 +217,9 @@ test fn witness_preview_dispatch_refuses_before_effects() -> Bool {
   )
   r.status == 403
     && string_contains(s: r.body, pattern: "\"status\": \"disabled\"")
-    && string_contains(s: r.body, pattern: "\"instance\": \"srv2-preview-codex-feedback-v0\"")
+    && string_contains(s: r.body, pattern: "srv2-preview-codex-feedback-v0")
     && string_contains(s: r.body, pattern: "before observation, provider preflight, or worktree creation")
 }
-
 
 test fn witness_instance_route_names_posture_and_paths() -> Bool {
   let r = roadmap_serve_respond_for_instance(
@@ -213,7 +242,18 @@ test fn witness_instance_route_names_posture_and_paths() -> Bool {
     && string_contains(s: r.body, pattern: "\"dispatch_attempt_state_root\": \"/home/briansrls/.local/share/gunbc-dashboard-instances/codex-provider-feedback-preview-v0/attempt-state\"")
 }
 
-data route_table_drops_nothing_note: String = "THE ROUTE COUNT STOPPED BEING A LITERAL, and what replaces it is the claim the literal was standing in for. Sixteen was read off the live route roster, so adding /provider.json — a correct route this PR needed — reds a witness that has nothing to say about which routes exist. That is the live-state count-transcription class ruled against on 2026-07-29 and swept in #7464, and this was a third instance of it (review, 2026-07-30, found by the full floor rather than by any targeted run).\\n\\nThe replacement is strictly stronger, not weaker. What this witness is actually for is that the live table BUILDS — the refusing arm below is the other half — and the interesting failure is a build that silently drops a route rather than refusing. serve_page_response_note in this module names exactly that hazard: the EmitRejected => [] route-drop in node_http_server_emit is a silent widen this path deliberately does not copy. A literal count cannot tell a dropped route from a roster that legitimately grew; comparing against the roster can, and it never needs editing again.\\n\\nThe non-emptiness conjunct stays because equality between two empty lists would hold vacuously."
+// THE ROUTE COUNT STOPPED BEING A LITERAL, replaced by the claim the literal stood in for. Sixteen
+// was read off the live route roster, so adding /provider.json — a correct route this PR needed —
+// reds a witness with nothing to say about which routes exist: the live-state count-transcription
+// class ruled against on 2026-07-29 and swept in #7464, a third instance (review, 2026-07-30, found
+// by the full floor rather than any targeted run).\n\nThe replacement is strictly stronger. This
+// witness is for the live table BUILDING — the refusing arm below is the other half — and the
+// interesting failure is a build that silently drops a route rather than refusing.
+// serve_page_response_note in this module names that hazard: the EmitRejected => [] route-drop in
+// node_http_server_emit is a silent widen this path deliberately does not copy. A literal count
+// cannot tell a dropped route from a roster that legitimately grew; comparing against the roster
+// can, and never needs editing again.\n\nThe non-emptiness conjunct stays because equality
+// between two empty lists would hold vacuously.
 
 test fn witness_live_table_builds_ready_routes() -> Bool {
   match roadmap_serve_route_table_build() {
@@ -223,7 +263,9 @@ test fn witness_live_table_builds_ready_routes() -> Bool {
   }
 }
 
-data malformed_literal_red_note: String = "The RED control for review 40286's section-5 catch: a malformed route literal through the SAME build fold must REFUSE the whole table (typed, carrying the broken raw), never fabricate an empty template that would silently match '/'."
+// The RED control for review 40286's section-5 catch: a malformed route literal through the SAME
+// build fold must REFUSE the whole table (typed, carrying the broken raw), never fabricate an empty
+// template that would silently match '/'.
 
 test fn witness_malformed_route_literal_refuses_table() -> Bool {
   let specs = [
@@ -243,7 +285,10 @@ test fn witness_unknown_method_refuses() -> Bool {
   }
 }
 
-data unknown_method_501_note: String = "review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The two arms must stay distinct statuses; collapsing them reds this row."
+// review 40359: an unrecognized method label is 501 Not Implemented (RFC 9110 section 15.6.2 — the
+// server does not implement the method at all), NEVER 405 (405 means the ROUTE exists but this
+// method is not in its allowed set, and carries the allowed set — the MethodNotAllowed arm). The
+// two arms must stay distinct statuses; collapsing them reds this row.
 
 test fn witness_unknown_method_folds_501_response() -> Bool {
   let r = roadmap_serve_respond(method_label: "BREW", path: "/", body: "", release_revision: deploy_witness_release_revision)

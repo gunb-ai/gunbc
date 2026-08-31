@@ -73,20 +73,20 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![]),
         connective: Connective::NoConnective,
         params: Rc::new(vec![]),
         inferred: Some(Rc::new(InferredNode::TypeVariable { id: id.clone() })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -100,7 +100,7 @@ pub fn resolved_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
-    if (ch.inferred.clone() != None) {
+    if (ch.inferred.clone() != std::option::Option::None) {
         resolved_type(ch.clone())
     } else {
         ch.clone()
@@ -163,7 +163,7 @@ pub fn canonical_template_name(
             crate::v1_std_core::qualified_last_segment(nm.clone()),
         ) {
             Some(algebra) => algebra.clone(),
-            None => nm.clone(),
+            std::option::Option::None => nm.clone(),
         }
     }
 }
@@ -173,7 +173,7 @@ pub fn is_declared_container_alias_spelling(name: String) -> bool {
         crate::v1_std_core::qualified_last_segment(name.clone()),
     ) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -181,18 +181,22 @@ pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
     Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
-        .fold(None, |acc: _, k: String| match acc.clone() {
-            Some(_) => acc.clone(),
-            None => match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
-                Some(v) => {
-                    if (v.clone() == algebra.clone()) {
-                        Some(k.clone())
-                    } else {
-                        None
+        .fold(std::option::Option::None, |acc: _, k: String| {
+            match acc.clone() {
+                Some(_) => acc.clone(),
+                std::option::Option::None => {
+                    match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
+                        Some(v) => {
+                            if (v.clone() == algebra.clone()) {
+                                Some(k.clone())
+                            } else {
+                                std::option::Option::None
+                            }
+                        }
+                        std::option::Option::None => std::option::Option::None,
                     }
                 }
-                None => None,
-            },
+            }
         })
 }
 
@@ -201,13 +205,15 @@ pub fn container_kind_canonical(name: String) -> String {
         let last = crate::v1_std_core::qualified_last_segment(name.clone());
         match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
             Some(_) => last.clone(),
-            None => match crate::std_types::container_template_algebra(last.clone()) {
-                Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
-                    Some(canonical) => canonical.clone(),
-                    None => last.clone(),
-                },
-                None => last.clone(),
-            },
+            std::option::Option::None => {
+                match crate::std_types::container_template_algebra(last.clone()) {
+                    Some(algebra) => match container_alias_canonical_spelling(algebra.clone()) {
+                        Some(canonical) => canonical.clone(),
+                        std::option::Option::None => last.clone(),
+                    },
+                    std::option::Option::None => last.clone(),
+                }
+            }
         }
     }
 }
@@ -344,7 +350,7 @@ pub fn type_resolution_verdict(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_is_type_var = match n.inferred.clone() {
             Some(inf) => is_type_variable(inf.clone()),
-            None => false,
+            std::option::Option::None => false,
         };
         if self_is_type_var.clone() {
             Rc::new(TypeResolutionVerdict::UnderResolved)
@@ -432,13 +438,13 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         })),
                         return_cardinality: Cardinality::Required,
                         uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
+                        body: std::option::Option::None,
+                        transport: std::option::Option::None,
                         properties: Rc::new(vec![]),
-                        type_annotation: None,
+                        type_annotation: std::option::Option::None,
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
-                        match_pattern: None,
+                        match_pattern: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
@@ -455,35 +461,35 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
                         })),
                         return_cardinality: Cardinality::Required,
                         uses: Rc::new(vec![]),
-                        body: None,
-                        transport: None,
+                        body: std::option::Option::None,
+                        transport: std::option::Option::None,
                         properties: Rc::new(vec![]),
-                        type_annotation: None,
+                        type_annotation: std::option::Option::None,
                         is_self_recursive: false,
                         has_non_tail_self_call: false,
-                        match_pattern: None,
+                        match_pattern: std::option::Option::None,
                         expr_data: Rc::new(ExprData::NoExprData),
                         ident: None,
                     }),
                 ]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })),
-            None => None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -507,32 +513,32 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
                 })),
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             })]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: None,
+            inferred: std::option::Option::None,
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -562,7 +568,7 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
             name: "".to_string(),
             span: crate::v1_std_core::no_span(),
-            ident_span: None,
+            ident_span: std::option::Option::None,
             children: Rc::new(vec![]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -572,13 +578,13 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::ExprError {
                 kind: ExprErrorKind::InternalExprError,
                 message: msg.clone(),
@@ -592,15 +598,6 @@ pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
 pub struct KernelTypeBuild {
     pub ty: Rc<Node>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-}
-
-pub fn kernel_record_type_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "A builtin whose return type is registered as a bare type_variable_node establishes NOTHING about its result, so every field access on that result falls through lookup_field_type_node's Absent arm and the caller fabricates a success-shaped Primitive() in its place. That is this lane's own finding one level down — a missing judgment rendered as an accepted type — and it stayed invisible because the fabricated type propagates silently until some later stage asks a question it cannot answer. make_kernel_record_type lets a builtin declare the product type it actually returns, so the field's type is READ from the declaration rather than invented. It is the same Conj-with-named-children shape lookup_field_type_node already walks for authored records, not a second representation of one (DESIGN §3): the kernel path and the authored path resolve fields through the identical traversal, so a kernel record cannot drift from what an authored record means.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
@@ -617,13 +614,13 @@ pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<
         })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -638,16 +635,16 @@ pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> 
         children: fields.clone(),
         connective: Connective::Conj,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -674,34 +671,34 @@ pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTyp
                     })),
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 })]),
                 connective: Connective::NoConnective,
                 params: Rc::new(vec![]),
-                inferred: None,
+                inferred: std::option::Option::None,
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
             diagnostics: Rc::new(vec![]),
         }),
-        None => Rc::new(KernelTypeBuild {
+        std::option::Option::None => Rc::new(KernelTypeBuild {
             ty: missing_kernel_container_profile_type(kind_name.clone()),
             diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
                 kind_name.clone(),
@@ -733,13 +730,13 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             inferred: Some(Rc::new(InferredNode::Resolved { node: key.clone() })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
+                            body: std::option::Option::None,
+                            transport: std::option::Option::None,
                             properties: Rc::new(vec![]),
-                            type_annotation: None,
+                            type_annotation: std::option::Option::None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
-                            match_pattern: None,
+                            match_pattern: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
@@ -758,42 +755,42 @@ pub fn make_map_type(key: Rc<Node>, value: Rc<Node>) -> Rc<KernelTypeBuild> {
                             })),
                             return_cardinality: Cardinality::Required,
                             uses: Rc::new(vec![]),
-                            body: None,
-                            transport: None,
+                            body: std::option::Option::None,
+                            transport: std::option::Option::None,
                             properties: Rc::new(vec![]),
-                            type_annotation: None,
+                            type_annotation: std::option::Option::None,
                             is_self_recursive: false,
                             has_non_tail_self_call: false,
-                            match_pattern: None,
+                            match_pattern: std::option::Option::None,
                             expr_data: Rc::new(ExprData::NoExprData),
                             ident: None,
                         }),
                     ]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
-                    inferred: None,
+                    inferred: std::option::Option::None,
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
+                    body: std::option::Option::None,
+                    transport: std::option::Option::None,
                     properties: Rc::new(vec![]),
-                    type_annotation: None,
+                    type_annotation: std::option::Option::None,
                     is_self_recursive: false,
                     has_non_tail_self_call: false,
-                    match_pattern: None,
+                    match_pattern: std::option::Option::None,
                     expr_data: Rc::new(ExprData::NoExprData),
                     ident: None,
                 }),
                 diagnostics: Rc::new(vec![]),
             }),
-            None => Rc::new(KernelTypeBuild {
+            std::option::Option::None => Rc::new(KernelTypeBuild {
                 ty: missing_kernel_container_profile_type("Map".to_string()),
                 diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
                     "Map".to_string(),
                 )]),
             }),
         },
-        None => Rc::new(KernelTypeBuild {
+        std::option::Option::None => Rc::new(KernelTypeBuild {
             ty: missing_kernel_container_profile_type("Map".to_string()),
             diagnostics: Rc::new(vec![kernel_container_profile_miss_diagnostic(
                 "Map".to_string(),
@@ -814,13 +811,13 @@ pub fn make_callable_type(func_params: Rc<Vec<Rc<Node>>>, ret: Rc<Node>) -> Rc<N
         inferred: Some(Rc::new(InferredNode::Resolved { node: ret.clone() })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -831,7 +828,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
         span: crate::v1_std_core::no_span(),
-        ident_span: None,
+        ident_span: std::option::Option::None,
         children: Rc::new(vec![
             Rc::new(Node {
                 occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
@@ -846,13 +843,13 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 })),
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
@@ -869,29 +866,29 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
                 })),
                 return_cardinality: Cardinality::Required,
                 uses: Rc::new(vec![]),
-                body: None,
-                transport: None,
+                body: std::option::Option::None,
+                transport: std::option::Option::None,
                 properties: Rc::new(vec![]),
-                type_annotation: None,
+                type_annotation: std::option::Option::None,
                 is_self_recursive: false,
                 has_non_tail_self_call: false,
-                match_pattern: None,
+                match_pattern: std::option::Option::None,
                 expr_data: Rc::new(ExprData::NoExprData),
                 ident: None,
             }),
         ]),
         connective: Connective::Conj,
         params: Rc::new(vec![]),
-        inferred: None,
+        inferred: std::option::Option::None,
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -911,13 +908,13 @@ pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
         })),
         return_cardinality: Cardinality::Required,
         uses: Rc::new(vec![]),
-        body: None,
-        transport: None,
+        body: std::option::Option::None,
+        transport: std::option::Option::None,
         properties: Rc::new(vec![]),
-        type_annotation: None,
+        type_annotation: std::option::Option::None,
         is_self_recursive: false,
         has_non_tail_self_call: false,
-        match_pattern: None,
+        match_pattern: std::option::Option::None,
         expr_data: Rc::new(ExprData::NoExprData),
         ident: None,
     })
@@ -936,7 +933,7 @@ pub fn algebra_method_field(
                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                     "_".to_string(),
                     t.clone(),
-                    None,
+                    std::option::Option::None,
                     crate::v1_std_core::no_span(),
                     crate::v1_std_core::no_span(),
                 ));
@@ -957,13 +954,13 @@ pub fn algebra_method_field(
             })),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
+            body: std::option::Option::None,
+            transport: std::option::Option::None,
             properties: Rc::new(vec![]),
-            type_annotation: None,
+            type_annotation: std::option::Option::None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
-            match_pattern: None,
+            match_pattern: std::option::Option::None,
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         })
@@ -1048,7 +1045,7 @@ pub fn algebra_child_or_placeholder(
     .cloned()
     {
         Some(child) => child_type_node(child.clone()),
-        None => type_variable_node(placeholder.clone()),
+        std::option::Option::None => type_variable_node(placeholder.clone()),
     }
 }
 
@@ -1177,7 +1174,7 @@ pub fn instantiate_algebra_type(
                                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     "_".to_string(),
                                     pn.clone(),
-                                    None,
+                                    std::option::Option::None,
                                     crate::v1_std_core::no_span(),
                                     crate::v1_std_core::no_span(),
                                 ));
@@ -1287,7 +1284,7 @@ pub fn enrich_kernel_type(
                     diagnostics: field_diags.clone(),
                 })
             }
-            None => Rc::new(KernelTypeBuild {
+            std::option::Option::None => Rc::new(KernelTypeBuild {
                 ty: base.clone(),
                 diagnostics: Rc::new(vec![]),
             }),
@@ -1305,7 +1302,7 @@ pub fn unify_template(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template.clone()).clone() {
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
-                if (v1_rt::map_get(&subst, var_id.clone()) != None) {
+                if (v1_rt::map_get(&subst, var_id.clone()) != std::option::Option::None) {
                     subst.clone()
                 } else {
                     v1_rt::rc_map_insert(subst.clone(), var_id.clone(), concrete.clone())
@@ -1314,7 +1311,9 @@ pub fn unify_template(
             AlgebraTypeTemplate::ReceiverSelf => {
                 let s1 = match concrete.children.clone().first().cloned() {
                     Some(k) => {
-                        if (v1_rt::map_get(&subst, "__key__".to_string()) != None) {
+                        if (v1_rt::map_get(&subst, "__key__".to_string())
+                            != std::option::Option::None)
+                        {
                             subst.clone()
                         } else {
                             v1_rt::rc_map_insert(
@@ -1324,7 +1323,7 @@ pub fn unify_template(
                             )
                         }
                     }
-                    None => subst.clone(),
+                    std::option::Option::None => subst.clone(),
                 };
                 match concrete
                     .children
@@ -1335,7 +1334,9 @@ pub fn unify_template(
                     .next()
                 {
                     Some(v) => {
-                        if (v1_rt::map_get(&s1, "__value__".to_string()) != None) {
+                        if (v1_rt::map_get(&s1, "__value__".to_string())
+                            != std::option::Option::None)
+                        {
                             s1.clone()
                         } else {
                             v1_rt::rc_map_insert(
@@ -1345,25 +1346,26 @@ pub fn unify_template(
                             )
                         }
                     }
-                    None => s1.clone(),
+                    std::option::Option::None => s1.clone(),
                 }
             }
             AlgebraTypeTemplate::ReceiverKey => {
-                if (v1_rt::map_get(&subst, "__key__".to_string()) != None) {
+                if (v1_rt::map_get(&subst, "__key__".to_string()) != std::option::Option::None) {
                     subst.clone()
                 } else {
                     v1_rt::rc_map_insert(subst.clone(), "__key__".to_string(), concrete.clone())
                 }
             }
             AlgebraTypeTemplate::ReceiverValue => {
-                if (v1_rt::map_get(&subst, "__value__".to_string()) != None) {
+                if (v1_rt::map_get(&subst, "__value__".to_string()) != std::option::Option::None) {
                     subst.clone()
                 } else {
                     v1_rt::rc_map_insert(subst.clone(), "__value__".to_string(), concrete.clone())
                 }
             }
             AlgebraTypeTemplate::ReceiverElement => {
-                if (v1_rt::map_get(&subst, "__element__".to_string()) != None) {
+                if (v1_rt::map_get(&subst, "__element__".to_string()) != std::option::Option::None)
+                {
                     subst.clone()
                 } else {
                     v1_rt::rc_map_insert(subst.clone(), "__element__".to_string(), concrete.clone())
@@ -1408,7 +1410,7 @@ pub fn unify_template(
                             subst.clone(),
                             source_indices.clone(),
                         ),
-                        None => subst.clone(),
+                        std::option::Option::None => subst.clone(),
                     }
                 }
             }
@@ -1423,7 +1425,7 @@ pub fn unify_template(
                     subst.clone(),
                     source_indices.clone(),
                 ),
-                None => subst.clone(),
+                std::option::Option::None => subst.clone(),
             },
             AlgebraTypeTemplate::TupleOf {
                 first: ft,
@@ -1438,7 +1440,7 @@ pub fn unify_template(
                         subst.clone(),
                         source_indices.clone(),
                     ),
-                    None => subst.clone(),
+                    std::option::Option::None => subst.clone(),
                 };
                 match concrete
                     .children
@@ -1455,7 +1457,7 @@ pub fn unify_template(
                         s2.clone(),
                         source_indices.clone(),
                     ),
-                    None => s2.clone(),
+                    std::option::Option::None => s2.clone(),
                 }
             }
             _ => subst.clone(),
@@ -1480,7 +1482,7 @@ pub fn build_type_substitution(
     {
         let first_is_self = match param_templates.clone().first().cloned() {
             Some(t) => is_receiver_self(t.clone()),
-            None => false,
+            std::option::Option::None => false,
         };
         let non_receiver_templates = if first_is_self.clone() {
             Rc::new(
@@ -1550,7 +1552,7 @@ pub fn build_type_substitution(
                 .cloned()
                 {
                     Some(a) => a.clone(),
-                    None => error_type(),
+                    std::option::Option::None => error_type(),
                 };
                 unify_template(
                     pair.1.clone(),
@@ -1578,7 +1580,7 @@ pub fn apply_type_substitution(
                         ty: resolved.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => Rc::new(KernelTypeBuild {
+                    std::option::Option::None => Rc::new(KernelTypeBuild {
                         ty: type_variable_node(var_id.clone()),
                         diagnostics: Rc::new(vec![]),
                     }),
@@ -1593,10 +1595,10 @@ pub fn apply_type_substitution(
                     for ch in receiver.children.clone().iter().cloned() {
                         if !({
                             let inner = child_type_node(ch.clone());
-                            if (inner.inferred.clone() != None) {
+                            if (inner.inferred.clone() != std::option::Option::None) {
                                 is_type_variable(inner.inferred.clone().clone().unwrap())
                             } else {
-                                ((inner.ident_span.clone() == None)
+                                ((inner.ident_span.clone() == std::option::Option::None)
                                     || !crate::std_types::is_kernel_type(
                                         crate::v1_std_core::authored_name_at(
                                             source_indices.clone(),
@@ -1621,11 +1623,13 @@ pub fn apply_type_substitution(
                                     let val = match v1_rt::map_get(&subst, "__value__".to_string())
                                     {
                                         Some(v) => v.clone(),
-                                        None => type_variable_node("V".to_string()),
+                                        std::option::Option::None => {
+                                            type_variable_node("V".to_string())
+                                        }
                                     };
                                     make_map_type(key.clone(), val.clone())
                                 }
-                                None => Rc::new(KernelTypeBuild {
+                                std::option::Option::None => Rc::new(KernelTypeBuild {
                                     ty: receiver.clone(),
                                     diagnostics: Rc::new(vec![]),
                                 }),
@@ -1637,7 +1641,7 @@ pub fn apply_type_substitution(
                                         container_kind_canonical(receiver_name_str.clone()),
                                         elem.clone(),
                                     ),
-                                    None => Rc::new(KernelTypeBuild {
+                                    std::option::Option::None => Rc::new(KernelTypeBuild {
                                         ty: receiver.clone(),
                                         diagnostics: Rc::new(vec![]),
                                     }),
@@ -1663,31 +1667,33 @@ pub fn apply_type_substitution(
                         ty: child_type_node(child.clone()),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => match v1_rt::map_get(&subst, "__element__".to_string()) {
-                        Some(elem) => Rc::new(KernelTypeBuild {
-                            ty: elem.clone(),
-                            diagnostics: Rc::new(vec![]),
-                        }),
-                        None => {
-                            let rname =
-                                container_kind_canonical(crate::v1_std_core::authored_name_at(
-                                    source_indices.clone(),
-                                    receiver.clone(),
-                                ));
-                            match crate::std_types::container_param_name(rname.clone(), 0) {
-                                Some(n) => Rc::new(KernelTypeBuild {
-                                    ty: type_variable_node(n.clone()),
-                                    diagnostics: Rc::new(vec![]),
-                                }),
-                                None => Rc::new(KernelTypeBuild {
-                                    ty: missing_kernel_container_profile_type(rname.clone()),
-                                    diagnostics: Rc::new(vec![
-                                        kernel_container_profile_miss_diagnostic(rname.clone()),
-                                    ]),
-                                }),
+                    std::option::Option::None => {
+                        match v1_rt::map_get(&subst, "__element__".to_string()) {
+                            Some(elem) => Rc::new(KernelTypeBuild {
+                                ty: elem.clone(),
+                                diagnostics: Rc::new(vec![]),
+                            }),
+                            std::option::Option::None => {
+                                let rname =
+                                    container_kind_canonical(crate::v1_std_core::authored_name_at(
+                                        source_indices.clone(),
+                                        receiver.clone(),
+                                    ));
+                                match crate::std_types::container_param_name(rname.clone(), 0) {
+                                    Some(n) => Rc::new(KernelTypeBuild {
+                                        ty: type_variable_node(n.clone()),
+                                        diagnostics: Rc::new(vec![]),
+                                    }),
+                                    std::option::Option::None => Rc::new(KernelTypeBuild {
+                                        ty: missing_kernel_container_profile_type(rname.clone()),
+                                        diagnostics: Rc::new(vec![
+                                            kernel_container_profile_miss_diagnostic(rname.clone()),
+                                        ]),
+                                    }),
+                                }
                             }
                         }
-                    },
+                    }
                 }
             }
             AlgebraTypeTemplate::ReceiverKey => match receiver.children.clone().first().cloned() {
@@ -1695,12 +1701,12 @@ pub fn apply_type_substitution(
                     ty: child_type_node(child.clone()),
                     diagnostics: Rc::new(vec![]),
                 }),
-                None => match v1_rt::map_get(&subst, "__key__".to_string()) {
+                std::option::Option::None => match v1_rt::map_get(&subst, "__key__".to_string()) {
                     Some(key) => Rc::new(KernelTypeBuild {
                         ty: key.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
-                    None => {
+                    std::option::Option::None => {
                         let rname = container_kind_canonical(crate::v1_std_core::authored_name_at(
                             source_indices.clone(),
                             receiver.clone(),
@@ -1710,7 +1716,7 @@ pub fn apply_type_substitution(
                                 ty: type_variable_node(n.clone()),
                                 diagnostics: Rc::new(vec![]),
                             }),
-                            None => Rc::new(KernelTypeBuild {
+                            std::option::Option::None => Rc::new(KernelTypeBuild {
                                 ty: missing_kernel_container_profile_type(rname.clone()),
                                 diagnostics: Rc::new(vec![
                                     kernel_container_profile_miss_diagnostic(rname.clone()),
@@ -1732,30 +1738,33 @@ pub fn apply_type_substitution(
                     ty: child_type_node(child.clone()),
                     diagnostics: Rc::new(vec![]),
                 }),
-                None => match v1_rt::map_get(&subst, "__value__".to_string()) {
-                    Some(val) => Rc::new(KernelTypeBuild {
-                        ty: val.clone(),
-                        diagnostics: Rc::new(vec![]),
-                    }),
-                    None => {
-                        let rname = container_kind_canonical(crate::v1_std_core::authored_name_at(
-                            source_indices.clone(),
-                            receiver.clone(),
-                        ));
-                        match crate::std_types::container_param_name(rname.clone(), 1) {
-                            Some(n) => Rc::new(KernelTypeBuild {
-                                ty: type_variable_node(n.clone()),
-                                diagnostics: Rc::new(vec![]),
-                            }),
-                            None => Rc::new(KernelTypeBuild {
-                                ty: missing_kernel_container_profile_type(rname.clone()),
-                                diagnostics: Rc::new(vec![
-                                    kernel_container_profile_miss_diagnostic(rname.clone()),
-                                ]),
-                            }),
+                std::option::Option::None => {
+                    match v1_rt::map_get(&subst, "__value__".to_string()) {
+                        Some(val) => Rc::new(KernelTypeBuild {
+                            ty: val.clone(),
+                            diagnostics: Rc::new(vec![]),
+                        }),
+                        std::option::Option::None => {
+                            let rname =
+                                container_kind_canonical(crate::v1_std_core::authored_name_at(
+                                    source_indices.clone(),
+                                    receiver.clone(),
+                                ));
+                            match crate::std_types::container_param_name(rname.clone(), 1) {
+                                Some(n) => Rc::new(KernelTypeBuild {
+                                    ty: type_variable_node(n.clone()),
+                                    diagnostics: Rc::new(vec![]),
+                                }),
+                                std::option::Option::None => Rc::new(KernelTypeBuild {
+                                    ty: missing_kernel_container_profile_type(rname.clone()),
+                                    diagnostics: Rc::new(vec![
+                                        kernel_container_profile_miss_diagnostic(rname.clone()),
+                                    ]),
+                                }),
+                            }
                         }
                     }
-                },
+                }
             },
             AlgebraTypeTemplate::NamedTemplate { name: n, .. } => Rc::new(KernelTypeBuild {
                 ty: nominal_type_ref(n.clone()),
@@ -1883,7 +1892,7 @@ pub fn apply_type_substitution(
                                     Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
                                     "_".to_string(),
                                     pn.clone(),
-                                    None,
+                                    std::option::Option::None,
                                     crate::v1_std_core::no_span(),
                                     crate::v1_std_core::no_span(),
                                 ));
@@ -1959,7 +1968,7 @@ pub fn callable_inferred(n: Rc<Node>) -> Rc<Node> {
                         make_callable_type(n.params.clone(), ret.clone())
                     }
                 }
-                None => error_type(),
+                std::option::Option::None => error_type(),
                 _ => error_type(),
             }
         } else {
@@ -1993,12 +2002,12 @@ pub fn callable_return_type(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn global_bare_callable_binding(binding: Rc<TypeBinding>) -> bool {
-    ((((((binding.resolved.clone().transport.clone() == None)
+    ((((((binding.resolved.clone().transport.clone() == std::option::Option::None)
         && (binding.resolved.clone().expr_data.clone() == Rc::new(ExprData::NoExprData)))
         && (binding.resolved.clone().connective.clone() == Connective::NoConnective))
-        && (binding.resolved.clone().inferred.clone() != None))
+        && (binding.resolved.clone().inferred.clone() != std::option::Option::None))
         && ((binding.resolved.clone().properties.clone().len() as i64) == 0))
-        && (binding.resolved.clone().type_annotation.clone() == None))
+        && (binding.resolved.clone().type_annotation.clone() == std::option::Option::None))
 }
 
 pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
@@ -2011,10 +2020,12 @@ pub fn value_binding_expr_type_node(resolved: Rc<Node>) -> Rc<Node> {
 pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
     loop {
         let has_structure = (n.connective.clone() != Connective::NoConnective);
-        let unwrapped = if ((n.type_annotation.clone() != None) && has_structure.clone()) {
+        let unwrapped = if ((n.type_annotation.clone() != std::option::Option::None)
+            && has_structure.clone())
+        {
             n.children.clone().first().cloned()
         } else {
-            None
+            std::option::Option::None
         };
         match unwrapped.clone() {
             Some(base) => {
@@ -2022,7 +2033,7 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
                 n = __tco_0;
                 continue;
             }
-            None => {
+            std::option::Option::None => {
                 break n;
             }
         }
@@ -2056,7 +2067,7 @@ pub fn node_type_shape_argument_list(
                     )
                 }
             }
-            None => "".to_string(),
+            std::option::Option::None => "".to_string(),
         }
     })
 }
@@ -2076,7 +2087,7 @@ pub fn node_type_shape(
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         (((((rt.connective.clone() == Connective::NoConnective)
                             && ((rt.children.clone().len() as i64) == 0))
-                            && (rt.ident_span.clone() != None))
+                            && (rt.ident_span.clone() != std::option::Option::None))
                             && (crate::v1_std_core::authored_name_at(
                                 source_indices.clone(),
                                 rt.clone(),
@@ -2107,7 +2118,7 @@ pub fn node_type_shape(
                 let is_product = (n.connective.clone() == Connective::Conj);
                 let is_coproduct = (n.connective.clone() == Connective::Disj);
                 if is_product.clone() {
-                    if (n.ident_span.clone() == None) {
+                    if (n.ident_span.clone() == std::option::Option::None) {
                         "Product(<anon>)".to_string()
                     } else {
                         v1_rt::concat(
@@ -2117,7 +2128,7 @@ pub fn node_type_shape(
                     }
                 } else {
                     if is_coproduct.clone() {
-                        if (n.ident_span.clone() == None) {
+                        if (n.ident_span.clone() == std::option::Option::None) {
                             "Coproduct(<anon>)".to_string()
                         } else {
                             v1_rt::concat(
@@ -2140,7 +2151,7 @@ pub fn node_type_shape(
                                             child_type_node(el.clone()),
                                             source_indices.clone(),
                                         ),
-                                        None => "?".to_string(),
+                                        std::option::Option::None => "?".to_string(),
                                     };
                                     v1_rt::concat(
                                         v1_rt::concat(
@@ -2217,22 +2228,22 @@ pub fn node_type_compatible(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
-        let left_err = if (left.inferred.clone() != None) {
+        let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let right_err = if (right.inferred.clone() != None) {
+        let right_err = if (right.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let left_tv = if (left.inferred.clone() != None) {
+        let left_tv = if (left.inferred.clone() != std::option::Option::None) {
             is_type_variable(left.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let right_tv = if (right.inferred.clone() != None) {
+        let right_tv = if (right.inferred.clone() != std::option::Option::None) {
             is_type_variable(right.inferred.clone().clone().unwrap())
         } else {
             false
@@ -2286,12 +2297,12 @@ pub fn node_type_compatible(
                                                     }
                                                 }
                                             }
-                                            None => {
+                                            std::option::Option::None => {
                                                 break true;
                                             }
                                         }
                                     }
-                                    None => {
+                                    std::option::Option::None => {
                                         break true;
                                     }
                                 }
@@ -2343,12 +2354,12 @@ pub fn node_type_compatible(
                                                     }
                                                 }
                                             }
-                                            None => {
+                                            std::option::Option::None => {
                                                 break true;
                                             }
                                         }
                                     }
-                                    None => {
+                                    std::option::Option::None => {
                                         break true;
                                     }
                                 }
@@ -2415,7 +2426,7 @@ pub fn prefer_specific_type(
                     let el_is_unit = is_unit_like(el.clone());
                     el_is_unit.clone()
                 }
-                None => false,
+                std::option::Option::None => false,
             }
         } else {
             if left_is_optional.clone() {
@@ -2471,22 +2482,22 @@ pub fn node_type_equals(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
-        let left_err = if (left.inferred.clone() != None) {
+        let left_err = if (left.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(left.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let right_err = if (right.inferred.clone() != None) {
+        let right_err = if (right.inferred.clone() != std::option::Option::None) {
             crate::v1_std_core::is_compiler_error(right.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let left_tv = if (left.inferred.clone() != None) {
+        let left_tv = if (left.inferred.clone() != std::option::Option::None) {
             is_type_variable(left.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let right_tv = if (right.inferred.clone() != None) {
+        let right_tv = if (right.inferred.clone() != std::option::Option::None) {
             is_type_variable(right.inferred.clone().clone().unwrap())
         } else {
             false
@@ -2593,7 +2604,7 @@ pub fn node_type_equals_core(
                                             right_child.clone(),
                                             source_indices.clone(),
                                         ),
-                                        None => false,
+                                        std::option::Option::None => false,
                                     }) {
                                         __all = false;
                                         break;
@@ -2631,10 +2642,10 @@ pub fn node_type_equals_core(
                                                     child_type_node(right_ch.clone()),
                                                     source_indices.clone(),
                                                 ),
-                                                None => false,
+                                                std::option::Option::None => false,
                                             }
                                         }
-                                        None => false,
+                                        std::option::Option::None => false,
                                     }
                                 }
                             } else {
@@ -2688,14 +2699,14 @@ pub fn node_type_equals_core(
                                                                         source_indices.clone(),
                                                                     ))
                                                                 }
-                                                                None => false,
+                                                                std::option::Option::None => false,
                                                             },
-                                                            None => false,
+                                                            std::option::Option::None => false,
                                                         },
-                                                        None => false,
+                                                        std::option::Option::None => false,
                                                     }
                                                 }
-                                                None => false,
+                                                std::option::Option::None => false,
                                             }
                                         } else {
                                             false
@@ -2726,7 +2737,7 @@ pub fn node_type_equals_core(
                                                         {
                                                             if !(match right.params.clone().iter().cloned().skip(pair.0.clone() as usize).next() {
     Some(right_param) => node_type_equals(crate::v1_std_core::param_node_type_expr(pair.1.clone()), crate::v1_std_core::param_node_type_expr(right_param.clone()), source_indices.clone()),
-    None => false,
+    std::option::Option::None => false,
 }) { __all = false; break; }
                                                         }
                                                         __all
@@ -2757,11 +2768,12 @@ pub fn node_type_equals_core(
                                                                     right_ret.clone(),
                                                                     source_indices.clone(),
                                                                 ),
-                                                                None => false,
+                                                                std::option::Option::None => false,
                                                                 _ => false,
                                                             },
-                                                            None => {
-                                                                (right.inferred.clone() == None)
+                                                            std::option::Option::None => {
+                                                                (right.inferred.clone()
+                                                                    == std::option::Option::None)
                                                             }
                                                             _ => false,
                                                         }
@@ -2787,7 +2799,7 @@ pub fn node_type_deps(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let n_is_type_var = if (n.inferred.clone() != None) {
+        let n_is_type_var = if (n.inferred.clone() != std::option::Option::None) {
             is_type_variable(n.inferred.clone().clone().unwrap())
         } else {
             false
@@ -2795,14 +2807,14 @@ pub fn node_type_deps(
         if n_is_type_var.clone() {
             return Rc::new(vec![]);
         }
-        let __is_named_ref = if (n.inferred.clone() == None) {
+        let __is_named_ref = if (n.inferred.clone() == std::option::Option::None) {
             false
         } else {
             match n.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: rt, .. }) => {
                     (((((rt.connective.clone() == Connective::NoConnective)
                         && ((rt.children.clone().len() as i64) == 0))
-                        && (rt.ident_span.clone() != None))
+                        && (rt.ident_span.clone() != std::option::Option::None))
                         && (crate::v1_std_core::authored_name_at(
                             source_indices.clone(),
                             rt.clone(),
@@ -2840,7 +2852,7 @@ pub fn node_type_deps(
                                     node_type_deps(rt.clone(), source_indices.clone())
                                 }
                                 _ => {
-                                    if (child.inferred.clone() == None) {
+                                    if (child.inferred.clone() == std::option::Option::None) {
                                         node_type_deps(child.clone(), source_indices.clone())
                                     } else {
                                         Rc::new(vec![])
@@ -2854,7 +2866,7 @@ pub fn node_type_deps(
                     __result
                 })
             } else {
-                if (n.inferred.clone() != None) {
+                if (n.inferred.clone() != std::option::Option::None) {
                     match n.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
                             node_type_deps(rt.clone(), source_indices.clone())
@@ -2875,7 +2887,7 @@ pub fn node_type_deps(
                                 }
                                 __result
                             });
-                            if ((n.ident_span.clone() != None)
+                            if ((n.ident_span.clone() != std::option::Option::None)
                                 && (crate::std_types::is_kernel_type(n_name.clone()) == false))
                             {
                                 v1_rt::concat(Rc::new(vec![n_name.clone()]), child_deps.clone())
@@ -2886,7 +2898,7 @@ pub fn node_type_deps(
                     } else {
                         if ((crate::std_types::is_kernel_type(n_name.clone())
                             || (n_name.clone() == "None".to_string()))
-                            || (n.ident_span.clone() == None))
+                            || (n.ident_span.clone() == std::option::Option::None))
                         {
                             Rc::new(vec![])
                         } else {
@@ -2926,7 +2938,7 @@ pub fn method_receiver_element_node(
                 .next()
             {
                 Some(ch) => Some(child_type_node(ch.clone())),
-                None => None,
+                std::option::Option::None => std::option::Option::None,
             }
         } else {
             if ((normed.connective.clone() == Connective::NoConnective)
@@ -2934,15 +2946,15 @@ pub fn method_receiver_element_node(
             {
                 match normed.children.clone().first().cloned() {
                     Some(ch) => Some(child_type_node(ch.clone())),
-                    None => None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
-                None
+                std::option::Option::None
             }
         };
         match maybe_element.clone() {
             Some(el) => el.clone(),
-            None => receiver_type.clone(),
+            std::option::Option::None => receiver_type.clone(),
         }
     }
 }
@@ -2958,7 +2970,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
             {
                 match n.children.clone().first().cloned() {
                     Some(inner) => inner.clone(),
-                    None => n,
+                    std::option::Option::None => n,
                 }
             } else {
                 n
@@ -3015,8 +3027,8 @@ pub fn first_matching_algebra_field(
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
-            None => {
-                break None;
+            std::option::Option::None => {
+                break std::option::Option::None;
             }
             Some(kind) => {
                 match crate::v1_std_core::find_child_named(
@@ -3030,7 +3042,7 @@ pub fn first_matching_algebra_field(
                             field_node: f.clone(),
                         }));
                     }
-                    None => {
+                    std::option::Option::None => {
                         let __tco_0 = Rc::new(
                             candidates
                                 .iter()
@@ -3061,39 +3073,39 @@ pub fn infer_binop_type_node(
     match op.clone() {
         BinOp::Eq => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::Ne => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::Lt => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::Gt => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::Le => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::Ge => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::And => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::Or => Rc::new(BinOpInferred {
             result_type: bool_type(),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         BinOp::NullCoalesce => Rc::new(BinOpInferred {
             result_type: extract_optional_inner_node(left_type.clone()),
-            algebra_field: None,
+            algebra_field: std::option::Option::None,
         }),
         _ => {
             let candidates = binop_algebra_fields(op.clone());
@@ -3128,18 +3140,18 @@ pub fn infer_binop_type_node(
                         }
                         _ => Rc::new(BinOpInferred {
                             result_type: left_type.clone(),
-                            algebra_field: None,
+                            algebra_field: std::option::Option::None,
                         }),
                     },
-                    None => Rc::new(BinOpInferred {
+                    std::option::Option::None => Rc::new(BinOpInferred {
                         result_type: left_type.clone(),
-                        algebra_field: None,
+                        algebra_field: std::option::Option::None,
                     }),
                 }
             } else {
                 Rc::new(BinOpInferred {
                     result_type: left_type.clone(),
-                    algebra_field: None,
+                    algebra_field: std::option::Option::None,
                 })
             }
         }
@@ -3157,14 +3169,14 @@ pub fn for_each_element_type_node(
         let extracted = if is_single_child.clone() {
             match normed.children.clone().first().cloned() {
                 Some(ch) => Some(child_type_node(ch.clone())),
-                None => None,
+                std::option::Option::None => std::option::Option::None,
             }
         } else {
-            None
+            std::option::Option::None
         };
         match extracted.clone() {
             Some(el) => el.clone(),
-            None => {
+            std::option::Option::None => {
                 if ((((normed.connective.clone() == Connective::NoConnective)
                     && ((normed.children.clone().len() as i64) == 0))
                     && ((normed.properties.clone().len() as i64) == 0))
@@ -3185,6 +3197,6 @@ pub fn for_each_element_type_node(
 pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }

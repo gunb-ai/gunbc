@@ -50,6 +50,18 @@ fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }
 
+// The declared inhabitant roster for UriScheme. It exists so a consumer decoding a
+// scheme back from its variant discriminant does so from THIS module's declared arms
+// rather than from host type reflection: reflection answers at runtime and only where a
+// live declaration index exists, which the emitted compiler does not carry, so the
+// reflective form emitted as a refusal on every non-interpreter target. The roster is the
+// same fact the arms already state, so the drift risk is real and is walled by
+// v2.test.manual.coproduct_reflection_conformance, which reflects UriScheme's arms under
+// the interpreter and compares them to these rows by discriminant.
+fn uri_scheme_inhabitants() -> List<UriScheme> {
+  [Http, Https, Tftp, File, Ftp, Javascript, Data, Vbscript, Mailto]
+}
+
 fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
   match s {
     Http => "http://"
@@ -106,7 +118,13 @@ fn parse_href_scheme(url: String) -> ParsedHrefScheme {
   }
 }
 
-data uri_component_encode_authority_note: String = "RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1) realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986 section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor). uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only."
+// RFC 3986 section 2.1 percent-encoding (https://www.rfc-editor.org/rfc/rfc3986#section-2.1)
+// realized by extdeps.uri uri_percent_encode_* over UriUnicodeScalar / UriUtf8Octet. RFC 3986
+// section 3.3 path grammar is cited at extdeps.uri_path extdeps_external_authority_anchor — same
+// specification, distinct section facts, no parallel section module. UriUnicodeScalar { cp } is the
+// raw carrier; UriValidatedScalar is sole_constructor with admitted_cp: Int and is minted only by
+// uri_validated_scalar_construction (scalar-range and surrogate checks live in that constructor).
+// uri_percent_encode_admitted_scalar_wire accepts UriValidatedScalar only.
 
 type UriHexNibble
   = UriNibble0

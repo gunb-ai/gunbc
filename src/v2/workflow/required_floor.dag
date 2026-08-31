@@ -115,6 +115,121 @@ fn required_floor_disposition_with_changed_selection(
   }
 }
 
+// THE COST POLICY OF A CHANGED WITNESS: the typed join of two authorities that answer different
+// questions (FLOOR-CHANGED-COST-0, operator ruling 2026-08-30).
+//
+// `v2.workflow.floor_cost_debt` answers "should this witness run on every ordinary floor?" and
+// says no for a rostered identity, because the 500ms CPU line cannot reliably carry it -- the
+// four `bootstrap_footprint_anchor` rows measured 474-505ms across consecutive runs, so the
+// runner slot rather than the claim's correctness decided their outcome. Changed-witness
+// selection answers a different question -- "did the witness this PR changed reach a semantic
+// verdict?" -- and the projection above exists precisely because a green context that never
+// looked is the incident it was written for. Neither erases the other, and the composition is
+// not a per-claim exception: it is one derived policy over the intersection.
+//
+// UNDER `ChangedCostDebtVerdictOnly` THE CPU LINE IS OBSERVED AND REPORTED AND DECIDES NOTHING.
+// The wall safety deadline stays armed and stays a red, because it protects against a different
+// failure (a blocked or stuck process) that the ruling does not touch: a claim that never
+// reaches a verdict is red under either policy. A semantic Failed, panic, route gap, runtime
+// error or unreadable observation is red under either policy too. What the override removes is
+// exactly one thing -- the CPU ceiling's power to convert a REACHED verdict into a floor red,
+// for an identity whose expensiveness is already declared debt and whose author is present.
+//
+// AN ORDINARY CHANGED WITNESS IS UNAFFECTED. A changed identity that is NOT enrolled in the
+// cost-debt roster keeps the ordinary policy and still reds when it exceeds the CPU line, so
+// this is not a widening of the floor: no identity gains the override by being changed alone,
+// and none gains it by being expensive alone.
+type ChangedWitnessCostPolicy =
+    OrdinaryChangedWitnessCostPolicy
+  | ChangedCostDebtVerdictOnly
+
+// THE INTERSECTION, DERIVED ONCE. Both conditions are required and neither is a name test: the
+// selection fact comes from the diff attribution the floor already owns, and the membership fact
+// from the roster module's own `floor_cost_debt_holds`. A witness that is rostered but unchanged
+// takes no policy here at all -- it never becomes a claim, and its disposition remains
+// `DeclinedCostDebt` through `required_floor_site_disposition` above.
+fn changed_witness_cost_policy(
+  selected_as_changed_witness: Bool,
+  identity: String,
+) -> ChangedWitnessCostPolicy {
+  if selected_as_changed_witness {
+    if floor_cost_debt_holds(name: identity) {
+      ChangedCostDebtVerdictOnly {}
+    } else {
+      OrdinaryChangedWitnessCostPolicy {}
+    }
+  } else {
+    OrdinaryChangedWitnessCostPolicy {}
+  }
+}
+
+// HOW ONE ENROLLED COST-DEBT IDENTITY RELATES TO THIS RUN, as a fold over the disposition -- the
+// single authority for what the run did with each identity.
+//
+// IT LIVES HERE AND NOT IN `v2.workflow.floor_cost_debt` FOR THE ONE STRUCTURAL REASON THE
+// SUBSTRATE HAS: the import graph is acyclic and this module already imports that one for
+// `floor_cost_debt_holds`. The standing is a statement about a `RequiredFloorDisposition`, which
+// is declared here, so this is also the layer that owns it (DESIGN section 3: a fact's home is
+// its layer, not its folder). The roster module remains the sole authority over MEMBERSHIP.
+//
+// THE ARMS CARRY A `CostDebt` PREFIX because variant names resolve corpus-wide: bare `Withheld`
+// and `Undeclared` are already declared by `gunbc.product.inventory` and
+// `std.reference_realization`, and a second declaration of either would capture unrelated
+// bare-name references.
+//
+// `CostDebtWithholdOverriddenForChangedVerdict` IS NOT STALE, and that distinction is the whole
+// reason this fold gains an arm. The row remains valid debt: nothing about the identity's
+// measured expensiveness changed, and the roster line is not edited, deleted, or automatically
+// repaid. What changed is that changed-witness selection temporarily required its correctness
+// verdict on THIS run. Reporting it as `CostDebtDeclaredButNotWithheld` would tell the author to
+// delete a roster line that is still describing the tree correctly -- the remedy for a stale row
+// applied to a row that is not stale.
+type CostDebtRosterStanding =
+    CostDebtWithheld
+  | CostDebtWithholdOverriddenForChangedVerdict
+  | CostDebtOutsideThisRunsUniverse
+  | CostDebtUndeclared
+  | CostDebtDeclaredButNotWithheld
+
+// The disposition the run recorded for one enrolled identity, or the absence of one. The absent
+// case is an arm rather than a default so that "the tree declares no such identity" stays a
+// different fact from "the run declined it", which is the conflation the reverse join exists to
+// refuse.
+type CostDebtDispositionReading =
+    CostDebtDispositionRow { disposition: RequiredFloorDisposition }
+  | CostDebtNoDispositionRow
+
+fn cost_debt_roster_standing(reading: CostDebtDispositionReading) -> CostDebtRosterStanding {
+  match reading {
+    CostDebtNoDispositionRow => CostDebtUndeclared {}
+    CostDebtDispositionRow { disposition: d } =>
+      match d {
+        DeclinedCostDebt => CostDebtWithheld {}
+        PlannedAsChangedWitness => CostDebtWithholdOverriddenForChangedVerdict {}
+        DeclinedOutsideGateClosure => CostDebtOutsideThisRunsUniverse {}
+        DeclinedDiscoveryExcluded { matched_substring: _ } => CostDebtOutsideThisRunsUniverse {}
+        Planned => CostDebtDeclaredButNotWithheld {}
+        DeclinedLongModule { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
+        DeclinedFixtureMember { matched_prefix: _ } => CostDebtDeclaredButNotWithheld {}
+        DeclinedOutsideRequiredGate => CostDebtDeclaredButNotWithheld {}
+      }
+  }
+}
+
+// THE REFUSING POLARITY, STATED ONCE. A roster that has stopped describing the tree is what
+// blocks -- an identity the tree does not declare, and one it declares and offered but never
+// withheld. The override is green: the roster still describes the tree, and the run has the
+// stronger fact (a verdict) rather than a weaker one.
+fn cost_debt_roster_standing_refuses(standing: CostDebtRosterStanding) -> Bool {
+  match standing {
+    CostDebtWithheld => false
+    CostDebtWithholdOverriddenForChangedVerdict => false
+    CostDebtOutsideThisRunsUniverse => false
+    CostDebtUndeclared => true
+    CostDebtDeclaredButNotWithheld => true
+  }
+}
+
 // ROSTER GROWTH IS BUDGET-BOUND AT THIS ADMISSION AUTHORITY.
 //
 // The required witnesses lane has no measured memory margin on the runner shape it consumes:
@@ -376,8 +491,9 @@ fn fixture_home_prefixes() -> List<String> {
 //
 // WHAT IS IN. `v2.test.` is the whole v2 compiler suite. The `test.claim.` rows are the v1
 // compiler-floor witnesses -- inference, occurrence binding, declared-type inhabitance,
-// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses -- and
-// the census that tests this roster's own arms. Nothing here is a product, fleet, deploy,
+// coproduct soundness, namespace resolution, parse, the self-host behavioral witnesses, and
+// XL-0's repair-input split plus namespace control-plane standing -- and the census that tests
+// this roster's own arms. Nothing here is a product, fleet, deploy,
 // secret, dashboard or roadmap witness; those are exactly what the ruling moved off the gate.
 //
 // WHAT THIS IS NOT. Not a selection shrink (the 2026-08-13 directive): a selection derives the
@@ -411,15 +527,25 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.arity_zero_import_refusal_witness",
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
+    "test.claim.compiler_frontend_program_status_witness",
     "test.claim.discovery_census_witness_test",
     "test.claim.host_budget_source_witness",
     "test.claim.typed_module_cache_capacity_witness",
     "test.claim.whole_corpus_compile_admission_witness",
+    "test.claim.memory_stall_refusal_witness",
   ]
 }
 
-// THE LAST THREE ROWS, ADDED 2026-08-30, AND WHY THEY BELONG UNDER THE RULING ABOVE RATHER
-// THAN BESIDE IT.
+// test.claim.memory_stall_refusal_witness JOINS THE SAME FAMILY BY THE SAME TEST: it judges
+// the arm that stops a resolve which is thrashing instead of computing (gunbc.
+// memory_stall_refusal), which is the state the three modules below cannot see -- budget
+// readable and admitted, cap derived and enforced, and the machine still unable to deliver
+// the budget beside its own page cache. The failure it closes is the 2026-08-30 default-VM
+// treadmill: four whole-closure runs holding 2-4.5 hours with no diagnostic and no exit.
+// Same exact-module-name rule as below, for the same reason.
+//
+// THE LAST THREE ROWS BEFORE IT, ADDED 2026-08-30, AND WHY THEY BELONG UNDER THE RULING ABOVE
+// RATHER THAN BESIDE IT.
 //
 // They are the host memory budget's three witness modules, and each one is a COMPILER FLOOR
 // witness by the ruling's own test -- none is a product, fleet, deploy, secret, dashboard or
@@ -722,6 +848,32 @@ fn required_floor_claim_cost_line_ms() -> Int {
 // evaluation on the CPU clock; the wall limit below is independently derived and looser.
 fn required_floor_claim_cpu_safety_limit_ms() -> Int {
   500
+}
+
+// WHETHER THE CPU SAFETY DEADLINE IS ARMED FOR ONE CLAIM, derived from the policy rather than
+// from the claim (FLOOR-CHANGED-COST-0).
+//
+// NEITHER ARM CARRIES THE FIGURE, and that is the point twice over. The number is the SAME 500ms
+// under both policies -- the override does not grant a rostered row a higher ceiling (DESIGN
+// section 5: a row that broke the budget does not get an exemption to keep spending it), it
+// changes what a crossing MEANS -- so a field restating it here would be a second home for a
+// fact `required_floor_claim_cpu_safety_limit_ms` above already owns, and the two could drift.
+// A reader of either arm reads that one function.
+//
+// THE OBSERVED-ONLY ARM DOES NOT MEAN THE FIGURE IS DROPPED: the run publishes it, tagged with
+// its clock, through `v2.workflow.floor_changed_witness` `ChangedWitnessCostObservation`, which
+// is where a measurement belongs. A policy that stopped gating AND stopped counting would be the
+// absorbing fallback DESIGN section 5 forbids. The wall deadline is not modeled here at all: it
+// is armed under both policies, so a second arm restating it would be a decoration.
+type ClaimCpuDeadline =
+    CpuDeadlineArmed
+  | CpuDeadlineObservedOnly
+
+fn changed_witness_cpu_deadline(policy: ChangedWitnessCostPolicy) -> ClaimCpuDeadline {
+  match policy {
+    OrdinaryChangedWitnessCostPolicy => CpuDeadlineArmed {}
+    ChangedCostDebtVerdictOnly => CpuDeadlineObservedOnly {}
+  }
 }
 
 // THE WALL SAFETY DEADLINE: 8000ms. Independently derived and deliberately LOOSER, and the

@@ -2,8 +2,8 @@
 
 **Purpose.** One stable place for the sessions working the v2 self-host wall to agree on
 what the wall IS, which root each defect belongs to, and who owns which root. Operator-directed
-2026-08-16. This document is coordination state, not an authority: every claim here names how it
-was measured, and an unmeasured claim says so.
+2026-08-16. Coordination state, not an authority: every claim names how it was measured, and an
+unmeasured claim says so.
 
 **Sessions sharing this surface:** `smart-ram-730` (self-host frontier / root partition) ·
 `gentle-dove-833` (interpreter cut Y1 — emit `v2.compiler.eval`).
@@ -41,7 +41,7 @@ emission path. Do not generalize from either.
 
 ## 2. The measurement everything here rests on
 
-The curated cargo sweep TSV — banked `941e8034862`, **2026-07-26**. **The TSV itself was DELETED 2026-08-16** (operator: delete anything not actively derived — a dated snapshot nothing regenerates is the same attractor as the frontier roster). The numbers reproduced in this document are the surviving record of it; recover the file from git history if a re-read is needed, and prefer a fresh run.
+The curated cargo sweep TSV — banked `941e8034862`, **2026-07-26**. **The TSV itself was DELETED 2026-08-16** (operator: delete anything not actively derived — a dated snapshot nothing regenerates is the same attractor as the frontier roster). The numbers here are the surviving record; recover the file from git history if a re-read is needed, and prefer a fresh run.
 Produced by `docs/probes/curated_cargo_probe_one.sh` (emit → `cssl_assemble` → cargo).
 
 Caveats the receipt carries, not to be rounded off:
@@ -119,15 +119,15 @@ error TEXTS joined rather than histograms compared:
 [`docs/probes/frontier_cohort_board_2026-08-24/`](../probes/frontier_cohort_board_2026-08-24/README.md).
 Across the eleven shim-free boards, **92.3% of distinct sites appear on two or more modules**, and
 ten additional entries added only **17 distinct sites** beyond what `03_ingest` already showed.
-`00_compile` boards 189 distinct sites and not one of them is outside `03_ingest`'s set. So the
-shared floor is real and it is most of the volume, exactly as this row proposed.
+`00_compile` boards 189 distinct sites, none outside `03_ingest`'s set. So the shared floor is
+real and is most of the volume, as this row proposed.
 
 What follows is NOT that the queue was right about magnitudes. Summing per-module figures
 overstates by **7.0x** on that view, and per-root fan-out — diagnostics per distinct site — varies
-by a factor of five between roots, so the inflation is not uniform and cannot be divided out. Two
-cross-code roots visible only from the join are established there
-(`PRIMITIVE_REPR_FORK` spanning E0308+E0369, `MAP_CARRIER_FORK` spanning E0308+E0560); 217 of 298
-sites remain UNCLASSIFIED and are left so rather than filled in from their error codes.
+fivefold between roots, so the inflation is not uniform and cannot be divided out. Two cross-code
+roots visible only from the join are established there (`PRIMITIVE_REPR_FORK` spanning
+E0308+E0369, `MAP_CARRIER_FORK` spanning E0308+E0560); 217 of 298 sites remain UNCLASSIFIED, left
+so rather than filled in from their error codes.
 
 **H1 as originally written — there is a shared floor, and it is most of the volume.**
 `05_emit` is 35 source lines; `06_translate` is 4,226. Both total **364**, with identical
@@ -135,9 +135,9 @@ histograms code-for-code. `fold_lowering` (164 lines) is 291 with the same tail.
 shared emitted closure fails the same way in every crate, ~290 deep, and each module adds a
 delta. If true, this is one core plus twenty deltas — the 9,444 is the same defects counted
 twenty times, and a core fix drops every module at once.
-*Falsified by:* extracting real error TEXTS for two modules and finding the intersection small.
-Histogram similarity is suggestive, not proof. **This measurement has now been run over fifteen
-modules and did not falsify it** — the intersection is 92.3% of distinct sites.
+*Falsified by:* extracting real error TEXTS for two modules and finding the intersection small;
+histogram similarity is suggestive, not proof. **Run over fifteen modules, it did not falsify** —
+the intersection is 92.3% of distinct sites.
 
 **H2 — E0308 + E0277 + E0599 are one root, not three.**
 That triple is the signature of a type-representation fork, which DESIGN already tracks: every
@@ -152,8 +152,8 @@ receivers are unrelated to any coproduct/native straddle.
 **H3 — `01_tokenize` is unrepresentative.**
 It sits BELOW the floor (202) with a different profile — no E0063:18, no E0614, no E0392,
 no E0004; E0369/E0107 at 5 rather than 13. Smaller closure, not just a smaller module. It was
-smart-ram-730's first pick on the strength of being the only coded first error; that pick is
-**withdrawn pending H1**, because fixing an outlier may teach nothing about the other nineteen.
+smart-ram-730's first pick as the only coded first error; that pick is **withdrawn pending
+H1**, because fixing an outlier may teach nothing about the other nineteen.
 
 ## 5. Frontier roster — DELETED (operator ruling, 2026-08-16)
 
@@ -163,23 +163,22 @@ smart-ram-730's first pick on the strength of being the only coded first error; 
 
 Rationale, in the roster's own terms: `execution_measured_seed_retained_row` takes
 `measured_blocker`, `located_stage` and `located_reason` as **ordinary parameters**, so a row
-that claims measurement is structurally indistinguishable from one that asserts it — the
+claiming measurement is structurally indistinguishable from one asserting it — the
 constructor NAME asserts a provenance the TYPE does not carry
 (`frontier_roster_provenance_constructor_inflation_note` says so in tree). Ten of twenty-seven
 were never execution-measured at any head. It is an attractor: three separate readers took its
 rows as measurements this week, and one census was withdrawn over it.
 
-Deleted rather than derived: everything worth keeping is already derivable elsewhere — the
-module list from the filesystem, composition from source in one command, cargo status from the
-sweep receipt. The disposition/blocker/stage fields are the part that cannot be derived and were
-the part that lied. Per DESIGN §3 delete-first, **the deletion is the census**: real consumers
+Deleted rather than derived: everything worth keeping is derivable elsewhere — the module list
+from the filesystem, composition from source in one command, cargo status from the sweep
+receipt. The disposition/blocker/stage fields cannot be derived and were the part that lied. Per DESIGN §3 delete-first, **the deletion is the census**: real consumers
 refuse loudly. Expected load-bearing consumer: the crate-layout emitter
 (`compiler_frontier_crate_layout_note`).
 
 ## 6. Division of labour
 
-`05_eval` totals 410, of which ~290 looks like shared floor under H1. So the child's lane is
-currently blocked behind defects that are not eval's and cannot be fixed from inside eval.
+`05_eval` totals 410, of which ~290 looks like shared floor under H1, so the child's lane is
+blocked behind defects that are not eval's and cannot be fixed from inside eval.
 Consequence: **neither session fixes this per-module.** Root ownership is assigned here once the
 partition is confirmed, so the two lanes work disjoint roots rather than the same wall twice.
 
@@ -197,10 +196,10 @@ partition is confirmed, so the two lanes work disjoint roots rather than the sam
 
 **The ~590 was arithmetic coincidence across two censuses, not a measured root.** Raised by the
 side channel, verified in tree against `docs/probes/e0599_phase_b0_emitter_decision_2026-07-29.md`.
-The five signatures I summed came partly from the July E0599 diagnosis (whose own 590 was
-*590 of 635 E0599 diagnostics*, including further `Outcome<U>`/`Option<T>`/`Vector<T>` shapes I
-did not list) and partly from the separately-counted 181 E0277 `T: Clone`. Adding them was
-double-counting across two populations that overlap.
+The five signatures summed came partly from the July E0599 diagnosis (whose own 590 was
+*590 of 635 E0599 diagnostics*, including further `Outcome<U>`/`Option<T>`/`Vector<T>` shapes
+not listed) and partly from the separately-counted 181 E0277 `T: Clone`. Adding them
+double-counted across two overlapping populations.
 
 **Worse for my framing: the E0599 population was already split by emitter decision, three ways:**
 
@@ -210,24 +209,24 @@ double-counting across two populations that overlap.
 | `TargetApiRequirement` | 168 (28.0%) | `is_empty`/`iter` require element `Clone` |
 | `OwnedDeconstructionRequirement` | 63 (10.5%) | the emitter's owned head/deconstruction lowering |
 
-So "Root A" as this document defined it spans **two different lanes**. The derive-macro
-supplemental-bound mechanism I root-caused below maps to the `TargetApiRequirement` population
+So "Root A" as defined here spans **two different lanes**. The derive-macro
+supplemental-bound mechanism root-caused below maps to the `TargetApiRequirement` population
 (168) — container methods needing an element bound. The larger `CloneSharedRequirement` half is
 clones the emitter *synthesised*, which belongs to the **emitter-ownership-defork** thread
 DESIGN already carries, not to derive bounds.
 
-**Two warnings that census attaches to its own numbers, and this document must not strip:**
+**Two warnings that census attaches to its own numbers, which this document must not strip:**
 369 is **not** a predicted burn-down — the census records which emitter arm is *associated* with
-a site, and does NOT execute the per-site ownership verdict, so removability is unproven; and
+a site and does NOT execute the per-site ownership verdict, so removability is unproven; and
 `CloneSharedRequirement` means only *the emitter inserted a clone here*, never *this clone can
-be deleted*. A withdrawn rationale in the same document is worth carrying: `Rc::make_mut` was
+be deleted*. A withdrawn rationale from the same document is worth carrying: `Rc::make_mut` was
 once cited as evidence a copy-free alternative exists, and it is not — it is declared
 `where T: Clone` and clones the pointee whenever another strong `Rc` is live, so it **requires
 the very bound being counted**.
 
-**What survives:** the mechanism below is real and root-caused. Its scope is the derive/container
-population, not 590. What the live `05_emit` run measured (~105 in one module, 49 of them
-"exists but its trait bounds were not satisfied") is the number to work against.
+**What survives:** the mechanism below is real and root-caused; its scope is the derive/container
+population, not 590. The live `05_emit` measurement (~105 in one module, 49 of them "exists but
+its trait bounds were not satisfied") is the number to work against.
 
 ### Root A — MECHANISM, for the derive/container population only (smart-ram-730, 2026-08-16)
 
@@ -239,8 +238,8 @@ July was ~84/module, so **the family did not collapse** and gunbc#7691 did not r
 
 **Why it did not.** `v1.trait_derive_emit` `v1_clone_bound_seed_for_item` opens with
 `if is_coproduct_type(n: item) { round }` — the derive trigger is **struct-only**. Its note
-justifies that as "derive emits per-impl bounds," which is true for `derive(Clone)` on an enum
-(that does add `T: Clone`) and **false for `Debug`/`Serialize`/`Deserialize`**, which add only
+justifies that as "derive emits per-impl bounds," true for `derive(Clone)` on an enum (which
+does add `T: Clone`) and **false for `Debug`/`Serialize`/`Deserialize`**, which add only
 their own bound and never the supplemental `Clone` a container field's conditional impls need.
 The second trigger cannot cover it either: well-formedness propagation fires only on naming a
 type that already carries a declaration bound, and that same note records — checked against
@@ -251,19 +250,19 @@ type that already carries a declaration bound, and that same note records — ch
 `Outcome<T>` is exactly that shape and is the receiver in the largest single signature.
 
 This is also why an item-level bound structurally cannot close the population, however good its
-fixpoint: the requirement is **per-derive-impl**, which is what v2's supplemental contracts
-already encode with cited authorities. The fix is the wire-through, not a better v1 predicate.
+fixpoint: the requirement is **per-derive-impl**, which v2's supplemental contracts already
+encode with cited authorities. The fix is the wire-through, not a better v1 predicate.
 
 ## 9. Working agreements for this surface
 
 **A ROOT SIZE MEASURED IN DIAGNOSTICS IS NOT A COUNT OF DEFECTS** (`gentle-dove-833`, 2026-08-16).
-One emitter decision can produce several downstream rustc diagnostics, and the ratio is not 1 and
-not constant. Measured in this lane: 159 collapse **events** removed 158 E0308 and 139 total errors
+One emitter decision can produce several downstream rustc diagnostics, and the ratio is neither 1
+nor constant. Measured in this lane: 159 collapse **events** removed 158 E0308 and 139 total errors
 while **adding** 25 of a new class — the same events map to three different numbers depending on
-which side you count from, and none of them is the number of things wrong. So: report the **event**
-count with the instrument that produced it, and treat any diagnostic-denominated root size as an
-upper bound on defects with an unmeasured fan-out. The corollary: **a fix can reduce the total while
-revealing a class it had been masking**, so a shrinking total is not by itself evidence the root was
+which side you count from, none of them the number of things wrong. So: report the **event** count
+with the instrument that produced it, and treat any diagnostic-denominated root size as an upper
+bound on defects with unmeasured fan-out. Corollary: **a fix can reduce the total while revealing
+a class it had been masking**, so a shrinking total is not by itself evidence the root was
 correctly identified.
 
 
@@ -272,9 +271,9 @@ Read before starting. These are all paid-for lessons from 2026-08-16.
 
 1. **Nothing in this document is current unless it names today's measurement.** The July TSVs
    were DELETED (operator: delete anything not actively derived). The numbers transcribed here
-   are a surviving record of a snapshot, which is the same staleness one level up — they are
-   kept only because they are all we have, and every one of them is superseded the moment you
-   measure live. Root A's ~590 was already wrong when this document quoted it.
+   are a surviving record of a snapshot — the same staleness one level up — kept only because
+   they are all we have; every one is superseded the moment you measure live. Root A's ~590 was
+   already wrong when this document quoted it.
 2. **The instrument is `gunbc compile --entry <mod> --target rust` then `cargo check` on the
    emitted crate.** It produces error TEXTS. Do NOT use `frontier_probe_survey` — zero receipts
    on any host, including a dedicated runner.
@@ -285,11 +284,11 @@ Read before starting. These are all paid-for lessons from 2026-08-16.
    is its output, and it is a member of the derived generated population (`gunbc.stage0_rust_source_lifecycle_scaffold` `derived_generated_stage0_repo_paths`) because the crate-layout authority does not claim it. Probe the `.rs` for fast
    feedback if you like, but revert it — real fixes land in the `.dag` and regenerate.
 5. **Measure before/after in your own worktree.** Concurrent fixes to a shared tree make every
-   before/after unattributable, which is the failure this whole document exists to prevent.
+   before/after unattributable — the failure this document exists to prevent.
 6. **Null-control your fix.** `gentle-dove-833` suppressed the Optional collapse, confirmed the
    arm was live (3 files differed), and got `|acc: Option<Absent>|` — `Absent` is not a Rust
-   type. The rule had been HIDING a bad node, not creating it. A fix that changes one wrong
-   output into a different wrong output is not a fix; check what your change actually produced.
+   type. The rule had been HIDING a bad node, not creating it. A fix that turns one wrong output
+   into a different wrong output is not a fix; check what your change actually produced.
 7. **Prefer construction to validation.** If your root's bad node arrives already wrong, patching
    the consumer is validation. Find what produced it.
 
@@ -300,7 +299,7 @@ rather than error code — E0308 by concrete expected/found pair, E0599 by recei
 method, E0277 by unsatisfied trait + self type — over one clean build of the same assembled
 crate. **233 signatures across 2,898 diagnostics.**
 
-Found via the side channel; verified in tree before use. Its existence means **H2 is refuted**:
+Found via the side channel; verified in tree before use. Its existence **refutes H2**:
 there is no single global top-three root. But grouping the signatures shows far fewer roots than
 233, and the top one is not what the by-code view suggested.
 
@@ -316,23 +315,23 @@ there is no single global top-three root. But grouping the signatures shows far 
    + E0277 bounds for U/A/B: Clone, Node: Hash, Node: Eq, EnvironmentBindingKey: Hash
 ```
 
-Emit `fn f<T>(…)` where the body clones a `T`, or hand a `T` to a container that requires
-`Clone`, and rustc refuses at every use site. "exists but its trait bounds were not satisfied"
-is rustc naming this directly. Mechanically uniform and closure-wide, so it is floor.
+Emit `fn f<T>(…)` where the body clones a `T`, or hand a `T` to a container requiring `Clone`,
+and rustc refuses at every use site; "exists but its trait bounds were not satisfied" is rustc
+naming this directly. Mechanically uniform and closure-wide, so it is floor.
 
 > **THE 590 IS STALE AND MUST NOT BE PLANNED AGAINST.** The cause-signature TSV is dated
 > 2026-07-28. gunbc#7691 — *"Propagate item Clone bounds as a fixpoint over the declared-type
 > graph"* — landed **2026-08-02**, five days later, and wires
 > `emit_item_type_params_with_clone_bounds` + `emit_item_clone_bound_refusal` into
-> `emit_type_def_from_connective`, which is exactly this root's site. So a fix targeting Root A
+> `emit_type_def_from_connective`, exactly this root's site. So a fix targeting Root A
 > landed *after* the measurement that sized it, and Root A's live size is **unknown**.
 >
 > Two further consequences. The July E0277 census's central claim — that
 > `emit_type_def_from_connective` "renders generic params via the plain `emit_type_params` with
 > no Clone-bound logic at all" — is **stale**: that path now branches into clone-bound emission
 > when `capability_surface.impl_bodies == ""` and the item has no fn fields. And what #7691
-> emits is a **struct-level** `T: Clone` (via `v1_emit_type_params_with_clone_bounds`), which is
-> the shape review 43338 argued *against* as over-constraint — selective rather than blanket,
+> emits is a **struct-level** `T: Clone` (via `v1_emit_type_params_with_clone_bounds`), the
+> shape review 43338 argued *against* as over-constraint — selective rather than blanket,
 > since it is gated on `emit_info.clone_bounded_type_params`, but still type-level rather than
 > per-derive-impl. Whether that is correct-enough in practice or is itself producing new
 > failures is unmeasured.
@@ -357,10 +356,10 @@ That disagreement has a name now. **v1's rule is item/type-level** (`T: Clone` o
 generic list); **v2's contracts are per-derive-impl** (Debug needs Clone, Serialize needs Clone,
 Clone needs nothing extra). So the wire-through changes the **grain**, not merely the source of
 truth, and the failure mode to guard is unioning the per-derive requirements back onto the whole
-type declaration — which would reproduce v1's over-constraint while claiming v2's authority.
-Any wire-through must keep per-derive bounds per-derive, and its discriminating control is a
-type whose Debug impl needs `Clone` but whose construction does not: correct output bounds the
-derive, not the type.
+type declaration — reproducing v1's over-constraint while claiming v2's authority. Any
+wire-through must keep per-derive bounds per-derive; its discriminating control is a type whose
+Debug impl needs `Clone` but whose construction does not: correct output bounds the derive, not
+the type.
 
 **No bootstrap cycle.** Checked rather than assumed: `src/v1/05_emit_rust.dag` already
 references `v2.std.compilers.target_model` and `v2.extdeps.languages.rust`, and eight other v1
@@ -389,8 +388,8 @@ belongs to whoever owns that file's root, never to the lane that happened to com
 > [`docs/probes/root_b_primitive_repr_fork_2026-08-16.md`](../probes/root_b_primitive_repr_fork_2026-08-16.md),
 > merged to main on gunbc#8337. It was named rather than linked while it lived only on that branch,
 > because a link to a file the tree does not contain is a dangling edge the reachability lens
-> refuses; now that it is on main the link is the correct form, and it is also what makes the probe
-> reachable rather than an orphan.
+> refuses; on main the link is the correct form, and it is what makes the probe reachable rather
+> than an orphan.
 >
 > **The mechanism is one switch.** `v1.compiler.04_infer` `rust_corpus_repr` chooses
 > `HostNative` vs `FaithfulFreeMonoid` from `corpus_has_v1_seed_source_indices`, a **path
@@ -429,9 +428,9 @@ belongs to whoever owns that file's root, never to the lane that happened to com
 > **COUNT CORRECTION, mine (2026-08-16).** This table first read "342 diagnostics citing
 > `CommutativeSemiring<Magnitude>`". That was a `grep -c` over matching LINES — it counted
 > rustc's annotation and note lines as well as the error — and overstated by ~4x. Re-counted per
-> error block and at distinct `file:line:col` grain, to match §11's denomination, it is **84
-> errors / 74 sites → 0**. Conclusion and direction unchanged; the magnitude was wrong. Anyone
-> reconciling this against §11's 509 sites should use 74, not 342.
+> error block at distinct `file:line:col` grain, matching §11's denomination, it is **84 errors /
+> 74 sites → 0**. Conclusion and direction unchanged; the magnitude was wrong. Reconcile against
+> §11's 509 sites using 74, not 342.
 >
 > The cause is confirmed (342 → 0 on a real module). The `Bool` half is untouched. **And the total
 > ROSE by 121** — working agreement 6 firing exactly as written. The increase is characterized:
@@ -445,9 +444,9 @@ belongs to whoever owns that file's root, never to the lane that happened to com
 > realized, and whether namespace-derived use-lines are synthesized — **and a pure-v2 closure needs
 > opposite arms of each.** No value of a two-valued enum supplies both, which is why the seed
 > compiles, the v2 corpus refuses, and forcing either arm merely relocates the refusals. A §5
-> state-space conflation sitting *underneath* Root B. No fix is proposed from this; splitting the
-> enum is the shape the evidence points at, but which authority owns the split — and whether the
-> numeric grounding belongs in the checkpoint table at all — is a modeling decision above this lane.
+> state-space conflation *underneath* Root B. No fix is proposed; splitting the enum is the shape
+> the evidence points at, but which authority owns the split — and whether the numeric grounding
+> belongs in the checkpoint table at all — is a modeling decision above this lane.
 >
 > **A 30-second reproducer, recommended over a compiler-module probe.** The three-file closure
 > `gunbc compile --source-root dag --source-root src/v2 --entry dag/std/nat.dag --target rust`
@@ -473,8 +472,8 @@ was supplied` (48) and `missing generics for enum Witness` (28).
 **Root F — E0282 type annotations needed (55, 37 files).** May dissolve with A, since an
 unbounded generic often also fails to infer. Do not work it before A lands.
 
-A+B+C+D is ~1,031 of 2,898 — **36% in four roots**, and A alone is ~20%. Whatever remains after
-those four is the tail worth re-censusing, not worth planning against now.
+A+B+C+D is ~1,031 of 2,898 — **36% in four roots**, A alone ~20%. What remains after those four
+is the tail worth re-censusing, not planning against now.
 
 **Prior art not to re-derive.** `docs/probes/` already holds `e0599_diagnosis_2026-07-26.md`,
 `e0599_phase_a_body_evidence_2026-07-28.md`, `e0599_phase_b0_emitter_decision_2026-07-29.md`,
@@ -494,8 +493,8 @@ starting.
 
 ## 10. CLOSURE-SHAPE FORKS — restated after its own falsifier fired (2026-08-16)
 
-Two lanes independently hit the same underlying fact from different roots, and it may explain
-why "the seed compiles and v2 modules do not" better than any per-root mechanism.
+Two lanes independently hit the same underlying fact from different roots; it may explain why
+"the seed compiles and v2 modules do not" better than any per-root mechanism.
 
 **Root B (eager-deer-389, root-caused with an executed receipt).** `v1.compiler.infer`
 `rust_corpus_repr` picks the whole corpus's numeric representation from
@@ -534,38 +533,35 @@ first, and it fires because a declared parameter list is *not readable in this c
 **The convergence.** Both mechanisms branch on what the closure contains, and both take the
 unfavourable branch exactly when the closure is pure-v2. So the wall is not only "the emitter
 emits wrong Rust" — it is substantially **"the emitter has never been exercised on a seed-free
-closure,"** and two independent places change behaviour silently when it is.
-
-If that holds, several roots are downstream projections of one fact, and the per-root sizes are
-measuring symptoms of it.
+closure,"** and two independent places change behaviour silently when it is. If that holds,
+several roots are downstream projections of one fact, and the per-root sizes measure its symptoms.
 
 **THIRD INSTANCE — confirmed as a mechanism, and it FALSIFIED this section's directional
 claim.** It has its own full entry below (`### §10 — the third branch`), written by
 `gentle-dove-833` who measured it; not restated here, because two accounts of one finding is the
-dual authority this surface exists to prevent and its own authors produced one within minutes.
+dual authority this surface exists to prevent, and its own authors produced one within minutes.
 
 **What the falsifier was, and that it fired.** This section named its falsifier as *a third
 closure-shape branch that does NOT correlate*. `gentle-dove-833` measured exactly that: the seed
 closure carries ambiguous names too — including the same `Absent` — and the emitter collapses
 them by the same predicate, so there is **no favourable seed arm**. Both closures take the same
 branch; the v2 closure merely has ambiguous names in far more type-argument positions. The
-per-closure ambiguous sets and method are in their entry below; not copied here.
+per-closure ambiguous sets and method are in their entry below.
 
 **So the meta-root is restated, narrower and better supported:** several independent decisions
-are keyed off **under-modeled closure facts**. That is what the three instances share. What they
-do NOT share — and what I asserted prematurely — is the direction: "the seed is the exercised
-configuration and pure-v2 is the untested one" holds for Root B's path-substring switch, which
-really is seed-versus-v2, and does not hold for this one.
+are keyed off **under-modeled closure facts** — what the three instances share. What they do NOT
+share, asserted prematurely above, is the direction: "the seed is the exercised configuration and
+pure-v2 is the untested one" holds for Root B's path-substring switch, which really is
+seed-versus-v2, and does not hold for this one.
 
 **A correction to my own framing, from the same message.** I called this a DESIGN state-space
-conflation and put that in this section under my name. Reading every consumer says otherwise:
-the other six read sites **already guard the sentinel** with an explicit non-empty check. Only
-the `map_contains_key` site does not, because that call cannot see the value. So it is **one
-consumer diverging from a convention its six siblings already follow** — not a design-wide gap.
-That makes the finding smaller and much more actionable: the minimal correct change restores the
-authority's own convention rather than inventing a rule. The §2 residue is real and stays — a
-guard hand-repeated at six sites is what let the seventh omit it, so the terminal shape is still
-a coproduct with no constructor for the conflated read.
+conflation under my name. Reading every consumer says otherwise: the other six read sites
+**already guard the sentinel** with an explicit non-empty check; only the `map_contains_key` site
+does not, because that call cannot see the value. So it is **one consumer diverging from a
+convention its six siblings already follow** — not a design-wide gap, and much more actionable:
+the minimal correct change restores the authority's own convention rather than inventing a rule.
+The §2 residue is real and stays — a guard hand-repeated at six sites is what let the seventh
+omit it, so the terminal shape is still a coproduct with no constructor for the conflated read.
 
 **Cancelled, with a receipt:** the three-run overlap partition between this instance and
 `eager-deer-389`'s candidate. They retracted the shared-name premise — theirs is an `Option`'s
@@ -584,8 +580,8 @@ there is no overlap to measure. Their inverted question survives and is cheap: i
   (`std.trait_derive_shape` `repr_grounding_supplemental_bool_host_bridge_target`) is hardcoded
   to `module_path == "std.types" && name == "Bool"`, and `src/v2/std/logic.dag` declares a
   SECOND `type Bool = True | False` which that predicate is pinned to reject — its own witness
-  asserts the std.logic case is false *as expected behaviour*. That is a §3 fork sitting ABOVE
-  the representation choice and it needs its own row.
+  asserts the std.logic case is false *as expected behaviour*. A §3 fork ABOVE the
+  representation choice; it needs its own row.
 
 **Method note worth copying (eager-deer-389):** a three-file closure emitting `dag/std/nat.dag`
 is a 30-second discriminating reproducer for the Root B family. Prefer it to a compiler-module
@@ -611,12 +607,12 @@ So the arm is live, not dead. And the NAME reaching `lookup_type_by_name` and mi
 `Absent`, 28 of 34 times.
 
 **This vindicates `gentle-dove-833`'s hypothesis while leaving my mechanism retraction standing,
-and the distinction matters.** Their reading of my sentence was wrong — that `Absent` is still an
+and the distinction matters.** Their reading of my sentence was wrong — `Absent` is still an
 `Option` arm in the emitter's control flow, not a name. But their *substantive* caution — that if
 `Absent` reaches my predicate it may be a **variant name arriving at a type-name lookup**, making
-the two of us consumers of one upstream defect — is now measured true, and they stated it before
-either of us had evidence. I killed their three-run experiment on the mechanism when the question
-was always about the name; that was my error twice over and the experiment is back on.
+us both consumers of one upstream defect — is now measured true, stated before either of us had
+evidence. I killed their three-run experiment on the mechanism when the question was always about
+the name; my error twice over, and the experiment is back on.
 
 **Reading, not finding:** a variant name is being carried in a type position. `gentle-dove-833`'s
 mechanism meets it in `derive_variant_to_enum` (two declarers ⇒ ambiguity sentinel ⇒ ignored by
@@ -625,8 +621,8 @@ that holds, **neither arm is the root** and both populations are partly downstre
 puts a variant name in a type position.
 
 **Cheaper next step than the three-run table:** dump the same miss list on `gentle-dove-833`'s
-entry and compare it to their sentinel set. Same two names ⇒ one upstream defect and the runs then
-measure double-counting. Disjoint ⇒ genuinely independent and the runs are unnecessary. The whole
+entry and compare it to their sentinel set. Same two names ⇒ one upstream defect and the runs
+measure double-counting; disjoint ⇒ genuinely independent and the runs are unnecessary. The whole
 answer is in emit stderr — no `cssl_assemble`, no cargo pass.
 
 **Bearing on identity-keying:** this is a caution against over-scoping that fix. Resolved
@@ -636,27 +632,25 @@ identity fix should not be sized as if it covers both.
 
 **A third candidate, same shape, NOT executed:** `05_emit_rust`
 `type_leaf_is_unbound_in_closure_scope` returns `true` on the `Absent` **match arm of
-`lookup_type_by_name`** (which returns `Node?`) — i.e. on a lookup MISS, nothing whatsoever to do
-with a type or variant *named* `Absent`. **My original wording here read "returns `true` on
-`Absent`" and that was ambiguous enough to be misread as the name; corrected 2026-08-16 after it
-did exactly that.** A name missing from the
-closure's type env is treated as unbound, which then drives spurious-generic suppression in fold
-rendering. Narrower closure, silent defaulting arm. I have not shown it takes the *wrong* arm in a
-pure-v2 closure, so it is a candidate and must not be counted as a confirmed instance. What would
-promote it: render a fold over a closure that deliberately excludes the leaf's declaring module and
-show the arm flip.
+`lookup_type_by_name`** (which returns `Node?`) — i.e. on a lookup MISS, nothing to do with a type
+or variant *named* `Absent`. **My original wording read "returns `true` on `Absent`", ambiguous
+enough to be misread as the name; corrected 2026-08-16 after it was.** A name missing from the
+closure's type env is treated as unbound, which drives spurious-generic suppression in fold
+rendering. Narrower closure, silent defaulting arm. Not shown to take the *wrong* arm in a pure-v2
+closure, so it is a candidate, not a confirmed instance. What would promote it: render a fold over
+a closure that deliberately excludes the leaf's declaring module and show the arm flip.
 
 **One explicit non-instance, recorded because a negative costs the next reader the same search:**
 `v1.compiler.04_env` `source_tree_of` branches on `src/v1`/`src/v2`/`dag/` path substrings, but its
 own `source_tree_partition_note` records the 2026-07-11 ruling that tree no longer decides
 refuse-vs-ledger and only *labels* a dissolution partition. Do not count it.
 
-**Evidence from my lane that bears on the hypothesis, in both directions.** Supporting: forcing the
+**Evidence from my lane bearing on the hypothesis, in both directions.** Supporting: forcing the
 repr arm moved 342 diagnostics to zero, so a single closure-shape branch really does gate a large
-population. Cutting against a tidy version of it: the *same* flip introduced ~87 new failures
-through a **second, oppositely-directed** `corpus_repr` branch. So the meta-root is better stated as
-*several independent decisions are keyed off one under-modeled closure fact and disagree about which
-arm a pure-v2 closure wants* — not as one switch in the wrong position.
+population. Against a tidy version: the *same* flip introduced ~87 new failures through a
+**second, oppositely-directed** `corpus_repr` branch. So the meta-root is better stated as
+*several independent decisions are keyed off one under-modeled closure fact and disagree about
+which arm a pure-v2 closure wants* — not one switch in the wrong position.
 
 ### §10 — the third branch, CONFIRMED by execution (`gentle-dove-833`, 2026-08-16)
 
@@ -676,7 +670,7 @@ Absent               => map_insert(inner, vn, summary.name)
 **which ignores the value**. So an *ambiguously owned* name tests positive as a value-variant, and
 `rust_type_arg_renders_as_unit` collapses the type argument to `()`.
 
-Whether a name is ambiguous is a function of **which modules are in the closure**. Different
+Whether a name is ambiguous is a function of **which modules are in the closure**: different
 closure, different ambiguity set, different collapse decisions, silently. That is the branch.
 
 **Measured, one entry (`src/v2/compiler/05_emit.dag`), live tree at `3473e57962`.** Instrumented at
@@ -707,9 +701,9 @@ Ordinary §3 nickname collisions, invisible until the emitter reads them.
 **A retraction in the same measurement.** This lane previously reported the emitter was receiving
 the body's *constructed variant* type rather than the declared `Optional`, on arity evidence
 (`optional_absent()` fieldless → kids 0; `optional_present(value)` → kids 1). The arity evidence is
-real and still unexplained, but it is **not** the cause of the collapse: a *correctly spelled*
-`Optional` collapses too, for the ambiguity reason. Fixing inference alone would have moved 91
-events between buckets and fixed nothing.
+real and still unexplained, but **not** the cause of the collapse: a *correctly spelled* `Optional`
+collapses too, for the ambiguity reason. Fixing inference alone would have moved 91 events between
+buckets and fixed nothing.
 
 **The 25 new E0425 are honest residue, not a regression.** With the collapse gone, a type argument
 genuinely spelled `Absent` renders as a Rust type named `Absent`, which does not exist. The
@@ -717,30 +711,30 @@ mis-spelling was always there; unit-collapse was **fabricating plausible output*
 arity finding survives as a real second defect, now typed and located instead of masked.
 
 **Relation to the candidate above — RETRACTED 2026-08-16 by `eager-deer-389`, whose wording caused
-it.** The two mechanisms do **not** share the name `Absent` and the apparent coincidence was an
-artifact of this document. `is_value_variant_type_arg` fires on the *variant name* `Absent`
-declared by `v2.std.optional` and `dag/std/upsert_decision`. `type_leaf_is_unbound_in_closure_scope`
-fires on the `Absent` **arm of an `Option`** returned by `lookup_type_by_name` — a lookup miss. One
-is a name in the corpus; the other is a coproduct arm in the emitter's own control flow. They are
-still both closure-membership facts, so an interaction is not excluded — but the specific
-same-name premise is false and no experiment should be designed around it.
+it.** The two mechanisms do **not** share the name `Absent`; the coincidence was an artifact of
+this document. `is_value_variant_type_arg` fires on the *variant name* `Absent` declared by
+`v2.std.optional` and `dag/std/upsert_decision`. `type_leaf_is_unbound_in_closure_scope` fires on
+the `Absent` **arm of an `Option`** returned by `lookup_type_by_name` — a lookup miss. One is a
+name in the corpus; the other a coproduct arm in the emitter's own control flow. Both are still
+closure-membership facts, so an interaction is not excluded — but the same-name premise is false
+and no experiment should be designed around it.
 
-**Not claimed:** that the seed closure lacks these collisions (the obvious next measurement, and it
+**Not claimed:** that the seed closure lacks these collisions (the obvious next measurement, which
 would make this structurally identical to Root B rather than analogous); any attribution of the
 remaining 527. The fix above was applied to the **generated** Rust as a probe and reverted — the
 authority is `src/v1/05_emit_rust.dag` `is_value_variant_type_arg` and nothing is landed.
 
 **The proper fix is construction-first and it is two things.** Rename the colliding variants so the
 ambiguous population is empty (single authority; deletes the class). The emitter guard is the
-fail-closed backstop and is required regardless — today an ambiguous name silently produces `()`
-rather than a typed located refusal, so the landed guard should **refuse**, not the non-empty-owner
-test used for measurement, which still silently proceeds.
+fail-closed backstop, required regardless — today an ambiguous name silently produces `()` rather
+than a typed located refusal, so the landed guard should **refuse**, not the non-empty-owner test
+used for measurement, which still silently proceeds.
 
 #### §10 — instance 3, QUALIFIED against the meta-root by a follow-up measurement (`gentle-dove-833`, 2026-08-16)
 
 **I claimed this was a third instance of "the emitter has never been exercised on a seed-free
-closure." That claim is now partly falsified, by my own instrument, and the qualification matters
-more than the instance did.**
+closure." That claim is partly falsified by my own instrument, and the qualification matters more
+than the instance did.**
 
 `derive_variant_to_enum`'s sentinel insert was instrumented to dump the ambiguous set per closure,
 and run on a pure-v2 entry and a seed entry under identical source roots:
@@ -752,21 +746,20 @@ src/v1/05_emit_rust.dag       6 distinct ambiguous names:
     Absent · AsAuthored · Bind · Named · SnakeCase · Text
 ```
 
-**The seed closure is not protected.** It carries ambiguous names too — six of them, including
-`Absent`, which both closures share — and the emitter collapses them by the same predicate. So
-this mechanism **is** closure-shaped (the *set* is a function of closure membership, and the two
-sets genuinely differ) but it does **not** correlate in the direction the meta-root asserts: there
-is no favourable seed arm and unfavourable v2 arm here. Both closures take the same arm; the v2
-closure merely happens to have ambiguous names (`Optional`, `Absent`) that occupy far more type-arg
-positions.
+**The seed closure is not protected.** It carries ambiguous names too — six, including `Absent`,
+which both closures share — and the emitter collapses them by the same predicate. So this
+mechanism **is** closure-shaped (the *set* is a function of closure membership, and the two sets
+genuinely differ) but does **not** correlate in the direction the meta-root asserts: no favourable
+seed arm and unfavourable v2 arm here. Both closures take the same arm; the v2 closure merely has
+ambiguous names (`Optional`, `Absent`) occupying far more type-arg positions.
 
 §10 names its own falsifier as "a third closure-shape branch that does NOT correlate." **This is
 that.** It does not touch Root B, whose path-substring branch is genuinely seed-vs-v2. It does mean
 the meta-root should be stated as *several independent decisions keyed off under-modeled closure
-facts* — which is how `eager-deer-389` already restated it — rather than as *the seed is the
-exercised configuration*, because at least one closure-shaped branch damages the seed equally.
+facts* — as `eager-deer-389` already restated it — rather than *the seed is the exercised
+configuration*, because at least one closure-shaped branch damages the seed equally.
 
-**A second correction, and it makes the finding smaller and much more actionable.** I described
+**A second correction, which makes the finding smaller and much more actionable.** I described
 this as a state-space conflation in the carrier. Reading every consumer says otherwise: the other
 six read sites **already guard the sentinel** —
 
@@ -777,11 +770,11 @@ six read sites **already guard the sentinel** —
 ```
 
 Only line 705 does not, because `map_contains_key` cannot see the value. So this is **one consumer
-diverging from a convention its six siblings already follow**, not a design-wide gap. The minimal
+diverging from a convention its six siblings already follow**, not a design-wide gap; the minimal
 correct change restores the authority's own convention rather than inventing a rule.
 
-That said, the guard being hand-repeated at six sites is itself the §2 duplication that let the
-seventh omit it, so the terminal shape is still to make the value a coproduct
+That said, the guard hand-repeated at six sites is itself the §2 duplication that let the seventh
+omit it, so the terminal shape is still to make the value a coproduct
 (`Unowned | OwnedBy { enum } | Ambiguous { enums }`) so the conflated read has no constructor —
 and, per `smart-ram-730`'s sequencing, land the refusal first so the renames can be *verified* to
 empty the population instead of proving a negative against a silent predicate.
@@ -796,7 +789,7 @@ corpus name. The three-run partition I proposed is cancelled; there was no overl
 ## 11. THE UNCLASSIFIED TAIL — live partition (`smart-ibex-716`, 2026-08-16)
 
 **Subject as dispatched:** the ~64% of the July cause-signature corpus that A+B+C+D did not
-claim. **Answer, in one line:** the tail is not a long tail of singletons. It is **six further
+claim. **Answer, in one line:** the tail is not a long tail of singletons but **six further
 mid-sized roots** (each 1.5–7% of live distinct sites) plus a genuine singleton residue of
 **3.3%** — and the largest root in the whole live corpus is not A, B, C or D but the
 **algebra-carrier representation** family at 27.2%. **— WITHDRAWN 2026-08-17, see §18: that class was
@@ -816,7 +809,7 @@ mechanism. The largest single mechanism in the corpus is NOT this one.**
 | signature | expected/found pair for E0308-family; receiver+method for E0599; trait+self-type for E0277; message otherwise — extracted from the JSON `spans[].label` / `children[]`, never from rendered text |
 
 `frontier_probe_survey` was not used. The JSON route was chosen over the text log because
-expected/found lives in a span label, and a text grep recovers it only by heuristic.
+expected/found lives in a span label, which a text grep recovers only by heuristic.
 
 ### 11.2 The count everyone has been quoting is inflated ~2.75×, and here is the exact factor
 
@@ -833,8 +826,8 @@ vs 88 resolved sources), so the difference between those two entry modules contr
 cargo diagnostics. `04_infer`'s 614 rows are a strict **subset** of that same set.
 
 Consequence, stated plainly because §6 assigns work by it: **a per-module error total is not a
-measurement of that module.** It is mostly a measurement of the shared closure, and for these
-three entries it is *only* that.
+measurement of that module** — mostly of the shared closure, and for these three entries *only*
+that.
 
 | entry module | distinct sites | in the five-module floor | own delta |
 |---|---:|---:|---:|
@@ -848,18 +841,18 @@ three entries it is *only* that.
 
 Two refinements of H1 that matter, because the strong form is false:
 
-- The floor is **cluster-shaped, not universal.** Intersecting all seven gives only **96** rows.
-  Intersecting the five larger entries gives **605**. `01_tokenize` and `materialization_carriers`
-  sit on a different closure and share ~110 rows with it, which is why §4's H3 was right to call
-  `01_tokenize` unrepresentative — but for a measured reason now: it shares 110 of the floor's 605.
+- The floor is **cluster-shaped, not universal.** Intersecting all seven gives only **96** rows;
+  intersecting the five larger entries gives **605**. `01_tokenize` and `materialization_carriers`
+  sit on a different closure and share ~110 rows with it — why §4's H3 was right to call
+  `01_tokenize` unrepresentative, now for a measured reason: it shares 110 of the floor's 605.
 - The delta is **not small** for the two largest entries (943 and 468). "One core plus twenty
   thin deltas" is wrong; it is one core plus two thick deltas plus four thin ones.
 
 ### 11.3 The partition
 
 Every one of the 1,874 rows is in exactly one row of this table. `RESIDUE` is printed, never
-absorbed — the classifier is fail-closed, so an unmatched signature raises the residue count
-rather than joining the nearest root.
+absorbed — the classifier is fail-closed: an unmatched signature raises the residue count rather
+than joining the nearest root.
 
 | root | sites | % | in floor | in delta |
 |---|---:|---:|---:|---:|
@@ -895,9 +888,9 @@ R1, T4, R3, R5 — eight nameable mechanisms — plus 62 singleton rows.
 
 ### 11.4 The six unowned roots: mechanism, assigning evidence, size, falsifier
 
-> **ENUMERATION INCOMPLETE since §18 (annotated 2026-08-17).** This list is not false and nothing in
-> it directs anyone to do the wrong thing — but it is the list a session greps to learn what the
-> partition contains, and **B1 is no longer one root**: §18 decomposes it into at most 146
+> **ENUMERATION INCOMPLETE since §18 (annotated 2026-08-17).** This list is not false and directs
+> no one wrong — but it is the list a session greps to learn what the partition contains, and
+> **B1 is no longer one root**: §18 decomposes it into at most 146
 > repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 operator-on-carrier
 > sites (all repr_fork — §18.4). Read §18 before treating "six" as the root count or before
 > re-deriving a mechanism for the algebra carrier.
@@ -929,7 +922,7 @@ move this population into R1.
 **T7 — ContentHash carrier vs `String`. 105 sites.**
 *Mechanism:* `Fnv1a64Structural` (DESIGN's landed ContentHash family grounding) is emitted where a
 `String` is expected and vice versa — 63 one way, 39 the other. The bidirectionality is the tell:
-this is not one wrong declaration but a seam where the modeled hash carrier and its wire/string
+not one wrong declaration but a seam where the modeled hash carrier and its wire/string
 serialization are not distinguished at emission.
 *Evidence rule:* signature mentions `Fnv1a64` or `ContentHash`.
 *Falsified by:* the two directions localizing to disjoint files with unrelated causes — in which
@@ -938,8 +931,7 @@ case this is two roots, not one. **Not yet checked; the cheapest next observatio
 **T5 — missing derives on named types. 92 sites.**
 *Mechanism:* an emitted struct/enum is used as a map key, a serde payload or a `Debug` argument
 without the corresponding derive. Distinct from Root A: A is a **bound on a generic parameter**,
-T5 is a **derive on a concrete type**. Both surface as E0277, which is exactly why grouping by
-code hid them.
+T5 a **derive on a concrete type**. Both surface as E0277, which is why grouping by code hid them.
 *Evidence rule:* E0277 whose self-type is a concrete named type and whose trait is
 Serialize/Deserialize/Debug/Hash/Eq/Ord; plus E0369 `==`/`!=` on a plain named type.
 *Falsified by:* a fix that adds the missing generic bounds (Root A) also closing these — which
@@ -958,8 +950,8 @@ headline.
 case the row belongs to that carrier's root, not here).
 
 **R3 — function-value carrier. 23 sites. R5 — duplicate type authority. 16 sites. T4 — record as
-tuple. 27 sites.** Small, named for completeness. R5 is the one worth a second look for its
-*kind* rather than its size: it is two modules declaring one concept (`OccurrenceId` in both
+tuple. 27 sites.** Small, named for completeness. R5 is worth a second look for its *kind*
+rather than its size: two modules declaring one concept (`OccurrenceId` in both
 `std_occurrence_identity` and `v2_std_node`; `Nat` in both `std.nat` and `v2.std.nat`, the latter
 fork already declared in tree at `nat_max_two_nat_authorities_note`). That is a §3 violation
 producing type errors, and no amount of emitter work fixes it.
@@ -978,13 +970,13 @@ Checked because §9.1 says nothing here is current unless it names today's measu
   509 sites — **but see §18: B1 is withdrawn as one root, so any B1+B3 unification argument must be
   re-made against the ≤146 repr-shaped subset, not against 509.** See 11.6 for the original argument.
 
-This is the receipt-staleness class §9.1 warns about, caught twice more. Anyone planning against
-the July E0308 bucket shares should stop.
+The receipt-staleness class §9.1 warns about, caught twice more. Stop planning against the July
+E0308 bucket shares.
 
 ### 11.6 The closure-shape meta-root: checked as asked, and it is bigger than two instances
 
 §10 asks each lane to check cheaply whether its root's mechanism has a closure-shape branch. Mine
-does, and the fan-out is wider than the numeric representation:
+does, with fan-out wider than the numeric representation:
 
 `corpus_has_v1_seed_source_indices` has **three** call sites (`04_infer` `reconcile_with_census_extra`,
 `05_emit_rust` `emit_rust`, `05_emit_rust` `emit_module`). Each feeds `build_emit_graph_info`,
@@ -1002,8 +994,8 @@ then read at these decision sites in `src/v1/05_emit_rust.dag` — named by symb
 
 So the flag decides numeric representation, text representation, stub-module presence **and
 import synthesis**. B1 + B3 + T2 + K is **347 sites, 18.5% of the live corpus**, downstream of one
-`contains(k, "src/v1")` test. With `eager-deer-389`'s instance that is not a third instance — it
-is the same instance, correctly sized.
+`contains(k, "src/v1")` test. With `eager-deer-389`'s instance that is not a third instance but
+the same instance, correctly sized.
 
 **Two facts that bound the hypothesis rather than support it**, reported because §10 asks for the
 falsifier:
@@ -1012,11 +1004,11 @@ falsifier:
    `is_host_text_carrier_type` both accept the parameter and branch only on the type's name. So
    container realization and text-carrier *detection* are **not** closure-branched, and T3's 110
    sites are therefore **not** downstream of the flag. A dead parameter threaded through a
-   decision surface is its own §3 smell, and it is the reason a reader can over-attribute here.
-2. **K's direction is the opposite of B's.** The faithful (pure-v2) branch is the one that *runs*
+   decision surface is its own §3 smell, and the reason a reader can over-attribute here.
+2. **K's direction is the opposite of B's.** The faithful (pure-v2) branch *runs*
    `reference_derived_use_lines`; the seed branch gets `[]`. So K is not "the v2 path was never
-   exercised" — it is "the v2-only path exists, runs, and is incomplete". Flipping the repr switch
-   would not close K; it would disable the walk that is trying to fix it.
+   exercised" but "the v2-only path exists, runs, and is incomplete". Flipping the repr switch
+   would not close K; it would disable the walk trying to fix it.
 
 *Falsifier, and it has since been EXECUTED by `eager-deer-389` — see §8:* forcing `HostNative` on a
 pure-v2 `06_translate` takes the algebra carrier from 74 distinct sites to **0**, which confirms B1
@@ -1028,48 +1020,46 @@ disables the use-line walk — the asymmetry predicted in point 2 below, measure
 
 ### 11.7 The negative result, stated as a result
 
-The residue is **62 sites, 3.3%**, and it is genuinely miscellaneous: the largest single entry is
-13 (`Coverage<Rc<…>>` vs `CoverageDefectAcceptanceKey`), then 9 (`arguments to this function are
-incorrect`, a rustc message that carries no pair), then a 3-and-below tail including two `await`
+The residue is **62 sites, 3.3%**, genuinely miscellaneous: the largest single entry is 13
+(`Coverage<Rc<…>>` vs `CoverageDefectAcceptanceKey`), then 9 (`arguments to this function are
+incorrect`, a rustc message carrying no pair), then a 3-and-below tail including two `await`
 outside `async`. There is **no eighth root hiding in the residue** at this measurement.
 
 So the dispatch's hoped-for outcome — "a root larger than B sitting in there unnamed" — is
-**answered yes, but not in the residue**: it was sitting in plain sight as the algebra carrier,
-mis-sized at 196 because the July TSV counted its numeric surface and not its algebra surface.
+**answered yes, but not in the residue**: it sat in plain sight as the algebra carrier, mis-sized
+at 196 because the July TSV counted its numeric surface, not its algebra surface.
 
 ### 11.8 What I did not establish
 
-- **No before/after.** This is one measurement of one head; nothing here says a root is shrinking
-  or growing except where I compare to a July *document* (11.5), and those comparisons inherit
-  that document's staleness in the other direction.
+- **No before/after.** One measurement of one head; nothing here says a root is shrinking or
+  growing except where compared to a July *document* (11.5), and those comparisons inherit that
+  document's staleness in the other direction.
 - ~~**Seven modules, not twenty.**~~ **SUPERSEDED by §11.14 (2026-08-16):** `emit_module`,
   `03_normalize`, `program_partition` and `05_eval` were subsequently probed at the same head and
   added **nine** new distinct sites in total, so the same-floor suggestion was measured and held.
-  Two of the modules this bullet named as unprobed are now among the eleven. What remains genuinely
-  unmeasured is `emit_produced` and `05_emit_orchestration` — named here so the residue is a list
-  rather than a feeling.
+  Two of the modules this bullet named as unprobed are now among the eleven. Genuinely unmeasured:
+  `emit_produced` and `05_emit_orchestration` — named so the residue is a list, not a feeling.
 - **`unreachable_patterns` is counted as an error row** because the crate denies it; if the
   denial is lifted, E drops out of the denominator and every percentage above moves ~2%.
-- **Root ownership is by generated file, and I have not published the file map.** The per-root
-  file concentration is available in the receipts and is sometimes extreme — Root C is 113 of its
-  167 sites inside `src/v2_compiler_body_lowering_fold.rs` alone, which is a fact `gentle-dove-833`
-  should have.
+- **Root ownership is by generated file, and the file map is unpublished.** The per-root file
+  concentration is in the receipts and is sometimes extreme — Root C is 113 of its 167 sites inside
+  `src/v2_compiler_body_lowering_fold.rs` alone, a fact `gentle-dove-833` should have.
 
 ### 11.9 Receipts
 
 Raw JSON diagnostic logs, the extracted per-module signature TSVs, and the classifier are in this
 session's scratchpad, not committed: a dated snapshot nothing regenerates is the attractor §2
 names. The two scripts are ~60 lines each and the route is fully specified in 11.1 — re-derive
-rather than trusting the table. Anything above that is not reproducible by that route is a defect
-in this section.
+rather than trust the table. Anything above not reproducible by that route is a defect in this
+section.
 
 ### 11.10 Name-keyed realization, answered against the tail — YES for 253 sites, NO for ~1,500
 
 Asked by `smart-ram-730` (2026-08-16): *would identity-keyed realization have prevented this class,
-or is the root orthogonal to it?* Answered per root, with the strongest specimen executed rather
-than argued.
+or is the root orthogonal to it?* Answered per root, the strongest specimen executed rather than
+argued.
 
-**NAME RETIRED FIRST, so nobody reconciles against it:** the root I published in 11.3/11.4 as
+**NAME RETIRED FIRST, so nobody reconciles against it:** the root published in 11.3/11.4 as
 **"T7 — ContentHash carrier fork"** is **withdrawn as a name**. The population is unchanged (105
 sites, same signatures, same classifier rule) but the cause is not a carrier fork; it is a
 **seed-prelude name collision**, established below. Read every earlier "T7 — ContentHash carrier
@@ -1090,10 +1080,10 @@ The mismatch is then visible *inside a single emitted signature*:
 `pub fn bag_hash_digest(empty: Hash, xs: Rc<Vec<v1_rt::Hash>>) -> Hash`. Every one of T7's
 63 `expected Rc<Fnv1a64Structural>, found String` and 39 reverse sites is that one substitution
 read at a use site. The fact that separates the two `Hash`es — which declaration the name denotes —
-is carried on the node and is not consulted. This is `eager-deer-389`'s mechanism exactly, with a
-seed *prelude* homonym rather than two corpus modules, and it means **T7 is not a "ContentHash
-carrier fork" at all; it is a name-collision with the seed runtime.** I am re-labelling it in this
-section rather than in the table above so the table keeps matching its classifier.
+is carried on the node and not consulted. This is `eager-deer-389`'s mechanism exactly, with a
+seed *prelude* homonym rather than two corpus modules, so **T7 is not a "ContentHash carrier
+fork" at all; it is a name-collision with the seed runtime.** Re-labelled here rather than in the
+table above so the table keeps matching its classifier.
 
 **YES — K (132 sites).** `reference_derived_use_lines_note` states the synthesis resolves
 candidates through the **bare-name registry**, describes that registry as last-write-wins, and
@@ -1118,15 +1108,15 @@ as exposure, not cause.
 **NO — the remaining ~1,500 sites.** A (generic bound), C (Optional→unit), T5 (derives on concrete
 types), R1 (Rc wrap), L, M, N, F, E, T4 and the residue all turn on *shape*, *ownership* or
 *which traits a declaration needs* — questions where the emitter already has the right declaration
-and computes the wrong answer about it. Identity-keying leaves every one of them exactly where it is.
-That bound is the useful half of this answer: name-keying is a real deficit with **253 sites
-(13.5%) directly attributable and 110 more exposed**, and it is not the wall.
+and computes the wrong answer about it. Identity-keying leaves every one of them where it is. That
+bound is the useful half of this answer: name-keying is a real deficit with **253 sites (13.5%)
+directly attributable and 110 more exposed**, and it is not the wall.
 
-**And the masking warning applies here too, so I am budgeting for it in advance:** T7's sites are
-`String`-vs-record errors standing in front of whatever those call sites do with the value. Fixing
-the alias will expose refinement-carrier work (`Fnv1a64StructuralDigestHex = String where lower_hex_16`)
-that the type error is currently firing ahead of. A burn-down of 105 that does not budget for the
-unmasked population will overshoot, exactly as the algebra-carrier fix exposed 125 `Rc<i64>` sites.
+**The masking warning applies here too, budgeted in advance:** T7's sites are `String`-vs-record
+errors standing in front of whatever those call sites do with the value. Fixing the alias will
+expose refinement-carrier work (`Fnv1a64StructuralDigestHex = String where lower_hex_16`) that the
+type error currently fires ahead of. A burn-down of 105 that does not budget for the unmasked
+population will overshoot, exactly as the algebra-carrier fix exposed 125 `Rc<i64>` sites.
 
 ### 11.11 The name-keyed substitution, located — and it is one authored table, not a code path
 
@@ -1147,9 +1137,9 @@ symbol:
 4. `src/v2/std/node.dag:14` declares `type Hash = Fnv1a64Structural`. The name matches the row.
    Output: `pub type Hash = v1_rt::Hash;`, and `v1_rt::Hash = String`.
 
-So the substitution is not a bug in a rendering function; it is **an authored row whose key cannot
-express which declaration it is about**. That is the same table `eager-deer-389`'s `Bool` finding
-names, which makes the table — not the emitter — the shared subject of at least two lanes.
+So the substitution is not a bug in a rendering function but **an authored row whose key cannot
+express which declaration it is about** — the same table `eager-deer-389`'s `Bool` finding names,
+which makes the table, not the emitter, the shared subject of at least two lanes.
 
 **One consequence for `vivid-wren`, and it splits Root D rather than claiming it.** Root D's 116
 sites are two mechanisms, and only one is name-keyed:
@@ -1166,16 +1156,16 @@ sites are two mechanisms, and only one is name-keyed:
   lost on the way to the declaration. (It also accounts for my residue's 13
   `expected Coverage<Rc<…>>, found CoverageDefectAcceptanceKey`.)
 
-Keeping that split is the same discipline as the T3 one above: a real mechanism must not absorb the
+Keeping that split is the same discipline as T3 above: a real mechanism must not absorb the
 symptoms next to it. **Name-keying's directly-attributable total therefore moves from 253 to 286
 sites (15.3%)** — T7 105 + K 132 + R5 16 + D-Witness 33 — with T3's 110 still exposure rather than
 cause, and the ~1,470 NO unchanged in substance.
 
 ## 12. WHERE THE PROGRAM STANDS AT END OF 2026-08-16 (`smart-ram-730`)
 
-Written as a reader's entry point, because sections 1–11 were authored in the order they were
-discovered and several of their early claims are superseded by later ones in the same document.
-Nothing here is new evidence — every number below is cited to the section that measured it.
+A reader's entry point: sections 1–11 were authored in discovery order and several early claims
+are superseded by later ones in the same document. Nothing here is new evidence — every number
+is cited to the section that measured it.
 
 ### 12.1 The one sentence to carry
 
@@ -1183,24 +1173,24 @@ Nothing here is new evidence — every number below is cited to the section that
 
 The Rust emitter answers questions about a type from its *authored token* when the resolved
 declaring module is already attached to the node being rendered. Three lanes found this
-independently, from three different symptoms, and it converges on one function —
+independently, from three different symptoms, converging on one function —
 `rust_scalar_checkpoint_render_base`, a lookup keyed on a bare `String`.
 
 Then it was bounded, and the bound is the load-bearing half: **286 attributable, 110
 exposed-but-not-caused, ~1,500 not attributable** (§11.10). 15.3% — the §11.10 amendment, which
-supersedes the 253 / 13.5% this section carried until T7, K, R5 and D-Witness were counted in. The remaining sites turn on
-shape, ownership, or which traits a declaration needs — cases where the emitter already has the
-right declaration and computes the wrong answer about it.
+supersedes the 253 / 13.5% this section carried until T7, K, R5 and D-Witness were counted in. The
+remaining sites turn on shape, ownership, or which traits a declaration needs — cases where the
+emitter already has the right declaration and computes the wrong answer about it.
 
-I record plainly that I was one confirming report away from calling name-keying the root of the
+Recorded plainly: I was one confirming report away from calling name-keying the root of the
 program. Two structural confirmations arrived before any measurement of the negative space, and
-generalizing from them would have been wrong. The corpus partition is what prevented it.
+generalizing from them would have been wrong. The corpus partition prevented it.
 
 ### 12.2 What was falsified today, and by whom
 
-Five published claims died on measurement. Listing them together because the rate matters more
-than any one of them: this partition is roughly a day old and a third of its early content did
-not survive contact with the live corpus.
+Five published claims died on measurement, listed together because the rate matters more than
+any one: this partition is roughly a day old and a third of its early content did not survive
+contact with the live corpus.
 
 | claim | status | who |
 |---|---|---|
@@ -1212,50 +1202,49 @@ not survive contact with the live corpus.
 | Root A = struct-only derive trigger | **under challenge by its own author; see 12.5** | this session |
 | "an empty `EmitGraphInfo` is a shared upstream beneath Roots B2 and R1" | **DEAD, twice over — and it was mine** | this session, killed by `lively-ibex-709` + `bold-lark-722` |
 
-**The last row is a hypothesis killed before it cost anything, and it is recorded because the next
-session will regenerate it.** While root-causing a Root D residue, `keen-ibex-435` found the emit
-authority rendering a type with `empty_emit_graph_info()` — an env-blind render — and classified all
-14 production sites: 2 legitimately context-free, 7 latent, 5 plumbing. Only one was fixed, because a
+**The last row is a hypothesis killed before it cost anything, recorded because the next session
+will regenerate it.** While root-causing a Root D residue, `keen-ibex-435` found the emit authority
+rendering a type with `empty_emit_graph_info()` — an env-blind render — and classified all 14
+production sites: 2 legitimately context-free, 7 latent, 5 plumbing. Only one was fixed, because a
 discriminating case existed for exactly one; for the five plumbing sites a case was **attempted per
 site and not found**, which is why they are enumerated rather than threaded (threading an env into a
 callee has zero observable effect unless some type renders differently, so symmetry is not a reason).
 
-It is a natural hypothesis that this is the shared upstream beneath the two open operator/wrap roots —
+The natural hypothesis is that this is the shared upstream beneath the two open operator/wrap roots —
 both are "the decision disagrees between declaration and call site", which is what a missing env looks
-like from downstream. **It is false, and it was killed twice by different strengths of evidence.**
+like from downstream. **It is false, killed twice by different strengths of evidence.**
 `lively-ibex-709` established population disjointness (**none** of the B1 E0369 sites they examined are
 in the operation/capability emit paths — the sites span `std_*` files exclusively, a file set disjoint
-from the seven-site latent set counted above, which shares no member with it and is a different
-quantity despite the coincident 7) and then signature absence (**none** show a `_` or unresolved type
-var in the rustc operand types; all name concrete carriers). Their report gave both as fractions of
-112. **§18.4 reconciles that denominator** and it is not a discrepancy: 112 is the distinct-site count
-of the **July 7-module measured bank**, and 191 is the same classification at **M=11 scope** — two
-scopes of one population, both `repr_fork`, both with zero `missing_trait_impl`. The seven `std_*`
-files named above are that bank's module set, which is a **different quantity** from the seven latent
+from the seven-site latent set above, sharing no member with it and a different quantity despite the
+coincident 7) and then signature absence (**none** show a `_` or unresolved type var in the rustc
+operand types; all name concrete carriers). Their report gave both as fractions of 112. **§18.4
+reconciles that denominator** and it is not a discrepancy: 112 is the distinct-site count of the
+**July 7-module measured bank**, and 191 is the same classification at **M=11 scope** — two scopes
+of one population, both `repr_fork`, both with zero `missing_trait_impl`. The seven `std_*` files
+named above are that bank's module set, a **different quantity** from the seven latent
 `empty_emit_graph_info()` sites counted earlier in this section; the two sevens share no member and
 their coincidence is arithmetic, not structural. Quote 112 only as the measured bank and 191 only as
-the M=11 partition, never interchangeably. The two findings above do not depend on either number:
-both are universals over whatever set was examined, and a wrong count cannot turn a "none" into a
-"some". `bold-lark-722`
-killed it for the wrap axis by mechanism: at those sites `shared_types` arrives as its OWN positional
-argument carrying the real set, and `render_rust_type` reads that parameter rather than
-`emit_info.shared_types`, so wrap membership is not degraded — what an empty info actually zeroes is
-`fn_generic_param_names`, `variant_to_enum` and `fn_type_env`, which degrade generic-scope rendering
-and applied-binding resolution, a different diagnostic class. That last read is **structural, not
-executed**, and its author declined to call it proof.
+the M=11 partition, never interchangeably. Neither finding depends on either number: both are
+universals over whatever set was examined, and a wrong count cannot turn a "none" into a "some".
+`bold-lark-722` killed it for the wrap axis by mechanism: at those sites `shared_types` arrives as
+its OWN positional argument carrying the real set, and `render_rust_type` reads that parameter
+rather than `emit_info.shared_types`, so wrap membership is not degraded — what an empty info
+actually zeroes is `fn_generic_param_names`, `variant_to_enum` and `fn_type_env`, which degrade
+generic-scope rendering and applied-binding resolution, a different diagnostic class. That last
+read is **structural, not executed**, and its author declined to call it proof.
 
-So the seven latent sites are their own defect, not a hidden root beneath the open ones — which is a
-more useful result than a positive would have been, because it stops three lanes from converging on
-one wrong cause. Recorded here so the hypothesis is re-read rather than re-run.
+So the seven latent sites are their own defect, not a hidden root beneath the open ones — more
+useful than a positive would have been, because it stops three lanes converging on one wrong cause.
+Recorded so the hypothesis is re-read rather than re-run.
 
-Two of those are authors falsifying their own published numbers unprompted. That is the behaviour
-this surface exists to make cheap, and it is the reason the remaining numbers are worth anything.
+Two of those are authors falsifying their own published numbers unprompted — the behaviour this
+surface exists to make cheap, and the reason the remaining numbers are worth anything.
 
 ### 12.3 The masking law — applies to every fix in this program
 
-Every root measured so far is firing *in front of* another population. Fixing it does not create
-the sites underneath; it stops hiding them. Their frequency was zero by construction, which is
-DESIGN §5's absorbing fallback read at the diagnostic level.
+Every root measured so far fires *in front of* another population. Fixing it does not create the
+sites underneath; it stops hiding them. Their frequency was zero by construction — DESIGN §5's
+absorbing fallback read at the diagnostic level.
 
 - algebra carrier → **125 `Rc<i64>` sites** appear and `Measure` rises 9 → 37 (§8, executed)
 - variant unit-collapse → **25 new E0425** (`gentle-dove-833`)
@@ -1277,31 +1266,31 @@ cause.
 
 **Live collision:** B and D both land on `rust_scalar_checkpoint_render_base`. The split asked for
 is *one owns the rows, one owns the key* — a wrong checkpoint row stays wrong under any key, so
-`Witness` deletion is independently correct; re-sourcing the lookup key is the other change. Both
-editing the arm's logic is the thing to avoid.
+`Witness` deletion is independently correct; re-sourcing the lookup key is the other change. Avoid
+both editing the arm's logic.
 
 ### 12.5 Root A is unverified and I am saying so before anyone builds on it
 
 I published a root cause for A: `v1_clone_bound_seed_for_item` skipping coproducts
-(`if is_coproduct_type(n: item) { round }`) in `src/v1/trait_derive_emit.dag`. Going back to
-implement it, two things argue against it.
+(`if is_coproduct_type(n: item) { round }`) in `src/v1/trait_derive_emit.dag`. On implementing
+it, two things argue against it.
 
 The skip is **deliberate and defended in the same file**:
 `trait_derive_emit_item_clone_bound_wf_propagation_note` states the derive trigger is correctly
 scoped to structs because derive emits per-impl bounds for enums, and that well-formedness
 propagation — which does apply to both — is a separate trigger with its own fixpoint.
 
-And the population is **E0599, no method found**. A missing `Clone` bound is E0277. Those are
-different failures with different fixes, so a bounds diagnosis for an E0599 population is
-suspicious independent of which trigger scopes what. A's split into CloneSharedRequirement 369 /
+And the population is **E0599, no method found**; a missing `Clone` bound is E0277. Different
+failures with different fixes, so a bounds diagnosis for an E0599 population is suspicious
+independent of which trigger scopes what. A's split into CloneSharedRequirement 369 /
 TargetApiRequirement 168 / OwnedDeconstructionRequirement 63 came from the same July TSV that
 produced two of the dead claims in 12.2.
 
 ~~**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
 land, treat A as unpartitioned, not as diagnosed.**~~ — **SUPERSEDED by the RESOLVED block below;
 A is landed, not open.** Struck rather than deleted because the instruction was correct when
-written and the paragraph above it records *why* the then-current diagnosis was refused, which is
-the part that still governs.
+written and the paragraph above records *why* the then-current diagnosis was refused — the part
+that still governs.
 
 **RESOLVED 2026-08-17 — and the challenge above was right, which is why what landed is not what
 this section proposed.** [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as
@@ -1319,26 +1308,26 @@ Two receipts worth keeping, because both were nearly missed:
 - **Two regen runs before that reported a PERFECT FIXED POINT while measuring nothing.**
   `ctrl-build --remote` syncs to the *invoking* head, and the fix lived on a different branch, so
   the runs compiled a tree that never contained it. A wrong-branch arm is worse than a stale one —
-  correct SHA, correct binary, correct argv, clean provenance, and every other check passes on it.
-  Only a subject-presence grep printed beside the verdict (`grep -c` on a construct the change
-  introduces: 0 in base, >0 in the change arm) distinguishes the two. Anyone regenerating stage0
-  for a root fix should print that count next to the fixed-point verdict, always.
+  correct SHA, correct binary, correct argv, clean provenance, every other check passes. Only a
+  subject-presence grep printed beside the verdict (`grep -c` on a construct the change introduces:
+  0 in base, >0 in the change arm) distinguishes the two. Anyone regenerating stage0 for a root fix
+  should always print that count next to the fixed-point verdict.
 
 ### 12.6 Adjacent, landed: the self-host frontier roster is deleted
 
 Operator-ordered, [PR #8344](https://github.com/gunb-ai/gunbc/pull/8344), 34 files, −5,836/+284,
-on `session/smart-ram-730-frontier-cut`. Relevant to readers of this document for one reason: the
-roster is what several sections originally used to talk about self-host progress, and it never
-measured anything. `execution_measured_seed_retained_row` took its measurement fields as ordinary
-parameters, so a row claiming measurement was indistinguishable from one asserting it.
+on `session/smart-ram-730-frontier-cut`. Relevant here for one reason: several sections originally
+used the roster to talk about self-host progress, and it never measured anything.
+`execution_measured_seed_retained_row` took its measurement fields as ordinary parameters, so a row
+claiming measurement was indistinguishable from one asserting it.
 
-Cutting at the root made the census cheap and the answer was that nearly nothing depended on it —
-crate layout, wet enrollment and crate partition each read a projection that was empty at every
-call. **Do not cite roster rows as evidence of anything in this document.**
+Cutting at the root made the census cheap, and nearly nothing depended on it — crate layout, wet
+enrollment and crate partition each read a projection that was empty at every call. **Do not cite
+roster rows as evidence of anything in this document.**
 
 ### 11.12 Root A characterized at site grain (asked by `smart-ram-730`, answered by measurement)
 
-The question was whether A is really a *bound* root given that its population is E0599, "no method
+The question was whether A is really a *bound* root given its population is E0599, "no method
 found" — a different failure from E0277's unsatisfied bound. **It is a bound root; the two codes are
 one failure reported from two positions.**
 
@@ -1361,11 +1350,11 @@ source).
 **Is A one root? Yes at this measurement** — unlike the July DIAGNOSTICS and WITNESS buckets, which
 this run found at 8 sites and 0. There is no second population hiding inside it.
 
-**A discriminator the owner can run, offered because my data cannot settle which trigger is at
-fault:** 64 of the 142 name a *generic type* as receiver rather than a bare parameter. That is
-exactly the container-field-on-a-generic-coproduct shape `trait_derive_emit`'s own note predicts
-earns a bound from neither trigger. If the published root-cause is right, those 64 are its
-signature; if a well-formedness fix leaves them standing, the root-cause is refuted by that alone.
+**A discriminator the owner can run, since this data cannot settle which trigger is at fault:** 64
+of the 142 name a *generic type* as receiver rather than a bare parameter — exactly the
+container-field-on-a-generic-coproduct shape `trait_derive_emit`'s own note predicts earns a bound
+from neither trigger. If the published root-cause is right, those 64 are its signature; if a
+well-formedness fix leaves them standing, the root-cause is refuted by that alone.
 
 **Do not reconcile the July emitter-decision split (369/168/63, summing 600) against the 133.**
 That census counted diagnostics summed over modules; these are distinct sites. The two are
@@ -1378,7 +1367,7 @@ root, bound-shaped.**
 
 ### 13.1 What A actually is (`smart-ibex-716`, live, seven modules, distinct-site grain)
 
-142 distinct sites; codes E0599 94 / E0277 48 and nothing else. The apparent code split is a
+142 distinct sites; codes E0599 94 / E0277 48, nothing else. The apparent code split is a
 reporting artifact, not two mechanisms:
 
 | | count | shape |

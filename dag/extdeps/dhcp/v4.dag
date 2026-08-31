@@ -56,7 +56,13 @@ data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data ipv4_address_brand_dissolved_note: String = "The Ipv4Address anemic brand (NonEmptyStr where brand) was dissolved 2026-07-24: it is now the structured four-octet carrier in extdeps.network.ipv4 (dissolve_on_ipv4_address_anemic_brand fired — its named trigger, extdeps/network/ipv4.dag + parse_ipv4_address witness, landed). Consumers import Ipv4Address from extdeps.network.ipv4 directly (ipv4 is a network concept, not a DHCP one — the prior re-home through this module was a layering artifact). The MacAddress brand above remains anemic; its dissolution (extdeps/network/mac.dag, hex-octet parse) is the fast-follow — same consumer files, deferred to keep the IPv4 reach-lane change focused."
+// The Ipv4Address anemic brand (NonEmptyStr where brand) was dissolved 2026-07-24: it is now the
+// structured four-octet carrier in extdeps.network.ipv4 (dissolve_on_ipv4_address_anemic_brand
+// fired — its named trigger, extdeps/network/ipv4.dag + parse_ipv4_address witness, landed).
+// Consumers import Ipv4Address from extdeps.network.ipv4 directly (ipv4 is a network concept, not a
+// DHCP one — the prior re-home through this module was a layering artifact). The MacAddress brand
+// above remains anemic; its dissolution (extdeps/network/mac.dag, hex-octet parse) is the
+// fast-follow — same consumer files, deferred to keep the IPv4 reach-lane change focused.
 
 type DhcpClientHostNameOption12 = HostName
 

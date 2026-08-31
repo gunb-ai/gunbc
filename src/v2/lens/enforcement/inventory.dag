@@ -1,6 +1,14 @@
 module v2.lens.enforcement.inventory
 
-data lens_enforcement_inventory_authority_note: String = "Phase 0B derived inventory (operator acceptance 2026-08-02): every row is computed from lens_contract_registry, standing_intent_registry, enrollment discovery receipts, and witness-admission cadence facts — never stored, never a parallel ledger (#7664 bare-minimum-computation ruling). Bidirectional reconciliation: one inventory row per registry contract, no orphan rows. Unbound and inert lenses stay visible. Support status lives on LensEnforcementApplication, not on the lens id — Cost may be Supported on its bound consumer application and Unsupported on complexity.repo-wide in the same inventory. evaluated_scope is typed absent until Phase 1 execution receipts exist; required_scope and claimed_scope are reported separately."
+// Phase 0B derived inventory (operator acceptance 2026-08-02): every row is computed from
+// lens_contract_registry, standing_intent_registry, enrollment discovery receipts, and
+// witness-admission cadence facts — never stored, never a parallel ledger (#7664
+// bare-minimum-computation ruling). Bidirectional reconciliation: one inventory row per registry
+// contract, no orphan rows. Unbound and inert lenses stay visible. Support status lives on
+// LensEnforcementApplication, not on the lens id — Cost may be Supported on its bound consumer
+// application and Unsupported on complexity.repo-wide in the same inventory. evaluated_scope is
+// typed absent until Phase 1 execution receipts exist; required_scope and claimed_scope are
+// reported separately.
 
 type LensExecutionCadence
   = PrFloorDiscovery
@@ -56,7 +64,8 @@ type LensEnforcementInventoryRow {
 
 data evaluated_scope_absent_reason: String = "evaluated_scope awaits Phase 1 execution receipts; discovery-only name counts are not evaluation"
 
-data subject_counts_evaluated_unavailable_absent_note: String = "evaluated and unavailable subject counts await Phase 1 execution receipts; only discovered (receipt-local name count) is reported in Phase 0B"
+// evaluated and unavailable subject counts await Phase 1 execution receipts; only discovered
+// (receipt-local name count) is reported in Phase 0B
 
 fn subject_counts_from_receipt(receipt: EnrollmentDiscoveryReceipt) -> SubjectPopulationCounts {
   SubjectPopulationCounts {
@@ -76,6 +85,24 @@ fn evaluated_scope_absent_fact() -> EvaluatedScopeFact {
 
 fn disposition_when_bool(enrolled: Bool) -> SchedulingDisposition {
   if enrolled { SchedulingEnrolled } else { SchedulingExcluded }
+}
+
+// Pattern arms are resolved against the WitnessConsumerCadence scrutinee. Keep this predicate
+// local and keep LensExecutionCadence.OfflineLocalRecipe's colliding spelling: importing or bare-
+// calling an owner-side predicate, or renaming the local arm, perturbs the prepared bare closure
+// of unrelated import-free v2.lens.mock_totality modules (gunbc#9741's 21-row discriminator).
+fn primary_is_offline_local_recipe(primary: WitnessConsumerCadence) -> Bool {
+  match primary {
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => true
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
 }
 
 fn pr_floor_scheduling_disposition(
@@ -143,7 +170,7 @@ fn scheduling_disposition_for_primary_cadence(
     SubstrateLongLane =>
       disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
     OfflineLocalRecipe =>
-      disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
+      disposition_when_bool(enrolled: primary_is_offline_local_recipe(primary: primary))
     ScheduledFalsifier =>
       scheduled_falsifier_scheduling_disposition(primary: primary)
   }
@@ -543,7 +570,13 @@ type WitnessAdmissionInventoryRow {
   cadence_rows: List<CadenceSchedulingRow>
 }
 
-data witness_admission_inventory_authority_note: String = "Phase 0B witness admission inventory: every row is derived from gunbc.ci_layer_roots witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission cadence projection — never hand-authored scheduling. First specimen: enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the offline-recipe cadence, SchedulingExcluded at PR-floor/main-push, with dissolve_on from the frontier row. 0A fabrication removal is construction in the production fold; discriminating evidence runs at offline cadence only (operator status correction 2026-08-02)."
+// Phase 0B witness admission inventory: every row is derived from gunbc.ci_layer_roots
+// witness_exclusion_frontier (pattern, classification, reason, dissolve_on) plus witness-admission
+// cadence projection — never hand-authored scheduling. First specimen:
+// enforcement_live_witness_test.dag (0A red-control probes) is OfflineLocalRecipe at the
+// offline-recipe cadence, SchedulingExcluded at PR-floor/main-push, with dissolve_on from the
+// frontier row. 0A fabrication removal is construction in the production fold; discriminating
+// evidence runs at offline cadence only (operator status correction 2026-08-02).
 
 fn schedule_entries_cover_pattern(xs: List<ScheduleWitnessEntry>, pattern: String) -> Bool {
   any(xs: xs, predicate: fn(w) { string_contains(s: w.entry, pattern: pattern) })

@@ -26,7 +26,12 @@ data closure_witness_receipt: String = "compiler_closure_ingest_receipt_describe
 data closure_boundary_witness: String = "compiler_closure_ingest_boundary_exact_cap_transport_holds"
 data closure_overflow_witness: String = "compiler_closure_ingest_overflow_refuses_never_empty_holds"
 
-data closure_witness_quarantine_note: String = "Capless closure-ref transport landed: manifest rows are SourceRef + content hash (no inlined Lossless text), consumers read through refs with hash verification, and produced_row_count tracks the full closure-ref list. Overflow past manifest_inline_list_max reports SourceRootManifestElided with typed read_count/cap while the ref population stays complete — never zero rows with a positive read count. compiler_closure_scoped_ingest_module_count_ok_holds un-quarantined from explicit_witness_admission when the completeness witness greened."
+// Capless closure-ref transport landed: manifest rows are SourceRef + content hash (no inlined
+// Lossless text), consumers read through refs with hash verification, and produced_row_count tracks
+// the full closure-ref list. Overflow past manifest_inline_list_max reports
+// SourceRootManifestElided with typed read_count/cap while the ref population stays complete —
+// never zero rows with a positive read count. compiler_closure_scoped_ingest_module_count_ok_holds
+// un-quarantined from explicit_witness_admission when the completeness witness greened.
 data closure_witness_layer_roots: String = "self_host_closure_witness_layer_roots_reexports_authority_holds"
 data closure_gap4_entry: String = "src/v2/test/claim/long/gap4_parse_tokens_remain_test.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"

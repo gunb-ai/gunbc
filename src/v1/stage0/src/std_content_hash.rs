@@ -13,15 +13,6 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn content_hash_family_constructor_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "CRYPTOGRAPHIC CARRIER WALL (reviews 45441/45460/45496; same law as extdeps.git.object_store git_object_id_text_note). Sha256Digest.hex and Sha1Digest.hex are Sha256DigestHex / Sha1DigestHex (String where lower_hex_64 / lower_hex_40); Sha512Digest.hex is Sha512DigestHex (String where lower_hex_128); Fnv1a64Structural.digest is Fnv1a64StructuralDigestHex (String where lower_hex_16). The public forgeable record constructors are deleted; literal sites are construction-walled by where-refinement, and non-literal sites route through sha256_hex_digest / sha1_hex_digest / sha512_hex_digest / fnv1a64_structural_hex_digest (exact length plus canonical lowercase-hex syntax, refusing rather than folding case). dissolve-on: feature:where-refinement-predicate-coproduct for non-literal positions still admitted via cast after runtime validation (wall after grounding) on atom_identity_hash / hash_combine pipeline outputs only. Fixtures needing stable identities hash their labels with content_hash_of_value, never by labeling arbitrary text as a digest. Callers parsing wire text route through the validating mints (extdeps.container.oci.digest parse_oci_content_digest_wire, extdeps.git.object_store git_sha256_object_id, extdeps.crypto.hash bridges, extdeps.npm npm_decode_integrity for npm SRI wire).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn content_hash_family_grounding_note() -> String {
     thread_local! {
         static CACHED: String = {
@@ -132,7 +123,7 @@ pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 64) {
         Some(Rc::new(Sha256Digest { hex: hex.clone() }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -140,7 +131,7 @@ pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 40) {
         Some(Rc::new(Sha1Digest { hex: hex.clone() }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -148,7 +139,7 @@ pub fn sha512_hex_digest(hex: String) -> Option<Rc<Sha512Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 128) {
         Some(Rc::new(Sha512Digest { hex: hex.clone() }))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -156,7 +147,7 @@ pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Rc<Fnv1a64Structural
     if content_hash_validate_lower_hex_length(hex.clone(), 16) {
         Some(structural_content_hash(hex.clone()))
     } else {
-        None
+        std::option::Option::None
     }
 }
 
@@ -183,7 +174,7 @@ pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
 pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentHash>> {
     match fnv1a64_structural_hex_digest(digest.clone()) {
         Some(structural) => Some(as_content_hash_structural(structural.clone())),
-        None => None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -239,15 +230,6 @@ pub enum ContentHashComparison {
     ContentHashEqual,
     ContentHashDifferent,
     ContentHashCrossFamilyIncomparable,
-}
-
-pub fn content_hash_comparison_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical union-carrier comparison authority (review 45407). Per-family eq fns remain the only same-family digest check; compare_content_hash is the single fold that dispatches on family and refuses to collapse cross-family pairs into a silent false. Consumers that need a Bool (membership value_eq) match explicitly on the outcome; integrity admission maps CrossFamilyIncomparable to typed refusal causes rather than encoding dispatch locally.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn compare_content_hash(

@@ -1,6 +1,6 @@
 module gunbc.roadmap_sandbox
 
-import std.types { Int, String, Bool, List }
+import std.types { Int, String, Bool, List, NonEmptyStr }
 import std.markup { Fragment, Element, FragmentText, RawNode, Attribute, attr }
 import gunbc.site.markup { txt, el, el_class, el_attrs }
 import gunbc.roadmap_page { roadmap_header, render_work_row, node_li_attributes, workspace_entries_ul }
@@ -41,8 +41,35 @@ import gunbc.roadmap_component {
   InstrumentLabLink, instrument_lab_links,
 }
 import gunbc.roadmap_belt_actuate { belt_dispatch_all_status_labels }
+import gunbc.roadmap_belt { ManualReady }
+import gunbc.roadmap_model { RoadmapNodeId }
+import gunbc.roadmap_launch_admission { LaunchAdmission, LaunchAdmitted, LaunchIdentity, Operator, launch_identity_null_revision }
 
-data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the register at every depth plus every component in every state, all DERIVED from the same authorities the live surfaces use, so the sandbox is a faithful mirror, never a hand mock. Roles are shown under BOTH themes at once (literal material paints inline — the one place a literal color is right, because it is DISPLAYING the role->material authority under two projections simultaneously, which var(--role) cannot do). The component gallery renders dispatch_button_component's states one-for-one; the terminal instances are exactly the wire vocabulary (totality is the P0 property, re-witnessed here as gallery coverage). The live section is one pressable instance per wire arm that POSTs /sandbox/echo?status=LABEL and renders through the SAME client program the real button uses — so every state is exercisable without dispatching a session, and the sandbox cannot drift from production render."
+// The sandbox gallery is a UI fixture that never spawns (its click echoes a wire exemplar from
+// /sandbox); its rows carry a SYNTHETIC admitted launch so the operable button exists to press.
+// This is a fixture value for the pressable gallery only -- no production surface reads it, and the
+// identity names the sandbox as its instance so it cannot be mistaken for a served admission.
+
+fn sandbox_launch_admission(node_id: String) -> LaunchAdmission {
+  LaunchAdmitted { identity: LaunchIdentity {
+    node_id: node_id as NonEmptyStr as RoadmapNodeId,
+    cause: Operator,
+    mode: ManualReady,
+    instance_id: "sandbox" as NonEmptyStr,
+    revision: launch_identity_null_revision(),
+  } }
+}
+
+// The /sandbox design surface (P4): the register at every depth plus every component in every
+// state, all DERIVED from the same authorities the live surfaces use, so the sandbox is a faithful
+// mirror, never a hand mock. Roles are shown under BOTH themes at once (literal material paints
+// inline — the one place a literal color is right, because it is DISPLAYING the role->material
+// authority under two projections simultaneously, which var(--role) cannot do). The component
+// gallery renders dispatch_button_component's states one-for-one; the terminal instances are
+// exactly the wire vocabulary (totality is the P0 property, re-witnessed here as gallery coverage).
+// The live section is one pressable instance per wire arm that POSTs /sandbox/echo?status=LABEL and
+// renders through the SAME client program the real button uses — so every state is exercisable
+// without dispatching a session, and the sandbox cannot drift from production render.
 
 fn sandbox_rules() -> List<BuildRule> {
   [
@@ -116,7 +143,12 @@ fn sandbox_rules() -> List<BuildRule> {
   ]
 }
 
-data fixture_frame_width_note: String = "The three fixture frames simulate the falsifier's declared viewports (wide 1680 / medium 1024 / narrow 480) as max-width containers so the operator reads all three compositions on one screen without resizing. The px literals are DIAGNOSTIC viewport dimensions, not design lengths — they name external screen widths, which is why they do not route through gunbc.design.scale (whose tokens are the page's own spatial vocabulary); the untokened-length census scopes to roadmap_instance_rules() and these sandbox-only rules are its declared out-of-scope neighbor."
+// The three fixture frames simulate the falsifier's declared viewports (wide 1680 / medium 1024 /
+// narrow 480) as max-width containers so the operator reads all three compositions on one screen
+// without resizing. The px literals are DIAGNOSTIC viewport dimensions, not design lengths — they
+// name external screen widths, which is why they do not route through gunbc.design.scale (whose
+// tokens are the page's own spatial vocabulary); the untokened-length census scopes to
+// roadmap_instance_rules() and these sandbox-only rules are its declared out-of-scope neighbor.
 
 fn fixture_frame_rules() -> List<BuildRule> {
   [
@@ -198,9 +230,19 @@ fn gallery_states() -> List<ComponentState> {
   concat([dispatch_idle_state, dispatch_requested_state], dispatch_button_terminal_states())
 }
 
-data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band phrases the button text, so two refusal arms wear the same caption — CORRECT for the operator, ambiguous for a specimen sheet. The gallery is the diagnostic surface, so each cell carries the ARM identity as a sublabel under the instance (state.key, which for terminals IS the wire label — the same authority the coverage witness reads), and the live cells mirror it. The caption channel stays operator-vocabulary everywhere; the wire vocabulary survives only in the sublabel and title channels, where diagnosis lives."
+// The caption collapse (W1d) makes band phrases the button text, so two refusal arms wear the same
+// caption — CORRECT for the operator, ambiguous for a specimen sheet. The gallery is the diagnostic
+// surface, so each cell carries the ARM identity as a sublabel under the instance (state.key, which
+// for terminals IS the wire label — the same authority the coverage witness reads), and the live
+// cells mirror it. The caption channel stays operator-vocabulary everywhere; the wire vocabulary
+// survives only in the sublabel and title channels, where diagnosis lives.
 
-data band_chip_note: String = "The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints — the chip strip cannot drift from the band vocabulary."
+// The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches
+// button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub
+// harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme
+// literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip
+// repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints —
+// the chip strip cannot drift from the band vocabulary.
 
 fn band_chip(key: String) -> Fragment {
   Element {
@@ -259,7 +301,12 @@ fn live_section() -> Fragment {
   ])
 }
 
-data sandbox_work_row_fixture_note: String = "The A2 composition fixture (operator blocker 6): the falsifier specimen row — long headline, seven obligations with Environment/Workspace/Agent complete, session-present/process-exited evidence, four remaining — rendered by the REAL render_work_row at the three declared falsifier widths, plus the refused-arm specimen with its located reason. Server-rendered from constructed views, so the operator critiques the exact production composition without live data, and a seam or renderer change moves these frames in the same deploy that moves the dashboard."
+// The A2 composition fixture (operator blocker 6): the falsifier specimen row — long headline,
+// seven obligations with Environment/Workspace/Agent complete, session-present/process-exited
+// evidence, four remaining — rendered by the REAL render_work_row at the three declared falsifier
+// widths, plus the refused-arm specimen with its located reason. Server-rendered from constructed
+// views, so the operator critiques the exact production composition without live data, and a seam
+// or renderer change moves these frames in the same deploy that moves the dashboard.
 
 fn fixture_specimen_segments() -> List<WorkflowSegment> {
   [
@@ -282,7 +329,7 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView
     scheduling: SchedulingReady,
     superseded_by: "",
     activity: activity,
-    action: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle),
+    action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
   }
@@ -334,7 +381,17 @@ fn work_row_fixture_section() -> Fragment {
   ])
 }
 
-data sandbox_family_fixture_note: String = "The A3 composition fixture (the #7589 deferred receipt): one declared family rendered by the REAL grouping path — band_entries folds the constructed rows against the typed WorkFamilyDecl/WorkFamilyMemberFact facts, workspace_entries_ul paints the result — so the exhibit shows exactly what production shows: the family claim stated once in the group head with the member count, member rows carrying only their subjects (the full headline is provably absent — the subject swap runs through family_subject_row, not a display trick), and an undeclared neighbour row keeping its own headline outside the group. All rows are routine (OpenLifecycle + SchedulingReady + NoActiveWork), so the frame also exhibits the A3 chip collapse: no open chips, no hollow activity. Constructed views rather than the live closing-contract family, for the same reason the A2 fixture constructs its specimen: the exhibit must stay byte-stable across roadmap edits so the three width frames compare composition, not data drift."
+// The A3 composition fixture (the #7589 deferred receipt): one declared family rendered by the REAL
+// grouping path — band_entries folds the constructed rows against the typed
+// WorkFamilyDecl/WorkFamilyMemberFact facts, workspace_entries_ul paints the result — so the
+// exhibit shows exactly what production shows: the family claim stated once in the group head with
+// the member count, member rows carrying only their subjects (the full headline is provably absent
+// — the subject swap runs through family_subject_row, not a display trick), and an undeclared
+// neighbour row keeping its own headline outside the group. All rows are routine (OpenLifecycle +
+// SchedulingReady + NoActiveWork), so the frame also exhibits the A3 chip collapse: no open chips,
+// no hollow activity. Constructed views rather than the live closing-contract family, for the same
+// reason the A2 fixture constructs its specimen: the exhibit must stay byte-stable across roadmap
+// edits so the three width frames compare composition, not data drift.
 
 fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
   WorkRowView {
@@ -345,7 +402,7 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
     scheduling: SchedulingReady,
     superseded_by: "",
     activity: NoActiveWork,
-    action: action_view(scheduling: SchedulingReady, lifecycle: OpenLifecycle),
+    action: action_view(lifecycle: OpenLifecycle, admission: sandbox_launch_admission(node_id: node_id)),
     supporting_facts: [],
     disclosure: NoDisclosure,
   }
@@ -398,7 +455,13 @@ fn family_fixture_section() -> Fragment {
   ])
 }
 
-data instrument_labs_section_note: String = "ONE CONTEXTUAL ENTRY, ON THE PAGE WHERE STUDIES LIVE, rather than three raw links in every shared header (review ruling, 2026-08-06). A header nav put development routes on the daily workspace and the roadmap, where they are noise to everyone not building the instrument. The sandbox is already the page for studies, so the labs belong here with a sentence saying what each one is for — and the rows come from gunbc.roadmap_component.instrument_lab_links, the same declaration the router builds its route specs from, so a link that resolves nowhere is caught by execution rather than by clicking."
+// ONE CONTEXTUAL ENTRY, ON THE PAGE WHERE STUDIES LIVE, rather than three raw links in every shared
+// header (review ruling, 2026-08-06). A header nav put development routes on the daily workspace
+// and the roadmap, where they are noise to everyone not building the instrument. The sandbox is
+// already the page for studies, so the labs belong here with a sentence saying what each one is for
+// — and the rows come from gunbc.roadmap_component.instrument_lab_links, the same declaration the
+// router builds its route specs from, so a link that resolves nowhere is caught by execution rather
+// than by clicking.
 
 fn instrument_lab_entry(l: InstrumentLabLink) -> Fragment {
   el("li", [ el_attrs("a", [ attr(name: "href", value: l.path) ], [ txt(l.label) ]) ])

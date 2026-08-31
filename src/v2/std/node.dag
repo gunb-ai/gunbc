@@ -28,10 +28,6 @@ type Behavior
   | Bind
   | Match
 
-fn resolve_type_node(type_name: Symbol) -> Node {
-  resolve_type_node(type_name: type_name)
-}
-
 type ArmPayload
   = Nullary
   | Typed { target_ref: Symbol }
@@ -218,7 +214,13 @@ type EdgeDiscipline
 
   | ArrowBodyEdges
 
-data atom_payload_labeled_edges_scaffold_note: String = "🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on ^dag_token_int_literal via ^integer_literal_magnitude_field) — atom_connective_edge_discipline(child_count) is the single authority (NoEdges when child_count==0, LabeledEdges otherwise); connective_edge_discipline_for_children delegates Atom through it. Not a new connective: the payload is a typed named field, not an open Conj record. Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the magnitude subnode without widening Atom discipline."
+// 🟡 dissolve-on: Atom connectives with labeled payload children (int-literal magnitude on
+// ^dag_token_int_literal via ^integer_literal_magnitude_field) —
+// atom_connective_edge_discipline(child_count) is the single authority (NoEdges when
+// child_count==0, LabeledEdges otherwise); connective_edge_discipline_for_children delegates Atom
+// through it. Not a new connective: the payload is a typed named field, not an open Conj record.
+// Reconcile when int-literal lowering lands a dedicated connective or magnitude lives only on the
+// magnitude subnode without widening Atom discipline.
 
 fn atom_connective_edge_discipline(child_count: Int) -> EdgeDiscipline {
   if child_count == 0 {
@@ -468,7 +470,11 @@ fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   }
 }
 
-data edge_contributes_to_cost_fold_note: String = "Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to use that function directly."
+// Wave 1 Gate 1 C1: the symbolic cost fold prices only runtime work. Arrow signature/type
+// positional children and domain Named edges are NOT runtime cost — only ^arrow_body_edge carries
+// the body the fold must price (general-body-producer-design Stage C prerequisite). Loop keeps the
+// iteration-fold edge discipline from loop_edge_contributes_to_iteration_fold; infer continues to
+// use that function directly.
 
 fn edge_contributes_to_cost_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {

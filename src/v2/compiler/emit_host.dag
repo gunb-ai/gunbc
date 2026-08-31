@@ -14,7 +14,8 @@ import v2.compiler.eval {
   Inputs,
   TestClaimEvalSubject,
   TestClaimRun,
-  accepted_runtime_value_outcome_eq,
+  accepted_runtime_value_outcome_equality,
+  runtime_value_equality_verdict,
   eval,
   eval_context_interpretation,
   inputs_for_emit_host,
@@ -382,7 +383,11 @@ fn emit_host_octets_byte_string(octets: List<Int>) -> ByteString {
   emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
 }
 
-data emit_host_run_args_note: String = "run_args is the family-member selector (std.emit_on_demand witness_family_build_grain_ruling): a family-grain crate carries one argv-dispatched main, and the member id is appended to the descriptor's run invocation at run time. The dispatcher is fail-closed — an unknown member exits nonzero, surfacing as a refused logical_run, never fabricated octets. Per-witness callers pass []."
+// run_args is the family-member selector (std.emit_on_demand witness_family_build_grain_ruling): a
+// family-grain crate carries one argv-dispatched main, and the member id is appended to the
+// descriptor's run invocation at run time. The dispatcher is fail-closed — an unknown member exits
+// nonzero, surfacing as a refused logical_run, never fabricated octets. Per-witness callers pass
+// [].
 
 fn run_host_process(
   row: EmitHostRuntimeRow,
@@ -478,10 +483,11 @@ fn run_host_process_admitted(
               ),
               files: files,
               build: builds,
-              run: run_argv
+              run: run_argv,
+              environment: transport.build_environment.ambient_names
             )
           } else {
-            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv)
+            emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv, environment: transport.build_environment.ambient_names)
           }
           let exit = HostExit {
             outcome: Accepted {
@@ -588,24 +594,30 @@ fn run_test_claim_emit_vs_eval_verdict(
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
-      if accepted_runtime_value_outcome_eq(
+      match accepted_runtime_value_outcome_equality(
         a: Accepted { value: host_actual, diagnostics: None },
         b: expected
       ) {
-        Pass
-      } else {
-        verdict_semantic_mismatch(
-          actual: Accepted { value: host_actual, diagnostics: None },
-          falsification: optional_present(
-            value: FalsificationReceipt {
-              subject: subject,
-              expected: exp_val,
-              actual: host_actual,
-              divergence: ValueDiff { expected: exp_val, actual: host_actual },
-              evidence: Host { receipt: host_receipt }
-            }
+        RuntimeValuesEqual => Pass
+        RuntimeValuesDiffer =>
+          verdict_semantic_mismatch(
+            actual: Accepted { value: host_actual, diagnostics: None },
+            falsification: optional_present(
+              value: FalsificationReceipt {
+                subject: subject,
+                expected: exp_val,
+                actual: host_actual,
+                divergence: ValueDiff { expected: exp_val, actual: host_actual },
+                evidence: Host { receipt: host_receipt }
+              }
+            )
           )
-        )
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          runtime_value_equality_verdict(
+            equality: RuntimeValueEqualityUnavailable { reason: r },
+            actual: Accepted { value: host_actual, diagnostics: None },
+            at: subject.input.evaluator_input
+          )
       }
     Rejected { diagnostics: ds } =>
       verdict_build_failed(

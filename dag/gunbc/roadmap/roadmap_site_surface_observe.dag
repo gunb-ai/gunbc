@@ -14,6 +14,7 @@ import gunbc.roadmap_page {
   roadmap_page_for_projection,
   roadmap_daily_workspace_page_for_projection_observed,
 }
+import gunbc.roadmap_launch_admission { launch_host_unobserved_static_render }
 import gunbc.roadmap_component { dispatch_client_js_source, roadmap_dispatch_asset_path }
 import gunbc.roadmap_model { RoadmapNodeId }
 import gunbc.roadmap_site_surface_types {
@@ -32,7 +33,10 @@ import gunbc.roadmap_site_surface_render {
   healthz_body_from_surface_artifacts,
 }
 
-data roadmap_site_surface_observe_note: String = "THE SOLE LIVE OBSERVATION AUTHORITY for roadmap served-surface materialization. materialize_live_roadmap_site_surface_bundle is the only entry that loads acceptance history and projects roadmap authority for site-surface rendering; downstream consumers evaluate gunbc.roadmap_site_surface_expect predicates over the retained bundle."
+// THE SOLE LIVE OBSERVATION AUTHORITY for roadmap served-surface materialization.
+// materialize_live_roadmap_site_surface_bundle is the only entry that loads acceptance history and
+// projects roadmap authority for site-surface rendering; downstream consumers evaluate
+// gunbc.roadmap_site_surface_expect predicates over the retained bundle.
 
 // producer_identity names the observe/render implementation that produced a bundle, distinct from subject_identity (which roadmap snapshot) and bundle_identity (which rendered artifact population).
 fn roadmap_site_surface_producer_identity() -> Fnv1a64Structural {
@@ -90,6 +94,7 @@ fn render_roadmap_site_surface_bundle_for_projection(proj: RoadmapAuthorityProje
       proj: proj,
       attempts: [],
       attempts_refused: none,
+      launch: launch_host_unobserved_static_render(),
     )
   )
   let full_body = served_page_body(page: roadmap_page_for_projection(proj: proj))

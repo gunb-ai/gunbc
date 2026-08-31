@@ -609,6 +609,49 @@ fn carrier_container_arity_rows() -> Map<String, Int> {
       }))
 }
 
+// EQUALITY ADMISSIBILITY IS A CONSEQUENCE OF THE SUPPORT AXIS, declared beside the profiles it
+// follows from rather than re-derived by any consumer. A carrier with finite support (or a scalar
+// carrier) has decidable extensional equality: two values agree exactly when they agree on the
+// finitely many points that exist, so equality LIFTS over the carrier's type arguments and the
+// admission question recurses into them. An open-support carrier (PartialFunction, the pointwise
+// power) cannot answer extensional equality at all -- the agreement set is not enumerable -- so
+// generic equality on it is refused, never approximated. The rows are per-profile because the
+// support axis is a fact about the algebra, not about any spelling that resolves to it.
+type AlgebraSupportAxis
+  = FiniteSupport
+  | OpenSupport
+
+fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
+  match profile {
+    OrderedRingProfile => FiniteSupport
+    ApproximateFieldProfile => FiniteSupport
+    BooleanAlgebraProfile => FiniteSupport
+    FinitePowerSetProfile => FiniteSupport
+    PointwisePowerCollectionProfile => OpenSupport
+    FreeMonoidScalarProfile => FiniteSupport
+    FreeMonoidCollectionProfile => FiniteSupport
+    PartialFunctionProfile => OpenSupport
+    FinitelySupportedFunctionProfile => FiniteSupport
+  }
+}
+
+fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> Bool {
+  match algebra_profile_support(profile: profile) {
+    FiniteSupport => true
+    OpenSupport => false
+  }
+}
+
+fn carrier_container_equality_rows() -> Map<String, Bool> {
+  algebra_carriers() |> fold(init: empty_map(), f: (acc, carrier) =>
+    carrier.spellings |> fold(init: acc, f: (inner, spelling) =>
+      if carrier_spelling_row_present(m: spelling.container_algebra_row) {
+        map_insert(inner, spelling.text, algebra_profile_equality_extensional(profile: carrier.profile))
+      } else {
+        inner
+      }))
+}
+
 data kernel_algebra_profile: Map<String, AlgebraProfile> = kernel_algebra_profile_value()
 
 fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
@@ -804,7 +847,14 @@ fn all_algebra_template_names() -> List<String> {
   all_algebra_field_templates() |> map(template => template.name)
 }
 
-data trim_free_function_authority_note: String = "trim is the importable free-function authority for whitespace trim on String. The declared substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s) requires explicit import std.algebra { trim } -- bare trim refuses via closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062)."
+// trim is the importable free-function authority for whitespace trim on String. The declared
+// substrate body is a pure-dag seam (1 / 0); semantic execution routes through free_call.trim
+// (v1_rt::trim). Host realization authority: std.primitives trim_contract. Emitted host-native
+// std.algebra::trim delegates to v1_rt::trim via rust_host_string_op_fn_emit. The scalar template
+// row trim on FreeMonoid<String> is the method spelling on the same carrier. Free-call trim(s)
+// requires explicit import std.algebra { trim } -- bare trim refuses via
+// closure_independent_bare_free_call registry in v1.compiler.infer_env even when std.algebra is
+// already in the compilation pool (#6985 Class B pool coincidence closed on trim by #8062).
 
 // The seam diverges before producing anything; `s` is read in the condition so the declared
 // input reaches the result (wiring-liveness), mirroring the bytes.dag float-seam pattern --

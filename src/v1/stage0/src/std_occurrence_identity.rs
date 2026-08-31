@@ -31,15 +31,6 @@ pub fn occurrence_identity_scope_law() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
-pub fn authored_token_ordinal_typed_bridge_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "AuthoredTokenOrdinalSpace carries the opaque shared allocator state, not an arithmetic quantity: callers advance only through the shared allocator boundary and cannot substitute a bare scalar or a differently-denominated measure.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AuthoredTokenOrdinalSpace {
     pub allocator: OccurrenceIdAllocator,
@@ -49,15 +40,6 @@ pub fn authored_token_ordinal_space_initial() -> Rc<AuthoredTokenOrdinalSpace> {
     Rc::new(AuthoredTokenOrdinalSpace {
         allocator: occurrence_id_allocator_initial(),
     })
-}
-
-pub fn authored_token_ordinal_value_bridge_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "AuthoredTokenOrdinal is the comparable source-order carrier (strictly-before gating for ModuleExposure). It is a bare Int brand today — not yet Measure<Count, One, Nat> — because the same feature:occurrence-ordinal-value-measure wall that gates AuthoredTokenOrdinalSpace still blocks a faithful HostNative measure projection. Single authority lives here beside AuthoredTokenOrdinalSpace; consumers import the brand, never re-mint a parallel Int wrapper.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -79,15 +61,6 @@ pub fn authored_token_ordinal_eq(left: AuthoredTokenOrdinal, right: AuthoredToke
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceId {
     pub value: i64,
-}
-
-pub fn occurrence_containment_storage_projection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "OccurrenceContainmentPath is the concrete compact storage projection of std.occurrence_binding.ContainmentPath<OccurrenceId>. Generic stage0 emission of ContainmentPath<N> with #[derive] carriers needed v1.compiler.trait_derive_emit item-level Clone bounds (PR #7570); that emitter work is prerequisite but does not by itself dissolve this projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves ContainmentPath<OccurrenceId> compiles there.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -123,15 +96,6 @@ impl OccurrenceCategoryModuleScopeExposureVerdict {
             OccurrenceCategoryModuleScopeExposureVerdict::OccurrenceCategoryModuleScopeNotExposed { category: __val, .. } => __val.clone(),
         }
     }
-}
-
-pub fn occurrence_category_module_scope_exposure_verdict_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical module-scope exposure surface for declaration categories (review 45716 predicate-dissolution): consumers match OccurrenceCategoryModuleScopeExposureVerdict directly — not a parallel Bool predicate over the OccurrenceCategory coproduct. CallableOccurrence, TypeOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence are module-scope members; LexicalValueOccurrence, FieldOccurrence, and MethodOccurrence are not.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_category_module_scope_exposure_verdict(
@@ -181,15 +145,6 @@ impl OccurrenceCategoryClauseEDependencyInducingVerdict {
             OccurrenceCategoryClauseEDependencyInducingVerdict::OccurrenceCategoryClauseEDependencyNotInducing { category: __val, .. } => __val.clone(),
         }
     }
-}
-
-pub fn occurrence_category_clause_e_dependency_inducing_verdict_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical clause-(e) reference-category filter surface (review 50193 predicate-dissolution): consumers match OccurrenceCategoryClauseEDependencyInducingVerdict directly — not a parallel inline match over the OccurrenceCategory coproduct. LexicalValueOccurrence, CallableOccurrence, ConstructorOccurrence, and NamespaceSegmentOccurrence references may induce cross-file file dependencies; TypeOccurrence is N2's resolve_type_reference_containment_binding lane; FieldOccurrence and MethodOccurrence do not participate in clause-(e) structural walks.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_category_clause_e_dependency_inducing_verdict(
@@ -381,15 +336,6 @@ pub fn scoped_occurrence_ref_in_scope(
     (occurrence_ref.scope.clone().digest.clone() == scope.digest.clone())
 }
 
-pub fn occurrence_identity_constructor_spelling_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "NodeOccurrenceIdentity uses collision-free neutral constructors because .dag variant names are closure-global. The spelling was chosen while a second, identically named v2 coproduct still existed and could not coexist with these constructors in one closure; that coproduct and its conversions are deleted and this carrier is now the only occurrence-identity carrier a Node holds. The spelling is kept because renaming it would be a corpus-wide rewrite that buys nothing: the constructor spelling is representation, and this shared carrier and its allocator remain the semantic authority.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum NodeOccurrenceIdentity {
@@ -480,15 +426,6 @@ pub fn node_occurrence_identity_projected(
     })
 }
 
-pub fn occurrence_transport_validation_complexity_law() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "occurrence_transport_refusal builds each graph-local identity/category index exactly once, then validates declaration and reference rows by indexed lookup. It must never rescan a full occurrence population per authored occurrence.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn occurrence_containment_matches_occurrence(
     containment: Rc<OccurrenceContainmentPath>,
     occurrence: OccurrenceId,
@@ -502,15 +439,6 @@ pub fn occurrence_containment_paths_equal(
 ) -> bool {
     ((left.ancestors.clone() == right.ancestors.clone())
         && (left.terminal.clone().value.clone() == right.terminal.clone().value.clone()))
-}
-
-pub fn occurrence_containment_path_prefix_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical containment-prefix predicates for structural exposure (review 45716 single-authority; review 47424 fold surface): declaration containment is exposed to a reference when prefix is a prefix of path. Ancestors are compared by projecting each FreeMonoid through fold (never a local Empty/Cons recursive match — DESIGN predicate/walker dissolution). Consumers import these from std.occurrence_identity — never reproduce locally.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn occurrence_containment_path_contains_ancestor(
@@ -616,14 +544,14 @@ pub fn occurrence_transport_index_build(
     index.entries.clone().iter().cloned().fold(
         Rc::new(OccurrenceTransportIndexBuild {
             entries_by_id: v1_rt::rc_empty_map::<i64, Rc<OccurrenceIndexEntry>>(),
-            refusal: None,
+            refusal: std::option::Option::None,
         }),
         |build: Rc<OccurrenceTransportIndexBuild>, entry: Rc<OccurrenceIndexEntry>| match build
             .refusal
             .clone()
         {
             Some(_) => build.clone(),
-            None => match v1_rt::map_get(
+            std::option::Option::None => match v1_rt::map_get(
                 &build.entries_by_id.clone(),
                 entry.projection.clone().occurrence.clone().value.clone(),
             ) {
@@ -636,7 +564,7 @@ pub fn occurrence_transport_index_build(
                         },
                     )),
                 }),
-                None => {
+                std::option::Option::None => {
                     if occurrence_containment_matches_occurrence(
                         entry.containment.clone(),
                         entry.projection.clone().occurrence.clone(),
@@ -647,7 +575,7 @@ pub fn occurrence_transport_index_build(
                                 entry.projection.clone().occurrence.clone().value.clone(),
                                 entry.clone(),
                             ),
-                            refusal: None,
+                            refusal: std::option::Option::None,
                         })
                     } else {
                         Rc::new(OccurrenceTransportIndexBuild {
@@ -686,12 +614,12 @@ pub fn occurrence_transport_role_index_build(
             Rc::new(OccurrenceTransportRoleIndexBuild {
                 declarations_by_id: v1_rt::rc_empty_map::<i64, Rc<DeclarationOccurrence>>(),
                 references_by_id: v1_rt::rc_empty_map::<i64, Rc<ReferenceOccurrence>>(),
-                refusal: None,
+                refusal: std::option::Option::None,
             }),
             |build: Rc<OccurrenceTransportRoleIndexBuild>,
              declaration: Rc<DeclarationOccurrence>| match build.refusal.clone() {
                 Some(_) => build.clone(),
-                None => match v1_rt::map_get(
+                std::option::Option::None => match v1_rt::map_get(
                     &build.declarations_by_id.clone(),
                     declaration.occurrence.clone().value.clone(),
                 ) {
@@ -705,26 +633,26 @@ pub fn occurrence_transport_role_index_build(
                             },
                         )),
                     }),
-                    None => Rc::new(OccurrenceTransportRoleIndexBuild {
+                    std::option::Option::None => Rc::new(OccurrenceTransportRoleIndexBuild {
                         declarations_by_id: v1_rt::rc_map_insert(
                             build.declarations_by_id.clone(),
                             declaration.occurrence.clone().value.clone(),
                             declaration.clone(),
                         ),
                         references_by_id: build.references_by_id.clone(),
-                        refusal: None,
+                        refusal: std::option::Option::None,
                     }),
                 },
             },
         );
         match declaration_build.refusal.clone() {
             Some(_) => declaration_build,
-            None => references.iter().cloned().fold(
+            std::option::Option::None => references.iter().cloned().fold(
                 declaration_build,
                 |build: Rc<OccurrenceTransportRoleIndexBuild>,
                  reference: Rc<ReferenceOccurrence>| match build.refusal.clone() {
                     Some(_) => build.clone(),
-                    None => match v1_rt::map_get(
+                    std::option::Option::None => match v1_rt::map_get(
                         &build.references_by_id.clone(),
                         reference.occurrence.clone().value.clone(),
                     ) {
@@ -738,14 +666,14 @@ pub fn occurrence_transport_role_index_build(
                                 },
                             )),
                         }),
-                        None => Rc::new(OccurrenceTransportRoleIndexBuild {
+                        std::option::Option::None => Rc::new(OccurrenceTransportRoleIndexBuild {
                             declarations_by_id: build.declarations_by_id.clone(),
                             references_by_id: v1_rt::rc_map_insert(
                                 build.references_by_id.clone(),
                                 reference.occurrence.clone().value.clone(),
                                 reference.clone(),
                             ),
-                            refusal: None,
+                            refusal: std::option::Option::None,
                         }),
                     },
                 },
@@ -760,7 +688,7 @@ pub fn declaration_occurrence_refusal(
     declaration: Rc<DeclarationOccurrence>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
     match v1_rt::map_get(&index_by_id, declaration.occurrence.clone().value.clone()) {
-        None => Some(Rc::new(
+        std::option::Option::None => Some(Rc::new(
             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
                 diagnostic_span: declaration.diagnostic_span.clone(),
             },
@@ -782,7 +710,7 @@ pub fn declaration_occurrence_refusal(
                             diagnostic_span: declaration.diagnostic_span.clone(),
                         }))
                     }
-                    None => None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
                 Some(Rc::new(
@@ -802,7 +730,7 @@ pub fn reference_occurrence_refusal(
     reference: Rc<ReferenceOccurrence>,
 ) -> Option<Rc<OccurrenceTransportRefusal>> {
     match v1_rt::map_get(&index_by_id, reference.occurrence.clone().value.clone()) {
-        None => Some(Rc::new(
+        std::option::Option::None => Some(Rc::new(
             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
                 diagnostic_span: reference.diagnostic_span.clone(),
             },
@@ -824,7 +752,7 @@ pub fn reference_occurrence_refusal(
                             diagnostic_span: reference.diagnostic_span.clone(),
                         }))
                     }
-                    None => None,
+                    std::option::Option::None => std::option::Option::None,
                 }
             } else {
                 Some(Rc::new(
@@ -858,15 +786,6 @@ pub enum OccurrenceTransportValidation {
     },
 }
 
-pub fn occurrence_transport_validation_authority_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Canonical transport validity boundary: occurrence_transport_validate builds each graph-local identity/category index exactly once and either refuses or yields ValidatedOccurrenceTransport whose entries_by_id, declarations_by_id, and references_by_id are the exact lookup authorities. Resolvers consume the validated carrier and never rescan OccurrenceIndex.entries or either role population per supplied identity. The declaration/reference lists remain as the authored transport order, not as lookup paths.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn occurrence_transport_validate(
     transport: Rc<OccurrenceTransport>,
 ) -> Rc<OccurrenceTransportValidation> {
@@ -876,7 +795,7 @@ pub fn occurrence_transport_validate(
             Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
                 refusal: refusal.clone(),
             }),
-            None => {
+            std::option::Option::None => {
                 let role_index_build = occurrence_transport_role_index_build(
                     transport.declarations.clone(),
                     transport.references.clone(),
@@ -887,15 +806,15 @@ pub fn occurrence_transport_validate(
                             refusal: refusal.clone(),
                         })
                     }
-                    None => {
+                    std::option::Option::None => {
                         let declaration_refusal =
                             transport.declarations.clone().iter().cloned().fold(
-                                None,
+                                std::option::Option::None,
                                 |refusal: _, declaration: Rc<DeclarationOccurrence>| match refusal
                                     .clone()
                                 {
                                     Some(_) => refusal.clone(),
-                                    None => declaration_occurrence_refusal(
+                                    std::option::Option::None => declaration_occurrence_refusal(
                                         index_build.entries_by_id.clone(),
                                         role_index_build.references_by_id.clone(),
                                         declaration.clone(),
@@ -908,18 +827,20 @@ pub fn occurrence_transport_validate(
                                     refusal: refusal.clone(),
                                 })
                             }
-                            None => {
+                            std::option::Option::None => {
                                 let reference_refusal =
                                     transport.references.clone().iter().cloned().fold(
-                                        None,
+                                        std::option::Option::None,
                                         |refusal: _, reference: Rc<ReferenceOccurrence>| {
                                             match refusal.clone() {
                                                 Some(_) => refusal.clone(),
-                                                None => reference_occurrence_refusal(
-                                                    index_build.entries_by_id.clone(),
-                                                    role_index_build.declarations_by_id.clone(),
-                                                    reference.clone(),
-                                                ),
+                                                std::option::Option::None => {
+                                                    reference_occurrence_refusal(
+                                                        index_build.entries_by_id.clone(),
+                                                        role_index_build.declarations_by_id.clone(),
+                                                        reference.clone(),
+                                                    )
+                                                }
                                             }
                                         },
                                     );
@@ -927,7 +848,7 @@ pub fn occurrence_transport_validate(
     Some(refusal) => Rc::new(OccurrenceTransportValidation::OccurrenceTransportRefused {
     refusal: refusal.clone(),
 }),
-    None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
+    std::option::Option::None => Rc::new(OccurrenceTransportValidation::OccurrenceTransportValidated {
     transport: Rc::new(ValidatedOccurrenceTransport {
     entries_by_id: index_build.entries_by_id.clone(),
     declarations_by_id: role_index_build.declarations_by_id.clone(),
@@ -953,7 +874,9 @@ pub fn occurrence_transport_refusal(
         OccurrenceTransportValidation::OccurrenceTransportRefused {
             refusal: refusal, ..
         } => Some(refusal.clone()),
-        OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => None,
+        OccurrenceTransportValidation::OccurrenceTransportValidated { transport: _, .. } => {
+            std::option::Option::None
+        }
     }
 }
 

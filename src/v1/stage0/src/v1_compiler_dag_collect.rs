@@ -22,17 +22,18 @@ use std::rc::Rc;
 
 pub fn is_import_slot_node(n: Rc<Node>) -> bool {
     (crate::v1_std_core::import_is_all(n.clone())
-        || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
-            && (n.body.clone() == None))
+        || (((((n.params.clone().len() as i64) == 0)
+            && (n.ident_span.clone() != std::option::Option::None))
+            && (n.body.clone() == std::option::Option::None))
             && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
 }
 
 pub fn is_module_shell_node(n: Rc<Node>) -> bool {
-    (((((((n.inferred.clone() == None)
+    (((((((n.inferred.clone() == std::option::Option::None)
         && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
         && (n.connective.clone() == Connective::NoConnective))
-        && (n.body.clone() == None))
-        && (n.transport.clone() == None))
+        && (n.body.clone() == std::option::Option::None))
+        && (n.transport.clone() == std::option::Option::None))
         && ((n.uses.clone().len() as i64) == 0))
         && {
             let mut __all = true;
@@ -50,7 +51,8 @@ pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
     match (*node.expr_data.clone()).clone() {
         ExprData::NoExprData => match node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: _, .. }) => {
-                ((((node.body.clone() == None) && (node.transport.clone() == None))
+                ((((node.body.clone() == std::option::Option::None)
+                    && (node.transport.clone() == std::option::Option::None))
                     && ((node.children.clone().len() as i64) == 0))
                     && ((node.params.clone().len() as i64) == 0))
             }
@@ -103,7 +105,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
                 ),
                 match anchor.ident.clone() {
                     Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
-                    None => "".to_string(),
+                    std::option::Option::None => "".to_string(),
                 },
             )
         }
@@ -138,7 +140,7 @@ pub fn dag_collect_optional_node(
         Some(inner) => {
             dag_collect_insert_slots(inner.clone(), slots.clone(), collision_errors.clone())
         }
-        None => slots.clone(),
+        std::option::Option::None => slots.clone(),
     }
 }
 
@@ -170,7 +172,7 @@ pub fn dag_collect_match_pattern(
         }) => dag_collect_nodes_list(fbs.clone(), slots.clone(), collision_errors.clone()),
         Some(MatchPattern::LitPattern { value: _, .. }) => slots.clone(),
         Some(MatchPattern::Wildcard) => slots.clone(),
-        None => slots.clone(),
+        std::option::Option::None => slots.clone(),
     }
 }
 
@@ -232,7 +234,7 @@ pub fn dag_collect_insert_slots(
         let key = dag_node_key(anchor.clone());
         match v1_rt::map_get(&slots, key.clone()) {
             Some(_) => slots.clone(),
-            None => {
+            std::option::Option::None => {
                 let fp = if ((anchor.span.clone().start.clone() == 0)
                     && (anchor.span.clone().end.clone() == 0))
                 {

@@ -1,14 +1,13 @@
 //! THE DISCRIMINATING RED ON THE SEED PATH, not on the model it mirrors.
 //!
-//! `v2.workflow.floor_non_verdict_admission` carries the modeled admission and its own witnesses
-//! establish that the RULE discriminates. Those witnesses say nothing about the Rust that
-//! actually stops the line: the seed recomputes the same two sets, and a mirror can be wrong in
-//! ways its carrier cannot see. This file exercises the seed's own decision function directly,
-//! with synthetic identity sets, so the wall has a red that goes through the code that gates.
+//! `v2.workflow.floor_non_verdict_admission` carries the modeled admission; its witnesses show
+//! the RULE discriminates but say nothing about the Rust that stops the line — the seed
+//! recomputes the same two sets, and a mirror can be wrong in ways its carrier cannot see. This
+//! file drives the seed's decision function directly with synthetic identity sets, so the wall
+//! has a red through the code that gates.
 //!
-//! WHAT THIS DOES NOT ESTABLISH, stated so it is not read as more than it is: it does not prove
-//! the wiring from a real thrown witness into `observed`. That path remains unexercised, and it
-//! is the honest residual gap — narrower than "the seed wall is untested", and not zero.
+//! WHAT THIS DOES NOT ESTABLISH: the wiring from a real thrown witness into `observed`. That
+//! path stays unexercised — the residual gap, narrower than "the seed wall is untested", not zero.
 
 use std::collections::HashSet;
 use v1_compiler::cli_run::{non_verdict_admission, non_verdict_admits};
@@ -30,12 +29,12 @@ fn unchanged_population_is_admitted() {
 }
 
 /// A REPAID IDENTITY WHOSE ROW STILL STANDS IS A STALE ROW, AND STALE ROWS REFUSE. An earlier
-/// revision of this test asserted the opposite, reasoning that refusing repayment would red the
-/// merge that repairs the population (gunbc#9020 repays 99 in one landing). That reasoning was
-/// right about the goal and wrong about the subject: what refuses is not the repayment, it is the
-/// roster row left behind asserting a debt that no longer exists. The executing gate already
-/// refuses it — `stale_non_verdict` is a conjunct of `required_floor_outcome_is_clean` — so
-/// admitting it here made this mirror disagree with its own consumer (review 55577).
+/// revision asserted the opposite, fearing refusal would red the merge that repairs the
+/// population (gunbc#9020 repays 99 in one landing) — right goal, wrong subject: what refuses is
+/// the leftover roster row asserting a debt that no longer exists, not the repayment. The
+/// executing gate already refuses it (`stale_non_verdict` is a conjunct of
+/// `required_floor_outcome_is_clean`), so admitting it here made this mirror disagree with its
+/// own consumer (review 55577).
 #[test]
 fn repayment_that_leaves_the_row_behind_refuses() {
     let a = non_verdict_admission(&ids(&["m.b"]), &roster());
@@ -44,11 +43,10 @@ fn repayment_that_leaves_the_row_behind_refuses() {
     assert!(!non_verdict_admits(&a));
 }
 
-/// THE CONTROL THAT KEEPS THE ROW ABOVE FROM READING AS A PENALTY ON REPAYMENT. Repaying and
-/// deleting the row are one act: delete the two repaid identities from the roster in the same
-/// change and both collections are empty, so the same function that refuses the stale form admits
-/// this one. Without this pair the suite would not discriminate "stale rows refuse" from
-/// "repayment refuses", which are opposite rules.
+/// THE CONTROL THAT KEEPS THE ROW ABOVE FROM READING AS A PENALTY ON REPAYMENT. Delete the two
+/// repaid identities from the roster in the same change and both collections are empty, so the
+/// function that refuses the stale form admits this one. Without this pair the suite could not
+/// separate "stale rows refuse" from "repayment refuses", which are opposite rules.
 #[test]
 fn repayment_with_the_row_deleted_is_admitted() {
     let a = non_verdict_admission(&ids(&["m.b"]), &ids(&["m.b"]));
@@ -64,12 +62,11 @@ fn growth_stops_the_line() {
     assert!(!non_verdict_admits(&a));
 }
 
-/// THE CASE THE WHOLE MECHANISM EXISTS FOR, and the one a count-based implementation passes in
-/// silence: `m.c` was repaired and `m.d` began producing no verdict in the same change. The
-/// population is still three identities, so every count in the run is identical to the unchanged
-/// case above — and a repaired witness has bought permission for an unrelated witness to lose its
-/// verdict. The length equality is asserted here so the refusal cannot be read as an artifact of
-/// the two sets being different sizes.
+/// THE CASE THE WHOLE MECHANISM EXISTS FOR, which a count-based implementation passes in silence:
+/// `m.c` repaired and `m.d` lost its verdict in the same change. Still three identities, every
+/// count identical to the unchanged case above — a repaired witness bought permission for an
+/// unrelated witness to lose its verdict. The length equality is asserted so the refusal cannot
+/// be read as an artifact of differing set sizes.
 #[test]
 fn a_swap_that_leaves_the_count_unmoved_still_stops_the_line() {
     let observed = ids(&["m.a", "m.b", "m.d"]);
@@ -85,10 +82,10 @@ fn a_swap_that_leaves_the_count_unmoved_still_stops_the_line() {
     assert!(!non_verdict_admits(&a));
 }
 
-/// AN EMPTY ROSTER IS THE STRICTEST STATE, NOT THE MOST PERMISSIVE. This is the polarity that
-/// makes a roster read failure unable to flatter a run: with nothing enrolled, every observed
-/// non-verdict identity is growth and the line stops. The opposite polarity would rebuild the
-/// absorbing-fallback shape inside the mechanism written to close one.
+/// AN EMPTY ROSTER IS THE STRICTEST STATE, NOT THE MOST PERMISSIVE. A roster read failure cannot
+/// flatter a run: with nothing enrolled every observed non-verdict identity is growth and the
+/// line stops. The opposite polarity would rebuild the absorbing-fallback shape inside the
+/// mechanism written to close one.
 #[test]
 fn an_empty_roster_refuses_every_observed_non_verdict() {
     let a = non_verdict_admission(&ids(&["m.a"]), &HashSet::new());

@@ -589,7 +589,9 @@ data converge_cli_receipt_owner_readback_required: Bool = true
 // Interim owner readback routes through gunbc.command_runner.stat_owner_name_capture
 // (command_runner_scaffold population). Dissolve-on: extdeps.filesystem.filesystem_io
 // typed owner observation retires the stat argv arm.
-data converge_cli_receipt_owner_readback_interim_note: String = "Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until extdeps.filesystem.filesystem_io carries a typed owner observation; then converge_cli_receipt_owner_readback routes through that extdep."
+// Owner readback uses command_runner stat_owner_name_capture (command_runner_scaffold) until
+// extdeps.filesystem.filesystem_io carries a typed owner observation; then
+// converge_cli_receipt_owner_readback routes through that extdep.
 
 fn converge_cli_expected_receipt_owner_name() -> String {
   fleet_posix_operator_user.name
@@ -702,7 +704,8 @@ fn converge_cli_receipt_join_revision(r: ConvergeCliReceipt, standing: FleetRevi
 // THE REMEDY THIS NAMES MUST BE ONE ANOTHER MODULE WOULD PERFORM, and until this row it named one
 // that `gunbc.live_deploy.deployed_tree_report` BLOCKS: "tree-sync is the catch-up realization".
 // A tree-only publication moves the deployed HEAD to the admitted revision and thereby flips
-// `roadmap_belt_actuate` `belt_revision_admission` from refusing to admitting WHILE THE INSTALLED
+// the launch admission's revision gate (`roadmap_launch_admission` `launch_gate_revision`, read by
+// both the belt tick and the dispatch route) from refusing to admitting WHILE THE INSTALLED
 // BINARY IS STILL THE OLD ONE, so the belt's next tick dispatches a mixed realization that was never
 // admitted as a release. Two authorities disagreed about one operation and the user-facing one was
 // pointing at the unsafe half — the typed verdict was correct the whole time, which is what made it

@@ -207,11 +207,10 @@ pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
 }
 
 thread_local! {
-    /// Successful store decodes on this thread. With the process share installed
-    /// in front of the store (the ladder's tier ordering: share serves repeats,
-    /// store serves the first touch), decodes == distinct subjects touched — a
-    /// second decode of one subject within a process is the inversion coming
-    /// back. Disclosed so the frequency is observable, never absorbed.
+    /// Successful store decodes on this thread. With the process share in front of the store
+    /// (share serves repeats, store the first touch), decodes == distinct subjects touched; a
+    /// second decode of one subject in-process is the inversion returning. Disclosed, never
+    /// absorbed.
     static DECODE_COUNT: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
@@ -262,12 +261,22 @@ pub fn transform_content_digest() -> Hash {
     static DIGEST: OnceLock<Hash> = OnceLock::new();
     DIGEST
         .get_or_init(|| {
-            let exe = std::env::current_exe().unwrap_or_else(|e| {
-                panic!(
-                    "resolve cache: cannot locate compiler executable to content-address \
-                     the transform: {e}"
-                )
-            });
+            // THE RUNNING IMAGE, NOT THE PATH IT WAS STARTED FROM. On Linux `current_exe()` is
+            // the start path, which reads `<path> (deleted)` once a cargo build re-links it.
+            // Measured 2026-08-30 (BuildBuddy, regen round cost): the in-round seed build
+            // re-linked a byte-identical binary and this read panicked on the stale path.
+            // `/proc/self/exe` resolves to the mapped image even after the directory entry is
+            // replaced; elsewhere the start path is the only spelling available.
+            let exe = if cfg!(target_os = "linux") {
+                std::path::PathBuf::from("/proc/self/exe")
+            } else {
+                std::env::current_exe().unwrap_or_else(|e| {
+                    panic!(
+                        "resolve cache: cannot locate compiler executable to content-address \
+                         the transform: {e}"
+                    )
+                })
+            };
             let bytes = fs::read(&exe).unwrap_or_else(|e| {
                 panic!(
                     "resolve cache: cannot read compiler executable {:?} to content-address \
@@ -386,7 +395,10 @@ fn validate_declared_artifact_len(
 }
 
 const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 3;
-const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
+// A part has no independent transport ceiling. The only modeled storage bound
+// is the 10 GiB artifact/store capacity above, so a part is bounded by that same
+// authority while `validate_declared_artifact_len` enforces the aggregate cap.
+const MAX_PART_BYTES: u64 = RESOLVED_GRAPH_CACHE_CAP_BYTES;
 
 #[derive(Debug, Clone)]
 struct V3PartDescriptor {
@@ -891,12 +903,10 @@ pub fn probe(cache_root: &Path, subject_digest: &str) -> CacheProbeResult {
     read_cached_header(&artifact_path(cache_root, subject_digest), subject_digest)
 }
 
-/// Enforce the modeled `SizeBounded` eviction on the on-disk cache: if the total
-/// footprint of `*.bin` artifacts exceeds `cap_bytes`, evict oldest-by-mtime
-/// first until back under the cap. The cache is content-addressed and write-once,
-/// so every artifact is immutable and an evicted entry simply re-resolves on its
-/// next miss — making mtime-LRU a safe replacement policy. Best-effort and
-/// concurrency-tolerant: a file vanishing under a racing sweep is not an error.
+/// Enforce the modeled `SizeBounded` eviction: if `*.bin` artifacts exceed `cap_bytes`, evict
+/// oldest-by-mtime until under the cap. Content-addressed and write-once, so an evicted entry
+/// re-resolves on its next miss and mtime-LRU is safe. Best-effort and concurrency-tolerant: a
+/// file vanishing under a racing sweep is not an error.
 pub fn enforce_size_bound(cache_root: &Path, cap_bytes: u64) {
     let mut artifacts: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
     let mut total: u64 = 0;
@@ -1298,29 +1308,24 @@ pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> R
 
 /// NodeKeyedGraphArtifact codec kernel — the interned content-keyed node table.
 ///
-/// SEED-RETAINED (DESIGN §7): declared by the disposition row
-/// `node_keyed_graph_codec_seed_disposition` + `node_keyed_graph_codec_seed_note`
-/// in `v2.workflow.realization_runner` — hand-Rust because byte-level IO and Rc
-/// pointer identity are realization facts the substrate cannot express today.
-/// dissolve-on: §4 one-grammar-both-directions emission rows extended to a
-/// binary medium (bytes carrier + row table for this format) — the kernel then
-/// becomes row-derived emission dispatched from the modeled schema and retires
-/// with the seed.
+/// SEED-RETAINED (DESIGN §7): declared by `node_keyed_graph_codec_seed_disposition` +
+/// the `node_keyed_graph_codec_seed_note` annotation in `v2.workflow.realization_runner` — hand-Rust because
+/// byte-level IO and Rc pointer identity are realization facts the substrate cannot express
+/// today. dissolve-on: §4 one-grammar-both-directions emission rows extended to a binary medium
+/// (bytes carrier + row table for this format); the kernel then becomes row-derived emission
+/// from the modeled schema and retires with the seed.
 ///
-/// Modeled authority: `NodeKeyedGraphRow` / `NodeKeyedGraphArtifact` beside
-/// `NodeKeyedStore` in `v2.workflow.realization_runner` (the S2b store form).
-/// Codec ruling (settled 2026-07-10): a tree codec over the Rc-shared graph
-/// un-shares every shared subtree (`serde_json::to_vec` measured ~3.4GiB
-/// working set -> 17GiB encode at this cache's write path); serde-streaming
-/// and packed-binary-tree keep the unsharing. This kernel encodes each node
-/// exactly once, keyed by its content hash, children referenced by hash and
-/// never inline; the hash-consed single-pass decode rebuilds the sharing and
-/// refuses a forward or missing child ref, which makes an encoded cycle
-/// unrepresentable. Hash + row-local size + row land in ONE bottom-up walk —
-/// the transitive footprint is never a stored field (the .dag reachable-set
-/// fold is the single value-size authority). Hashes are the fnv1a64 authority
-/// (`bytes_identity_hash`/`hash_combine`; `std.content_hash` is the modeled
-/// surface on the same authority — no third surface).
+/// Modeled authority: `NodeKeyedGraphRow` / `NodeKeyedGraphArtifact` beside `NodeKeyedStore` in
+/// `v2.workflow.realization_runner` (the S2b store form). Codec ruling (settled 2026-07-10): a
+/// tree codec over the Rc-shared graph un-shares every shared subtree (`serde_json::to_vec`
+/// measured ~3.4GiB working set -> 17GiB encode at this cache's write path); serde-streaming and
+/// packed-binary-tree keep the unsharing. This kernel encodes each node once, keyed by content
+/// hash, children by hash never inline; the hash-consed single-pass decode rebuilds sharing and
+/// refuses a forward or missing child ref, so an encoded cycle is unrepresentable. Hash +
+/// row-local size + row land in ONE bottom-up walk; the transitive footprint is never stored
+/// (the .dag reachable-set fold is the single value-size authority). Hashes are the fnv1a64
+/// authority (`bytes_identity_hash`/`hash_combine`; `std.content_hash` is the modeled surface on
+/// the same authority — no third surface).
 pub trait NodeKeyedGraphEncode: Sized {
     /// Canonical bytes of the node's row-local payload (child positions excluded).
     fn local_payload_bytes(&self) -> Vec<u8>;

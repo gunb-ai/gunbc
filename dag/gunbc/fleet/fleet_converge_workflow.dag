@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_workflow
 
+import std.measure { minute_count }
+
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -44,7 +46,8 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_prelude_allowance_minutes,
   gunbc_ci_live_deploy_step_timeout_minutes,
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
-  srv1_dashboard_deploy_concurrency_group,
+  gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
+  fleet_host_mutation_concurrency_group_expression,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
   JobTimeoutExceedsCeiling,
@@ -52,7 +55,9 @@ import gunbc.fleet_workflow_steps {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
+  gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
+  gunbc_ci_org_actions_converge_invoke,
   gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_serving_converge_slice_invoke,
   gunbc_ci_spark_serving_observe_invoke,
@@ -61,19 +66,38 @@ import gunbc.ci_spec {
   gunbc_ci_spark_grant_install_invoke,
   gunbc_fleet_converge_plan_artifact_name,
   gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
+  gunbc_ci_live_deploy_transaction_invoke,
+  gunbc_ci_rlm_launch_deployment_receipt_invoke,
+  gunbc_live_deploy_receipt_artifact_name,
+  gunbc_live_deploy_receipt_artifact_dir,
+  gunbc_fleet_converge_apply_receipt_artifact_name,
+  gunbc_fleet_converge_apply_receipt_artifact_dir,
+  gunbc_rlm_launch_deployment_receipt_artifact_name,
+  gunbc_rlm_launch_deployment_receipt_artifact_dir,
 }
+import gunbc.fleet_converge_receipt { fleet_converge_expected_host_env_name, fleet_converge_plan_run_id_env_name }
+import gunbc.actions_run_binding { rlm_expected_revision_env_name }
+import gunbc.live_deploy.apply_receipt { rlm_plan_run_id_env_name, rlm_apply_run_id_env_name, rlm_plan_artifact_hash_env_name }
+import gunbc.roadmap_launch_deployment_cli { rlm_dashboard_run_id_env_name }
 import gunbc.fleet_converge_plan { fleet_converge_plan_artifact_dir }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import std.types { NonEmptyStr, List, String, Int }
 
-data fleet_converge_workflow_note: String = "Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218). workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and mode=plan|apply|spark_linger: plan observes the RUNNER host; apply downloads a prior plan artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads an artifact the current run did not produce."
-
+// Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
+// workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
+// mode includes plan, apply, org_actions_observe, dashboard_deploy, rlm_launch_deployment_receipt, and the spark modes: plan observes the RUNNER
+// host; apply downloads a prior plan artifact; org_actions_observe validates the separately held
+// org-admin credential and performs only a read/diff; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over
+// FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer
+// cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone
+// dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads
+// an artifact the current run did not produce.
 data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3", "srv4"]
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy"]
+data fleet_converge_mode_options: List<String> = ["plan", "allocation_store_plan", "apply", "org_actions_observe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -129,11 +153,13 @@ fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
 }
 
 data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
+data fleet_converge_allocation_store_plan_step_if: String = "github.event.inputs.mode == 'allocation_store_plan'"
+data fleet_converge_any_plan_step_if: String = "github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'allocation_store_plan'"
 data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
+data fleet_converge_org_actions_step_if: String = "github.event.inputs.mode == 'org_actions_observe'"
 data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
-
 
 data fleet_converge_spark_reboot_step_if: String = "github.event.inputs.mode == 'spark_reboot'"
 
@@ -142,6 +168,8 @@ data fleet_converge_spark_durability_step_if: String = "github.event.inputs.mode
 data fleet_converge_spark_grants_step_if: String = "github.event.inputs.mode == 'spark_grants'"
 
 data fleet_converge_dashboard_deploy_step_if: String = "github.event.inputs.mode == 'dashboard_deploy'"
+
+data fleet_converge_rlm_receipt_step_if: String = "github.event.inputs.mode == 'rlm_launch_deployment_receipt'"
 
 fn fleet_converge_plan_upload_step() -> Step {
   UsesStep {
@@ -158,7 +186,7 @@ fn fleet_converge_plan_upload_step() -> Step {
       ]
     },
     env: none,
-    if_condition: Present { value: fleet_converge_plan_step_if },
+    if_condition: Present { value: fleet_converge_any_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -190,9 +218,28 @@ fn fleet_converge_plan_step() -> Step {
     id: Present { value: "plan" },
     run: gunbc_ci_fleet_converge_plan_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: fleet_converge_expected_host_env_name, value: yaml_string(s: "${{ github.event.inputs.host }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+      ]
+    },
     working_directory: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_allocation_store_plan_step() -> Step {
+  RunStep {
+    name: Present { value: "Fleet allocation-store substrate plan" },
+    id: Present { value: "allocation_store_plan" },
+    run: gunbc_ci_fleet_converge_allocation_store_plan_invoke(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_allocation_store_plan_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
@@ -210,6 +257,8 @@ fn fleet_converge_apply_step() -> Step {
           key: gunbc_ci_fleet_converge_plan_artifact_hash_env_name,
           value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}"),
         ),
+        kv(key: fleet_converge_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
       ]
     },
     working_directory: none,
@@ -219,8 +268,98 @@ fn fleet_converge_apply_step() -> Step {
   }
 }
 
+// TYPED RECEIPT ARTIFACTS (RLM-2a). Each mutating run of the transaction uploads the receipt it
+// minted; the receipt mode downloads the three predecessors by the run ids the operator typed. One
+// builder per direction, parameterized by name/path/run-id expression, so the four transfers are
+// one shape rather than four spellings.
+fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String, path: String, if_condition: String) -> Step {
+  UsesStep {
+    name: Present { value: name },
+    id: Present { value: id },
+    uses: upload_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: artifact)),
+        kv(key: "path", value: yaml_string(s: path)),
+        kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+        kv(key: "retention-days", value: yaml_int(n: 90)),
+        kv(key: "compression-level", value: yaml_int(n: 0)),
+      ]
+    },
+    env: none,
+    if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_org_actions_step() -> Step {
+  RunStep {
+    name: Present { value: "Org Actions credential validation + read-only settings diff" },
+    id: Present { value: "org_actions_observe" },
+    run: gunbc_ci_org_actions_converge_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "GUNBC_ORG_ADMIN_TOKEN", value: yaml_string(s: "${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}")),
+      kv(key: "GH_TOKEN", value: yaml_string(s: "${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_org_actions_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_org_actions_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload org Actions credential validation receipt" },
+    id: Present { value: "org_actions_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "org-actions-credential-validation")),
+      kv(key: "path", value: yaml_string(s: "target/org-actions-credential-validation-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_org_actions_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_receipt_download_step(id: String, name: String, artifact: String, path: String, run_id_expression: String) -> Step {
+  UsesStep {
+    name: Present { value: name },
+    id: Present { value: id },
+    uses: download_artifact_action,
+    with: Present {
+      value: [
+        kv(key: "name", value: yaml_string(s: artifact)),
+        kv(key: "path", value: yaml_string(s: path)),
+        kv(key: "github-token", value: yaml_string(s: "${{ secrets.GITHUB_TOKEN }}")),
+        kv(key: "run-id", value: yaml_string(s: run_id_expression)),
+      ]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_apply_receipt_upload_step() -> Step {
+  fleet_converge_receipt_upload_step(
+    id: "apply_receipt_upload",
+    name: "Upload fleet converge apply receipt",
+    artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
+    path: gunbc_fleet_converge_apply_receipt_artifact_dir,
+    if_condition: fleet_converge_apply_step_if,
+  )
+}
+
 // THE DASHBOARD DEPLOY IS ITS OWN JOB, AND THE REASON IS A REQUIREMENT ITS OWN CARRIER STATES.
-// gunbc.fleet_workflow_steps srv1_dashboard_deploy_concurrency_group carries it: two candidate
+// gunbc.fleet_workflow_steps fleet_host_mutation_concurrency_group_expression carries it: two candidate
 // transactions converging ONE instance in place interleave writes to the same tree, binary, unit,
 // process and readiness subject, so each transaction's readback can observe the other's artifacts.
 // (An earlier revision of this paragraph gave blue/green slot selection as that reason. Blue/green
@@ -245,11 +384,18 @@ fn fleet_converge_apply_step() -> Step {
 // preflight rather than deploying somewhere unintended.
 fn fleet_converge_dashboard_deploy_step() -> Step {
   RunStep {
-    name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)" },
+    name: Present { value: "Deploy dashboard to srv1 (live_deploy_apply_srv1_transaction_wet, receipted)" },
     id: Present { value: "dashboard_deploy" },
-    run: gunbc_ci_live_deploy_apply_srv1_invoke(),
+    run: gunbc_ci_live_deploy_transaction_invoke(),
     shell: none,
-    env: none,
+    env: Present {
+      value: [
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
+        kv(key: rlm_plan_artifact_hash_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_artifact_hash }}")),
+      ]
+    },
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
@@ -260,7 +406,7 @@ fn fleet_converge_dashboard_deploy_step() -> Step {
 // QueueNotMax RATHER THAN QueueMax, and the two are not interchangeable here. QueueMax permits many
 // pending entries, so a burst of dispatches would deploy each queued revision in turn -- installing
 // revisions already superseded before they were installed. QueueNotMax holds at most one pending and
-// REPLACES it with the newest arrival, which is what srv1_dashboard_deploy_concurrency_group's
+// REPLACES it with the newest arrival, which is what fleet_host_mutation_concurrency_group_expression's
 // annotation describes: an older pending deployment gives way to the newest arrival. NOTE the
 // weaker claim -- "newest arrival", not "newest main revision". While the trigger is
 // workflow_dispatch over a caller-selected ref, the newest arrival is whatever was dispatched last
@@ -279,7 +425,28 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
       [
         ci_release_bins_download_step(),
         ci_release_bins_unpack_verify_step(),
+        fleet_converge_receipt_download_step(
+          id: "dashboard_plan_receipt_download",
+          name: "Download the plan artifact (carries the plan receipt) from the plan run",
+          artifact: gunbc_fleet_converge_plan_artifact_name,
+          path: fleet_converge_plan_artifact_dir,
+          run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
+        ),
+        fleet_converge_receipt_download_step(
+          id: "dashboard_apply_receipt_download",
+          name: "Download the fleet apply receipt from the apply run",
+          artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
+          path: fleet_converge_apply_receipt_dir,
+          run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
+        ),
         fleet_converge_dashboard_deploy_step(),
+        fleet_converge_receipt_upload_step(
+          id: "dashboard_receipt_upload",
+          name: "Upload live-deploy transaction receipt",
+          artifact: gunbc_live_deploy_receipt_artifact_name,
+          path: gunbc_live_deploy_receipt_artifact_dir,
+          if_condition: "always()",
+        ),
       ]
     ),
     needs: ["build"],
@@ -290,7 +457,7 @@ fn fleet_converge_dashboard_deploy_job() -> Job {
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {
-        group: srv1_dashboard_deploy_concurrency_group,
+        group: fleet_host_mutation_concurrency_group_expression,
         cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
         explicit_single: none
       }
@@ -381,7 +548,6 @@ fn fleet_converge_spark_grants_step() -> Step {
   }
 }
 
-
 fn fleet_converge_spark_observe_step() -> Step {
   RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
@@ -396,8 +562,9 @@ fn fleet_converge_spark_observe_step() -> Step {
   }
 }
 
-data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
-
+// Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha
+// input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would
+// reference an undeclared input and emit a dormant preflight guard.
 fn fleet_converge_consumer_prelude_steps() -> List<Step> {
   [ci_checkout_step()]
 }
@@ -419,9 +586,13 @@ fn fleet_converge_job() -> Job {
       ),
       [
         fleet_converge_plan_step(),
+        fleet_converge_allocation_store_plan_step(),
         fleet_converge_plan_upload_step(),
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
+        fleet_converge_apply_receipt_upload_step(),
+        fleet_converge_org_actions_step(),
+        fleet_converge_org_actions_receipt_upload_step(),
         fleet_converge_spark_linger_step(),
         fleet_converge_spark_grants_step(),
         fleet_converge_spark_observe_step(),
@@ -436,7 +607,113 @@ fn fleet_converge_job() -> Job {
     if_condition: none,
     timeout_minutes: Present { value: gunbc_ci_fleet_job_backstop_timeout_minutes() },
     continue_on_error: none,
-    concurrency: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
+    permissions: Present {
+      value: WorkflowPermissions {
+        contents: Present { value: PermRead },
+        pull_requests: none,
+        issues: none,
+        actions: Present { value: PermRead },
+        id_token: Present { value: PermWrite },
+      }
+    }
+  }
+}
+
+// THE RLM-2 RECEIPT MODE (RLM-2a deliverable 10): the fourth run of the transaction. Its own job
+// for the same reason the dashboard deploy is -- it must sit in the host mutation concurrency
+// domain so it never reads a host mid-mutation -- and it carries the WIF/key-agent prelude the
+// converge job carries, because the deployed-tree readback reaches srv1 through the sealed FleetSsh
+// locus. It downloads the three predecessor receipts by the run ids the operator typed and uploads
+// its own receipt with always(), so an Incomplete verdict is preserved as evidence.
+fn fleet_converge_rlm_receipt_step() -> Step {
+  RunStep {
+    name: Present { value: "Roadmap launch deployment receipt (rlm_launch_deployment_receipt_wet)" },
+    id: Present { value: "rlm_receipt" },
+    run: gunbc_ci_rlm_launch_deployment_receipt_invoke(),
+    shell: none,
+    env: Present {
+      value: [
+        kv(key: rlm_expected_revision_env_name, value: yaml_string(s: "${{ github.event.inputs.expected_revision }}")),
+        kv(key: rlm_plan_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.plan_workflow_run_id }}")),
+        kv(key: rlm_apply_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.apply_workflow_run_id }}")),
+        kv(key: rlm_dashboard_run_id_env_name, value: yaml_string(s: "${{ github.event.inputs.dashboard_workflow_run_id }}")),
+      ]
+    },
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
+  Job {
+    id: "rlm-launch-deployment-receipt",
+    name: none,
+    runner: fleet_converge_host_pinned_runner_spec(),
+    steps: concat(
+      concat(
+        fleet_converge_consumer_prelude_steps(),
+        [
+          ci_release_bins_download_step(),
+          ci_release_bins_unpack_verify_step(),
+          ci_fleet_wif_auth_step(),
+          ci_fleet_key_agent_step(),
+        ]
+      ),
+      [
+        fleet_converge_receipt_download_step(
+          id: "rlm_plan_download",
+          name: "Download fleet converge plan artifact (plan run)",
+          artifact: gunbc_fleet_converge_plan_artifact_name,
+          path: fleet_converge_plan_artifact_dir,
+          run_id_expression: "${{ github.event.inputs.plan_workflow_run_id }}",
+        ),
+        fleet_converge_receipt_download_step(
+          id: "rlm_apply_download",
+          name: "Download fleet converge apply receipt (apply run)",
+          artifact: gunbc_fleet_converge_apply_receipt_artifact_name,
+          path: gunbc_fleet_converge_apply_receipt_artifact_dir,
+          run_id_expression: "${{ github.event.inputs.apply_workflow_run_id }}",
+        ),
+        fleet_converge_receipt_download_step(
+          id: "rlm_dashboard_download",
+          name: "Download live-deploy transaction receipt (dashboard run)",
+          artifact: gunbc_live_deploy_receipt_artifact_name,
+          path: gunbc_live_deploy_receipt_artifact_dir,
+          run_id_expression: "${{ github.event.inputs.dashboard_workflow_run_id }}",
+        ),
+        fleet_converge_rlm_receipt_step(),
+        fleet_converge_receipt_upload_step(
+          id: "rlm_receipt_upload",
+          name: "Upload roadmap launch deployment receipt",
+          artifact: gunbc_rlm_launch_deployment_receipt_artifact_name,
+          path: gunbc_rlm_launch_deployment_receipt_artifact_dir,
+          if_condition: "always()",
+        ),
+        ci_fleet_key_agent_cleanup_step(),
+      ]
+    ),
+    needs: ["build"],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: fleet_converge_rlm_receipt_step_if },
+    timeout_minutes: Present { value: minute_count(gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout()) },
+    continue_on_error: none,
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: fleet_host_mutation_concurrency_group_expression,
+        cancel_in_progress: Present { value: CancelInProgressBool { value: false } },
+        explicit_single: none
+      }
+    },
     permissions: Present {
       value: WorkflowPermissions {
         contents: Present { value: PermRead },
@@ -451,6 +728,7 @@ fn fleet_converge_job() -> Job {
 
 data fleet_converge_workflow: Workflow = Workflow {
   name: "fleet-converge",
+  run_name: Present { value: "fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}" },
   on: [
     WorkflowDispatch {
       inputs: [
@@ -463,7 +741,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
@@ -484,7 +762,35 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "plan_workflow_run_id",
-          description: Present { value: "Workflow run id that produced the plan artifact — required for apply" },
+          description: Present { value: "Workflow run id that produced the plan artifact — required for apply, dashboard_deploy and rlm_launch_deployment_receipt" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "expected_revision",
+          description: Present { value: "R — the exact main revision this transaction installs and proves; every run of the transaction must execute at it (RLM_EXPECTED_REVISION). Required for dashboard_deploy and rlm_launch_deployment_receipt" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "apply_workflow_run_id",
+          description: Present { value: "Workflow run id of the fleet apply — required for dashboard_deploy and rlm_launch_deployment_receipt" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "dashboard_workflow_run_id",
+          description: Present { value: "Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "transaction_nonce",
+          description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
           required: false,
           default: none,
           type: InputString,
@@ -495,7 +801,7 @@ data fleet_converge_workflow: Workflow = Workflow {
   concurrency: none,
   env: none,
   permissions: none,
-  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_dashboard_deploy_job()],
+  jobs: [fleet_converge_build_job(), fleet_converge_job(), fleet_converge_dashboard_deploy_job(), fleet_converge_rlm_launch_deployment_receipt_job()],
 }
 
 type FleetConvergeYamlGenerationOutcome

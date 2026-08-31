@@ -121,6 +121,7 @@ import v2.std.compilers.target_model {
   target_collection_select_choice,
   target_collection_realization_lookup_in_catalog,
   target_carrier_free_monoid_node,
+  target_collection_set_carrier_node,
   target_collection_set_element_type_node,
   target_collection_free_monoid_element_type_node,
   target_collection_type_node_is_set_carrier,
@@ -279,7 +280,29 @@ type TokenSequenceItemKind
 
 type GroundingGatePassed {}
 
-data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical admission. infer_facts_lookup_miss (Violates) is the compatibility class for trees with no infer judgment at a node: emit_orchestration's synthetic InferredTree (`orch_emit_facts_lookup`) and test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means no infer judgment exists — not an underived one recorded and erased (review 47246). Production paths (`cross_language_compile`, canonical infer→emit) pass infer's facts map facts-flow-forward. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate. translate_derived_parent_underived_child_gate refuses a recorded underived child under a derived parent during fold; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality. The four translate_grounding_*_gate* fns return Outcome<GroundingGatePassed>: a zero-information accept carrier (same wire-schema gate pattern as target_model.dag CtorTemplateUnit), not Outcome<Bool> — Bool would admit a meaningful false the gate never produces. Empty is a FreeMonoid variant, not a unit type, so Outcome<Empty> is an unresolved compile error. Callers bind with bind_outcome(fn(_) => ...) and never read the payload; the signal is Accepted vs Rejected disposition only."
+// Refuse only recorded GroundingNotDerived on the Holds arm, routing that variant through
+// canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic
+// propagates (review 46789). DerivedGrounding on Holds accepts without re-running canonical
+// admission. infer_facts_lookup_miss (Violates) is the compatibility class for trees with no infer
+// judgment at a node: emit_orchestration's synthetic InferredTree (`orch_emit_facts_lookup`) and
+// test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means
+// no infer judgment exists — not an underived one recorded and erased (review 47246). Production
+// paths (`cross_language_compile`, canonical infer→emit) pass infer's facts map facts-flow-forward.
+// Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed
+// by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits
+// the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed
+// derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts.
+// translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate.
+// translate_derived_parent_underived_child_gate refuses a recorded underived child under a derived
+// parent during fold; translate_grounding_derived_gate_subtree covers bodied-arrow and
+// import-carrier shortcuts that preserve producer IR without fold_node (review 46681).
+// TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty
+// children and facts.lookup keys on structural node equality. The four translate_grounding_*_gate*
+// fns return Outcome<GroundingGatePassed>: a zero-information accept carrier (same wire-schema gate
+// pattern as target_model.dag CtorTemplateUnit), not Outcome<Bool> — Bool would admit a meaningful
+// false the gate never produces. Empty is a FreeMonoid variant, not a unit type, so Outcome<Empty>
+// is an unresolved compile error. Callers bind with bind_outcome(fn(_) => ...) and never read the
+// payload; the signal is Accepted vs Rejected disposition only.
 
 fn translate_grounding_derived_gate(tree: InferredTree, node: Node) -> Outcome<GroundingGatePassed> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
@@ -3050,7 +3073,10 @@ fn translate_apply_use_site_ownership_to_projected_boundary(
   )
 }
 
-data translate_ownership_instantiation_boundary_note: String = "Instantiation-kind wire (Option<T>, Rc<T>, Witness<T>, List<T>) recurses ownership-wrap per positional type argument, zipped against the same-shape source_for_binding argument list, rather than bypassing the gate — the fix for the wrap_decision_predicate caller-side bypass named in v1_deletion_plan.dag ^wrap_decision_predicate (RE-OPENED 2026-07-24)."
+// Instantiation-kind wire (Option<T>, Rc<T>, Witness<T>, List<T>) recurses ownership-wrap per
+// positional type argument, zipped against the same-shape source_for_binding argument list, rather
+// than bypassing the gate — the fix for the wrap_decision_predicate caller-side bypass named in
+// v1_deletion_plan.dag ^wrap_decision_predicate (RE-OPENED 2026-07-24).
 
 fn translate_apply_use_site_ownership_to_instantiation_boundary(
   projected: Node,

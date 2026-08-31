@@ -13,14 +13,26 @@ import std.types { Bool, List, String }
 
 // ONE CLASS, NAMED EXACTLY, BECAUSE IT WOULD OTHERWISE BE READ AS THE CLASS NEXT TO IT.
 //
-// WHAT THIS CATCHES: a derived-partition crate roster naming a stage0 file that lib.rs does
-// NOT declare -- specifically a file the crate-layout authority registers as seed-retained
-// with has_pub_mod false. Such a row makes the partition crates compile a module the monolith
-// does not, through the `#[path = "../../stage0/src/<name>.rs"] pub mod <name>;` include the
-// partition emitter renders, so one file acquires two compilation stories and only one of them
-// is reachable from the authority that says which modules stage0 has. main carried exactly one
-// such row -- std_lens_verdict, whose source module std.lens_verdict no longer exists -- and
-// this witness was RED on main until the row was dropped from v2.workflow.rust_crate_partition.
+// WHAT THIS CATCHES: a derived-partition crate roster naming a stage0 file the crate-layout
+// authority registers as SEED-RETAINED -- hand-authored host source with a retention row. Such a
+// row makes a partition crate compile a hand-authored module through the
+// `#[path = "../../stage0/src/<name>.rs"] pub mod <name>;` include the partition emitter renders,
+// while the host shell declares the same file itself, so one file acquires two compilation
+// stories. main carried exactly one such row -- std_lens_verdict, whose source module
+// std.lens_verdict no longer exists -- and this witness was RED on main until the row was
+// dropped from v2.workflow.rust_crate_partition.
+//
+// RE-GROUNDED BY THE PARTITION EXECUTABLE CUT, and the sentence that changed is the premise, not
+// the rule. This check used to be read as "a partition may not own a module absent from the
+// monolith's pub mod surface", which was a usable proxy for unique compilation only while the
+// monolith was the crate root and declared every emitted mirror. It no longer is: a
+// partition-owned module is now DELIBERATELY absent from the host shell's declarations, and
+// reading the old sentence literally would make the intended architecture refuse. What survives
+// -- and what the fold below actually computes -- is the narrower and still-valid direction: a
+// partition row may not name a SEED-RETAINED file. The general question the proxy stood in for
+// is asked at module grain by v2.compiler.self_host.stage0_executable_assembly, whose census
+// refuses a module owned by two surfaces or by none, with its discriminating REDs executing in
+// v2.test.claim.self_host.stage0_executable_assembly_test.
 //
 // WHAT THIS DOES NOT CATCH, stated so nobody cites it for the defect that motivated the file.
 // #9689 left main's whole-workspace build red because three modules were in lib.rs and in NO
@@ -53,39 +65,57 @@ import std.types { Bool, List, String }
 // The two fixture witnesses below are therefore the evidence that this file carries a wall at
 // all, and the live witness is the regression control over the corpus.
 
-fn stage0_file_is_seed_retained(basename: String) -> Bool {
-  generated_stage0_filenames |> any(f => f == join([basename, ".rs"], ""))
+fn stage0_file_is_seed_retained(basename: String, filenames: List<String>) -> Bool {
+  filenames |> any(f => f == join([basename, ".rs"], ""))
 }
 
-fn stage0_file_has_pub_mod(basename: String) -> Bool {
-  generated_pub_mod_basenames |> any(b => b == basename)
+fn stage0_file_has_pub_mod(basename: String, pub_mod_basenames: List<String>) -> Bool {
+  pub_mod_basenames |> any(b => b == basename)
 }
 
 // A rostered module is admissible when the crate-layout authority does not register it as a
-// seed-retained file at all (it is emitter-produced, and stage0 lib.rs declares the emitted
-// population), or registers it AND declares a pub mod for it. The refused state is the third
+// seed-retained file at all -- it is emitter-produced, so its single owner is the partition crate
+// naming it -- or registers it AND declares a pub mod for it. The refused state is the third
 // combination, and it is returned by name rather than counted so the failure locates itself.
-fn roster_entry_violates_pub_mod_join(basename: String) -> Bool {
-  stage0_file_is_seed_retained(basename: basename) && !stage0_file_has_pub_mod(basename: basename)
+fn roster_entry_violates_pub_mod_join(
+  basename: String,
+  filenames: List<String>,
+  pub_mod_basenames: List<String>
+) -> Bool {
+  stage0_file_is_seed_retained(basename: basename, filenames: filenames)
+    && !stage0_file_has_pub_mod(basename: basename, pub_mod_basenames: pub_mod_basenames)
 }
 
-fn roster_pub_mod_violations(rows: List<GeneratedPartitionCrateRow>) -> List<String> {
+fn roster_pub_mod_violations(
+  rows: List<GeneratedPartitionCrateRow>,
+  filenames: List<String>,
+  pub_mod_basenames: List<String>
+) -> List<String> {
   rows
     |> fold(init: [], f: (acc, row) => acc |> concat(
-        row.modules |> filter(m => roster_entry_violates_pub_mod_join(basename: m))
+        row.modules |> filter(m => roster_entry_violates_pub_mod_join(
+          basename: m,
+          filenames: filenames,
+          pub_mod_basenames: pub_mod_basenames
+        ))
       ))
 }
 
 test fn w_live_partition_roster_declares_no_undeclared_module() -> Bool {
-  roster_pub_mod_violations(rows: generated_partition_crate_rows) |> count == 0
+  roster_pub_mod_violations(
+    rows: generated_partition_crate_rows,
+    filenames: generated_stage0_filenames,
+    pub_mod_basenames: generated_pub_mod_basenames
+  ) |> count == 0
 }
 
-// THE DISCRIMINATING RED, made green as an assertion that the detector fires. std_lens_verdict
-// is cited because it is a REAL registration in the layout authority carrying has_pub_mod
-// false -- a made-up name would test nothing, since the join's whole subject is agreement with
-// that authority. This witness reds if the detector stops firing, and it reds if the layout
-// authority ever grows a pub mod for that file, which is the honest coupling: the fixture's
-// meaning depends on the same fact the live assertion does.
+// THE DISCRIMINATING RED, made green as an assertion that the detector fires. The fixture
+// preserves the exact formerly-live contradiction after its production rows dissolve: one
+// filename registration for std_lens_verdict.rs, no matching pub mod, and one partition row
+// naming the basename. It supplies both sides of the layout join explicitly because borrowing
+// the accepted generated population made the RED disappear when the dead registration was
+// correctly deleted. This witness reds if the detector stops firing; the live assertion above
+// independently stays bound to the generated authorities.
 fn violating_fixture_row() -> GeneratedPartitionCrateRow {
   GeneratedPartitionCrateRow {
     package_name: "fixture-violating-crate",
@@ -98,7 +128,11 @@ fn violating_fixture_row() -> GeneratedPartitionCrateRow {
 }
 
 test fn w_fixture_roster_naming_an_undeclared_module_is_refused() -> Bool {
-  let violations = roster_pub_mod_violations(rows: [violating_fixture_row()])
+  let violations = roster_pub_mod_violations(
+    rows: [violating_fixture_row()],
+    filenames: ["std_types.rs", "std_lens_verdict.rs"],
+    pub_mod_basenames: ["std_types"]
+  )
   (violations |> count == 1) && (violations |> any(v => v == "std_lens_verdict"))
 }
 
@@ -117,5 +151,9 @@ fn clean_fixture_row() -> GeneratedPartitionCrateRow {
 }
 
 test fn w_fixture_roster_of_emitted_modules_is_admitted() -> Bool {
-  roster_pub_mod_violations(rows: [clean_fixture_row()]) |> count == 0
+  roster_pub_mod_violations(
+    rows: [clean_fixture_row()],
+    filenames: generated_stage0_filenames,
+    pub_mod_basenames: generated_pub_mod_basenames
+  ) |> count == 0
 }

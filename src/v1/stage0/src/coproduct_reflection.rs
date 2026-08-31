@@ -315,14 +315,88 @@ thread_local! {
     > = RefCell::new(None);
 }
 
+thread_local! {
+    /// THE `decl_facts` CENSUS AS A SHARED ARTIFACT, keyed by the canonical pool-root set and
+    /// alive exactly as long as the floor's prepared authority (registered and cleared beside
+    /// `FLOOR_DECL_PARSE_MEMO`). Every witness that names the same roots reads one walk.
+    ///
+    /// WHY. The walk re-parsed every non-test file under the roots on every call, and each
+    /// required-floor witness evaluates its module's `data` rows alone, so a file of four
+    /// witnesses over one pool paid the same parse four times — and the FIRST evaluation of any
+    /// of them paid it inside the 500ms CPU refusal. Measured on run 33311256002: the four
+    /// `bmc_onboarding_quarantine_witness_test` rows, 196–225ms cpu solo on the BuildBuddy
+    /// runner with the census at 138ms of that, were all BUDGET-REFUSED at 503–512ms on the CI
+    /// host. The walk is a function of the roots and the prepared tree, not of the witness, so
+    /// it is the floor's shared-build attribution defect at memo grain — the same class
+    /// `compile_dag_diagnostic_census` closes with its memo — and it is closed the same way:
+    /// the miss is bracketed as shared-artifact fill on both clocks, which `budgeted_cpu_nanos`
+    /// nets from the deadline and `run_claim_measured` reports, never drops. Same roots, same
+    /// `DeclFactRaw` population (the walk sorts its output, so the key may be canonicalized),
+    /// same marshaled rows; different ownership of the shared construction cost.
+    ///
+    /// Outside the floor there is no prepared authority to bound the memo's lifetime, so the
+    /// cell is `None` and every call walks — the existing behaviour, unchanged.
+    static FLOOR_DECL_FACTS_MEMO: RefCell<
+        Option<StdDeclParseMemoMap<Vec<String>, Rc<Vec<DeclFactRaw>>>>,
+    > = RefCell::new(None);
+}
+
 pub fn register_floor_decl_parse_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
+    });
+    FLOOR_DECL_FACTS_MEMO.with(|cell| {
         *cell.borrow_mut() = Some(StdDeclParseMemoMap::new());
     });
 }
 
 pub fn clear_floor_decl_parse_memo() {
     FLOOR_DECL_PARSE_MEMO.with(|cell| *cell.borrow_mut() = None);
+    FLOOR_DECL_FACTS_MEMO.with(|cell| *cell.borrow_mut() = None);
+}
+
+/// The canonical pool-root MULTISET: order-free because the walk sorts its output by
+/// (rel_path, name, kind), but NOT duplicate-free, because the walk visits every supplied root
+/// and appends what it finds — `[r, r]` yields every declaration twice, so it is a different
+/// population from `[r]` and must be a different key. A dedup here made the memo's answer a
+/// function of call order (whichever spelling filled first served the other).
+fn decl_facts_memo_key(pool_roots: &[String]) -> Vec<String> {
+    let mut key = pool_roots.to_vec();
+    key.sort();
+    key
+}
+
+/// `decl_facts_for_roots` through the floor-lifetime memo: one walk per canonical root set per
+/// prepared authority, the miss recorded as shared-artifact fill. See `FLOOR_DECL_FACTS_MEMO`.
+pub fn decl_facts_for_roots_shared(pool_roots: &[String]) -> Rc<Vec<DeclFactRaw>> {
+    let registered = FLOOR_DECL_FACTS_MEMO.with(|cell| cell.borrow().is_some());
+    if !registered {
+        return Rc::new(decl_facts_for_roots(pool_roots));
+    }
+    let key = decl_facts_memo_key(pool_roots);
+    let hit = FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .and_then(|memo| memo.get(&key).cloned())
+    });
+    if let Some(facts) = hit {
+        return facts;
+    }
+    // A MISS FILLS A SHARED ARTIFACT: measured on the same thread clock the claim loop enforces
+    // against, recorded on both clocks so it can never be counted on one and not the other.
+    let fill_started = crate::v1_interpreter::thread_cpu_nanos();
+    let fill_wall_started = std::time::Instant::now();
+    let facts = Rc::new(decl_facts_for_roots(pool_roots));
+    crate::cli_run::record_shared_artifact_fill_cpu(
+        crate::v1_interpreter::thread_cpu_nanos().saturating_sub(fill_started),
+    );
+    crate::cli_run::record_shared_artifact_fill_wall(fill_wall_started.elapsed().as_nanos());
+    FLOOR_DECL_FACTS_MEMO.with(|cell| {
+        if let Some(memo) = cell.borrow_mut().as_mut() {
+            memo.insert(key, Rc::clone(&facts));
+        }
+    });
+    facts
 }
 
 fn floor_decl_parse_memo_lookup(
@@ -577,17 +651,15 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 
 /// The authored declared-type head name of a top-level `data` declaration.
 ///
-/// `decl_facts` marshals a `DataItem`'s node through the initializer projection, which drops
-/// `type_annotation` entirely — so the declared type is not reachable from that producer at
-/// all. This projects the annotation's head name (`String`, `NonEmptyStr`, `List`, ...). Head
-/// name is sufficient and deliberately not a full type rendering: the only consumer asks
-/// whether a declaration is still a bare string, and a second type-printer would be a
-/// nickname for a rendering the emitter already owns.
+/// `decl_facts` marshals a `DataItem` through the initializer projection, which drops
+/// `type_annotation`, so the declared type is unreachable from that producer. This projects the
+/// annotation's head name (`String`, `NonEmptyStr`, `List`, ...) only: the sole consumer asks
+/// whether a declaration is still a bare string, and a second type-printer would nickname a
+/// rendering the emitter already owns.
 ///
-/// An absent annotation yields the empty string rather than a guess. `data` requires an
-/// annotation, so empty means the parse did not carry one, and a consumer that treated
-/// unknown as "not a string" would silently under-report exactly the survivors a census
-/// exists to find.
+/// An absent annotation yields the empty string, not a guess. `data` requires an annotation, so
+/// empty means the parse did not carry one; treating unknown as "not a string" would
+/// under-report exactly the survivors a census exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
     match decl.item.type_annotation.as_ref() {
         Some(ann) => {
@@ -730,12 +802,11 @@ fn node_authored_name(node: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>
     }
 }
 
-// Does this node REFERENCE a declared parameter `name`? Two body forms reference a value
-// parameter: an `ExprVar` value read (`x`) -- resolved to a `LocalValueBinding`, so a
-// `FunctionValueBinding` global or `VariantValueBinding` constructor sharing the name is
-// excluded; and an `ExprCall` whose callee IS the parameter (a fn-valued param applied:
-// `predicate(x)`) -- the callee is the call node's own name, not a child, so it is invisible
-// to a children-only walk. Both are genuine uses of a value parameter.
+// Does this node REFERENCE a declared parameter `name`? Two body forms do: an `ExprVar` value
+// read (`x`) resolved to a `LocalValueBinding` (so a `FunctionValueBinding` global or
+// `VariantValueBinding` constructor sharing the name is excluded); and an `ExprCall` whose
+// callee IS the parameter (`predicate(x)`) -- the callee is the call node's own name, not a
+// child, invisible to a children-only walk.
 fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) -> bool {
     if name.is_empty() || !param_names.iter().any(|p| p.as_str() == name) {
         return false;
@@ -751,14 +822,13 @@ fn node_references_param(node: &Rc<Node>, name: &str, param_names: &[String]) ->
     }
 }
 
-// Does this node REFERENCE some local binding (param OR let/lambda-local), by name? This is
-// the PERMISSIVE companion of `node_references_param`: it captures every value read
-// (`ExprVar`, any binding kind) and call-callee name, used ONLY to thread the data-flow
-// reference set that decides let-liveness (below). It is deliberately over-inclusive --
-// counting a name that is actually a global as "referenced" can only keep a `let` LIVE
-// (graft its RHS), so it can never manufacture a false dead-wire RED; it merely forgoes a
-// dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
-// (LocalValueBinding-only), so the reachability query itself is unchanged.
+// Does this node REFERENCE some local binding (param OR let/lambda-local), by name? The
+// PERMISSIVE companion of `node_references_param`: every value read (`ExprVar`, any binding
+// kind) and call-callee name, used ONLY to thread the data-flow reference set deciding
+// let-liveness (below). Over-inclusion is safe: counting a global as "referenced" can only
+// keep a `let` LIVE (graft its RHS), never manufacture a false dead-wire RED; it merely forgoes
+// a dead-wire it cannot prove. Atom EMISSION stays on the strict `node_references_param`
+// (LocalValueBinding-only), so the reachability query is unchanged.
 fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
     if name.is_empty() {
         return None;
@@ -769,10 +839,9 @@ fn node_local_reference_name(node: &Rc<Node>, name: &str) -> Option<String> {
     }
 }
 
-// The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so a
-// reference to one of them is not a free reference of the enclosing scope -- subtract them
-// from a lambda subtree's reference set so a `let` named like a lambda param is not kept
-// spuriously live by the lambda's shadowing use.
+// The lambda's own parameters (children[1..]; child 0 is the body) are bound WITHIN it, so
+// subtract them from its reference set: a `let` named like a lambda param must not be kept
+// live by the lambda's shadowing use.
 fn lambda_param_names_of(
     node: &Rc<Node>,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -785,24 +854,21 @@ fn lambda_param_names_of(
         .collect()
 }
 
-// Project a fn body's internal expression tree onto a substrate Node skeleton AND return the
-// set of local names the projected skeleton actually references. Each node becomes a neutral
-// `Conj` container whose positional children are the marshaled sub-expressions, and a node
-// that references a declared parameter additionally carries an identity-bearing `Atom` leaf
-// -- byte-identical to the declared-input atom `eval_fn_arrow_decl_facts_live` emits, so
-// `v2.lens.wiring_liveness` matches it under Node equality. Identity lives ONLY on genuine
-// parameter-reference sites, so a declared parameter is structurally reachable from the body
-// output iff it is genuinely used.
+// Project a fn body's expression tree onto a substrate Node skeleton AND return the set of
+// local names the skeleton references. Each node becomes a neutral `Conj` whose positional
+// children are the marshaled sub-expressions; a node referencing a declared parameter also
+// carries an identity-bearing `Atom` leaf byte-identical to the declared-input atom
+// `eval_fn_arrow_decl_facts_live` emits, so `v2.lens.wiring_liveness` matches it under Node
+// equality. Identity lives ONLY on genuine parameter-reference sites, so a parameter is
+// structurally reachable from the body output iff it is genuinely used.
 //
 // DATA-FLOW DIRECTED AT THE RETURN (closes the wiring_liveness construction_justification
-// HONEST BOUNDARY (2)): statement sequences (blocks, and the let-continuation chain) are
-// projected so a `let b = rhs` grafts `rhs`'s skeleton ONLY when `b` is referenced
-// downstream of the binding in code that itself reaches the return -- the reverse-fold over
-// statements in `marshal_stmt_sequence` carries the live reference set toward the binding.
-// A param referenced ONLY inside a DEAD let RHS (its bound name never reaches the return,
-// possibly transitively through a chain of dead lets) is therefore absent from the grafted
-// skeleton and correctly flagged as a dead wire. (Residue: a `let`/lambda local, or a global
-// fn called as `name(..)`, that shadows a parameter name; see the lens
+// HONEST BOUNDARY (2)): statement sequences (blocks, let-continuation chains) graft a
+// `let b = rhs`'s skeleton ONLY when `b` is referenced downstream in code that reaches the
+// return -- `marshal_stmt_sequence`'s reverse-fold carries the live reference set toward the
+// binding. A param referenced ONLY inside a DEAD let RHS (transitively through dead lets) is
+// absent from the skeleton and correctly flagged as a dead wire. (Residue: a `let`/lambda
+// local, or a global fn called as `name(..)`, shadowing a parameter name; see the lens
 // construction_justification boundary (3).)
 fn marshal_fn_body_skeleton(
     ctx: &InterpContext,
@@ -947,14 +1013,12 @@ fn marshal_generic(
     (conj_record(ctx, edges), refs)
 }
 
-// A statement sequence -- a block's children, or a single standalone `let` (whose optional
-// children[1] is its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows
-// from the return (the last statement) back toward each binding. A `let b = rhs` grafts
-// `rhs` iff `b` is in the live set accumulated from the statements that follow it (the
-// downstream that reaches the return); a dead `let` drops its `rhs`, and because its bound
-// name's references are dropped with it, deadness propagates transitively to earlier lets
-// that fed only the dead one. A terminal `let` with no continuation is the result position,
-// so its value is always grafted (never a false RED on a degenerate body).
+// A statement sequence -- a block's children, or a standalone `let` (optional children[1] is
+// its continuation) -- folded RIGHT-TO-LEFT so the live reference set flows from the return
+// back toward each binding. A `let b = rhs` grafts `rhs` iff `b` is in the live set of the
+// statements after it; a dead `let` drops its `rhs` and its references, so deadness
+// propagates to earlier lets that fed only it. A terminal `let` with no continuation is the
+// result position, always grafted (never a false RED on a degenerate body).
 fn marshal_stmt_sequence(
     ctx: &InterpContext,
     stmts: &[Rc<Node>],
@@ -975,12 +1039,11 @@ fn marshal_stmt_sequence(
                     live_refs.extend(cont_refs);
                 }
                 let bound_is_live = !bound.is_empty() && live_refs.contains(&bound);
-                // A `_`-prefixed binding (`let _width = width`) is the established declared-inert
-                // convention (boundary (4)) applied to a local: the author DELIBERATELY consumes
-                // and discards the RHS, so it is a sink, not an accidental dead wire. Graft it so
-                // a param flowing only into a `_`-sink stays GREEN, while a normally-named dead
-                // `let` (accidental) still drops its RHS and flags its sole-feeding param. A
-                // terminal `let` with no continuation is the result position, always grafted.
+                // A `_`-prefixed binding (`let _width = width`) is the declared-inert convention
+                // (boundary (4)) on a local: a deliberate sink, not an accidental dead wire.
+                // Graft it so a param flowing only into a `_`-sink stays GREEN, while a
+                // normally-named dead `let` still drops its RHS and flags its sole-feeding param.
+                // A terminal `let` with no continuation is the result position, always grafted.
                 let force_live = (is_terminal && cont.is_none()) || bound.starts_with('_');
                 if bound_is_live || force_live {
                     if let Some(value) = stmt.children.first() {
@@ -1005,13 +1068,12 @@ fn marshal_stmt_sequence(
 }
 
 // A generic type parameter (`<T>`) and a value parameter (`(xs: List<T>)`) both land in the
-// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). They
-// are NOT value inputs and never appear as body value-expressions, so they must be excluded
-// from the wiring check. A type parameter is built as `make_param_node(name,
-// leaf_type_node(name), ..)` -- its sole type-expr child is a leaf named after the parameter
-// itself (`T : T`) -- whereas a value parameter's type-expr names a different type
-// (`xs : List`). So: a parameter is a type parameter iff its first child's authored name
-// equals its own.
+// runtime item's `params` (parser: `all_params = concat(type_params, value_params)`). Type
+// params are not value inputs and never appear as body value-expressions, so exclude them. A
+// type parameter is built as `make_param_node(name, leaf_type_node(name), ..)` -- its sole
+// type-expr child is a leaf named after itself (`T : T`), whereas a value parameter's names
+// a different type (`xs : List`). So: type parameter iff first child's authored name equals
+// its own.
 fn param_is_type_param(p: &Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> bool {
     let pname = authored_name_at(si.clone(), p.clone());
     if pname.is_empty() {
@@ -1040,9 +1102,8 @@ fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
             continue;
         }
         let pn = param_node_name_at(p.clone(), si.clone());
-        // A `_`-prefixed name is the established declared-inert convention (e.g.
-        // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
-        // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
+        // A `_`-prefixed name is the declared-inert convention (e.g. node.dag
+        // `step: fn(acc, _edge, sub)`): declared irrelevant, not a dead wire (plan section 4).
         if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
             continue;
         }
@@ -1240,17 +1301,17 @@ fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
-/// Why a declared pool root contributed no `.dag` files. THREE STATES, NOT ONE: they have
-/// different causes and different fixes, and answering "contributed zero files" for all three
-/// would re-commit, one level down, the same state-space conflation this refusal exists to close.
+/// Why a declared pool root contributed no `.dag` files. THREE STATES, NOT ONE: different
+/// causes, different fixes; one "contributed zero files" answer would re-commit the state-space
+/// conflation this refusal exists to close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PoolRootDefect {
     /// The path does not exist. A typo, or a directory that moved out from under the root.
     Missing,
-    /// The path exists and is a FILE. The likeliest mistake against this seam by a wide margin:
-    /// an author writes a module's path and omits `.dag`, or means one module and a root can only
-    /// ever be a directory. `dag/extdeps/external_authority` was exactly this, inert since it was
-    /// written, and nothing could say so.
+    /// The path exists and is a FILE. By far the likeliest mistake: an author writes a module's
+    /// path without `.dag`, or means one module where a root can only be a directory.
+    /// `dag/extdeps/external_authority` was exactly this, inert since written, and nothing could
+    /// say so.
     NamesFile,
     /// The path is a directory and holds no `.dag` file anywhere beneath it.
     DirectoryHasNoDagFiles,
@@ -1287,17 +1348,15 @@ pub fn classify_pool_root(root: &str) -> Option<PoolRootDefect> {
 
 /// The refusal every parse-only pool walk takes before it walks: typed, located, counted.
 ///
-/// LOCATED is the root string the author wrote, because that is the thing they can fix; COUNTED
-/// is every offending root in one answer rather than the first, so a pool with three bad roots
-/// takes one round-trip. Returns `None` when every root contributes.
+/// LOCATED is the root string the author wrote (the thing they can fix); COUNTED is every
+/// offending root in one answer, so three bad roots take one round-trip. Returns `None` when
+/// every root contributes.
 ///
-/// THE DEFECTS CROSS THE SEAM, and the earlier shape of this function is why that is stated rather
-/// than assumed: it returned `Option<String>`, so the three states above were formatted into prose
-/// here and no consumer could ever match on them. A type that dies at the boundary it was built to
-/// cross is a carrier named for a rung it does not occupy -- the distinction the enum's own comment
-/// defends was, in that shape, unavailable to every reader of the error. The prose is now DERIVED
-/// from the defects at display time (`InterpError::PoolRootContributesNothing`), which is the one
-/// direction that cannot lose them.
+/// THE DEFECTS CROSS THE SEAM. The earlier shape returned `Option<String>`: the three states were
+/// formatted into prose here and no consumer could match on them -- a carrier named for a rung it
+/// did not occupy, the enum's distinction unavailable to every reader of the error. The prose is
+/// now DERIVED from the defects at display time (`InterpError::PoolRootContributesNothing`), the
+/// one direction that cannot lose them.
 pub fn pool_root_defects(pool_roots: &[String]) -> Vec<(String, PoolRootDefect)> {
     pool_roots
         .iter()
@@ -1545,10 +1604,9 @@ pub fn eval_export_signature_facts(
 }
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
-    // THE LINE STOPS BEFORE THE WALK, not after it. A root that contributes nothing cannot be
-    // discovered from the walk's OUTPUT -- a smaller fact list is exactly what a legitimately
-    // narrow pool produces -- so the only place the two are distinguishable is here, against the
-    // declared roots themselves.
+    // THE LINE STOPS BEFORE THE WALK. A root contributing nothing is invisible in the walk's
+    // OUTPUT -- a smaller fact list is what a legitimately narrow pool produces -- so the two are
+    // distinguishable only here, against the declared roots.
     let pool_root_defects_found = pool_root_defects(pool_roots);
     if !pool_root_defects_found.is_empty() {
         return Err(
@@ -1559,7 +1617,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
             },
         );
     }
-    let facts = decl_facts_for_roots(pool_roots);
+    let facts = decl_facts_for_roots_shared(pool_roots);
     eval_decl_facts_rows(ctx, &facts)
 }
 
@@ -1821,6 +1879,79 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
                 fields: Rc::new(vec![(ctx.sym("reason"), str_value(reason.to_string()))]),
             }]),
         )]),
+    }
+}
+
+#[cfg(test)]
+mod decl_facts_shared_memo_tests {
+    use super::*;
+
+    fn names(facts: &[DeclFactRaw]) -> Vec<(String, String, String)> {
+        facts
+            .iter()
+            .map(|f| {
+                (
+                    f.qualified_name.clone(),
+                    format!("{:?}", f.kind),
+                    f.rel_path.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// The memo is an ownership change, not a population change: with the floor memo registered,
+    /// two ORDERINGS of one root multiset share one walk, two MULTIPLICITIES do not alias, each
+    /// shared walk is identical — by declaration identity, kind and path — to its unmemoized
+    /// walk, and clearing the authority drops the artifact.
+    #[test]
+    fn shared_walk_is_the_unmemoized_walk_by_identity_and_is_walked_once() {
+        let roots = vec![
+            "dag/std".to_string(),
+            "dag/gunbc/machine_intake".to_string(),
+        ];
+        let reordered = vec![
+            "dag/gunbc/machine_intake".to_string(),
+            "dag/std".to_string(),
+        ];
+        let duplicated = vec!["dag/std".to_string(), "dag/std".to_string()];
+        let singleton = vec!["dag/std".to_string()];
+        let cold = decl_facts_for_roots(&roots);
+        let cold_duplicated = decl_facts_for_roots(&duplicated);
+        let cold_singleton = decl_facts_for_roots(&singleton);
+        assert!(
+            !cold.is_empty(),
+            "the roots must yield declarations or this decides nothing"
+        );
+        assert_ne!(
+            names(&cold_singleton),
+            names(&cold_duplicated),
+            "the walk visits every supplied root, so [r, r] is a different population from [r]"
+        );
+        clear_floor_decl_parse_memo();
+        let unregistered = decl_facts_for_roots_shared(&roots);
+        assert_eq!(names(&cold), names(&unregistered));
+        register_floor_decl_parse_memo();
+        let first = decl_facts_for_roots_shared(&roots);
+        let second = decl_facts_for_roots_shared(&reordered);
+        let shared_singleton = decl_facts_for_roots_shared(&singleton);
+        let shared_duplicated = decl_facts_for_roots_shared(&duplicated);
+        clear_floor_decl_parse_memo();
+        assert!(
+            Rc::ptr_eq(&first, &second),
+            "a reordering of the same root multiset must read the same walk"
+        );
+        assert_eq!(names(&cold), names(&first));
+        assert!(
+            !Rc::ptr_eq(&shared_singleton, &shared_duplicated),
+            "[r] and [r, r] must not alias"
+        );
+        assert_eq!(names(&cold_singleton), names(&shared_singleton));
+        assert_eq!(names(&cold_duplicated), names(&shared_duplicated));
+        let after_clear = decl_facts_for_roots_shared(&roots);
+        assert!(
+            !Rc::ptr_eq(&first, &after_clear),
+            "clearing the prepared authority must drop the memo"
+        );
     }
 }
 

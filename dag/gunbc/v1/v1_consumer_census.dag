@@ -44,7 +44,16 @@ import gunbc.rust_item_host_observation {
 // standing: gunbc.v1_maintenance_standing governs v1 while it lives; this governs what must be
 // true for it to stop living.
 
-data v1_consumer_census_subject_note: String = "WHAT IS BEING CONSUMED, at the grain a deletion actually operates on. These are not folders: src/v1 contains all of them and deleting the folder is the transaction, not the model. The axis matters because the dispositions differ per subject in a way a path cannot express -- the v1 CLI is REPLACED (v2 has to grow the verb), the generated stage0 mirrors are RETIRED WITH THEIR SUBJECT (they are projections of .dag authorities that move), and the v1 .dag source is neither: it is the regeneration loop's SUBJECT, so deleting it retires the loop rather than orphaning it. V1RuntimeBridge is separate from V1CompilerCrate because the bridge is reached by EMITTED code rather than by a caller in the tree, so its consumer population is discovered by a different instrument -- and the floor-cut plan's third measured bound says a reach measurement over one medium reads exactly like a reach measurement over all of them."
+// WHAT IS BEING CONSUMED, at the grain a deletion actually operates on. These are not folders:
+// src/v1 contains all of them and deleting the folder is the transaction, not the model. The axis
+// matters because the dispositions differ per subject in a way a path cannot express -- the v1 CLI
+// is REPLACED (v2 has to grow the verb), the generated stage0 mirrors are RETIRED WITH THEIR
+// SUBJECT (they are projections of .dag authorities that move), and the v1 .dag source is neither:
+// it is the regeneration loop's SUBJECT, so deleting it retires the loop rather than orphaning it.
+// V1RuntimeBridge is separate from V1CompilerCrate because the bridge is reached by EMITTED code
+// rather than by a caller in the tree, so its consumer population is discovered by a different
+// instrument -- and the floor-cut plan's third measured bound says a reach measurement over one
+// medium reads exactly like a reach measurement over all of them.
 
 type V1Subject
   = V1CompilerCrate
@@ -69,7 +78,14 @@ fn v1_subject_key(s: V1Subject) -> String {
   }
 }
 
-data v1_consumer_census_medium_note: String = "HOW THE DEPENDENCY IS SPELLED, and it is a KEY field rather than a note because the discovery instrument is per-medium and nothing in a per-medium answer announces the media it omitted. The floor-cut replacement plan measured this directly: eight orphan candidates by import graph fell to three once roster rows, test discovery, workflow argv and Cargo bin targets were joined, a five-in-eight false-positive rate produced entirely by asking one medium. A consumer census that swept only Rust `use` edges would have reported this repository's CI as v1-free, because CI reaches v1 through an argv string that no Rust instrument reads. Carrying the medium is what makes the omission of a medium a visible hole rather than a silent green."
+// HOW THE DEPENDENCY IS SPELLED, and it is a KEY field rather than a note because the discovery
+// instrument is per-medium and nothing in a per-medium answer announces the media it omitted. The
+// floor-cut replacement plan measured this directly: eight orphan candidates by import graph fell
+// to three once roster rows, test discovery, workflow argv and Cargo bin targets were joined, a
+// five-in-eight false-positive rate produced entirely by asking one medium. A consumer census that
+// swept only Rust `use` edges would have reported this repository's CI as v1-free, because CI
+// reaches v1 through an argv string that no Rust instrument reads. Carrying the medium is what
+// makes the omission of a medium a visible hole rather than a silent green.
 
 type ConsumerMedium
   = CargoManifestDependency
@@ -94,7 +110,14 @@ fn consumer_medium_key(m: ConsumerMedium) -> String {
   }
 }
 
-data v1_consumer_census_producer_note: String = "EVERY ROW NAMES THE INSTRUMENT THAT FOUND IT, AND THE COMMAND THAT RE-DERIVES IT. XL-5's standing rule is that a number without a producer, a source revision and a command is not a number, and DESIGN section 6 states the general form: name the instrument, never transcribe its output. Making the producer a REQUIRED FIELD turns that from a review habit into a construction -- a row with no producer has no constructor, so an author cannot file a consumer they merely remember. The command is carried verbatim so a reader re-derives rather than trusts; the revision is carried because a command's answer is a timestamped observation of a moving tree, not an identifier."
+// EVERY ROW NAMES THE INSTRUMENT THAT FOUND IT, AND THE COMMAND THAT RE-DERIVES IT. XL-5's standing
+// rule is that a number without a producer, a source revision and a command is not a number, and
+// DESIGN section 6 states the general form: name the instrument, never transcribe its output.
+// Making the producer a REQUIRED FIELD turns that from a review habit into a construction -- a row
+// with no producer has no constructor, so an author cannot file a consumer they merely remember.
+// The command is carried verbatim so a reader re-derives rather than trusts; the revision is
+// carried because a command's answer is a timestamped observation of a moving tree, not an
+// identifier.
 
 type DiscoveryProducer {
   instrument: String
@@ -103,7 +126,14 @@ type DiscoveryProducer {
   source_tree: FloorDiscoveryTreeId
 }
 
-data v1_consumer_census_binding_note: String = "THE REVISION AND THE TREE ARE TYPED, AND THE TREE IS THE ONE THAT DECIDES. A String revision is a spelling that any later tree can wear; std.types CommitSha is the Git-head vocabulary every consumer already names, and v2.workflow.floor_discovery FloorDiscoveryTreeId is what the floor itself keys a discovery on -- a tree, not a commit, because two commits can carry one tree and one commit is an observation of exactly one. Carrying both makes a row say which tree it observed, so that after an upstream change lands (XL-0, #9676) the census reads as an observation of an OLDER tree rather than as a current fact, and the rebind is a visible edit to two typed fields rather than a stale string nobody re-reads (XL-N Manager ruling, 2026-08-29)."
+// THE REVISION AND THE TREE ARE TYPED, AND THE TREE IS THE ONE THAT DECIDES. A String revision is a
+// spelling that any later tree can wear; std.types CommitSha is the Git-head vocabulary every
+// consumer already names, and v2.workflow.floor_discovery FloorDiscoveryTreeId is what the floor
+// itself keys a discovery on -- a tree, not a commit, because two commits can carry one tree and
+// one commit is an observation of exactly one. Carrying both makes a row say which tree it
+// observed, so that after an upstream change lands (XL-0, #9676) the census reads as an observation
+// of an OLDER tree rather than as a current fact, and the rebind is a visible edit to two typed
+// fields rather than a stale string nobody re-reads (XL-N Manager ruling, 2026-08-29).
 
 fn discovery_producer(instrument: String, command: String, source_revision: String, source_tree_hex: String) -> DiscoveryProducer {
   DiscoveryProducer {
@@ -172,7 +202,18 @@ fn coverage_authorities(c: CoverageClaim) -> List<String> {
   }
 }
 
-data v1_consumer_census_uncitable_note: String = "A CONSUMER THE EXACT VOCABULARY CANNOT SPELL IS CARRIED AS A REFUSAL, NEVER AS A FABRICATED REFERENCE. gunbc.rust_item_host_observation item_declaration_ref projects a Rust item into DeclarationRef through rust_source_namespace_rows, and a BoundaryConsumer needs a DeclarationRef on both sides. The four self-host shim crates under dag/gunbc/instruments/ are hand-authored Rust that reaches v1_rt; until this lane added the tooling namespace row the projection REFUSED them, and the two dishonest moves were to invent a module path the projection did not produce, or to drop the four because the carrier had no slot for them. So citability is DERIVED, never authored: v1_shim_partition runs the projection over the four items against a supplied namespace table, and a shim lands as a BoundaryConsumer row when the projection answers and in this refusal shape when it does not. Under the live table all four are cited and this list is empty by construction; under the live table with the tooling row removed all four return here -- which is the falsifier the paired witness executes, and the reason the table is a parameter."
+// A CONSUMER THE EXACT VOCABULARY CANNOT SPELL IS CARRIED AS A REFUSAL, NEVER AS A FABRICATED
+// REFERENCE. gunbc.rust_item_host_observation item_declaration_ref projects a Rust item into
+// DeclarationRef through rust_source_namespace_rows, and a BoundaryConsumer needs a DeclarationRef
+// on both sides. The four self-host shim crates under dag/gunbc/instruments/ are hand-authored Rust
+// that reaches v1_rt; until this lane added the tooling namespace row the projection REFUSED them,
+// and the two dishonest moves were to invent a module path the projection did not produce, or to
+// drop the four because the carrier had no slot for them. So citability is DERIVED, never authored:
+// v1_shim_partition runs the projection over the four items against a supplied namespace table, and
+// a shim lands as a BoundaryConsumer row when the projection answers and in this refusal shape when
+// it does not. Under the live table all four are cited and this list is empty by construction;
+// under the live table with the tooling row removed all four return here -- which is the falsifier
+// the paired witness executes, and the reason the table is a parameter.
 
 type V1UncitableConsumer {
   item_key: String
@@ -183,7 +224,18 @@ type V1UncitableConsumer {
   discovered_by: DiscoveryProducer
 }
 
-data v1_consumer_census_population_note: String = "COMPLETENESS IS A STRUCTURAL FACT, NOT A CLAIM IN A COMMENT. The three arms answer the transaction's admission gate OPPOSITELY, and a bare List cannot tell them apart: an empty blocking column means 'nothing blocks' under Complete, 'nothing was measured' under Unmeasured, and 'nothing blocks among what was measured' under MeasuredLowerBound -- three different facts one `[]` would spell identically. gunbc.replacement_cut BoundaryCensus carries ConsumersEnumerated | BoundaryDeclaredEmpty and has no lower-bound arm, because an exact cut may not be authored over a lower bound at all; this carrier is what stands BETWEEN a measurement and that census, and the lower-bound arm is where a partial measurement lives while it is still partial. v2.compiler.effect_demand DemandPopulation carries the same three-way shape for XL-1's demand rows; the two are one concept at two subjects and are not consolidated here because that module is in flight on XL-1's branch and does not exist on main. The dissolution condition below names the merge, not the file."
+// COMPLETENESS IS A STRUCTURAL FACT, NOT A CLAIM IN A COMMENT. The three arms answer the
+// transaction's admission gate OPPOSITELY, and a bare List cannot tell them apart: an empty
+// blocking column means 'nothing blocks' under Complete, 'nothing was measured' under Unmeasured,
+// and 'nothing blocks among what was measured' under MeasuredLowerBound -- three different facts
+// one `[]` would spell identically. gunbc.replacement_cut BoundaryCensus carries
+// ConsumersEnumerated | BoundaryDeclaredEmpty and has no lower-bound arm, because an exact cut may
+// not be authored over a lower bound at all; this carrier is what stands BETWEEN a measurement and
+// that census, and the lower-bound arm is where a partial measurement lives while it is still
+// partial. v2.compiler.effect_demand DemandPopulation carries the same three-way shape for XL-1's
+// demand rows; the two are one concept at two subjects and are not consolidated here because that
+// module is in flight on XL-1's branch and does not exist on main. The dissolution condition below
+// names the merge, not the file.
 
 type ConsumerPopulation
   = PopulationMeasuredComplete { rows: List<V1ConsumerRow>, joined_media: List<ConsumerMedium> }
@@ -302,6 +354,8 @@ fn v1cc_boundary(consumer: DeclarationRef, authority: DeclarationRef, dispositio
   BoundaryConsumer { consumer: consumer, consumed_old_authority: authority, disposition: disposition }
 }
 
+data stage0_core_deletion_search_receipt: String = "SEARCH RECEIPT (2026-08-30): searched the workspace member declarations and every tracked Cargo.toml for a stage0_core member or path dependency; searched workflow, emission and tooling sources for stage0_core; and checked both the authored partition authority v2.workflow.rust_crate_partition and its gunbc.stage0_crate_partition_generated projection. No builder or owner names src/v1/stage0_core. The only hits outside the orphan directory were this retirement receipt and the lifecycle residue contradiction whose own dissolution condition selected crate deletion. Therefore the directory deletes; it is not enrolled or frozen."
+
 fn tsv_row(path_decl: String) -> V1ConsumerRow {
   {
     boundary: v1cc_boundary(
@@ -315,7 +369,22 @@ fn tsv_row(path_decl: String) -> V1ConsumerRow {
   }
 }
 
-data v1_consumer_roster_note: String = "THE ROSTER. Every relation was established by running its cited producer against the revision above and reading the emitting declaration, and each row's identity is the relation a deletion would break, not the file the evidence was read in. Rows are not ordered by severity: the floor-cut plan's bounds say the dangerous member is the one nobody thought to look for, and ordering by an author's judgement is what lets a reader stop early.\n\nTHE RETAINED-OPEN ROWS ARE THE TRANSACTION. Everything else is discharged by deleting a subject or by a successor that already exists; the rows carrying CoverageOpen are the entire content of 'XL-5 cannot run yet', and each justification names the CAPABILITY that closes it -- never an artifact that would contribute to one, which DESIGN section 4b(3) rules is satisfied while the capability stays dead. That is the honest shape of a bankruptcy: the estate is mostly worthless, and the whole question is the creditors who are still owed.\n\nTHE TSV ROWS ARE FOUR RELATIONS, NOT ONE, because the authority's key is consumer x consumed authority and one upload step consumes four path declarations. Collapsing them would let one disposition stand for four dependencies, which is the exact conflation the key exists to refuse."
+// THE ROSTER. Every relation was established by running its cited producer against the revision
+// above and reading the emitting declaration, and each row's identity is the relation a deletion
+// would break, not the file the evidence was read in. Rows are not ordered by severity: the
+// floor-cut plan's bounds say the dangerous member is the one nobody thought to look for, and
+// ordering by an author's judgement is what lets a reader stop early.
+//
+// THE RETAINED-OPEN ROWS ARE THE TRANSACTION. Everything else is discharged by deleting a subject
+// or by a successor that already exists; the rows carrying CoverageOpen are the entire content of
+// 'XL-5 cannot run yet', and each justification names the CAPABILITY that closes it -- never an
+// artifact that would contribute to one, which DESIGN section 4b(3) rules is satisfied while the
+// capability stays dead. That is the honest shape of a bankruptcy: the estate is mostly worthless,
+// and the whole question is the creditors who are still owed.
+//
+// THE TSV ROWS ARE FOUR RELATIONS, NOT ONE, because the authority's key is consumer x consumed
+// authority and one upload step consumes four path declarations. Collapsing them would let one
+// disposition stand for four dependencies, which is the exact conflation the key exists to refuse.
 
 data v1_static_consumers: List<V1ConsumerRow> = [
   {
@@ -430,7 +499,7 @@ data v1_static_consumers: List<V1ConsumerRow> = [
   },
   {
     boundary: v1cc_boundary(
-      consumer: decl_ref(module_path: "gunbc.stage0_rust_source_lifecycle_scaffold", decl_name: "residue_stage0_core_lib_dissolution"),
+      consumer: decl_ref(module_path: "gunbc.v1_consumer_census", decl_name: "stage0_core_deletion_search_receipt"),
       authority: stage0_partition_rows,
       disposition: retired(reason: "an ALREADY-DECLARED open authority contradiction, not a discovery of this census: src/v1/stage0_core/src/lib.rs is tracked on disk, absent from the partition rows and absent from the workspace member list, and the residue row's dissolution reads 'stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes'. XL-5 satisfies the second arm. Recorded so the transaction is known to DISCHARGE that row rather than orphan it"),
     ),
@@ -650,6 +719,23 @@ fn v1_bankruptcy_transaction_admitted(population: ConsumerPopulation, realized: 
     && v1_every_claimed_successor_is_realized(rows: rows, realized: realized)
 }
 
-data v1_consumer_census_rung_note: String = "RUNG, at the honest grain, separated from what the roster claims about v1.\n\nTHE CLASS -- 'the cutover deletes a subject nothing succeeded' -- sits at MITIGATABLE today, and this carrier does not move it. Nothing refuses when a consumer is added to the tree; the roster is a hand sweep and an author who forgets to file a row leaves no trace.\n\nWHAT IS CONSTRUCTED, and it is the only rung claim made here: the relation is the authority's own BoundaryConsumer, so a row cannot name a consumer without naming what it consumes; a row has no constructor without a producer carrying a command and a revision; the blocking predicate is derived from the same two arms admit_replacement_cut_plan refuses on, so the blocking column here and the refusal there cannot disagree; and the successor claim is not self-satisfiable at all -- refusal three joins it against a population this module cannot write.\n\nWHAT IS NOT CONSTRUCTED, stated because the gap is the next lane's work rather than an omission: completeness. PopulationMeasuredLowerBound is the honest arm and the admission gate reads it, so the transaction refuses by construction today -- but nothing stops an author from writing PopulationMeasuredComplete over the same unjoined rows. That edit is the one way this carrier can lie, and it is exactly what the next-rung trigger closes."
+// RUNG, at the honest grain, separated from what the roster claims about v1.
+//
+// THE CLASS -- 'the cutover deletes a subject nothing succeeded' -- sits at MITIGATABLE today, and
+// this carrier does not move it. Nothing refuses when a consumer is added to the tree; the roster
+// is a hand sweep and an author who forgets to file a row leaves no trace.
+//
+// WHAT IS CONSTRUCTED, and it is the only rung claim made here: the relation is the authority's own
+// BoundaryConsumer, so a row cannot name a consumer without naming what it consumes; a row has no
+// constructor without a producer carrying a command and a revision; the blocking predicate is
+// derived from the same two arms admit_replacement_cut_plan refuses on, so the blocking column here
+// and the refusal there cannot disagree; and the successor claim is not self-satisfiable at all --
+// refusal three joins it against a population this module cannot write.
+//
+// WHAT IS NOT CONSTRUCTED, stated because the gap is the next lane's work rather than an omission:
+// completeness. PopulationMeasuredLowerBound is the honest arm and the admission gate reads it, so
+// the transaction refuses by construction today -- but nothing stops an author from writing
+// PopulationMeasuredComplete over the same unjoined rows. That edit is the one way this carrier can
+// lie, and it is exactly what the next-rung trigger closes.
 
 data v1_consumer_census_next_rung_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the discovered consumer population is produced by ONE joined instrument over all eight media -- manifests, bin targets, workflow argv, .dag argv rows, Rust use edges, hook scripts, committed mirrors and serialized artifact paths -- so that adding a consumer in any medium appears in the census without an author remembering to file it, and PopulationMeasuredComplete becomes a fact the instrument establishes rather than a value an author types. NOT satisfied by an instrument covering some media however many rows it finds: a per-medium answer is indistinguishable from a joined one, so a partial join has the same blind spot as no join. NOT satisfied by adding rows by hand.")

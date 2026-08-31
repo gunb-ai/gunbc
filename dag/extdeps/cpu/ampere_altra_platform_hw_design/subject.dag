@@ -30,7 +30,16 @@ data ampere_technical_document_index_authority: ExternalAuthority = ExternalAuth
   }
 }
 
-data altra_platform_hw_design_subject_note: String = "THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND. extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade carries one OCP reference-board specification; this module is the third axis — the vendor's platform hardware design guide for boards built around Altra rather than around a named reference platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. HOW THIS REPOSITORY READ THAT LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO altra_platform_hw_design_specification, NOT AS A FIELD ON THIS RECORD. THIS MODULE IS THE SUBJECT ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.cpu.ampere_altra_platform_hw_design.platform AND LAND IN #8260."
+// THE HIGHEST-VALUE PUBLIC DOCUMENT THIS MOTHERBOARD LANE HAS FOUND.
+// extdeps.cpu.ampere_altra_package carries the processor package pinout; extdeps.ocp.mt_jade
+// carries one OCP reference-board specification; this module is the third axis — the vendor's
+// platform hardware design guide for boards built around Altra rather than around a named reference
+// platform. THE ANCHOR CITES THE PUBLIC CDN v1.00 COPY; AMPERE'S TECHNICAL-DOCUMENT INDEX LISTS A
+// NEWER v1.20 REVISION DATED 2025-07-15 THAT THIS REPOSITORY HAS NOT RETRIEVED. HOW THIS REPOSITORY
+// READ THAT LOCATOR IS RECORDED AS A GUNBC RECEIPT WITH A DeclarationRef TO
+// altra_platform_hw_design_specification, NOT AS A FIELD ON THIS RECORD. THIS MODULE IS THE SUBJECT
+// ANCHOR ONLY; PLATFORM FACTS ARE OWNED BY extdeps.cpu.ampere_altra_platform_hw_design.platform AND
+// LAND IN #8260.
 
 type AltraPlatformHwDesignRev1_00 {}
 

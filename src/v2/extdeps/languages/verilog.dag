@@ -14,7 +14,13 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.compilers.target_model { TargetModel, ProducedDeclUnwired, render_target_text }
+import v2.std.compilers.target_model {
+  EmitSpellingWrap,
+  ProducedDeclUnwired,
+  TargetModel,
+  TokenClassEmitTransform,
+  render_target_text
+}
 import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar {
@@ -40,7 +46,11 @@ import v2.std.compilers.lexing {
   WhitespaceChar
 }
 
-data verilog_std_integer_signedness_migration_note: String = "Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence: verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are modeled on these fields."
+// Signedness consumer migration: verilog imports std.integer.Signedness. Semantic equivalence:
+// verilog signed/unsigned on net, port, and parameter declarations is the same interpretive axis as
+// std.integer Signed/Unsigned — whether a bit pattern is read as two's-complement signed range or
+// unsigned modular arithmetic; no Verilog-specific signedness semantics beyond this axis are
+// modeled on these fields.
 
 type PortDirection
   = Input
@@ -705,26 +715,23 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
 }
 
 // THE BOUNDED EMISSION PROFILE, as formal productions rather than a printer. Every byte of the
-// interlock module derives from these rows: the keywords, the punctuation, the whitespace and the
-// operators are grammar facts here, so product.compute_board can construct structure and own no
-// Verilog syntax at all.
+// interlock module derives from these rows: keywords, punctuation, whitespace and operators are
+// grammar facts here, so product.compute_board constructs structure and owns no Verilog syntax.
 //
-// DIRECTION IS A BOUND TERMINAL, NOT AN ALTERNATION, and the reason is a real constraint on how
-// alternation may be used at all. Productions sharing an lhs are selected by UNIQUE STRUCTURAL
-// MATCH against the emitted node (formal_production_unique_lhs_exact_match), and a concrete
-// terminal contributes NO child to that node. So `direction -> kw_input` and
-// `direction -> kw_output` are structurally identical, match indistinguishably, and refuse as
-// grammar_relation_row_backward_selection_ambiguous. TypeScript's params_opt alternation works
-// only because its alternatives differ in child count — empty versus one nonterminal occurrence.
-// Alternation therefore expresses OPTIONALITY and SHAPE, never a choice between two spellings;
-// a spelling choice is a binding, and the lexical class spans both keywords so the same
-// production also reparses either one.
+// DIRECTION IS A BOUND TERMINAL, NOT AN ALTERNATION, and the reason is a real constraint on
+// alternation. Productions sharing an lhs are selected by UNIQUE STRUCTURAL MATCH against the
+// emitted node (formal_production_unique_lhs_exact_match), and a concrete terminal contributes NO
+// child. So `direction -> kw_input` and `direction -> kw_output` are structurally identical, match
+// indistinguishably, and refuse as grammar_relation_row_backward_selection_ambiguous. TypeScript's
+// params_opt alternation works only because its alternatives differ in child count — empty versus
+// one nonterminal occurrence. Alternation expresses OPTIONALITY and SHAPE, never a choice between
+// two spellings; a spelling choice is a binding, and the lexical class spans both keywords so the
+// same production reparses either one.
 //
-// COMPOSITION IS THE POINT. The port list is right-recursive rather than three hard-coded slots,
-// so a module with two or four ports is the same grammar — a fixed arity would prove a fixture,
-// not a module grammar. Expressions nest through their own nonterminals for the same reason: a
-// row whose token list happened to spell the whole module would only be the hand serializer
-// moved into data.
+// COMPOSITION IS THE POINT. The port list is right-recursive rather than three hard-coded slots, so
+// a module with two or four ports is the same grammar — a fixed arity would prove a fixture, not a
+// module grammar. Expressions nest through their own nonterminals for the same reason: a row whose
+// token list spelled the whole module would be the hand serializer moved into data.
 fn verilog_emission_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -807,13 +814,12 @@ fn verilog_emission_formal_productions() -> List<FormalProduction> {
 
 // LAYOUT IS TARGET-OWNED, AND THIS IS WHERE IT LIVES. target_text_seq concatenates exactly, so
 // every space and newline in an emitted module is declared here or does not exist. None of it may
-// return to product.compute_board, which is the whole point of the exercise.
+// return to product.compute_board.
 //
 // WHY THE HEADER AND EXPRESSION PARENTHESES ARE DIFFERENT TOKEN CLASSES. A transform is keyed by
 // token class, so one paren class cannot render " (\n" around a port list and "(" inside an
-// expression. The oracle needs both. Splitting the class is what makes the layout expressible;
-// the two classes lex the same literal, which is a REPARSE question and is called out in the
-// module note rather than papered over here.
+// expression; the oracle needs both. The two classes lex the same literal, a REPARSE question
+// called out in the module note rather than papered over here.
 fn verilog_atom(id: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: id } },
@@ -835,11 +841,11 @@ fn verilog_slot(target: Node) -> Edge {
 }
 
 // THE EMITTED NODE CARRIES ONE SLOT PER VARIABLE POSITION, and its ARITY is what the backward
-// selector matches on. That is why the expression forms have one, two and three slots rather than
-// sharing a shape and relying on a discriminant nobody compares: a signal reference carries its
-// name, a unary application carries operator and operand, a binary one carries operand, operator
-// and operand. Concrete punctuation contributes no slot, which is exactly why the parentheses and
-// the keywords are invisible here and live entirely in the layout profile.
+// selector matches on. Hence the expression forms have one, two and three slots rather than a
+// shared shape and an uncompared discriminant: a signal reference carries its name, a unary
+// application operator and operand, a binary one operand, operator and operand. Concrete
+// punctuation contributes no slot, which is why parentheses and keywords are invisible here and
+// live entirely in the layout profile.
 fn verilog_signal_reference(name: Symbol) -> Node {
   verilog_conj(children: [verilog_slot(target: verilog_atom(id: name))])
 }
@@ -889,12 +895,11 @@ fn verilog_assign_list_cons(assignment: Node, rest: Node) -> Node {
   verilog_conj(children: [verilog_slot(target: assignment), verilog_slot(target: rest)])
 }
 
-// THE HEADER PARENTHESES ARE BOUND SLOTS, and that is what lets ONE lexical class serve both the
-// port list and an expression. A transform is keyed by token class, so two classes were needed to
-// give " (\n" in the header and "(" inside an expression — and two classes lexing the same literal
-// would have made reparse ambiguous, since the lexer cannot know which one it is looking at. A
-// bound slot takes its spelling from its emitted atom instead, so the header carries its own
-// layout and the expression parens stay bare. One class, no lexical ambiguity, same bytes.
+// THE HEADER PARENTHESES ARE BOUND SLOTS, which lets ONE lexical class serve both the port list and
+// an expression. A transform is keyed by token class, so two classes were needed for " (\n" in the
+// header and "(" in an expression — and two classes lexing the same literal would make reparse
+// ambiguous. A bound slot takes its spelling from its emitted atom instead, so the header carries
+// its own layout and the expression parens stay bare. One class, no lexical ambiguity, same bytes.
 fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> Node {
   verilog_conj(children: [
     verilog_slot(target: verilog_atom(id: name)),
@@ -905,48 +910,22 @@ fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> N
   ])
 }
 
-fn verilog_emit_layout_transforms() -> Map<Symbol, fn(String) -> String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(empty_map(), ^verilog_token_kw_module, fn(s) { concat(s, " ") }),
-                  ^verilog_token_kw_wire,
-                  fn(s) { concat(s, " ") }
-                ),
-                ^verilog_token_comma,
-                fn(s) { concat(s, "\n") }
-              ),
-              ^verilog_token_semicolon,
-              fn(s) { concat(s, "\n") }
-            ),
-            ^verilog_token_semicolon,
-            fn(s) { concat(s, "\n") }
-          ),
-          ^verilog_token_kw_wire,
-          fn(s) { concat(s, " ") }
-        ),
-        ^verilog_token_kw_assign,
-        fn(s) { concat("  ", concat(s, " ")) }
-      ),
-      ^verilog_token_equals,
-      fn(s) { concat(" ", concat(s, " ")) }
-    ),
-    ^verilog_token_kw_endmodule,
-    fn(s) { concat(s, "\n") }
-  )
+fn verilog_emit_layout_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  let m0 = map_insert(empty_map(), ^verilog_token_kw_module, EmitSpellingWrap { prefix: "", suffix: " " })
+  let m1 = map_insert(m0, ^verilog_token_kw_wire, EmitSpellingWrap { prefix: "", suffix: " " })
+  let m2 = map_insert(m1, ^verilog_token_comma, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  let m3 = map_insert(m2, ^verilog_token_semicolon, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  let m4 = map_insert(m3, ^verilog_token_kw_assign, EmitSpellingWrap { prefix: "  ", suffix: " " })
+  let m5 = map_insert(m4, ^verilog_token_equals, EmitSpellingWrap { prefix: " ", suffix: " " })
+  map_insert(m5, ^verilog_token_kw_endmodule, EmitSpellingWrap { prefix: "", suffix: "\n" })
 }
 
 // THE INTERLOCK EXEMPLAR. The binding symbol in a derived row comes from the EMITTED atom
 // (FormalBindingConjSlotEmittedAtom reads node_atom_identity_optional on the slot), not from the
-// production's binding symbol — the production only says WHICH slot is bound. That is what lets
-// four ports share one production and still carry four different names, and it is why one signal
-// atom can serve as a port name, an assignment target and an expression reference at once: those
-// are the same identity spelled the same way, so forking them would be three names for one thing.
+// production's binding symbol — the production only says WHICH slot is bound. That lets four ports
+// share one production with four different names, and lets one signal atom serve as port name,
+// assignment target and expression reference at once: the same identity spelled the same way, so
+// forking them would be three names for one thing.
 fn verilog_interlock_ports() -> Node {
   verilog_port_list_cons(
     port: verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good),
@@ -1043,10 +1022,10 @@ fn verilog_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-// THE DERIVED RELATION POPULATION. Nothing here is a hand-authored token list: each row is
-// DERIVED from a formal production plus the exemplar slot it corresponds to, which is what makes
-// emission the backward reading of the same grammar the parser reads forward. A row whose tokens
-// were written out by hand would be the product-local printer wearing a different hat.
+// THE DERIVED RELATION POPULATION. Nothing here is a hand-authored token list: each row is DERIVED
+// from a formal production plus its exemplar slot, which makes emission the backward reading of the
+// grammar the parser reads forward. A hand-written token row would be the product-local printer
+// wearing a different hat.
 fn verilog_relation_row_for_productions(
   productions: List<FormalProduction>,
   lhs: Symbol,
@@ -1103,9 +1082,9 @@ fn verilog_row_or_empty(lhs: Symbol, emitted: Node) -> Node {
 
 // ONE ROW PER PRODUCTION SHAPE, NOT PER OCCURRENCE. Reverse selection matches a row by its
 // PRODUCTION against the emitted child (formal_production_matches_lhs_exact_child), not by atom
-// identity, so the single ansi_port row serves all four ports and the single binary row serves
-// both assignments. Each row is derived from the sub-node of the exemplar that exhibits its
-// shape, which is why the exemplar has to contain every shape the profile claims to emit.
+// identity, so the single ansi_port row serves all four ports and the single binary row both
+// assignments. Each row derives from the exemplar sub-node exhibiting its shape, so the exemplar
+// must contain every shape the profile claims to emit.
 fn verilog_first_port() -> Node {
   verilog_ansi_port(direction: ^verilog_interlock_dir_input, name: ^verilog_interlock_conditioned_good)
 }
@@ -1215,10 +1194,10 @@ fn verilog_emission_target_model() -> TargetModel {
 }
 
 // EMISSION DERIVES ITS ROW FROM THE PROGRAM BEING EMITTED. Row derivation walks the emitted tree
-// and INLINES the tokens of every nested nonterminal, so a derived row already carries the whole
-// program's token sequence; serialization then replays it. That means the rules population is not
-// a fixed language table that different programs select from — selecting a row derived from some
-// other program replays THAT program. The composition is real, and it happens at derivation.
+// and INLINES the tokens of every nested nonterminal, so a derived row carries the whole program's
+// token sequence and serialization replays it. The rules population is therefore not a fixed
+// language table programs select from — selecting a row derived from another program replays THAT
+// program. The composition is real, and it happens at derivation.
 fn verilog_target_model_with_single_row(row: Node) -> TargetModel {
   TargetModel {
     bundle: verilog_conj(children: [
@@ -1242,11 +1221,10 @@ fn verilog_target_model_with_single_row(row: Node) -> TargetModel {
   }
 }
 
-// WHAT A VERILOG IDENTIFIER MAY BE. This is a fact about Verilog, so it lives with Verilog. It
-// sat in product.compute_board, which meant a board module carried the language's reserved-word
-// roster and its punctuation set — the second Verilog authority this lane exists to remove. A
-// second target consuming this grammar gets the same admission for free rather than re-deriving
-// it from the same specification.
+// WHAT A VERILOG IDENTIFIER MAY BE. A fact about Verilog, so it lives with Verilog. It sat in
+// product.compute_board, so a board module carried the language's reserved-word roster and
+// punctuation set — the second Verilog authority this lane exists to remove. A second target
+// consuming this grammar gets the same admission for free.
 data verilog_reserved_words: List<String> = [
   "module", "endmodule", "input", "output", "inout", "wire", "reg", "assign",
   "always", "initial", "begin", "end", "if", "else", "case", "endcase",
@@ -1277,9 +1255,9 @@ fn verilog_identifier_is_admissible(spelling: String) -> Bool {
 }
 
 // THE TARGET-OWNED SPELLINGS EVERY VERILOG PROGRAM SHARES: the two port directions and the three
-// boolean operators. A product supplies the spellings for ITS identifiers and merges them over
-// these, so no consumer has to know that "input" is padded to align with "output" or that the
-// conjunction renders with surrounding spaces. Those are layout decisions and they stay here.
+// boolean operators. A product supplies spellings for ITS identifiers and merges them over these,
+// so no consumer has to know that "input" is padded to align with "output" or that the conjunction
+// renders with surrounding spaces. Those are layout decisions and stay here.
 fn verilog_base_spellings() -> Map<Symbol, String> {
   map_insert(
     map_insert(
@@ -1341,9 +1319,9 @@ fn verilog_target_model_for(row: Node, spellings: Map<Symbol, String>) -> Target
   }
 }
 
-// EMIT A MODULE. This is the whole target surface a product needs: hand it a module node and a
-// spelling map, get bytes or a typed refusal. Deriving the row from the node being emitted is
-// what makes this compositional rather than a replay of some exemplar.
+// EMIT A MODULE. The whole target surface a product needs: hand it a module node and a spelling
+// map, get bytes or a typed refusal. Deriving the row from the node being emitted makes this
+// compositional rather than a replay of some exemplar.
 type VerilogEmission
   = VerilogEmitted { source: String }
   | VerilogEmissionRefused { reason: Symbol }

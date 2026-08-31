@@ -19,6 +19,7 @@ import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection {
   List,
   Map,
+  empty_map,
   list_at_optional,
   list_nth
 }
@@ -459,7 +460,7 @@ fn interpretation_registry_semantics_digest(
   _structure_witness: InterpretationStructureWitness
 ) -> Hash {
   if runtime_identity == ^v2_evaluator_runtime_id {
-    if interpretation == v2_evaluator_interpretation() {
+    if interpretation_algebra_slot_identities_equal(a: interpretation, b: v2_evaluator_interpretation()) {
       interpretation_v4_evaluator_registry_semantics_digest(interpretation: interpretation)
     } else {
       test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
@@ -856,7 +857,7 @@ fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> Int
   )
   let registry_mismatch = test_claim_symbol_digest(sym: ^test_claim_cache_interpretation_semantics_mismatch_tag)
   if authority.runtime_identity == ^v2_evaluator_runtime_id
-    && authority.interpretation == v2_evaluator_interpretation()
+    && interpretation_algebra_slot_identities_equal(a: authority.interpretation, b: v2_evaluator_interpretation())
     && authority.semantics_digest == registered_semantics
     && registry_witness == registered_semantics
     && registry_witness != registry_mismatch {
@@ -955,14 +956,8 @@ fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   }
 }
 
-fn runtime_binding_lookup_miss(key: EnvironmentBindingKey) -> Optional<RuntimeValue> {
-  optional_absent()
-}
-
-fn empty_runtime_bindings() -> PartialFunction<EnvironmentBindingKey, RuntimeValue> {
-  PartialFunction {
-    lookup: runtime_binding_lookup_miss
-  }
+fn empty_runtime_bindings() -> Map<EnvironmentBindingKey, RuntimeValue> {
+  empty_map()
 }
 
 fn empty_evaluation_environment() -> EvaluationEnvironment {
@@ -1521,7 +1516,8 @@ fn eval_effect_io_roundtrip(
               o: eval_yield_effect_request(bundle: bundle, request: write_request),
               f: fn(write_yield) {
                 let written = write_yield.value
-                if written == payload {
+                match runtime_value_equality(a: written, b: payload) {
+                  RuntimeValuesEqual =>
                   match effect_io_pure_locator_from_args(
                     backend: bundle.backend,
                     args: write_args
@@ -1550,10 +1546,12 @@ fn eval_effect_io_roundtrip(
                     Violates { diagnostic: d } =>
                       Rejected { diagnostics: diagnostics_singleton(d: d) }
                   }
-                } else {
-                  outcome_rejected(
-                    d: eval_diagnostic(reason: ^eval_rejected_effect_io_write_payload_mismatch, node: node)
-                  )
+                  RuntimeValuesDiffer =>
+                    outcome_rejected(
+                      d: eval_diagnostic(reason: ^eval_rejected_effect_io_write_payload_mismatch, node: node)
+                    )
+                  RuntimeValueEqualityUnavailable { reason: r } =>
+                    outcome_rejected(d: eval_diagnostic(reason: r, node: node))
                 }
               }
             )
@@ -2191,7 +2189,15 @@ fn eval_fold_callee_reference_child_state(
   }
 }
 
-data eval_closure_argument_note: String = "A closure passed as a runtime argument is an Arrow TypeNode in argument position (fold's transform child 3). Its value is the closure itself — the captured arrow plus the environment it closes over — NOT the value of its body, whose parameters (fold acc/h) are unbound until the callee applies it. So the walk materializes RuntimeClosure here and does not descend into the arrow's children; descending would evaluate the body against an environment that cannot bind its parameters. This is the same structural-child seam as eval_fold_is_callee_reference_edge (a child the walk must not value-evaluate), at edge grain so an Arrow in CALLEE or root position still evaluates normally — only a runtime-argument edge is a closure. Carrier is the existing v2.std.runtime authority (RuntimeClosureValue); no literal-atom roster is extended."
+// A closure passed as a runtime argument is an Arrow TypeNode in argument position (fold's
+// transform child 3). Its value is the closure itself — the captured arrow plus the environment it
+// closes over — NOT the value of its body, whose parameters (fold acc/h) are unbound until the
+// callee applies it. So the walk materializes RuntimeClosure here and does not descend into the
+// arrow's children; descending would evaluate the body against an environment that cannot bind its
+// parameters. This is the same structural-child seam as eval_fold_is_callee_reference_edge (a child
+// the walk must not value-evaluate), at edge grain so an Arrow in CALLEE or root position still
+// evaluates normally — only a runtime-argument edge is a closure. Carrier is the existing
+// v2.std.runtime authority (RuntimeClosureValue); no literal-atom roster is extended.
 
 fn eval_fold_is_closure_argument_edge(
   parent: Node,
@@ -2745,18 +2751,53 @@ fn run_test_claim_assert_decided(
   }
 }
 
-fn runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
-  a == b
+// The universal Boolean comparator (runtime_value_eq: a == b) is DELETED, not relocated: the
+// equality admission wall refuses generic '==' on RuntimeValue because its closure arm has no
+// equality denotation. Comparison is the typed RuntimeValueEquality verdict from v2.std.runtime,
+// and the third state (EqualityUnavailable) routes to a RunFailed verdict carrying its reason --
+// it is never collapsed to 'false'.
+fn outcome_runtime_value_equality(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> RuntimeValueEquality {
+  match a {
+    Accepted { value: av, diagnostics: ad } => match b {
+      Accepted { value: bv, diagnostics: bd } =>
+        match runtime_value_equality(a: av, b: bv) {
+          RuntimeValuesEqual => if diagnostics_eq(a: ad, b: bd) { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+          RuntimeValuesDiffer => RuntimeValuesDiffer
+          RuntimeValueEqualityUnavailable { reason: r } => RuntimeValueEqualityUnavailable { reason: r }
+        }
+      Rejected { diagnostics: _ } => RuntimeValuesDiffer
+    }
+    Rejected { diagnostics: ar } => match b {
+      Accepted { value: _, diagnostics: _ } => RuntimeValuesDiffer
+      Rejected { diagnostics: br } => if non_empty_diagnostics_eq(a: ar, b: br) { RuntimeValuesEqual } else { RuntimeValuesDiffer }
+    }
+  }
 }
 
-fn outcome_runtime_value_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
-  outcome_eq(a: a, b: b, payload_eq: runtime_value_eq)
-}
-
-fn accepted_runtime_value_outcome_eq(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> Bool {
+fn accepted_runtime_value_outcome_equality(a: Outcome<RuntimeValue>, b: Outcome<RuntimeValue>) -> RuntimeValueEquality {
   match b {
-    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_eq(a: a, b: b)
-    Rejected { diagnostics: _ } => false
+    Accepted { value: _, diagnostics: _ } => outcome_runtime_value_equality(a: a, b: b)
+    Rejected { diagnostics: _ } => RuntimeValuesDiffer
+  }
+}
+
+fn runtime_value_equality_verdict<S>(
+  equality: RuntimeValueEquality,
+  actual: Outcome<RuntimeValue>,
+  at: Node
+) -> Verdict<TestClaimEvalSubject<S>, RuntimeValue> {
+  match equality {
+    RuntimeValuesEqual => Pass
+    RuntimeValuesDiffer => verdict_fail(actual: actual)
+    RuntimeValueEqualityUnavailable { reason: r } =>
+      verdict_run_failed(
+        actual: actual,
+        diagnostic: Diagnostic {
+          reason: r,
+          at: node_locus(node: at),
+          correction: Unavailable { reason: ExternalContractUnknown }
+        }
+      )
   }
 }
 
@@ -2770,28 +2811,28 @@ fn run_test_claim_runtime_assert(
   match claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
-      if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
-        Pass
-      } else {
-        verdict_fail(actual: actual)
-      }
+      runtime_value_equality_verdict(
+        equality: accepted_runtime_value_outcome_equality(a: actual, b: expected),
+        actual: actual,
+        at: at
+      )
     }
 
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
-      if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
-        Pass
-      } else {
-        verdict_fail(actual: actual)
-      }
+      runtime_value_equality_verdict(
+        equality: accepted_runtime_value_outcome_equality(a: actual, b: expected),
+        actual: actual,
+        at: at
+      )
     }
     CompilesClaim { expected_value: expected, label: _, anchor: _, input: _, classification: _ } => {
       let expected_outcome = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: expected))
-      if accepted_runtime_value_outcome_eq(a: actual, b: expected_outcome) {
-        Pass
-      } else {
-        verdict_fail(actual: actual)
-      }
+      runtime_value_equality_verdict(
+        equality: accepted_runtime_value_outcome_equality(a: actual, b: expected_outcome),
+        actual: actual,
+        at: at
+      )
     }
     RoundTripClaim { label: _, anchor: _, input: input, classification: _ } =>
       run_test_claim_round_trip_verdict_runtime(
@@ -2801,11 +2842,11 @@ fn run_test_claim_runtime_assert(
     DiagnosticClaim { expected_rejection: expected, input: _, label: _, anchor: _, classification: _ } =>
       match actual {
         Rejected { diagnostics: _ } =>
-          if outcome_runtime_value_eq(a: actual, b: Rejected { diagnostics: expected }) {
-            Pass
-          } else {
-            verdict_fail(actual: actual)
-          }
+          runtime_value_equality_verdict(
+            equality: outcome_runtime_value_equality(a: actual, b: Rejected { diagnostics: expected }),
+            actual: actual,
+            at: at
+          )
         _ => verdict_fail(actual: actual)
       }
   }

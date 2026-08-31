@@ -26,15 +26,78 @@ fn nat_mul(a: Nat, b: Nat) -> Nat {
   nat_cata(n: a, zero: Zero, succ: fn(acc) { nat_add(a: b, b: acc) })
 }
 
+// THE DECLARED ORDERING OF THE PEANO NATURALS, by exact operand structure: two Zeros are Equal,
+// Zero precedes any Succ, and two Succs compare as their predecessors. This is the comparison the
+// operator realization authority calls for `<`, `<=`, `>`, `>=` on v2.std.nat.Nat operands
+// (gunbc.structural_realization_bindings structural_ordering_rows -> std.operator_realization),
+// so it must not itself be written with a host ordering operator on Nat -- the previous body
+// (`if a == b .. if a < b`) was exactly the host `<` on Rc<Nat> that rustc refused (E0369).
 fn nat_compare(a: Nat, b: Nat) -> Ordering {
-  if a == b {
-    Equal
-  } else {
-    if a < b {
-      Less
-    } else {
-      Greater
-    }
+  match a {
+    Zero =>
+      match b {
+        Zero => Equal
+        Succ { prev: _ } => Less
+      }
+    Succ { prev: pa } =>
+      match b {
+        Zero => Greater
+        Succ { prev: pb } => nat_compare(a: pa, b: pb)
+      }
+  }
+}
+
+// TRUNCATED SUBTRACTION (monus) WITH A TYPED UNDERFLOW OUTCOME. The naturals are not closed under
+// subtraction; a - b for b > a has no answer here and says so as its own arm, never a wrapped or
+// fabricated Zero.
+type NatSubtraction
+  = NatDifference { value: Nat }
+  | NatSubtrahendExceedsMinuend
+
+fn nat_sub(a: Nat, b: Nat) -> NatSubtraction {
+  match b {
+    Zero => NatDifference { value: a }
+    Succ { prev: pb } =>
+      match a {
+        Zero => NatSubtrahendExceedsMinuend
+        Succ { prev: pa } => nat_sub(a: pa, b: pb)
+      }
+  }
+}
+
+// EUCLIDEAN DIVISION WITH A TYPED ZERO-DIVISOR OUTCOME. nat_div_rem is the general operation: a
+// Zero divisor is its own arm. nat_div_rem_by_succ is the TOTAL form for a divisor that is nonzero
+// BY CONSTRUCTION -- the caller supplies the divisor's predecessor, so the divisor Succ { prev }
+// cannot be Zero and no zero-divisor arm exists to handle (DESIGN section 4b, the top rung: the
+// invalid state has no constructor). A caller dividing by a literal that it knows is nonzero
+// (decimal conversion by ten) uses the by-succ form rather than matching a zero arm it cannot reach.
+type NatQuotient {
+  quotient: Nat
+  remainder: Nat
+}
+
+type NatDivision
+  = NatQuotientRemainder { quotient: Nat, remainder: Nat }
+  | NatDivisionByZero
+
+fn nat_div_rem(a: Nat, b: Nat) -> NatDivision {
+  match b {
+    Zero => NatDivisionByZero
+    Succ { prev: divisor_prev } =>
+      let q = nat_div_rem_by_succ(a: a, divisor_prev: divisor_prev)
+      NatQuotientRemainder { quotient: q.quotient, remainder: q.remainder }
+  }
+}
+
+fn nat_div_rem_by_succ(a: Nat, divisor_prev: Nat) -> NatQuotient {
+  nat_div_rem_by_succ_accumulate(a: a, divisor_prev: divisor_prev, quotient: Zero)
+}
+
+fn nat_div_rem_by_succ_accumulate(a: Nat, divisor_prev: Nat, quotient: Nat) -> NatQuotient {
+  match nat_sub(a: a, b: Succ { prev: divisor_prev }) {
+    NatSubtrahendExceedsMinuend => NatQuotient { quotient: quotient, remainder: a }
+    NatDifference { value: rest } =>
+      nat_div_rem_by_succ_accumulate(a: rest, divisor_prev: divisor_prev, quotient: Succ { prev: quotient })
   }
 }
 
@@ -53,8 +116,18 @@ fn nat_lte(a: Nat, b: Nat) -> Bool {
   }
 }
 
-data nat_max_two_nat_authorities_note: String = "This is NOT a duplicate of std.nat nat_max, and the distinction is worth stating because the name alone suggests otherwise. std.nat Nat is CommutativeSemiring<Magnitude> - an algebra alias whose max is written with the host comparison operators - while v2.std.nat Nat is the Peano coproduct Zero | Succ, and the two are different types that no single function can serve. So this sits beside nat_add and nat_mul, which are forked for exactly the same reason and were not remarked on. What IS a real defect is that two Nat authorities exist at all; it predates this declaration and is the numeric-tower grounding thread's subject, not something a max function can close. Because v1-seed function names are not module-scoped, a bare nat_max reference in any closure containing both modules is ambiguous and must be qualified - v2.lens.cost.valuation does exactly that. Dissolve-on: one Nat authority, at which point one of the two nat_max declarations goes with it."
-
+// NOT A DUPLICATE OF std.nat nat_max, and worth saying because the name alone suggests otherwise.
+// std.nat Nat is CommutativeSemiring<Magnitude> -- an algebra alias whose max is written with the
+// host comparison operators -- while v2.std.nat Nat is the Peano coproduct Zero | Succ. They are
+// different types that no single function can serve, so this sits beside nat_add and nat_mul, which
+// are forked for the same reason. Because v1-seed function names are not module-scoped, a bare
+// nat_max reference in any closure containing both modules is ambiguous and must be qualified --
+// v2.lens.cost.valuation does exactly that.
+//
+// That two Nat authorities exist at all is the real defect, and it is tracked as a guarantee stall
+// rather than narrated here: gunbc.guarantee_rung_drop two_nat_authorities_stall carries the rung,
+// ceiling and next-rung trigger. This annotation records only why the fork is not closable from a
+// max function.
 fn nat_max(a: Nat, b: Nat) -> Nat {
   match nat_compare(a: a, b: b) {
     Less => b

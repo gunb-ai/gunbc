@@ -30,9 +30,12 @@ use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
-pub use crate::v1_compiler_artifact::default_artifact_plan;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
-pub use crate::v1_compiler_artifact::{Artifact, ArtifactPlan, RenderTarget};
+use crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule;
+pub use crate::v1_compiler_artifact::{default_artifact_plan, selected_artifact_plan};
+pub use crate::v1_compiler_artifact::{
+    Artifact, ArtifactPlan, RenderTarget, RustModuleRenderSelection,
+};
 pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexity_report};
 pub use crate::v1_compiler_complexity::{
     ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
@@ -45,7 +48,7 @@ pub use crate::v1_compiler_emit_core_support::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
-pub use crate::v1_compiler_emit_rust::emit_rust;
+pub use crate::v1_compiler_emit_rust::emit_rust_selected;
 pub use crate::v1_compiler_infer::{reconcile, reconcile_with_census_extra};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
@@ -124,15 +127,6 @@ pub struct PipelineResult {
     pub ownership: Rc<Vec<Rc<OwnershipProof>>>,
     pub artifact_plan: Rc<ArtifactPlan>,
     pub newline_indices: Rc<Vec<Rc<NewlineIndex>>>,
-}
-
-pub fn frontend_result_authored_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "The authored source annotation graph rides beside the semantic result rather than inside it. Every existing consumer reads the fields it already read and is unaffected; annotation-aware machinery reads the graph. Refusals are carried too, because a graph without them cannot distinguish prose that was never written from prose that was dropped.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -218,7 +212,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if (item.body.clone() != std::option::Option::None) {
                             __found = true;
                             break;
                         }
@@ -239,7 +233,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     for item in Rc::new({
                         let mut __result = Vec::new();
                         for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
+                            if (item.body.clone() != std::option::Option::None) {
                                 __result.push(item);
                             }
                         }
@@ -280,7 +274,7 @@ pub fn module_ownership_proofs(m: Rc<TypedModule>) -> Rc<Vec<Rc<OwnershipProof>>
         for item in Rc::new({
             let mut __result = Vec::new();
             for item in m.items.clone().iter().cloned() {
-                if (item.body.clone() != None) {
+                if (item.body.clone() != std::option::Option::None) {
                     __result.push(item);
                 }
             }
@@ -312,7 +306,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if (item.body.clone() != std::option::Option::None) {
                             __found = true;
                             break;
                         }
@@ -377,15 +371,6 @@ pub fn ownership_diagnostics(proofs: Rc<Vec<Rc<OwnershipProof>>>) -> Rc<Vec<Rc<E
 pub struct CompilePipelineOptions {
     pub analyze_complexity: bool,
     pub census_only_sources: Rc<Vec<Rc<SourceFile>>>,
-}
-
-pub fn census_only_sources_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class).".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn default_compile_pipeline_options() -> Rc<CompilePipelineOptions> {
@@ -457,7 +442,10 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
             });
         }
         match artifact.target.clone() {
-            RenderTarget::Rust => crate::v1_compiler_emit_rust::emit_rust(typed.clone()),
+            RenderTarget::Rust => crate::v1_compiler_emit_rust::emit_rust_selected(
+                typed.clone(),
+                artifact.module_selection.clone(),
+            ),
             RenderTarget::Python => crate::v1_compiler_emit_python::emit_python(typed.clone()),
             RenderTarget::Go => crate::v1_compiler_emit_go::emit_go(typed.clone()),
             RenderTarget::Dag => emit_dag_artifact(typed.clone()),
@@ -475,7 +463,7 @@ pub fn json_list(items: Rc<Vec<String>>) -> String {
 pub fn json_optional_string(value: Option<String>) -> String {
     match value.clone() {
         Some(inner) => crate::v1_compiler_dag_collect_support::json_quote(inner.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -504,7 +492,7 @@ pub fn dag_emit_check_ref_target(
         crate::v1_compiler_dag_collect::dag_node_key(node.clone()),
     ) {
         Some(_) => Rc::new(vec![]),
-        None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
+        std::option::Option::None => Rc::new(vec![dag_node_missing_ref_error(node.clone())]),
     }
 }
 
@@ -514,7 +502,7 @@ pub fn dag_emit_check_optional_ref_target(
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match value.clone() {
         Some(inner) => dag_emit_check_ref_target(inner.clone(), key_to_id.clone()),
-        None => Rc::new(vec![]),
+        std::option::Option::None => Rc::new(vec![]),
     }
 }
 
@@ -676,7 +664,7 @@ pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>
             ),
             "}".to_string(),
         ),
-        None => "{\"$ref\": null}".to_string(),
+        std::option::Option::None => "{\"$ref\": null}".to_string(),
     }
 }
 
@@ -686,7 +674,7 @@ pub fn json_optional_node_ref(
 ) -> String {
     match value.clone() {
         Some(inner) => serialize_node_ref(inner.clone(), key_to_id.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -696,14 +684,14 @@ pub fn json_optional_inferred_node_ref(
 ) -> String {
     match value.clone() {
         Some(inner) => serialize_inferred_node_ref(inner.clone(), key_to_id.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
 pub fn json_optional_span(value: Option<Rc<SourceSpan>>) -> String {
     match value.clone() {
         Some(inner) => serialize_span(inner.clone()),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1159,7 +1147,7 @@ pub fn serialize_call_semantics(value: Option<Rc<CallSemantics>>) -> String {
         Some(CallSemantics::FunctionValueCallSemantics) => {
             "{\"kind\": \"FunctionValueCallSemantics\"}".to_string()
         }
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1220,7 +1208,7 @@ pub fn serialize_method_semantics(
             ),
             "}".to_string(),
         ),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1376,7 +1364,7 @@ pub fn serialize_descent_evidence(de: Option<Rc<Vec<Rc<SubValueRelation>>>>) -> 
             }
             __result
         })),
-        None => "null".to_string(),
+        std::option::Option::None => "null".to_string(),
     }
 }
 
@@ -1393,6 +1381,13 @@ pub fn serialize_expr_data(
             ExprData::ExprLiteral { value: value, .. } => v1_rt::concat(
                 v1_rt::concat(
                     "{\"kind\": \"ExprLiteral\", \"value\": ".to_string(),
+                    serialize_literal(value.clone()),
+                ),
+                "}".to_string(),
+            ),
+            ExprData::ExprElaboratedLiteral { value, .. } => v1_rt::concat(
+                v1_rt::concat(
+                    "{\"kind\": \"ExprElaboratedLiteral\", \"value\": ".to_string(),
                     serialize_literal(value.clone()),
                 ),
                 "}".to_string(),
@@ -1448,7 +1443,7 @@ pub fn serialize_expr_data(
                             ),
                             "}".to_string(),
                         ),
-                        None => "null".to_string(),
+                        std::option::Option::None => "null".to_string(),
                     },
                 ),
                 "}".to_string(),
@@ -1475,7 +1470,7 @@ pub fn serialize_expr_data(
                                 ),
                                 match summary.clone() {
                                     Some(inner) => serialize_field_summary(inner.clone()),
-                                    None => "null".to_string(),
+                                    std::option::Option::None => "null".to_string(),
                                 },
                             ),
                             ", \"children\": ".to_string(),
@@ -1597,7 +1592,7 @@ pub fn serialize_expr_data(
                                         f.clone(),
                                     ),
                                 ),
-                                None => "null".to_string(),
+                                std::option::Option::None => "null".to_string(),
                             },
                         ),
                         ", \"children\": ".to_string(),
@@ -2018,7 +2013,8 @@ pub fn serialize_param(
 
 pub fn is_import_statement_node(n: Rc<Node>) -> bool {
     (crate::v1_std_core::import_is_all(n.clone())
-        || (((((n.children.clone().len() as i64) > 0) && (n.body.clone() == None))
+        || (((((n.children.clone().len() as i64) > 0)
+            && (n.body.clone() == std::option::Option::None))
             && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
             && ((n.params.clone().len() as i64) == 0)))
 }
@@ -2371,13 +2367,13 @@ pub fn emittable_graph(resolved: Rc<ResolvedPipelineResult>) -> Option<Rc<Emitta
             __result
         });
         if ((blocking.clone().len() as i64) > 0) {
-            None
+            std::option::Option::None
         } else {
             match resolved.graph.clone() {
                 Some(typed) => Some(Rc::new(EmittableGraph {
                     graph: typed.clone(),
                 })),
-                None => None,
+                std::option::Option::None => std::option::Option::None,
             }
         }
     }
@@ -2443,7 +2439,7 @@ pub fn collect_diagnostics(parse_results: Rc<Vec<Rc<ParseResult>>>) -> Rc<Vec<Rc
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<ErrorNode>>>, pr: Rc<ParseResult>| match pr.error.clone() {
             Some(diag) => v1_rt::rc_list_push(acc.clone(), diag.clone()),
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -2456,7 +2452,7 @@ pub fn resolve_frontend_occurrence_transport(
     match crate::std_occurrence_identity::occurrence_transport_refusal(occurrence_transport.clone())
     {
         Some(refusal) => Rc::new(FrontendOccurrenceResolution {
-            graph: None,
+            graph: std::option::Option::None,
             diagnostics: Rc::new(vec![crate::v1_std_core::make_error_node(
                 Rc::new(CompilerDiagnostic::OccurrenceTransportViolation {
                     refusal: refusal.clone(),
@@ -2464,7 +2460,7 @@ pub fn resolve_frontend_occurrence_transport(
                 "".to_string(),
             )]),
         }),
-        None => {
+        std::option::Option::None => {
             let graph = crate::v1_compiler_resolve::resolve_modules_with_occurrence_transport(
                 module_inputs.clone(),
                 source_indices.clone(),
@@ -2546,7 +2542,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                                 parsed.occurrence_transport.clone(),
                             ),
                         ),
-                        None => acc.module_inputs.clone(),
+                        std::option::Option::None => acc.module_inputs.clone(),
                     },
                     newline_indices: v1_rt::rc_list_push(
                         acc.newline_indices.clone(),
@@ -2621,15 +2617,6 @@ pub struct CensusFillParse {
     pub annotations: Rc<SourceAnnotationGraph>,
 }
 
-pub fn parse_census_fill_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusFillParse> {
     {
         let prepared = Rc::new({
@@ -2698,7 +2685,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                                 parsed.occurrence_transport.clone(),
                             ),
                         ),
-                        None => acc.module_inputs.clone(),
+                        std::option::Option::None => acc.module_inputs.clone(),
                     },
                     newline_indices: v1_rt::rc_list_push(
                         acc.newline_indices.clone(),
@@ -2777,6 +2764,18 @@ pub fn compile_sources(
         sources.clone(),
         target.clone(),
         default_compile_pipeline_options(),
+    )
+}
+
+pub fn compile_sources_selected(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<PipelineResult> {
+    emit_resolved_for_target_selected(
+        compile_to_resolved_with_options(sources.clone(), default_compile_pipeline_options()),
+        target.clone(),
+        selection.clone(),
     )
 }
 
@@ -2864,7 +2863,7 @@ pub fn stage0_self_compile_refusal_message(
                     " emitted no files".to_string(),
                 ))
             } else {
-                None
+                std::option::Option::None
             }
         }
     }
@@ -2900,8 +2899,8 @@ pub fn compile_to_resolved_with_options(
         let _ = v1_rt::trace_mark("compile.frontend.done".to_string());
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
-            None => Rc::new(ResolvedPipelineResult {
-                graph: None,
+            std::option::Option::None => Rc::new(ResolvedPipelineResult {
+                graph: std::option::Option::None,
                 diagnostics: frontend.diagnostics.clone(),
                 source_indices: v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
                 complexity: crate::v1_compiler_complexity::empty_complexity_report(),
@@ -2980,8 +2979,20 @@ pub fn emit_resolved_for_target(
     resolved: Rc<ResolvedPipelineResult>,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
+    emit_resolved_for_target_selected(
+        resolved.clone(),
+        target.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn emit_resolved_for_target_selected(
+    resolved: Rc<ResolvedPipelineResult>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<PipelineResult> {
     match emittable_graph(resolved.clone()) {
-        None => Rc::new(PipelineResult {
+        std::option::Option::None => Rc::new(PipelineResult {
             files: Rc::new(vec![]),
             diagnostics: resolved.diagnostics.clone(),
             complexity: resolved.complexity.clone(),
@@ -2991,7 +3002,7 @@ pub fn emit_resolved_for_target(
         }),
         Some(emittable) => {
             let typed = emittable.graph();
-            let artifact_plan = crate::v1_compiler_artifact::default_artifact_plan(
+            let artifact_plan = crate::v1_compiler_artifact::selected_artifact_plan(
                 Rc::new({
                     let mut __result = Vec::new();
                     for m in typed.modules.clone().iter().cloned() {
@@ -3003,6 +3014,7 @@ pub fn emit_resolved_for_target(
                     __result
                 }),
                 target.clone(),
+                selection.clone(),
             );
             let _ = v1_rt::trace_mark("compile.emit.begin".to_string());
             let emit_result = emit_from_artifact_plan(emittable.clone(), artifact_plan.clone());

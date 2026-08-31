@@ -2,7 +2,6 @@ module v2.lens.module_graph
 
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -24,8 +23,6 @@ import v2.std.diagnostic { Outcome, outcome_accepted }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-
-
 type ModuleDeclarationFact {
   module: String
   path: String
@@ -45,7 +42,19 @@ type ModuleDependencyEdge {
 
 data dependency_edge_source_migration_note: String = "EDGE SOURCE, isolated as the single swappable fact producer (operator constraint, 2026-07-10, on the entry_file_touched reground): today dependency_resolution_facts_live unions import_resolution_facts_live with strict-tier reference_derived_import_resolution_facts_live (host twin selection_adjacency in cli_run.rs). The namespace-only resolution thread (operator-signed 2026-07-06) deletes the import grammar at its terminal step and derives dependencies from container.member references instead — when that lands, dependency_resolution_facts_live swaps to reference_derived_resolution_facts_flagged_pending_reference_producer and nothing above it changes: dependency_closure, import_closure, touched_path_in_closure, entry_affected_by_touched_paths, and every consumer of the closure query are edge-source-agnostic by construction (they read ModuleDependencyEdge rows as data, never import syntax). Do not add a second edge producer beside dependency_resolution_facts_live; the swap replaces its body."
 
-data namespace_wave_import_strip_specimens_note: String = "Namespace-lane handoff specimens from gunbc#7908 (operator ruling 2026-08-06, msg_8e1c9e9d): three closure-binding failures from #6848 import stripping that whole-tree compile-clean repaired with explicit imports — NOT held for namespace-derived closure; main needed exact imports today, namespace program owns making this class unwritable later. (1) v2.lens.complexity: direct imports from v2.lens.cost stripped (PolynomialDegree, PolyLogExponent, SizeVariable, SymbolicCost, asymptotic_class_*); module referenced cost symbols with zero import lines. (2) v2.lens.enforcement.receipts: direct imports stripped from v2.lens.cost and v2.lens.enforcement.vocab (SymbolicCost, EnrolledInFloorRoster, EnrollmentDiscoveryReceipt, LensModuleFunctionObserved, etc.). (3) v2.extdeps.languages.rust_test_fixtures: missing std.algebra { Cons, Empty } bindings (#7772 partial un-strip; see rust_test_fixtures_rust_import_unstrip_note). Dissolve-on: bare-reference closure binding is construction-backed repo-wide so stripped modules cannot compile only by pool-membership coincidence."
+// Namespace-lane handoff specimens from gunbc#7908 (operator ruling 2026-08-06, msg_8e1c9e9d):
+// three closure-binding failures from #6848 import stripping that whole-tree compile-clean repaired
+// with explicit imports — NOT held for namespace-derived closure; main needed exact imports today,
+// namespace program owns making this class unwritable later. (1) v2.lens.complexity: direct imports
+// from v2.lens.cost stripped (PolynomialDegree, PolyLogExponent, SizeVariable, SymbolicCost,
+// asymptotic_class_*); module referenced cost symbols with zero import lines. (2)
+// v2.lens.enforcement.receipts: direct imports stripped from v2.lens.cost and
+// v2.lens.enforcement.vocab (SymbolicCost, EnrolledInFloorRoster, EnrollmentDiscoveryReceipt,
+// LensModuleFunctionObserved, etc.). (3) v2.extdeps.languages.rust_test_fixtures: missing
+// std.algebra { Cons, Empty } bindings (#7772 partial un-strip; see
+// rust_test_fixtures_rust_import_unstrip_note). Dissolve-on: bare-reference closure binding is
+// construction-backed repo-wide so stripped modules cannot compile only by pool-membership
+// coincidence.
 
 data reference_derived_edge_source_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
@@ -82,7 +91,31 @@ fn reference_derived_import_resolution_facts_live(
   )
 }
 
-data dedup_import_resolution_facts_cost_note: String = "THE UNION IS NATIVE NOW, and the name is retained because gunbc.stage0_partition_closure and gunbc.repo_atlas_projection both cite this row by symbol. HISTORY, all measured: #8044 fixed two quadratics in the interpreted composition here - a linear membership scan, then a list_snoc_item accumulator - which took it from an OOM at 396s to running, but left it at 173.6-177.6s. WHAT THAT LEFT UNSAID, and what the later measurement found: the remaining cost was never the host fact production those notes blamed. Measured per term in one process on the live corpus - import_resolution_facts_live 146ms, reference_derived_import_resolution_facts_live 5ms, the union and dedup of the two 104,943ms, the whole of dependency_resolution_facts_live 112,261ms. The two host leaves are 151ms of 112,261ms, so caching them recovers nothing and the interpreted composition WAS the cost. Three further hypotheses were tested and refuted by execution before this conclusion: duplicate (importer, target) work in the consuming index (raw == unique exactly, measured post-join at module grain with path-to-module injectivity measured and zero dropped edges); the interpreter Map primitive (map_insert 38ms at n=2000 and 68ms at n=8000 against a take-only subtractive control - 1.8x for 4x the items, not quadratic, and NOT claimed as a defect); and the bucket's own list_snoc_item (replaced with a cons, measured 105,007ms against a 104,943ms baseline - no change, reverted). THE REPAIR moved the composition to the host builtin dependency_resolution_facts, whose single dedup authority is v1_compiler.cli_run union_dedup_import_facts_reference_first. THE LAW IT CARRIES is the one the deleted interpreted spelling carried: reference-first order, first occurrence kept, exact identity on \{path, import_module, target_declared\}, and every target_declared: false row preserved because the partition-closure census judges unresolved targets. The interpreted union, its dedup, its per-path bucket and its accumulator are deleted rather than kept dormant - a dead 105-second implementation beside the live one is future ambiguity, not authority - and the executing consumer that holds the native arm to the law is test.claim.module_graph_edge_source_witness_test, which points the production function at a four-module fixture and asserts the union at identity grain in both directions. DISSOLVE-ON: the namespace terminal step retires the import producer, at which point this row's subject is the reference-only producer and the union disappears with it."
+// THE UNION IS NATIVE NOW; the name is retained because gunbc.stage0_partition_closure and
+// gunbc.repo_atlas_projection cite this row by symbol. HISTORY, all measured: #8044 fixed two
+// quadratics in the interpreted composition here - a linear membership scan, then a list_snoc_item
+// accumulator - taking it from an OOM at 396s to 173.6-177.6s. The remaining cost was never the host
+// fact production those notes blamed. Per term in one process on the live corpus:
+// import_resolution_facts_live 146ms, reference_derived_import_resolution_facts_live 5ms, union and
+// dedup of the two 104,943ms, all of dependency_resolution_facts_live 112,261ms. The two host leaves
+// are 151ms of 112,261ms, so caching them recovers nothing; the interpreted composition WAS the
+// cost. Three further hypotheses were refuted by execution: duplicate (importer, target) work in the
+// consuming index (raw == unique exactly, measured post-join at module grain with path-to-module
+// injectivity measured and zero dropped edges); the interpreter Map primitive (map_insert 38ms at
+// n=2000 and 68ms at n=8000 against a take-only subtractive control - 1.8x for 4x the items, not
+// quadratic, NOT claimed as a defect); and the bucket's own list_snoc_item (replaced with a cons,
+// 105,007ms against a 104,943ms baseline - no change, reverted). THE REPAIR moved the composition
+// to the host builtin dependency_resolution_facts, whose single dedup authority is
+// v1_compiler.cli_run union_dedup_import_facts_reference_first. THE LAW IT CARRIES is the deleted
+// interpreted spelling's: reference-first order, first occurrence kept, exact identity on {path,
+// import_module, target_declared}, every target_declared: false row preserved because the
+// partition-closure census judges unresolved targets. The interpreted union, dedup, per-path bucket
+// and accumulator are deleted rather than kept dormant - a dead 105-second implementation beside
+// the live one is ambiguity, not authority. The executing consumer holding the native arm to the
+// law is test.claim.module_graph_edge_source_witness_test, which points the production function at
+// a four-module fixture and asserts the union at identity grain in both directions. DISSOLVE-ON:
+// the namespace terminal step retires the import producer; then this row's subject is the
+// reference-only producer and the union disappears with it.
 
 fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
   module_declaration_facts(pool_roots: pool_roots)
@@ -107,24 +140,23 @@ fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List
 }
 
 // NATIVE-REALIZED, and the measurement is the whole argument. This body used to compose the two
-// producers below in the interpreter, with a union+dedup and an edge mapping that are now deleted.
-// Measured on the live corpus in ONE process, per term:
+// producers below in the interpreter, with a union+dedup and an edge mapping, now deleted. Measured
+// on the live corpus in ONE process, per term:
 //
 //   import_resolution_facts_live                      146ms
 //   reference_derived_import_resolution_facts_live      5ms
 //   union + dedup of the two                      104,943ms
 //   dependency_resolution_facts_live (all of it)  112,261ms
 //
-// So the corpus scans this composition was assumed to be dominated by are 151ms of 112,261ms, and
-// the interpreted composition is the entire cost — which is in turn effectively the whole of the
-// partition-closure census that consumes it. The repair is therefore to move the COMPOSITION, not
-// to cache the leaves: a snapshot join over the producers would have recovered 151ms and left the
-// census over its envelope.
+// The corpus scans assumed to dominate are 151ms of 112,261ms; the interpreted composition is the
+// entire cost, and effectively the whole partition-closure census that consumes it. So the repair
+// moves the COMPOSITION, not caches the leaves: a snapshot join over the producers would have
+// recovered 151ms and left the census over its envelope.
 //
-// The two producers stay exactly where they were. This is the edge-source seam
+// The two producers stay where they were. This is the edge-source seam
 // dependency_edge_source_migration_note designates for the namespace terminal step, and it must
-// remain one swappable producer pair rather than becoming a native black box — the native arm
-// composes the same two leaves through the same reference-first exact dedup on
+// remain one swappable producer pair rather than a native black box — the native arm composes the
+// same two leaves through the same reference-first exact dedup on
 // \{path, import_module, target_declared\}, keeping first-occurrence order and every
 // target_declared: false row, because the partition-closure census judges unresolved targets.
 fn dependency_resolution_facts_live(
@@ -406,7 +438,18 @@ fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
   any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
 }
 
-data edgeless_entry_has_no_special_arm_note: String = "There is deliberately NO edgeless-entry arm here, and the one this branch briefly carried (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added after the import strip and now deleted) was the absorbing fallback DESIGN 5 names verbatim: 'can't compute the affected set -> rerun the entire suite'. It answered affected=true for every entry with no outgoing edges, which after the strip was ~530 claim modules, silently and uncounted — so the deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor instead of as a diagnostic. It also was not answering an unknown: dependency_closure seeds with the entry itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own file is touched' is a real answer. The two states that arm conflated are split on the host twin (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges falls through to the closure; a producer that could not read or parse the file returns a typed AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one."
+// There is deliberately NO edgeless-entry arm here. The one this branch briefly carried
+// (entry_without_declared_edges_never_skips_note + module_declares_outgoing_dependency_edge, added
+// after the import strip, now deleted) was the absorbing fallback DESIGN 5 names verbatim: 'can't
+// compute the affected set -> rerun the entire suite'. It answered affected=true for every entry
+// with no outgoing edges — ~530 claim modules after the strip — silently and uncounted, so the
+// deficit's frequency was zero by construction while its cost surfaced as a 95-minute CI floor
+// instead of a diagnostic. Nor was it answering an unknown: dependency_closure seeds with the entry
+// itself, so an edgeless entry has the precise closure of the entry alone and 'affected iff my own
+// file is touched' is a real answer. The two states that arm conflated are split on the host twin
+// (cli_run.rs entry_file_touched_via_import_closure): a producer that looked and found no edges
+// falls through to the closure; one that could not read or parse the file returns a typed
+// AFFECTED-SET REFUSAL, because an unknown dependency set is not an empty one.
 
 fn entry_affected_by_touched_paths_excluding(
   entry_path: String,

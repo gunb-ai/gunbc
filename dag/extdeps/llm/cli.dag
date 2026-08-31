@@ -34,7 +34,15 @@ data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority
   }
 }
 
-data codex_cli_program_note: String = "The one program-token authority for the Codex CLI. Codex dispatch preflight and shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit: codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least sandbox that permits implementation; approval never makes blocked actions return to the agent instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted auth/config/session state. codex_cli_identity_contains is only a weak codex-cli substring marker — callers that must pin an exact codex-cli version use gunbc.package_delivery codex_runtime_version_identity_marker and codex_runtime_version_identity_satisfied; a bare substring cannot separate the pinned bundled runtime from an ambient PATH shim."
+// The one program-token authority for the Codex CLI. Codex dispatch preflight and
+// shape_codex_exec_argv both consume this row. The external non-interactive contract is explicit:
+// codex exec is the automation surface; --json emits JSONL progress; workspace-write is the least
+// sandbox that permits implementation; approval never makes blocked actions return to the agent
+// instead of hanging an unattended worker; CODEX_HOME selects the dedicated persisted
+// auth/config/session state. codex_cli_identity_contains is only a weak codex-cli substring marker
+// — callers that must pin an exact codex-cli version use gunbc.package_delivery
+// codex_runtime_version_identity_marker and codex_runtime_version_identity_satisfied; a bare
+// substring cannot separate the pinned bundled runtime from an ambient PATH shim.
 
 data codex_cli_program: String = "codex"
 
@@ -44,7 +52,25 @@ data codex_cli_identity_contains: String = "codex-cli"
 // The one program-token authority for claude code's CLI (DESIGN §3): shape_claude_invoke_argv's argv head and any caller preflighting claude-on-PATH consume THIS row, never a re-minted literal. (The `service claude.Invoke` transport argv below carries its own literal because the service DSL argv rows are self-contained transport realizations — that literal is the shell-transport handler's spelling of the same upstream binary, not a second authority.)
 data claude_cli_program: String = "claude"
 
-data claude_workspace_trust_note: String = "Claude code's per-user config is `~/.claude.json`; its `projects` map keys ABSOLUTE workspace paths to per-project rows, and `hasTrustDialogAccepted: true` on a row is the accepted workspace-trust dialog. Two facts proven by execution (srv1, 2026-07-23, roadmap-dispatch go-live): (1) `--dangerously-skip-permissions` does NOT cover the trust dialog — an unseeded workspace blocks interactively on first launch (same finding as ctrl's container entrypoint trust seed); (2) trust INHERITS from ancestor directories — seeding one parent root covers every child workspace spawned under it, so a dispatcher seeds its worktree ROOT once, not per-worktree. claude_workspace_trust_seeded is the pure classifier over (config text, project path): it locates the quoted path as a projects-map KEY (next non-ws char must be ':' — a path appearing as an array VALUE, e.g. in githubRepoPaths, is not a key; ALL occurrences are tried), delimits the entry with the JSON grammar's string-aware value parser (extdeps.languages.json.grammar — one grammar, both directions, DESIGN §4; a naive first-brace scan lies on entries carrying nested objects or brace-in-string values like mcpServers/lastSessionFirstPrompt), and requires the flag's own value to be the literal `true` (a `false` row or a `true` elsewhere in the entry does not count). Fail-closed: anything unparseable or absent classifies NOT seeded — the consumer refuses loudly instead of spawning a session that hangs on the dialog. Scaffold residue: the slice-and-scan inside the located entry dissolves into a projection over the parsed tree when the JSON grammar grows its forward ingest fold (JsonValue built by ingest, the ingest_yaml_source analogue)."
+// Claude code's per-user config is `~/.claude.json`; its `projects` map keys ABSOLUTE workspace
+// paths to per-project rows, and `hasTrustDialogAccepted: true` on a row is the accepted
+// workspace-trust dialog. Two facts proven by execution (srv1, 2026-07-23, roadmap-dispatch
+// go-live): (1) `--dangerously-skip-permissions` does NOT cover the trust dialog — an unseeded
+// workspace blocks interactively on first launch (same finding as ctrl's container entrypoint trust
+// seed); (2) trust INHERITS from ancestor directories — seeding one parent root covers every child
+// workspace spawned under it, so a dispatcher seeds its worktree ROOT once, not per-worktree.
+// claude_workspace_trust_seeded is the pure classifier over (config text, project path): it locates
+// the quoted path as a projects-map KEY (next non-ws char must be ':' — a path appearing as an
+// array VALUE, e.g. in githubRepoPaths, is not a key; ALL occurrences are tried), delimits the
+// entry with the JSON grammar's string-aware value parser (extdeps.languages.json.grammar — one
+// grammar, both directions, DESIGN §4; a naive first-brace scan lies on entries carrying nested
+// objects or brace-in-string values like mcpServers/lastSessionFirstPrompt), and requires the
+// flag's own value to be the literal `true` (a `false` row or a `true` elsewhere in the entry does
+// not count). Fail-closed: anything unparseable or absent classifies NOT seeded — the consumer
+// refuses loudly instead of spawning a session that hangs on the dialog. Scaffold residue: the
+// slice-and-scan inside the located entry dissolves into a projection over the parsed tree when the
+// JSON grammar grows its forward ingest fold (JsonValue built by ingest, the ingest_yaml_source
+// analogue).
 
 fn claude_trust_store_path(home: String) -> String {
   concat(home, "/.claude.json")
@@ -145,7 +171,18 @@ type CodexCliApprovalPolicy
   | CodexApprovalOnRequest
   | CodexApprovalNever
 
-data reasoning_effort_note: String = "review 44058. Reasoning effort is a CLOSED three-valued axis, not free text. It was a String on both provider surfaces at once — spliced into Codex's `-c model_reasoning_effort=\"…\"` config expression and passed as Claude's `--effort` value — so a typo reached the provider as a value it rejects at run time, a host-side failure standing where a construction refusal was available (DESIGN 5). One type, not two: gunbc.roadmap_dispatch_actuator.dispatch_applied_effort projects the selection kernel's applied_effort to both provider argv builders, which is the proven coincidence that earns a shared carrier rather than a bare alias (DESIGN 6); each provider keeps its own flag spelling in its own argv row, and reasoning_effort_label is the single place the wire word exists. It sits beside CodexCliSandbox and CodexCliApprovalPolicy, which model the sibling closed axes of the same cited surface the same way. If one provider ever admits a value the other does not, that is a new variant plus a per-provider label refusal — never a re-widening to String."
+// review 44058. Reasoning effort is a CLOSED three-valued axis, not free text. It was a String on
+// both provider surfaces at once — spliced into Codex's `-c model_reasoning_effort="…"` config
+// expression and passed as Claude's `--effort` value — so a typo reached the provider as a value it
+// rejects at run time, a host-side failure standing where a construction refusal was available
+// (DESIGN 5). One type, not two: gunbc.roadmap_dispatch_actuator.dispatch_applied_effort projects
+// the selection kernel's applied_effort to both provider argv builders, which is the proven
+// coincidence that earns a shared carrier rather than a bare alias (DESIGN 6); each provider keeps
+// its own flag spelling in its own argv row, and reasoning_effort_label is the single place the
+// wire word exists. It sits beside CodexCliSandbox and CodexCliApprovalPolicy, which model the
+// sibling closed axes of the same cited surface the same way. If one provider ever admits a value
+// the other does not, that is a new variant plus a per-provider label refusal — never a re-widening
+// to String.
 
 type ReasoningEffort
   = ReasoningLow
@@ -216,7 +253,19 @@ fn shape_codex_login_status_env_args(codex_home: String) -> List<String> {
   )
 }
 
-data codex_device_login_note: String = "THE ONLY LOGIN FLOW A REMOTE HOST CAN COMPLETE. Plain `codex login` starts a callback server and prints redirect_uri=http://localhost:1455/auth/callback; on a headless machine that redirect can never resolve from the operator's browser, because localhost is the server rather than their laptop. codex states this itself in its own final line: 'On a remote or headless machine? Use codex login --device-auth instead.' The device flow needs no inbound port and no browser on the host — a URL plus a short code, entered from anywhere — so it is the only flow a dashboard on another machine can usefully surface.\\n\\nCited against codex-cli 0.145.0, whose `login --help` lists exactly -c/--config, --with-api-key and --device-auth, with `status` and `help` as the subcommands. There is NO --json on login or on login status, so the URL and code are readable only from a text surface. A parser over that surface is therefore the honest realization rather than a shortcut: the richer structured source DESIGN would prefer does not exist to be read, and the receipt at dag/test/fixture/codex_device_login records the bytes the tool actually emits so the parser is written against them and not against memory."
+// THE ONLY LOGIN FLOW A REMOTE HOST CAN COMPLETE. Plain `codex login` starts a callback server and
+// prints redirect_uri=http://localhost:1455/auth/callback; on a headless machine that redirect can
+// never resolve from the operator's browser, because localhost is the server rather than their
+// laptop. codex states this itself in its own final line: 'On a remote or headless machine? Use
+// codex login --device-auth instead.' The device flow needs no inbound port and no browser on the
+// host — a URL plus a short code, entered from anywhere — so it is the only flow a dashboard on
+// another machine can usefully surface.\n\nCited against codex-cli 0.145.0, whose `login --help`
+// lists exactly -c/--config, --with-api-key and --device-auth, with `status` and `help` as the
+// subcommands. There is NO --json on login or on login status, so the URL and code are readable
+// only from a text surface. A parser over that surface is therefore the honest realization rather
+// than a shortcut: the richer structured source DESIGN would prefer does not exist to be read, and
+// the receipt at dag/test/fixture/codex_device_login records the bytes the tool actually emits so
+// the parser is written against them and not against memory.
 
 fn shape_codex_device_login_env_args_for_program(
   program: String,
@@ -230,7 +279,23 @@ fn shape_codex_device_login_env_args_for_program(
   ]
 }
 
-data codex_device_prompt_input_contract_note: String = "WHAT codex EMITS IS A codex FACT; WHO STRIPS IT IS NOT THIS MODULE'S BUSINESS. Written to a terminal, the device prompt wraps the URL and the one-time code in SGR sequences and the expiry note in a dim attribute. A parser reading that stream directly would extract a code carrying escape bytes, which the operator pastes and OpenAI rejects with no sign that the dashboard mangled it rather than the code being wrong.\\n\\nSo the parser's input is typed std.types.RenderedTerminalText — text with the control sequences already consumed — and this module names no transport that could provide it. An earlier draft explained here what a terminal multiplexer strips; that was a fact filed under the wrong authority, and it would have gone stale the moment a second capture path existed (operator, 2026-07-30). The brand is the seam: whatever renders a terminal grid produces the type, this parser consumes it, and the composition is admissible because the types line up rather than because either side was written knowing about the other.\\n\\nThe format itself is cited against codex-cli 0.145.0, whose `login --help` lists exactly -c/--config, --with-api-key and --device-auth with `status` and `help` as subcommands. There is NO --json on login or login status, so a text surface is the only surface: a parser over it is the honest realization rather than a shortcut, because the structured source DESIGN would prefer does not exist to be read. dag/test/fixture/codex_device_login holds the bytes the tool actually emits, in both renderings, so the parser is written against them and not against memory."
+// WHAT codex EMITS IS A codex FACT; WHO STRIPS IT IS NOT THIS MODULE'S BUSINESS. Written to a
+// terminal, the device prompt wraps the URL and the one-time code in SGR sequences and the expiry
+// note in a dim attribute. A parser reading that stream directly would extract a code carrying
+// escape bytes, which the operator pastes and OpenAI rejects with no sign that the dashboard
+// mangled it rather than the code being wrong.\n\nSo the parser's input is typed
+// std.types.RenderedTerminalText — text with the control sequences already consumed — and this
+// module names no transport that could provide it. An earlier draft explained here what a terminal
+// multiplexer strips; that was a fact filed under the wrong authority, and it would have gone stale
+// the moment a second capture path existed (operator, 2026-07-30). The brand is the seam: whatever
+// renders a terminal grid produces the type, this parser consumes it, and the composition is
+// admissible because the types line up rather than because either side was written knowing about
+// the other.\n\nThe format itself is cited against codex-cli 0.145.0, whose `login --help` lists
+// exactly -c/--config, --with-api-key and --device-auth with `status` and `help` as subcommands.
+// There is NO --json on login or login status, so a text surface is the only surface: a parser over
+// it is the honest realization rather than a shortcut, because the structured source DESIGN would
+// prefer does not exist to be read. dag/test/fixture/codex_device_login holds the bytes the tool
+// actually emits, in both renderings, so the parser is written against them and not against memory.
 
 type CodexDeviceLoginPrompt
   = CodexDeviceLoginReady {
@@ -242,7 +307,16 @@ type CodexDeviceLoginPrompt
 data codex_device_prompt_marker_url: String = "https://auth.openai.com/codex/device"
 data codex_device_prompt_marker_code_line: String = "Enter this one-time code"
 
-data codex_device_code_scan_note: String = "THE CODE IS POSITIONAL — the line after the marker — so reading it needs a state machine rather than a filter. codex prints 'Enter this one-time code (expires in 15 minutes)' and then the code on its own following line, so no predicate over a single line identifies it: the code itself is an opaque token with no distinguishing shape a matcher could key on, and keying on one (four characters, a hyphen, five characters) would silently stop finding it the day the format widens.\\n\\nThree states rather than an Optional accumulator, because 'have not seen the marker' and 'seen the marker, still waiting for a non-empty line' are different situations with different meanings for what comes next — collapsing them loses the ability to say WHICH failure the pane shows. A pane captured mid-render legitimately sits in AfterMarker, and reporting that as 'no code line' would be wrong about a prompt that is merely still arriving."
+// THE CODE IS POSITIONAL — the line after the marker — so reading it needs a state machine rather
+// than a filter. codex prints 'Enter this one-time code (expires in 15 minutes)' and then the code
+// on its own following line, so no predicate over a single line identifies it: the code itself is
+// an opaque token with no distinguishing shape a matcher could key on, and keying on one (four
+// characters, a hyphen, five characters) would silently stop finding it the day the format
+// widens.\n\nThree states rather than an Optional accumulator, because 'have not seen the marker'
+// and 'seen the marker, still waiting for a non-empty line' are different situations with different
+// meanings for what comes next — collapsing them loses the ability to say WHICH failure the pane
+// shows. A pane captured mid-render legitimately sits in AfterMarker, and reporting that as 'no
+// code line' would be wrong about a prompt that is merely still arriving.
 
 type CodexCodeScan
   = CodeScanSeeking

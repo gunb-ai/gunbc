@@ -84,15 +84,15 @@ type synthesizable here — 32 variants x 16 fields = 512 fields — costs **1.1
 predicting ~0.3 ms). **Arity is 670x short; breadth and depth together ~90x short.** Type size is
 true and insufficient; it is not the root cause.
 
-**The cost IS inside expression inference** (this was checked, because "ms per call" had been
-computed as module wall / call count, which would attribute item-level work to expressions):
+**The cost IS inside expression inference** (checked because "ms per call" had been computed as
+module wall / call count, which would attribute item-level work to expressions):
 
 ```
 gunbc.host_effect_realize   wall_us=259697135  rootIncl=259685651  OUTSIDE=11484 (0.004%)
 ```
 
-`sum(exclusive)` equals `sum(root inclusive)` exactly, which is the arithmetic identity for a call
-tree and confirms the partition neither double-counts nor loses recursion time.
+`sum(exclusive)` equals `sum(root inclusive)` exactly — the call-tree identity — so the partition
+neither double-counts nor loses recursion time.
 
 **Two factors, one still unidentified.** Per-call cost by environment:
 
@@ -103,9 +103,9 @@ gunbc.host_effect_realize (anc=15056) 113.3 ms/call     ~9x above that
 ```
 
 The earlier "environment size refuted" claim was scoped to the gap BETWEEN two real modules with
-near-identical environments, and stands at that scope. It does not license concluding environment
-is irrelevant: the fixture-to-corpus step is ~50x and is the larger factor. What remains genuinely
-open is the ~9x that separates this module from its control.
+near-identical environments, and stands there. It does not make environment irrelevant: the
+fixture-to-corpus step is ~50x and the larger factor. Genuinely open is the ~9x separating this
+module from its control.
 
 **The dominant rule is function-call inference.** Exclusive time bucketed by expression kind
 (exclusive, so a recursive parent does not absorb its children and read as dominant for sitting on
@@ -123,14 +123,14 @@ v1.compiler.infer                     2943ms  n=2958     995 us/call
 v1.compiler.parse                     1983ms  n=2334     850 us/call
 ```
 
-This is a matched-rule control, not a whole-module one: the same rule costs 560x more here than in
-ordinary compiler modules. Two consequences. `Match` is 1710ms, so the 86-arm nested match is
-**definitively not the cause** — it was suspected twice and is wrong twice. And a call site must
-both resolve a callee and unify each argument against the signature's types, which is exactly where
-a large type surface and a large visibility surface would MULTIPLY rather than add. That is why every
-one-dimensional fixture above was true and insufficient: the identity fixture has a type but no call
-site, and the breadth fixture varies fields but never unifies them against a signature. Neither can
-exercise the product.
+A matched-rule control, not a whole-module one: the same rule costs 560x more here than in ordinary
+compiler modules. Two consequences. `Match` is 1710ms, so the 86-arm nested match is
+**definitively not the cause** — suspected twice, wrong twice. And a call site must both resolve a
+callee and unify each argument against the signature's types — exactly where a large type surface
+and a large visibility surface would MULTIPLY rather than add. That is why every one-dimensional
+fixture above was true and insufficient: the identity fixture has a type but no call site; the
+breadth fixture varies fields but never unifies them against a signature. Neither exercises the
+product.
 
 **The `Other` bucket resolved to `RecordLit`, and callee resolution is NOT the cost.** Full
 `ExprData` enumeration plus direct timing of the two operations on the Call path:
@@ -145,25 +145,84 @@ v1.compiler.emit_rust :: sig_lookup    249ms  n=4191  59us/call  distinctNames=8
    -> gunbc.host_effect_realize does not appear in the table at all
 ```
 
-So **callee resolution is negligible**, which refutes the func-env DAG walk as the mechanism — the
+So **callee resolution is negligible**, refuting the func-env DAG walk as the mechanism — the
 candidate suggested by that structure's sharing factor (614 distinct nodes, 33,783 naive traversals).
-The repair it implied, indexing the environment, would have bought nothing.
+Its implied repair, indexing the environment, would have bought nothing.
 
 A single record literal — `ProvisionBuildCacheOnHost { node: n, catalog_id: id }`, two fields —
 costs **241 ms**. Both dominant kinds are places where a value is checked against a large
 coproduct's variant shapes, and neither involves callee lookup.
 
-**Current candidate, explicitly untested:** `global_variant_base` carries **14,309** entries (built
-from `symbol_index.global_bare`). If record-literal construction and call-argument unification
-consult it, both hot kinds share one mechanism and it is a corpus-sized population consulted for a
-local question. Stated as the next thing to measure, NOT as a finding: three candidates have now
-been proposed for this same 259s (func-env walk, type size, variant base) and the first two were
-measured false.
+**`global_variant_base` is refuted too (current-main measurement, 2026-08-31).** The measured
+subject was an explicit real importer of `gunbc.host_effect_realize`, resolved as a 720-module
+closure against a 3,716-module three-root name census. The instrument inferred the target three
+times in one process: a cold control, a timed warm control, and a timed warm arm whose locals map
+contained one non-colliding synthetic key for every real key. All three typed results were
+structurally equal. Doubling the population from 6,614 to 13,228 entries changed target inference
+from 7,725ms to 7,736ms: **+11ms, 0.14%**. The same-arm run before the padded arm prevents first-run
+warming from being attributed to population size. A corpus-sized variant population is therefore
+not the mechanism behind the historical 259s.
+
+The population and time are smaller than the 2026-08-16/17 receipt, so the 7.7s target time is
+scoped to this 720-module closure and says nothing about whether the historical full-population
+outlier remains. Current `--required-floor` no longer recreates the old subject: it indexed 4,436
+modules but reconciled a 99-module gate closure, never reaching `gunbc.host_effect_realize`;
+spelling the old command again would measure a different population. The explicit importer above
+was used so the target's presence was observed rather than inferred from the CLI flag. This
+measurement refutes candidate #3 because it varies that candidate within one fixed subject; it
+does **not** establish a current full-population target cost or assign any change in cost to an
+intervening revision.
+
+Producer invocation (the subject, not a retained timing implementation): `gunbc compile` over
+source roots `src/v1`, `dag`, and `src/v2`, entry
+`dag/test/claim/typed_argv_exec_realization_witness_test.dag`, target `dag`. A throwaway timer at
+`v1.compiler.infer::typecheck_module` around the `infer_items` call produced the three-arm line and
+was removed after structural equality was checked. This is therefore a one-off receipt under the
+same method as the 2026-08-16/17 study, not a permanently enrolled instrument; the named command
+re-derives the subject and the named symbol locates the timing seam.
+
+**The full-population outlier transformed (current-main measurement, 2026-08-31).** The current
+equivalent of the old whole-floor subject is `gunbc compile` with `dag` as the first source root,
+followed by `src/v1` and `src/v2`, no entry, target `dag`; the first root is semantic because
+no-entry compilation selects the primary-root population. It resolved 3,317 modules. Two complete
+runs put `gunbc.host_effect_realize` inference at 11.3s and 8.1s, not the historical 246–253s,
+while total reconciliation remained six to seven minutes. A second throwaway timer at the same
+`typecheck_module`/`infer_items` seam printed every module at or above 500ms. The largest was
+`v2.std.compilers.target_model` at 13.5s; `v2.compiler.translate` was 8.6s and
+`gunbc.host_effect_realize` 8.1s. All 20 printed modules together accounted for about 57s. There is
+no longer one inference module holding most reconciliation cost on this population; most of the
+remaining six-minute reconcile is outside these slow `infer_items` calls.
+
+This is the transformed outcome, not a declaration that reconciliation is cheap. A current-main
+phase partition on the same `dag`-primary population attributes the six-minute reconcile rather
+than leaving a subtraction: typecheck 264.9s, comprising `infer_items` 133.7s,
+`build_type_env` 61.0s, `build_module_context` 36.4s, and about 34s residual; outside typecheck,
+the import-binding identity rewire is 62.6s, parent rewire 8.5s, function-environment rewire 5.5s,
+and emit-info construction 12.8s. Producer: the no-entry three-root command named above, with a
+throwaway timer in `v1.compiler.infer::reconcile_with_census_extra` and aggregate timers at
+`typecheck_module`'s three named calls. The old partition cannot be carried forward: both the
+population and the runtime map carrier changed after it was measured.
+
+The new shape has no single inference outlier to optimize. Its preparation-shaped 97.4s
+(`build_type_env` plus `build_module_context`) converges on the separately measured per-scope
+closure-growth surface; coordinate with that authority rather than building a second cache beside
+it. The remaining inference question is distribution, not recurrence of the old singleton:
+133.7s aggregate against only about 57s in modules individually above 500ms.
+
+**The two apparent per-module copied-accumulator repairs are obsolete on current main.** Reading
+`merge_global_bare_variant_locals` and the immediately following
+`merge_kernel_variant_locals_low_priority` against the old flat-map realization suggests that
+`Rc::make_mut` copies the large base before the overlay. That premise stopped being true in
+`v1.runtime_rust` when the runtime container carrier migrated to persistent `im::HashMap`: a
+shared clone is O(1) structural sharing and an update copies one O(log n) node path. Rewriting
+either merge to scan and rebuild the global population would optimize a dissolved mechanism and
+can do strictly more work. No accumulator patch is landed; the carrier migration already removed
+the proposed copy class at its root.
 
 **Relation-level amplification is real but cheap where measured:** `sig_lookup` runs at amp 5.0-21.0
-(calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it simply
-costs too little to matter. That is evidence about this operation only; the RecordLit and
-call-argument paths have not been given the same census.
+(calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it just
+costs too little to matter. Evidence about this operation only; the RecordLit and call-argument
+paths have not had the same census.
 
 **Scope of `amp = 1.0`:** no expression NODE is re-entered. It says nothing about repeated type
 comparisons, generic substitutions, or name lookups across different expressions; a relation-level
@@ -194,8 +253,7 @@ The first was mine for four days. The fourth was an average asserted as a shape.
   reachability (DESIGN Class B: bare references resolve by pool coincidence), so 659 is an upper
   bound on what could be dropped, and acting on it would be the empty-observation narrow.
   `SelectionOff` (operator, 2026-08-13) forbids skipping consumers; it does **not** mandate
-  preparing every indexed module. Those are different axes and this document previously conflated
-  them.
+  preparing every indexed module — different axes, previously conflated in this document.
 - **cross-process duplication — unmeasured.** srv2 ran 7 concurrent `claim_executor` CI processes.
   One inference per module *within one fold* says nothing about once per commit / run / host.
 - **artifact non-determinism.** Same binary, same arm, three processes: identical byte counts,
@@ -221,6 +279,6 @@ The first was mine for four days. The fourth was an average asserted as a shape.
   invisible to the printing thread; `Vec` aliased to `im::Vector` in a static; and an
   unmemoized walk over a shared DAG that **tripled the run it was measuring**. The first two
   produced wrong output; the last four failed loudly — compile error, explicit `ABSENT` guard,
-  or an obvious slowdown. The guards are why none contaminated a finding.
+  or an obvious slowdown — which is why none contaminated a finding.
 - `perf` is present on srv2 but `perf_event_paranoid=4`; lowering it needs root on a host
   running 22 CI processes. Not done.
