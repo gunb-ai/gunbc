@@ -217,20 +217,47 @@ fn slice_artifact(linger_enabled: Bool) -> FleetConvergePlanArtifact? {
   }
 }
 
+// FOUR FACTS, FOUR CLAIMS. Conjoined, a red named none of them: the row count, the effect the row
+// selects, the body marker and the apply shell fail for different reasons and want different fixes.
+fn slice_rows(linger_enabled: Bool) -> Int {
+  match slice_artifact(linger_enabled: linger_enabled) {
+    Absent => 0 - 1
+    Present { value: a } => length(scheduled_rows_list(scheduled: a.spark_serving_typed_actions))
+  }
+}
+
+test fn linger_slice_plans_exactly_one_row_when_linger_is_off() -> Bool {
+  slice_rows(linger_enabled: false) == 1
+}
+
 test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
   match slice_artifact(linger_enabled: false) {
     Absent => false
     Present { value: artifact } =>
-      length(scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)) == 1
-        && match spark_serving_frozen_linger_effect(row: scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions)[0]) {
-          Present { value: e } => e == EnableLingerForOwnAccount
-          Absent => false
-        }
-        && string_contains(
-          s: artifact.plan_body,
-          pattern: "# spark-serving-typed-actions:",
-        )
-        && !string_contains(s: artifact.apply_shell, pattern: "loginctl")
+      match scheduled_rows_list(scheduled: artifact.spark_serving_typed_actions).first() {
+        Absent => false
+        Present { value: row } =>
+          match spark_serving_frozen_linger_effect(row: row) {
+            Present { value: e } => e == EnableLingerForOwnAccount
+            Absent => false
+          }
+      }
+  }
+}
+
+test fn linger_slice_plan_body_names_its_typed_actions() -> Bool {
+  match slice_artifact(linger_enabled: false) {
+    Absent => false
+    Present { value: artifact } =>
+      string_contains(s: artifact.plan_body, pattern: "# spark-serving-typed-actions:")
+  }
+}
+
+test fn linger_slice_apply_shell_never_runs_loginctl() -> Bool {
+  match slice_artifact(linger_enabled: false) {
+    Absent => false
+    Present { value: artifact } =>
+      !string_contains(s: artifact.apply_shell, pattern: "loginctl")
   }
 }
 
