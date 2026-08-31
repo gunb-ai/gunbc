@@ -380,28 +380,50 @@ type SparkServingAcquiredCoverageReceipt sole_constructor {
   prerequisite_refused: Int
 }
 
-fn spark_serving_capture_is_executed(c: SparkServingProbeLegCapture) -> Bool {
-  match c.outcome {
-    SparkServingProbeExecuted { result: _ } => true
-    SparkServingProbeTransportRefused { cause: _ } => false
-    SparkServingProbePrerequisiteRefused { cause: _ } => false
-  }
+// THE OUTCOME CENSUS IS ONE TRAVERSAL, NOT ONE PER COUNTER.
+//
+// This stood as three Bool predicates, each an exhaustive match over the same closed outcome, each
+// consumed by its own `length(filter(...))` over the same capture list. That is three passes and
+// three matches to answer one question -- the copied-accumulator shape DESIGN section 6 says is
+// always fixed regardless of the realized n, precisely because n is not a time-stable fact and this
+// list grows with the probe roster. One fold answers all three, and the match stays exhaustive so a
+// fourth outcome arm still fails to compile rather than being silently counted as neither.
+type SparkServingProbeOutcomeCensus {
+  executed: Int
+  transport_refused: Int
+  prerequisite_refused: Int
 }
 
-fn spark_serving_capture_is_transport_refused(c: SparkServingProbeLegCapture) -> Bool {
-  match c.outcome {
-    SparkServingProbeTransportRefused { cause: _ } => true
-    SparkServingProbeExecuted { result: _ } => false
-    SparkServingProbePrerequisiteRefused { cause: _ } => false
-  }
-}
-
-fn spark_serving_capture_is_prerequisite_refused(c: SparkServingProbeLegCapture) -> Bool {
-  match c.outcome {
-    SparkServingProbePrerequisiteRefused { cause: _ } => true
-    SparkServingProbeExecuted { result: _ } => false
-    SparkServingProbeTransportRefused { cause: _ } => false
-  }
+fn spark_serving_outcome_census_of(
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingProbeOutcomeCensus {
+  fold(
+    captures,
+    init: SparkServingProbeOutcomeCensus {
+      executed: 0,
+      transport_refused: 0,
+      prerequisite_refused: 0,
+    },
+    f: fn(acc, c) {
+      match c.outcome {
+        SparkServingProbeExecuted { result: _ } => SparkServingProbeOutcomeCensus {
+          executed: acc.executed + 1,
+          transport_refused: acc.transport_refused,
+          prerequisite_refused: acc.prerequisite_refused,
+        }
+        SparkServingProbeTransportRefused { cause: _ } => SparkServingProbeOutcomeCensus {
+          executed: acc.executed,
+          transport_refused: acc.transport_refused + 1,
+          prerequisite_refused: acc.prerequisite_refused,
+        }
+        SparkServingProbePrerequisiteRefused { cause: _ } => SparkServingProbeOutcomeCensus {
+          executed: acc.executed,
+          transport_refused: acc.transport_refused,
+          prerequisite_refused: acc.prerequisite_refused + 1,
+        }
+      }
+    },
+  )
 }
 
 // Sealed to the acquired-provenance mint, so a receipt claiming coverage cannot be authored beside a
@@ -416,14 +438,15 @@ fn spark_serving_acquisition_receipt_of(
     ),
   ]
 {
+  let census = spark_serving_outcome_census_of(captures: txn.captures)
   SparkServingAcquiredCoverageReceipt {
     required: length(spark_serving_required_probe_legs()),
     captured: length(txn.captures),
     missing: map(spark_serving_transaction_missing_legs(txn: txn), k => k),
     duplicated: map(spark_serving_transaction_duplicated_legs(txn: txn), k => k),
-    executed: length(filter(txn.captures, c => spark_serving_capture_is_executed(c: c))),
-    transport_refused: length(filter(txn.captures, c => spark_serving_capture_is_transport_refused(c: c))),
-    prerequisite_refused: length(filter(txn.captures, c => spark_serving_capture_is_prerequisite_refused(c: c))),
+    executed: census.executed,
+    transport_refused: census.transport_refused,
+    prerequisite_refused: census.prerequisite_refused,
   }
 }
 
