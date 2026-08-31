@@ -28,9 +28,6 @@ pub use v1_stage0_v1_artifact::*;
 #[path = "../../stage0/src/gunbc_rust_source_type_bindings.rs"]
 pub mod gunbc_rust_source_type_bindings;
 #[rustfmt::skip]
-#[path = "../../stage0/src/gunbc_structural_realization_bindings.rs"]
-pub mod gunbc_structural_realization_bindings;
-#[rustfmt::skip]
 #[path = "../../stage0/src/v1_compiler_coercion.rs"]
 pub mod v1_compiler_coercion;
 #[rustfmt::skip]

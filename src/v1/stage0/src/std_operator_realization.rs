@@ -148,29 +148,6 @@ pub fn ordering_test_for(op: BinOp) -> Option<Rc<OrderingTest>> {
     }
 }
 
-pub fn binop_is_equality(op: BinOp) -> bool {
-    match op.clone() {
-        BinOp::Eq => true,
-        BinOp::Ne => true,
-        BinOp::Add => false,
-        BinOp::Sub => false,
-        BinOp::Mul => false,
-        BinOp::Div => false,
-        BinOp::Mod => false,
-        BinOp::Lt => false,
-        BinOp::Gt => false,
-        BinOp::Le => false,
-        BinOp::Ge => false,
-        BinOp::And => false,
-        BinOp::Or => false,
-        BinOp::NullCoalesce => false,
-    }
-}
-
-pub fn binop_is_ordering(op: BinOp) -> bool {
-    (ordering_test_for(op.clone()) != std::option::Option::None)
-}
-
 pub fn binop_label(op: BinOp) -> String {
     match op.clone() {
         BinOp::Add => "+".to_string(),
@@ -195,14 +172,14 @@ pub fn binop_label(op: BinOp) -> String {
 pub enum OperatorRealizationRefusal {
     NoStructuralOperationDeclared {
         declaration: Rc<DeclarationRef>,
-        operator: String,
+        operator: BinOp,
     },
     StructuralOrderingDuplicated {
         declaration: Rc<DeclarationRef>,
         row_count: i64,
     },
     OperandIdentityUnavailableAt {
-        operator: String,
+        operator: BinOp,
         facts: Rc<OperandShapeFacts>,
     },
 }
@@ -226,9 +203,9 @@ pub enum OperatorRealization {
 
 pub fn operator_realization_refusal_message(cause: Rc<OperatorRealizationRefusal>) -> String {
     match (*cause.clone()).clone() {
-    OperatorRealizationRefusal::NoStructuralOperationDeclared { declaration: d, operator: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), o.clone()), "` on structural operand ".to_string()), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation".to_string()),
+    OperatorRealizationRefusal::NoStructuralOperationDeclared { declaration: d, operator: o, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), binop_label(o.clone())), "` on structural operand ".to_string()), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation".to_string()),
     OperatorRealizationRefusal::StructuralOrderingDuplicated { declaration: d, row_count: n, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: structural ordering for ".to_string(), d.module_path.clone()), ".".to_string()), d.decl_name.clone()), " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)".to_string()),
-    OperatorRealizationRefusal::OperandIdentityUnavailableAt { operator: o, facts: f, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), o.clone()), "` on an operand whose declaration could not be read".to_string()), " (authored `".to_string()), f.authored_name.clone()), "`, connective ".to_string()), f.connective.clone()), ", children ".to_string()), (f.child_count.clone()).to_string()), ", resolved ".to_string()), if f.resolved.clone() {
+    OperatorRealizationRefusal::OperandIdentityUnavailableAt { operator: o, facts: f, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("operator realization: host operator `".to_string(), binop_label(o.clone())), "` on an operand whose declaration could not be read".to_string()), " (authored `".to_string()), f.authored_name.clone()), "`, connective ".to_string()), f.connective.clone()), ", children ".to_string()), (f.child_count.clone()).to_string()), ", resolved ".to_string()), if f.resolved.clone() {
         "yes".to_string()
     } else {
         "no".to_string()
@@ -254,55 +231,55 @@ pub fn operator_realization_for(
             BinOp::NullCoalesce => Rc::new(OperatorRealization::HostOperator),
             BinOp::Lt => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Gt => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Le => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Ge => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Add => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Sub => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Mul => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Div => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
             BinOp::Mod => Rc::new(OperatorRealization::OperatorRealizationRefused {
                 cause: Rc::new(OperatorRealizationRefusal::OperandIdentityUnavailableAt {
-                    operator: binop_label(op.clone()),
+                    operator: op.clone(),
                     facts: f.clone(),
                 }),
             }),
@@ -345,7 +322,7 @@ pub fn structural_arithmetic_refusal(
     Rc::new(OperatorRealization::OperatorRealizationRefused {
         cause: Rc::new(OperatorRealizationRefusal::NoStructuralOperationDeclared {
             declaration: declaration.clone(),
-            operator: binop_label(op.clone()),
+            operator: op.clone(),
         }),
     })
 }
