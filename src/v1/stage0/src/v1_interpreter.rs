@@ -3500,10 +3500,16 @@ impl ExecutionMode {
 /// preparing a scope, not running a claim.
 ///
 /// The naive "fresh context per claim so witnesses cannot contaminate each other" rebuilt ALL
-/// of this per claim: on the required floor, 9,573 reconstructions of maps that only 1,155
-/// distinct scopes can differ in — the entry-major cost shape reproduced one layer below the
-/// compiler after the compiler's own copy was removed. Fresh state per claim is correct; fresh
-/// INDEXES per claim is the same defect wearing the word "fresh".
+/// of this per claim — the entry-major cost shape reproduced one layer below the compiler after
+/// the compiler's own copy was removed. Fresh state per claim is correct; fresh INDEXES per claim
+/// is the same defect wearing the word "fresh".
+///
+/// THE SIZE OF THAT DEFECT IS NOT WRITTEN HERE, IT IS READ FROM THE INSTRUMENT. The required
+/// floor prints `floor: N scope construction(s) for M distinct scope(s)`, and the two figures
+/// differing IS the defect; equal means each scope was built exactly once. An earlier revision of
+/// this comment carried one reading of that line as a literal pair, which then rotted in place
+/// while both ends stayed untouched and was later read as a present-tense measurement — DESIGN
+/// §6, name the instrument, never transcribe its output. Re-derive from a run, not from here.
 pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
