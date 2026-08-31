@@ -153,12 +153,71 @@ A single record literal — `ProvisionBuildCacheOnHost { node: n, catalog_id: id
 costs **241 ms**. Both dominant kinds are places where a value is checked against a large
 coproduct's variant shapes, and neither involves callee lookup.
 
-**Current candidate, explicitly untested:** `global_variant_base` carries **14,309** entries (built
-from `symbol_index.global_bare`). If record-literal construction and call-argument unification
-consult it, both hot kinds share one mechanism: a corpus-sized population consulted for a local
-question. Stated as the next thing to measure, NOT as a finding: three candidates have been
-proposed for this same 259s (func-env walk, type size, variant base) and the first two measured
-false.
+**`global_variant_base` is refuted too (current-main measurement, 2026-08-31).** The measured
+subject was an explicit real importer of `gunbc.host_effect_realize`, resolved as a 720-module
+closure against a 3,716-module three-root name census. The instrument inferred the target three
+times in one process: a cold control, a timed warm control, and a timed warm arm whose locals map
+contained one non-colliding synthetic key for every real key. All three typed results were
+structurally equal. Doubling the population from 6,614 to 13,228 entries changed target inference
+from 7,725ms to 7,736ms: **+11ms, 0.14%**. The same-arm run before the padded arm prevents first-run
+warming from being attributed to population size. A corpus-sized variant population is therefore
+not the mechanism behind the historical 259s.
+
+The population and time are smaller than the 2026-08-16/17 receipt, so the 7.7s target time is
+scoped to this 720-module closure and says nothing about whether the historical full-population
+outlier remains. Current `--required-floor` no longer recreates the old subject: it indexed 4,436
+modules but reconciled a 99-module gate closure, never reaching `gunbc.host_effect_realize`;
+spelling the old command again would measure a different population. The explicit importer above
+was used so the target's presence was observed rather than inferred from the CLI flag. This
+measurement refutes candidate #3 because it varies that candidate within one fixed subject; it
+does **not** establish a current full-population target cost or assign any change in cost to an
+intervening revision.
+
+Producer invocation (the subject, not a retained timing implementation): `gunbc compile` over
+source roots `src/v1`, `dag`, and `src/v2`, entry
+`dag/test/claim/typed_argv_exec_realization_witness_test.dag`, target `dag`. A throwaway timer at
+`v1.compiler.infer::typecheck_module` around the `infer_items` call produced the three-arm line and
+was removed after structural equality was checked. This is therefore a one-off receipt under the
+same method as the 2026-08-16/17 study, not a permanently enrolled instrument; the named command
+re-derives the subject and the named symbol locates the timing seam.
+
+**The full-population outlier transformed (current-main measurement, 2026-08-31).** The current
+equivalent of the old whole-floor subject is `gunbc compile` with `dag` as the first source root,
+followed by `src/v1` and `src/v2`, no entry, target `dag`; the first root is semantic because
+no-entry compilation selects the primary-root population. It resolved 3,317 modules. Two complete
+runs put `gunbc.host_effect_realize` inference at 11.3s and 8.1s, not the historical 246–253s,
+while total reconciliation remained six to seven minutes. A second throwaway timer at the same
+`typecheck_module`/`infer_items` seam printed every module at or above 500ms. The largest was
+`v2.std.compilers.target_model` at 13.5s; `v2.compiler.translate` was 8.6s and
+`gunbc.host_effect_realize` 8.1s. All 20 printed modules together accounted for about 57s. There is
+no longer one inference module holding most reconciliation cost on this population; most of the
+remaining six-minute reconcile is outside these slow `infer_items` calls.
+
+This is the transformed outcome, not a declaration that reconciliation is cheap. A current-main
+phase partition on the same `dag`-primary population attributes the six-minute reconcile rather
+than leaving a subtraction: typecheck 264.9s, comprising `infer_items` 133.7s,
+`build_type_env` 61.0s, `build_module_context` 36.4s, and about 34s residual; outside typecheck,
+the import-binding identity rewire is 62.6s, parent rewire 8.5s, function-environment rewire 5.5s,
+and emit-info construction 12.8s. Producer: the no-entry three-root command named above, with a
+throwaway timer in `v1.compiler.infer::reconcile_with_census_extra` and aggregate timers at
+`typecheck_module`'s three named calls. The old partition cannot be carried forward: both the
+population and the runtime map carrier changed after it was measured.
+
+The new shape has no single inference outlier to optimize. Its preparation-shaped 97.4s
+(`build_type_env` plus `build_module_context`) converges on the separately measured per-scope
+closure-growth surface; coordinate with that authority rather than building a second cache beside
+it. The remaining inference question is distribution, not recurrence of the old singleton:
+133.7s aggregate against only about 57s in modules individually above 500ms.
+
+**The two apparent per-module copied-accumulator repairs are obsolete on current main.** Reading
+`merge_global_bare_variant_locals` and the immediately following
+`merge_kernel_variant_locals_low_priority` against the old flat-map realization suggests that
+`Rc::make_mut` copies the large base before the overlay. That premise stopped being true in
+`v1.runtime_rust` when the runtime container carrier migrated to persistent `im::HashMap`: a
+shared clone is O(1) structural sharing and an update copies one O(log n) node path. Rewriting
+either merge to scan and rebuild the global population would optimize a dissolved mechanism and
+can do strictly more work. No accumulator patch is landed; the carrier migration already removed
+the proposed copy class at its root.
 
 **Relation-level amplification is real but cheap where measured:** `sig_lookup` runs at amp 5.0-21.0
 (calls per distinct callee name) across the corpus, so the same lookup IS recomputed — it just

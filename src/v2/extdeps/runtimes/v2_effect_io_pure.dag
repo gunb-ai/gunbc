@@ -21,6 +21,7 @@ import v2.std.diagnostic {
   Rejected,
   Unavailable,
   diagnostics_singleton,
+  invariant_port_locus,
   node_locus,
   outcome_rejected
 }
@@ -370,7 +371,7 @@ fn effect_io_pure_read_write_roundtrip(
   backend: EffectIoResourceBackend,
   payload: RuntimeValue,
   locator_arg: RuntimeValue
-) -> Bool {
+) -> Witness<Bool> {
   match effect_io_pure_locator_from_args(
     backend: backend,
     args: Cons { head: locator_arg, tail: Empty }
@@ -382,7 +383,23 @@ fn effect_io_pure_read_write_roundtrip(
         payload: payload,
         locator_arg: locator_arg
       )
-    Violates { diagnostic: _ } => false
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+// The two Unavailable arms below carry the reason runtime_value_equality could not decide the
+// comparison. v2.std.runtime declares that this verdict is never collapsed to a decidable answer
+// and deliberately supplies no Bool adapter; v2.lens.undecidable_verdict_collapse refuses such an
+// arm at compile. The reason travels out as a located Diagnostic and is collapsed once, at the
+// harness boundary, where the declared residual is recorded.
+fn effect_io_pure_equality_undecided_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(
+      port: ^effect_io_pure_roundtrip_equality,
+      invariant: ^runtime_value_equality_decides
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
@@ -391,7 +408,7 @@ fn effect_io_pure_roundtrip_through_store(
   locator: EffectIoResourceLocator,
   payload: RuntimeValue,
   locator_arg: RuntimeValue
-) -> Bool {
+) -> Witness<Bool> {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
   let bundle0 = effect_io_pure_handler_binding(store: store0)
   let write_args = Cons { head: locator_arg, tail: Cons { head: payload, tail: Empty } }
@@ -399,23 +416,31 @@ fn effect_io_pure_roundtrip_through_store(
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
     Accepted { value: written, diagnostics: None } =>
-      if written == payload {
-        let store1 = effect_io_pure_apply_write(
-          store: store0,
-          locator: locator,
-          payload: written
-        )
-        let bundle1 = effect_io_pure_handler_binding(store: store1)
-        let read_args = Cons { head: locator_arg, tail: Empty }
-        let read_request = effect_io_pure_read_request(args: read_args)
-        let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
-        match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
-          Accepted { value: read_back, diagnostics: None } => read_back == written
-          _ => false
-        }
-      } else {
-        false
+      match runtime_value_equality(a: written, b: payload) {
+        RuntimeValuesEqual =>
+          let store1 = effect_io_pure_apply_write(
+            store: store0,
+            locator: locator,
+            payload: written
+          )
+          let bundle1 = effect_io_pure_handler_binding(store: store1)
+          let read_args = Cons { head: locator_arg, tail: Empty }
+          let read_request = effect_io_pure_read_request(args: read_args)
+          let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
+          match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
+            Accepted { value: read_back, diagnostics: None } =>
+              match runtime_value_equality(a: read_back, b: written) {
+                RuntimeValuesEqual => Holds { value: true }
+                RuntimeValuesDiffer => Holds { value: false }
+                RuntimeValueEqualityUnavailable { reason: r } =>
+                  Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
+              }
+            _ => Holds { value: false }
+          }
+        RuntimeValuesDiffer => Holds { value: false }
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          Violates { diagnostic: effect_io_pure_equality_undecided_diagnostic(reason: r) }
       }
-    _ => false
+    _ => Holds { value: false }
   }
 }

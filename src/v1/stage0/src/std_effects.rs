@@ -263,7 +263,7 @@ pub fn derive_effect_shape(
             Some(p) => Rc::new(EffectShape::DeleteEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect {
+            std::option::Option::None => Rc::new(EffectShape::CreateEffect {
                 cause: Rc::new(CreateCause::KeylessFallback {
                     method: HttpMethod::DELETE,
                 }),
@@ -273,7 +273,7 @@ pub fn derive_effect_shape(
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect {
+            std::option::Option::None => Rc::new(EffectShape::CreateEffect {
                 cause: Rc::new(CreateCause::KeylessFallback {
                     method: HttpMethod::PUT,
                 }),
@@ -283,7 +283,7 @@ pub fn derive_effect_shape(
             Some(p) => Rc::new(EffectShape::UpsertEffect {
                 key_source: Rc::new(KeySource::PathParam { param: p.clone() }),
             }),
-            None => Rc::new(EffectShape::CreateEffect {
+            std::option::Option::None => Rc::new(EffectShape::CreateEffect {
                 cause: Rc::new(CreateCause::KeylessFallback {
                     method: HttpMethod::PATCH,
                 }),

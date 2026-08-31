@@ -156,10 +156,7 @@ pub use materialization_provider_consumer::{
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, faithful_probe_unavailable_gap,
-    lookup_verified_probe as cross_process_lookup_verified_probe, probe as cross_process_probe,
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, supports_faithful_probe,
-    transform_content_digest, write as cross_process_write, CacheLookupResult, CacheProbeResult,
+    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
     CacheRejectReason, CachedResolvedGraph,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
@@ -22313,6 +22310,19 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // rename+modify would fail-closed on its unavoidable line-1 change. An in-place
     // modify (`diff --git a/PATH b/PATH`, no `rename to`) still touches line 1 with no
     // added-side entry, so it stays fail-closed as before.
+    //
+    // DECLARED GAP (DESIGN §4b(3)) — copy destinations are NOT enrolled. A `copy to NEW`
+    // destination is new-at-path by the same argument as `rename to`: every declaration at
+    // NEW is a newly qualified identity that has never executed under that spelling. It is
+    // not matched here, so such a file would enroll only the declarations the copy's own
+    // edited lines reach. POPULATION: empty — the floor's observation is
+    // `extdeps.git`'s `git.Core.DiffUnified0` (`git diff -U0 <range>`), and git detects copies
+    // only under `-C`/`--find-copies` or `diff.renames=copies`, neither of which this
+    // argv nor the repo config sets. TRIGGER: copy detection becoming reachable — the argv
+    // gaining `-C`, or `diff.renames` being set to `copies` at any config scope — at which
+    // point the copy destination must be admitted here alongside `rename to`. No branch is
+    // written for it today: an arm no diff can reach is permanently untested and would be
+    // cited as coverage it does not provide.
     let mut added = HashSet::new();
     let mut minus_is_null = false;
     for line in diff_text.lines() {
@@ -23043,6 +23053,95 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
                 && edits.edited_test_fns.is_empty()
                 && edits.touched_entry_files.is_empty(),
             "non-.dag-only diff must produce an empty .dag frontier, got {edits:?}"
+        );
+    }
+
+    // THE RENAME DESTINATION'S DECLARATION SET, ENROLLED WHOLE.
+    //
+    // DISCRIMINATING RED, and it is a real receipt rather than a constructed one: this is
+    // gunbc#9823 verbatim. It renamed the MachineShape construction wall into `v2.test.` to
+    // enroll it in the required floor. Git detected the rename and printed two hunks — the
+    // module line, and the removed trailing blank line at EOF — so line attribution reached
+    // only the LAST declaration in the file. Exactly one of the two sibling `test fn`s was
+    // selected as a changed witness, and the one missed was the wall's DISCRIMINATING RED.
+    // Confirmed against that run's own disposition receipt (run 33413900349, artifact
+    // `required_floor_disposition.tsv`): `gate_red_synthetic_machine_shape_call` carried the
+    // ordinary `planned` disposition, not `planned_as_changed_witness`.
+    //
+    // Before the added-path declaration-set rule in `floor_diff_edits_from_line_ranges` this
+    // asserted 1 of 2 and failed here.
+    #[test]
+    fn rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one() {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let declared: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
+        assert!(
+            declared.len() >= 2
+                && declared.contains("gate_red_synthetic_machine_shape_call")
+                && declared.contains("gate_green_synthetic_shape_from_catalog_call"),
+            "fixture drift: this control is about a file with TWO sibling test fns, got {declared:?}"
+        );
+
+        // gunbc#9823's own `git diff -U0` output for the renamed entry, verbatim.
+        let diff = "\
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+similarity index 97%
+rename from dag/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+--- a/dag/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+@@ -1 +1 @@
+-module test.claim.machine_shape_construction_wall
++module v2.test.claim.machine_shape_construction_wall
+@@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
+-
+";
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, diff)
+            .expect("a rename-destination diff must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .edited_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled, declared,
+            "every test decl at a rename destination is a NEW qualified identity and must be a \
+             changed witness; the diff only printed the hunks that differ"
+        );
+    }
+
+    // THE OTHER DIRECTION OF THE SAME RULE, so the fix above cannot be satisfied by widening.
+    // An IN-PLACE modify (no `rename to`, no `/dev/null` old side) establishes no fresh
+    // declaration set: its identities already existed under these exact spellings, so only the
+    // declarations the diff actually reached are changed witnesses. This reds if the added-path
+    // rule is ever applied unconditionally.
+    #[test]
+    fn in_place_modify_enrolls_only_the_touched_test_decl() {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let green_line = content
+            .lines()
+            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
+            .expect("green sibling declared")
+            + 1;
+        let diff = unified_diff_for_line(dest, green_line as i64 + 1);
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("an in-place modify must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .edited_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "an in-place edit inside one declaration enrolls that declaration and no sibling"
         );
     }
 
@@ -36259,6 +36358,33 @@ pub fn prepare_repository_closure(
 /// CONSTRUCTION IS PROJECTION ONLY: no source read, no parse, no resolve, no typecheck. The
 /// module population is selected from what preparation already resolved and the item registry
 /// is filtered by `ItemInfo.module_name` to the same population.
+/// The three constructions inside one `claim_scope_for`, timed separately.
+///
+/// Summed over the fold by the required floor runner and reported as `[floor-scope-split]`
+/// beside `[floor-scope-cost]`. Nanoseconds, per construction; the caller accumulates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScopeBuildSplit {
+    /// The precedence ORDER: the entry module's flat import closure from `func_env.parents`,
+    /// then the transitive reference closure. This is the part that is scope-specific by
+    /// definition — the order IS the scope's identity — so a view can memoize it but never
+    /// share one across scopes.
+    pub order_nanos: u128,
+    /// The item-registry UNION over the ordered module population, first write wins.
+    pub registry_nanos: u128,
+    /// `build_scope_indexes_with_module_order` — the interpreter's `fn_nodes` /
+    /// import-binding / service-op maps, rebuilt per scope by re-reading every item of every
+    /// module in the order.
+    pub indexes_nanos: u128,
+}
+
+impl ScopeBuildSplit {
+    pub fn accumulate(&mut self, other: &ScopeBuildSplit) {
+        self.order_nanos += other.order_nanos;
+        self.registry_nanos += other.registry_nanos;
+        self.indexes_nanos += other.indexes_nanos;
+    }
+}
+
 pub struct PreparedClaimScope {
     /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
     /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
@@ -36298,6 +36424,23 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: usize,
+    /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
+    /// grain the terminal correction has to choose between. The floor already reports what a
+    /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
+    /// says whether the cost is the closure ORDER WALK, the item-registry UNION, or the
+    /// interpreter INDEX rebuild — three different constructions with three different views
+    /// replacing them. Deciding the view's shape from the resident-byte delta would be picking
+    /// a remedy from a quantity that cannot distinguish the candidates.
+    pub build_split: ScopeBuildSplit,
+}
+
+impl PreparedClaimScope {
+    /// The scope's answers at identity grain — see
+    /// [`v1_interpreter::PreparedScopeIndexes::resolution_fingerprint`].
+    #[cfg(any(test, feature = "interp_test_witness"))]
+    pub fn resolution_fingerprint(&self) -> Vec<String> {
+        self.indexes.resolution_fingerprint()
+    }
 }
 
 /// Project the exact scope for one entry file out of the prepared repository.
@@ -36357,6 +36500,158 @@ const FLOOR_PREPARED_SUBJECTS_PER_PROCESS: usize = 2;
 thread_local! {
     static REFERENCE_CLOSURE_INDEXES: std::cell::RefCell<Vec<(String, Rc<ReferenceClosureIndex>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// PER-SUBJECT MODULE-FRAGMENT MEMO for the scope-index fold, keyed exactly as
+    /// `REFERENCE_CLOSURE_INDEXES` is — by the prepared subject's own digest, so a fragment a
+    /// scope consumes was derived from the graph that scope is over, by construction rather
+    /// than by a module-name coincidence across two subjects. Bounded by the same
+    /// `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` population, and holding at most one fragment per
+    /// module of that subject: the entries a scope used to rebuild per scope, held once.
+    static SCOPE_FRAGMENT_CACHES: std::cell::RefCell<
+        Vec<(String, Rc<v1_interpreter::ScopeFragmentCache>)>,
+    > = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// PER-SUBJECT ORDER INDEX for the scope precedence walk, keyed by the prepared subject's
+    /// digest exactly as its two neighbours are.
+    static SCOPE_ORDER_INDEXES: std::cell::RefCell<Vec<(String, Rc<ScopeOrderIndex>)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// WHAT EACH MODULE REACHES, held once per prepared subject instead of rebuilt once per scope.
+///
+/// The precedence walk in `claim_scope_for` asks one question of every module it visits: what
+/// does this module reach — its reference targets, then the modules its own imports pulled in.
+/// The answer depends on the module and the prepared subject, never on which scope is asking,
+/// but it was recomputed per scope: `reference_targets_of` re-walks that module's reference set
+/// and re-runs longest-declared-prefix selection over the declarer index every time, and
+/// `parents_of` rebuilt a whole-subject map per scope to read one entry from it. On the floor
+/// that is 660 scopes x ~427 modules of identical recomputation, measured at 17.1s of the
+/// 56.5s scope-construction total (`[floor-scope-split]` `order_ms`).
+///
+/// WHAT IS NOT MEMOIZED, and must not be: the WALK. The order a scope visits these lists in is
+/// a function of its entry, and that order IS the scope's identity — it decides which module
+/// wins a colliding bare name and it is what `scope_identity` folds over. So the traversal, its
+/// `seen` set and its frontier stay per scope; only the per-module answer they consume is
+/// shared, and it is the same list, in the same sequence, that the unmemoized walk built.
+struct ScopeOrderIndex {
+    /// Module -> the names its `ResolvedFuncEnv.parents` carries, in the compiler's own
+    /// precedence sequence. Built eagerly in one pass: every scope needs the entry's row, and
+    /// the walk needs a row per module it visits.
+    parents_by_module: HashMap<String, Vec<String>>,
+    /// Module -> reference targets followed by parents, the exact concatenation the walk
+    /// consumed when it built both per visit. Filled on first visit.
+    reached_by_module: std::cell::RefCell<HashMap<String, Rc<Vec<String>>>>,
+}
+
+/// A fresh order index over one subject — no memo shared with anything. The equivalence
+/// control builds one per scope, which reproduces the pre-memo walk exactly: a module is
+/// visited at most once per scope (the `seen` set), so a scope-private memo never hits.
+fn build_scope_order_index(prepared: &PreparedRepository) -> Rc<ScopeOrderIndex> {
+    let parents_by_module: HashMap<String, Vec<String>> = prepared
+        .graph
+        .modules
+        .iter()
+        .map(|m| {
+            (
+                m.func_env.name.clone(),
+                m.func_env
+                    .parents
+                    .iter()
+                    .map(|p| p.name.clone())
+                    .collect::<Vec<String>>(),
+            )
+        })
+        .collect();
+    Rc::new(ScopeOrderIndex {
+        parents_by_module,
+        reached_by_module: std::cell::RefCell::new(HashMap::new()),
+    })
+}
+
+fn scope_order_index(prepared: &PreparedRepository) -> Rc<ScopeOrderIndex> {
+    if let Some(existing) = SCOPE_ORDER_INDEXES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, index)| index.clone())
+    }) {
+        return existing;
+    }
+    let created = build_scope_order_index(prepared);
+    SCOPE_ORDER_INDEXES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), created.clone()))
+    });
+    created
+}
+
+/// How many modules each per-subject memo currently holds — (fragments, reached lists).
+/// Reads the live caches for the given subject; absent caches read as zero.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn scope_memo_population_for_test(prepared: &PreparedRepository) -> (usize, usize) {
+    let fragments = SCOPE_FRAGMENT_CACHES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, cache)| cache.borrow().len())
+            .unwrap_or(0)
+    });
+    let reached = SCOPE_ORDER_INDEXES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, index)| index.reached_by_module.borrow().len())
+            .unwrap_or(0)
+    });
+    (fragments, reached)
+}
+
+/// One module's reached list, memoized. The concatenation order — reference targets first,
+/// then parents — is the walk's own, preserved exactly.
+fn scope_order_reached(
+    order_index: &ScopeOrderIndex,
+    ref_index: &ReferenceClosureIndex,
+    module: &str,
+) -> Rc<Vec<String>> {
+    if let Some(hit) = order_index.reached_by_module.borrow().get(module) {
+        return hit.clone();
+    }
+    let mut reached: Vec<String> = reference_targets_of(ref_index, module);
+    if let Some(parents) = order_index.parents_by_module.get(module) {
+        reached.extend(parents.iter().cloned());
+    }
+    let built = Rc::new(reached);
+    order_index
+        .reached_by_module
+        .borrow_mut()
+        .insert(module.to_string(), built.clone());
+    built
+}
+
+/// The fragment memo for one prepared subject, created on first use.
+///
+/// Not a refusal site: an unexpected third subject already refuses in
+/// `reference_closure_index`, which every `claim_scope_for` passes through first, and a second
+/// copy of that wall here would be a second authority for the same bound.
+fn scope_fragment_cache(prepared: &PreparedRepository) -> Rc<v1_interpreter::ScopeFragmentCache> {
+    if let Some(existing) = SCOPE_FRAGMENT_CACHES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, cache)| cache.clone())
+    }) {
+        return existing;
+    }
+    let created = Rc::new(v1_interpreter::ScopeFragmentCache::default());
+    SCOPE_FRAGMENT_CACHES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), created.clone()))
+    });
+    created
 }
 
 fn reference_closure_index(
@@ -36577,6 +36872,40 @@ pub fn claim_scope_for(
     prepared: &PreparedRepository,
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
+    let fragments = scope_fragment_cache(prepared);
+    let order_index = scope_order_index(prepared);
+    claim_scope_for_with_memos(
+        prepared,
+        entry_module_path,
+        Some(fragments.as_ref()),
+        order_index,
+    )
+}
+
+/// THE DISCRIMINATING CONTROL for both per-subject memos, and the only other caller: the same
+/// construction with each withheld. It re-derives every module's scope contribution from the
+/// module itself AND walks the precedence order against a scope-private order index, which is
+/// what every scope did before either memo existed — so an equivalence witness can build both
+/// and compare answers, and identities, rather than argue about a cache key.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn claim_scope_for_without_memos(
+    prepared: &PreparedRepository,
+    entry_module_path: &str,
+) -> Result<PreparedClaimScope, String> {
+    claim_scope_for_with_memos(
+        prepared,
+        entry_module_path,
+        None,
+        build_scope_order_index(prepared),
+    )
+}
+
+fn claim_scope_for_with_memos(
+    prepared: &PreparedRepository,
+    entry_module_path: &str,
+    fragments: Option<&v1_interpreter::ScopeFragmentCache>,
+    order_index: Rc<ScopeOrderIndex>,
+) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
     // `TypedModule.func_env` is the module's `ResolvedFuncEnv`, and its `parents` field is —
@@ -36593,6 +36922,7 @@ pub fn claim_scope_for(
     // the direction that
     // silently narrows: the old closure also admitted modules reached by bare reference, which
     // no scan of import lines can see.
+    let order_started = std::time::Instant::now();
     let entry_module = prepared
         .graph
         .modules
@@ -36643,25 +36973,18 @@ pub fn claim_scope_for(
     // callees by bare reference, and failed with `undefined variable: operator_host_srv1` — a
     // `data` declaration in `gunbc.fleet_intent_network` that a module in its closure IMPORTS.
     // The definer was one edge away the whole time, across an edge this walk did not traverse.
-    let parents_of: HashMap<&str, &Rc<crate::v1_compiler_infer_sigs::ResolvedFuncEnv>> = prepared
-        .graph
-        .modules
-        .iter()
-        .map(|m| (m.func_env.name.as_str(), &m.func_env))
-        .collect();
     let mut frontier: Vec<String> = vec![entry_module.func_env.name.clone()];
     while let Some(current) = frontier.pop() {
-        let mut reached: Vec<String> = reference_targets_of(&ref_index, &current);
-        if let Some(env) = parents_of.get(current.as_str()) {
-            reached.extend(env.parents.iter().map(|p| p.name.clone()));
-        }
-        for target in reached {
+        let reached = scope_order_reached(&order_index, &ref_index, &current);
+        for target in reached.iter() {
             if seen.insert(target.clone()) {
                 order.push(target.clone());
-                frontier.push(target);
+                frontier.push(target.clone());
             }
         }
     }
+    let order_nanos = order_started.elapsed().as_nanos();
+    let registry_started = std::time::Instant::now();
     let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
     // Module selection keys on `func_env.name` too, so the population and the closure that
     // produced it are read off ONE field. Deriving the population from the authored module node
@@ -36762,15 +37085,25 @@ pub fn claim_scope_for(
         diagnostics: prepared.graph.diagnostics.clone(),
         emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
+    let registry_nanos = registry_started.elapsed().as_nanos();
+    let indexes_started = std::time::Instant::now();
+    let indexes = v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
+        &scoped_graph,
+        prepared.source_indices.clone(),
+        Some(&order),
+        fragments,
+    );
+    let indexes_nanos = indexes_started.elapsed().as_nanos();
     Ok(PreparedClaimScope {
-        indexes: v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
-            &scoped_graph,
-            prepared.source_indices.clone(),
-            Some(&order),
-        ),
+        indexes,
         module_count,
         scope_identity,
         ambiguous_bare_names: ambiguous.len(),
+        build_split: ScopeBuildSplit {
+            order_nanos,
+            registry_nanos,
+            indexes_nanos,
+        },
     })
 }
 
@@ -38325,6 +38658,18 @@ pub fn run_required_regen(
     receipt_rel: &str,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
+}
+
+/// The required regeneration producer narrowed by the affected-set authority. This is the same
+/// producer as `run_required_regen`; only its admitted comparison population differs.
+pub fn run_required_regen_scoped(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    let workspace = workspace_root();
+    let scope = required_regen_host::regen_emission_scope_for_diff(&workspace, source_roots)?;
+    required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
 }
 
 pub fn run_required_regen_fixed_point(

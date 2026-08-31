@@ -35,10 +35,14 @@ import v2.std.optional {
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
   Diagnostics,
+  ExternalContractUnknown,
   Outcome,
   Rejected,
-  diagnostics_singleton
+  Unavailable,
+  diagnostics_singleton,
+  invariant_port_locus
 }
 import std.algebra { Empty }
 import v2.std.algebra { length }
@@ -374,10 +378,31 @@ fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
   )
 }
 
-fn program_branch_effect_io_holds() -> Bool {
+// The Unavailable arm carries the reason the model could not decide the comparison. Routing it to
+//'false' here would answer a question the model declined to answer, and would discard the only
+// fact that distinguishes "the run produced a different value" from "these values are not
+// comparable" -- v2.lens.undecidable_verdict_collapse refuses that arm at compile.
+fn program_equality_undecided_diagnostic(reason: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: invariant_port_locus(
+      port: ^program_runtime_value_equality,
+      invariant: ^runtime_value_equality_decides
+    ),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn program_branch_effect_io_holds() -> Witness<Bool> {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
-    Accepted { value: v, diagnostics: None } => v == program_unit_value()
-    _ => false
+    Accepted { value: v, diagnostics: None } =>
+      match runtime_value_equality(a: v, b: program_unit_value()) {
+        RuntimeValuesEqual => Holds { value: true }
+        RuntimeValuesDiffer => Holds { value: false }
+        RuntimeValueEqualityUnavailable { reason: r } =>
+          Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
+      }
+    _ => Holds { value: false }
   }
 }
 
@@ -404,7 +429,7 @@ fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
   }
 }
 
-fn program_pick_if_arrow_holds() -> Bool {
+fn program_pick_if_arrow_holds() -> Witness<Bool> {
   match ingested_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
       let call = program_pick_if_call(callee: arrow)
@@ -413,11 +438,17 @@ fn program_pick_if_arrow_holds() -> Bool {
         context: program_context_with_effect_io(),
         inputs: inputs_root_only(root: call)
       ) {
-        Accepted { value: v, diagnostics: None } => v == program_int_one_value()
-        _ => false
+        Accepted { value: v, diagnostics: None } =>
+          match runtime_value_equality(a: v, b: program_int_one_value()) {
+            RuntimeValuesEqual => Holds { value: true }
+            RuntimeValuesDiffer => Holds { value: false }
+            RuntimeValueEqualityUnavailable { reason: r } =>
+              Violates { diagnostic: program_equality_undecided_diagnostic(reason: r) }
+          }
+        _ => Holds { value: false }
       }
     }
-    Rejected { diagnostics: _ } => false
+    Rejected { diagnostics: _ } => Holds { value: false }
   }
 }
 
@@ -436,7 +467,7 @@ data program_run_nodes: List<Node> = [program_run_branch_gate, program_run_io_st
 
 data program_run_dependencies: List<DependencyView> = [program_run_branch_to_io]
 
-fn program_runtime_run_holds() -> Bool {
+fn program_runtime_run_holds() -> Witness<Bool> {
   match runtime_run(
     nodes: program_run_nodes,
     dependencies: program_run_dependencies,
@@ -444,17 +475,52 @@ fn program_runtime_run_holds() -> Bool {
     context: program_context_with_effect_io()
   ) {
     RuntimeRunComplete { log: log, scheduled: scheduled } =>
-      length(xs: log.entries) == 2
-        && length(xs: scheduled) == 2
-        && program_branch_effect_io_holds()
-    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } => false
+      match program_branch_effect_io_holds() {
+        Holds { value: equal } =>
+          Holds {
+            value: length(xs: log.entries) == 2
+              && length(xs: scheduled) == 2
+              && equal
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } =>
+      Holds { value: false }
   }
 }
 
+fn witness_conjunction(left: Witness<Bool>, right: Witness<Bool>) -> Witness<Bool> {
+  match left {
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+    Holds { value: l } =>
+      match right {
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+        Holds { value: r } => Holds { value: l && r }
+      }
+  }
+}
+
+fn program_runs_witness() -> Witness<Bool> {
+  witness_conjunction(
+    left: witness_conjunction(
+      left: program_branch_effect_io_holds(),
+      right: program_pick_if_arrow_holds()
+    ),
+    right: program_runtime_run_holds()
+  )
+}
+
+// THE DECLARED RESIDUAL (DESIGN 4b(3)). Every arm above threads the undecidability reason as a
+// located Diagnostic. It dies HERE, because v2.std.verification's BoolWitness carries only
+// { entry, function } and the harness reads a Bool -- so a claim can fail, but cannot say why.
+// This is the one sanctioned collapse, in one place, rather than four open-coded ones.
+// RETIRED BY: a diagnostic-carrying witness modality beside BoolWitnessClaim, which is the
+// CAPABILITY that lets a failing claim report its reason. No lesser artifact retires it.
 fn program_runs_holds() -> Bool {
-  program_branch_effect_io_holds()
-    && program_pick_if_arrow_holds()
-    && program_runtime_run_holds()
+  match program_runs_witness() {
+    Holds { value: b } => b
+    Violates { diagnostic: _ } => false
+  }
 }
 
 data unified_claim_program_runs: UnifiedTestClaim = BoolWitnessClaim {

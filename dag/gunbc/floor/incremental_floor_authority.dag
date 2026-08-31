@@ -1,0 +1,716 @@
+module gunbc.incremental_floor_authority
+
+import std.types { String, List, Int, Bool }
+import std.disposition { Disposition, Terminal }
+
+data incremental_floor_authority_disposition: Disposition = Terminal {
+  reason: "Single authority for ONE question: when does executing a SUBSET of the witness roster establish the same verdict a whole-head-corpus floor run would have established. The floor's cost pressure is real and permanent, so the incremental arm will be built; what has never existed is the law that says when its answer is the whole-corpus answer, and without that law the arm is a guess wearing a green check. This module is that law and nothing else -- it changes no gate, selects no rows, and executes nothing."
+}
+
+// THE LAW, STATED BEFORE ANY SELECTOR EXISTS, WHICH IS THE ONLY ORDER THAT WORKS.
+//
+// A floor run answers one question: does the head tree pass every witness in it. The whole-corpus
+// run answers it by executing every row. An INCREMENTAL run executes some rows and CARRIES the
+// rest from an earlier receipt -- and carrying is an INFERENCE, not an observation. The inference
+// is sound only if the carried row would have produced the same verdict had it run at head, and
+// nothing about a subset execution establishes that on its own.
+//
+// So the incremental verdict is not a cheaper measurement of the same thing. It is a PROOF
+// OBLIGATION, and `whole_head_corpus_floor_valid` is its discharge: seven conjuncts, every one
+// necessary, the conjunction sufficient. Drop any one and there is a concrete way for a carried
+// GREEN to stand over a head that is RED:
+//
+//   1 base receipt              -- carrying from a receipt that never established a whole-corpus
+//                                 pass carries an unknown, not a verdict.
+//   2 complete input delta      -- a row's verdict depends on every input medium, not on the .dag
+//                                 files alone; an unobserved medium is an unbounded change set.
+//   3 affected closure          -- a row reachable from a changed input must RUN; a closure that
+//                                 misses one carries a stale green over the exact edit that
+//                                 broke it.
+//   4 recomputed pass           -- the rows that did run must have run and passed; "not executed"
+//                                 is not a pass.
+//   5 carried digests identical -- carrying is legitimate exactly when the row's inputs at head
+//                                 are byte-identical to its inputs at base. Then it is an
+//                                 identity, not an assumption.
+//   6 exact partition           -- recomputed and carried must tile the HEAD roster exactly. A row
+//                                 in neither is a witness that silently did not participate; a
+//                                 row in both is two verdicts for one subject.
+//   7 global invariants         -- some obligations are not row-local (a roster partition, a
+//                                 uniqueness census, a drift comparison). They have no row to
+//                                 carry them, so they are recomputed at head every run or the
+//                                 incremental verdict is silent about them.
+//
+// WHY THE FAILURE ARM REFUSES INSTEAD OF RUNNING EVERYTHING (DESIGN section 5, the absorbing
+// fallback -- and this module's subject is the textbook specimen DESIGN names: "can't compute the
+// affected set -> rerun everything"). Widening is not free just because it is safe on the verdict
+// axis. It destroys the only signal that the closure has a deficit, so the deficit never ranks
+// for fixing; and it denominates the failure in the CORPUS rather than in the CHANGE, so the
+// budget breaks instead of the build. `IncrementalProofUnestablished` therefore names the unmet
+// conjuncts and stops. A whole-head-corpus run may absolutely follow -- as its OWN disposition,
+// chosen loudly and recorded -- but it is never the incremental arm quietly answering with
+// something else. `floor_verdict_standing` is where that is made structural: no constructor takes
+// unmet conjuncts to a verdict.
+//
+// WHAT THIS MODULE IS NOT. It is not a selector: it computes no affected set and names no rows to
+// skip. It is the predicate a selector's output must satisfy, which is why it can land before any
+// selector does and why a selector that cannot produce this evidence is refused rather than
+// trusted. `gunbc.regen_affected_set` is the sibling shape one layer over -- the same reverse
+// closure with the same refuse-never-widen arm, for regen mirrors rather than witness rows.
+//
+// RUNG HONESTY (DESIGN section 4b, meta-obligation 1). This class -- an incremental floor verdict
+// standing over a head it did not measure -- is at MECHANICALLY PREVENTABLE IN FIXTURE AND
+// UNENROLLED IN PRODUCTION. The law executes: the witness beside this module drives every
+// conjunct to a discriminating RED and the conjunction to an accepted positive control. No
+// production consumer reads it, because none exists: the required floor is whole-corpus today
+// (`gunbc.witness_floor_workflow`), which is the one configuration under which this law is
+// trivially satisfied. NEXT-RUNG TRIGGER, naming the capability rather than an artifact: a floor
+// runner that can execute a proper subset of the roster and emit, per attempt, the receipt this
+// module's `FloorIncrementalAttempt` requires -- roster digests at both trees, the delta over
+// every declared medium, and the closure. Until that capability exists, an incremental floor
+// cannot be admitted at all, which is the correct standing and not a gap.
+
+// ---------------------------------------------------------------------------------------------
+// The roster and its digests.
+
+// THE DIGEST IS OVER THE ROW'S INPUTS, NEVER OVER ITS SOURCE FILE. A witness that reads a fixture,
+// a generated artifact or a toolchain-dependent value has those in its inputs; keying on the file
+// that declares it would make conjunct 5 an assertion about the wrong subject and would carry a
+// green over exactly the changes that are hardest to see.
+type FloorWitnessRow {
+  id: String
+  input_digest: String
+}
+
+type FloorRoster {
+  tree: String
+  rows: List<FloorWitnessRow>
+}
+
+fn floor_roster_ids(roster: FloorRoster) -> List<String> {
+  roster.rows |> map(r => r.id)
+}
+
+fn floor_ids_contain(ids: List<String>, id: String) -> Bool {
+  ids |> any(x => x == id)
+}
+
+fn floor_roster_has_digest(roster: FloorRoster, id: String, digest: String) -> Bool {
+  roster.rows |> any(r => r.id == id && r.input_digest == digest)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conjunct 1 -- the base receipt.
+
+// AN INCREMENTAL RECEIPT MAY BE A BASE, AND THE CHAIN NEEDS NO DEPTH BOUND, because soundness is
+// inductive rather than accumulated: each link carries its own discharged proof, and a proof of
+// equivalence to the whole-corpus answer composes with the next one. What a link may NOT do is
+// name an ancestor it cannot cite -- `whole_corpus_ancestor` and `proof_receipt` are both
+// required, so "descended from a whole run, somehow" is unauthorable.
+type FloorBaseProvenance =
+    BaseWholeHeadCorpus
+  | BaseProvenIncremental { whole_corpus_ancestor: String, proof_receipt: String }
+
+type FloorBaseReceipt {
+  tree: String
+  roster: FloorRoster
+  all_rows_passed: Bool
+  provenance: FloorBaseProvenance
+}
+
+fn floor_base_provenance_grounded(provenance: FloorBaseProvenance) -> Bool {
+  match provenance {
+    BaseWholeHeadCorpus => true,
+    BaseProvenIncremental { whole_corpus_ancestor: ancestor, proof_receipt: receipt } =>
+      ancestor != "" && receipt != ""
+  }
+}
+
+fn floor_base_receipt_valid(base: FloorBaseReceipt) -> Bool {
+  base.tree != ""
+    && base.all_rows_passed
+    && floor_base_provenance_grounded(provenance: base.provenance)
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conjunct 2 -- the complete input delta.
+
+// THE MEDIUM ROSTER IS PART OF THE QUERY, NEVER A FOLLOW-UP PASS. The floor cut measured this
+// directly (docs/plans/floor-cut-replacement-plan.md, step 2 bound 3): a reach measurement over
+// one medium reads exactly like a reach measurement, and nothing in the answer announces the media
+// it omitted. A delta computed over the source tree alone is not a small delta -- it is an
+// unknown one, and every carried row rests on it.
+type FloorInputMedium =
+    SourceTreeFiles
+  | Fixtures
+  | GeneratedArtifacts
+  | ToolchainIdentity
+  | ExecutingBinaryIdentity
+  | RosterDiscoveryInputs
+
+fn floor_input_medium_name(medium: FloorInputMedium) -> String {
+  match medium {
+    SourceTreeFiles => "source_tree_files",
+    Fixtures => "fixtures",
+    GeneratedArtifacts => "generated_artifacts",
+    ToolchainIdentity => "toolchain_identity",
+    ExecutingBinaryIdentity => "executing_binary_identity",
+    RosterDiscoveryInputs => "roster_discovery_inputs"
+  }
+}
+
+data floor_declared_input_media: List<FloorInputMedium> = [
+  SourceTreeFiles,
+  Fixtures,
+  GeneratedArtifacts,
+  ToolchainIdentity,
+  ExecutingBinaryIdentity,
+  RosterDiscoveryInputs
+]
+
+// AN EMPTY DELTA AND AN UNOBSERVED MEDIUM ARE DIFFERENT STATES AND ARE SPELLED DIFFERENTLY.
+// `MediumDelta { changed: [] }` is a measurement that found nothing; `MediumUnobserved` is no
+// measurement. Collapsing them is the empty-observation narrowing this repository already rosters
+// as a recurring failure mode, and here it is the difference between a sound carry and a guess.
+type FloorMediumObservation =
+    MediumDelta { medium: FloorInputMedium, changed: List<String> }
+  | MediumUnobserved { medium: FloorInputMedium, detail: String }
+
+type FloorInputDelta {
+  base_tree: String
+  head_tree: String
+  observations: List<FloorMediumObservation>
+}
+
+fn floor_observation_medium_name(observation: FloorMediumObservation) -> String {
+  match observation {
+    MediumDelta { medium: m, changed: _ } => floor_input_medium_name(medium: m),
+    MediumUnobserved { medium: m, detail: _ } => floor_input_medium_name(medium: m)
+  }
+}
+
+fn floor_observation_is_measured(observation: FloorMediumObservation) -> Bool {
+  match observation {
+    MediumDelta { medium: _, changed: _ } => true,
+    MediumUnobserved { medium: _, detail: _ } => false
+  }
+}
+
+fn floor_medium_measured(delta: FloorInputDelta, medium: FloorInputMedium) -> Bool {
+  delta.observations |> any(o =>
+    floor_observation_medium_name(observation: o) == floor_input_medium_name(medium: medium)
+      && floor_observation_is_measured(observation: o))
+}
+
+fn floor_input_delta_complete(delta: FloorInputDelta, base: FloorBaseReceipt, head: FloorRoster) -> Bool {
+  delta.base_tree == base.tree
+    && delta.head_tree == head.tree
+    && (floor_declared_input_media |> all(m => floor_medium_measured(delta: delta, medium: m)))
+}
+
+fn floor_changed_inputs(delta: FloorInputDelta) -> List<String> {
+  fold(delta.observations, init: [], f: fn(acc, o) {
+    match o {
+      MediumDelta { medium: _, changed: changed } => concat(acc, changed),
+      MediumUnobserved { medium: _, detail: _ } => acc
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conjunct 3 -- the affected closure.
+
+// TWO ADMISSIBLE KINDS AND ONE INADMISSIBLE ONE, and the split is DESIGN section 5's own: a
+// structural OVER-APPROXIMATION computed AS the answer is a legitimate neighbour of the absorbing
+// fallback -- it is what the closure believes, stated honestly and bounded by structure.
+// `ClosureUnestablished` is the state that must never become an answer: it is the closure failing
+// to compute, and the tempting arm there is to return the corpus. That arm does not exist here.
+type FloorClosureKind =
+    ClosureExact
+  | ClosureStructuralOverApproximation { basis: String }
+  | ClosureUnestablished { detail: String }
+
+type FloorAffectedClosure {
+  changed_inputs: List<String>
+  affected_rows: List<String>
+  kind: FloorClosureKind
+}
+
+fn floor_closure_kind_admissible(kind: FloorClosureKind) -> Bool {
+  match kind {
+    ClosureExact => true,
+    ClosureStructuralOverApproximation { basis: basis } => basis != "",
+    ClosureUnestablished { detail: _ } => false
+  }
+}
+
+// THE CLOSURE IS JOINED TO THE DELTA, not merely present beside it. A closure computed over a
+// smaller changed set than the delta measured is sound about a question nobody asked.
+fn floor_closure_covers_delta(closure: FloorAffectedClosure, delta: FloorInputDelta) -> Bool {
+  floor_changed_inputs(delta: delta) |> all(input => floor_ids_contain(ids: closure.changed_inputs, id: input))
+}
+
+// ---------------------------------------------------------------------------------------------
+// Conjuncts 4, 5, 6 -- what ran, what was carried, and that together they are the head roster.
+
+type FloorRowVerdict =
+    RowPassed
+  | RowFailed { detail: String }
+  | RowNotExecuted { detail: String }
+
+type FloorExecutedRow {
+  id: String
+  input_digest: String
+  verdict: FloorRowVerdict
+}
+
+type FloorCarriedRow {
+  id: String
+  base_input_digest: String
+  head_input_digest: String
+}
+
+fn floor_row_verdict_passed(verdict: FloorRowVerdict) -> Bool {
+  match verdict {
+    RowPassed => true,
+    RowFailed { detail: _ } => false,
+    RowNotExecuted { detail: _ } => false
+  }
+}
+
+type FloorGlobalInvariantRow {
+  invariant: String
+  authority: String
+  reason: String
+}
+
+// NOT ROW-LOCAL, SO NOT CARRIABLE. Each row names the authority that owns the obligation rather
+// than restating it (DESIGN section 3 -- cite the symbol). The roster is deliberately about the
+// SHAPE of the obligation: a property whose subject is the corpus has no witness row to attach a
+// carried verdict to, so an incremental run that does not recompute it has not answered it.
+data floor_global_invariants: List<FloorGlobalInvariantRow> = [
+  FloorGlobalInvariantRow {
+    invariant: "roster_partition_exhaustive",
+    authority: "gunbc.roster_registry",
+    reason: "the subject is the partition of the whole roster; no single row's verdict contains it, and a row removed by the head edit is exactly the case a carried set cannot see"
+  },
+  FloorGlobalInvariantRow {
+    invariant: "declaration_identity_uniqueness",
+    authority: "gunbc.bare_name_fork_lens",
+    reason: "uniqueness is a property of the population; two modules can each be individually admissible and collide only with one another, so the pair is invisible to both rows"
+  },
+  FloorGlobalInvariantRow {
+    invariant: "generated_artifact_drift",
+    authority: "gunbc.generated_artifact_emit",
+    reason: "the comparison is between the committed tree and what this commit's sources would emit for it -- a whole-tree join whose inputs are not the witness rows"
+  },
+  FloorGlobalInvariantRow {
+    invariant: "whole_corpus_compile_admission",
+    authority: "gunbc.whole_corpus_compile_admission",
+    reason: "the admission decides whether a whole-corpus resolve may start at all; it is a property of the corpus against the host budget, and no subset execution establishes it"
+  }
+]
+
+type FloorGlobalInvariantResult {
+  invariant: String
+  recomputed_at_head: Bool
+  passed: Bool
+}
+
+fn floor_global_invariant_discharged(results: List<FloorGlobalInvariantResult>, row: FloorGlobalInvariantRow) -> Bool {
+  results |> any(r => r.invariant == row.invariant && r.recomputed_at_head && r.passed)
+}
+
+type FloorIncrementalAttempt {
+  head_roster: FloorRoster
+  base: FloorBaseReceipt
+  delta: FloorInputDelta
+  closure: FloorAffectedClosure
+  recomputed: List<FloorExecutedRow>
+  carried: List<FloorCarriedRow>
+  global_invariants: List<FloorGlobalInvariantResult>
+}
+
+fn floor_recomputed_ids(attempt: FloorIncrementalAttempt) -> List<String> {
+  attempt.recomputed |> map(r => r.id)
+}
+
+fn floor_carried_ids(attempt: FloorIncrementalAttempt) -> List<String> {
+  attempt.carried |> map(r => r.id)
+}
+
+// CONJUNCT 3, JOINED: admissible kind, covering the measured delta, and every row it names
+// actually recomputed. A closure that names a row and then does not run it is worse than no
+// closure, because it looks like coverage.
+fn floor_affected_closure_sound(attempt: FloorIncrementalAttempt) -> Bool {
+  floor_closure_kind_admissible(kind: attempt.closure.kind)
+    && floor_closure_covers_delta(closure: attempt.closure, delta: attempt.delta)
+    && (attempt.closure.affected_rows |> all(id => floor_ids_contain(ids: floor_recomputed_ids(attempt: attempt), id: id)))
+}
+
+// CONJUNCT 4. `RowNotExecuted` is a separate arm from `RowFailed` on purpose: they have different
+// owners and different repairs, and only the split keeps a runner defect from being read as a
+// subject defect. Neither is a pass.
+fn floor_recomputed_rows_passed(attempt: FloorIncrementalAttempt) -> Bool {
+  attempt.recomputed |> all(r =>
+    floor_row_verdict_passed(verdict: r.verdict)
+      && floor_roster_has_digest(roster: attempt.head_roster, id: r.id, digest: r.input_digest))
+}
+
+// CONJUNCT 5, AND THE DIGESTS ARE READ FROM THE ROSTERS RATHER THAN FROM THE CARRY ITSELF. A
+// carried row asserting its own two digests is an oracle compared against a copy of itself
+// (DESIGN section 5); the assertion only means something joined to the base roster at base and
+// the head roster at head.
+fn floor_carried_digests_identical(attempt: FloorIncrementalAttempt) -> Bool {
+  attempt.carried |> all(c =>
+    c.base_input_digest == c.head_input_digest
+      && floor_roster_has_digest(roster: attempt.base.roster, id: c.id, digest: c.base_input_digest)
+      && floor_roster_has_digest(roster: attempt.head_roster, id: c.id, digest: c.head_input_digest))
+}
+
+// CONJUNCT 6 -- AN IDENTITY JOIN, NOT A COUNT EQUALITY (DESIGN section 5). Both directions are
+// checked because they fail differently: a head row in neither set is a witness that silently did
+// not participate; a reported row that is not in the head roster is a verdict about a subject that
+// no longer exists. Disjointness is the third, and it is what stops one row carrying a green while
+// its recomputation went red.
+fn floor_partition_exact(attempt: FloorIncrementalAttempt) -> Bool {
+  let head_ids = floor_roster_ids(roster: attempt.head_roster)
+  let recomputed = floor_recomputed_ids(attempt: attempt)
+  let carried = floor_carried_ids(attempt: attempt)
+  (head_ids |> all(id => floor_ids_contain(ids: recomputed, id: id) || floor_ids_contain(ids: carried, id: id)))
+    && (recomputed |> all(id => floor_ids_contain(ids: head_ids, id: id)))
+    && (carried |> all(id => floor_ids_contain(ids: head_ids, id: id)))
+    && (carried |> all(id => !floor_ids_contain(ids: recomputed, id: id)))
+    && count(recomputed) + count(carried) == count(head_ids)
+}
+
+// CONJUNCT 7.
+fn floor_global_invariants_recomputed(attempt: FloorIncrementalAttempt) -> Bool {
+  floor_global_invariants |> all(row =>
+    floor_global_invariant_discharged(results: attempt.global_invariants, row: row))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The law and its disposition.
+
+type FloorProofConjunct =
+    BaseReceiptWhole
+  | CompleteInputDelta
+  | AffectedClosureSound
+  | RecomputedRowsPassed
+  | CarriedDigestsIdentical
+  | PartitionExact
+  | GlobalInvariantsRecomputed
+
+fn floor_proof_conjunct_name(conjunct: FloorProofConjunct) -> String {
+  match conjunct {
+    BaseReceiptWhole => "base_receipt_whole",
+    CompleteInputDelta => "complete_input_delta",
+    AffectedClosureSound => "affected_closure_sound",
+    RecomputedRowsPassed => "recomputed_rows_passed",
+    CarriedDigestsIdentical => "carried_digests_identical",
+    PartitionExact => "exact_partition",
+    GlobalInvariantsRecomputed => "global_invariants_recomputed"
+  }
+}
+
+type UnmetConjunct {
+  conjunct: FloorProofConjunct
+  detail: String
+}
+
+fn floor_conjunct_holds(attempt: FloorIncrementalAttempt, conjunct: FloorProofConjunct) -> Bool {
+  match conjunct {
+    BaseReceiptWhole => floor_base_receipt_valid(base: attempt.base),
+    CompleteInputDelta => floor_input_delta_complete(delta: attempt.delta, base: attempt.base, head: attempt.head_roster),
+    AffectedClosureSound => floor_affected_closure_sound(attempt: attempt),
+    RecomputedRowsPassed => floor_recomputed_rows_passed(attempt: attempt),
+    CarriedDigestsIdentical => floor_carried_digests_identical(attempt: attempt),
+    PartitionExact => floor_partition_exact(attempt: attempt),
+    GlobalInvariantsRecomputed => floor_global_invariants_recomputed(attempt: attempt)
+  }
+}
+
+data floor_proof_conjuncts: List<FloorProofConjunct> = [
+  BaseReceiptWhole,
+  CompleteInputDelta,
+  AffectedClosureSound,
+  RecomputedRowsPassed,
+  CarriedDigestsIdentical,
+  PartitionExact,
+  GlobalInvariantsRecomputed
+]
+
+// EVERY UNMET CONJUNCT IS REPORTED, not the first one. A stop that names one cause invites a fix
+// that restarts into the next cause; the analysis that precedes a restart (DESIGN section 5, the
+// factory model) needs the whole ledger of the stop.
+fn floor_unmet_conjuncts(attempt: FloorIncrementalAttempt) -> List<UnmetConjunct> {
+  fold(floor_proof_conjuncts, init: [], f: fn(acc, conjunct) {
+    if floor_conjunct_holds(attempt: attempt, conjunct: conjunct) {
+      acc
+    } else {
+      list_push(acc, UnmetConjunct {
+        conjunct: conjunct,
+        detail: floor_proof_conjunct_name(conjunct: conjunct)
+      })
+    }
+  })
+}
+
+type FloorExecutionDisposition =
+    WholeHeadCorpusExecuted { head_tree: String, rows: Int }
+  | IncrementalEquivalentToWholeHead { head_tree: String, recomputed: Int, carried: Int }
+  | IncrementalProofUnestablished { head_tree: String, unmet: List<UnmetConjunct> }
+
+// THE LAW. `WholeHeadCorpusFloorValid` is the name of the conjunction; this is the function that
+// decides it for one attempt.
+fn whole_head_corpus_floor_valid(attempt: FloorIncrementalAttempt) -> FloorExecutionDisposition {
+  let unmet = floor_unmet_conjuncts(attempt: attempt)
+  if count(unmet) == 0 {
+    IncrementalEquivalentToWholeHead {
+      head_tree: attempt.head_roster.tree,
+      recomputed: count(attempt.recomputed),
+      carried: count(attempt.carried)
+    }
+  } else {
+    IncrementalProofUnestablished { head_tree: attempt.head_roster.tree, unmet: unmet }
+  }
+}
+
+// A WHOLE-CORPUS RUN DISCHARGES THE LAW BY EXECUTION RATHER THAN BY PROOF, which is why it is an
+// arm of the same disposition and not a separate vocabulary: the two arms answer one question,
+// and a consumer that had to choose between two types would be choosing which question to ask.
+fn floor_whole_head_corpus_execution(roster: FloorRoster) -> FloorExecutionDisposition {
+  WholeHeadCorpusExecuted { head_tree: roster.tree, rows: count(roster.rows) }
+}
+
+// FAIL-CLOSED, STRUCTURALLY. The verdict standing is a total match over the disposition, and the
+// unestablished arm has no path to `VerdictEstablished` -- there is no constructor that takes a
+// list of unmet conjuncts to a verdict, so "proceed as if the refusal had not fired" is not an
+// expressible state rather than a discouraged one (DESIGN section 4b rung 4, section 5 no escape
+// hatches).
+type FloorVerdictSource =
+    VerdictFromWholeHeadCorpusRun { head_tree: String, rows: Int }
+  | VerdictFromProvenIncremental { head_tree: String, recomputed: Int, carried: Int }
+
+type FloorVerdictStanding =
+    VerdictEstablished { source: FloorVerdictSource }
+  | VerdictRefused { head_tree: String, unmet: List<UnmetConjunct> }
+
+fn floor_verdict_standing(disposition: FloorExecutionDisposition) -> FloorVerdictStanding {
+  match disposition {
+    WholeHeadCorpusExecuted { head_tree: tree, rows: rows } =>
+      VerdictEstablished { source: VerdictFromWholeHeadCorpusRun { head_tree: tree, rows: rows } },
+    IncrementalEquivalentToWholeHead { head_tree: tree, recomputed: recomputed, carried: carried } =>
+      VerdictEstablished { source: VerdictFromProvenIncremental { head_tree: tree, recomputed: recomputed, carried: carried } },
+    IncrementalProofUnestablished { head_tree: tree, unmet: unmet } =>
+      VerdictRefused { head_tree: tree, unmet: unmet }
+  }
+}
+
+fn floor_verdict_established(standing: FloorVerdictStanding) -> Bool {
+  match standing {
+    VerdictEstablished { source: _ } => true,
+    VerdictRefused { head_tree: _, unmet: _ } => false
+  }
+}
+
+// THE RECEIPT OF A STOP, so the deficit is COUNTABLE rather than merely loud. An unestablished
+// proof is a deficit in the SELECTOR, and the population of unmet conjuncts over time is the only
+// thing that can rank one closure defect against another. A run that escalates to a whole-corpus
+// execution still emits this row first -- the escalation is a second, separately recorded
+// disposition, never this arm answering with something else.
+data floor_proof_unestablished_receipt_prefix: String = "incremental floor proof unestablished: head_tree="
+data floor_proof_unestablished_unmet_label: String = " unmet="
+
+fn floor_unmet_conjunct_names(unmet: List<UnmetConjunct>) -> String {
+  join(unmet |> map(u => floor_proof_conjunct_name(conjunct: u.conjunct)), ",")
+}
+
+fn floor_proof_unestablished_receipt(head_tree: String, unmet: List<UnmetConjunct>) -> String {
+  join(
+    [
+      floor_proof_unestablished_receipt_prefix,
+      head_tree,
+      floor_proof_unestablished_unmet_label,
+      floor_unmet_conjunct_names(unmet: unmet)
+    ],
+    ""
+  )
+}
+
+// ---------------------------------------------------------------------------------------------
+// SELECTION ADMISSION -- THE TWO SERVICE CLASSES, DECIDED BEFORE ANY ROW EXECUTES
+// ---------------------------------------------------------------------------------------------
+
+// THE LAW ABOVE JUDGES AN ATTEMPT THAT WAS MADE. THIS SECTION DECIDES WHETHER TO MAKE ONE, AND
+// THE TWO ARE DIFFERENT QUESTIONS ASKED AT DIFFERENT TIMES -- which is the whole of why widening
+// is admissible here and forbidden there.
+//
+//   BEFORE execution, from the evidence's own unavailability: no base receipt exists, a declared
+//   input medium was never observed, the closure did not compute, the head roster cannot be
+//   partitioned at identity. Nothing has been claimed yet, so answering "then this run judges the
+//   whole population" is a structural over-approximation computed AS THE ANSWER at a declared
+//   boundary -- DESIGN section 5's named NON-pattern, the legitimate neighbour of the absorbing
+//   fallback. It is loud, typed, and counted.
+//
+//   AFTER an incremental attempt whose proof fails, the same widening would be the absorbing
+//   fallback itself: a defeat converted into a longer green, with the selector's deficit erased.
+//   `IncrementalProofUnestablished` stops there and no arm converts it.
+//
+// So `WholePopulationRequired` is a SERVICE CLASS and not a fallback: a run declares which class
+// it is executing before it starts, and the change-bounded class is entered only with all four
+// evidence axes in hand. The cost consequence is the point of naming it -- a whole-population run
+// is denominated in the corpus, and a fleet that cannot see how often it is choosing that has no
+// way to rank the deficit that keeps forcing it.
+//
+// WHY THE CAUSE IS A COPRODUCT AND NOT A `String` reason: the census below counts PER CAUSE, and
+// a cause whose count never falls is the located modeling deficit. That is the anemia signal
+// DESIGN section 5 says absorption destroys, and it only survives if the cause is a value the
+// census can group by rather than prose a reader must classify.
+type WholePopulationCause =
+    NoBaseReceiptAvailable
+  | BaseReceiptNotWholeCorpusProven { detail: String }
+  | InputMediumUnobserved { medium: FloorInputMedium }
+  | DependencyRelationUnknown { detail: String }
+  | HeadRosterUnpartitionable { detail: String }
+
+// THE CENSUS KEY. `InputMediumUnobserved` carries its medium into the key so the count is per
+// medium: "we never observe generated artifacts" and "we never observe the toolchain" are two
+// deficits with two owners, and one key for both would hide whichever is smaller.
+fn whole_population_cause_key(cause: WholePopulationCause) -> String {
+  match cause {
+    NoBaseReceiptAvailable => "no-base-receipt-available",
+    BaseReceiptNotWholeCorpusProven { detail: _ } => "base-receipt-not-whole-corpus-proven",
+    InputMediumUnobserved { medium: m } =>
+      concat("input-medium-unobserved:", floor_input_medium_name(medium: m)),
+    DependencyRelationUnknown { detail: _ } => "dependency-relation-unknown",
+    HeadRosterUnpartitionable { detail: _ } => "head-roster-unpartitionable"
+  }
+}
+
+type FloorSelectionAdmission =
+    ChangeBoundedFloorAdmitted
+  | WholePopulationRequired { cause: WholePopulationCause }
+
+// PARTITIONABILITY IS DECIDED ON THE HEAD ROSTER ALONE, and it is decidable: a roster carrying one
+// id twice cannot be tiled by two disjoint sets at identity, so conjunct 6 is unsatisfiable for it
+// no matter what the runner does. Discovering that AFTER an execution would spend a whole
+// incremental run to learn a fact the roster already carried.
+fn floor_roster_ids_distinct(roster: FloorRoster) -> Bool {
+  let ids = floor_roster_ids(roster: roster)
+  let distinct = fold(ids, init: [], f: fn(acc, id) {
+    if floor_ids_contain(ids: acc, id: id) { acc } else { concat(acc, [id]) }
+  })
+  count(distinct) == count(ids)
+}
+
+fn floor_first_unobserved_medium_admission(delta: FloorInputDelta) -> FloorSelectionAdmission {
+  fold(floor_declared_input_media, init: ChangeBoundedFloorAdmitted, f: fn(acc, m) {
+    match acc {
+      WholePopulationRequired { cause: _ } => acc,
+      ChangeBoundedFloorAdmitted =>
+        if floor_medium_measured(delta: delta, medium: m) {
+          ChangeBoundedFloorAdmitted
+        } else {
+          WholePopulationRequired { cause: InputMediumUnobserved { medium: m } }
+        }
+    }
+  })
+}
+
+// THE ADMISSION. `base_available` is a separate parameter from the receipt because "there is no
+// base" and "the base is not whole-corpus proven" are different repairs -- the first is a missing
+// producer, the second a receipt that exists and does not qualify -- and a sentinel receipt
+// standing for absence would collapse them.
+fn floor_selection_admission(
+  base_available: Bool,
+  base: FloorBaseReceipt,
+  delta: FloorInputDelta,
+  closure: FloorAffectedClosure,
+  head_roster: FloorRoster
+) -> FloorSelectionAdmission {
+  if !base_available {
+    WholePopulationRequired { cause: NoBaseReceiptAvailable }
+  } else {
+    if !floor_base_receipt_valid(base: base) {
+      WholePopulationRequired {
+        cause: BaseReceiptNotWholeCorpusProven {
+          detail: "base receipt does not establish a whole-corpus pass, or cites an ancestor it cannot name"
+        }
+      }
+    } else {
+      if !floor_roster_ids_distinct(roster: head_roster) {
+        WholePopulationRequired {
+          cause: HeadRosterUnpartitionable { detail: "head roster carries a duplicate row id" }
+        }
+      } else {
+        if !floor_closure_kind_admissible(kind: closure.kind) {
+          WholePopulationRequired {
+            cause: DependencyRelationUnknown { detail: "closure did not compute at head" }
+          }
+        } else {
+          floor_first_unobserved_medium_admission(delta: delta)
+        }
+      }
+    }
+  }
+}
+
+fn floor_selection_is_change_bounded(admission: FloorSelectionAdmission) -> Bool {
+  match admission {
+    ChangeBoundedFloorAdmitted => true,
+    WholePopulationRequired { cause: _ } => false
+  }
+}
+
+// THE PER-CAUSE CENSUS. Presence per run is not enough: what ranks a deficit for repair is its
+// count over time, and a cause whose count never falls is the anemic modeling that keeps forcing
+// the corpus-denominated run. The escalation row carries the tree so a count is joinable to the
+// runs that produced it rather than being a bare number.
+type WholePopulationEscalation {
+  head_tree: String
+  cause: WholePopulationCause
+}
+
+fn whole_population_cause_count(
+  escalations: List<WholePopulationEscalation>,
+  cause: WholePopulationCause
+) -> Int {
+  escalations
+    |> filter(e => whole_population_cause_key(cause: e.cause) == whole_population_cause_key(cause: cause))
+    |> count
+}
+
+fn whole_population_escalation_keys(escalations: List<WholePopulationEscalation>) -> List<String> {
+  escalations |> map(e => whole_population_cause_key(cause: e.cause))
+}
+
+data whole_population_escalation_receipt_prefix: String = "floor whole-population required: head_tree="
+data whole_population_escalation_cause_label: String = " cause="
+
+fn whole_population_escalation_receipt(escalation: WholePopulationEscalation) -> String {
+  join(
+    [
+      whole_population_escalation_receipt_prefix,
+      escalation.head_tree,
+      whole_population_escalation_cause_label,
+      whole_population_cause_key(cause: escalation.cause)
+    ],
+    ""
+  )
+}
+
+// THE IDENTITY PRODUCERS THIS MODULE BINDS TO RATHER THAN MINTS (DESIGN section 3 -- cite the
+// symbol, and section 2 -- a fresh authority for an existing concept is a failed decomposition).
+// `FloorWitnessRow.input_digest` is the closure subject digest already produced by
+// `v1_compiler.resolved_graph_cache subject_digest_for_closure`, reached per entry by
+// `v1_compiler.cli_run closure_subject_for_entry`; the per-row work key that joins a digest to a
+// witness function is `v1_compiler.resolved_graph_cache witness_work_subject_key`. Its declared
+// cache carrier is `extdeps.realization.resolved_graph`, whose subject digest content-addresses
+// the closure content AND the resolve transform -- which is what makes conjunct 5 an identity
+// rather than an assumption. This module coins no digest of its own, and a future producer that
+// needs one is a defect in that producer, not a row here.
+data floor_row_digest_producer: String = "v1_compiler.resolved_graph_cache subject_digest_for_closure"
+data floor_row_entry_producer: String = "v1_compiler.cli_run closure_subject_for_entry"
+data floor_row_work_key_producer: String = "v1_compiler.resolved_graph_cache witness_work_subject_key"
+data floor_row_digest_cache_carrier: String = "extdeps.realization.resolved_graph"

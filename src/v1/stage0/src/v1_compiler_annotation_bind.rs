@@ -111,7 +111,7 @@ pub fn annotation_subjects(
         let items = module_item_entries(transport.clone());
         entries.clone().iter().cloned().fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<AnnotationSubject>>>, entry: Rc<OccurrenceIndexEntry>| {
+            |acc: _, entry: Rc<OccurrenceIndexEntry>| {
                 let depth = entry_ancestor_depth(entry.clone());
                 let span = entry.projection.clone().diagnostic_span.clone();
                 if (depth.clone() == 0) {
@@ -319,10 +319,10 @@ pub fn keyed_annotation_rows(
                     Some(empty_keyed_rows()),
                     |acc: Option<Rc<Vec<Rc<KeyedAnnotationRow>>>>,
                      row: Rc<SourceAnnotationDebt>| match acc.clone() {
-                        None => std::option::Option::None,
+                        std::option::Option::None => std::option::Option::None,
                         Some(rows) => {
                             match authored_name_among(eligible.clone(), row.subject.clone()) {
-                                None => std::option::Option::None,
+                                std::option::Option::None => std::option::Option::None,
                                 Some(name) => Some(v1_rt::rc_list_push(
                                     rows.clone(),
                                     Rc::new(KeyedAnnotationRow {
@@ -356,13 +356,12 @@ pub fn bind_annotations(
     source_length: i64,
 ) -> Rc<AnnotationAttachmentResult> {
     crate::std_source_annotation::attach_annotations(
-        captures.iter().cloned().fold(
-            Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<NormalizedAnnotationCapture>>>,
-             capture: Rc<UnboundAnnotationCapture>| {
+        captures
+            .iter()
+            .cloned()
+            .fold(Rc::new(vec![]), |acc: _, capture: _| {
                 v1_rt::rc_list_push(acc, normalize_dag_annotation(capture.clone()))
-            },
-        ),
+            }),
         annotation_subjects(transport.clone(), source_length.clone()),
     )
 }

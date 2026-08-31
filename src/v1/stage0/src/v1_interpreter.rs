@@ -3642,6 +3642,147 @@ impl ExecutionMode {
 /// distinct scopes can differ in — the entry-major cost shape reproduced one layer below the
 /// compiler after the compiler's own copy was removed. Fresh state per claim is correct; fresh
 /// INDEXES per claim is the same defect wearing the word "fresh".
+/// ONE MODULE'S CONTRIBUTION TO A SCOPE'S INDEXES, derived from that module alone.
+///
+/// WHY THIS EXISTS. `build_scope_indexes_with_module_order` used to re-read every item of
+/// every module of every scope: on the required floor that is 660 scopes over a mean of 427
+/// modules each, and the derivation per item — `authored_name_at`, `item_kind`, the import
+/// list, a `format!` per qualified name — was repaid once per scope the module appeared in.
+/// The measured cost was 44.5s of a 75.3s scope-construction total (`[floor-scope-split]`).
+///
+/// The derivation reads nothing but the module, so its result is the same in every scope that
+/// contains it. What is NOT module-local is which module WINS a colliding bare name, and that
+/// is exactly what stayed in the per-scope fold: the fragment carries the module's entries in
+/// the module's own order, and the fold applies the scope's precedence to them.
+///
+/// ORDER IS PRESERVED ACROSS THE TWO KINDS, not grouped by kind: the original walk emitted a
+/// bare slot and then its qualified slot per item, and grouping would change which write lands
+/// last if a bare name ever spells a qualified one.
+pub struct ModuleScopeFragment {
+    fn_entries: Vec<FragmentFnEntry>,
+    file_module_paths: Vec<(String, String)>,
+    file_import_bindings: Vec<((String, String), String)>,
+    service_ops: Vec<(String, ServiceOp)>,
+}
+
+/// A `fn_nodes` write, tagged with which slot it targets. The bare slot is subject to the
+/// scope's precedence rule (first-write-wins under an order); the qualified slot names exactly
+/// one declaration and is written unconditionally, as the original walk did.
+enum FragmentFnEntry {
+    Bare { name: String, item: Rc<Node> },
+    Qualified { name: String, item: Rc<Node> },
+}
+
+/// Per-prepared-subject memo for [`ModuleScopeFragment`], keyed by the module's authored name.
+///
+/// Optional at every call site: passing `None` derives each fragment on the spot, which is what
+/// the entry-major (`build_scope_indexes`) path does. A cache is a caller's fact about how many
+/// scopes it is about to build over ONE subject, not a property of the fold.
+pub type ScopeFragmentCache = std::cell::RefCell<HashMap<String, Rc<ModuleScopeFragment>>>;
+
+fn module_scope_fragment(
+    module: &Rc<TypedModule>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    cache: Option<&ScopeFragmentCache>,
+) -> Rc<ModuleScopeFragment> {
+    if let Some(cache) = cache {
+        if let Some(hit) = cache.borrow().get(module.func_env.name.as_str()) {
+            return hit.clone();
+        }
+    }
+    let built = Rc::new(derive_module_scope_fragment(module, source_indices));
+    if let Some(cache) = cache {
+        cache
+            .borrow_mut()
+            .insert(module.func_env.name.clone(), built.clone());
+    }
+    built
+}
+
+/// The module-local derivation, lifted VERBATIM out of the per-scope walk it used to sit in.
+fn derive_module_scope_fragment(
+    module: &Rc<TypedModule>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> ModuleScopeFragment {
+    let module_path = authored_name_at(source_indices.clone(), module.module.clone());
+    let mut fn_entries: Vec<FragmentFnEntry> = Vec::new();
+    let mut file_module_paths: Vec<(String, String)> = Vec::new();
+    let mut file_import_bindings: Vec<((String, String), String)> = Vec::new();
+    let mut service_ops: Vec<(String, ServiceOp)> = Vec::new();
+    // WHAT THE AUTHOR WROTE ABOUT WHERE EACH NAME COMES FROM, read once per module from
+    // the parser's import list. FIRST WRITE WINS within a file: two imports of one
+    // spelling from different modules is a double bind the grammar does not yet refuse,
+    // and picking the later would make this tier depend on statement order exactly as it
+    // exists to stop depending on walk order. The or_insert that enforces it stays in the
+    // fold, so the rule still spans every module in the scope and not just this one.
+    for imp in crate::v1_std_core::module_imports(module.module.clone()).iter() {
+        if import_is_all(imp.clone()) {
+            continue;
+        }
+        let source_module = authored_name_at(source_indices.clone(), imp.clone());
+        if source_module.is_empty() {
+            continue;
+        }
+        for imported in import_specific_names_at(imp.clone(), source_indices.clone()).iter() {
+            if imported.is_empty() || module.module.span.file.is_empty() {
+                continue;
+            }
+            file_import_bindings.push((
+                (module.module.span.file.to_string(), imported.clone()),
+                source_module.clone(),
+            ));
+        }
+    }
+    for item in module.items.iter() {
+        let name = authored_name_at(source_indices.clone(), item.clone());
+        if !module_path.is_empty() && !item.span.file.is_empty() {
+            file_module_paths.push((item.span.file.to_string(), module_path.clone()));
+        }
+        if !name.is_empty() {
+            fn_entries.push(FragmentFnEntry::Bare {
+                name: name.clone(),
+                item: item.clone(),
+            });
+            if !module_path.is_empty() {
+                fn_entries.push(FragmentFnEntry::Qualified {
+                    name: format!("{}.{}", module_path, name),
+                    item: item.clone(),
+                });
+            }
+        }
+        // Service-item detection is node-local: the node carries the `transport` that
+        // *defines* it as a service, so its own `item_kind` is the single authority.
+        // Do NOT gate on a name-keyed `item_registry` lookup — two top-level items can
+        // share a name (`std.resources` `resource Filesystem` is an OtherItem;
+        // `extdeps.filesystem` `service Filesystem` is a ServiceItem), and in one import
+        // closure the non-service entry can win the registry merge and silently drop the
+        // service's operations (-> "unknown service operation" at runtime).
+        if item_kind(item.clone()) == ItemKind::ServiceItem {
+            for op in item.children.iter() {
+                let op_name = authored_name_at(source_indices.clone(), op.clone());
+                if op_name.is_empty() {
+                    continue;
+                }
+                if !name.is_empty() {
+                    service_ops.push((format!("{}.{}", name, op_name), (item.clone(), op.clone())));
+                }
+                if !item.name.is_empty() && item.name != name {
+                    service_ops.push((
+                        format!("{}.{}", item.name, op_name),
+                        (item.clone(), op.clone()),
+                    ));
+                }
+            }
+        }
+    }
+    ModuleScopeFragment {
+        fn_entries,
+        file_module_paths,
+        file_import_bindings,
+        service_ops,
+    }
+}
+
 pub struct PreparedScopeIndexes {
     pub modules: Rc<im::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -3671,6 +3812,43 @@ pub struct PreparedScopeIndexes {
     /// Wildcard (`import a.b.c` with no braces) binds no names and contributes nothing here.
     file_import_bindings: HashMap<(String, String), String>,
     service_ops: HashMap<String, ServiceOp>,
+}
+
+impl PreparedScopeIndexes {
+    /// EVERY RESOLUTION THIS INDEX SET CAN ANSWER, rendered at identity grain and sorted, so
+    /// two index sets can be compared for equality of ANSWERS rather than of construction path.
+    /// Items are identified by `Rc` address: the same declaration node, not merely an equal
+    /// spelling — a fold that resolved a colliding bare name to the other module's declaration
+    /// differs here even though every key is identical.
+    #[cfg(any(test, feature = "interp_test_witness"))]
+    pub fn resolution_fingerprint(&self) -> Vec<String> {
+        let mut lines: Vec<String> = Vec::new();
+        for (name, item) in self.fn_nodes.iter() {
+            lines.push(format!("fn\t{}\t{:p}", name, Rc::as_ptr(item)));
+        }
+        for name in self.ambiguous_bare_function_names.iter() {
+            lines.push(format!("ambiguous\t{}", name));
+        }
+        for (file, module) in self.file_module_paths.iter() {
+            lines.push(format!("file_module\t{}\t{}", file, module));
+        }
+        for ((file, imported), source) in self.file_import_bindings.iter() {
+            lines.push(format!("import_bind\t{}\t{}\t{}", file, imported, source));
+        }
+        for (key, (item, op)) in self.service_ops.iter() {
+            lines.push(format!(
+                "service_op\t{}\t{:p}\t{:p}",
+                key,
+                Rc::as_ptr(item),
+                Rc::as_ptr(op)
+            ));
+        }
+        for (name, info) in self.item_registry.iter() {
+            lines.push(format!("registry\t{}\t{:p}", name, Rc::as_ptr(info)));
+        }
+        lines.sort();
+        lines
+    }
 }
 
 thread_local! {
@@ -3924,7 +4102,7 @@ impl InterpContext {
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     ) -> Rc<PreparedScopeIndexes> {
-        Self::build_scope_indexes_with_module_order(graph, source_indices, None)
+        Self::build_scope_indexes_with_module_order(graph, source_indices, None, None)
     }
 
     /// Same walk as [`build_scope_indexes`], but with `module_order` present modules are visited
@@ -3951,6 +4129,7 @@ impl InterpContext {
         graph: &ResolvedGraph,
         source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
         module_order: Option<&[String]>,
+        fragments: Option<&ScopeFragmentCache>,
     ) -> Rc<PreparedScopeIndexes> {
         SCOPE_INDEX_CONSTRUCTIONS.with(|c| c.set(c.get() + 1));
         let first_write_wins = module_order.is_some();
@@ -3979,70 +4158,32 @@ impl InterpContext {
         let mut file_import_bindings = HashMap::<(String, String), String>::new();
         let mut service_ops = HashMap::new();
         for module in modules_to_walk {
-            let module_path = authored_name_at(source_indices.clone(), module.module.clone());
-            // WHAT THE AUTHOR WROTE ABOUT WHERE EACH NAME COMES FROM, read once per module from
-            // the parser's import list. FIRST WRITE WINS within a file: two imports of one
-            // spelling from different modules is a double bind the grammar does not yet refuse,
-            // and picking the later would make this tier depend on statement order exactly as it
-            // exists to stop depending on walk order.
-            for imp in crate::v1_std_core::module_imports(module.module.clone()).iter() {
-                if import_is_all(imp.clone()) {
-                    continue;
-                }
-                let source_module = authored_name_at(source_indices.clone(), imp.clone());
-                if source_module.is_empty() {
-                    continue;
-                }
-                for imported in import_specific_names_at(imp.clone(), source_indices.clone()).iter()
-                {
-                    if imported.is_empty() || module.module.span.file.is_empty() {
-                        continue;
-                    }
-                    file_import_bindings
-                        .entry((module.module.span.file.to_string(), imported.clone()))
-                        .or_insert_with(|| source_module.clone());
-                }
+            let fragment = module_scope_fragment(module, &source_indices, fragments);
+            for ((file, imported), source_module) in fragment.file_import_bindings.iter() {
+                file_import_bindings
+                    .entry((file.clone(), imported.clone()))
+                    .or_insert_with(|| source_module.clone());
             }
-            for item in module.items.iter() {
-                let name = authored_name_at(source_indices.clone(), item.clone());
-                if !module_path.is_empty() && !item.span.file.is_empty() {
-                    file_module_paths.insert(item.span.file.to_string(), module_path.clone());
-                }
-                if !name.is_empty() {
-                    *bare_name_counts.entry(name.clone()).or_default() += 1;
-                    if first_write_wins {
-                        fn_nodes.entry(name.clone()).or_insert(item.clone());
-                    } else {
+            for (file, module_path) in fragment.file_module_paths.iter() {
+                file_module_paths.insert(file.clone(), module_path.clone());
+            }
+            for entry in fragment.fn_entries.iter() {
+                match entry {
+                    FragmentFnEntry::Bare { name, item } => {
+                        *bare_name_counts.entry(name.clone()).or_default() += 1;
+                        if first_write_wins {
+                            fn_nodes.entry(name.clone()).or_insert(item.clone());
+                        } else {
+                            fn_nodes.insert(name.clone(), item.clone());
+                        }
+                    }
+                    FragmentFnEntry::Qualified { name, item } => {
                         fn_nodes.insert(name.clone(), item.clone());
                     }
-                    if !module_path.is_empty() {
-                        let qualified = format!("{}.{}", module_path, name);
-                        fn_nodes.insert(qualified.clone(), item.clone());
-                    }
                 }
-                // Service-item detection is node-local: the node carries the `transport` that
-                // *defines* it as a service, so its own `item_kind` is the single authority.
-                // Do NOT gate on a name-keyed `item_registry` lookup — two top-level items can
-                // share a name (`std.resources` `resource Filesystem` is an OtherItem;
-                // `extdeps.filesystem` `service Filesystem` is a ServiceItem), and in one import
-                // closure the non-service entry can win the registry merge and silently drop the
-                // service's operations (-> "unknown service operation" at runtime).
-                if item_kind(item.clone()) == ItemKind::ServiceItem {
-                    for op in item.children.iter() {
-                        let op_name = authored_name_at(source_indices.clone(), op.clone());
-                        if op_name.is_empty() {
-                            continue;
-                        }
-                        if !name.is_empty() {
-                            let key = format!("{}.{}", name, op_name);
-                            service_ops.insert(key, (item.clone(), op.clone()));
-                        }
-                        if !item.name.is_empty() && item.name != name {
-                            let key = format!("{}.{}", item.name, op_name);
-                            service_ops.insert(key, (item.clone(), op.clone()));
-                        }
-                    }
-                }
+            }
+            for (key, op) in fragment.service_ops.iter() {
+                service_ops.insert(key.clone(), op.clone());
             }
         }
         let ambiguous_bare_function_names = bare_name_counts
@@ -5193,6 +5334,15 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
+
+        // An elaborated literal (std.literal_elaboration) evaluates as the kernel value: this
+        // interpreter realizes the structural destinations natively by its own grounding
+        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
+        // under that grounding IS the literal, and evaluating the constructor tree instead would
+        // route a natively-realized Bool through variant patterns that have no runtime form here.
+        // The structural image is consumed by emission, which is where the destination is
+        // structural; the emitted-bytes witnesses exercise that path.
+        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
@@ -10158,6 +10308,7 @@ pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
     match expr_data {
         ExprData::NoExprData => "NoExprData",
         ExprData::ExprLiteral { .. } => "ExprLiteral",
+        ExprData::ExprElaboratedLiteral { .. } => "ExprElaboratedLiteral",
         ExprData::ExprError { .. } => "ExprError",
         ExprData::ExprVar { .. } => "ExprVar",
         ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
@@ -11606,7 +11757,144 @@ fn dispatch_shell(
     }
 
     let stdout_policy = bounded_shell_host_drain::default_shell_stdout_capture_policy();
-    let stderr_policy = bounded_shell_host_drain::default_shell_stderr_capture_policy();
+    let stderr_complete_limit = match param_env.lookup(ctx.sym("stderr_capture")) {
+        Some(Value::Variant {
+            variant_name,
+            fields: _,
+            ..
+        }) if ctx.resolve(*variant_name).as_str() == "Complete" => {
+            let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+            Some(budget.ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active GUNBC_MEMORY_BUDGET_BYTES authority ({source})"
+                ),
+            })? as usize)
+        }
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) if ctx.resolve(*variant_name).as_str() == "BoundedTail" => {
+            let bytes = fields
+                .iter()
+                .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                .and_then(|(_, value)| match value {
+                    Value::Record { fields: mfields, .. } => {
+                        mfields.iter().find(|(mname, _)| ctx.resolve(*mname).as_str() == "count").and_then(
+                            |(_, mv)| match mv {
+                                Value::Int(n) => Some(*n),
+                                _ => None,
+                            },
+                        )
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with an integer count)"
+                        .to_string(),
+                })?;
+            if bytes < 0 {
+                return Err(InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative"
+                        .to_string(),
+                });
+            }
+            None
+        }
+        Some(Value::Record { type_name, fields })
+            if ctx.resolve(*type_name).as_str() == "BoundedTail" =>
+        {
+            let bytes = fields
+                .iter()
+                .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                .and_then(|(_, value)| match value {
+                    Value::Record { fields: mfields, .. } => {
+                        mfields.iter().find(|(mname, _)| ctx.resolve(*mname).as_str() == "count").and_then(
+                            |(_, mv)| match mv {
+                                Value::Int(n) => Some(*n),
+                                _ => None,
+                            },
+                        )
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with an integer count)"
+                        .to_string(),
+                })?;
+            if bytes < 0 {
+                return Err(InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative"
+                        .to_string(),
+                });
+            }
+            None
+        }
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("unknown WitnessStderrCapturePolicy value: {other}"),
+            })
+        }
+        None => None,
+    };
+    let stderr_policy = match stderr_complete_limit {
+        Some(max_bytes) => {
+            bounded_shell_host_drain::StreamCapturePolicy::CompleteWithin { max_bytes }
+        }
+        None => match param_env.lookup(ctx.sym("stderr_capture")) {
+            Some(Value::Variant {
+                variant_name,
+                fields,
+                ..
+            }) if ctx.resolve(*variant_name).as_str() == "BoundedTail" => {
+                let bytes = fields
+                    .iter()
+                    .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                    .and_then(|(_, value)| match value {
+                        Value::Record { fields: mfields, .. } => mfields
+                            .iter()
+                            .find(|(mname, _)| ctx.resolve(*mname).as_str() == "count")
+                            .and_then(|(_, mv)| match mv {
+                                Value::Int(n) if *n >= 0 => Some(*n as usize),
+                                _ => None,
+                            }),
+                        _ => None,
+                    })
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with a non-negative integer count); refusing rather than defaulting"
+                            .to_string(),
+                    })?;
+                bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
+                    max_tail_bytes: bytes,
+                }
+            }
+            Some(Value::Record { type_name, fields })
+                if ctx.resolve(*type_name).as_str() == "BoundedTail" =>
+            {
+                let bytes = fields
+                    .iter()
+                    .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                    .and_then(|(_, value)| match value {
+                        Value::Record { fields: mfields, .. } => mfields
+                            .iter()
+                            .find(|(mname, _)| ctx.resolve(*mname).as_str() == "count")
+                            .and_then(|(_, mv)| match mv {
+                                Value::Int(n) if *n >= 0 => Some(*n as usize),
+                                _ => None,
+                            }),
+                        _ => None,
+                    })
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with a non-negative integer count); refusing rather than defaulting"
+                            .to_string(),
+                    })?;
+                bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
+                    max_tail_bytes: bytes,
+                }
+            }
+            _ => bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        },
+    };
 
     let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
@@ -11679,6 +11967,16 @@ fn dispatch_shell(
         capture
     };
 
+    if let Some(limit_bytes) = stderr_complete_limit {
+        if capture.stderr.truncated {
+            return Err(InterpError::ShellOutputLimitExceeded {
+                stream: "stderr",
+                total_bytes: capture.stderr.total_bytes,
+                limit_bytes: limit_bytes as u64,
+                argv0: argv[0].clone(),
+            });
+        }
+    }
     shell_result_from_capture(&capture, &argv[0])
 }
 
@@ -16674,7 +16972,7 @@ pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
     )
 }
 
-pub const EXPR_VARIANT_COUNT: usize = 22;
+pub const EXPR_VARIANT_COUNT: usize = 23;
 
 fn expr_variant_index(d: &ExprData) -> usize {
     match d {
@@ -16700,6 +16998,7 @@ fn expr_variant_index(d: &ExprData) -> usize {
         ExprData::ExprIndex => 19,
         ExprData::ExprSlice => 20,
         ExprData::ExprReturn => 21,
+        ExprData::ExprElaboratedLiteral { .. } => 22,
     }
 }
 
@@ -16727,6 +17026,7 @@ pub fn expr_variant_name(i: usize) -> &'static str {
         "ExprIndex",
         "ExprSlice",
         "ExprReturn",
+        "ExprElaboratedLiteral",
     ];
     NAMES.get(i).copied().unwrap_or("?")
 }

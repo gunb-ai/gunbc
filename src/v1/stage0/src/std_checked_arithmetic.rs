@@ -255,7 +255,7 @@ pub fn checked_int_optional(r: Rc<CheckedInt>) -> Option<i64> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CheckedNat {
-    CheckedNatReady { value: Nat },
+    CheckedNatReady { value: i64 },
     CheckedNatOverflow { cause: Rc<IntegerOverflow> },
 }
 

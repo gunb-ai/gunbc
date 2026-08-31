@@ -558,3 +558,127 @@ test fn w_fn_field_record_header_keeps_the_bound_a_field_type_demands() -> Bool 
     ["pub struct ReceiptX<Subj, A> {"]
   )
 }
+
+// The same capture in PATTERN position: `Absent =>` over an optional scrutinee spells the host
+// variant, and a bare `None` pattern in a module that emits `pub struct None;` binds the unit
+// struct instead of the variant (E0308 "`None` is interpreted as a unit struct", five arms in
+// std.cache_interface on the first regen after the keyword row was qualified).
+test fn w_absent_pattern_survives_a_module_declaring_a_none_variant() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.none_pattern_probe\nimport std.types { Int }\ntype ScopeX = None | Keyed\nfn unwrap_or_zero(x: Int?) -> Int { match x { Present { value: v } => v\n Absent => 0 } }\n",
+    "src/test_claim_none_pattern_probe.rs",
+    ["std::option::Option::None => 0"],
+    ["    None => 0"]
+  )
+}
+
+// Two arms of one record that disagree only on a plain binding (`target: t` beside `target: _`)
+// must still lower to one outer arm with a nested match on the Rc field: the guard form
+// (`if matches!(label.as_ref(), ..)` on every arm) is invisible to rustc's exhaustiveness check.
+test fn w_record_arms_differing_only_in_plain_bindings_group_into_a_nested_match() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.grouped_record_arms_probe\nimport std.types { Int, String }\nimport v2.std.collection { List }\ntype LblX = NamedX { name: String, items: List<Int> } | PositionalX\ntype EdgeX { label: LblX, target: Int }\nfn probe(e: EdgeX) -> Int { match e { EdgeX { label: NamedX { name: _, items: _ }, target: t } => t  EdgeX { label: PositionalX, target: _ } => 0 } }\n",
+    "src/test_claim_grouped_record_arms_probe.rs",
+    ["match label.as_ref() {"],
+    ["if matches!(label.as_ref()"]
+  )
+}
+
+// A `Violates` literal at a record field inhabits the FIELD's declared `Witness<C>`, not the
+// enclosing fn's return: the type argument must come from the field (`Witness::<i64>`), never
+// from the fn return (`Witness::<RecW>` / `Witness::<Rc<RecW>>`).
+test fn w_violates_at_a_record_field_takes_the_fields_declared_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.witness_field_probe\nimport std.types { Bool, Int }\nimport v2.std.witness { Holds, Violates, Witness }\nimport v2.std.diagnostic { Diagnostic }\ntype RecW { inner: Witness<Int> }\nfn mk(ok: Bool, d: Diagnostic) -> RecW { RecW { inner: if ok { Holds { value: 1 } } else { Violates { diagnostic: d } } } }\n",
+    "src/test_claim_witness_field_probe.rs",
+    ["Witness::<i64>::Violates"],
+    ["Witness::<RecW>::Violates", "Witness::<Rc<RecW>>::Violates"]
+  )
+}
+
+// A native-realized alias (`std.nat.Nat` = i64) as a type ARGUMENT inside a generic record field:
+// the field's type expression carries no resolved inference, so the declaring module must be
+// read from the env binding, never from the reference's own file -- otherwise the argument
+// renders as the shared carrier `Rc<Nat>` while every signature renders it `i64`.
+test fn w_native_alias_type_argument_at_a_generic_field_renders_the_machine_scalar() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nat_type_arg_probe\nimport std.nat { Nat }\ntype Box2<Q, M> { count: M }\ntype Holder<S> { size: Box2<S, Nat> }\nfn holder_size<S>(h: Holder<S>) -> Box2<S, Nat> { h.size }\n",
+    "src/test_claim_nat_type_arg_probe.rs",
+    ["pub size: Rc<Box2<S, i64>>,"],
+    ["Box2<S, Rc<Nat>>", "Box2<S, Nat>"]
+  )
+}
+
+// sort_by over a list whose element type is a type variable must still compare by the authored
+// key function; the element-type-unknown arm used to drop the key and compare elements directly.
+test fn w_sort_by_over_a_generic_list_keeps_the_key_function() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.generic_sort_probe\nimport std.types { Int }\nimport v2.std.collection { List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
+    "src/test_claim_generic_sort_probe.rs",
+    ["let __ka = ("],
+    ["a.partial_cmp(b)"]
+  )
+}
+
+// An arrow type as a type ARGUMENT (a Map's value type at a record field) renders as the callable
+// carrier, never as the arrow's resolved return type.
+test fn w_arrow_type_argument_at_a_record_field_renders_the_callable_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.arrow_map_field_probe\nimport std.types { String }\nimport v2.std.collection { Map }\nimport v2.std.node { Symbol }\ntype Xf { transforms: Map<Symbol, fn(String) -> String> }\n",
+    "src/test_claim_arrow_map_field_probe.rs",
+    ["Rc<HashMap<Symbol, Rc<dyn Fn(String) -> String>>>"],
+    ["HashMap<Symbol, String>"]
+  )
+}
+
+// The sort comparator over a fn-scope generic element names that generic (`|a: &T, b: &T|`,
+// `|x: T|`): a `_` annotation on an immediately-applied key closure is uninferable (E0282).
+test fn w_sort_by_over_a_generic_list_names_the_generic_in_its_closures() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.generic_sort_typed_probe\nimport std.types { Int }\nimport v2.std.collection { List }\nfn srt<T>(items: List<T>, key: fn(T) -> Int) -> List<T> { sort_by(items, fn(x) { key(x) }) }\n",
+    "src/test_claim_generic_sort_typed_probe.rs",
+    ["|a: &T, b: &T|"],
+    ["|x: _|"]
+  )
+}
+
+// A native-realized alias at a VARIANT record field renders the machine scalar bare: the shared
+// wrap must not fire on `predecessor: Nat` (it rendered `Rc<Nat>` while the constructor passed i64).
+test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nat_variant_field_probe\nimport std.nat { Nat }\ntype PMx = PMSucc { predecessor: Nat }\nfn pm(n: Nat) -> PMx { PMSucc { predecessor: n } }\n",
+    "src/test_claim_nat_variant_field_probe.rs",
+    ["predecessor: i64,"],
+    ["predecessor: Rc<Nat>,", "predecessor: Rc<i64>,"]
+  )
+}
+
+// NESTED SHARED-FIELD REFUTATION, THE DISCRIMINATING RED (v2.lens.cost symbolic_product, 2 board
+// rows). A match arm nesting a refutable pattern under an Rc-carried field of an Rc-carried field
+// (`PConst { value: PSucc { prev: PZero } }`) lowered its guard SHAPE-ONLY
+// (`matches!(value.as_ref(), PSucc { .. })`) while the arm's let-else prelude demanded the full
+// nested pattern -- the inner Rc field met an enum pattern (E0308), and had the types been repaired
+// naively the prelude's `unreachable!()` sat on a REACHABLE path (guard admits PSucc { prev: PSucc },
+// prelude refuses it -- a fabricated panic, section 5). Refutation now lives entirely in the guard,
+// recursively (`.. { ref prev, .. } if matches!(prev.as_ref(), ..)`), and the prelude destructures
+// under that guarantee, level by level.
+test fn w_nested_shared_field_refutation_lives_in_the_guard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nested_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: PZero } } => 1\n    _ => 0\n  }\n}\n",
+    "src/test_claim_nested_shared_refutation_probe.rs",
+    ["if matches!(prev.as_ref(), PNat::PZero)"],
+    ["prev: PNat::PZero, .. } = value.as_ref()"]
+  )
+}
+
+// THE BOUNDARY CONTROL: a DEPTH-ONE refutation (inner pattern binds, refutes nothing below the
+// first shared level) keeps the shape-only guard and the single-level prelude byte-for-byte -- a
+// repair that recursed unconditionally would rewrite the whole corpus's preludes to prove two sites.
+test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.depth_one_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: p } } => 1\n    _ => 0\n  }\n}\n",
+    "src/test_claim_depth_one_shared_refutation_probe.rs",
+    ["matches!(value.as_ref(), PNat::PSucc { .. })"],
+    ["if matches!(prev.as_ref()"]
+  )
+}

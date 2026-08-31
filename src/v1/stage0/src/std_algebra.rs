@@ -2,6 +2,7 @@
 // Source module: std.algebra
 
 use self::AlgebraProfile::*;
+use self::AlgebraSupportAxis::*;
 use self::AlgebraTypeTemplate::*;
 use self::CarrierRowMembership::*;
 use self::CollectionSizeEffect::*;
@@ -765,10 +766,10 @@ pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
 pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
     algebra_carriers().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+        |acc: _, carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                |inner: _, spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
                         v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
                     } else {
@@ -794,6 +795,58 @@ pub fn carrier_container_arity_rows() -> Rc<HashMap<String, i64>> {
                             algebra_type_param_names(carrier.profile.clone())
                                 .iter()
                                 .fold(0, |n: i64, _| (n + 1)),
+                        )
+                    } else {
+                        inner.clone()
+                    }
+                },
+            )
+        },
+    )
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum AlgebraSupportAxis {
+    FiniteSupport,
+    OpenSupport,
+}
+
+pub fn algebra_profile_support(profile: AlgebraProfile) -> AlgebraSupportAxis {
+    match profile.clone() {
+        AlgebraProfile::OrderedRingProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::ApproximateFieldProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::BooleanAlgebraProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::FinitePowerSetProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::PointwisePowerCollectionProfile => AlgebraSupportAxis::OpenSupport,
+        AlgebraProfile::FreeMonoidScalarProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::FreeMonoidCollectionProfile => AlgebraSupportAxis::FiniteSupport,
+        AlgebraProfile::PartialFunctionProfile => AlgebraSupportAxis::OpenSupport,
+        AlgebraProfile::FinitelySupportedFunctionProfile => AlgebraSupportAxis::FiniteSupport,
+    }
+}
+
+pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
+    match algebra_profile_support(profile.clone()) {
+        AlgebraSupportAxis::FiniteSupport => true,
+        AlgebraSupportAxis::OpenSupport => false,
+    }
+}
+
+pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
+    algebra_carriers().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, bool>(),
+        |acc: _, carrier: Rc<AlgebraCarrier>| {
+            carrier.spellings.clone().iter().cloned().fold(
+                acc,
+                |inner: _, spelling: Rc<CarrierSpelling>| {
+                    if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
+                        v1_rt::rc_map_insert(
+                            inner.clone(),
+                            spelling.text.clone(),
+                            algebra_profile_equality_extensional(carrier.profile.clone()),
                         )
                     } else {
                         inner.clone()
@@ -2128,3 +2181,7 @@ pub struct ShapeLinearScan;
 pub struct ShapeIterateBody;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShapeSortBody;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FiniteSupport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OpenSupport;

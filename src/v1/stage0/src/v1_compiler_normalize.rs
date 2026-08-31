@@ -37,7 +37,7 @@ pub fn check_bare_containers(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let has_structure = ((match n.body.clone() {
             Some(_) => true,
-            None => false,
+            std::option::Option::None => false,
         } || ((n.uses.clone().len() as i64) > 0))
             || ((n.properties.clone().len() as i64) > 0));
         let is_expr = match (*n.expr_data.clone()).clone() {
@@ -123,13 +123,13 @@ pub fn check_bare_containers(
             Some(ta) => {
                 check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let body_diags = match n.body.clone() {
             Some(b) => {
                 check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
             }
-            None => Rc::new(vec![]),
+            std::option::Option::None => Rc::new(vec![]),
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
             Rc::new(vec![])
@@ -143,7 +143,7 @@ pub fn check_bare_containers(
                     ),
                     _ => Rc::new(vec![]),
                 },
-                None => Rc::new(vec![]),
+                std::option::Option::None => Rc::new(vec![]),
             }
         };
         let uses_diags = Rc::new({
