@@ -691,7 +691,9 @@ func fci1_live_reserve_and_observe_available(
   }
 }
 
-func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) {
+}
+
+func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
   match required_build_cell_lifetime_sample(observation: fci1_live_binding_observation(root: root)) {
     RequiredBuildCellLifetimeSampleUndecodable => exit_failure(reason: "RequiredBuildCellObservationRefused")
     RequiredBuildCellLifetimeSampleDecoded { sample: sample } => fabric_ci_write_wire(
@@ -1012,8 +1014,6 @@ func fci1_canonical_cleanup_disposition(
       } }
     }
   }
-}
-
 func fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, authority_path: String, path: String) -> ProcessExit {
   let disposition = fci1_canonical_cleanup_disposition(root: root, before_wire: before_wire, authority_path: authority_path)
   let write = Filesystem.Write(path: path, content: to_string(disposition))
