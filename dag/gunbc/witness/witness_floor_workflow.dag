@@ -1796,7 +1796,6 @@ fn required_lanes_run_id_expression() -> String {
 // all. A `Rejected` fold can therefore never reach a published step.
 data required_lanes_gate_build_var: String = "BUILD"
 data required_lanes_gate_floor_var: String = "FLOOR"
-data required_lanes_gate_fabric_var: String = "FABRIC_EVIDENCE"
 data required_lanes_gate_pull_request_var: String = "PULL_REQUEST"
 data required_lanes_gate_event_name_var: String = "EVENT_NAME"
 data required_lanes_gate_measured_head_var: String = "MEASURED_HEAD"
@@ -1811,7 +1810,6 @@ fn required_lanes_aggregate_script_outcome() -> String? {
     stmts: required_lanes_gate_stmts(
       build_var: required_lanes_gate_build_var,
       floor_var: required_lanes_gate_floor_var,
-      fabric_var: required_lanes_gate_fabric_var,
       pull_request_var: required_lanes_gate_pull_request_var,
       event_name_var: required_lanes_gate_event_name_var,
       measured_head_var: required_lanes_gate_measured_head_var,
@@ -1866,7 +1864,6 @@ fn required_lanes_aggregate_step_env() -> List<YamlKeyValue> {
   [
     kv(key: required_lanes_gate_build_var, value: yaml_string(s: required_lane_result_expression(job_id: build_lane_job_id))),
     kv(key: required_lanes_gate_floor_var, value: yaml_string(s: required_lane_result_expression(job_id: floor_lane_job_id))),
-    kv(key: required_lanes_gate_fabric_var, value: yaml_string(s: required_lane_result_expression(job_id: fabric_evidence_job_id))),
     kv(key: required_lanes_gate_pull_request_var, value: yaml_string(s: required_lanes_pull_request_expression())),
     kv(key: required_lanes_gate_event_name_var, value: yaml_string(s: required_lanes_event_name_expression())),
     kv(key: required_lanes_gate_measured_head_var, value: yaml_string(s: required_lanes_measured_head_expression())),
@@ -1891,13 +1888,22 @@ fn required_lanes_aggregate_step() -> Step {
 // It checks out nothing, installs nothing and builds nothing: it reads two results. A five minute
 // bound is an order of magnitude above anything that can take, and stops a stuck aggregator from
 // holding a runner for the inherited six hours.
+//
+// TWO RESULTS AND NOT THREE, AND THE THIRD IS A DECLARED DROP RATHER THAN AN OVERSIGHT. #9704 made
+// `fabric-evidence` a needs edge here and bound its result into the verdict fold. That edge is
+// withdrawn under `gunbc.rung_drop` `fabric_evidence_gating`, which carries the measurement, the
+// previous and temporary rungs, the bounded population and the restoration trigger. The JOB is
+// untouched and still runs on every push and pull request; only its authority to block a merge is
+// suspended. A reader who wants to restore the edge should read that row first, because the
+// trigger it names is a capability -- one evidence process resolving its entry without re-paying
+// the whole-tree census -- and not a pull request.
 fn required_lanes_aggregate_job() -> Job {
   Job {
     id: witness_floor_workflow_job_id,
     name: none,
     runner: gunbc_ci_selected_runner_spec(),
     steps: [required_lanes_aggregate_step()],
-    needs: [build_lane_job_id, floor_lane_job_id, fabric_evidence_job_id],
+    needs: [build_lane_job_id, floor_lane_job_id],
     env: none,
     outputs: none,
     if_condition: Present { value: required_lanes_aggregate_job_condition() },

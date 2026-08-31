@@ -232,22 +232,33 @@ test fn w_RED_lane_contexts_collide_with_no_other_emitted_workflow() -> Bool {
 test fn w_RED_neither_lane_waits_on_the_other() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, concat(", ", concat(fabric_evidence_job_id, "]")))))))
+      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, "]")))))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, "]")))
         && !string_contains(s: yml, pattern: concat("needs: [", concat(floor_lane_job_id, "]")))
     WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
 
-// The parallel fabric calibration is gating, not merely executing: its result is both a needs
-// edge and an input to the same closed-vocabulary verdict fold. Deleting either half authors RED.
-test fn w_RED_fabric_evidence_failure_reaches_required_context() -> Bool {
+// THE FABRIC LANE STILL RUNS AND NO LONGER GATES, AND THIS ROW ASSERTS BOTH HALVES.
+//
+// It replaces w_RED_fabric_evidence_failure_reaches_required_context, whose subject was the
+// gating edge that gunbc.rung_drop `fabric_evidence_gating` withdraws. That row is not
+// retired as obsolete -- its subject is real and its restoration is the drop's trigger -- it is
+// asserting a fact that is deliberately no longer true, so keeping it would have been a red
+// against the declared state rather than evidence about it.
+//
+// What survives is the half the drop does NOT withdraw: the calibration keeps executing on every
+// push and pull request, so the evidence stream is unbroken and only the merge block is gone. A
+// diff that deletes the job to "finish" the drop authors RED here; so does one that restores the
+// needs edge or the FABRIC_EVIDENCE binding without also retiring the drop, because the second
+// and third conjuncts forbid exactly the two spellings the gating form emits.
+test fn w_RED_fabric_evidence_executes_without_gating() -> Bool {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: yml } =>
-      string_contains(s: yml, pattern: concat("needs: [", concat(build_lane_job_id, concat(", ", concat(floor_lane_job_id, concat(", ", concat(fabric_evidence_job_id, "]")))))))
-        && string_contains(s: yml, pattern: "FABRIC_EVIDENCE: ${{ needs['fabric-evidence'].result }}")
-        && string_contains(s: yml, pattern: "\"$FABRIC_EVIDENCE\" '=' 'failure'")
-        && string_contains(s: yml, pattern: "fabric='\"$FABRIC_EVIDENCE\"")
+      string_contains(s: yml, pattern: concat("  ", concat(fabric_evidence_job_id, ":")))
+        && string_contains(s: yml, pattern: "bash tools/fabric_ci_evidence_calibration.sh")
+        && !string_contains(s: yml, pattern: "FABRIC_EVIDENCE")
+        && !string_contains(s: yml, pattern: concat(", ", concat(fabric_evidence_job_id, "]")))
     WitnessFloorGenerationRefused { reason: _ } => false
   }
 }
