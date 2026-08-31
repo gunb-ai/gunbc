@@ -511,7 +511,7 @@ pub fn run_required_regen_scoped(
         .iter()
         .map(|path| path.to_string_lossy().into_owned())
         .collect::<Vec<_>>();
-    let (basename_to_module, _, _, _, _, _, _) =
+    let (basename_to_module, _, _, _, _, _) =
         convergence_surface_roles(&workspace, &convergence_roots)?;
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
@@ -3580,7 +3580,6 @@ fn convergence_surface_roles(
         BTreeSet<String>,
         BTreeSet<String>,
         BTreeSet<String>,
-        BTreeSet<String>,
         HashMap<String, String>,
     ),
     String,
@@ -3611,20 +3610,15 @@ fn convergence_surface_roles(
             _ => {}
         }
     }
-    let seed_modules = super::emitted_closure_compile_host::closure_modules(
+    let host_shell_modules = super::emitted_closure_compile_host::closure_modules(
         &workspace.join("src/v1/stage0/src/lib.rs"),
     )?
     .into_iter()
     .collect::<BTreeSet<_>>();
     let partition_rows =
         crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows();
-    let outside_seed_modules =
-        partition_outside_seed_modules(&seed_modules, partition_rows.as_ref())?;
+    let seed_modules = assembled_seed_modules(host_shell_modules, partition_rows.as_ref());
     let seed_embedded_basenames = seed_modules
-        .into_iter()
-        .map(|module| format!("{module}.rs"))
-        .collect::<BTreeSet<_>>();
-    let outside_seed_basenames = outside_seed_modules
         .into_iter()
         .map(|module| format!("{module}.rs"))
         .collect::<BTreeSet<_>>();
@@ -3634,42 +3628,27 @@ fn convergence_surface_roles(
         bootstrap_sources,
         bootstrap_products,
         seed_embedded_basenames,
-        outside_seed_basenames,
         generated_product_roles,
     ))
 }
 
-fn partition_outside_seed_modules(
-    seed_modules: &BTreeSet<String>,
+fn assembled_seed_modules(
+    mut host_shell_modules: BTreeSet<String>,
     partition_rows: &crate::std_types::List<
         Rc<crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateRow>,
     >,
-) -> Result<BTreeSet<String>, String> {
+) -> BTreeSet<String> {
     use crate::gunbc_stage0_crate_partition_generated::GeneratedPartitionCrateKind::*;
-    let mut outside = BTreeSet::new();
     for row in partition_rows.iter() {
-        for module in row.modules.iter() {
-            if seed_modules.contains(module) {
-                continue;
+        match row.kind {
+            GeneratedFoundationCrate | GeneratedLayeredCoreCrate => {
+                host_shell_modules.extend(row.modules.iter().cloned());
             }
-            match row.kind {
-                GeneratedFoundationCrate => {
-                    outside.insert(module.clone());
-                }
-                GeneratedLayeredCoreCrate => {
-                    return Err(format!(
-                        "SurfaceOwnershipUnresolved: executable-bearing partition module {module} from {} is absent from the actual claim_executor seed manifest",
-                        row.package_name
-                    ));
-                }
-                // The emit-core package is a consumer/re-export surface, not a module-bearing
-                // owner in the executable assembly authority. Its duplicate spellings cannot
-                // decide seed membership for the source mirror.
-                GeneratedEmitCoreCrate => {}
-            }
+            // Emit-core is a consumer/re-export, not a module-bearing assembly owner.
+            GeneratedEmitCoreCrate => {}
         }
     }
-    Ok(outside)
+    host_shell_modules
 }
 
 fn convergence_plan_from_model(
@@ -3686,7 +3665,6 @@ fn convergence_plan_from_model(
     bootstrap_sources: &BTreeSet<String>,
     bootstrap_products: &BTreeSet<String>,
     seed_embedded_basenames: &BTreeSet<String>,
-    outside_seed_basenames: &BTreeSet<String>,
     generated_product_roles: &HashMap<String, String>,
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
@@ -3799,9 +3777,7 @@ fn convergence_plan_from_model(
                     variant_name: ctx.sym("SeedEmbedded"),
                     fields: Rc::new(vec![]),
                 }
-            } else if outside_seed_basenames.contains(basename)
-                || role == "NonSeedGeneratedOutput"
-            {
+            } else if role == "NonSeedGeneratedOutput" {
                 Value::Variant {
                     type_name: ctx.sym("RegenSeedMembership"),
                     variant_name: ctx.sym("OutsideSeed"),
@@ -4453,7 +4429,6 @@ pub fn run_regen_round_cost(
         bootstrap_sources,
         bootstrap_products,
         seed_embedded_basenames,
-        outside_seed_basenames,
         generated_product_roles,
     ) = convergence_surface_roles(&workspace, source_roots)?;
     let scope = if affected_scope {
@@ -4503,7 +4478,6 @@ pub fn run_regen_round_cost(
             &bootstrap_sources,
             &bootstrap_products,
             &seed_embedded_basenames,
-            &outside_seed_basenames,
             &generated_product_roles,
             &scope,
             &seen_state_keys,
@@ -4707,25 +4681,20 @@ mod regen_round_cost_tests {
     use super::*;
 
     #[test]
-    fn runtime_foundation_is_outside_direct_seed_but_missing_seed_module_refuses() {
+    fn assembled_seed_includes_foundation_and_layered_partitions_not_emit_consumer() {
         let workspace = workspace_root();
-        let mut seed_modules = super::super::emitted_closure_compile_host::closure_modules(
+        let host_shell_modules = super::super::emitted_closure_compile_host::closure_modules(
             &workspace.join("src/v1/stage0/src/lib.rs"),
         )
         .expect("the executable assembly manifest resolves")
         .into_iter()
         .collect::<BTreeSet<_>>();
         let rows = crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows();
-        let outside = partition_outside_seed_modules(&seed_modules, rows.as_ref())
-            .expect("the live partition and assembly authorities agree");
-        assert!(outside.contains("v1_rt"));
-        assert!(!outside.contains("std_measure"));
-
-        assert!(seed_modules.remove("std_measure"));
-        let refusal = partition_outside_seed_modules(&seed_modules, rows.as_ref())
-            .expect_err("an executable-bearing module cannot become outside-seed by absence");
-        assert!(refusal.contains("std_measure"));
-        assert!(refusal.contains("SurfaceOwnershipUnresolved"));
+        let assembled = assembled_seed_modules(host_shell_modules, rows.as_ref());
+        assert!(assembled.contains("v1_rt"));
+        assert!(assembled.contains("std_content_hash"));
+        assert!(assembled.contains("std_measure"));
+        assert!(!assembled.contains("v1_compiler_infer_service"));
     }
 
     /// THE SEED-TO-MODEL LOCKSTEP the .dag witness says it cannot hold: the host builds the
@@ -4783,9 +4752,9 @@ mod regen_round_cost_tests {
              owning_packages=[v1-stage0-runtime] \
              package_closure=[v1-stage0-runtime, v1-stage0-std-core, v1-stage0-std-surface, \
              v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-v1-infer, \
-             v1-stage0-emit-core] \
-             executable_assembly=assembled packages=[v1-stage0-runtime] executable_digest=sha256:claim-executor\n\
-             partition-rebuild: second_generation_candidate_digest=sha256:g1-candidate-tree\n"
+             v1-stage0-emit-core, v1-compiler] executable_assembly=assembled package=v1-compiler bin=claim_executor\n\
+             regen-round-cost: execution-identity rebuild_packages=1 [v1-stage0-runtime] \
+             executable_digest=sha256:claim-executor second_generation_candidate=sha256:g1-candidate-tree\n"
         );
     }
 
@@ -5217,7 +5186,6 @@ mod regen_convergence_host_instrument_tests {
             &empty,
             &empty,
             &empty,
-            &empty,
             &non_seed_roles,
             &RegenEmissionScope::WholePopulation,
             &[],
@@ -5242,7 +5210,6 @@ mod regen_convergence_host_instrument_tests {
             &empty,
             &empty,
             &seed_members,
-            &empty,
             &HashMap::new(),
             &RegenEmissionScope::WholePopulation,
             &[format!("seed-0:{digest}")],
@@ -5264,7 +5231,6 @@ mod regen_convergence_host_instrument_tests {
             &empty,
             &empty,
             &seed_members,
-            &empty,
             &HashMap::new(),
             &RegenEmissionScope::WholePopulation,
             &[],
