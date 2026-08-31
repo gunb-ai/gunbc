@@ -6,6 +6,7 @@ use self::BoundaryKind::*;
 use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
+use self::RustModuleRenderSelection::*;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -38,12 +39,30 @@ pub enum ArtifactKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RustModuleRenderSelection {
+    RenderEveryModule,
+    RenderSelectedMirrors { basenames: Rc<Vec<String>> },
+}
+impl RustModuleRenderSelection {
+    pub fn basenames(&self) -> Rc<Vec<String>> {
+        match self {
+            RustModuleRenderSelection::RenderEveryModule => panic!("no basenames on unit variant"),
+            RustModuleRenderSelection::RenderSelectedMirrors {
+                basenames: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
     pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
     pub entry_modules: Rc<Vec<String>>,
     pub dependencies: Rc<Vec<String>>,
+    pub module_selection: Rc<RustModuleRenderSelection>,
 }
 
 #[derive(
@@ -108,6 +127,18 @@ pub fn default_artifact_plan(
     root_modules: Rc<Vec<String>>,
     target: RenderTarget,
 ) -> Rc<ArtifactPlan> {
+    selected_artifact_plan(
+        root_modules.clone(),
+        target.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn selected_artifact_plan(
+    root_modules: Rc<Vec<String>>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<ArtifactPlan> {
     plan_artifacts(Rc::new(PartitionRule::Explicit {
         artifacts: Rc::new(vec![Rc::new(Artifact {
             name: "default".to_string(),
@@ -115,6 +146,7 @@ pub fn default_artifact_plan(
             target: target.clone(),
             entry_modules: root_modules.clone(),
             dependencies: Rc::new(vec![]),
+            module_selection: selection.clone(),
         })]),
     }))
 }
