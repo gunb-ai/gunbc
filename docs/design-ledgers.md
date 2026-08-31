@@ -50,7 +50,7 @@ CI — **RUNG DROP, DECLARED (2026-08-15, the floor cut).** WHAT WAS HERE: one c
 
 ### Whole-corpus compile-phase frontier receipts — latest validated row
 
-Milestones: parse PASSES / expand PASSES / resolve PASSES / typeck PASSES / borrowck PASSES
+Milestones: parse PASSES / expand PASSES / resolve PASSES / typeck 233 remaining / borrowck not yet reached
 
 Tree: `sha1:1c7c79fbc01aa488abb541513fc8ea44367406ad`
 
