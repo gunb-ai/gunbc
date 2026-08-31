@@ -646,7 +646,7 @@ pub fn build_dag_key_to_id(order: Rc<Vec<Rc<Node>>>) -> Rc<HashMap<String, Strin
 pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: _| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
@@ -2498,9 +2498,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
         });
         let intern_table = prepared.iter().cloned().fold(
             crate::v1_std_core::empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| {
-                crate::v1_std_core::pre_intern_tokens(p.tokens.clone(), t)
-            },
+            |t: Rc<InternTable>, p: _| crate::v1_std_core::pre_intern_tokens(p.tokens.clone(), t),
         );
         let parsed = prepared.iter().cloned().fold(
             Rc::new(FrontendAccum {
@@ -2513,7 +2511,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
                 annotation_diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: Rc<FrontendAccum>, p: _| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(
@@ -2641,9 +2639,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
         });
         let intern_table = prepared.iter().cloned().fold(
             crate::v1_std_core::empty_intern_table(),
-            |t: Rc<InternTable>, p: Rc<FrontendPrepared>| {
-                crate::v1_std_core::pre_intern_tokens(p.tokens.clone(), t)
-            },
+            |t: Rc<InternTable>, p: _| crate::v1_std_core::pre_intern_tokens(p.tokens.clone(), t),
         );
         let parsed = prepared.iter().cloned().fold(
             Rc::new(FrontendAccum {
@@ -2656,7 +2652,7 @@ pub fn parse_census_fill_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<CensusF
                 annotations: crate::std_source_annotation::source_annotation_graph_empty(),
                 annotation_diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
+            |acc: Rc<FrontendAccum>, p: _| {
                 let parsed = crate::v1_compiler_parse::parse_with_table_in_occurrence_scope(
                     p.tokens.clone(),
                     v1_rt::rc_map_insert(

@@ -2800,7 +2800,7 @@ pub fn stamp_parsed_node_list(
             ctx: ctx.clone(),
             err: std::option::Option::None,
         }),
-        |acc: Rc<ParsedNodeListStampResult>, node: Rc<Node>| {
+        |acc: _, node: Rc<Node>| {
             if has_err(acc.err.clone()) {
                 acc.clone()
             } else {

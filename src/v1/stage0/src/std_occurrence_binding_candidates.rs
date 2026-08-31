@@ -3358,23 +3358,26 @@ pub fn section13_observation_joins_receipt(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
     required_head: String,
 ) -> Option<bool> {
-    observations.iter().cloned().fold(
-        std::option::Option::None,
-        |found: _, observation: Rc<Section13ExactHeadExecutionObservation>| match found.clone() {
-            Some(_) => found.clone(),
-            std::option::Option::None => {
-                if (crate::std_decl_ref::declaration_ref_eq(
-                    observation.declaration.clone(),
-                    receipt.clone(),
-                ) && (observation.head.clone() == required_head.clone()))
-                {
-                    Some(observation.passed.clone())
-                } else {
-                    std::option::Option::None
+    observations
+        .iter()
+        .cloned()
+        .fold(
+            std::option::Option::None,
+            |found: _, observation: _| match found.clone() {
+                Some(_) => found.clone(),
+                std::option::Option::None => {
+                    if (crate::std_decl_ref::declaration_ref_eq(
+                        observation.declaration.clone(),
+                        receipt.clone(),
+                    ) && (observation.head.clone() == required_head.clone()))
+                    {
+                        Some(observation.passed.clone())
+                    } else {
+                        std::option::Option::None
+                    }
                 }
-            }
-        },
-    )
+            },
+        )
 }
 
 pub fn section13_adjudicate_row(
