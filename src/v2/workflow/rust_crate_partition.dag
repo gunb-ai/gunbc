@@ -252,6 +252,8 @@ fn stage0_std_core_modules() -> List<String> {
       "std_occurrence_identity",
       "std_source_annotation",
       "std_target_representation",
+      "std_literal_elaboration",
+      "std_operator_realization",
       "v1_std_core"
     ])
 }
@@ -300,7 +302,7 @@ fn stage0_extdeps_modules() -> List<String> {
 // the v1_compiler_* pipeline modules because the layer is a different one -- the
 // grouping is physical (one crate) while the name records what the module actually is.
 fn stage0_gunbc_binding_modules() -> List<String> {
-  ["gunbc_rust_source_type_bindings"]
+  ["gunbc_rust_source_type_bindings", "gunbc_structural_realization_bindings"]
 }
 
 fn stage0_v1_infer_modules() -> List<String> {
@@ -448,6 +450,13 @@ fn stage0_cross_unit_import_edges() -> List<ModuleDagEdge> {
     stage0_module_dag_edge(from: "extdeps_languages_rust_emit", to: "std_trait_derive_shape"),
     stage0_module_dag_edge(from: "std_source_annotation", to: "std_types"),
     stage0_module_dag_edge(from: "std_source_annotation", to: "std_occurrence_identity"),
+    stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_syntax"),
+    stage0_module_dag_edge(from: "std_literal_elaboration", to: "std_types"),
+    stage0_module_dag_edge(from: "std_operator_realization", to: "std_decl_ref"),
+    stage0_module_dag_edge(from: "std_operator_realization", to: "std_syntax"),
+    stage0_module_dag_edge(from: "std_operator_realization", to: "std_types"),
+    stage0_module_dag_edge(from: "v1_std_core", to: "std_literal_elaboration"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_source_annotation"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_algebra"),
     stage0_module_dag_edge(from: "v1_std_core", to: "std_induction"),

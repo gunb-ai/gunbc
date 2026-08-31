@@ -38,6 +38,7 @@
 // src/gunbc_stage0_emitted_population_manifest.rs
 // src/gunbc_stage0_executable_assembly_generated.rs
 // src/gunbc_stage0_partition_package_graph.rs
+// src/gunbc_structural_realization_bindings.rs
 // src/lib.rs
 // src/main.rs
 // src/std_algebra.rs
@@ -59,6 +60,7 @@
 // src/std_interface_summary.rs
 // src/std_keyed_roster.rs
 // src/std_keyed_row.rs
+// src/std_literal_elaboration.rs
 // src/std_logic.rs
 // src/std_machine_constraints.rs
 // src/std_magnitude.rs
@@ -69,6 +71,7 @@
 // src/std_occurrence_binding_candidates.rs
 // src/std_occurrence_binding_resolve.rs
 // src/std_occurrence_identity.rs
+// src/std_operator_realization.rs
 // src/std_pareto.rs
 // src/std_primitive_projection.rs
 // src/std_process_termination.rs

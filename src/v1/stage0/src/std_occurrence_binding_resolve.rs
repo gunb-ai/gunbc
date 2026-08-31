@@ -206,8 +206,8 @@ pub fn binding_candidates_from_supplied_declarations(
     refusal: std::option::Option::None,
 }), |build: Rc<OccurrenceCandidatePopulationBuild>, candidate_occurrence: OccurrenceId| match build.refusal.clone() {
     Some(_) => build.clone(),
-    None => match v1_rt::map_get(&validated.entries_by_id.clone(), candidate_occurrence.value.clone()) {
-    None => Rc::new(OccurrenceCandidatePopulationBuild {
+    std::option::Option::None => match v1_rt::map_get(&validated.entries_by_id.clone(), candidate_occurrence.value.clone()) {
+    std::option::Option::None => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
     refusal: Some(Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
@@ -223,8 +223,8 @@ pub fn binding_candidates_from_supplied_declarations(
     diagnostic_span: entry.projection.clone().diagnostic_span.clone(),
 })),
 }),
-    None => match v1_rt::map_get(&validated.declarations_by_id.clone(), candidate_occurrence.value.clone()) {
-    None => match v1_rt::map_get(&validated.references_by_id.clone(), candidate_occurrence.value.clone()) {
+    std::option::Option::None => match v1_rt::map_get(&validated.declarations_by_id.clone(), candidate_occurrence.value.clone()) {
+    std::option::Option::None => match v1_rt::map_get(&validated.references_by_id.clone(), candidate_occurrence.value.clone()) {
     Some(observed_reference) => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
@@ -235,7 +235,7 @@ pub fn binding_candidates_from_supplied_declarations(
     diagnostic_span: observed_reference.diagnostic_span.clone(),
 })),
 }),
-    None => Rc::new(OccurrenceCandidatePopulationBuild {
+    std::option::Option::None => Rc::new(OccurrenceCandidatePopulationBuild {
     candidates: build.candidates.clone(),
     seen_candidate_ids: build.seen_candidate_ids.clone(),
     refusal: Some(Rc::new(OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
@@ -291,26 +291,28 @@ pub fn resolve_reference_occurrence_binding_validated(
     supplied_candidates: Rc<Vec<OccurrenceId>>,
 ) -> Rc<OccurrenceReferenceBindingOutcome> {
     match v1_rt::map_get(&validated.entries_by_id.clone(), occurrence.value.clone()) {
-        None => match reference_occurrence_by_id(validated.clone(), occurrence.clone()) {
-            Some(reference) => Rc::new(
-                OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                    refusal: Rc::new(
-                        OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
-                            diagnostic_span: reference.diagnostic_span.clone(),
-                        },
-                    ),
-                },
-            ),
-            None => Rc::new(
-                OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
-                    refusal: Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
-                        occurrence: occurrence.clone(),
-                    }),
-                },
-            ),
-        },
+        std::option::Option::None => {
+            match reference_occurrence_by_id(validated.clone(), occurrence.clone()) {
+                Some(reference) => Rc::new(
+                    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
+                        refusal: Rc::new(
+                            OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
+                                diagnostic_span: reference.diagnostic_span.clone(),
+                            },
+                        ),
+                    },
+                ),
+                std::option::Option::None => Rc::new(
+                    OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
+                        refusal: Rc::new(OccurrenceTransportRefusal::UnknownOccurrenceIdentity {
+                            occurrence: occurrence.clone(),
+                        }),
+                    },
+                ),
+            }
+        }
         Some(entry) => match reference_occurrence_by_id(validated.clone(), occurrence.clone()) {
-            None => match v1_rt::map_get(
+            std::option::Option::None => match v1_rt::map_get(
                 &validated.declarations_by_id.clone(),
                 occurrence.value.clone(),
             ) {
@@ -324,7 +326,7 @@ pub fn resolve_reference_occurrence_binding_validated(
                         }),
                     },
                 ),
-                None => Rc::new(
+                std::option::Option::None => Rc::new(
                     OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
                         refusal: Rc::new(
                             OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity {
@@ -344,7 +346,7 @@ pub fn resolve_reference_occurrence_binding_validated(
     Some(refusal) => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingTransportRefused {
     refusal: refusal.clone(),
 }),
-    None => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
+    std::option::Option::None => Rc::new(OccurrenceReferenceBindingOutcome::OccurrenceReferenceBindingDecided {
     result: crate::std_occurrence_binding::occurrence_binding_from_candidates(binding_occurrence_from_reference(reference.clone()), build.candidates.clone()),
 }),
 }
