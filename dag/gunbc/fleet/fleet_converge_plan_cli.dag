@@ -6,7 +6,14 @@ import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_failure }
 import std.resources { Network }
 import std.algebra { trim }
 import std.content_hash { serialize_content_hash }
-import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.filesystem.filesystem_io {
+  Filesystem,
+  filesystem_listing_observation,
+  filesystem_entry_presence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+}
 import extdeps.exec.command { ArgvCommand, LocalExec }
 import extdeps.tools.hostname { hostname_short_read_command }
 import extdeps.tools.mkdir { mkdir_parents_command }
@@ -25,6 +32,30 @@ import gunbc.runner_slot_provision {
 import product.placement_supply { HostIdentity }
 import gunbc.fabric_cell_observation_admission { admit_fabric_cell_probe, FabricCellObservationDecision }
 import gunbc.fabric_cell_acquire { fabric_cell_probe_wet }
+import gunbc.fabric_allocation_store_substrate {
+  AllocationStoreSubstrateObservation,
+  AllocationStoreSubstrateObserved,
+  AllocationStoreSubstrateObservationRefused,
+  AllocationStoreNamespaceAbsent,
+  AllocationStoreNamespacePresent,
+  AllocationStoreDirectoryPrestate,
+  AllocationStoreDirectoryAbsent,
+  AllocationStoreSubstrateSpec,
+  fabric_allocation_store_substrate_spec,
+  allocation_store_presence_parent,
+  allocation_store_presence_coordinates_match_path,
+  allocation_store_directory_present,
+  allocation_store_directory_absent,
+  allocation_store_desired_stat_mode,
+}
+import gunbc.host_effect { LocalShell }
+import gunbc.host_effect_realize { srv3_observe_path_owner, srv3_observe_path_mode }
+import extdeps.posix.path_ownership {
+  PathOwnerObserved,
+  PathOwnerUnobserved,
+  PathModeObserved,
+  PathModeUnobserved,
+}
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
   FleetConvergeSparkServingTypedAction,
@@ -238,9 +269,19 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
 {
   match fleet_converge_scope_of_wire(wire: scope_wire) {
     ScopeUndecodable { cause: why } => FleetConvergeRequestUnobserved { reason: why }
-    ScopeDecoded { scope: FabricAllocationStoreOnly } => FleetConvergeRequestObserved {
-      request: FabricAllocationStoreConverge { host: host },
-    }
+    ScopeDecoded { scope: FabricAllocationStoreOnly } =>
+      match observe_allocation_store_substrate_wet() {
+        AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
+          FleetConvergeRequestUnobserved {
+            reason: join(["AllocationStoreSubstrateObservationRefused path=", p as String, " — ", why], ""),
+          }
+        AllocationStoreSubstrateObserved { prestate: observed } => FleetConvergeRequestObserved {
+          request: FabricAllocationStoreConverge {
+            host: host,
+            observed_allocation_store: observed,
+          },
+        }
+      }
     ScopeDecoded { scope: FabricExecutionCellsOnly } => FleetConvergeRequestObserved {
       request: FabricExecutionCellsConverge {
         host: host,
@@ -328,11 +369,136 @@ func fleet_converge_allocation_store_plan_wet() -> ProcessExit
       match observe_generation_store_wet() {
         GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
         GenerationAdmitted { generation: prior_generation } =>
-          match fleet_converge_allocation_store_plan_artifact(host: host, prior_generation: prior_generation) {
-            Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
-            Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
+          match observe_allocation_store_substrate_wet() {
+            AllocationStoreSubstrateObservationRefused { path: p, cause: why } =>
+              exit_failure(reason: join(["fleet_converge_allocation_store_plan: AllocationStoreSubstrateObservationRefused path=", p as String, " — ", why], ""))
+            AllocationStoreSubstrateObserved { prestate: observed } =>
+              match fleet_converge_allocation_store_plan_artifact(
+                host: host,
+                prior_generation: prior_generation,
+                observed_allocation_store: observed,
+              ) {
+                Absent => exit_failure(reason: "fleet_converge_allocation_store_plan: host is not modeled or baseline hash refused")
+                Present { value: artifact } => write_fleet_converge_plan_artifact_wet(artifact: artifact)
+              }
           }
       }
+  }
+}
+
+func observe_allocation_store_substrate_wet() -> AllocationStoreSubstrateObservation {
+  let spec = fabric_allocation_store_substrate_spec()
+  if !allocation_store_presence_coordinates_match_path(spec: spec) {
+    AllocationStoreSubstrateObservationRefused {
+      path: spec.path,
+      cause: "the modeled presence coordinates do not reconstruct the allocation-store path",
+    }
+  } else {
+    let ancestor = Filesystem.List(path: spec.presence_ancestor as String)
+    match filesystem_entry_presence(
+      listing: filesystem_listing_observation(
+        directory: spec.presence_ancestor as String,
+        success: ancestor.success,
+        entries: ancestor.entries,
+        error: ancestor.error,
+      ),
+      name: spec.presence_parent_entry as String,
+    ) {
+      FilesystemEntryPresenceIndeterminate { cause: why } =>
+        AllocationStoreSubstrateObservationRefused { path: spec.namespace_path, cause: why }
+      FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
+        prestate: AllocationStoreNamespaceAbsent {
+          namespace: allocation_store_directory_absent(path: spec.namespace_path, evidence: established),
+          store_path: spec.path,
+        },
+      }
+      FilesystemEntryListed { directory: _, name: _ } => observe_allocation_store_namespace_wet(spec: spec)
+    }
+  }
+}
+
+func observe_allocation_store_namespace_wet(spec: AllocationStoreSubstrateSpec) -> AllocationStoreSubstrateObservation {
+  let parent = allocation_store_presence_parent(spec: spec)
+  let contents = Filesystem.List(path: parent as String)
+  if !contents.success {
+    AllocationStoreSubstrateObservationRefused {
+      path: parent,
+      cause: join(["the ancestor names the allocation namespace but it cannot be listed — ", contents.error], ""),
+    }
+  } else {
+    match srv3_observe_path_owner(path: parent as String, transport: LocalShell) {
+      PathOwnerUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
+      PathOwnerObserved { owner: owner } => match srv3_observe_path_mode(path: parent as String, transport: LocalShell) {
+        PathModeUnobserved { reason: why } => AllocationStoreSubstrateObservationRefused { path: parent, cause: why }
+        PathModeObserved { mode: mode } => observe_allocation_store_under_namespace_wet(
+          spec: spec,
+          namespace: allocation_store_directory_present(
+            path: parent,
+            owner: owner,
+            mode: mode,
+            desired_mode: allocation_store_desired_stat_mode(mode: spec.namespace_mode),
+          ),
+          entries: contents.entries,
+          listing_error: contents.error,
+        )
+      }
+    }
+  }
+}
+
+func observe_allocation_store_under_namespace_wet(
+  spec: AllocationStoreSubstrateSpec,
+  namespace: AllocationStoreDirectoryPrestate,
+  entries: String,
+  listing_error: String,
+) -> AllocationStoreSubstrateObservation {
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: spec.namespace_path as String,
+      success: true,
+      entries: entries,
+      error: listing_error,
+    ),
+    name: spec.presence_target_entry as String,
+  ) {
+    FilesystemEntryPresenceIndeterminate { cause: why } =>
+      AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+    FilesystemEntryAbsent(established) => AllocationStoreSubstrateObserved {
+      prestate: AllocationStoreNamespacePresent {
+        namespace: namespace,
+        store: allocation_store_directory_absent(path: spec.path, evidence: established),
+      },
+    }
+    FilesystemEntryListed { directory: _, name: _ } => {
+      let contents = Filesystem.List(path: spec.path as String)
+      if !contents.success {
+        AllocationStoreSubstrateObservationRefused {
+          path: spec.path,
+          cause: join(["the parent names the allocation store but the target directory cannot be listed — ", contents.error], ""),
+        }
+      } else {
+        match srv3_observe_path_owner(path: spec.path as String, transport: LocalShell) {
+          PathOwnerUnobserved { reason: why } =>
+            AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+          PathOwnerObserved { owner: owner } =>
+            match srv3_observe_path_mode(path: spec.path as String, transport: LocalShell) {
+              PathModeUnobserved { reason: why } =>
+                AllocationStoreSubstrateObservationRefused { path: spec.path, cause: why }
+              PathModeObserved { mode: mode } => AllocationStoreSubstrateObserved {
+                prestate: AllocationStoreNamespacePresent {
+                  namespace: namespace,
+                  store: allocation_store_directory_present(
+                    path: spec.path,
+                    owner: owner,
+                    mode: mode,
+                    desired_mode: allocation_store_desired_stat_mode(mode: spec.mode),
+                  ),
+                },
+              }
+            }
+        }
+      }
+    }
   }
 }
 
@@ -523,6 +689,8 @@ func fleet_converge_apply_wet() -> ProcessExit
                   )
                 ApplyMemberSetMismatch =>
                   exit_failure(reason: "fleet_converge_apply: SubjectIdentityMismatch — member set drifted since plan")
+                ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
+                  exit_failure(reason: join(["fleet_converge_apply: AllocationStorePrestateMismatch namespace_path=", n as String, " store_path=", p as String, " observed=", o, "; rerun plan and review"], ""))
                 ApplyAdmitted =>
               if !fleet_converge_observed_baseline_matches(
                 observed_baseline_hex: trim(s: read_base.content),

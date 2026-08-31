@@ -36,6 +36,7 @@
 // src/gunbc_stage0_crate_layout_generated.rs
 // src/gunbc_stage0_crate_partition_generated.rs
 // src/gunbc_stage0_emitted_population_manifest.rs
+// src/gunbc_stage0_partition_package_graph.rs
 // src/lib.rs
 // src/main.rs
 // src/std_algebra.rs
