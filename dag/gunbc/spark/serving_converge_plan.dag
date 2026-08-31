@@ -10,9 +10,12 @@ import std.types { String, List, Bool, NonEmptyStr, Int }
 import std.content_hash { content_hash_of_value, content_hash_atom, serialize_content_hash }
 import product.placement_supply { HostIdentity, host_identity_eq }
 import gunbc.spark.serving_observation_transaction {
+  SparkServingObservationAcquired,
+  SparkServingObservationTransactionRefused,
+  SparkServingObservationHermeticFixture,
   spark_serving_provenance_host,
-  spark_serving_provenance_observation_attempt,
 }
+import gunbc.spark.serving_observe { SparkServingHostObservation }
 import gunbc.fleet_intent_network { operator_host_srv5 }
 import gunbc.membership_reconcile {
   MembershipPlan,
@@ -396,6 +399,200 @@ fn spark_serving_fleet_converge_apply_shell(
     ),
   )
 }
+
+// P0-C3: THE SPARK ROWS ARE A FACT ABOUT AN OBSERVATION, NOT A FACT ABOUT AN ARTIFACT.
+//
+// Row production and artifact assembly were fused in one function, and that fusion is why the
+// generic full-host planner could not produce Spark rows: reaching them meant calling the
+// Spark-specific artifact builder, which brings its own timers, its own caps, `observed_slots: []`
+// and an unobserved fabric population. Grafting that beside the generic artifact would have created
+// two subjects, two baselines, two leases, and an arbitrary winner -- so the generic builder went on
+// minting `scheduled_rows_empty()` unconditionally and the whole Spark axis was inert in production.
+//
+// Splitting the row production out dissolves the choice. The Spark-specific artifact route is now
+// deleted outright, and the generic full-host artifact derives its rows from THIS function through
+// the axis seam below -- so there is one authority for "what must be done to this host's serving
+// state" and the artifact assembly stays where the other axes already are.
+//
+// EVERY REFUSAL IS PRESERVED, which is the part a minimum viable extraction would have lost. The
+// four unobserved guards -- unit, enablement, activity, linger -- are not ceremony: each names a
+// probe whose silence would otherwise be read as "the member is absent", and absence is what makes
+// membership_reconcile plan an ADDITION. An extraction that kept only the happy path would have
+// turned four fail-closed walls into four writes against states nobody measured.
+type SparkServingScheduledRowsVerdict
+  = SparkServingScheduledRowsReady {
+      computed: SparkServingComputedRows<FleetConvergeSparkServingTypedAction>
+      plan: SparkServingFullMembershipPlan
+    }
+  | SparkServingScheduledRowsRefused { cause: String }
+
+fn spark_serving_scheduled_rows_for_release(
+  host: NonEmptyStr,
+  projection: SparkServingObservedMemberProjection,
+  serving_release: SparkServingRelease,
+) -> SparkServingScheduledRowsVerdict {
+  match spark_serving_full_membership_plan(
+    occurrence: spark_serving_occurrence(
+      host: host as HostIdentity,
+      serving_release: serving_release,
+    ),
+    serving_release: serving_release,
+    projection: projection,
+  ) {
+    SparkServingFullMembershipPlanRefused { cause: why } =>
+      SparkServingScheduledRowsRefused { cause: join(["plan-refused observation ", why], "") }
+    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, activity_observed: activity_observed, linger_observed: linger_observed, observed_members: observed_members, desired_members: desired_members } =>
+      if !unit_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused unit-unobserved host=", host as String,
+            ": the unit member was not observed, and planning it as an addition against an",
+            " unobserved state would write it on every run while no replan could ever be empty",
+          ], ""),
+        }
+      } else if !enablement_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused unit-enablement-unobserved host=", host as String,
+            ": an unobserved enablement projects no member, so the desired one reads as absent and",
+            " the plan would select EnableUserUnit off a probe that never answered",
+          ], ""),
+        }
+      } else if !activity_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused unit-activity-unobserved host=", host as String,
+            ": an unobserved activity projects no member, so the desired active one reads as absent",
+            " and the plan would select StartUserUnit off a probe that never answered",
+          ], ""),
+        }
+      } else if !linger_observed {
+        SparkServingScheduledRowsRefused {
+          cause: join([
+            "plan-refused linger-unobserved host=", host as String,
+            ": an unobserved linger is indistinguishable from a disabled one on the member list,",
+            " so planning against it would select the privileged enable-linger effect off a failed probe",
+          ], ""),
+        }
+      } else {
+        match fleet_converge_spark_serving_typed_actions(plan: full_plan, desired: desired_members) {
+          SparkServingTypedActionsRefused { cause: why } =>
+            SparkServingScheduledRowsRefused { cause: join(["plan-refused typed-actions ", why], "") }
+          SparkServingTypedActionsProjected { rows: spark_rows } =>
+            SparkServingScheduledRowsReady {
+              computed: spark_serving_computed_rows(
+                host: host as HostIdentity,
+                observed_members: observed_members,
+                rows: spark_rows,
+              ),
+              plan: full_plan,
+            }
+        }
+      }
+  }
+}
+
+// The same question asked without a pre-admitted release: desired admission is consulted first, so a
+// caller that has not admitted a release cannot accidentally plan against one.
+fn spark_serving_scheduled_rows_for(
+  host: NonEmptyStr,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingScheduledRowsVerdict {
+  match spark_serving_desired_admission {
+    SparkServingDesiredRefused { cause: why } =>
+      SparkServingScheduledRowsRefused {
+        cause: join(["plan-refused desired-release-unadmitted ", why as String], ""),
+      }
+    SparkServingDesiredAdmitted { serving_release: admitted_release } =>
+      spark_serving_scheduled_rows_for_release(
+        host: host,
+        projection: projection,
+        serving_release: admitted_release,
+      )
+  }
+}
+
+// THE AXIS SEAM. A caller that wants the Spark axis for a host gets a DISPOSITION, so a refusal
+// arrives as a refusal rather than as an empty plan the converge would read as "nothing to do".
+//
+// THIS IS THE ONLY ROUTE, AND IT MATCHES THE PROVENANCE ARM RATHER THAN ASKING FOR AN ATTEMPT.
+//
+// The deleted `spark_serving_axis_for` took a host and a projection independently and never joined
+// the host to the projection's own provenance, so a fabricated projection plus any host string still
+// yielded a "bound" payload -- the opacity was real and the binding was not. It survived as "the
+// lower-level route for pure plan tests", which is the parallel-authority tell exactly: a second path
+// beside the modeled one, existing so fixtures could reach a state the modeled path refuses.
+//
+// It is gone. Everything the bound plan carries comes out of ONE observation, and the binding step is
+// reached only from inside the SparkServingObservationAcquired arm -- so the earlier version's
+// weakness, matching on "does an observation attempt exist" rather than on the arm itself, is closed
+// too: an arm test cannot be satisfied by a projector that happens to answer Present.
+//
+// The host join stays, and it is not redundant with the arm match: the projection carries its own
+// provenance, and nothing in the type system says it is the SAME observation the readback came from.
+// A projection observed on another host would otherwise tag one host's schedule with another's
+// identity, and the artifact's subject join would then compare two values that already agreed by the
+// caller's arrangement.
+fn spark_serving_axis_for_observation(
+  observation: SparkServingHostObservation,
+) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
+  match observation.provenance {
+    SparkServingObservationTransactionRefused { request: r, cause: why } =>
+      SparkServingAxisRefused {
+        host: r.host,
+        cause: join([
+          "the observation transaction for host ", r.host as String,
+          " refused, so there is no measured population to plan from: ", why as String,
+        ], ""),
+      }
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: fid } =>
+      SparkServingAxisRefused {
+        host: h,
+        cause: join([
+          "the observation for host ", h as String,
+          " is the hermetic fixture ", fid as String,
+          ", which measured nothing, so there is no population to plan from",
+        ], ""),
+      }
+    SparkServingObservationAcquired {
+      host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _, receipt: _,
+    } =>
+      if !host_identity_eq(
+        a: h,
+        b: spark_serving_provenance_host(
+          p: spark_serving_projection_provenance(projection: observation.projection),
+        ),
+      ) {
+        SparkServingAxisRefused {
+          host: h,
+          cause: join([
+            "the projection was observed on host ",
+            spark_serving_provenance_host(
+              p: spark_serving_projection_provenance(projection: observation.projection),
+            ) as String,
+            " but the axis is being planned from an observation acquired on ",
+            h as String,
+          ], ""),
+        }
+      } else {
+        match spark_serving_scheduled_rows_for(
+          host: h as NonEmptyStr,
+          projection: observation.projection,
+        ) {
+          SparkServingScheduledRowsRefused { cause: why } =>
+            SparkServingAxisRefused { host: h, cause: why }
+          SparkServingScheduledRowsReady { computed: computed, plan: _ } =>
+            SparkServingAxisPlanned {
+              plan: spark_serving_bound_axis_plan(
+                provenance: observation.provenance,
+                computed: computed,
+              ),
+            }
+        }
+      }
+  }
+}
+
 
 // THE SPARK-SPECIFIC ARTIFACT ROUTE IS DELETED, NOT NARROWED.
 //
