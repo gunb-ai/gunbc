@@ -370,6 +370,7 @@ fn fleet_desired_admission_job() -> Job {
 // than this change. Declared here rather than left to be discovered.
 data fleet_desired_admission_workflow: Workflow = Workflow {
   name: "fleet-desired",
+  run_name: none,
   on: [
     WorkflowRunCompleted {
       workflows: [witness_floor_workflow_name],

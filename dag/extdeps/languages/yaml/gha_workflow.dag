@@ -498,7 +498,13 @@ fn optional_env_top(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
 
 fn project_workflow_to_yaml(workflow: Workflow) -> YamlValue {
   yaml_mapping(entries: concat(
-    [kv(key: "name", value: yaml_string(s: workflow.name))],
+    concat(
+      [kv(key: "name", value: yaml_string(s: workflow.name))],
+      match workflow.run_name {
+        Absent => []
+        Present { value: rn } => [kv(key: "run-name", value: yaml_string(s: rn))]
+      }
+    ),
     concat(
       [kv(key: "on", value: workflow_triggers_yaml(triggers: workflow.on))],
       concat(
