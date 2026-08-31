@@ -492,6 +492,13 @@ fn runner_arg_expr(mutant: MutantPlan, c: CarrierRealization, subject_arg_is_car
   }
 }
 
+// The pre-window plant is String-typed on purpose (instrument boundary, measured 2026-08-31):
+// clippy's redundant_clone is MIR-based and does not report clones of Rc-family values (that
+// class belongs to clone_on_ref_ptr), so a carrier-typed plant on a share-realized carrier is
+// invisible to the static arm — clean and mutant shards produced byte-equal finding counts.
+// A String clone whose binding's last use is the clone is the repro-proven shape that fires
+// inside src/bin targets. The plant sits before the window opens, so the runtime arm is
+// untouched and the share calibration stays static-only.
 fn mutant_plants_pre_call_clone(mutant: MutantPlan) -> Bool {
   match mutant {
     PlantRedundantShareClone => true
@@ -517,7 +524,7 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let l_rep = concat("        for _rep in 0..", concat(to_string(runner_repeat_count), " {\n"))
   let l_input = concat("            let input = ", concat(input_expr, ";\n"))
   let l_plant = if mutant_plants_pre_call_clone(mutant: mutant) {
-    concat("            let planted = ", concat(input_expr, "; ecq_sink(planted.clone());\n"))
+    "            let planted = format!(\"{:?}\", n); ecq_sink(planted.clone());\n"
   } else { "" }
   let l_window = concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
   let l_scalar = "            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n"
