@@ -183,20 +183,20 @@ fn match_positional_arms(match_node: Node) -> List<Node> {
 
 fn arm_collapse_findings(arm: Node) -> List<Diagnostic> {
   match find_named_child(root: arm, name: match_arm_pattern) {
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => []
     Accepted { value: pat, diagnostics: _ } =>
       if pattern_names_undecidable_verdict(pattern: pat) {
         match find_named_child(root: arm, name: match_arm_body) {
-          Rejected { diagnostics: _ } => Empty
+          Rejected { diagnostics: _ } => []
           Accepted { value: body, diagnostics: _ } =>
             if body_is_decidable_literal(body: body) {
               [undecidable_verdict_collapse_diagnostic(n: arm)]
             } else {
-              Empty
+              []
             }
         }
       } else {
-        Empty
+        []
       }
   }
 }
@@ -206,11 +206,11 @@ fn local_verdict_collapse_findings(
   module_qn: Optional<QualifiedName>
 ) -> List<Diagnostic> {
   if module_allows_verdict_collapse(qn: module_qn) {
-    Empty
+    []
   } else {
     fold_list(
       xs: match_positional_arms(match_node: n),
-      empty: Empty,
+      empty: [],
       cons: fn(acc, arm) { concat(acc, arm_collapse_findings(arm: arm)) }
     )
   }
