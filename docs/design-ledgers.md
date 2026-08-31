@@ -57,7 +57,7 @@ Tree: `sha1:1c7c79fbc01aa488abb541513fc8ea44367406ad`
 
 Invocation: `buildbuddy-b779daaf-cefa-4379-ab27-dbea5a8d2919`
 
-Census identity digest: `ce69956ca7a9de96`
+Census identity digest (self-host-compile-phase-census-canonical-identity-set-v1): `6daa51e6ebaea2e3`
 
 Error identities: 233 total = 233 coded + 0 codeless
 
