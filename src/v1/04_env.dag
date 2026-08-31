@@ -1354,118 +1354,39 @@ fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, 
   }
 }
 
-// THREE HOPS, SAME IDENTITY DISCIPLINE, EACH ANSWER GUARDED BY THE AUTHORED LEAF NAME. The
-// resolved-node hop is precise for substitution and recursion but alias EXPANSION is
-// closure-dependent: `type String = FreeMonoid<Char>` expands only when the RHS names resolve, so
-// with std.types (Char) anywhere in the module graph the annotation's inferred node is the
-// FreeMonoid expansion and the hop answers std.algebra.FreeMonoid -- a real declaration, but the
-// realization the alias peels TO, not the destination the author wrote (measured: the same
-// data-literal boundary elaborated in a probe without std.types in closure and fell to
-// DirectLiteral in one with it, on the same compiler). Reordering the hops was tried and REGRESSED
-// the Peano battery: the binding hops answer by NAME, so put first they pick the wrong homonym
-// (dag/std nat vs v2.std.nat Nat) where the resolved node was exact. The invariant that separates
-// the two failure shapes is that a hop's answer is the reference's destination only if it names
-// the declaration the author spelled. When the resolved-node hop answers a decl_name that differs
-// from the reference's authored leaf, the answer is an expansion artifact (FreeMonoid for an
-// authored String) and the destination is re-derived from the MODULE-LEVEL name binding
-// (lookup_type_by_name) -- import-driven, homonym-correct, and by construction the SAME answer at
-// every reference of that spelling in the module, which is what keeps one module from splitting
-// into structural annotations beside host values (the per-node binding hop answered differently
-// across positions of one module, measured as a 108-to-174 board regression). The per-node binding
-// hop (lookup_type_for) still answers when the resolved-node hop yields nothing -- the recursive
-// in-place case. An empty authored leaf (a synthetic node) accepts the resolved answer as-is. All
-// hops answer only from the census by declaration span,
-// never from a spelling, so an identity neither can supply is still Absent. A THIRD hop for the
-// emitter's scope env (merged from XL-0N c7b8056): when the reference carries no ident-keyed
-// binding, the module-visible NAME binding (lookup_type_by_name) -- that module's own import
-// binding -- still names the declaration; the found node is STILL matched by span against the
-// census, so a by-name hit only ever confirms an exact declaration, never picks among homonyms.
-fn declaration_ref_from_unique_census(decl_name: String, env: TypeEnv) -> DeclarationRef? {
-  if decl_name == "" { return none }
-  match map_get(env.symbol_index.global_bare, decl_name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } =>
-      Present { value: decl_ref(module_path: mp, decl_name: decl_name) }
+// THREE HOPS, SAME IDENTITY DISCIPLINE, TRIED IN ORDER. (1) The resolved node's own ident_span --
+// this answers when the resolver substituted the declaration node itself, and is EXACT: reordering
+// the hops to put a name-keyed lookup first was tried and regressed the Peano battery on the
+// dag/std-vs-v2.std Nat homonym. (2) The env binding for the reference (lookup_type_for) -- the
+// recursive in-place case and the resolved-ALIAS case, where the substitution carries the
+// OCCURRENCE site's span rather than the declaration's. (3) The module-visible NAME binding
+// (lookup_type_by_name, merged from XL-0N c7b8056) -- the emitter's scope env; the found node is
+// still matched by SPAN against the census, so a by-name hit only ever confirms an exact
+// declaration. KNOWN RESIDUE, measured and deliberately NOT papered over here: in a closure where
+// std.types is importable, a text-importing module's String annotation can reach infer UNRESOLVED
+// with a kernel-minted span, all three hops decline, and the literal stays a host literal at a
+// structural boundary. Four widenings were built and each measured WORSE on the emitted-closure
+// board (leaf-name guard 108->174, terminal unique-census hop ->569, module-binding rederivation
+// ->437, one-authority renderer over those ->745): every wider answer invents structural
+// identities for the kernel corpus faster than it repairs the text modules. The residue therefore
+// stays a declined identity -- fail closed, the boundary lane's declared rung drop covers it --
+// and the successor is the carrier-realization arbiter design plus the resolver defect (the
+// import binding lost when std.types enters the closure), not a wider reader. All hops answer
+// only from the census by declaration span, never from a spelling, so an identity none can supply
+// is still Absent.
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  let from_resolved = match n.inferred {
+    Present { value: Resolved { node: r } } => declaration_ref_of_node(rt: r, source_indices: source_indices, env: env)
     _ => none
   }
-}
-
-fn declaration_ref_from_module_binding(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let authored = authored_name_at(source_indices: source_indices, node: n)
-  match lookup_type_by_name(env: env, name: authored) {
-    Present { value: bound } =>
-      match declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env) {
-        Present { value: d } => Present { value: d }
-        Absent => declaration_ref_from_unique_census(decl_name: qualified_last_segment(name: authored), env: env)
-      }
-    Absent => none
-  }
-}
-
-// The FILE of the declaration a DeclarationRef names, read from the same census the ref was
-// answered from. Exists because a boundary decision must ask every question of ONE subject: the
-// natively-realizes fact read from the REFERENCE NODE's span can contradict the destination the
-// identity chain answered (measured: a kernel-minted annotation span <kernel:String> made
-// decl_file_realizes_natively answer TRUE while the destination was v2.std.text.String, so the
-// literal stayed direct against a structural destination). Empty when the census has no row for
-// the ref -- the caller falls back to its node-derived file.
-fn binding_decl_span_file(binding: TypeBinding) -> String {
-  match binding.resolved.ident_span {
-    Present { value: s } => span_file_string(sp: s)
-    Absent => ""
-  }
-}
-
-fn span_file_string(sp: SourceSpan) -> String {
-  sp.file
-}
-
-fn declaration_ref_census_file(d: DeclarationRef, env: TypeEnv) -> String {
-  match map_get(env.symbol_index.global_bare, d.decl_name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      if mp == d.module_path { binding_decl_span_file(binding: b) } else { "" }
-    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      match cands |> filter(c => c.module_path == d.module_path) |> first {
-        Present { value: c } => binding_decl_span_file(binding: c.binding)
-        Absent => ""
-      }
-    Absent => ""
-  }
-}
-
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let authored_leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
-  type_reference_declaration_ref_hops(n: n, source_indices: source_indices, env: env, authored_leaf: authored_leaf)
-}
-
-fn type_reference_declaration_ref_hops(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, authored_leaf: String) -> DeclarationRef? {
-  match n.inferred {
-    Present { value: Resolved { node: r } } =>
-      match declaration_ref_of_node(rt: r, source_indices: source_indices, env: env) {
-        Present { value: d } =>
-          if authored_leaf == "" || d.decl_name == authored_leaf {
-            Present { value: d }
-          } else {
-            match declaration_ref_from_module_binding(n: n, source_indices: source_indices, env: env) {
-              Present { value: mb } => Present { value: mb }
-              Absent => Present { value: d }
-            }
-          }
-        Absent =>
-          match lookup_type_for(env: env, node: n) {
-            Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
-            Absent =>
-              match declaration_ref_from_module_binding(n: n, source_indices: source_indices, env: env) {
-                Present { value: mb } => Present { value: mb }
-                Absent => none
-              }
-          }
-      }
-    _ =>
+  match from_resolved {
+    Present { value: d } => Present { value: d }
+    Absent =>
       match lookup_type_for(env: env, node: n) {
         Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
         Absent =>
-          match declaration_ref_from_module_binding(n: n, source_indices: source_indices, env: env) {
-            Present { value: mb } => Present { value: mb }
+          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
+            Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
             Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
           }
       }

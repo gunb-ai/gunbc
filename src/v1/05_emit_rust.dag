@@ -418,18 +418,11 @@ fn render_rust_optional_carrier_applied(n: Node, generic_param_names: List<Strin
   concat("Option<", render_rust_optional_carrier_inner(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env), ">")
 }
 fn render_rust_text_carrier(n: Node, shared_types: Set<String>, env: TypeEnv) -> String {
-  match type_reference_declaration_ref(n: n, source_indices: env.source_indices, env: env) {
-    Present { value: d } =>
-      if decl_file_declares_structurally(dag_name: "String", decl_file: declaration_ref_census_file(d: d, env: env)) {
-        concat("crate::", module_to_filename(name: d.module_path), "::String")
-      } else {
-        render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
-      }
-    Absent => render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
-  }
+  render_rust_shared_type_if_needed(type_name: "String", rendered: "String", shared_types: shared_types)
+}
 }
 
-data render_rust_text_carrier_identity_note: String = "The rendered spelling for a host-or-structural text type position is answered by the SAME identity reader the literal boundary uses -- type_reference_declaration_ref, with the destination declaration s census file deciding structurality -- so emission and inference cannot disagree about one reference (the prior two-reader states were both measured wrong: a module-binding heuristic split modules into structural annotations beside host values, and a corpus-wide grounding spelling redded two witnesses pinning the bare kernel spelling). A structural destination renders the qualified crate path (crate::v2_std_text::String), which no local binding shadows and which needs no use line; every other answer, including Absent, keeps the bare reference spelling."
+data render_rust_text_carrier_identity_note: String = "REVERTED TO THE BARE REFERENCE SPELLING, WITH THE EXPERIMENT RECORDED. Two identity-keyed spellings were built here and each measured WORSE on the emitted-closure board than the bare spelling it replaced: a corpus-wide grounding spelling (std::string::String wherever identity was known non-structural) redded two enrolled witnesses that pin the bare kernel spelling, and a one-authority qualified render (crate::v2_std_text::String wherever the shared identity reader answered structural) drove the board from 108 to 745 because the reader answers structural for kernel-corpus positions faster than it repairs the text modules. The shadowed-module class (generated_binding_shadows_bare_render in gunbc.recurring_failure_mode) is REAL and stays open under the boundary lane declared rung drop; its fix shape is recorded on that class row, and the successor is the carrier-realization arbiter design (docs/plans/carrier-realization-arbiter-repair-design.md) with a correct per-reference identity, not a spelling switch keyed on a reader measured to answer the kernel corpus wrongly."
 
 fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
   host_expr
