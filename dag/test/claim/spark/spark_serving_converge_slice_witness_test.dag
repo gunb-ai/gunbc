@@ -279,6 +279,7 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
               subject: artifact.subject,
               prior_generation: artifact.prior_generation,
               plan_lease: artifact.plan_lease,
+              apply_terminal: artifact.apply_terminal,
               observed_baseline_hex: artifact.observed_baseline_hex,
               plan_body: artifact.plan_body,
               apply_shell: artifact.apply_shell,
