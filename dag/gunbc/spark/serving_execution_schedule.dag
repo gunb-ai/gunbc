@@ -750,15 +750,25 @@ type BoundSparkServingAxisPlan<Row> sole_constructor {
   rows: ScheduledRows<Row>
 }
 
-// Sealed to the row producer. sole_constructor stopped an outside record literal; it did not stop an
-// outside module calling this factory with arbitrary members and rows, which is exactly the forgery
-// the opaque payload was introduced to prevent.
-fn spark_serving_bound_axis_plan<Row>(
+// COMPUTATION AND PRIVILEGE ARE TWO FACTS, SO THEY ARE TWO TYPES.
+//
+// The row producer used to hold the mint, which conflated "these are the rows this observation
+// implies" -- a pure derivation any caller may perform -- with "this schedule is bound to an
+// ACQUIRED observation", which is the claim the whole carrier exists to make. Holding both meant the
+// producer bound whatever provenance it was handed, including a refused or hermetic one, and nothing
+// on the path ever matched the arm. The producer now answers with the computation alone; the binding
+// is a separate, sealed step performed only where the acquired arm has actually been matched.
+type SparkServingComputedRows<Row> sole_constructor {
+  host: HostIdentity
+  observed_members: List<SparkServingMember>
+  rows: ScheduledRows<Row>
+}
+
+fn spark_serving_computed_rows<Row>(
   host: HostIdentity,
-  provenance: SparkServingObservationProvenance,
   observed_members: List<SparkServingMember>,
   rows: ScheduledRows<Row>,
-) -> BoundSparkServingAxisPlan<Row>
+) -> SparkServingComputedRows<Row>
   admit_callers: [
     decl_ref(
       module_path: "gunbc.spark.serving_converge_plan",
@@ -766,11 +776,36 @@ fn spark_serving_bound_axis_plan<Row>(
     ),
   ]
 {
+  SparkServingComputedRows { host: host, observed_members: observed_members, rows: rows }
+}
+
+// THE BINDING IS THE PRIVILEGE, AND IT IS ADMITTED TO ONE CALLER.
+//
+// sole_constructor stopped an outside record literal; it did not stop an outside module calling this
+// factory with arbitrary members and rows, which is the forgery the opaque payload was introduced to
+// prevent. The single admitted caller reaches this only from inside the SparkServingObservationAcquired
+// arm, so a bound plan cannot exist over a refused or hermetic observation -- which is what makes the
+// provenance field evidence rather than a label.
+//
+// The host is taken from the COMPUTATION rather than supplied, and the caller is required to have
+// established that it equals the acquired provenance's host before arriving here; there is no second
+// host parameter for the first to disagree with.
+fn spark_serving_bound_axis_plan<Row>(
+  provenance: SparkServingObservationProvenance,
+  computed: SparkServingComputedRows<Row>,
+) -> BoundSparkServingAxisPlan<Row>
+  admit_callers: [
+    decl_ref(
+      module_path: "gunbc.spark.serving_converge_plan",
+      decl_name: "spark_serving_axis_for_observation",
+    ),
+  ]
+{
   BoundSparkServingAxisPlan {
-    host: host,
+    host: computed.host,
     provenance: provenance,
-    observed_members: observed_members,
-    rows: rows,
+    observed_members: computed.observed_members,
+    rows: computed.rows,
   }
 }
 

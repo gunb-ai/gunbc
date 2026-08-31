@@ -45,7 +45,6 @@ import gunbc.ollama_runtime_bundle {
 import gunbc.fleet_known_hosts_anchor { portable_remote_words }
 import gunbc.spark.serving_observe {
   SparkServingObservedUnit,
-  spark_serving_host_observation,
   SparkServingCurrentBootDurabilityStanding,
   CurrentBootDurabilityExhibitedFleetWide,
   CurrentBootDurabilityNotExhibited,
@@ -579,7 +578,7 @@ fn readback_active_complete_at(host: HostIdentity) -> SparkServingReadback {
 // is the honest value -- listing a member with a placeholder digest would fabricate a state, and
 // absence from the observed list is exactly what makes membership_reconcile plan an addition.
 fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
-  spark_serving_host_observation(
+  hermetic_host_observation(
     readback: readback,
     account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
     runtime: RuntimeMaterializationAbsent,
@@ -590,10 +589,7 @@ fn ho_from(readback: SparkServingReadback) -> SparkServingHostObservation {
       activity: UnitActivityUnobserved,
     },
     linger: LingerUnobservedState,
-    provenance: spark_serving_hermetic_provenance_of(
-    host: readback.host,
-    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
-  ),
+    provenance: hermetic_fixture_provenance(host: readback.host),
   )
 }
 

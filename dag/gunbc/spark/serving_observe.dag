@@ -626,8 +626,8 @@ fn spark_serving_host_observation(
       decl_name: "spark_serving_host_observation_from_refused_transaction",
     ),
     decl_ref(
-      module_path: "test.claim.spark_serving_observe_witness_test",
-      decl_name: "ho_from",
+      module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture",
+      decl_name: "hermetic_host_observation",
     ),
   ]
 {

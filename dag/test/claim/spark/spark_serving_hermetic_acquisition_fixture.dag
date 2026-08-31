@@ -77,7 +77,20 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_observation_transaction_of,
   spark_serving_hermetic_provenance_of,
 }
-import gunbc.spark.serving_observe { spark_serving_transaction_provenance }
+import gunbc.spark.serving_observe {
+  SparkServingHostObservation,
+  SparkServingObservedUnit,
+  SparkManagedAccountObservation,
+  ManagedAccountProbeRefused,
+  spark_serving_host_observation,
+  spark_serving_transaction_provenance,
+}
+import gunbc.spark.serving_loaded_release { SparkServingReadback, SparkServingUnitAbsent }
+import gunbc.spark.serving_readback_parse { SparkServingReadbackAbsent }
+import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved }
+import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
+import gunbc.ollama_runtime_bundle { RuntimeMaterializationObservation, ModelStoreObservation }
+import gunbc.spark.serving_observed_members { SparkServingObservedLingerState }
 
 data hermetic_identity_file: NonEmptyStr = "/tmp/gunbc-hermetic-acquisition-fixture-key"
 
@@ -242,4 +255,83 @@ fn hermetic_fixture_provenance(host: HostIdentity) -> SparkServingObservationPro
     host: host,
     fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
   )
+}
+
+// THE ONE ADMITTED FIXTURE ROUTE INTO THE HOST-OBSERVATION MINT.
+//
+// The mint is sealed to the two transaction projectors plus exactly one fixture, and this is it. It
+// used to be a helper inside the observe witness, which meant a second witness needing an
+// observation had either to be added to the seal -- widening it once per file -- or to reach for the
+// deleted lower-level planning route. One fixture route, named in the seal, consumed by every
+// witness that needs one.
+fn hermetic_host_observation(
+  readback: SparkServingReadback,
+  account: SparkManagedAccountObservation,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  observed_unit: SparkServingObservedUnit,
+  linger: SparkServingObservedLingerState,
+  provenance: SparkServingObservationProvenance,
+) -> SparkServingHostObservation {
+  spark_serving_host_observation(
+    readback: readback,
+    account: account,
+    runtime: runtime,
+    store: store,
+    observed_unit: observed_unit,
+    linger: linger,
+    provenance: provenance,
+  )
+}
+
+// A READBACK CARRYING NOTHING BUT ITS HOST.
+//
+// Planning witnesses do not read the readback; they read the projection the mint derives from
+// readback.host. So this supplies the host and refuses every field honestly rather than inventing
+// values a probe would have had to produce.
+fn hermetic_readback(host: HostIdentity) -> SparkServingReadback {
+  SparkServingReadback {
+    host: host,
+    unit_outcome: SparkServingUnitAbsent,
+    runtime_version: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
+    model_name: SparkServingReadbackAbsent,
+    model_tag: SparkServingReadbackAbsent,
+    model_manifest_digest: SparkServingReadbackAbsent,
+    nvidia_driver: SparkServingReadbackAbsent,
+    bind_address: SparkServingReadbackAbsent,
+    boot_provenance: BootProvenanceUnobserved { cause: "fixture readback carries no boot probe" as NonEmptyStr },
+    grants: GrantProbeRefused { cause: "fixture readback carries no grant probe" },
+  }
+}
+
+// THE PLANNING FIXTURE: AN OBSERVATION WHOSE PROVENANCE IS ACQUIRED.
+//
+// This is what every planning witness now uses. Its provenance comes out of an admitted transaction
+// rather than the hermetic arm, which matters because planning REFUSES the hermetic arm -- so the
+// old fixtures could only ever have exercised the refusal, and the claims that appeared to plan were
+// reaching a second route that existed for exactly that purpose. Absent here means the fixture's own
+// acquisition refused, which is a red the caller must not paper over.
+fn hermetic_plan_observation(
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+  store: ModelStoreObservation,
+  observed_unit: SparkServingObservedUnit,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingHostObservation? {
+  match hermetic_plan_provenance(host: host) {
+    Absent => none
+    Present { value: p } =>
+      Present {
+        value: hermetic_host_observation(
+          readback: hermetic_readback(host: host),
+          account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+          runtime: runtime,
+          store: store,
+          observed_unit: observed_unit,
+          linger: linger,
+          provenance: p,
+        ),
+      }
+  }
 }

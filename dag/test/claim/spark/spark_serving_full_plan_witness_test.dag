@@ -86,7 +86,7 @@ import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobser
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.spark.serving_converge_plan {
   spark_serving_scheduled_rows_for,
-  spark_serving_axis_for,
+  spark_serving_axis_for_observation,
   SparkServingScheduledRowsVerdict,
   SparkServingScheduledRowsReady,
   SparkServingScheduledRowsRefused,
@@ -260,10 +260,7 @@ fn full_plan_refuses(
 // The declared desired population is four members. This is the denominator every claim below divides
 // by, asserted rather than assumed.
 fn witness_provenance(host: HostIdentity) -> SparkServingObservationProvenance {
-  spark_serving_hermetic_provenance_of(
-    host: host,
-    fixture_identity: "hermetic-witness-fixture" as NonEmptyStr,
-  )
+  hermetic_fixture_provenance(host: host)
 }
 
 test fn the_declared_desired_population_is_seven_members() -> Bool {
@@ -1388,14 +1385,46 @@ fn c3_axis(linger: SparkServingObservedLingerState) -> SparkServingAxisDispositi
 // parts agreed by the author's arrangement rather than by provenance. The foreign-host RED is still
 // authorable, and that matters: it is minted for srv3 by the real producer and then handed to an
 // artifact whose subject is srv5, which is a mismatch no amount of opacity can rule out.
+// A PLANNED AXIS COMES FROM ONE ACQUIRED OBSERVATION, THROUGH THE ONE ROUTE.
+//
+// This used to call `spark_serving_axis_for(host, projection)` -- a second planning route that took
+// the two independently and existed because the fixture's provenance was HERMETIC, which the
+// production route refuses. So the claims below were exercising a path production does not take,
+// against a provenance production rejects. Both are gone: the fixture acquires through the sealed
+// transaction mint, so its provenance is the acquired arm, and the axis comes from
+// `spark_serving_axis_for_observation`, which is now the only route that binds a plan at all.
+//
+// Absent means the fixture's own acquisition refused. It is returned rather than swallowed so a
+// broken fixture reddens the claims instead of quietly turning them into refusal tests.
+fn c3_observation_at(
+  host: HostIdentity,
+  linger: SparkServingObservedLingerState,
+) -> SparkServingHostObservation? {
+  hermetic_plan_observation(
+    host: host,
+    runtime: RuntimeMaterializationAbsent,
+    store: complete_required_store(),
+    observed_unit: SparkServingObservedUnit {
+      state: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+      enablement: UserUnitManagerEnabled,
+      activity: UnitActivityRunning,
+    },
+    linger: linger,
+  )
+}
+
 fn c3_axis_at(
   host: HostIdentity,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
-  spark_serving_axis_for(
-    host: host as NonEmptyStr,
-    projection: c3_projection_at(host: host, linger: linger),
-  )
+  match c3_observation_at(host: host, linger: linger) {
+    Absent =>
+      SparkServingAxisRefused {
+        host: host,
+        cause: "the hermetic acquisition fixture did not admit a transaction",
+      }
+    Present { value: o } => spark_serving_axis_for_observation(observation: o)
+  }
 }
 
 fn c3_axis_host(a: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>) -> HostIdentity {
@@ -1422,21 +1451,60 @@ test fn the_axis_accessor_reads_the_host_off_the_arm_it_is_given() -> Bool {
   c3_axis_host(a: c3_axis(linger: LingerObservedEnabled)) == subject_host
 }
 
-// The provenance claim proper: the planned axis carries the projection's OWN provenance value, not
-// two strings copied out of it. This fixture's projection is hermetic, and the assertion is that the
-// axis says so rather than presenting a plausible acquired identity -- a hermetic observation has no
-// observation attempt, and that absence is what stops it being mistaken for a measured one.
-test fn a_planned_axis_carries_the_provenance_its_projection_was_observed_under() -> Bool {
+// THE PROVENANCE CLAIM PROPER, AND IT IS NOW THE ACQUIRED ARM.
+//
+// The previous version of this claim asserted the planned axis carried a provenance with NO
+// observation attempt -- because the fixture was hermetic -- and called that the provenance
+// property. It was the opposite: it pinned that planning accepted a value measured from nothing. The
+// production route refuses that arm outright, so the claim was green over a route production never
+// takes. The axis now carries the acquired provenance of the transaction the fixture admitted, and
+// the identity it reports is the derived one rather than a constant.
+test fn a_planned_axis_carries_the_acquired_provenance_of_its_observation() -> Bool {
   match c3_axis(linger: LingerObservedEnabled) {
     SparkServingAxisPlanned { plan: p } =>
       spark_serving_provenance_host(p: p.provenance) == subject_host
         && match spark_serving_provenance_observation_attempt(p: p.provenance) {
-          Absent => true
-          Present { value: _ } => false
+          Absent => false
+          Present { value: a } =>
+            a == spark_serving_observation_attempt_of(
+              fleet_attempt: hermetic_fleet_attempt_raw as NonEmptyStr,
+              host: subject_host,
+              phase: SparkServingPlanObservation,
+            )
         }
     SparkServingAxisNotApplicable { host: _ } => false
     SparkServingAxisUnobserved { host: _ } => false
     SparkServingAxisRefused { host: _, cause: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE BINDING PRIVILEGE.
+//
+// A hermetic observation measured nothing, so it must not produce a bound plan -- and this is the
+// only place that can be shown, because the bound mint is admitted to the acquired arm alone. If the
+// route ever went back to asking "is there an observation attempt" instead of matching the arm, or
+// if the binding privilege leaked back into the row producer, this goes green when it must be red.
+test fn a_hermetic_observation_cannot_produce_a_bound_plan() -> Bool {
+  match spark_serving_axis_for_observation(
+    observation: hermetic_host_observation(
+      readback: hermetic_readback(host: subject_host),
+      account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+      runtime: RuntimeMaterializationAbsent,
+      store: complete_required_store(),
+      observed_unit: SparkServingObservedUnit {
+        state: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+        enablement: UserUnitManagerEnabled,
+        activity: UnitActivityRunning,
+      },
+      linger: LingerObservedEnabled,
+      provenance: hermetic_fixture_provenance(host: subject_host),
+    ),
+  ) {
+    SparkServingAxisRefused { host: h, cause: why } =>
+      h == subject_host && string_contains(s: why, pattern: "hermetic")
+    SparkServingAxisPlanned { plan: _ } => false
+    SparkServingAxisNotApplicable { host: _ } => false
+    SparkServingAxisUnobserved { host: _ } => false
   }
 }
 

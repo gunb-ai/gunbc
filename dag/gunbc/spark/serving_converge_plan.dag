@@ -28,7 +28,9 @@ import gunbc.spark.serving_execution_schedule {
   ScheduledRows,
   SparkServingAxisDisposition,
   SparkServingAxisPlanned,
+  SparkServingComputedRows,
   spark_serving_bound_axis_plan,
+  spark_serving_computed_rows,
   SparkServingAxisRefused,
   SparkServingAxisNotApplicable,
   SparkServingAxisUnobserved,
@@ -457,7 +459,7 @@ fn spark_serving_fleet_converge_plan_artifact(
 // turned four fail-closed walls into four writes against states nobody measured.
 type SparkServingScheduledRowsVerdict
   = SparkServingScheduledRowsReady {
-      axis: SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction>
+      computed: SparkServingComputedRows<FleetConvergeSparkServingTypedAction>
       plan: SparkServingFullMembershipPlan
     }
   | SparkServingScheduledRowsRefused { cause: String }
@@ -516,14 +518,11 @@ fn spark_serving_scheduled_rows_for_release(
             SparkServingScheduledRowsRefused { cause: join(["plan-refused typed-actions ", why], "") }
           SparkServingTypedActionsProjected { rows: spark_rows } =>
             SparkServingScheduledRowsReady {
-              axis: SparkServingAxisPlanned {
-                plan: spark_serving_bound_axis_plan(
-                  host: host as HostIdentity,
-                  provenance: spark_serving_projection_provenance(projection: projection),
-                  observed_members: observed_members,
-                  rows: spark_rows,
-                ),
-              },
+              computed: spark_serving_computed_rows(
+                host: host as HostIdentity,
+                observed_members: observed_members,
+                rows: spark_rows,
+              ),
               plan: full_plan,
             }
         }
@@ -553,64 +552,82 @@ fn spark_serving_scheduled_rows_for(
 
 // THE AXIS SEAM. A caller that wants the Spark axis for a host gets a DISPOSITION, so a refusal
 // arrives as a refusal rather than as an empty plan the converge would read as "nothing to do".
-// THE PRODUCTION ROUTE TAKES ONE SEALED OBSERVATION, NOT A HOST AND A PROJECTION.
 //
-// spark_serving_axis_for takes them independently and never joins host to
-// projection.provenance.host, so a fabricated projection plus any host string still yielded a
-// "bound" payload -- the opacity was real and the binding was not. This is the route production
-// uses: everything the bound plan carries comes out of the one observation, so there is no second
-// argument for the first to disagree with.
+// THIS IS THE ONLY ROUTE, AND IT MATCHES THE PROVENANCE ARM RATHER THAN ASKING FOR AN ATTEMPT.
+//
+// The deleted `spark_serving_axis_for` took a host and a projection independently and never joined
+// the host to the projection's own provenance, so a fabricated projection plus any host string still
+// yielded a "bound" payload -- the opacity was real and the binding was not. It survived as "the
+// lower-level route for pure plan tests", which is the parallel-authority tell exactly: a second path
+// beside the modeled one, existing so fixtures could reach a state the modeled path refuses.
+//
+// It is gone. Everything the bound plan carries comes out of ONE observation, and the binding step is
+// reached only from inside the SparkServingObservationAcquired arm -- so the earlier version's
+// weakness, matching on "does an observation attempt exist" rather than on the arm itself, is closed
+// too: an arm test cannot be satisfied by a projector that happens to answer Present.
+//
+// The host join stays, and it is not redundant with the arm match: the projection carries its own
+// provenance, and nothing in the type system says it is the SAME observation the readback came from.
+// A projection observed on another host would otherwise tag one host's schedule with another's
+// identity, and the artifact's subject join would then compare two values that already agreed by the
+// caller's arrangement.
 fn spark_serving_axis_for_observation(
   observation: SparkServingHostObservation,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
-  match spark_serving_provenance_observation_attempt(p: observation.provenance) {
-    Absent =>
+  match observation.provenance {
+    SparkServingObservationTransactionRefused { host: h, fleet_attempt: _, phase: _, cause: why } =>
       SparkServingAxisRefused {
-        host: spark_serving_provenance_host(p: observation.provenance),
+        host: h,
         cause: join([
-          "the observation for host ",
-          spark_serving_provenance_host(p: observation.provenance) as String,
-          " carries no acquired provenance -- its transaction refused, or it is a hermetic fixture",
-          " -- so there is no measured population to plan from",
+          "the observation transaction for host ", h as String,
+          " refused, so there is no measured population to plan from: ", why as String,
         ], ""),
       }
-    Present { value: _ } =>
-      spark_serving_axis_for(
-        host: spark_serving_provenance_host(p: observation.provenance) as NonEmptyStr,
-        projection: observation.projection,
-      )
-  }
-}
-
-// THE LOWER-LEVEL ROUTE SURVIVES FOR PURE PLAN TESTS AND JOINS THE TWO ARGUMENTS ITSELF.
-//
-// It is reachable from a hermetic witness, which is why it cannot simply trust its host argument:
-// if the projection was observed on another host, planning here would tag one host's schedule with
-// another's identity, and the artifact's own subject join would then compare two values that already
-// agreed with each other by the caller's arrangement.
-fn spark_serving_axis_for(
-  host: NonEmptyStr,
-  projection: SparkServingObservedMemberProjection,
-) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
-  if !host_identity_eq(
-    a: host as HostIdentity,
-    b: spark_serving_provenance_host(p: spark_serving_projection_provenance(projection: projection)),
-  ) {
-    SparkServingAxisRefused {
-      host: host as HostIdentity,
-      cause: join([
-        "the projection was observed on host ",
-        spark_serving_provenance_host(p: spark_serving_projection_provenance(projection: projection)) as String,
-        " but the axis is being planned for ",
-        host as String,
-      ], ""),
-    }
-  } else {
-  match spark_serving_scheduled_rows_for(host: host, projection: projection) {
-    SparkServingScheduledRowsRefused { cause: why } =>
-      SparkServingAxisRefused { host: host as HostIdentity, cause: why }
-    SparkServingScheduledRowsReady { axis: axis, plan: _ } => axis
-  }
+    SparkServingObservationHermeticFixture { host: h, fixture_identity: fid } =>
+      SparkServingAxisRefused {
+        host: h,
+        cause: join([
+          "the observation for host ", h as String,
+          " is the hermetic fixture ", fid as String,
+          ", which measured nothing, so there is no population to plan from",
+        ], ""),
+      }
+    SparkServingObservationAcquired {
+      host: h, fleet_attempt: _, phase: _, observation_attempt: _, credential: _,
+    } =>
+      if !host_identity_eq(
+        a: h,
+        b: spark_serving_provenance_host(
+          p: spark_serving_projection_provenance(projection: observation.projection),
+        ),
+      ) {
+        SparkServingAxisRefused {
+          host: h,
+          cause: join([
+            "the projection was observed on host ",
+            spark_serving_provenance_host(
+              p: spark_serving_projection_provenance(projection: observation.projection),
+            ) as String,
+            " but the axis is being planned from an observation acquired on ",
+            h as String,
+          ], ""),
+        }
+      } else {
+        match spark_serving_scheduled_rows_for(
+          host: h as NonEmptyStr,
+          projection: observation.projection,
+        ) {
+          SparkServingScheduledRowsRefused { cause: why } =>
+            SparkServingAxisRefused { host: h, cause: why }
+          SparkServingScheduledRowsReady { computed: computed, plan: _ } =>
+            SparkServingAxisPlanned {
+              plan: spark_serving_bound_axis_plan(
+                provenance: observation.provenance,
+                computed: computed,
+              ),
+            }
+        }
+      }
   }
 }
 
@@ -629,43 +646,19 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
   ) {
     SparkServingScheduledRowsRefused { cause: why } =>
       SparkServingPlanArtifactRefused { cause: why }
-    SparkServingScheduledRowsReady { axis: axis, plan: full_plan } =>
-      match axis {
-        SparkServingAxisNotApplicable { host: h } =>
-          SparkServingPlanArtifactRefused {
-            cause: join([
-              "the row producer reported Ready for host ",
-              h as String,
-              " but handed back a NotApplicable axis: a host with no Spark axis has no schedule to",
-              " freeze into an artifact",
-            ], ""),
-          }
-        SparkServingAxisUnobserved { host: h } =>
-          SparkServingPlanArtifactRefused {
-            cause: join([
-              "the row producer reported Ready for host ",
-              h as String,
-              " but handed back an Unobserved axis: nothing was measured, so there is nothing to plan",
-            ], ""),
-          }
-        SparkServingAxisRefused { host: h, cause: why } =>
-          SparkServingPlanArtifactRefused {
-            cause: join(["spark axis refused on host ", h as String, ": ", why], ""),
-          }
-        SparkServingAxisPlanned { plan: bound } =>
-          SparkServingPlanArtifactReady {
-            artifact: spark_serving_fleet_converge_plan_artifact_from_rows(
-              host: host,
-              prior_generation: prior_generation,
-              observed_timers: observed_timers,
-              observed_caps: observed_caps,
-              spark_plan: full_plan,
-              spark_rows: bound.rows,
-              observed_spark: bound.observed_members,
-              observed_slots: [],
-              observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
-            ),
-          }
+    SparkServingScheduledRowsReady { computed: computed, plan: full_plan } =>
+      SparkServingPlanArtifactReady {
+        artifact: spark_serving_fleet_converge_plan_artifact_from_rows(
+          host: host,
+          prior_generation: prior_generation,
+          observed_timers: observed_timers,
+          observed_caps: observed_caps,
+          spark_plan: full_plan,
+          spark_rows: computed.rows,
+          observed_spark: computed.observed_members,
+          observed_slots: [],
+          observed_fabric_cells: fabric_cell_observation_unobserved(host: host as HostIdentity),
+        ),
       }
   }
 }
