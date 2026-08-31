@@ -71,6 +71,24 @@ import gunbc.machine_intake_access {
   BoundBmcAccessContextStanding,
   same_boot_delivery_target,
 }
+import gunbc.boot_artifact {
+  BootArtifact,
+  BootArtifactFormat,
+  BootPurpose,
+  EfiApplication,
+  FastMemoryDiagnostic,
+  FirmwareCapsule,
+  FirmwareUtility,
+  IntakeArtifactNoneForArchitecture,
+  IntakeArtifactSelected,
+  IntakeArtifactSelection,
+  IntakeArtifactSet,
+  IntakeLinuxEnvironment,
+  IsoImage,
+  KernelInitrdPair,
+  OperatingSystemInstaller,
+  intake_artifact_for,
+}
 import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
 import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.install_transport_qualification {
@@ -116,56 +134,6 @@ import gunbc.network_boot_delivery {
 // URI serves digest B while the request names digest A' is a typed refusal.
 // gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access
 // context and therefore always refuses at AccessContextProfileLookupNotRun.
-// What the artifact is FOR is data the same delivery mechanism accepts, never
-// a reason to fork the mechanism.
-type BootPurpose
-  = FastMemoryDiagnostic
-  | IntakeLinuxEnvironment
-  | OperatingSystemInstaller
-  | FirmwareUtility
-
-type BootArtifactFormat
-  = IsoImage
-  | EfiApplication
-  | KernelInitrdPair
-  | FirmwareCapsule
-
-type BootArtifact {
-  purpose: BootPurpose
-  architecture: Architecture
-  digest: ContentHash
-  format: BootArtifactFormat
-  entrypoint: NonEmptyStr
-  build_identity: NonEmptyStr
-}
-
-// 'The same ISO serves both architectures' is NOT an invariant. The set names
-// one artifact per architecture; the two may resolve to one digest when that is
-// genuinely true, and otherwise the per-architecture selection stays explicit.
-type IntakeArtifactSet {
-  x86_64: BootArtifact
-  aarch64: BootArtifact
-}
-
-type IntakeArtifactSelection
-  = IntakeArtifactSelected { artifact: BootArtifact }
-  | IntakeArtifactNoneForArchitecture { architecture: Architecture }
-
-fn intake_artifact_for(set: IntakeArtifactSet, architecture: Architecture) -> IntakeArtifactSelection {
-  match architecture {
-    X86_64 => IntakeArtifactSelected { artifact: set.x86_64 }
-    Aarch64 => IntakeArtifactSelected { artifact: set.aarch64 }
-    X86 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Arm => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Armv7 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mips => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mipsel => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mips64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mips64el => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Riscv64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Wasm32 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-  }
-}
 
 type BootControlObligation
   = SetOneShotTarget

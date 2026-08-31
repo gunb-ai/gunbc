@@ -4610,6 +4610,17 @@ pub fn run_required_floor(
     // memory and why its census survives without it.
     let mut current_scope: Option<(String, PreparedClaimScope)> = None;
     let mut scope_constructions: usize = 0;
+    // TIME BESIDE MEMORY, BECAUSE THE MEMORY HALF ALONE COULD NOT SIZE A FIX. The scope note
+    // below reads RSS either side of the one construction, so scope COST was observable and
+    // scope TIME was not; likewise the per-claim frame was untimed entirely. Measured on run
+    // 33366134453 that left ~150s of a 336.5s fold attributable to neither the shared-fill
+    // ledger (~85s, and nine fills are almost all of it) nor the per-claim cost receipt
+    // (~100s) -- a plurality of the fold's wall with no instrument pointing at it. These two
+    // counters close that, and they are deliberately the same shape as the RSS pair: read
+    // either side of the one call, so the delta is that call and not a sample near it.
+    let mut scope_build_nanos: u128 = 0;
+    let mut frame_build_nanos: u128 = 0;
+    let mut frame_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
     let mut terminal_rows: Vec<ClaimTerminalRow> = Vec::new();
@@ -4671,7 +4682,9 @@ pub fn run_required_floor(
             // the question stops being inferential. Taken with the old scope already dropped, so
             // the delta is this scope's cost and not the difference between two.
             let rss_before = current_rss_bytes().unwrap_or(0) / 1024;
+            let scope_build_started = std::time::Instant::now();
             let built = claim_scope_for(&prepared, &claim.module_path)?;
+            scope_build_nanos += scope_build_started.elapsed().as_nanos();
             let rss_after = current_rss_bytes().unwrap_or(0) / 1024;
             let scope_kb = rss_after.saturating_sub(rss_before);
             if scope_kb > scope_kb_max {
@@ -4698,7 +4711,10 @@ pub fn run_required_floor(
         // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
         // evaluation caches a context owns, or one witness contaminates the next through a
         // memo rather than through anything it declared.
+        let frame_build_started = std::time::Instant::now();
         let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
+        frame_build_nanos += frame_build_started.elapsed().as_nanos();
+        frame_constructions += 1;
         // ARM THE WALL CEILING, which is what the operator's rule has always been about and
         // what this path was not doing. `run_claim_measured` already arms the deadline and
         // applies a completion-side backstop when a wall budget is set -- the mechanism was
@@ -5394,22 +5410,48 @@ pub fn run_required_floor(
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
     // quantity the terminal one-corpus-index correction removes entirely — a scope that is a
     // view rather than a rebuild costs nothing to enter.
-    // WHICH OF THE THREE CONSTRUCTIONS THE SCOPE TIME IS. `[floor-scope-cost]` above prices a
-    // scope in resident bytes and cannot distinguish an order walk from a registry union from
-    // an index rebuild; those are three different constructions and the view that replaces
-    // each is a different change. Reported per fold, summed over every construction, with the
-    // mean per construction so the line is comparable across runs with different populations.
+    // THE FOLD'S TIME, PARTITIONED AT THE TWO CONSTRUCTIONS THE OTHER RECEIPTS CANNOT SEE.
+    // The shared-fill ledger above accounts for the fills; the per-claim cost receipt accounts
+    // for the claims. Neither can see scope or frame construction, so this line is what makes
+    // the fold's wall add up. It reports both totals AND their per-construction means, because
+    // the remedies differ: a large scope total over 656 constructions is a per-MODULE cost that
+    // tracks distinct scopes, while a large frame total over 3146 is a per-CLAIM cost that
+    // tracks the manifest's length -- and only the second would grow by adding witnesses to a
+    // module that already has some.
+    eprintln!(
+        "[floor-fold-time] scope_build={:.1}s over {} construction(s) (mean={:.0}ms) \
+         frame_build={:.1}s over {} construction(s) (mean={:.1}ms)",
+        scope_build_nanos as f64 / 1_000_000_000.0,
+        scope_constructions,
+        if scope_constructions == 0 {
+            0.0
+        } else {
+            scope_build_nanos as f64 / scope_constructions as f64 / 1_000_000.0
+        },
+        frame_build_nanos as f64 / 1_000_000_000.0,
+        frame_constructions,
+        if frame_constructions == 0 {
+            0.0
+        } else {
+            frame_build_nanos as f64 / frame_constructions as f64 / 1_000_000.0
+        }
+    );
+    // AND WHICH OF THE THREE CONSTRUCTIONS INSIDE A SCOPE BUILD THAT TIME IS. This line is the
+    // DECOMPOSITION of `[floor-fold-time]`'s `scope_build` term, not a second measurement of
+    // it: `[floor-scope-cost]` prices a scope in resident bytes and cannot distinguish an
+    // order walk from a registry union from an index rebuild, and those are three different
+    // constructions whose replacements are three different changes. It deliberately carries NO
+    // total and NO overall mean — the total is `scope_build` one line up, and printing a second
+    // nearly-equal figure beside it would be two spellings of one number, differing only by the
+    // few instructions between the timer around the call and the timers inside it.
     {
         let n = scope_constructions.max(1) as f64;
         eprintln!(
-            "[floor-scope-split] constructions={} total_ms={} order_ms={} registry_ms={} \
-             indexes_ms={} mean_ms_per_scope={:.1} (order={:.1} registry={:.1} indexes={:.1})",
-            scope_constructions,
-            scope_build_split.total_nanos() / 1_000_000,
+            "[floor-scope-split] order_ms={} registry_ms={} indexes_ms={} \
+             per_scope_ms(order={:.1} registry={:.1} indexes={:.1})",
             scope_build_split.order_nanos / 1_000_000,
             scope_build_split.registry_nanos / 1_000_000,
             scope_build_split.indexes_nanos / 1_000_000,
-            scope_build_split.total_nanos() as f64 / 1_000_000.0 / n,
             scope_build_split.order_nanos as f64 / 1_000_000.0 / n,
             scope_build_split.registry_nanos as f64 / 1_000_000.0 / n,
             scope_build_split.indexes_nanos as f64 / 1_000_000.0 / n,
