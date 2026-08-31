@@ -4,6 +4,10 @@ import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ClockBasis, CpuClock, WallClock, Nanosecond, nanosecond, nanosecond_count }
 import std.observation { TimedMeasurement, Measured, MeasuredValue, MeasuredUnavailable, observation_duration_of }
+import gunbc.stage0_partition_rebuild_scope {
+  stage0_partition_rebuild_decision_line,
+  stage0_partition_rebuild_decision_today
+}
 
 // ONE REGEN ROUND, PRICED BY PHASE, ON TWO CLOCKS -- the instrument behind
 // `claim_executor --regen-round-cost`. A round is the convergence recipe that
@@ -109,6 +113,7 @@ type RegenRoundCostReceipt {
   rustfmt_spawns: Nat
   marks: List<TraceMark>
   changed_paths: List<String>
+  installed_mirrors: List<String>
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
@@ -231,6 +236,24 @@ fn regen_round_total_line(receipt: RegenRoundCostReceipt) -> String {
   )
 }
 
+// WHAT THE REBUILD WOULD HAVE COST IF IT WERE CHANGE-DENOMINATED, printed beside what it did
+// cost. `installed_mirrors` is the regen's own drift answer -- the basenames it just copied into
+// the seed tree -- so the scope is derived from the round's real input, not from a fixture. The
+// line reports which packages the changed mirrors own, the reverse package closure those force,
+// and whether an executable can be assembled from them at all; today it reports
+// `executable_assembly=unavailable`, which is why the phase above it is still a whole-crate
+// rebuild. The empty `unlocatable` argument is a fact and not a convenience: every element of the
+// drift answer is a basename the installer resolved to a file it copied, so at this boundary
+// there is nothing the selection could fail to name.
+fn regen_round_partition_rebuild_line(receipt: RegenRoundCostReceipt) -> String {
+  stage0_partition_rebuild_decision_line(
+    decision: stage0_partition_rebuild_decision_today(
+      changed_mirrors: receipt.installed_mirrors,
+      unlocatable: []
+    )
+  )
+}
+
 fn regen_round_changed_paths_line(receipt: RegenRoundCostReceipt) -> String {
   let listed = fold(receipt.changed_paths, init: "", f: fn(acc, path) {
     if acc == "" { path } else { concat(concat(acc, ", "), path) }
@@ -249,7 +272,10 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
   })
   concat(
     concat(concat(regen_round_header_line(receipt: receipt), "\n"), mark_lines),
-    concat(concat(regen_round_total_line(receipt: receipt), "\n"), concat(regen_round_changed_paths_line(receipt: receipt), "\n"))
+    concat(
+      concat(concat(regen_round_total_line(receipt: receipt), "\n"), concat(regen_round_changed_paths_line(receipt: receipt), "\n")),
+      concat(regen_round_partition_rebuild_line(receipt: receipt), "\n")
+    )
   )
 }
 
