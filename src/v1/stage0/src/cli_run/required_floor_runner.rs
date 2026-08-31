@@ -6336,6 +6336,61 @@ mod scope_fragment_memo_equivalence {
         );
     }
 
+    /// A REFUSED SUBJECT INSTALLS NOTHING. `reference_closure_index` is the wall that bounds a
+    /// floor process to two prepared subjects; a third refuses. The memos are keyed by subject,
+    /// so building them BEFORE that refusal left a fragment cache and a fully populated order
+    /// index — one row per module of the rejected subject — behind on every refusal, growing
+    /// precisely the population the wall exists to bound (codex review 57895). Counted at
+    /// SUBJECT grain, because a refused subject leaks by having an entry at all: its per-module
+    /// fill counts read zero either way, so a fill-count assertion would pass over the defect.
+    #[test]
+    fn a_refused_third_subject_installs_no_memo() {
+        let first = prepared_from(&[(
+            "workspace/src/one.dag",
+            "module fixture.one\nfn f_one() -> Bool { true }\n",
+        )]);
+        let second = prepared_from(&[
+            (
+                "workspace/src/two.dag",
+                "module fixture.two\nfn f_two() -> Bool { true }\n",
+            ),
+            (
+                "workspace/src/two_b.dag",
+                "module fixture.two_b\nfn f_two_b() -> Bool { true }\n",
+            ),
+        ]);
+        let third = prepared_from(&[
+            (
+                "workspace/src/three.dag",
+                "module fixture.three\nfn f_three() -> Bool { true }\n",
+            ),
+            (
+                "workspace/src/three_b.dag",
+                "module fixture.three_b\nfn f_three_b() -> Bool { true }\n",
+            ),
+            (
+                "workspace/src/three_c.dag",
+                "module fixture.three_c\nfn f_three_c() -> Bool { true }\n",
+            ),
+        ]);
+        claim_scope_for(&first, "fixture.one").expect("first subject admitted");
+        claim_scope_for(&second, "fixture.two").expect("second subject admitted");
+        let installed_before = crate::cli_run::scope_memo_subject_count_for_test();
+        let err = match claim_scope_for(&third, "fixture.three") {
+            Err(err) => err,
+            Ok(_) => panic!("a third prepared subject must refuse"),
+        };
+        assert!(
+            err.contains("ReferenceIndexSubjectChanged"),
+            "the refusal must name its cause: {err}"
+        );
+        assert_eq!(
+            crate::cli_run::scope_memo_subject_count_for_test(),
+            installed_before,
+            "a refused subject must leave no memo installed"
+        );
+    }
+
     /// The memo is keyed inside one prepared subject. Two subjects sharing a module NAME must
     /// not share its fragment: the declarations are different nodes, and serving one for the
     /// other is a silently wrong resolution rather than a slow one.

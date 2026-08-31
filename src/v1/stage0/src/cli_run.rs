@@ -36487,6 +36487,19 @@ fn scope_order_index(prepared: &PreparedRepository) -> Rc<ScopeOrderIndex> {
     created
 }
 
+/// How many SUBJECTS each per-subject memo is installed for. The population the two-subject
+/// wall bounds is counted here, not in the per-module rows: a refused subject leaks by getting
+/// an entry at all, and its order index carries one `parents_by_module` row per module of the
+/// subject that was rejected — so the row count, not the fill count, is what a refusal test has
+/// to read (codex review 57895).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn scope_memo_subject_count_for_test() -> (usize, usize) {
+    (
+        SCOPE_FRAGMENT_CACHES.with(|c| c.borrow().len()),
+        SCOPE_ORDER_INDEXES.with(|c| c.borrow().len()),
+    )
+}
+
 /// How many modules each per-subject memo currently holds — (fragments, reached lists).
 /// Reads the live caches for the given subject; absent caches read as zero.
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -36770,6 +36783,15 @@ pub fn claim_scope_for(
     prepared: &PreparedRepository,
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
+    // ADMISSION BEFORE INSTALLATION (codex review 57895). `reference_closure_index` is the
+    // subject wall: a floor process prepares two subjects and a third REFUSES. Building the
+    // memos first meant a refused subject still left a fragment cache and a fully populated
+    // order index — one `parents_by_module` row per module of a subject the run just rejected —
+    // behind in thread-local state, so repeated refusals grew exactly the population the wall
+    // exists to bound. The refusal now happens first and nothing is installed for a subject
+    // that is not admitted. The index is memoized per subject, so the admitted path pays for
+    // it once and the inner construction consumes the same handle rather than asking again.
+    let ref_index = reference_closure_index(prepared)?;
     let fragments = scope_fragment_cache(prepared);
     let order_index = scope_order_index(prepared);
     claim_scope_for_with_memos(
@@ -36777,6 +36799,7 @@ pub fn claim_scope_for(
         entry_module_path,
         Some(fragments.as_ref()),
         order_index,
+        ref_index,
     )
 }
 
@@ -36790,11 +36813,13 @@ pub fn claim_scope_for_without_memos(
     prepared: &PreparedRepository,
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
+    let ref_index = reference_closure_index(prepared)?;
     claim_scope_for_with_memos(
         prepared,
         entry_module_path,
         None,
         build_scope_order_index(prepared),
+        ref_index,
     )
 }
 
@@ -36803,6 +36828,7 @@ fn claim_scope_for_with_memos(
     entry_module_path: &str,
     fragments: Option<&v1_interpreter::ScopeFragmentCache>,
     order_index: Rc<ScopeOrderIndex>,
+    ref_index: Rc<ReferenceClosureIndex>,
 ) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
@@ -36856,7 +36882,9 @@ fn claim_scope_for_with_memos(
     // a function of the graph and not of a hash map's iteration -- order is part of the scope's
     // identity (`scope_identity`), and a scope whose identity varied run to run would defeat
     // every cache keyed on it.
-    let ref_index = reference_closure_index(prepared)?;
+    // The index arrives from the caller, which acquired it as this subject's ADMISSION before
+    // installing any memo; asking for it again here would be a second admission point for one
+    // wall.
     // A REFERENCED MODULE ARRIVES WITH ITS OWN IMPORT CLOSURE, not alone.
     //
     // The entry module's closure is taken from `func_env.parents` above precisely because a
