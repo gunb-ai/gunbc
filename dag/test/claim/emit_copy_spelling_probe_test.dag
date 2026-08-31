@@ -1,0 +1,29 @@
+module test.claim.emit_copy_spelling_probe
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.emit_copy_qualification {
+  CopyUsePosition,
+  CopyQualificationCell,
+  PositionDuplicatedArgument,
+  PositionReturnedClosureCapture,
+  ReceiverAggregateNonCopy,
+  copy_fixture_path,
+  copy_fixture_source
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn sp(position: CopyUsePosition, spelling: String) -> Bool {
+  compile_dag_rust_emit_check(
+    copy_fixture_source(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: position }),
+    copy_fixture_path(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: position }),
+    [spelling],
+    []
+  )
+}
+
+test fn sp_dup_pick_wclone_w() -> Bool { sp(position: PositionDuplicatedArgument, spelling: "cell_pick(w.clone(), w)") }
+test fn sp_dup_wclone() -> Bool { sp(position: PositionDuplicatedArgument, spelling: "w.clone()") }
+test fn sp_dup_both_clone() -> Bool { sp(position: PositionDuplicatedArgument, spelling: "cell_pick(w.clone(), w.clone())") }
+test fn sp_lambda_wclone() -> Bool { sp(position: PositionReturnedClosureCapture, spelling: "w.clone()") }
+test fn sp_lambda_let_prelude() -> Bool { sp(position: PositionReturnedClosureCapture, spelling: "let w = w.clone();") }

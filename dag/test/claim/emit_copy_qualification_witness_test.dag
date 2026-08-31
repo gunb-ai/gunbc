@@ -1,5 +1,6 @@
 module test.claim.emit_copy_qualification_witness
 
+import std.types { Bool, List, String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.emit_copy_qualification {
   CopyQualificationCell,
@@ -10,11 +11,14 @@ import gunbc.emit_copy_qualification {
   ReceiverAggregateNonCopy,
   ReceiverMachineScalar,
   ReceiverSharedContainer,
+  copy_cell_clone_site_spelling,
   copy_cell_expected_absent,
   copy_cell_expected_present,
+  copy_cell_slug,
   copy_cells_for_shape,
   copy_fixture_path,
-  copy_fixture_source
+  copy_fixture_source,
+  copy_qualification_population
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -85,6 +89,50 @@ fn ecq_shard_holds(shape: CopyReceiverShape) -> Bool {
   )
 }
 
+// THE POPULATION IS THE EXECUTING AUTHORITY, and the shards sit beneath it. Enrolling one test fn
+// per shape and nothing else made copy_qualification_population a function with no caller: the
+// shards hand-named three shapes, so a fourth added to the axis would have gone unexecuted while
+// every row stayed green -- a derived population that nothing derives from is a hand roster with
+// extra steps, which is the exact failure the population was built to avoid.
+//
+// This row consumes the derived product directly, so coverage is structural: a cell the axes admit
+// is executed because it is in the list, not because someone remembered to enrol it. The three
+// shape shards below remain because a single total row localizes nothing -- they say WHICH
+// realization arm broke. They are diagnostics under this row, never the coverage authority, and
+// shards_cover_every_derived_cell pins that they have not drifted from it.
+test fn all_derived_cells_hold() -> Bool {
+  fold(
+    copy_qualification_population(),
+    init: true,
+    f: (acc, cell) => acc && ecq_cell_holds(cell: cell),
+  )
+}
+
+fn ecq_shard_enrolled_cells() -> List<CopyQualificationCell> {
+  concat(
+    concat(
+      copy_cells_for_shape(shape: ReceiverAggregateNonCopy),
+      copy_cells_for_shape(shape: ReceiverMachineScalar),
+    ),
+    copy_cells_for_shape(shape: ReceiverSharedContainer),
+  )
+}
+
+// Joined at cell identity rather than by counting, so a shard that swapped one cell for another
+// cannot pass on a matching total.
+test fn shards_cover_every_derived_cell() -> Bool {
+  fold(
+    copy_qualification_population(),
+    init: true,
+    f: (acc, cell) =>
+      acc
+        && contains(
+          map(ecq_shard_enrolled_cells(), e => copy_cell_slug(cell: e)),
+          copy_cell_slug(cell: cell),
+        ),
+  )
+}
+
 test fn shard_aggregate_non_copy_receiver() -> Bool {
   ecq_shard_holds(shape: ReceiverAggregateNonCopy)
 }
@@ -120,7 +168,7 @@ fn ecq_falsifier_closure_capture_is_bare() -> Bool {
     copy_fixture_source(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionReturnedClosureCapture }),
     copy_fixture_path(cell: CopyQualificationCell { shape: ReceiverAggregateNonCopy, position: PositionReturnedClosureCapture }),
     ["fn cell_lambda"],
-    [".clone()"]
+    ["w.clone()"]
   )
 }
 
@@ -168,16 +216,16 @@ test fn calibration_container_bare_falsifier_is_red() -> Bool {
 // mentions .clone(). Asserted at cell identity, not by counting.
 
 fn ecq_cell_withholds_clone(cell: CopyQualificationCell) -> Bool {
-  !contains(copy_cell_expected_present(cell: cell), ".clone()")
-    && !contains(copy_cell_expected_absent(cell: cell), ".clone()")
+  !contains(copy_cell_expected_present(cell: cell), copy_cell_clone_site_spelling(cell: cell))
+    && !contains(copy_cell_expected_absent(cell: cell), copy_cell_clone_site_spelling(cell: cell))
 }
 
 fn ecq_cell_requires_clone(cell: CopyQualificationCell) -> Bool {
-  contains(copy_cell_expected_present(cell: cell), ".clone()")
+  contains(copy_cell_expected_present(cell: cell), copy_cell_clone_site_spelling(cell: cell))
 }
 
 fn ecq_cell_forbids_clone(cell: CopyQualificationCell) -> Bool {
-  contains(copy_cell_expected_absent(cell: cell), ".clone()")
+  contains(copy_cell_expected_absent(cell: cell), copy_cell_clone_site_spelling(cell: cell))
 }
 
 test fn undecidable_cells_withhold_clone_assertion() -> Bool {

@@ -267,13 +267,38 @@ fn copy_receiver_refuted_spelling(shape: CopyReceiverShape) -> String {
 // result than the instrument can decide, and exactly the fabricated plausible output DESIGN section
 // 5 forbids.
 //
+// THE SPELLINGS ARE SITE-BOUND, NOT A GLOBAL ".clone()" SUBSTRING, which is the second finding
+// (review 57932) and it was correct for the same reason the cost axis needed binding: a bare
+// ".clone()" occurring anywhere in the emitted file is satisfied by an unrelated or wrongly placed
+// clone, so it cannot establish the "copies exactly where needed" claim the header makes. Each arm
+// now names the expression it is about:
+//
+//   direct return       -- asserts ".clone()" ABSENT FROM THE WHOLE FILE, which is the strongest
+//                          count statement available: exactly zero copies, not merely none at a
+//                          named site.
+//   duplicated argument -- asserts the whole call "cell_pick(w.clone(), w)", which pins placement
+//                          AND count together: the copy is on the first argument and the second is
+//                          bare, so a second clone would falsify it.
+//   closure capture     -- asserts the receiver-bound "w.clone()". Placement is bound to the
+//                          receiver; the emitter's closure prelude spelling is not pinned here, so
+//                          this arm bounds WHERE the copy is, not how many times the closure body
+//                          might mention it. Stated rather than claimed as exact.
+//
 // The undecidable cell is WITHHELD, NOT EXCLUDED. It still runs, still asserts its structural
 // anchor, and still asserts both arms of the cost axis; only the one question the instrument cannot
 // answer goes unasserted, and undecidable_cells_withhold_clone_assertion in the witness pins which
 // cells those are, so a future change cannot widen undecidability to buy a green.
+fn copy_cell_clone_site_spelling(cell: CopyQualificationCell) -> String {
+  match cell.position {
+    PositionDirectReturn => ".clone()"
+    PositionReturnedClosureCapture => "w.clone()"
+    PositionDuplicatedArgument => "cell_pick(w.clone(), w)"
+  }
+}
+
 fn copy_cell_clone_present_expectation(cell: CopyQualificationCell) -> List<String> {
   match copy_cell_minimality(cell: cell) {
-    CloneEmittedRequired { receipt: _ } => [".clone()"]
+    CloneEmittedRequired { receipt: _ } => [copy_cell_clone_site_spelling(cell: cell)]
     CloneAbsent => []
     CloneEmittedUndecidable { reason: _ } => []
     CloneEmittedRedundant { receipt: _ } => []
@@ -283,7 +308,7 @@ fn copy_cell_clone_present_expectation(cell: CopyQualificationCell) -> List<Stri
 
 fn copy_cell_clone_absent_expectation(cell: CopyQualificationCell) -> List<String> {
   match copy_cell_minimality(cell: cell) {
-    CloneAbsent => [".clone()"]
+    CloneAbsent => [copy_cell_clone_site_spelling(cell: cell)]
     CloneEmittedRequired { receipt: _ } => []
     CloneEmittedUndecidable { reason: _ } => []
     CloneEmittedRedundant { receipt: _ } => []
