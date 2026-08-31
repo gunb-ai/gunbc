@@ -1094,7 +1094,7 @@ pub fn summarize_fold_acc_uses(
                 } else {
                     node.children.clone().iter().cloned().fold(
                         empty_fold_acc_use_summary(),
-                        |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| {
+                        |acc: _, child: Rc<Node>| {
                             merge_fold_acc_use_summaries(
                                 acc,
                                 summarize_fold_acc_uses(
@@ -1157,7 +1157,7 @@ pub fn summarize_fold_acc_uses(
             }
             _ => node.children.clone().iter().cloned().fold(
                 empty_fold_acc_use_summary(),
-                |acc: Rc<FoldAccUseSummary>, child: Rc<Node>| {
+                |acc: _, child: Rc<Node>| {
                     merge_fold_acc_use_summaries(
                         acc,
                         summarize_fold_acc_uses(

@@ -766,10 +766,10 @@ pub fn carrier_container_alias_rows() -> Rc<HashMap<String, String>> {
 pub fn carrier_container_roster_map() -> Rc<HashMap<String, bool>> {
     algebra_carriers().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+        |acc: _, carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                |inner: _, spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_roster_name.clone()) {
                         v1_rt::rc_map_insert(inner.clone(), spelling.text.clone(), true)
                     } else {
@@ -838,10 +838,10 @@ pub fn algebra_profile_equality_extensional(profile: AlgebraProfile) -> bool {
 pub fn carrier_container_equality_rows() -> Rc<HashMap<String, bool>> {
     algebra_carriers().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, carrier: Rc<AlgebraCarrier>| {
+        |acc: _, carrier: Rc<AlgebraCarrier>| {
             carrier.spellings.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<HashMap<String, bool>>, spelling: Rc<CarrierSpelling>| {
+                |inner: _, spelling: Rc<CarrierSpelling>| {
                     if carrier_spelling_row_present(spelling.container_algebra_row.clone()) {
                         v1_rt::rc_map_insert(
                             inner.clone(),

@@ -92,7 +92,7 @@ pub fn module_filename_collision_diagnostics(typed: Rc<ResolvedGraph>) -> Rc<Vec
                 owners: v1_rt::rc_empty_map::<String, String>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<ModuleFilenameOwners>, tm: Rc<TypedModule>| {
+            |acc: Rc<ModuleFilenameOwners>, tm: _| {
                 let module_name = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -154,7 +154,7 @@ pub fn unique_strings(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
-            |acc: Rc<UniqueAccum>, item: String| {
+            |acc: _, item: String| {
                 if crate::v1_compiler_infer_types::emit_map_has(acc.seen.clone(), item.clone()) {
                     acc.clone()
                 } else {

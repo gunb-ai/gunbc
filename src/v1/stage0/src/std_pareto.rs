@@ -122,7 +122,7 @@ pub fn dominance_of_comparisons(comparisons: Rc<Vec<AxisComparison>>) -> Dominan
             saw_better: false,
             saw_worse: false,
         },
-        |acc: DominanceTally, c: AxisComparison| tally_step(acc, c.clone()),
+        |acc: _, c: AxisComparison| tally_step(acc, c.clone()),
     ))
 }
 
@@ -478,9 +478,7 @@ pub fn compare_pair(
             a_worse_somewhere: false,
             winning_axes: no_axis_ids(),
         }),
-        |acc: Rc<PairAccum>, axis: Rc<SelectionAxis>| {
-            axis_pair_step(acc, axis.clone(), a.clone(), b.clone())
-        },
+        |acc: _, axis: Rc<SelectionAxis>| axis_pair_step(acc, axis.clone(), a.clone(), b.clone()),
     ))
 }
 
