@@ -116,12 +116,19 @@ data megarac_op_media_status: MegaRacApiOperation = MegaRacApiOperation {
 }
 
 // THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29): export the
-// ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia retry to mount
-// (images listing goes from refusal to listing); POST start-media WITH image_redirection:1;
-// ipmitool chassis bootdev cdrom then power reset. Execution receipts available without any screen:
-// the NFS server's read counter (bulk reads then quiet = image loaded), the configurations row
-// (redirection_status/session_index), and the boot CPU's power rails rising while the second socket
-// idles.
+// ISO directory over NFS to the BMC address; PUT media config; wait for the daemon's own retry
+// interval while the images listing goes from refusing to listing the image; POST start-media WITH
+// image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts
+// available without any screen: the NFS server's read counter (bulk reads then quiet = image
+// loaded), the configurations row (redirection_status/session_index), and the boot CPU's power
+// rails rising while the second socket idles.
+//
+// THE WAIT IS AN ASYNCHRONOUS PENDING STATE, NOT PERMISSION TO POLL UNTIL GREEN
+// (NO-FALLBACK-1). Read as prose, "wait for the listing to change" and "keep asking until it
+// agrees" are the same sentence, and only one of them is admissible. The bound, the terminal
+// exits and the rule that no later observation overwrites a terminal one are modelled in
+// gunbc.machine_intake_mount_establishment, which is where they belong: what our polling saw is
+// a receipt of OUR attempt, never a fact this vendor module owns.
 
 data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_session_login,
@@ -131,14 +138,6 @@ data megarac_api_operations: List<MegaRacApiOperation> = [
   megarac_op_media_stop,
   megarac_op_media_status,
 ]
-
-// THE EXECUTED HEADLESS BOOT-FROM-ISO SEQUENCE (Foxconn Mt. Collins build, 2026-08-29).
-// export the ISO directory over NFS to the BMC address; PUT media config; wait for the rmedia
-// retry to mount (images listing goes from refusal to listing); POST start-media WITH
-// image_redirection:1; ipmitool chassis bootdev cdrom then power reset. Execution receipts
-// available without any screen: the NFS server's read counter (bulk reads then quiet = image
-// loaded), the configurations row (redirection_status/session_index), and the boot CPU's power
-// rails rising while the second socket idles.
 
 // THE PARAMETER THE START-MEDIA CONTRACT CALLS REQUIRED, AS A TYPE. megarac_op_media_start
 // says the body MUST carry image_redirection:1 or the firmware refuses with opaque codes;
