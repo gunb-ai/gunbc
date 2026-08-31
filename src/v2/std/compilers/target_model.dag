@@ -571,11 +571,27 @@ fn produced_decl_render_from_rows(
   )
 }
 
+// THE TRANSFORM IS DECLARED ROWS, NOT A FUNCTION VALUE -- the same dissolution the render
+// closure field underwent (ServeCacheValueNotPortable): a fn value is origin-bound, cannot be
+// serialized, compared, or carried by an emitted mirror, and every transform in the corpus
+// decomposes into this four-arm spelling algebra. Escapes apply in list order (a backslash rule
+// must precede the rules that introduce backslashes).
+type EmitSpellingEscape {
+  from: String
+  to: String
+}
+
+type TokenClassEmitTransform
+  = EmitSpellingIdentity
+  | EmitSpellingConstant { value: String }
+  | EmitSpellingWrap { prefix: String, suffix: String }
+  | EmitSpellingQuote { prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape> }
+
 type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
@@ -595,13 +611,13 @@ fn target_model_selection_priority(target: TargetModel) -> Outcome<Node> {
   )
 }
 
-data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
+data target_model_emit_transforms_empty: Map<Symbol, TokenClassEmitTransform> = empty_map()
 
 fn target_model_make_with_emit_transforms(
   bundle: Node,
   lex: LexRules,
   binding_spellings: Map<Symbol, String>,
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>,
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>,
   authority_source_text: String,
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
@@ -967,11 +983,21 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
+fn apply_emit_spelling_escapes(spelling: String, escapes: List<EmitSpellingEscape>) -> String {
+  fold_list(xs: escapes, empty: spelling, cons: fn(acc, rule) { replace(acc, rule.from, rule.to) })
+}
+
 fn apply_emit_spelling_transform(
-  transform: fn(String) -> String,
+  transform: TokenClassEmitTransform,
   spelling: String
 ) -> String {
-  transform(spelling)
+  match transform {
+    EmitSpellingIdentity => spelling
+    EmitSpellingConstant { value: v } => v
+    EmitSpellingWrap { prefix: p, suffix: s } => concat(p, concat(spelling, s))
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
+      concat(p, concat(o, concat(apply_emit_spelling_escapes(spelling: spelling, escapes: es), c)))
+  }
 }
 
 // A FIXED TOKEN'S SPELLING IS ITS LEXEME, THEN THE TARGET'S EMIT TRANSFORM. The transform map was
