@@ -441,9 +441,10 @@ pub struct TransitionAdmission {
 /// same signature, one declaring module -- not a requalification, and no second declaration is left
 /// behind. `emit_rust`'s own call site now resolves to the new declarer, which is the delta below.
 ///
-/// DISSOLVE-ON: this pull request merging. Base and head then both carry the relocation, no run can
-/// produce this delta, the row reports stale on every build, and it is removed by that trigger
-/// exactly as all six shrinks above were -- a stale row here refuses every unrelated PR.
+/// SEVENTH DISSOLUTION (2026-08-31). XL-0N (#9719) merged, so base and head both carry the
+/// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
+/// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
+/// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
 /// BOOT ARTIFACT RELOCATION (2026-08-31, gunbc#9784). `BootArtifact` and its neighbours
 /// (`IntakeLinuxEnvironment`, `IsoImage`, the artifact set and its selection) were authored in
 /// `gunbc.boot_artifact_delivery`, which imports `gunbc.machine_intake_receipt`. Issuance has to
@@ -463,15 +464,6 @@ pub struct TransitionAdmission {
 /// these deltas, all five report stale, and a stale row refuses every unrelated PR in the
 /// repository — the same trigger under which the roster has been emptied six times above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "type_reference_declaration_ref relocated to v1.compiler.infer_env (XL-0N, gunbc#9719)",
-        subject: AdmissionSubject::Binding {
-            module: "v1.compiler.emit_rust",
-            in_declaration: "rust_exact_reference_spelling",
-            spelling: "type_reference_declaration_ref",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
     TransitionAdmission {
         label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryPlan)",
         subject: AdmissionSubject::Binding {
