@@ -22316,7 +22316,7 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // NEW is a newly qualified identity that has never executed under that spelling. It is
     // not matched here, so such a file would enroll only the declarations the copy's own
     // edited lines reach. POPULATION: empty — the floor's observation is
-    // `extdeps.git.git`'s `DiffUnified0` (`git diff -U0 <range>`), and git detects copies
+    // `extdeps.git`'s `git.Core.DiffUnified0` (`git diff -U0 <range>`), and git detects copies
     // only under `-C`/`--find-copies` or `diff.renames=copies`, neither of which this
     // argv nor the repo config sets. TRIGGER: copy detection becoming reachable — the argv
     // gaining `-C`, or `diff.renames` being set to `copies` at any config scope — at which
