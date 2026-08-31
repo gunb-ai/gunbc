@@ -230,7 +230,7 @@ jobs:
         timeout-minutes: 55
   wet-receipts:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 180
+    timeout-minutes: 360
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write

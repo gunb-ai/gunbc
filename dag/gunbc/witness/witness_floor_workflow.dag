@@ -1506,6 +1506,13 @@ fn wet_receipts_capability_closure_holds() -> Bool {
   )
 }
 
+// timeout_minutes: 360, superseding the provisional 180 the fold-job note above also covered.
+// 360 IS derived from a run, unlike 180: wet-receipts run 33420133863 (2026-08-31) was killed
+// by the 180 cap at witness 15 of 23, after 162 minutes of witness execution alone — re-derive
+// from that job's `wet-lane: identity=... wall_ms=` lines, whose per-row sum projects the full
+// roster past 4.5h with the seven stage witnesses at 15.3–20.3 min each. The instrument is the
+// lane's own per-identity wall_ms receipt, not this sentence; question 360 by re-measuring a
+// completed run, and shrink it when the stage-witness cost drops.
 fn wet_receipts_job() -> Job {
   Job {
     id: wet_receipts_job_id,
@@ -1516,7 +1523,7 @@ fn wet_receipts_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: wet_receipts_job_condition() },
-    timeout_minutes: 180,
+    timeout_minutes: 360,
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
