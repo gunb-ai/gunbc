@@ -636,7 +636,7 @@ fn emitted_prelude_grounds_structural_sequence() -> Bool {
         "compile", "--source-root", concat(base, "/src_dag"), "--entry", fixture_path,
         "--output-dir", concat(base, "/out"), "--target", "rust"
       ])
-      let lib = Filesystem.Read(path: concat(base, "/out/lib.rs"))
+      let lib = Filesystem.Read(path: concat(base, "/out/src/lib.rs"))
       let swept = shell.Remove.RecursiveForce(path: base)
       cleaned.success && mk.success && wrote.success && emitted.success && lib.success && swept.success
         && (split(s: lib.content, delimiter: "im::") |> count) > 1

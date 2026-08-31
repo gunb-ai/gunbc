@@ -370,14 +370,24 @@ test fn ecq_disconnect_counter_mutant_removes_allocator_registration_holds() -> 
     && !string_contains_marker(haystack: cut, marker: "#[global_allocator]")
 }
 
-test fn ecq_runner_mutants_wrap_the_window_argument_holds() -> Bool {
+test fn ecq_runner_mutants_touch_the_runner_text_holds() -> Bool {
   let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject)
   let hidden = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantHiddenDeepCopy)
   let share = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantShareClone)
   let deep = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantDeepClone)
   clean != hidden && clean != share && clean != deep
     && string_contains_marker(haystack: hidden, marker: ".chars().collect()")
-    && string_contains_marker(haystack: share, marker: ".clone()")
+    && string_contains_marker(haystack: share, marker: "let input = input.clone();")
+    && !string_contains_marker(haystack: clean, marker: ".clone();")
+}
+
+// The hidden-deep-copy wrapper is String-shaped, so it must skip the loop cases whose subject
+// argument is the element list, not the carrier — the wrapped and unwrapped spellings must both
+// appear in the mutated owned-string runner.
+test fn ecq_hidden_deep_copy_wrapper_skips_loop_cases_holds() -> Bool {
+  let hidden = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantHiddenDeepCopy)
+  string_contains_marker(haystack: hidden, marker: ".chars().collect()")
+    && string_contains_marker(haystack: hidden, marker: "loop_recursion__by_value__sized(input)")
 }
 
 test fn ecq_shard_driver_names_every_shard_case_holds() -> Bool {
