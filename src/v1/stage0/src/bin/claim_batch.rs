@@ -119,6 +119,12 @@ fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
         },
         intern.heap_bytes
     );
+    eprintln!(
+        "[interp-stats] canonical-symbol-retention entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+        intern.canonical_entries,
+        intern.canonical_retained_spelling_bytes,
+        intern.canonical_spelling_cap_bytes
+    );
     eprintln!("[interp-stats] retained value accounting (data cache + pure-call memo):");
     eprint!("{}", ctx.account_retained_memory(&[]));
     eprintln!("[interp-stats] process memory:");
