@@ -223,11 +223,15 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
       )
     StructuralOrderingDuplicated { declaration: d, row_count: n } =>
       concat(
-    StructuralConnectiveDuplicated { declaration: d, row_count: n } =>
-      concat(
         "operator realization: structural ordering for ",
         d.module_path as String, ".", d.decl_name as String,
         " has more than one declared comparison (gunbc.structural_realization_bindings authoring defect)"
+      )
+    StructuralConnectiveDuplicated { declaration: d, row_count: n } =>
+      concat(
+        "operator realization: structural connective for ",
+        d.module_path as String, ".", d.decl_name as String,
+        " has more than one declared row (gunbc.structural_realization_bindings authoring defect)"
       )
     OperandIdentityUnavailableAt { operator: o, facts: f } =>
       concat(
