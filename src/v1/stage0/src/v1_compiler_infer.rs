@@ -75,15 +75,17 @@ pub use crate::std_types::{
     container_param_name, container_template_algebra, is_kernel_type, kernel_type_set,
 };
 pub use crate::std_types::{NonEmptyStr, SourceSpan};
-pub use crate::v1_compiler_coercion::{decl_file_realizes_natively, type_reference_decl_file};
+pub use crate::v1_compiler_coercion::{
+    decl_file_realizes_natively, decl_identity_file, type_reference_decl_file,
+};
 pub use crate::v1_compiler_infer_access::AccessCheckResultNode;
 pub use crate::v1_compiler_infer_access::{check_index_access_node, check_slice_access_node};
 pub use crate::v1_compiler_infer_cycle::detect_type_cycles_kahn;
 use crate::v1_compiler_infer_emit_info::TypeRepr::{EnumRepr, StructRepr};
 pub use crate::v1_compiler_infer_emit_info::{
     add_emit_item_summary, build_enum_field_summaries, build_struct_field_summaries,
-    close_fn_fields, derive_variant_to_enum, empty_emit_graph_info, empty_type_env,
-    lookup_emit_type_summary,
+    close_fn_fields, derive_variant_to_enum, emit_graph_records_type_decl, empty_emit_graph_info,
+    empty_type_env, lookup_emit_type_summary,
 };
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, TypeRepr, TypeSummary,
@@ -24224,6 +24226,68 @@ pub fn build_enum_variant_shape_sets(
     )
 }
 
+pub fn add_recursive_type_decl_row(
+    acc: Rc<HashMap<String, Rc<Vec<String>>>>,
+    item: Rc<Node>,
+    env: Rc<TypeEnv>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
+    {
+        let decl_name =
+            crate::v1_std_core::authored_name_at(env.source_indices.clone(), item.clone());
+        if ((decl_name.clone() != "".to_string())
+            && crate::v1_compiler_infer_emit_info::emit_graph_records_type_decl(
+                item.clone(),
+                env.source_indices.clone(),
+            ))
+        {
+            match v1_rt::map_get(
+                &env.recursive_type_set.clone(),
+                crate::v1_std_core::intern(env.intern_table.clone(), decl_name.clone())
+                    .id
+                    .clone(),
+            ) {
+                Some(_) => {
+                    let file = crate::v1_compiler_coercion::decl_identity_file(item.clone());
+                    if (file.clone() == "".to_string()) {
+                        acc.clone()
+                    } else {
+                        match v1_rt::map_get(&acc, decl_name.clone()) {
+                            Some(files) => {
+                                if {
+                                    let mut __found = false;
+                                    for f in files.iter().cloned() {
+                                        if (f.clone() == file.clone()) {
+                                            __found = true;
+                                            break;
+                                        }
+                                    }
+                                    __found
+                                } {
+                                    acc.clone()
+                                } else {
+                                    v1_rt::rc_map_insert(
+                                        acc.clone(),
+                                        decl_name.clone(),
+                                        v1_rt::concat(files.clone(), Rc::new(vec![file.clone()])),
+                                    )
+                                }
+                            }
+                            std::option::Option::None => v1_rt::rc_map_insert(
+                                acc.clone(),
+                                decl_name.clone(),
+                                Rc::new(vec![file.clone()]),
+                            ),
+                        }
+                    }
+                }
+                std::option::Option::None => acc.clone(),
+            }
+        } else {
+            acc.clone()
+        }
+    }
+}
+
 pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphInfo> {
     {
         let init = Rc::new(EmitInfoBuildState {
@@ -24259,26 +24323,33 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             structural_alias_fn_surface_names: built_raw.structural_alias_fn_surface_names.clone(),
             structural_alias_direct_fn_names: built_raw.structural_alias_direct_fn_names.clone(),
         });
-        let all_recursive =
-            modules
-                .iter()
-                .cloned()
-                .fold(v1_rt::rc_empty_set::<_>(), |acc: _, m: _| {
-                    Rc::new(v1_rt::map_keys(
-                        &m.type_env.clone().recursive_type_set.clone(),
-                    ))
-                    .iter()
-                    .cloned()
-                    .fold(acc, |inner: _, ident: i64| {
-                        v1_rt::rc_set_insert(
-                            inner,
-                            crate::v1_std_core::intern_str(
-                                m.type_env.clone().intern_table.clone(),
-                                ident.clone(),
-                            ),
-                        )
-                    })
-                });
+        let kernel_recursive_decls = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+                |acc: Rc<HashMap<String, Rc<Vec<String>>>>, name: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        name.clone(),
+                        Rc::new(vec![v1_rt::concat(
+                            v1_rt::concat("<kernel:".to_string(), name.clone()),
+                            ">".to_string(),
+                        )]),
+                    )
+                },
+            );
+        let all_recursive = modules.iter().cloned().fold(
+            kernel_recursive_decls.clone(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, m: _| {
+                m.items.clone().iter().cloned().fold(
+                    acc,
+                    |inner: Rc<HashMap<String, Rc<Vec<String>>>>, item: Rc<Node>| {
+                        add_recursive_type_decl_row(inner, item.clone(), m.type_env.clone())
+                    },
+                )
+            },
+        );
         let variant_shapes =
             build_enum_variant_shape_sets(modules.clone(), built.type_summaries.clone());
         let vtoe = crate::v1_compiler_infer_emit_info::derive_variant_to_enum(

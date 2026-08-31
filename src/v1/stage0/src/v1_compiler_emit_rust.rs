@@ -5458,10 +5458,11 @@ pub fn is_dag_value_type_name(name: String) -> bool {
 
 pub fn is_type_constant(
     summary: Rc<TypeSummary>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    recursive_type_set: Rc<HashMap<String, Rc<Vec<String>>>>,
 ) -> bool {
     {
-        let is_recursive = v1_rt::set_contains(&recursive_type_set, summary.name.clone());
+        let is_recursive = (v1_rt::map_get(&recursive_type_set, summary.name.clone())
+            != std::option::Option::None);
         let has_generics = ((summary.generic_param_names.clone().len() as i64) > 0);
         match (*summary.repr.clone()).clone() {
             TypeRepr::EnumRepr {
@@ -5512,7 +5513,7 @@ pub fn is_type_constant(
 pub fn maybe_mark_shared_type(
     acc: Rc<BTreeSet<String>>,
     summary: Rc<TypeSummary>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    recursive_type_set: Rc<HashMap<String, Rc<Vec<String>>>>,
     target_needs_sharing: bool,
 ) -> Rc<BTreeSet<String>> {
     {
@@ -5540,7 +5541,7 @@ pub fn maybe_mark_shared_type(
 
 pub fn build_shared_types(
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    recursive_type_set: Rc<BTreeSet<String>>,
+    recursive_type_set: Rc<HashMap<String, Rc<Vec<String>>>>,
     target: RenderTarget,
 ) -> Rc<BTreeSet<String>> {
     {
@@ -14381,9 +14382,36 @@ pub fn emit_typed_item(
     }
 }
 
+pub fn reference_declares_recursive(
+    n: Rc<Node>,
+    name: String,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
+) -> bool {
+    match v1_rt::map_get(&recursive_types, name.clone()) {
+        Some(files) => {
+            let decl_file = crate::v1_compiler_coercion::type_reference_decl_file(n.clone());
+            if (decl_file.clone() == "".to_string()) {
+                false
+            } else {
+                {
+                    let mut __found = false;
+                    for f in files.iter().cloned() {
+                        if (f.clone() == decl_file.clone()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }
+            }
+        }
+        std::option::Option::None => false,
+    }
+}
+
 pub fn needs_box_wrapping(
     mut n: Rc<Node>,
-    mut recursive_types: Rc<BTreeSet<String>>,
+    mut recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut shared_types: Rc<BTreeSet<String>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
@@ -14393,7 +14421,7 @@ pub fn needs_box_wrapping(
         if v1_rt::set_contains(&shared_types, name.clone()) {
             break false;
         } else {
-            if v1_rt::set_contains(&recursive_types, name.clone()) {
+            if reference_declares_recursive(n.clone(), name.clone(), recursive_types.clone()) {
                 break true;
             } else {
                 if ((n.children.clone().len() as i64) == 0) {
@@ -14405,7 +14433,11 @@ pub fn needs_box_wrapping(
                     {
                         break false;
                     } else {
-                        break v1_rt::set_contains(&recursive_types, name.clone());
+                        break reference_declares_recursive(
+                            n.clone(),
+                            name.clone(),
+                            recursive_types.clone(),
+                        );
                     }
                 } else {
                     let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -14679,7 +14711,7 @@ pub fn emit_item_clone_bound_refusal(
 
 pub fn emit_type_def_from_connective(
     item: Rc<Node>,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
@@ -15229,7 +15261,7 @@ pub fn emit_struct_from_children(
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     sealed: bool,
     deserialize_forbidden: bool,
@@ -15542,7 +15574,7 @@ pub fn render_rust_field_type_with_applied_binding(
 pub fn rust_field_carrier_final_type(
     rt_field: Rc<Node>,
     ty: String,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
@@ -15585,7 +15617,7 @@ pub fn emit_struct_field_from_child(
     struct_name: String,
     child: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     sealed: bool,
     env: Rc<TypeEnv>,
@@ -15850,7 +15882,7 @@ pub fn emit_enum_from_children(
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
@@ -16037,7 +16069,7 @@ pub fn emit_enum_shared_accessors(
     type_params: String,
     generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
@@ -16569,7 +16601,7 @@ pub fn emit_variant_from_child(
     child: Rc<Node>,
     enum_name: String,
     generic_param_names: Rc<Vec<String>>,
-    recursive_types: Rc<BTreeSet<String>>,
+    recursive_types: Rc<HashMap<String, Rc<Vec<String>>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
