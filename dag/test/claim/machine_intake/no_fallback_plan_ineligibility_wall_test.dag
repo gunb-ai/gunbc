@@ -1,10 +1,11 @@
 module test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test
 
-import std.types { Bool, Int, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import gunbc.compile_diagnostic_census {
   CompileDiagnosticCensus,
   CensusObserved,
   CensusNotRunnable,
+  CompileDiagnosticCensusRow,
   census_blocking_rows,
   census_rows_of_class,
   census_total_count
@@ -41,58 +42,118 @@ fn plan_ineligible_probe_source(cause: String) -> String {
 
 // WHAT THE CENSUS ACTUALLY COVERS, measured rather than assumed, because it
 // decides which exactness is authorable here. compile_dag_diagnostic_census
-// reports the diagnostics of the whole compile the fixture is handed to, not of
-// the fixture's own lines: both arms carry ~130 rows of ambient corpus
-// diagnostics, blocking UnresolvedType rows among them. So "total == 0" is not
-// a statement this instrument can make about the GREEN, and asserting it would
-// be a permanently-red check dressed as rigour — just as "total == 1" on the RED
-// would be. The exact form the instrument does support is the DIFFERENTIAL one
-// below, which is the stronger claim anyway: the two censuses are the same
-// census plus one row.
-type ProbeCensusCounts {
-  total: Int
-  blocking: Int
-  blocking_of_class: Int
-  blocking_of_class_and_subject: Int
+// reports the diagnostics of the WHOLE NESTED COMPILATION the fixture is handed
+// to — the fixture and its imported closure together — and carries no projector
+// separating fixture-originated rows from closure rows. Both arms therefore hold
+// ~130 rows, blocking UnresolvedType among them. So "total == 0" is not a
+// statement this instrument can make about the GREEN, and asserting it would be
+// a permanently-red check dressed as rigour — just as "total == 1" on the RED
+// would be. A fixture-local claim needs either exact subject attribution or an
+// exact differential against a structurally paired control; this test carries
+// both.
+type ProbeCensusRows {
+  rows: List<CompileDiagnosticCensusRow>
 }
 
 // Absent is the CensusNotRunnable arm: a census that could not run is not a
 // green, and keeping it in the optional rather than answering 0 is why this
 // reads rows through the coproduct instead of a rows-of-census accessor.
-fn plan_ineligible_probe_counts(cause: String, wanted: String, subject: String) -> ProbeCensusCounts? {
+fn plan_ineligible_probe_rows(cause: String) -> ProbeCensusRows? {
   match compile_dag_diagnostic_census(plan_ineligible_probe_source(cause: cause)) {
-    CensusObserved { rows: rows } =>
-      Present {
-        value: ProbeCensusCounts {
-          total: census_total_count(rows: rows),
-          blocking: census_total_count(rows: census_blocking_rows(rows: rows)),
-          blocking_of_class: census_total_count(
-            rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted)
-          ),
-          blocking_of_class_and_subject: census_total_count(
-            rows: census_rows_of_class(rows: census_blocking_rows(rows: rows), wanted: wanted)
-              |> filter(r => r.subject_name == subject)
-          ),
-        }
-      }
+    CensusObserved { rows: rows } => Present { value: ProbeCensusRows { rows: rows } }
     CensusNotRunnable { cause: _ } => none
   }
 }
 
-fn red_counts() -> ProbeCensusCounts? {
-  plan_ineligible_probe_counts(
-    cause: "CandidateEligible",
-    wanted: "TypeMismatch",
-    subject: "Coproduct(BootDeliveryCandidateStanding)"
+data target_class: String = "TypeMismatch"
+
+data target_subject: String = "Coproduct(BootDeliveryCandidateStanding)"
+
+// THE COMPARISON IS ON THE HISTOGRAM KEY, NOT ON A CARDINALITY. A net
+// `red.total == green.total + 1` proves only that the counts differ by one; an
+// equal-cardinality identity swap satisfies it while two ambient rows changed
+// underneath — a different UnresolvedType subject on one side, an advisory
+// substituted for another, compensating add/remove pairs netting zero. The
+// population claim needs the key: (diagnostic_class, subject_name, blocking),
+// with delta 1 at the target key and 0 at every other. CompileDiagnosticCensusRow
+// already carries all four fields, so this is read off the instrument's existing
+// output with no ambient literal and no new capability.
+fn census_key_count(
+  rows: List<CompileDiagnosticCensusRow>,
+  diagnostic_class: String,
+  subject_name: String,
+  blocking: Bool
+) -> Int {
+  census_total_count(
+    rows: rows
+      |> filter(r =>
+        (r.diagnostic_class as String) == diagnostic_class
+          && r.subject_name == subject_name
+          && r.blocking == blocking
+      )
   )
 }
 
-fn green_counts() -> ProbeCensusCounts? {
-  plan_ineligible_probe_counts(
-    cause: "CandidateStagingAbsent",
-    wanted: "TypeMismatch",
-    subject: "Coproduct(BootDeliveryCandidateStanding)"
+fn row_is_target_key(r: CompileDiagnosticCensusRow) -> Bool {
+  (r.diagnostic_class as String) == target_class && r.subject_name == target_subject && r.blocking
+}
+
+fn expected_delta_at(r: CompileDiagnosticCensusRow) -> Int {
+  if row_is_target_key(r: r) { 1 } else { 0 }
+}
+
+fn delta_at(
+  r: CompileDiagnosticCensusRow,
+  red: List<CompileDiagnosticCensusRow>,
+  green: List<CompileDiagnosticCensusRow>
+) -> Int {
+  let in_red = census_key_count(
+    rows: red,
+    diagnostic_class: r.diagnostic_class as String,
+    subject_name: r.subject_name,
+    blocking: r.blocking
   )
+  let in_green = census_key_count(
+    rows: green,
+    diagnostic_class: r.diagnostic_class as String,
+    subject_name: r.subject_name,
+    blocking: r.blocking
+  )
+  in_red - in_green
+}
+
+// Ranging over BOTH row lists is what makes the union the domain: a key present
+// only in the GREEN is as visible as one present only in the RED, so a row that
+// disappears fails exactly as loudly as one that appears. The target key is
+// asserted separately rather than left to the row walk, so the comparator still
+// refuses if the target were absent from both sides.
+fn censuses_differ_by_exactly_the_target_row(
+  red: List<CompileDiagnosticCensusRow>,
+  green: List<CompileDiagnosticCensusRow>
+) -> Bool {
+  let target_in_red = census_key_count(
+    rows: red,
+    diagnostic_class: target_class,
+    subject_name: target_subject,
+    blocking: true
+  )
+  let target_in_green = census_key_count(
+    rows: green,
+    diagnostic_class: target_class,
+    subject_name: target_subject,
+    blocking: true
+  )
+  (target_in_red - target_in_green) == 1
+    && red |> all(r => delta_at(r: r, red: red, green: green) == expected_delta_at(r: r))
+    && green |> all(r => delta_at(r: r, red: red, green: green) == expected_delta_at(r: r))
+}
+
+fn red_rows() -> ProbeCensusRows? {
+  plan_ineligible_probe_rows(cause: "CandidateEligible")
+}
+
+fn green_rows() -> ProbeCensusRows? {
+  plan_ineligible_probe_rows(cause: "CandidateStagingAbsent")
 }
 
 // THE DISCRIMINATING RED. Before the refusal-only split this source compiled,
@@ -107,8 +168,17 @@ fn green_counts() -> ProbeCensusCounts? {
 // THIS refuses. One blocking TypeMismatch, and it is the standing coproduct
 // rejecting the arm payload — not a mistyped import or a renamed field.
 test fn an_eligible_standing_cannot_be_placed_in_a_plans_ineligible_arm() -> Bool {
-  match red_counts() {
-    Present { value: red } => red.blocking_of_class == 1 && red.blocking_of_class_and_subject == 1
+  match red_rows() {
+    Present { value: red } =>
+      census_total_count(
+        rows: census_rows_of_class(rows: census_blocking_rows(rows: red.rows), wanted: target_class)
+      ) == 1
+        && census_key_count(
+          rows: red.rows,
+          diagnostic_class: target_class,
+          subject_name: target_subject,
+          blocking: true
+        ) == 1
     Absent => false
   }
 }
@@ -117,28 +187,78 @@ test fn an_eligible_standing_cannot_be_placed_in_a_plans_ineligible_arm() -> Boo
 // at all — a broken import, a misspelled type — and would still look like a
 // wall.
 test fn a_real_ineligibility_cause_is_still_admitted_in_that_arm() -> Bool {
-  match green_counts() {
-    Present { value: green } => green.blocking_of_class == 0
+  match green_rows() {
+    Present { value: green } =>
+      census_total_count(
+        rows: census_rows_of_class(rows: census_blocking_rows(rows: green.rows), wanted: target_class)
+      ) == 0
     Absent => false
   }
 }
 
 // THE ONE-AXIS RECEIPT. The construction makes the two SOURCES differ by one
-// token; this makes the two VERDICTS differ by one diagnostic. Whatever the
-// ambient corpus contributes cancels, so the wall is measured against the other
-// arm rather than against a literal copied out of today's tree (DESIGN §5: a
-// measurement of the current tree is not an oracle). It goes red if the RED
-// picks up a second refusal, if the GREEN loses or gains one, or if an advisory
-// appears on one side only — every way the pair could drift apart while both
-// single-arm assertions above still passed.
-test fn the_two_arms_differ_by_exactly_one_blocking_diagnostic() -> Bool {
-  match red_counts() {
+// token; this makes the two CENSUSES differ by one row — a population identity,
+// not a cardinality. Whatever the shared closure contributes cancels key by key,
+// so the wall is measured against the other arm rather than against a literal
+// copied out of today's tree (DESIGN §5: a measurement of the current tree is not
+// an oracle). It goes red if the RED picks up a second refusal, if the GREEN
+// loses or gains one, if an advisory appears on one side only, and — unlike the
+// net-count form this replaces — if any ambient class or subject is substituted
+// for another at equal cardinality.
+test fn the_two_arms_differ_by_exactly_the_target_row() -> Bool {
+  match red_rows() {
     Present { value: red } =>
-      match green_counts() {
+      match green_rows() {
         Present { value: green } =>
-          red.total == green.total + 1 && red.blocking == green.blocking + 1
+          censuses_differ_by_exactly_the_target_row(red: red.rows, green: green.rows)
         Absent => false
       }
     Absent => false
   }
+}
+
+// THE COMPARATOR'S OWN DISCRIMINATING RED, on fabricated rows, because the swap
+// it exists to catch cannot be provoked out of the real corpus on demand. Same
+// totals, same severities, one blocking and one advisory ambient identity changed
+// underneath the target row: the net-cardinality form this replaces scores it
+// GREEN, and the key-delta form must refuse it. Without this the new bar could be
+// restating the old one and nothing would say so.
+fn fabricated_row(diagnostic_class: String, subject_name: String, blocking: Bool, count: Int) -> CompileDiagnosticCensusRow {
+  CompileDiagnosticCensusRow {
+    diagnostic_class: diagnostic_class as NonEmptyStr,
+    subject_name: subject_name,
+    blocking: blocking,
+    count: count,
+  }
+}
+
+fn fabricated_green() -> List<CompileDiagnosticCensusRow> {
+  [
+    fabricated_row(diagnostic_class: "UnresolvedType", subject_name: "Time", blocking: true, count: 1),
+    fabricated_row(diagnostic_class: "SomeAdvisory", subject_name: "A", blocking: false, count: 1),
+  ]
+}
+
+fn fabricated_red_with_swap() -> List<CompileDiagnosticCensusRow> {
+  [
+    fabricated_row(diagnostic_class: "UnresolvedType", subject_name: "Memory", blocking: true, count: 1),
+    fabricated_row(diagnostic_class: "SomeOther", subject_name: "B", blocking: false, count: 1),
+    fabricated_row(diagnostic_class: target_class, subject_name: target_subject, blocking: true, count: 1),
+  ]
+}
+
+fn fabricated_red_without_swap() -> List<CompileDiagnosticCensusRow> {
+  [
+    fabricated_row(diagnostic_class: "UnresolvedType", subject_name: "Time", blocking: true, count: 1),
+    fabricated_row(diagnostic_class: "SomeAdvisory", subject_name: "A", blocking: false, count: 1),
+    fabricated_row(diagnostic_class: target_class, subject_name: target_subject, blocking: true, count: 1),
+  ]
+}
+
+test fn an_equal_cardinality_identity_swap_is_refused_by_the_comparator() -> Bool {
+  !censuses_differ_by_exactly_the_target_row(red: fabricated_red_with_swap(), green: fabricated_green())
+    && censuses_differ_by_exactly_the_target_row(
+      red: fabricated_red_without_swap(),
+      green: fabricated_green()
+    )
 }
