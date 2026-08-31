@@ -243,7 +243,9 @@ pub struct WetReceiptEnvelope {
 #[serde(deny_unknown_fields)]
 pub struct WetReceiptIdentityRow {
     pub identity: String,
-    /// `pass` | `fail` — the wire spelling of `WetLaneOutcome`; validated on read.
+    /// The wire spelling of `WetLaneOutcome` — one of the 12 closed arms in
+    /// `WET_OUTCOME_WIRES` (never a collapsed pass/fail Bool; parent outcome-grain wall);
+    /// validated on read, unknown wires refuse as ContractMismatch.
     pub outcome: String,
     pub wall_ms: u64,
 }
