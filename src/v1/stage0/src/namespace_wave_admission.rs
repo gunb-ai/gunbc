@@ -454,105 +454,13 @@ pub struct TransitionAdmission {
 /// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
 /// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
 /// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
-/// BOOT ARTIFACT RELOCATION (2026-08-31, gunbc#9784). `BootArtifact` and its neighbours
-/// (`IntakeLinuxEnvironment`, `IsoImage`, the artifact set and its selection) were authored in
-/// `gunbc.boot_artifact_delivery`, which imports `gunbc.machine_intake_receipt`. Issuance has to
-/// carry the artifact it issued a nonce for, so the receipt module needs those names — and
-/// importing them back from the delivery module would have closed a cycle, which §4's acyclicity
-/// law refuses outright. The names therefore moved DOWN to a new leaf authority,
-/// `gunbc.boot_artifact`, which imports neither side; both modules now reach them there. That is
-/// ordinary single-authority relocation, not a second spelling: nothing is defined twice at any
-/// point, and the old module authors none of these names any more.
-///
-/// FIVE ROWS, EACH NAMING ONE EXACT (module, declaration, spelling) TRIPLE, blast radius 0. No row
-/// admits a module, a prefix, or a spelling in general, so an unintended rebinding of any other
-/// name still refuses. The four membership deltas this move also produces are
-/// `ExplicitlyEvaluatedZeroDelta` and auto-admit, so they are deliberately absent from this list.
-///
-/// DISSOLVE-ON: this PR merging. Base and head then both carry the relocation, no run can produce
-/// these deltas, all five report stale, and a stale row refuses every unrelated PR in the
-/// repository — the same trigger under which the roster has been emptied six times above.
-///
-/// CHECKABLE HAND-RUST RECEIPT (review 57801). The objection is that this expands hand-written
-/// compiler Rust and that a dissolution condition does not by itself authorize the growth. Both
-/// halves are right as stated, so here is the measurement rather than the argument. Against
-/// `origin/main`, `git diff --numstat -- src/v1/stage0/src/namespace_wave_admission.rs` reports
-/// 65 added / 1 removed. Of the added lines, 16 are this justification and 49 are the five row
-/// literals. The single removed line is the const's own `= &[];`, reopened as `= &[`.
-///
-/// THE DECLARATION COUNT IS UNCHANGED, WHICH IS THE MEASURE THE GATE IS ABOUT.
-/// `grep -cE '^(pub )?(fn|struct|enum|const|static) '` reports 38 on `origin/main` and 38 here.
-/// No function, type, const, capability or mechanism is added: the rows are DATA consumed by the
-/// already-rostered `NAMESPACE_TRANSITION_ADMISSIONS` declaration, initialized from an authored
-/// literal, with no scan, file read, environment read or computed predicate. This is the same
-/// receipt shape #9436 filed for the 53-row cut, and it is an expansion in maintained lines only.
-///
-/// THE ROWS ARE NOT SCAFFOLD; THEY ARE THE WALL'S REQUIRED INPUT. The roster's own rule is that a
-/// run carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row —
-/// empty is not permissive. A relocation that §4 acyclicity FORCED (the receipt module must carry
-/// the artifact it issued a nonce for, and the delivery module already imports the receipt module,
-/// so importing back would close a cycle) therefore has exactly one sanctioned way to land, and
-/// this is it. Declining to author the rows would not reduce hand Rust; it would leave the
-/// relocation unmergeable. The alternative that WOULD reduce hand Rust — migrating the roster's
-/// pure fold to `.dag` — is blocked upstream on `ModuleDeclarationRecord` / `DeclarationIndex`
-/// having no `.dag` carrier, which the CLASS A justification above already names, and authoring
-/// one here would fork the carrier `gunbc.declaration_index_seed_growth` owns.
-///
-/// AND THE ROWS DELETE THEMSELVES. Each is stale the moment this PR merges, and a stale row reds
-/// every unrelated PR in the repository, so the deletion is enforced by the same wall rather than
-/// by anyone remembering — which is why the count has returned to zero seven times above.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-    TransitionAdmission {
-        label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryPlan)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.boot_artifact_delivery",
-            in_declaration: "BootDeliveryPlan",
-            spelling: "BootArtifact",
-            target: "gunbc.boot_artifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "BootArtifact relocated to gunbc.boot_artifact (gunbc.boot_artifact_delivery::BootDeliveryRequest)",
-        subject: AdmissionSubject::Binding {
-            module: "gunbc.boot_artifact_delivery",
-            in_declaration: "BootDeliveryRequest",
-            spelling: "BootArtifact",
-            target: "gunbc.boot_artifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "BootArtifact relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.boot_artifact_delivery_witness_test",
-            in_declaration: "intake_artifact",
-            spelling: "BootArtifact",
-            target: "gunbc.boot_artifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "IntakeLinuxEnvironment relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.boot_artifact_delivery_witness_test",
-            in_declaration: "intake_artifact",
-            spelling: "IntakeLinuxEnvironment",
-            target: "gunbc.boot_artifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-    TransitionAdmission {
-        label: "IsoImage relocated to gunbc.boot_artifact (test.claim.boot_artifact_delivery_witness_test::intake_artifact)",
-        subject: AdmissionSubject::Binding {
-            module: "test.claim.boot_artifact_delivery_witness_test",
-            in_declaration: "intake_artifact",
-            spelling: "IsoImage",
-            target: "gunbc.boot_artifact",
-        },
-        disposition: NamespaceDeltaDisposition::TargetChanged,
-    },
-];
+/// EIGHTH DISSOLUTION (2026-08-31). INTAKE-AGENT-0A (#9784) merged, so base and head both carry
+/// the `BootArtifact` / `IntakeLinuxEnvironment` / `IsoImage` relocations to `gunbc.boot_artifact`.
+/// The five rows above could no longer match any delta and were observed stale on every unrelated
+/// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
+/// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
+/// empty and remains fail-closed for any new namespace delta.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
