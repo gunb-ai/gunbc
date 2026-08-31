@@ -441,11 +441,11 @@ fn fixture_module_text(c: CarrierRealization, mutant: MutantPlan) -> String {
 // `counter=disconnected` marker (the dead-counter precedent, applied as a control).
 data runner_repeat_count: Int = 3
 
-data runner_prelude_text: String = "use std::alloc::\{GlobalAlloc, Layout, System};\nuse std::sync::atomic::\{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n#[global_allocator]\nstatic ECQ_A: EcqCounting = EcqCounting;\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
+data runner_prelude_text: String = "use std::alloc::\{GlobalAlloc, Layout, System};\nuse std::sync::atomic::\{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n#[global_allocator]\nstatic ECQ_A: EcqCounting = EcqCounting;\n\n#[allow(dead_code)]\nfn ecq_sink<T>(_v: T) {}\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
 
 // The DisconnectCounter mutant omits the #[global_allocator] registration line — the named
 // transformation is this substitution, applied at generation.
-data runner_prelude_disconnected_text: String = "use std::alloc::\{GlobalAlloc, Layout, System};\nuse std::sync::atomic::\{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
+data runner_prelude_disconnected_text: String = "use std::alloc::\{GlobalAlloc, Layout, System};\nuse std::sync::atomic::\{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n\n#[allow(dead_code)]\nfn ecq_sink<T>(_v: T) {}\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
 
 data runner_connectivity_control_text: String = "    let (_probe, co, cb) = ecq_window(|| {\n        let v = std::hint::black_box(vec![1u8; 4096]);\n        v.len() as i64\n    });\n    if co == 0 || cb < 4096 {\n        println!(\"counter=disconnected\");\n        std::process::exit(3);\n    }\n    println!(\"counter=connected\");\n"
 
@@ -516,16 +516,15 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let l_seen = "        let mut seen: Vec<(i64, u64, u64)> = std::vec::Vec::new();\n"
   let l_rep = concat("        for _rep in 0..", concat(to_string(runner_repeat_count), " {\n"))
   let l_input = concat("            let input = ", concat(input_expr, ";\n"))
-  let l_window = if mutant_plants_pre_call_clone(mutant: mutant) {
-    concat("            let (r, o, b) = { let input = input.clone(); ecq_window(|| ", concat(call_expr, ") };\n"))
-  } else {
-    concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
-  }
+  let l_plant = if mutant_plants_pre_call_clone(mutant: mutant) {
+    concat("            let planted = ", concat(input_expr, "; ecq_sink(planted.clone());\n"))
+  } else { "" }
+  let l_window = concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
   let l_scalar = "            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n"
   let l_push = "            seen.push((r_scalar, o, b));\n        }\n"
   let l_ok = concat("        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, " n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n"))
   let l_bad = concat("        } else {\n            println!(\"case=", concat(slug, " n={} observation=nondeterministic\", n);\n        }\n    }\n"))
-  concat(l_for, concat(l_seen, concat(l_rep, concat(l_input, concat(l_window, concat(l_scalar, concat(l_push, concat(l_ok, l_bad))))))))
+  concat(l_for, concat(l_seen, concat(l_rep, concat(l_input, concat(l_plant, concat(l_window, concat(l_scalar, concat(l_push, concat(l_ok, l_bad)))))))))
 }
 
 // The subject's return is Int-realized; the scalar reader tolerates either the bare or the
