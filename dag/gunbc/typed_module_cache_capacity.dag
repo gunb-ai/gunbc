@@ -59,9 +59,13 @@ type TypedModuleCacheCap
 // from producing an unbounded working set.
 fn typed_module_cache_entry_cap(r: HostBudgetResolution) -> TypedModuleCacheCap {
   match r {
-    HostBudgetResolved { source: _, bytes: b } =>
+    HostBudgetResolved { effective_bytes: b, requested_bytes: _, observation: _ } =>
       CapEntries { entries: clamp_to_declared_band(raw: raw_entry_cap(budget: b)) }
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: why } => CapEntryRefused { reason: why }
+    // This is an ENTRY-COUNT planning input, not an RSS cap. Keeping the request usable here
+    // preserves remote executors whose enforced limit is outside the container namespace without
+    // promoting the declaration into an observed HostBudgetResolved.
+    HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } =>
+      CapEntries { entries: clamp_to_declared_band(raw: raw_entry_cap(budget: requested)) }
     HostBudgetUnreadable { reason: why } => CapEntryRefused { reason: why }
   }
 }

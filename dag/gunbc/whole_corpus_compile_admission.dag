@@ -12,6 +12,7 @@ import gunbc.host_budget_source {
   HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
   HostBudgetSource,
+  HostBudgetObserved,
   host_budget_source_label,
 }
 
@@ -137,8 +138,11 @@ fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCo
   match budget {
     HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
     HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetResolved { source: s, bytes: b } =>
-      whole_corpus_compile_admission_at_budget(bytes: b, source: s)
+    HostBudgetResolved {
+      effective_bytes: b,
+      requested_bytes: _,
+      observation: HostBudgetObserved { source: s, bytes: _ }
+    } => whole_corpus_compile_admission_at_budget(bytes: b, source: s)
   }
 }
 

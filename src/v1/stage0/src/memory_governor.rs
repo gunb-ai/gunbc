@@ -569,17 +569,21 @@ pub fn self_user_cpu_ms() -> Option<u64> {
 /// classified degraded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostBudgetSource {
-    EnvOverride,
     CgroupMemoryHigh { cgroup_dir: String },
     CgroupMemoryMax { cgroup_dir: String },
     DarwinPhysicalMemory,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HostBudgetObservation {
+    pub source: HostBudgetSource,
+    pub bytes: u64,
 }
 
 impl HostBudgetSource {
     /// Mirror of `host_budget_source_label`.
     pub fn label(&self) -> String {
         match self {
-            HostBudgetSource::EnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES".to_string(),
             HostBudgetSource::CgroupMemoryHigh { cgroup_dir } => {
                 format!("cgroup memory.high ({cgroup_dir})")
             }
@@ -595,26 +599,15 @@ impl HostBudgetSource {
     pub fn bounds_this_process(&self) -> bool {
         match self {
             HostBudgetSource::CgroupMemoryMax { .. } => true,
-            HostBudgetSource::EnvOverride
-            | HostBudgetSource::CgroupMemoryHigh { .. }
-            | HostBudgetSource::DarwinPhysicalMemory => false,
+            HostBudgetSource::CgroupMemoryHigh { .. } | HostBudgetSource::DarwinPhysicalMemory => {
+                false
+            }
         }
     }
 
-    /// Whether this is a kernel observation scoped to this process. `memory.high` is
-    /// included: it is an operating throttle, not a hard cap, but remains an observed
-    /// applicable constraint. An environment request and whole-machine RAM are not.
-    pub fn observes_this_process(&self) -> bool {
-        matches!(
-            self,
-            HostBudgetSource::CgroupMemoryHigh { .. } | HostBudgetSource::CgroupMemoryMax { .. }
-        )
-    }
-
-    /// Mirror of `host_budget_source_is_degraded` — the complement of `observes_this_process`,
-    /// asserted as a partition by `test.claim.host_budget_source_witness`.
+    /// Mirror of `host_budget_source_is_degraded`.
     pub fn is_degraded(&self) -> bool {
-        !self.observes_this_process()
+        matches!(self, HostBudgetSource::DarwinPhysicalMemory)
     }
 }
 
@@ -623,15 +616,17 @@ impl HostBudgetSource {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HostBudgetResolution {
     Resolved {
-        source: HostBudgetSource,
-        bytes: u64,
+        effective_bytes: u64,
+        requested_bytes: Option<u64>,
+        observation: HostBudgetObservation,
     },
     Unreadable {
         reason: String,
     },
     /// An operator requested a planning ceiling, but no independently observed limit
     /// establishes what this process can actually consume.  The declaration is retained
-    /// for the diagnostic, never promoted into a usable number.
+    /// as a usable planning input for consumers that only derive cache entry count or
+    /// concurrency; the distinct variant prevents promotion into an observed/enforced limit.
     DeclaredUnverified {
         requested_bytes: u64,
         reason: String,
@@ -642,9 +637,13 @@ impl HostBudgetResolution {
     /// Mirror of `host_budget_resolution_bytes`.
     pub fn bytes(&self) -> Option<u64> {
         match self {
-            HostBudgetResolution::Resolved { bytes, .. } => Some(*bytes),
-            HostBudgetResolution::Unreadable { .. }
-            | HostBudgetResolution::DeclaredUnverified { .. } => None,
+            HostBudgetResolution::Resolved {
+                effective_bytes, ..
+            } => Some(*effective_bytes),
+            HostBudgetResolution::DeclaredUnverified {
+                requested_bytes, ..
+            } => Some(*requested_bytes),
+            HostBudgetResolution::Unreadable { .. } => None,
         }
     }
 
@@ -652,7 +651,17 @@ impl HostBudgetResolution {
     /// logs the label never fabricates a provenance for a read that did not happen.
     pub fn label(&self) -> String {
         match self {
-            HostBudgetResolution::Resolved { source, .. } => source.label(),
+            HostBudgetResolution::Resolved {
+                effective_bytes,
+                requested_bytes,
+                observation,
+            } => match requested_bytes {
+                Some(requested) => format!(
+                    "effective planning minimum {effective_bytes} bytes (env request {requested}; observed {}={} bytes)",
+                    observation.source.label(), observation.bytes
+                ),
+                None => observation.source.label(),
+            },
             HostBudgetResolution::Unreadable { reason } => format!("unreadable: {reason}"),
             HostBudgetResolution::DeclaredUnverified {
                 requested_bytes,
@@ -667,7 +676,9 @@ impl HostBudgetResolution {
     /// only honest answer is that there is nothing to grade — callers refuse instead.
     pub fn degraded_source(&self) -> Option<bool> {
         match self {
-            HostBudgetResolution::Resolved { source, .. } => Some(source.is_degraded()),
+            HostBudgetResolution::Resolved { observation, .. } => {
+                Some(observation.source.is_degraded())
+            }
             HostBudgetResolution::Unreadable { .. }
             | HostBudgetResolution::DeclaredUnverified { .. } => None,
         }
@@ -706,7 +717,7 @@ pub fn resolve_host_budget(
     cgroup_max: Option<(String, u64)>,
     darwin_physical: Option<u64>,
 ) -> HostBudgetResolution {
-    let observed = match (cgroup_high, cgroup_max) {
+    let observation = match (cgroup_high, cgroup_max) {
         (Some(high), Some(max)) => Some(if high.1 <= max.1 {
             (
                 HostBudgetSource::CgroupMemoryHigh { cgroup_dir: high.0 },
@@ -726,18 +737,16 @@ pub fn resolve_host_budget(
         }
         (None, None) => None,
     };
-    if let Some((observed_source, observed_bytes)) = observed {
-        if let Some(requested_bytes) = env_override {
-            if requested_bytes < observed_bytes {
-                return HostBudgetResolution::Resolved {
-                    source: HostBudgetSource::EnvOverride,
-                    bytes: requested_bytes,
-                };
-            }
-        }
+    if let Some((source, observed_bytes)) = observation {
         return HostBudgetResolution::Resolved {
-            source: observed_source,
-            bytes: observed_bytes,
+            effective_bytes: env_override
+                .map(|requested| requested.min(observed_bytes))
+                .unwrap_or(observed_bytes),
+            requested_bytes: env_override,
+            observation: HostBudgetObservation {
+                source,
+                bytes: observed_bytes,
+            },
         };
     }
     // Darwin only. `darwin_physical_memory_bytes` is `None` on every other target, so this
@@ -745,11 +754,16 @@ pub fn resolve_host_budget(
     // `host_budget_source_admissible_as_bound_on_kernel` states: a host-shared reading may
     // serve as the budget only where no private-limit mechanism exists.
     if let Some(bytes) = darwin_physical {
-        let (source, bytes) = match env_override {
-            Some(requested) if requested < bytes => (HostBudgetSource::EnvOverride, requested),
-            _ => (HostBudgetSource::DarwinPhysicalMemory, bytes),
+        return HostBudgetResolution::Resolved {
+            effective_bytes: env_override
+                .map(|requested| requested.min(bytes))
+                .unwrap_or(bytes),
+            requested_bytes: env_override,
+            observation: HostBudgetObservation {
+                source: HostBudgetSource::DarwinPhysicalMemory,
+                bytes,
+            },
         };
-        return HostBudgetResolution::Resolved { source, bytes };
     }
     if let Some(requested_bytes) = env_override {
         return HostBudgetResolution::DeclaredUnverified {
@@ -976,7 +990,9 @@ mod tests {
             env,
             HostBudgetResolution::DeclaredUnverified { .. }
         ));
-        assert_eq!(env.bytes(), None);
+        // The request remains usable by planning consumers (cache entry count and
+        // concurrency); the variant prevents any consumer from calling it observed or enforced.
+        assert_eq!(env.bytes(), Some(10_737_418_240));
 
         let high = resolve_host_budget(
             None,
@@ -1034,13 +1050,10 @@ mod tests {
             assert!(bounding.bounds_this_process(), "{bounding:?}");
             assert!(!bounding.is_degraded(), "{bounding:?}");
         }
-        assert!(!HostBudgetSource::EnvOverride.bounds_this_process());
-        assert!(HostBudgetSource::EnvOverride.is_degraded());
         let high = HostBudgetSource::CgroupMemoryHigh {
             cgroup_dir: "/sys/fs/cgroup".to_string(),
         };
         assert!(!high.bounds_this_process());
-        assert!(high.observes_this_process());
         assert!(!high.is_degraded());
     }
 
@@ -1051,7 +1064,6 @@ mod tests {
     #[test]
     fn no_source_label_names_a_file_the_resolver_did_not_read() {
         for source in [
-            HostBudgetSource::EnvOverride,
             HostBudgetSource::CgroupMemoryHigh {
                 cgroup_dir: "/sys/fs/cgroup".to_string(),
             },

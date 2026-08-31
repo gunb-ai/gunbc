@@ -84,21 +84,34 @@ data host_budget_source_authority_disposition: Disposition = Terminal {
 // number.
 
 type HostBudgetSource
-  = BudgetSourceEnvOverride
-  | BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
+  = BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
   | BudgetSourceCgroupMemoryMax { cgroup_dir: NonEmptyStr }
   | BudgetSourceDarwinPhysicalMemory
 
+type HostBudgetObservation = HostBudgetObserved { source: HostBudgetSource, bytes: ByteSize }
+
 type HostBudgetResolution
-  = HostBudgetResolved { source: HostBudgetSource, bytes: ByteSize }
+  = HostBudgetResolved {
+      effective_bytes: ByteSize,
+      requested_bytes: ByteSize?,
+      observation: HostBudgetObservation
+    }
   | HostBudgetDeclaredUnverified { requested_bytes: ByteSize, reason: NonEmptyStr }
   | HostBudgetUnreadable { reason: NonEmptyStr }
 
 fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
   match r {
-    HostBudgetResolved { source: _, bytes: b } => Present { value: b }
-    HostBudgetDeclaredUnverified { requested_bytes: _, reason: _ } => none
+    HostBudgetResolved { effective_bytes: b, requested_bytes: _, observation: _ } => Present { value: b }
+    HostBudgetDeclaredUnverified { requested_bytes: requested, reason: _ } => Present { value: requested }
     HostBudgetUnreadable { reason: _ } => none
+  }
+}
+
+fn host_budget_resolved_observation(source: HostBudgetSource, bytes: ByteSize) -> HostBudgetResolution {
+  HostBudgetResolved {
+    effective_bytes: bytes,
+    requested_bytes: none,
+    observation: HostBudgetObserved { source: source, bytes: bytes }
   }
 }
 
@@ -114,8 +127,8 @@ fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolutio
   }
 }
 
-// DEGRADED MEANS 'NOT A PRIVATE LIMIT ON THIS PROCESS', not 'bad' and not 'unreadable'. Only the
-// two cgroup arms describe a bound that belongs to this process. An operator environment value is
+// DEGRADED MEANS 'NOT A PROCESS-SCOPED OBSERVATION', not 'bad' and not 'unreadable'. The
+// cgroup arms are process-scoped: memory.high is a throttle and memory.max is an enforced cap. An operator environment value is
 // a planning request: it can narrow an independently observed limit, but cannot prove or widen one.
 // The other non-bounding arm, BudgetSourceDarwinPhysicalMemory, reports a
 // HOST-SHARED signal — hw.memsize is total physical RAM, a fact about the machine rather than about
@@ -136,7 +149,6 @@ fn host_budget_unreadable_on_kernel(kernel: KernelFamily) -> HostBudgetResolutio
 
 fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
   match s {
-    BudgetSourceEnvOverride => true
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => false
     BudgetSourceDarwinPhysicalMemory => true
@@ -147,7 +159,6 @@ fn host_budget_source_is_degraded(s: HostBudgetSource) -> Bool {
 // environment integer does not constrain allocation, whatever the operator intended it to mean.
 fn host_budget_source_bounds_this_process(s: HostBudgetSource) -> Bool {
   match s {
-    BudgetSourceEnvOverride => false
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => false
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
     BudgetSourceDarwinPhysicalMemory => false
@@ -157,36 +168,28 @@ fn host_budget_source_bounds_this_process(s: HostBudgetSource) -> Bool {
 // memory.high is an observed, process-scoped operating throttle but not a hard cap: allocations
 // may cross it while the kernel reclaims. memory.max is both observed and enforced. Keeping this
 // axis separate prevents "applicable planning constraint" from silently becoming "RSS ceiling".
-fn host_budget_source_observes_this_process(s: HostBudgetSource) -> Bool {
-  match s {
-    BudgetSourceEnvOverride => false
-    BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => true
-    BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
-    BudgetSourceDarwinPhysicalMemory => false
-  }
-}
-
 // An operator request may narrow an observed allowance, never replace or widen it. A declaration
 // with no observation remains a typed refusal carrying the requested value for diagnosis.
 fn effective_planning_budget(
   requested: ByteSize?,
-  observed_source: HostBudgetSource?,
-  observed_bytes: ByteSize?
+  observation: HostBudgetObservation?
 ) -> HostBudgetResolution {
-  match observed_bytes {
+  match observation {
     Present { value: observed } =>
-      match observed_source {
-        Present { value: source } =>
+      match observed {
+        HostBudgetObserved { source: source, bytes: observed_bytes } =>
           match requested {
-            Present { value: wanted } =>
-              if byte_size_count(b: wanted) < byte_size_count(b: observed) {
-                HostBudgetResolved { source: BudgetSourceEnvOverride, bytes: wanted }
-              } else {
-                HostBudgetResolved { source: source, bytes: observed }
-              }
-            Absent => HostBudgetResolved { source: source, bytes: observed }
+            Present { value: wanted } => HostBudgetResolved {
+              effective_bytes: if byte_size_count(b: wanted) < byte_size_count(b: observed_bytes) { wanted } else { observed_bytes },
+              requested_bytes: requested,
+              observation: HostBudgetObserved { source: source, bytes: observed_bytes }
+            }
+            Absent => HostBudgetResolved {
+              effective_bytes: observed_bytes,
+              requested_bytes: none,
+              observation: HostBudgetObserved { source: source, bytes: observed_bytes }
+            }
           }
-        Absent => HostBudgetUnreadable { reason: "observed bytes have no source" }
       }
     Absent =>
       match requested {
@@ -210,7 +213,6 @@ fn host_budget_source_admissible_as_bound_on_kernel(s: HostBudgetSource, kernel:
 
 fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
   match s {
-    BudgetSourceEnvOverride => false
     BudgetSourceCgroupMemoryHigh { cgroup_dir: _ } => true
     BudgetSourceCgroupMemoryMax { cgroup_dir: _ } => true
     BudgetSourceDarwinPhysicalMemory => false
@@ -219,7 +221,6 @@ fn host_budget_source_reads_procfs(s: HostBudgetSource) -> Bool {
 
 fn host_budget_source_label(s: HostBudgetSource) -> NonEmptyStr {
   match s {
-    BudgetSourceEnvOverride => "env GUNBC_MEMORY_BUDGET_BYTES"
     BudgetSourceCgroupMemoryHigh { cgroup_dir: d } =>
       concat("cgroup memory.high (", concat(d as String, ")")) as NonEmptyStr
     BudgetSourceCgroupMemoryMax { cgroup_dir: d } =>
