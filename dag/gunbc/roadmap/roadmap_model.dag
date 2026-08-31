@@ -200,8 +200,13 @@ type AcceptanceNodeReopensActiveFrontier {}
 // SURVIVING authority stay live, and their retention does not reopen the node. Stating the wider
 // deletion claim here would make the arm assert something the check never establishes, and it was
 // briefly false in exactly that way: gunbc#9756 withdrew 2-scm-git-upstream-model while
-// dag/extdeps/git/object_store.dag and its two upstream witnesses correctly survived, because the
-// live extdeps.git authority cites the manual witness as its own independent receipt. Per DESIGN
+// dag/extdeps/git/object_store.dag and its two upstream witnesses correctly survived. That module
+// is an independently consumed authority outside native SCM, and its OWN
+// git_modeled_ref_transition_boundary_note names
+// test.manual.git_upstream_model_execution.witness_git_cli_fixture_hashes_projects_and_independently_reads_back
+// as the independent execution and readback receipt. The citation is owned by
+// extdeps.git.object_store, NOT by the parent extdeps.git module -- naming the parent was itself a
+// fabricated structural edge, right conclusion over a graph that does not exist. Per DESIGN
 // section 4b evidence outlives the production it once served.
 // Recording a withdrawal as a reopening would leave the roadmap asserting that deleted work is
 // pending, which is the state DESIGN section 5 calls a fabricated plausible output rather than a
