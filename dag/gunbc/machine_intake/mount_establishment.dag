@@ -97,16 +97,60 @@ type MountContradiction
   | EvaluationBoundaryBeforeLastObservation { observed_through: EpochMs, last_observed_at: EpochMs }
   | EvaluationBoundaryBeforeRequest { observed_through: EpochMs, requested_at: EpochMs }
 
+// A TIMEOUT MUST SAY WHAT ESTABLISHED IT, AND MUST NOT INVENT AN OBSERVATION.
+// The unobserved path used to record last_observed_at = window.requested_at,
+// but nothing was observed at the request time -- that is when the request was
+// made. A fabricated plausible timestamp is precisely what DESIGN section 5
+// forbids, and the witness for that path ignored the field, so the fabrication
+// greened.
+//
+// The two ways a window closes are genuinely different facts and are now
+// distinguishable by a consumer: an absence observed past the deadline carries
+// the observation and its bytes, while a clock-only close carries the boundary
+// that closed it and whatever frontier existed, which is honestly absent when
+// nothing was ever seen.
+type MountTimeoutBasis
+  = TimeoutFromAbsentObservation { observed_at: EpochMs, observation_evidence: ContentHash }
+  | TimeoutAtEvaluationBoundary { boundary: EpochMs, last_observed_at: EpochMs? }
+
 type RemoteMediaMountStanding
   = MountRequested { window: RemoteMediaMountWindow }
   | MountPending { window: RemoteMediaMountWindow, last_observed_at: EpochMs, observations: Int }
   | MountEstablished { established_at: EpochMs, establishing_evidence: ContentHash }
-  | MountTimedOut { window: RemoteMediaMountWindow, last_observed_at: EpochMs }
+  | MountTimedOut { window: RemoteMediaMountWindow, basis: MountTimeoutBasis }
   | MountObservationContradictory { cause: MountContradiction }
 
+// TWO FRONTIERS, BECAUSE THEY ARE TWO FACTS. previous_at is the immediately
+// preceding SUPPLIED observation and answers order questions -- is this one out
+// of order, does it collide. frontier_at is the MAXIMUM timestamp any supplied
+// observation carried, and answers the as-of question: what is the latest moment
+// this fold has evidence about.
+//
+// They coincide only while timestamps increase, and this module exists to
+// represent populations where they do not. One field serving both meant a
+// backward observation moved the frontier BACKWARD, so a boundary later than the
+// retreated frontier but earlier than real evidence passed the coherence check --
+// a verdict read before evidence that had already been folded in. frontier_at is
+// monotone by construction: every step takes the maximum, so no observation can
+// retract what the fold already knows.
 type MountFold {
   standing: RemoteMediaMountStanding
   previous_at: EpochMs?
+  frontier_at: EpochMs?
+}
+
+fn advance_frontier(frontier_at: EpochMs?, observed_at: EpochMs) -> EpochMs? {
+  match frontier_at {
+    Absent => Present { value: observed_at }
+    Present { value: f } => if (observed_at > f) { Present { value: observed_at } } else { frontier_at }
+  }
+}
+
+fn standing_is_contradictory(standing: RemoteMediaMountStanding) -> Bool {
+  match standing {
+    MountObservationContradictory { cause: _ } => true
+    _ => false
+  }
 }
 
 fn mount_observation_is_out_of_order(previous_at: EpochMs?, observed_at: EpochMs) -> Bool {
@@ -155,9 +199,9 @@ fn advance_mount_standing(
             },
           }
       }
-    MountTimedOut { window: w, last_observed_at: last } =>
+    MountTimedOut { window: w, basis: b } =>
       match observation.listing {
-        MediaImageAbsentFromListing => MountTimedOut { window: w, last_observed_at: last }
+        MediaImageAbsentFromListing => MountTimedOut { window: w, basis: b }
         MediaImageListed =>
           MountObservationContradictory {
             cause: TimedOutThenListed {
@@ -183,7 +227,11 @@ fn pending_or_terminal(
 ) -> RemoteMediaMountStanding {
   if (observation.observed_at >= mount_window_deadline(window: window)) {
     match observation.listing {
-      MediaImageAbsentFromListing => MountTimedOut { window: window, last_observed_at: observation.observed_at }
+      MediaImageAbsentFromListing =>
+        MountTimedOut {
+          window: window,
+          basis: TimeoutFromAbsentObservation { observed_at: observation.observed_at, observation_evidence: observation.raw_response },
+        }
       MediaImageListed =>
         MountObservationContradictory {
           cause: TimedOutThenListed {
@@ -210,36 +258,57 @@ fn pending_or_terminal(
   }
 }
 
+// A CONTRADICTION IS PRESERVED IDENTICALLY, INCLUDING AGAINST A MALFORMED
+// SUCCESSOR. The temporal prechecks run before advance_mount_standing, so
+// without the first arm here an out-of-order, colliding, or before-request
+// observation arriving AFTER a contradiction replaced that contradiction with
+// its own -- losing the original cause and, worse, retracting the frontier to
+// the malformed observation's own timestamp. The declared law is that
+// Contradictory maps to the identical Contradictory standing; the guard is
+// where that becomes true rather than nearly true.
+//
+// THE FRONTIER ADVANCES ON EVERY OBSERVATION, INCLUDING REFUSED ONES. It is the
+// high-water mark of what the fold has SEEN, not of what it accepted, because
+// the boundary check asks whether an as-of read precedes evidence already in
+// hand -- and evidence that provoked a refusal is still evidence in hand.
 fn mount_fold_step(
   acc: MountFold,
   window: RemoteMediaMountWindow,
   observation: RemoteMediaListingObservation,
 ) -> MountFold {
-  if (observation.observed_at < window.requested_at) {
+  let frontier = advance_frontier(frontier_at: acc.frontier_at, observed_at: observation.observed_at)
+  let previous = Present { value: observation.observed_at }
+  if standing_is_contradictory(standing: acc.standing) {
+    MountFold { standing: acc.standing, previous_at: previous, frontier_at: frontier }
+  } else if (observation.observed_at < window.requested_at) {
     MountFold {
       standing: MountObservationContradictory {
         cause: ObservationBeforeRequest { requested_at: window.requested_at, observed_at: observation.observed_at },
       },
-      previous_at: Present { value: observation.observed_at },
+      previous_at: previous,
+      frontier_at: frontier,
     }
   } else if mount_observation_collides(previous_at: acc.previous_at, observed_at: observation.observed_at) {
     MountFold {
       standing: MountObservationContradictory {
         cause: ObservationTimestampCollision { previous_at: unwrap_previous(previous_at: acc.previous_at, fallback: observation.observed_at), observed_at: observation.observed_at },
       },
-      previous_at: Present { value: observation.observed_at },
+      previous_at: previous,
+      frontier_at: frontier,
     }
   } else if mount_observation_is_out_of_order(previous_at: acc.previous_at, observed_at: observation.observed_at) {
     MountFold {
       standing: MountObservationContradictory {
         cause: ObservationOutOfOrder { previous_at: unwrap_previous(previous_at: acc.previous_at, fallback: observation.observed_at), observed_at: observation.observed_at },
       },
-      previous_at: Present { value: observation.observed_at },
+      previous_at: previous,
+      frontier_at: frontier,
     }
   } else {
     MountFold {
       standing: advance_mount_standing(standing: acc.standing, window: window, observation: observation),
-      previous_at: Present { value: observation.observed_at },
+      previous_at: previous,
+      frontier_at: frontier,
     }
   }
 }
@@ -254,9 +323,16 @@ fn unwrap_previous(previous_at: EpochMs?, fallback: EpochMs) -> EpochMs {
 // The standing of one mount attempt over the observations that were actually
 // taken. An empty observation list is MountRequested and NOT established: a
 // mount nobody looked at is not a mount that worked.
-// THE FOLD IS THE ANSWER; THE STANDING IS A PROJECTION OF IT. previous_at -- the observation
-// frontier -- is a fact the fold already computes exactly, and it is not recoverable from the
-// standing alone: MountEstablished carries the moment it was established, not the last thing seen
+// THE FOLD IS THE ANSWER; THE STANDING IS A PROJECTION OF IT. The fold carries
+// two timestamps because they are two facts. previous_at is the IMMEDIATELY
+// PRECEDING list element, and it exists to decide ordering and collision against
+// the next one. frontier_at is the MONOTONE HIGH-WATER MARK of everything
+// observed, and it exists to decide whether an as-of boundary precedes the
+// evidence. They coincide only while timestamps strictly increase, which is
+// exactly the case the ordering check is there to catch not being universal --
+// so collapsing them let a backward observation retract the frontier and a
+// boundary between the two read as if the later evidence had never arrived.
+// The frontier is not recoverable from the standing alone: MountEstablished carries the moment it was established, not the last thing seen
 // after it, and MountTimedOut and MountObservationContradictory carry no frontier at all. An
 // earlier cut discarded the fold and tried to reconstruct the frontier per standing; that answered
 // only for MountPending, so a boundary earlier than the evidence behind any TERMINAL standing was
@@ -269,7 +345,7 @@ fn remote_media_mount_fold(
 ) -> MountFold {
   fold(
     observations,
-    init: MountFold { standing: MountRequested { window: window }, previous_at: none },
+    init: MountFold { standing: MountRequested { window: window }, previous_at: none, frontier_at: none },
     f: fn(acc, o) { mount_fold_step(acc: acc, window: window, observation: o) },
   )
 }
@@ -305,24 +381,29 @@ type MountEvaluationBoundary {
 // precedes the last observation, which would read a verdict as of a moment before the evidence
 // behind it, and -- when nothing was observed at all -- one that precedes the request itself, which
 // would describe the request as already standing before it occurred.
+// BOTH LOWER BOUNDS, CHECKED INDEPENDENTLY. A boundary must not precede the
+// request, and must not precede the frontier of evidence already folded in.
+// These were one either/or before, with the request compared only when nothing
+// had been observed -- so an observation at 500 against a request at 1000,
+// evaluated at 750, produced an as-of verdict about an attempt that had not yet
+// begun. The request bound holds whether or not anything was observed.
 fn boundary_incoherence(
   window: RemoteMediaMountWindow,
   folded: MountFold,
   boundary: MountEvaluationBoundary,
 ) -> MountContradiction? {
-  match folded.previous_at {
-    Present { value: last } =>
-      if (boundary.observed_through < last) {
-        Present { value: EvaluationBoundaryBeforeLastObservation { observed_through: boundary.observed_through, last_observed_at: last } }
-      } else {
-        none
-      }
-    Absent =>
-      if (boundary.observed_through < window.requested_at) {
-        Present { value: EvaluationBoundaryBeforeRequest { observed_through: boundary.observed_through, requested_at: window.requested_at } }
-      } else {
-        none
-      }
+  if (boundary.observed_through < window.requested_at) {
+    Present { value: EvaluationBoundaryBeforeRequest { observed_through: boundary.observed_through, requested_at: window.requested_at } }
+  } else {
+    match folded.frontier_at {
+      Absent => none
+      Present { value: frontier } =>
+        if (boundary.observed_through < frontier) {
+          Present { value: EvaluationBoundaryBeforeLastObservation { observed_through: boundary.observed_through, last_observed_at: frontier } }
+        } else {
+          none
+        }
+    }
   }
 }
 
@@ -349,11 +430,15 @@ fn close_window_at_boundary(
   let reached = boundary.observed_through >= mount_window_deadline(window: window)
   match standing {
     MountRequested { window: w } =>
-      if reached { MountTimedOut { window: w, last_observed_at: window.requested_at } } else { MountRequested { window: w } }
+      if reached {
+        MountTimedOut { window: w, basis: TimeoutAtEvaluationBoundary { boundary: boundary.observed_through, last_observed_at: none } }
+      } else { MountRequested { window: w } }
     MountPending { window: w, last_observed_at: last, observations: n } =>
-      if reached { MountTimedOut { window: w, last_observed_at: last } } else { MountPending { window: w, last_observed_at: last, observations: n } }
+      if reached {
+        MountTimedOut { window: w, basis: TimeoutAtEvaluationBoundary { boundary: boundary.observed_through, last_observed_at: Present { value: last } } }
+      } else { MountPending { window: w, last_observed_at: last, observations: n } }
     MountEstablished { established_at: at, establishing_evidence: ev } => MountEstablished { established_at: at, establishing_evidence: ev }
-    MountTimedOut { window: w, last_observed_at: last } => MountTimedOut { window: w, last_observed_at: last }
+    MountTimedOut { window: w, basis: b } => MountTimedOut { window: w, basis: b }
     MountObservationContradictory { cause: c } => MountObservationContradictory { cause: c }
   }
 }
@@ -365,7 +450,7 @@ fn mount_is_established(standing: RemoteMediaMountStanding) -> Bool {
     MountEstablished { established_at: _, establishing_evidence: _ } => true
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
     MountObservationContradictory { cause: _ } => false
   }
 }

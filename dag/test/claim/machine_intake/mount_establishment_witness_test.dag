@@ -11,6 +11,9 @@ import gunbc.machine_intake_mount_establishment {
   MountPending,
   MountRequested,
   MountTimedOut,
+  MountTimeoutBasis,
+  TimeoutAtEvaluationBoundary,
+  TimeoutFromAbsentObservation,
   EstablishedThenAbsent,
   EvaluationBoundaryBeforeLastObservation,
   EvaluationBoundaryBeforeRequest,
@@ -55,7 +58,7 @@ test fn a_listing_inside_the_window_establishes_the_mount() -> Bool {
     MountEstablished { established_at: at, establishing_evidence: ev } => at == 4000 && ev == listed_bytes
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
     MountObservationContradictory { cause: _ } => false
   }
 }
@@ -70,7 +73,7 @@ test fn pending_inside_the_window_is_not_established() -> Bool {
       last == 3000 && n == 2 && (mount_is_established(standing: standing) == false)
     MountRequested { window: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
     MountObservationContradictory { cause: _ } => false
   }
 }
@@ -79,7 +82,11 @@ test fn pending_inside_the_window_is_not_established() -> Bool {
 // "pending forever" has no representation.
 test fn an_absent_listing_past_the_deadline_times_out() -> Bool {
   match remote_media_mount_standing(window: window, observations: [absent_at(at: 3000), absent_at(at: 9000)]) {
-    MountTimedOut { window: _, last_observed_at: last } => last == 9000
+    MountTimedOut { window: _, basis: b } =>
+      match b {
+        TimeoutFromAbsentObservation { observed_at: at, observation_evidence: _ } => at == 9000
+        TimeoutAtEvaluationBoundary { boundary: _, last_observed_at: _ } => false
+      }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
@@ -107,7 +114,7 @@ test fn a_listing_after_the_timeout_is_a_contradiction_not_a_late_success() -> B
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
   }
 }
 
@@ -131,7 +138,7 @@ test fn an_absence_after_establishment_is_a_contradiction_not_a_regression() -> 
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
   }
 }
 
@@ -143,7 +150,7 @@ test fn no_observations_is_requested_and_not_established() -> Bool {
     MountRequested { window: _ } => mount_is_established(standing: standing) == false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
     MountObservationContradictory { cause: _ } => false
   }
 }
@@ -166,7 +173,7 @@ test fn an_out_of_order_observation_is_a_defect() -> Bool {
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
   }
 }
 
@@ -186,7 +193,7 @@ test fn an_observation_before_the_request_is_a_defect() -> Bool {
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
-    MountTimedOut { window: _, last_observed_at: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
   }
 }
 
@@ -242,7 +249,7 @@ test fn a_pending_attempt_times_out_at_the_boundary_without_another_poll() -> Bo
     _ => false
   }
   let closed = match mount_standing_as_of(window: window, observations: observations, boundary: boundary_at(at: 6000)) {
-    MountTimedOut { window: _, last_observed_at: last } => last == 2000
+    MountTimedOut { window: _, basis: b } => timeout_boundary_frontier_is(basis: b, boundary: 6000, last: Present { value: 2000 })
     _ => false
   }
   still_open && closed
@@ -252,7 +259,7 @@ test fn a_pending_attempt_times_out_at_the_boundary_without_another_poll() -> Bo
 // timeout rather than a success.
 test fn an_unobserved_attempt_times_out_at_its_deadline() -> Bool {
   match mount_standing_as_of(window: window, observations: [], boundary: boundary_at(at: 6000)) {
-    MountTimedOut { window: _, last_observed_at: _ } => true
+    MountTimedOut { window: _, basis: b } => timeout_boundary_frontier_is(basis: b, boundary: 6000, last: none)
     _ => false
   }
 }
@@ -333,6 +340,87 @@ test fn a_boundary_before_the_request_with_no_observations_is_a_defect() -> Bool
     MountObservationContradictory { cause: c } =>
       match c {
         EvaluationBoundaryBeforeRequest { observed_through: t, requested_at: r } => t == 500 && r == 1000
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn timeout_boundary_frontier_is(basis: MountTimeoutBasis, boundary: EpochMs, last: EpochMs?) -> Bool {
+  match basis {
+    TimeoutAtEvaluationBoundary { boundary: b, last_observed_at: l } =>
+      b == boundary
+        && match l {
+             Absent => match last { Absent => true  Present { value: _ } => false }
+             Present { value: lv } => match last { Absent => false  Present { value: wv } => lv == wv }
+           }
+    TimeoutFromAbsentObservation { observed_at: _, observation_evidence: _ } => false
+  }
+}
+
+// AN UNOBSERVED TIMEOUT MAY NOT CARRY AN OBSERVATION TIMESTAMP. It used to
+// record window.requested_at, which is when the REQUEST was made and not a
+// moment anything was seen -- a fabricated plausible value, and the previous
+// witness ignored the field so the fabrication greened. The basis now says the
+// clock closed it and that there was no observation at all.
+test fn an_unobserved_timeout_carries_no_fabricated_observation() -> Bool {
+  match mount_standing_as_of(window: window, observations: [], boundary: boundary_at(at: 6000)) {
+    MountTimedOut { window: _, basis: b } =>
+      match b {
+        TimeoutAtEvaluationBoundary { boundary: bd, last_observed_at: l } =>
+          bd == 6000 && match l { Absent => true  Present { value: _ } => false }
+        TimeoutFromAbsentObservation { observed_at: _, observation_evidence: _ } => false
+      }
+    _ => false
+  }
+}
+
+// A TIMEOUT ESTABLISHED BY AN OBSERVED ABSENCE SAYS SO, and carries the bytes
+// that established it -- distinguishable from a clock-only close, which is the
+// whole point of the basis.
+test fn an_observed_absence_past_the_deadline_names_the_observation() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [absent_at(at: 7000)]) {
+    MountTimedOut { window: _, basis: b } =>
+      match b {
+        TimeoutFromAbsentObservation { observed_at: at, observation_evidence: _ } => at == 7000
+        TimeoutAtEvaluationBoundary { boundary: _, last_observed_at: _ } => false
+      }
+    _ => false
+  }
+}
+
+// AN OUT-OF-ORDER OBSERVATION AFTER A CONTRADICTION PRESERVES THE ORIGINAL
+// CONTRADICTION EXACTLY. The temporal prechecks run before the standing
+// transition, so without the preserving arm this replaced EstablishedThenAbsent
+// with ObservationOutOfOrder AND retracted the frontier to 2500 -- losing the
+// original cause and letting a boundary at 2600 pass over evidence at 3000.
+test fn a_malformed_observation_after_a_contradiction_does_not_replace_it() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [listed_at(at: 2000), absent_at(at: 3000), absent_at(at: 2500)]) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EstablishedThenAbsent { established_at: e, establishing_evidence: _, contradicted_at: ct, contradicting_evidence: _ } => e == 2000 && ct == 3000
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE FRONTIER IS MONOTONE, so a backward observation cannot retract what the
+// fold already knows. Observations at 3000 then 2000, read as of 2600, must
+// refuse against frontier 3000 rather than accept against the retreated 2000.
+test fn a_backward_observation_does_not_retract_the_frontier() -> Bool {
+  let standing = mount_standing_as_of(window: window, observations: [absent_at(at: 3000), absent_at(at: 2000)], boundary: boundary_at(at: 2600))
+  boundary_refusal_precedes_observation(standing: standing, at: 2600, last: 3000)
+}
+
+// THE REQUEST BOUND HOLDS EVEN WHEN SOMETHING WAS OBSERVED. An observation at
+// 500 against a request at 1000, read as of 750, is an as-of verdict about an
+// attempt that had not yet begun.
+test fn a_boundary_before_the_request_refuses_even_with_observations() -> Bool {
+  match mount_standing_as_of(window: window, observations: [listed_at(at: 500)], boundary: boundary_at(at: 750)) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EvaluationBoundaryBeforeRequest { observed_through: t, requested_at: r } => t == 750 && r == 1000
         _ => false
       }
     _ => false
