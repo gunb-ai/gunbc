@@ -480,14 +480,14 @@ fn runner_arg_expr(mutant: MutantPlan, subject_arg_is_carrier: Bool) -> String {
   }
 }
 
-fn runner_pre_window_line(mutant: MutantPlan) -> String {
+fn mutant_plants_pre_call_clone(mutant: MutantPlan) -> Bool {
   match mutant {
-    PlantRedundantShareClone => "            let input = input.clone();\n"
-    PlantRedundantDeepClone => "            let input = input.clone();\n"
-    PlantHiddenDeepCopy => ""
-    CleanSubject => ""
-    DisconnectCounter => ""
-    PlantCopiedAccumulator => ""
+    PlantRedundantShareClone => true
+    PlantRedundantDeepClone => true
+    PlantHiddenDeepCopy => false
+    CleanSubject => false
+    DisconnectCounter => false
+    PlantCopiedAccumulator => false
   }
 }
 
@@ -503,8 +503,12 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let l_for = concat("    for n in [", concat(ns_text, "] {\n"))
   let l_seen = "        let mut seen: Vec<(i64, u64, u64)> = std::vec::Vec::new();\n"
   let l_rep = concat("        for _rep in 0..", concat(to_string(runner_repeat_count), " {\n"))
-  let l_input = concat("            let input = ", concat(input_expr, concat(";\n", runner_pre_window_line(mutant: mutant))))
-  let l_window = concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
+  let l_input = concat("            let input = ", concat(input_expr, ";\n"))
+  let l_window = if mutant_plants_pre_call_clone(mutant: mutant) {
+    concat("            let (r, o, b) = { let input = input.clone(); ecq_window(|| ", concat(call_expr, ") };\n"))
+  } else {
+    concat("            let (r, o, b) = ecq_window(|| ", concat(call_expr, ");\n"))
+  }
   let l_scalar = "            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n"
   let l_push = "            seen.push((r_scalar, o, b));\n        }\n"
   let l_ok = concat("        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, " n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n"))

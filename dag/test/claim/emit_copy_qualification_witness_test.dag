@@ -216,7 +216,38 @@ test fn ecq_growth_constant_accepts_flat_rows_holds() -> Bool {
 
 test fn ecq_growth_constant_refuses_growing_rows_holds() -> Bool {
   match judge_alloc_growth(expected: ConstantAllocGrowth, rows: rows_linear()) {
-    GrowthExceeds { cardinality: n, observed_bytes: _, allowed_bytes: _ } => n == 4
+    GrowthExceeds { cardinality: n, observed_bytes: _, allowed_bytes: _ } => n == 16
+    GrowthWithinExpectation => false
+  }
+}
+
+// The constant plateau tolerates a below-plateau empty-input boundary (n=0 short-circuits the
+// per-call box) but refuses a boundary ABOVE the plateau — both directions discriminated.
+fn rows_plateau_with_zero_boundary() -> List<AllocObservationRow> {
+  [
+    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 24 },
+    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: 24 },
+    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: 24 }
+  ]
+}
+
+test fn ecq_growth_constant_accepts_zero_boundary_below_plateau_holds() -> Bool {
+  match judge_alloc_growth(expected: ConstantAllocGrowth, rows: rows_plateau_with_zero_boundary()) {
+    GrowthWithinExpectation => true
+    GrowthExceeds { cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+  }
+}
+
+test fn ecq_growth_constant_refuses_boundary_above_plateau_holds() -> Bool {
+  let rows = [
+    AllocObservationRow { cardinality: 0, allocation_operations: 2, allocated_bytes: 64 },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 24 },
+    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: 24 },
+    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: 24 }
+  ]
+  match judge_alloc_growth(expected: ConstantAllocGrowth, rows: rows) {
+    GrowthExceeds { cardinality: n, observed_bytes: _, allowed_bytes: _ } => n == 0
     GrowthWithinExpectation => false
   }
 }

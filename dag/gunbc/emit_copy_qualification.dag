@@ -548,8 +548,10 @@ fn materialization_alloc_growth(f: CloneRealizationFact) -> AllocGrowthClass {
 // carrier's clone realization — the accumulator BUILDS a size-n result inside the window, and
 // the violation class is the copied accumulator's quadratic shape
 // (v2.lens.complexity_accumulator_copy Poly2Suspect), which the linear bound refuses. For
-// AliasThenMutate, structurally-sharing carriers diverge with bounded per-update node work
-// (constant at the declared cardinalities), so growth stays the realization's own class.
+// AliasThenMutate on a structurally-sharing carrier diverges by copying the update path, whose
+// node/chunk work is bounded by the structure itself — the derivable upper bound is LINEAR in n
+// (measured: im updates allocate chunk-sized nodes at the declared cardinalities), never the
+// realization's constant clone class.
 fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation {
   match carrier_clone_realization(c: id.carrier_realization) {
     CloneRealizationUnknown { unresolved_fact: uf } =>
@@ -561,6 +563,16 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
             cost_class: NoCopyWork,
             alloc_growth: LinearAllocGrowth,
             whole_value_materializations: 0
+          } }
+        AliasThenMutate =>
+          DerivedExpectation { expected: ExpectedCopyCost {
+            cost_class: materialization_cost_class(f: realization),
+            alloc_growth:
+              match realization {
+                StructuralShareRealization => LinearAllocGrowth
+                other => materialization_alloc_growth(f: other)
+              },
+            whole_value_materializations: 1
           } }
         _ =>
           let m = required_whole_value_materializations(p: id.ownership_pattern, k: id.consumer_contract)
@@ -706,18 +718,28 @@ type ConsecutivePairScan {
   verdict: GrowthJudgment
 }
 
-// Constant class: every row's bytes must equal the boundary row's (exact counters, no noise).
+// Constant class: every POSITIVE cardinality must sit on one plateau (exact counters, no
+// noise), and the size-0 boundary row may sit at or below it — the empty input legitimately
+// short-circuits per-call work (measured: emitted subjects allocate a small fixed box per call
+// that the empty case skips), and "constant" is a claim about n-independence, not about
+// equality with the degenerate point.
 // Linear class: consecutive-pair deltas within the declared per-element bound.
 fn judge_alloc_growth(expected: AllocGrowthClass, rows: List<AllocObservationRow>) -> GrowthJudgment {
   match expected {
     ConstantAllocGrowth =>
-      let baseline = match rows |> first {
+      let plateau = match rows |> filter(r => r.cardinality > 0) |> first {
         Present { value: r0 } => r0.allocated_bytes
-        Absent => 0
+        Absent =>
+          match rows |> first {
+            Present { value: r0 } => r0.allocated_bytes
+            Absent => 0
+          }
       }
-      let violation = rows |> filter(r => r.allocated_bytes != baseline) |> first
+      let violation = rows |> filter(r =>
+        if r.cardinality > 0 { r.allocated_bytes != plateau } else { r.allocated_bytes > plateau }
+      ) |> first
       match violation {
-        Present { value: v } => GrowthExceeds { cardinality: v.cardinality, observed_bytes: v.allocated_bytes, allowed_bytes: baseline }
+        Present { value: v } => GrowthExceeds { cardinality: v.cardinality, observed_bytes: v.allocated_bytes, allowed_bytes: plateau }
         Absent => GrowthWithinExpectation
       }
     LinearAllocGrowth =>
