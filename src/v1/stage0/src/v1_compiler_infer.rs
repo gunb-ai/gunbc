@@ -21120,7 +21120,7 @@ pub fn symbol_index_with_qualified_fill(
 pub fn direct_import_export_precedence_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded).".to_string()
+            "Direct-selected exports beat transitive leaks (2026-07-16, the #6663 x #6686 main-red). The ancestry union folds each direct import's WHOLE flattened cache (its own exports AND everything it inherited), so a later import's transitively-leaked homonym could overlay an earlier import's OWN export that this module's import statement explicitly selects - import v2.std.algebra { Monoid } lost 'Monoid' to dag-root std.algebra riding v2.std.node's ancestry via std.types, and #6663's field-presence wall read the wrong shape at 28 sites. This overlay re-applies, in import order, each direct import's OWN export surface (interface.env.str_bindings - locals only, never its ancestry) restricted to the names the import statement makes visible (specific_names; is_all = the parent's whole local surface, type-variable names filtered per the std.types precedent). Winner semantics: direct-selected vs transitive leak = direct wins (lexical nearest-wins, the containment ruling one hop out - the sanctioned 1c universe is own declarations UNION direct import lists); direct vs direct = unchanged import-order overlay-wins (the ledgered peer-fork ruling, 2026-07-11: later import wins, conflict stays LEDGERED on binding_forks); leak vs leak = unchanged union winner; KERNEL names are never overridden (overlay_skips_kernel_name: kernel_type_set, the container_type_arity names List/Set/Map/Witness, plus Unit/Optional/Present/Absent) - the kernel scope layer stays positionally above imports per the same ruling, because builtin typing (first, skip, string ops) grounds on kernel identities and the v2 substrate models of those concepts (v2.std.collection List=FreeMonoid, Optional; v2.std.text String) are the known dual-representation debt, resolved corpus-wide by kernel-wins today. KERNEL INSTALLATION IS INDEPENDENT OF IMPORT CARDINALITY (build_ancestry_precedence, 2026-08-31): the kernel overlay applies unconditionally over the import union and both type-env builders consume the one producer - the former shape skipped the overlay when a module had exactly one import, so kernel identity won or lost by ancestry occupancy (a leak-dependent regime: identical imports, different realizations). Full precedence, nearest first: locals > kernel > direct-selected > transitive union. The fork LEDGER is untouched - rows still record every union conflict; this layer only corrects which binding serves lookups. DISSOLVES WHEN namespace Rule-1 lands (containment tree is the naming authority; imports become parse errors) - the union leak itself disappears and this overlay with it. Receipt: direct_import_precedence_over_transitive_leak_test (green arm = selected name resolves the selected module's shape regardless of import order; red control = the field wall still refuses the true shape's missing fields, with that arm's modules placed so the homonym is census-UNAMBIGUOUS by containment (realleaf under the consumer's own parent, leakleaf under a sibling parent) - a census-ambiguous name stands the wall down BY DESIGN (presence_check_census_gate_note), so without that placement the control asserts a diagnostic the gate exists to suppress and silently measures the gate instead of the overlay; ledger arm = the fork row is still recorded).".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -21189,6 +21189,37 @@ pub fn overlay_direct_import_exports(
             std::option::Option::None => acc.clone(),
         },
     )
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct AncestryPrecedence {
+    pub cache: Rc<TypeEnvCache>,
+    pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub conflicts: Rc<Vec<Rc<TypeEnvCacheMergeConflict>>>,
+}
+
+pub fn build_ancestry_precedence(
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    kernel_cache: Rc<TypeEnvCache>,
+) -> Rc<AncestryPrecedence> {
+    {
+        let import_union =
+            union_parent_type_env_caches(resolved_imports.clone(), parent_index.clone());
+        let with_kernel = crate::v1_compiler_infer_env::merge_type_env_cache(
+            import_union.cache.clone(),
+            kernel_cache.clone(),
+        );
+        Rc::new(AncestryPrecedence {
+            cache: with_kernel.clone(),
+            ancestry_str_bindings: overlay_direct_import_exports(
+                with_kernel.str_bindings.clone(),
+                resolved_imports.clone(),
+                parent_index.clone(),
+            ),
+            conflicts: import_union.conflicts.clone(),
+        })
+    }
 }
 
 pub fn build_type_env(
@@ -21664,18 +21695,13 @@ pub fn build_type_env(
             source_indices.clone(),
             compiler_recursive_name_set(),
         );
-        let import_union =
-            union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
-        let import_cache = import_union.cache.clone();
-        let binding_forks = import_union.conflicts.clone();
-        let ancestry_cache = if ((module.resolved_imports.clone().len() as i64) == 1) {
-            import_cache.clone()
-        } else {
-            crate::v1_compiler_infer_env::merge_type_env_cache(
-                import_cache.clone(),
-                kernel_cache.clone(),
-            )
-        };
+        let ancestry_precedence = build_ancestry_precedence(
+            module.resolved_imports.clone(),
+            parent_index.clone(),
+            kernel_cache.clone(),
+        );
+        let ancestry_cache = ancestry_precedence.cache.clone();
+        let binding_forks = ancestry_precedence.conflicts.clone();
         let local_deps_map = Rc::new(v1_rt::map_values(&all_local_bindings))
             .iter()
             .cloned()
@@ -21785,11 +21811,7 @@ pub fn build_type_env(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = overlay_direct_import_exports(
-            ancestry_cache.str_bindings.clone(),
-            module.resolved_imports.clone(),
-            parent_index.clone(),
-        );
+        let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
         let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings))
             .iter()
             .cloned()
@@ -22305,18 +22327,12 @@ pub fn build_type_env_unresolved(
             source_indices.clone(),
             compiler_recursive_name_set(),
         );
-        let import_cache =
-            union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone())
-                .cache
-                .clone();
-        let ancestry_cache = if ((module.resolved_imports.clone().len() as i64) == 1) {
-            import_cache.clone()
-        } else {
-            crate::v1_compiler_infer_env::merge_type_env_cache(
-                import_cache.clone(),
-                kernel_cache.clone(),
-            )
-        };
+        let ancestry_precedence = build_ancestry_precedence(
+            module.resolved_imports.clone(),
+            parent_index.clone(),
+            kernel_cache.clone(),
+        );
+        let ancestry_cache = ancestry_precedence.cache.clone();
         let local_deps_map = Rc::new(v1_rt::map_values(&local_bindings))
             .iter()
             .cloned()
@@ -22426,7 +22442,7 @@ pub fn build_type_env_unresolved(
             parent_inductive_fields.clone(),
             local_inductive_fields.clone(),
         );
-        let ancestry_str_bindings = ancestry_cache.str_bindings.clone();
+        let ancestry_str_bindings = ancestry_precedence.ancestry_str_bindings.clone();
         let visible_str_bindings =
             v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let module_variant_index = crate::v1_compiler_infer_env::build_unit_variant_index(
