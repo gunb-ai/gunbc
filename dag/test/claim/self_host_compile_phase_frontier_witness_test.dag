@@ -1,7 +1,10 @@
 module test.claim.self_host_compile_phase_frontier_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
-import std.content_hash { content_hash_atom }
+import std.content_hash { content_hash_atom, Sha1Digest }
+import extdeps.git.object_store { GitSha1ObjectId }
+import extdeps.crypto.hash { sha256_digest }
+import v2.workflow.floor_discovery { floor_discovery_tree_id }
 import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
@@ -34,6 +37,15 @@ import gunbc.self_host_compile_phase_frontier {
   self_host_compile_phase_frontier_receipts,
   PersistedPhaseBoardFold,
   phase_board_from_census_identities,
+  receipt_population_coherent,
+  CompilePhaseFrontierReceipt,
+  seal_compile_phase_receipt,
+  CompilePhaseReceiptSubject,
+  CompilePhaseInvocation,
+  PhaseBoardProducer,
+  PhaseBoardBaseline,
+  ParseReached,
+  rustc_phase_classification_policy_digest,
   board_row,
   CompilePhaseFrontierValidated,
   compile_phase_frontier_standing,
@@ -487,4 +499,109 @@ test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
   !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
     && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
     && census_population_is_duplicate_free(identities: [])
+}
+
+// PINS THE WIRING, NOT THE PREDICATE. census_population_is_duplicate_free already has a direct
+// probe, but nothing drove receipt_population_coherent with a duplicated population, so DELETING
+// the conjunct outright left every witness green -- the wall executed as a predicate and unexecuted
+// as a wall, failing in the direction of simply not being there.
+//
+// The subject is a duplicated refused_files list, and that choice is load-bearing. A duplicated
+// raw_error_diagnostic_identities would also break the separate
+// total_error_diagnostics == count(raw_error_diagnostic_identities) conjunct, so the probe would
+// stay red with the duplicate conjunct deleted and would pin nothing. Duplicated refused_files
+// breaks ONLY the duplicate wall: the board rows derive from the same list on both sides so they
+// still agree, and the error totals concern identities rather than refused paths. So this witness
+// goes red exactly when the wall is removed.
+fn duplicated_refusal_receipt() -> CompilePhaseFrontierReceipt {
+  let parse = RustfmtParseObservation {
+    producer: "fixture-rustfmt",
+    files_observed: 2,
+    refused_files: ["src/a.rs", "src/a.rs"]
+  }
+  let fold = phase_board_from_census_identities(parse_observation: parse, raw_identities: [])
+  seal_compile_phase_receipt(
+    sequence: 0,
+    observed_at: "2026-08-31T00:00:00Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "1111111111111111111111111111111111111111" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" } }),
+      emitted_artifact_identity: sha256_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
+      cargo_identity: "cargo fixture" as NonEmptyStr,
+      rustc_identity: "rustc fixture" as NonEmptyStr,
+      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "fixture-epoch" as NonEmptyStr
+    },
+    invocation: "fixture-invocation" as NonEmptyStr,
+    position: PhaseBoardBaseline,
+    previous_prefix_digest: none,
+    parse_evidence: ParseReached { evidence: parse },
+    board: fold.board,
+    raw_error_diagnostic_identities: [],
+    unplaced_identities: fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "test.claim.self_host_compile_phase_frontier_witness",
+      function: "duplicated_refusal_receipt",
+      entry: "fixture"
+    }
+  )
+}
+
+test fn a_receipt_whose_refused_population_repeats_a_path_is_refused_by_coherence() -> Bool {
+  !receipt_population_coherent(receipt: duplicated_refusal_receipt())
+}
+
+// Positive control for the probe above: the SAME receipt shape with the repeat removed must be
+// coherent. Without it, a receipt that failed for any unrelated reason would satisfy the refusal
+// assertion and the probe would pin nothing.
+fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
+  let parse = RustfmtParseObservation {
+    producer: "fixture-rustfmt",
+    files_observed: 2,
+    refused_files: ["src/a.rs", "src/b.rs"]
+  }
+  let fold = phase_board_from_census_identities(parse_observation: parse, raw_identities: [])
+  seal_compile_phase_receipt(
+    sequence: 0,
+    observed_at: "2026-08-31T00:00:00Z" as NonEmptyStr,
+    subject: CompilePhaseReceiptSubject {
+      source_revision: "1111111111111111111111111111111111111111" as CommitSha,
+      git_tree_object: floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" } }),
+      emitted_artifact_identity: sha256_digest(hex: "3333333333333333333333333333333333333333333333333333333333333333" as NonEmptyStr),
+      compiler_identity: sha256_digest(hex: "4444444444444444444444444444444444444444444444444444444444444444" as NonEmptyStr),
+      assembler_identity: sha256_digest(hex: "5555555555555555555555555555555555555555555555555555555555555555" as NonEmptyStr),
+      cargo_identity: "cargo fixture" as NonEmptyStr,
+      rustc_identity: "rustc fixture" as NonEmptyStr,
+      invocation: CompilePhaseInvocation { target: "fixture-target", profile: "check/dev", features: [] },
+      classification_policy_digest: rustc_phase_classification_policy_digest,
+      comparison_epoch: "fixture-epoch" as NonEmptyStr
+    },
+    invocation: "fixture-invocation" as NonEmptyStr,
+    position: PhaseBoardBaseline,
+    previous_prefix_digest: none,
+    parse_evidence: ParseReached { evidence: parse },
+    board: fold.board,
+    raw_error_diagnostic_identities: [],
+    unplaced_identities: fold.unplaced_identities,
+    newly_exposed: [],
+    unadmitted_regressions: [],
+    regression_repairs: [],
+    reclassified_predecessor_board: none,
+    producer: PhaseBoardProducer {
+      module_path: "test.claim.self_host_compile_phase_frontier_witness",
+      function: "clean_refusal_receipt",
+      entry: "fixture"
+    }
+  )
+}
+
+test fn the_same_receipt_without_the_repeat_is_coherent() -> Bool {
+  receipt_population_coherent(receipt: clean_refusal_receipt())
 }
