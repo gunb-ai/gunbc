@@ -78,6 +78,7 @@ pub enum RegenReceipt {
         first_generation_equal: bool,
         changed_paths: Vec<String>,
         candidate_artifact: String,
+        candidate_manifest: RegenCandidateManifest,
     },
     /// A POPULATION REFUSAL HAS NO MEASUREMENT, AND THIS VARIANT HAS NOWHERE TO WRITE ONE.
     ///
@@ -144,6 +145,23 @@ pub enum RegenReceipt {
         fixed_point_equal: bool,
         prior: PriorReceiptRef,
     },
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct RegenCandidateManifestSurface {
+    pub declaring_module: String,
+    pub projected_path: String,
+    pub content_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct RegenCandidateManifest {
+    pub producer_seed_digest: String,
+    pub generation_id: String,
+    pub candidate_tree_id: String,
+    pub candidate_tree_digest: String,
+    pub surfaces: Vec<RegenCandidateManifestSurface>,
+    pub aggregate_digest: String,
 }
 
 impl RegenReceipt {
@@ -489,6 +507,22 @@ pub fn run_required_regen_scoped(
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
     let changed_paths = sync.drifted_paths.clone();
+    let convergence_roots = [workspace.join("dag"), workspace.join("src/v2")]
+        .iter()
+        .map(|path| path.to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let (basename_to_module, _, _, _, _) =
+        convergence_surface_roles(&workspace, &convergence_roots)?;
+    let producer_seed_digest = current_exe_digest()?;
+    let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
+    let candidate_manifest = produce_candidate_manifest(
+        &fresh_src,
+        &selected_basenames,
+        &basename_to_module,
+        &producer_seed_digest,
+        &candidate_tree_id,
+        &candidate_digest,
+    )?;
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
     // `fixed_point_equal: false` -- not a measurement, since the first pass never asks; a literal
@@ -503,6 +537,7 @@ pub fn run_required_regen_scoped(
         first_generation_equal,
         changed_paths: changed_paths.clone(),
         candidate_artifact: candidate_dir_rel.to_string(),
+        candidate_manifest,
     };
     write_receipt(&receipt_path, &receipt)?;
 
@@ -1974,6 +2009,7 @@ fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
             first_generation_equal,
             changed_paths,
             candidate_artifact,
+            candidate_manifest: _,
         } => {
             if schema != RECEIPT_SCHEMA {
                 return Err(format!(
@@ -2053,6 +2089,25 @@ mod tests {
         let path = std::env::temp_dir().join(format!("{prefix}-{nanos}"));
         fs::create_dir_all(&path).expect("create temp");
         path
+    }
+
+    fn fixture_candidate_manifest() -> RegenCandidateManifest {
+        let surfaces = Vec::new();
+        RegenCandidateManifest {
+            producer_seed_digest: "seed".to_string(),
+            generation_id: "generation".to_string(),
+            candidate_tree_id: "tree".to_string(),
+            candidate_tree_digest: "tree-digest".to_string(),
+            aggregate_digest: candidate_manifest_aggregate(
+                "seed",
+                "generation",
+                "tree",
+                "tree-digest",
+                &surfaces,
+            )
+            .unwrap(),
+            surfaces,
+        }
     }
 
     /// BOTH REFUSALS ARE THE PRODUCT OF THIS ROW, so their TEXT is under test, not just substrings.
@@ -2341,6 +2396,7 @@ mod tests {
                 first_generation_equal: false,
                 changed_paths: vec!["drifted.rs".to_string()],
                 candidate_artifact: "cand".to_string(),
+                candidate_manifest: fixture_candidate_manifest(),
             },
             failures: vec!["17 file(s) drifted".to_string()],
             first_generation: FirstGeneration::Measured("real-digest".to_string()),
@@ -2401,6 +2457,7 @@ mod tests {
                 first_generation_equal: false,
                 changed_paths: vec!["drifted.rs".to_string()],
                 candidate_artifact: "cand".to_string(),
+                candidate_manifest: fixture_candidate_manifest(),
             },
         )
         .expect("write measured receipt");
@@ -2505,7 +2562,17 @@ struct RegenConvergenceJournalEntry {
 struct RegenConvergenceJournal {
     schema: String,
     starting_commit: String,
+    source_authority_digest: String,
+    stage_plan_authority_digest: String,
+    checkpoint_id: String,
     entries: Vec<RegenConvergenceJournalEntry>,
+}
+
+#[derive(Debug, Clone)]
+struct RegenConvergenceCheckpointSubject {
+    starting_commit: String,
+    source_authority_digest: String,
+    stage_plan_authority_digest: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -2598,11 +2665,194 @@ fn path_digest(path: &Path) -> Result<String, String> {
         .map_err(|e| format!("read {} for digest: {e}", path.display()))
 }
 
+fn candidate_manifest_aggregate(
+    producer_seed_digest: &str,
+    generation_id: &str,
+    candidate_tree_id: &str,
+    candidate_tree_digest: &str,
+    surfaces: &[RegenCandidateManifestSurface],
+) -> Result<String, String> {
+    let bytes = serde_json::to_vec(&(
+        REGEN_CONVERGENCE_SCHEMA,
+        producer_seed_digest,
+        generation_id,
+        candidate_tree_id,
+        candidate_tree_digest,
+        surfaces,
+    ))
+    .map_err(|e| format!("encode candidate manifest identity: {e}"))?;
+    Ok(bytes_digest(&bytes))
+}
+
+fn produce_candidate_manifest(
+    candidate_src: &Path,
+    selected_basenames: &[String],
+    basename_to_module: &HashMap<String, String>,
+    producer_seed_digest: &str,
+    candidate_tree_id: &str,
+    candidate_tree_digest: &str,
+) -> Result<RegenCandidateManifest, String> {
+    let mut names = selected_basenames.to_vec();
+    names.sort();
+    names.dedup();
+    let generation_id =
+        bytes_digest(format!("{producer_seed_digest}:{candidate_tree_id}").as_bytes());
+    let surfaces = names
+        .iter()
+        .map(|basename| {
+            let declaring_module = basename_to_module.get(basename).cloned().ok_or_else(|| {
+                format!(
+                    "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
+                     declaring module"
+                )
+            })?;
+            Ok(RegenCandidateManifestSurface {
+                declaring_module,
+                projected_path: basename.clone(),
+                content_digest: path_digest(&candidate_src.join(basename))?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let aggregate_digest = candidate_manifest_aggregate(
+        producer_seed_digest,
+        &generation_id,
+        candidate_tree_id,
+        candidate_tree_digest,
+        &surfaces,
+    )?;
+    Ok(RegenCandidateManifest {
+        producer_seed_digest: producer_seed_digest.to_string(),
+        generation_id,
+        candidate_tree_id: candidate_tree_id.to_string(),
+        candidate_tree_digest: candidate_tree_digest.to_string(),
+        surfaces,
+        aggregate_digest,
+    })
+}
+
+fn admit_candidate_manifest(
+    candidate_src: &Path,
+    manifest: &RegenCandidateManifest,
+    expected_seed_digest: &str,
+) -> Result<HashMap<String, RegenCandidateManifestSurface>, String> {
+    if manifest.producer_seed_digest != expected_seed_digest {
+        return Err(format!(
+            "CandidateFromDifferentSeed: manifest seed {} != current {}",
+            manifest.producer_seed_digest, expected_seed_digest
+        ));
+    }
+    let aggregate = candidate_manifest_aggregate(
+        &manifest.producer_seed_digest,
+        &manifest.generation_id,
+        &manifest.candidate_tree_id,
+        &manifest.candidate_tree_digest,
+        &manifest.surfaces,
+    )?;
+    if aggregate != manifest.aggregate_digest {
+        return Err(format!(
+            "CandidateManifestDigestMismatch: recorded {} observed {}",
+            manifest.aggregate_digest, aggregate
+        ));
+    }
+    let mut observed_population = fs::read_dir(candidate_src)
+        .map_err(|e| {
+            format!(
+                "read candidate manifest population {}: {e}",
+                candidate_src.display()
+            )
+        })?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            (path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
+                .then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
+    observed_population.sort();
+    let recorded_population = manifest
+        .surfaces
+        .iter()
+        .map(|surface| surface.projected_path.clone())
+        .collect::<Vec<_>>();
+    if observed_population != recorded_population {
+        return Err(format!(
+            "CandidateManifestPopulationMismatch: recorded {recorded_population:?} observed {observed_population:?}"
+        ));
+    }
+    let formatter = ResolvedFormatter::admit()?;
+    let observed_tree_digest = tree_digest_for_basenames(
+        &formatter,
+        candidate_src,
+        &recorded_population,
+        "candidate manifest",
+    )?;
+    if observed_tree_digest != manifest.candidate_tree_digest {
+        return Err(format!(
+            "CandidateManifestTreeDigestMismatch: recorded {} observed {}",
+            manifest.candidate_tree_digest, observed_tree_digest
+        ));
+    }
+    let mut prior = "";
+    let mut admitted = HashMap::new();
+    for surface in &manifest.surfaces {
+        if !prior.is_empty() && prior >= surface.projected_path.as_str() {
+            return Err(format!(
+                "CandidateManifestPopulationNotStrictlySorted: {} then {}",
+                prior, surface.projected_path
+            ));
+        }
+        prior = &surface.projected_path;
+        let observed = path_digest(&candidate_src.join(&surface.projected_path))?;
+        if observed != surface.content_digest {
+            return Err(format!(
+                "CandidateManifestSurfaceDigestMismatch: {} recorded {} observed {}",
+                surface.projected_path, surface.content_digest, observed
+            ));
+        }
+        admitted.insert(surface.projected_path.clone(), surface.clone());
+    }
+    Ok(admitted)
+}
+
 fn regen_convergence_journal_path(workspace: &Path) -> PathBuf {
     workspace.join(REGEN_CONVERGENCE_JOURNAL_REL)
 }
 
+fn current_convergence_checkpoint_subject(
+    workspace: &Path,
+) -> Result<RegenConvergenceCheckpointSubject, String> {
+    Ok(RegenConvergenceCheckpointSubject {
+        starting_commit: git_head_sha(workspace)?,
+        source_authority_digest: authority_digest_from_sources(&super::regen_input_sources(
+            workspace,
+        )?)?,
+        stage_plan_authority_digest: path_digest(
+            &workspace.join("src/v2/workflow/regen_convergence_transaction.dag"),
+        )?,
+    })
+}
+
+fn convergence_checkpoint_id(journal: &RegenConvergenceJournal) -> Result<String, String> {
+    let bytes = serde_json::to_vec(&(
+        &journal.schema,
+        &journal.starting_commit,
+        &journal.source_authority_digest,
+        &journal.stage_plan_authority_digest,
+        &journal.entries,
+    ))
+    .map_err(|e| format!("encode convergence checkpoint identity: {e}"))?;
+    Ok(bytes_digest(&bytes))
+}
+
 fn restore_regen_convergence_journal(workspace: &Path) -> Result<(), String> {
+    let subject = current_convergence_checkpoint_subject(workspace)?;
+    restore_regen_convergence_journal_for_subject(workspace, &subject)
+}
+
+fn restore_regen_convergence_journal_for_subject(
+    workspace: &Path,
+    subject: &RegenConvergenceCheckpointSubject,
+) -> Result<(), String> {
     let root = regen_convergence_journal_path(workspace);
     let manifest_path = root.join("journal.json");
     if !manifest_path.is_file() {
@@ -2618,24 +2868,61 @@ fn restore_regen_convergence_journal(workspace: &Path) -> Result<(), String> {
             manifest.schema, REGEN_CONVERGENCE_SCHEMA
         ));
     }
+    if manifest.starting_commit != subject.starting_commit
+        || manifest.source_authority_digest != subject.source_authority_digest
+        || manifest.stage_plan_authority_digest != subject.stage_plan_authority_digest
+        || convergence_checkpoint_id(&manifest)? != manifest.checkpoint_id
+    {
+        return Err(format!(
+            "CheckpointSubjectMismatch: journal(commit={}, source={}, plan={}, checkpoint={}) \
+             current(commit={}, source={}, plan={})",
+            manifest.starting_commit,
+            manifest.source_authority_digest,
+            manifest.stage_plan_authority_digest,
+            manifest.checkpoint_id,
+            subject.starting_commit,
+            subject.source_authority_digest,
+            subject.stage_plan_authority_digest,
+        ));
+    }
+    // Validate every backup before creating a temporary restore file or touching a destination.
+    for entry in &manifest.entries {
+        if entry.existed {
+            let backup = root.join(&entry.backup_name);
+            let observed = path_digest(&backup)?;
+            if observed != entry.pre_stage_digest {
+                return Err(format!(
+                    "CheckpointArtifactDigestMismatch: {} recorded {} observed {}",
+                    entry.backup_name, entry.pre_stage_digest, observed
+                ));
+            }
+        }
+    }
+    let restore_tmp = root.join("validated-restore");
+    if restore_tmp.exists() {
+        fs::remove_dir_all(&restore_tmp)
+            .map_err(|e| format!("clear restore temp {}: {e}", restore_tmp.display()))?;
+    }
+    fs::create_dir_all(&restore_tmp)
+        .map_err(|e| format!("create restore temp {}: {e}", restore_tmp.display()))?;
+    for entry in &manifest.entries {
+        if entry.existed {
+            let backup = root.join(&entry.backup_name);
+            fs::copy(&backup, restore_tmp.join(&entry.backup_name))
+                .map_err(|e| format!("prepare validated restore {}: {e}", backup.display()))?;
+        }
+    }
     for entry in &manifest.entries {
         let destination = workspace.join(&entry.relative_path);
         if entry.existed {
-            let backup = root.join(&entry.backup_name);
-            fs::copy(&backup, &destination).map_err(|e| {
+            let prepared = restore_tmp.join(&entry.backup_name);
+            fs::rename(&prepared, &destination).map_err(|e| {
                 format!(
-                    "rollback/restore refuses: copy {} -> {}: {e}",
-                    backup.display(),
+                    "rollback/restore refuses: atomic rename {} -> {}: {e}",
+                    prepared.display(),
                     destination.display()
                 )
             })?;
-            let restored = path_digest(&destination)?;
-            if restored != entry.pre_stage_digest {
-                return Err(format!(
-                    "rollback/restore refuses: {} restored as {} instead of {}",
-                    entry.relative_path, restored, entry.pre_stage_digest
-                ));
-            }
         } else if destination.exists() {
             fs::remove_file(&destination).map_err(|e| {
                 format!(
@@ -2649,15 +2936,17 @@ fn restore_regen_convergence_journal(workspace: &Path) -> Result<(), String> {
         .map_err(|e| format!("remove restored journal {}: {e}", root.display()))
 }
 
-fn journal_stage0_paths(
+fn journal_stage0_paths_for_subject(
     workspace: &Path,
     stage0_src: &Path,
     basenames: &[String],
+    subject: &RegenConvergenceCheckpointSubject,
 ) -> Result<(), String> {
     let root = regen_convergence_journal_path(workspace);
     fs::create_dir_all(&root).map_err(|e| format!("create {}: {e}", root.display()))?;
     let manifest_path = root.join("journal.json");
-    let mut journal = if manifest_path.is_file() {
+    let existing_journal = manifest_path.is_file();
+    let mut journal = if existing_journal {
         serde_json::from_slice::<RegenConvergenceJournal>(
             &fs::read(&manifest_path)
                 .map_err(|e| format!("read {}: {e}", manifest_path.display()))?,
@@ -2666,10 +2955,38 @@ fn journal_stage0_paths(
     } else {
         RegenConvergenceJournal {
             schema: REGEN_CONVERGENCE_SCHEMA.to_string(),
-            starting_commit: git_head_sha(workspace)?,
+            starting_commit: subject.starting_commit.clone(),
+            source_authority_digest: subject.source_authority_digest.clone(),
+            stage_plan_authority_digest: subject.stage_plan_authority_digest.clone(),
+            checkpoint_id: String::new(),
             entries: Vec::new(),
         }
     };
+    if existing_journal
+        && (journal.schema != REGEN_CONVERGENCE_SCHEMA
+            || journal.starting_commit != subject.starting_commit
+            || journal.source_authority_digest != subject.source_authority_digest
+            || journal.stage_plan_authority_digest != subject.stage_plan_authority_digest
+            || convergence_checkpoint_id(&journal)? != journal.checkpoint_id)
+    {
+        return Err(format!(
+            "CheckpointSubjectMismatch: existing journal cannot be extended for commit={} source={} plan={}",
+            subject.starting_commit,
+            subject.source_authority_digest,
+            subject.stage_plan_authority_digest
+        ));
+    }
+    for entry in &journal.entries {
+        if entry.existed {
+            let observed = path_digest(&root.join(&entry.backup_name))?;
+            if observed != entry.pre_stage_digest {
+                return Err(format!(
+                    "CheckpointArtifactDigestMismatch: {} recorded {} observed {}",
+                    entry.backup_name, entry.pre_stage_digest, observed
+                ));
+            }
+        }
+    }
     for basename in basenames {
         let relative_path = format!("src/v1/stage0/src/{basename}");
         if journal
@@ -2696,6 +3013,7 @@ fn journal_stage0_paths(
             pre_stage_digest,
         });
     }
+    journal.checkpoint_id = convergence_checkpoint_id(&journal)?;
     let bytes = serde_json::to_vec_pretty(&journal).map_err(|e| format!("encode journal: {e}"))?;
     fs::write(&manifest_path, bytes).map_err(|e| format!("write {}: {e}", manifest_path.display()))
 }
@@ -2943,28 +3261,35 @@ fn render_round_cost_receipt(
     }
 }
 
+struct FirstGenerationConvergenceObservation {
+    committed_digest: String,
+    drifted: Vec<String>,
+    authority_digest: String,
+    manifest: RegenCandidateManifest,
+}
+
 fn read_first_generation_receipt(
     path: &Path,
-) -> Result<(String, String, String, Vec<String>, String), String> {
+) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt: RegenReceipt = serde_json::from_slice(
         &fs::read(path).map_err(|e| format!("read {}: {e}", path.display()))?,
     )
     .map_err(|e| format!("parse {}: {e}", path.display()))?;
     match receipt {
         RegenReceipt::FirstGeneration {
-            candidate_generated_digest,
+            candidate_generated_digest: _,
             committed_generated_digest,
             changed_paths,
-            candidate_artifact,
+            candidate_artifact: _,
             authority_digest,
+            candidate_manifest,
             ..
-        } => Ok((
-            candidate_generated_digest,
-            committed_generated_digest,
-            candidate_artifact,
-            changed_paths,
+        } => Ok(FirstGenerationConvergenceObservation {
+            committed_digest: committed_generated_digest,
+            drifted: changed_paths,
             authority_digest,
-        )),
+            manifest: candidate_manifest,
+        }),
         RegenReceipt::Refused { reason, .. } => Err(format!(
             "regen refused before convergence planning: {reason}"
         )),
@@ -2983,7 +3308,7 @@ fn run_built_seed_regen(
     receipt_rel: &str,
     source_roots: &[String],
     affected_scope: bool,
-) -> Result<(String, String, String, Vec<String>, String), String> {
+) -> Result<FirstGenerationConvergenceObservation, String> {
     let receipt_path = workspace.join(receipt_rel);
     if receipt_path.exists() {
         fs::remove_file(&receipt_path).map_err(|e| {
@@ -3059,6 +3384,7 @@ fn convergence_surface_roles(
         BTreeSet<String>,
         BTreeSet<String>,
         BTreeSet<String>,
+        BTreeSet<String>,
     ),
     String,
 > {
@@ -3071,12 +3397,35 @@ fn convergence_surface_roles(
         .map(|module| (format!("{}.rs", module.replace('.', "_")), module.clone()))
         .collect();
     let (generation, bootstrap_sources, bootstrap_products) =
-        regen_generation_role_population(source_roots, &edges, &modules)?;
+        regen_generation_role_population(source_roots, &modules)?;
+    let seed_modules = super::emitted_closure_compile_host::closure_modules(
+        &workspace.join("src/v1/stage0/src/lib.rs"),
+    )?
+    .into_iter()
+    .collect::<BTreeSet<_>>();
+    // The root crate manifest is the complete membership fact; the modeled partition rows own
+    // the subset split into generated crates. A partition member absent from the actual seed is
+    // an authority disagreement, never evidence that the missing module is embedded.
+    for module in crate::gunbc_stage0_crate_partition_generated::generated_partition_crate_rows()
+        .iter()
+        .flat_map(|row| row.modules.iter())
+    {
+        if !seed_modules.contains(module) {
+            return Err(format!(
+                "SurfaceOwnershipUnresolved: crate partition module {module} is absent from the actual claim_executor seed manifest"
+            ));
+        }
+    }
+    let seed_embedded_basenames = seed_modules
+        .into_iter()
+        .map(|module| format!("{module}.rs"))
+        .collect::<BTreeSet<_>>();
     Ok((
         basename_to_module,
         generation,
         bootstrap_sources,
         bootstrap_products,
+        seed_embedded_basenames,
     ))
 }
 
@@ -3087,10 +3436,13 @@ fn convergence_plan_from_model(
     candidate_tree_id: &str,
     candidate_tree_digest: &str,
     drifted: &[String],
+    admitted_manifest: &HashMap<String, RegenCandidateManifestSurface>,
+    stage0_src: &Path,
     basename_to_module: &HashMap<String, String>,
     generation_modules: &BTreeSet<String>,
     bootstrap_sources: &BTreeSet<String>,
     bootstrap_products: &BTreeSet<String>,
+    seed_embedded_basenames: &BTreeSet<String>,
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
@@ -3164,12 +3516,21 @@ fn convergence_plan_from_model(
     let changed = drifted
         .iter()
         .map(|basename| {
+            let manifest_surface = admitted_manifest.get(basename).ok_or_else(|| {
+                format!("CandidateManifestPopulationMismatch: drifted {basename} is absent")
+            })?;
             let module = basename_to_module.get(basename).cloned().ok_or_else(|| {
                 format!(
                     "SurfaceOwnershipUnresolved: changed surface {basename} has no declaring \
                          module in the emitted-surface ownership authority"
                 )
             })?;
+            if module != manifest_surface.declaring_module {
+                return Err(format!(
+                    "CandidateManifestOwnershipMismatch: {basename} manifest={} authority={module}",
+                    manifest_surface.declaring_module
+                ));
+            }
             let role = if bootstrap_products.contains(basename) {
                 "BootstrapSourceMirror"
             } else if generation_modules.contains(&module) {
@@ -3198,7 +3559,7 @@ fn convergence_plan_from_model(
                     (ctx.sym("surface"), identity.clone()),
                     (
                         ctx.sym("candidate_digest"),
-                        str_value(format!("bound-by-host:{basename}")),
+                        str_value(&manifest_surface.content_digest),
                     ),
                 ]),
             };
@@ -3216,17 +3577,33 @@ fn convergence_plan_from_model(
                     ),
                     (
                         ctx.sym("seed_membership"),
-                        Value::Variant {
-                            type_name: ctx.sym("RegenSeedMembership"),
-                            variant_name: ctx.sym("SeedEmbedded"),
-                            fields: Rc::new(vec![]),
+                        if seed_embedded_basenames.contains(basename) {
+                            Value::Variant {
+                                type_name: ctx.sym("RegenSeedMembership"),
+                                variant_name: ctx.sym("SeedEmbedded"),
+                                fields: Rc::new(vec![]),
+                            }
+                        } else {
+                            Value::Variant {
+                                type_name: ctx.sym("RegenSeedMembership"),
+                                variant_name: ctx.sym("UnresolvedSeedMembership"),
+                                fields: Rc::new(vec![(
+                                    ctx.sym("reason"),
+                                    str_value(format!(
+                                        "{basename} has no owner in generated_stage0_crate_partition"
+                                    )),
+                                )]),
+                            }
                         },
                     ),
                     (
                         ctx.sym("dependency_closure_id"),
                         str_value("complete-seed-build"),
                     ),
-                    (ctx.sym("pre_stage_digest"), str_value("observed-by-host")),
+                    (
+                        ctx.sym("pre_stage_digest"),
+                        str_value(path_digest(&stage0_src.join(basename))?),
+                    ),
                     (ctx.sym("candidate"), candidate),
                 ]),
             })
@@ -3378,10 +3755,12 @@ fn convergence_plan_from_model(
 }
 
 fn install_convergence_stage(
+    source_roots: &[String],
     workspace: &Path,
     stage0_src: &Path,
     candidate_src: &Path,
     basenames: &[String],
+    admitted_manifest: &HashMap<String, RegenCandidateManifestSurface>,
     basename_to_module: &HashMap<String, String>,
     ordinal: usize,
     kind: RegenConvergenceStageKindReceipt,
@@ -3391,7 +3770,83 @@ fn install_convergence_stage(
     candidate_tree_digest: &str,
     authority_digest: &str,
 ) -> Result<RegenConvergenceStageReceipt, String> {
-    journal_stage0_paths(workspace, stage0_src, basenames)?;
+    let subject = current_convergence_checkpoint_subject(workspace)?;
+    install_convergence_stage_with_backend(
+        source_roots,
+        workspace,
+        stage0_src,
+        candidate_src,
+        basenames,
+        admitted_manifest,
+        basename_to_module,
+        ordinal,
+        kind,
+        seed_before,
+        generation_id,
+        candidate_tree_id,
+        candidate_tree_digest,
+        authority_digest,
+        &subject,
+        |workspace| seed_cargo_build(workspace, "round.rebuild_from_installed"),
+        current_exe_digest,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn install_convergence_stage_with_backend<Build, SeedDigest>(
+    source_roots: &[String],
+    workspace: &Path,
+    stage0_src: &Path,
+    candidate_src: &Path,
+    basenames: &[String],
+    admitted_manifest: &HashMap<String, RegenCandidateManifestSurface>,
+    basename_to_module: &HashMap<String, String>,
+    ordinal: usize,
+    kind: RegenConvergenceStageKindReceipt,
+    seed_before: &str,
+    generation_id: &str,
+    candidate_tree_id: &str,
+    candidate_tree_digest: &str,
+    authority_digest: &str,
+    checkpoint_subject: &RegenConvergenceCheckpointSubject,
+    mut build_seed: Build,
+    mut seed_digest: SeedDigest,
+) -> Result<RegenConvergenceStageReceipt, String>
+where
+    Build: FnMut(&Path) -> Result<CargoBuildObservation, String>,
+    SeedDigest: FnMut() -> Result<String, String>,
+{
+    let changed_before = git_changed_stage0_paths(workspace)?
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+    // Re-admit every planned candidate immediately before the journal/mutation boundary. The
+    // manifest was produced by the generation; hashes observed here cannot become their own
+    // expectations.
+    for basename in basenames {
+        let expected = admitted_manifest.get(basename).ok_or_else(|| {
+            format!("CandidateManifestPopulationMismatch: planned {basename} is absent")
+        })?;
+        let observed = path_digest(&candidate_src.join(basename))?;
+        if observed != expected.content_digest {
+            return Err(format!(
+                "CandidateManifestSurfaceDigestMismatch: {basename} recorded {} observed {}",
+                expected.content_digest, observed
+            ));
+        }
+    }
+    // Snapshot the complete authoritative generated population once. A build is not expected to
+    // mutate source, but if it does the unplanned-path refusal must still be able to restore the
+    // checkpoint it claims to preserve. Planned new paths are added beside the committed roster.
+    let mut checkpoint_basenames = committed_generated_basenames(stage0_src)?;
+    checkpoint_basenames.extend(basenames.iter().cloned());
+    checkpoint_basenames.sort();
+    checkpoint_basenames.dedup();
+    journal_stage0_paths_for_subject(
+        workspace,
+        stage0_src,
+        &checkpoint_basenames,
+        checkpoint_subject,
+    )?;
     let mut surfaces = Vec::new();
     for basename in basenames {
         let destination = stage0_src.join(basename);
@@ -3401,7 +3856,17 @@ fn install_convergence_stage(
         } else {
             "absent".to_string()
         };
+        let expected = admitted_manifest.get(basename).ok_or_else(|| {
+            format!("CandidateManifestPopulationMismatch: installing {basename} is absent")
+        })?;
         let candidate_digest = path_digest(&candidate)?;
+        if candidate_digest != expected.content_digest {
+            return Err(format!(
+                "CandidateManifestSurfaceDigestMismatch immediately before copy: {basename} \
+                 recorded {} observed {}",
+                expected.content_digest, candidate_digest
+            ));
+        }
         fs::copy(&candidate, &destination).map_err(|e| {
             format!(
                 "install {} -> {}: {e}",
@@ -3432,19 +3897,46 @@ fn install_convergence_stage(
             passed: false,
         });
     }
-    let build = seed_cargo_build(workspace, "round.rebuild_from_installed")?;
-    let seed_after = current_exe_digest()?;
+    let build = build_seed(workspace)?;
+    let seed_after = seed_digest()?;
     if seed_after.is_empty() {
         return Err("stage output executable absent or unbound after successful build".to_string());
     }
-    for surface in &mut surfaces {
-        let observed_after_build = path_digest(&workspace.join(&surface.projected_path))?;
-        if observed_after_build != surface.candidate_digest {
+    let allowed_after = changed_before
+        .iter()
+        .cloned()
+        .chain(
+            basenames
+                .iter()
+                .map(|basename| format!("src/v1/stage0/src/{basename}")),
+        )
+        .collect::<BTreeSet<_>>();
+    let unplanned = git_changed_stage0_paths(workspace)?
+        .into_iter()
+        .filter(|path| !allowed_after.contains(path))
+        .collect::<Vec<_>>();
+    if !unplanned.is_empty() {
+        return Err(format!("UnplannedPathMutated: {unplanned:?}"));
+    }
+    let mut observed_population = Vec::new();
+    for surface in &surfaces {
+        let observed_digest = path_digest(&workspace.join(&surface.projected_path))?;
+        if observed_digest != surface.candidate_digest {
             return Err(format!(
                 "installed digest changed during the seed build for {}: planned {}, observed {}",
-                surface.projected_path, surface.candidate_digest, observed_after_build
+                surface.projected_path, surface.candidate_digest, observed_digest
             ));
         }
+        observed_population.push((surface.projected_path.clone(), observed_digest));
+    }
+    admit_stage_execution_from_model(
+        source_roots,
+        &surfaces,
+        generation_id,
+        generation_id,
+        &observed_population,
+    )?;
+    for surface in &mut surfaces {
         surface.terminal = true;
         surface.passed = true;
     }
@@ -3466,6 +3958,115 @@ fn install_convergence_stage(
         output_seed_digest: seed_after,
         next_generation_receipt_id: format!("generation-{}", ordinal + 1),
     })
+}
+
+fn admit_stage_execution_from_model(
+    source_roots: &[String],
+    planned: &[RegenConvergenceSurfaceReceipt],
+    input_generation_id: &str,
+    observed_candidate_generation_id: &str,
+    observed: &[(String, String)],
+) -> Result<(), String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = source_roots
+        .iter()
+        .map(|root| Path::new(root).join("workflow/regen_convergence_transaction.dag"))
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            "refusal: convergence transaction model is outside source roots".to_string()
+        })?;
+    let entry = entry.to_string_lossy().into_owned();
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| format!("refusal: stage execution admission model did not resolve: {e}"))?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let identities = planned
+        .iter()
+        .map(|surface| Value::Record {
+            type_name: ctx.sym("RegenSurfaceIdentity"),
+            fields: Rc::new(vec![
+                (
+                    ctx.sym("declaring_module"),
+                    str_value(&surface.declaring_module),
+                ),
+                (
+                    ctx.sym("projected_path"),
+                    str_value(&surface.projected_path),
+                ),
+            ]),
+        })
+        .collect::<Vec<_>>();
+    let expected_digest = bytes_digest(
+        &serde_json::to_vec(
+            &planned
+                .iter()
+                .map(|surface| (&surface.projected_path, &surface.candidate_digest))
+                .collect::<Vec<_>>(),
+        )
+        .map_err(|e| format!("encode planned stage population: {e}"))?,
+    );
+    let observed_digest = bytes_digest(
+        &serde_json::to_vec(observed)
+            .map_err(|e| format!("encode observed stage population: {e}"))?,
+    );
+    let identity_list = Value::List(Rc::new(identities.into()));
+    let observation = Value::Record {
+        type_name: ctx.sym("RegenStageExecutionObservation"),
+        fields: Rc::new(vec![
+            (ctx.sym("planned"), identity_list.clone()),
+            (ctx.sym("executed"), identity_list),
+            (
+                ctx.sym("input_generation_id"),
+                str_value(input_generation_id),
+            ),
+            (
+                ctx.sym("observed_candidate_generation_id"),
+                str_value(observed_candidate_generation_id),
+            ),
+            (
+                ctx.sym("expected_candidate_digest"),
+                str_value(expected_digest),
+            ),
+            (
+                ctx.sym("observed_candidate_digest"),
+                str_value(observed_digest),
+            ),
+            (
+                ctx.sym("build_terminal"),
+                Value::Variant {
+                    type_name: ctx.sym("RegenStageBuildTerminal"),
+                    variant_name: ctx.sym("RegenStageBuildPassed"),
+                    fields: Rc::new(vec![]),
+                },
+            ),
+        ]),
+    };
+    let admission = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_stage_execution",
+            &[(Some("observation".to_string()), observation)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: stage execution admission did not answer: {e}"))?;
+    let label = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_stage_execution_admission_label",
+            &[(Some("admission".to_string()), admission)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: stage execution admission label failed: {e}"))?;
+    match label {
+        Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
+        Value::Str(label) => Err(format!("stage execution admission {label}")),
+        other => Err(format!(
+            "refusal: stage execution admission label returned {}",
+            other.type_label_public()
+        )),
+    }
 }
 
 /// `affected_scope` consumes the affected-set bound for this round: the selection is derived
@@ -3501,21 +4102,26 @@ pub fn run_regen_round_cost(
         ));
     }
 
-    let (basename_to_module, generation_modules, bootstrap_sources, bootstrap_products) =
-        convergence_surface_roles(&workspace, source_roots)?;
+    let (
+        basename_to_module,
+        generation_modules,
+        bootstrap_sources,
+        bootstrap_products,
+        seed_embedded_basenames,
+    ) = convergence_surface_roles(&workspace, source_roots)?;
     let scope = if affected_scope {
         regen_emission_scope_for_diff(&workspace, source_roots)?
     } else {
         RegenEmissionScope::WholePopulation
     };
     let regen = run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)?;
-    let (
-        mut candidate_digest,
-        starting_surface_digest,
-        mut candidate_tree_id,
-        mut drifted,
-        mut authority_digest,
-    ) = read_first_generation_receipt(&workspace.join(receipt_rel))?;
+    let first = read_first_generation_receipt(&workspace.join(receipt_rel))?;
+    let mut candidate_digest = first.manifest.candidate_tree_digest.clone();
+    let starting_surface_digest = first.committed_digest;
+    let mut candidate_tree_id = first.manifest.candidate_tree_id.clone();
+    let mut drifted = first.drifted;
+    let mut authority_digest = first.authority_digest;
+    let mut candidate_manifest = first.manifest;
     let initial_seed_digest = current_exe_digest()?;
     let mut current_seed_digest = initial_seed_digest.clone();
     let mut stages = Vec::new();
@@ -3532,19 +4138,24 @@ pub fn run_regen_round_cost(
     }
 
     while !drifted.is_empty() {
+        let admitted_manifest =
+            admit_candidate_manifest(&candidate_src, &candidate_manifest, &current_seed_digest)?;
         let state = format!("{current_seed_digest}:{candidate_digest}");
         let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
         let (kind, install_set) = convergence_plan_from_model(
             source_roots,
             generation_ordinal + 1,
-            &format!("generation-{generation_ordinal}"),
+            &candidate_manifest.generation_id,
             &candidate_tree_id,
             &candidate_digest,
             &drifted,
+            &admitted_manifest,
+            &stage0_src,
             &basename_to_module,
             &generation_modules,
             &bootstrap_sources,
             &bootstrap_products,
+            &seed_embedded_basenames,
             &scope,
             &seen_state_keys,
             &current_seed_digest,
@@ -3589,15 +4200,17 @@ pub fn run_regen_round_cost(
         }
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
+            source_roots,
             &workspace,
             &stage0_src,
             &candidate_src,
             &install_set,
+            &admitted_manifest,
             &basename_to_module,
             generation_ordinal + 1,
             stage_kind,
             &current_seed_digest,
-            &format!("generation-{generation_ordinal}"),
+            &candidate_manifest.generation_id,
             &candidate_tree_id,
             &candidate_digest,
             &authority_digest,
@@ -3624,11 +4237,12 @@ pub fn run_regen_round_cost(
             affected_scope,
         );
         match next {
-            Ok((next_candidate, _committed, next_tree, next_drifted, next_authority)) => {
-                candidate_digest = next_candidate;
-                candidate_tree_id = next_tree;
-                drifted = next_drifted;
-                authority_digest = next_authority;
+            Ok(next) => {
+                candidate_digest = next.manifest.candidate_tree_digest.clone();
+                candidate_tree_id = next.manifest.candidate_tree_id.clone();
+                drifted = next.drifted;
+                authority_digest = next.authority_digest;
+                candidate_manifest = next.manifest;
             }
             Err(failure) => {
                 restore_regen_convergence_journal(&workspace)?;
@@ -3784,6 +4398,424 @@ mod regen_round_cost_tests {
         if let (Some(b), Some(a)) = (before, after) {
             assert!(a >= b, "cpu went backwards: {b} -> {a}");
         }
+    }
+}
+
+#[cfg(test)]
+mod regen_convergence_host_instrument_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static FIXTURE_ID: AtomicU64 = AtomicU64::new(0);
+
+    fn fixture_workspace() -> (PathBuf, PathBuf, PathBuf, RegenConvergenceCheckpointSubject) {
+        let root = std::env::temp_dir().join(format!(
+            "gunbc-regen-convergence-host-{}-{}",
+            std::process::id(),
+            FIXTURE_ID.fetch_add(1, Ordering::Relaxed)
+        ));
+        let stage0 = root.join("src/v1/stage0/src");
+        let candidate = root.join("candidate/src");
+        fs::create_dir_all(&stage0).unwrap();
+        fs::create_dir_all(&candidate).unwrap();
+        for (name, bytes) in [
+            ("fixture_producer.rs", "// old producer\n"),
+            ("fixture_subject.rs", "// old subject\n"),
+            ("fixture_dependent.rs", "// old dependent\n"),
+            ("fixture_unplanned.rs", "// stable\n"),
+        ] {
+            fs::write(stage0.join(name), bytes).unwrap();
+        }
+        let git = |args: &[&str]| {
+            let output = Command::new("git")
+                .args(args)
+                .current_dir(&root)
+                .env("GIT_AUTHOR_NAME", "regen fixture")
+                .env("GIT_AUTHOR_EMAIL", "regen@example.invalid")
+                .env("GIT_COMMITTER_NAME", "regen fixture")
+                .env("GIT_COMMITTER_EMAIL", "regen@example.invalid")
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+        git(&["init", "-q"]);
+        git(&["add", "."]);
+        git(&["commit", "-qm", "fixture"]);
+        let subject = RegenConvergenceCheckpointSubject {
+            starting_commit: "fixture-head".to_string(),
+            source_authority_digest: "fixture-authority".to_string(),
+            stage_plan_authority_digest: "fixture-plan".to_string(),
+        };
+        (root, stage0, candidate, subject)
+    }
+
+    fn fixture_manifest(
+        candidate: &Path,
+        rows: &[(&str, &str, &str)],
+    ) -> (
+        RegenCandidateManifest,
+        HashMap<String, RegenCandidateManifestSurface>,
+    ) {
+        for entry in fs::read_dir(candidate).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_file() {
+                fs::remove_file(path).unwrap();
+            }
+        }
+        for (path, _, bytes) in rows {
+            fs::write(candidate.join(path), bytes).unwrap();
+        }
+        let mut surfaces = rows
+            .iter()
+            .map(|(path, module, _)| RegenCandidateManifestSurface {
+                declaring_module: (*module).to_string(),
+                projected_path: (*path).to_string(),
+                content_digest: path_digest(&candidate.join(path)).unwrap(),
+            })
+            .collect::<Vec<_>>();
+        surfaces.sort_by(|left, right| left.projected_path.cmp(&right.projected_path));
+        let formatter = ResolvedFormatter::admit().unwrap();
+        let population = surfaces
+            .iter()
+            .map(|surface| surface.projected_path.clone())
+            .collect::<Vec<_>>();
+        let candidate_tree_digest =
+            tree_digest_for_basenames(&formatter, candidate, &population, "fixture candidate")
+                .unwrap();
+        let aggregate_digest = candidate_manifest_aggregate(
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            &candidate_tree_digest,
+            &surfaces,
+        )
+        .unwrap();
+        let manifest = RegenCandidateManifest {
+            producer_seed_digest: "seed-0".to_string(),
+            generation_id: "generation-0".to_string(),
+            candidate_tree_id: "tree-0".to_string(),
+            candidate_tree_digest,
+            surfaces,
+            aggregate_digest,
+        };
+        let admitted = admit_candidate_manifest(candidate, &manifest, "seed-0").unwrap();
+        (manifest, admitted)
+    }
+
+    fn fixture_roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|root| workspace_root().join(root).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn fixture_modules(rows: &[(&str, &str, &str)]) -> HashMap<String, String> {
+        rows.iter()
+            .map(|(path, module, _)| ((*path).to_string(), (*module).to_string()))
+            .collect()
+    }
+
+    /// HOST-PATH INSTRUMENT: this calls the same journal/install/build/admission orchestration as
+    /// production. Only the external seed build and executable digest are hermetic callbacks.
+    #[test]
+    fn mutating_transaction_binds_candidates_restores_and_reaches_staged_fixed_point() {
+        let roots = fixture_roots();
+
+        // A candidate changed after its generation manifest is refused before a journal exists.
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let rows = [(
+            "fixture_producer.rs",
+            "fixture.producer",
+            "// new producer\n",
+        )];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+        let stale_manifest = RegenCandidateManifest {
+            producer_seed_digest: "seed-g0".to_string(),
+            generation_id: "generation-g0".to_string(),
+            candidate_tree_id: "tree-g0".to_string(),
+            candidate_tree_digest: "tree-g0-digest".to_string(),
+            surfaces: admitted.values().cloned().collect(),
+            aggregate_digest: String::new(),
+        };
+        let stale_manifest = RegenCandidateManifest {
+            aggregate_digest: candidate_manifest_aggregate(
+                &stale_manifest.producer_seed_digest,
+                &stale_manifest.generation_id,
+                &stale_manifest.candidate_tree_id,
+                &stale_manifest.candidate_tree_digest,
+                &stale_manifest.surfaces,
+            )
+            .unwrap(),
+            ..stale_manifest
+        };
+        assert!(
+            admit_candidate_manifest(&candidate, &stale_manifest, "seed-g1")
+                .unwrap_err()
+                .contains("CandidateFromDifferentSeed")
+        );
+        fs::write(candidate.join(rows[0].0), "// tampered\n").unwrap();
+        let tampered = install_convergence_stage_with_backend(
+            &roots,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "authority",
+            &subject,
+            |_| Ok(CargoBuildObservation { compiled_crates: 1 }),
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap_err();
+        assert!(tampered.contains("CandidateManifestSurfaceDigestMismatch"));
+        assert!(!regen_convergence_journal_path(&workspace).exists());
+        fs::remove_dir_all(&workspace).unwrap();
+
+        // A failed build crosses the real copy boundary, then the subject-bound journal restores
+        // the admitted checkpoint. This is the single-pass negative control.
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let rows = [("fixture_subject.rs", "fixture.subject", "// new subject\n")];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+        let failed = install_convergence_stage_with_backend(
+            &roots,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "authority",
+            &subject,
+            |_| Err("fixture seed rejected partial generation".to_string()),
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap_err();
+        assert!(failed.contains("partial generation"));
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
+        assert_eq!(
+            fs::read_to_string(stage0.join(rows[0].0)).unwrap(),
+            "// old subject\n"
+        );
+
+        // Promote the producer, then install the complete subject/dependent compatibility cut.
+        let p_rows = [(
+            "fixture_producer.rs",
+            "fixture.producer",
+            "// new producer\n",
+        )];
+        let (_, p_admitted) = fixture_manifest(&candidate, &p_rows);
+        install_convergence_stage_with_backend(
+            &roots,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[p_rows[0].0.to_string()],
+            &p_admitted,
+            &fixture_modules(&p_rows),
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-p",
+            "authority",
+            &subject,
+            |_| Ok(CargoBuildObservation { compiled_crates: 1 }),
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap();
+        let s_rows = [
+            ("fixture_subject.rs", "fixture.subject", "// new subject\n"),
+            (
+                "fixture_dependent.rs",
+                "fixture.dependent",
+                "// new dependent\n",
+            ),
+        ];
+        let (_, s_admitted) = fixture_manifest(&candidate, &s_rows);
+        let stage = install_convergence_stage_with_backend(
+            &roots,
+            &workspace,
+            &stage0,
+            &candidate,
+            &s_rows
+                .iter()
+                .map(|row| row.0.to_string())
+                .collect::<Vec<_>>(),
+            &s_admitted,
+            &fixture_modules(&s_rows),
+            2,
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut,
+            "seed-1",
+            "generation-0",
+            "tree-0",
+            "manifest-s",
+            "authority",
+            &subject,
+            |root| {
+                let src = root.join("src/v1/stage0/src");
+                if fs::read_to_string(src.join("fixture_subject.rs")).unwrap() != "// new subject\n"
+                    || fs::read_to_string(src.join("fixture_dependent.rs")).unwrap()
+                        != "// new dependent\n"
+                {
+                    return Err("compatibility cut incomplete".to_string());
+                }
+                Ok(CargoBuildObservation { compiled_crates: 2 })
+            },
+            || Ok("seed-2".to_string()),
+        )
+        .unwrap();
+        assert!(stage.surfaces.iter().all(|surface| surface.planned
+            && surface.executed
+            && surface.terminal
+            && surface.passed));
+        assert_eq!(stage.output_seed_digest, "seed-2");
+
+        // Cross-head and corrupt-backup journals refuse before touching authoritative bytes.
+        let wrong_subject = RegenConvergenceCheckpointSubject {
+            starting_commit: "other-head".to_string(),
+            ..subject.clone()
+        };
+        let before = fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap();
+        assert!(
+            restore_regen_convergence_journal_for_subject(&workspace, &wrong_subject)
+                .unwrap_err()
+                .contains("CheckpointSubjectMismatch")
+        );
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
+            before
+        );
+        let journal_root = regen_convergence_journal_path(&workspace);
+        let backup = fs::read_dir(&journal_root)
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path())
+            .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bak"))
+            .unwrap();
+        fs::write(&backup, "corrupt backup\n").unwrap();
+        assert!(
+            restore_regen_convergence_journal_for_subject(&workspace, &subject)
+                .unwrap_err()
+                .contains("CheckpointArtifactDigestMismatch")
+        );
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
+            before
+        );
+        fs::remove_dir_all(&workspace).unwrap();
+
+        // An unplanned generated mutation is detected after the hermetic build callback and the
+        // complete-population journal restores it with the planned surface.
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let rows = [(
+            "fixture_producer.rs",
+            "fixture.producer",
+            "// new producer\n",
+        )];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+        let unplanned = install_convergence_stage_with_backend(
+            &roots,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "authority",
+            &subject,
+            |root| {
+                fs::write(
+                    root.join("src/v1/stage0/src/fixture_unplanned.rs"),
+                    "// mutated\n",
+                )
+                .unwrap();
+                Ok(CargoBuildObservation { compiled_crates: 1 })
+            },
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap_err();
+        assert!(unplanned.contains("UnplannedPathMutated"));
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_unplanned.rs")).unwrap(),
+            "// stable\n"
+        );
+
+        // Cycle and bound are reached through the host's production planner over successive
+        // generation identities, rather than supplied as fixture terminal variants.
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+        let modules = fixture_modules(&rows);
+        let generation_modules = ["fixture.producer".to_string()]
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let seed_members = [rows[0].0.to_string()].into_iter().collect::<BTreeSet<_>>();
+        let empty = BTreeSet::new();
+        let digest = bytes_digest(b"generation-state");
+        let cycle = convergence_plan_from_model(
+            &roots,
+            2,
+            "generation-1",
+            "tree-1",
+            &digest,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &stage0,
+            &modules,
+            &generation_modules,
+            &empty,
+            &empty,
+            &seed_members,
+            &RegenEmissionScope::WholePopulation,
+            &[format!("seed-0:{digest}")],
+            "seed-0",
+        )
+        .unwrap_err();
+        assert!(cycle.contains("CycleRefused"), "{cycle}");
+        let bound = convergence_plan_from_model(
+            &roots,
+            REGEN_CONVERGENCE_BOUND + 1,
+            "generation-bound",
+            "tree-bound",
+            &bytes_digest(b"new-tree"),
+            &[rows[0].0.to_string()],
+            &admitted,
+            &stage0,
+            &modules,
+            &generation_modules,
+            &empty,
+            &empty,
+            &seed_members,
+            &RegenEmissionScope::WholePopulation,
+            &[],
+            "seed-new",
+        )
+        .unwrap_err();
+        assert!(bound.contains("BoundRefused"), "{bound}");
+        fs::remove_dir_all(&workspace).unwrap();
     }
 }
 
@@ -3979,12 +5011,11 @@ pub fn compared_mirror_rows(
 }
 
 /// The generation-role population, asked of `gunbc.regen_affected_set` rather than reproduced
-/// as a Rust prefix test. The model starts from its existing generation-input roots and follows
-/// the same complete dependency edge population forward, so compiler substrate modules outside
-/// the root prefixes retain their real role.
+/// as a Rust prefix test. The model's explicit generation-input/bootstrap-source roster is the
+/// sole producer; dependency edges remain the separate affectedness authority and are not cited
+/// as provenance for an answer they cannot change.
 pub fn regen_generation_role_population(
     source_roots: &[String],
-    edges: &[(String, String)],
     modules: &[String],
 ) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>), String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
@@ -3993,16 +5024,6 @@ pub fn regen_generation_role_population(
     let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
         .map_err(|e| format!("refusal: {entry} did not resolve for generation roles: {e}"))?;
     let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
-    let edge_values: Vec<Value> = edges
-        .iter()
-        .map(|(from, to)| Value::Record {
-            type_name: ctx.sym("DependencyEdge"),
-            fields: Rc::new(vec![
-                (ctx.sym("from"), str_value(from.clone())),
-                (ctx.sym("to"), str_value(to.clone())),
-            ]),
-        })
-        .collect();
     let strings = |items: &[String]| {
         Value::List(Rc::new(
             items.iter().map(str_value).collect::<Vec<_>>().into(),
@@ -4032,13 +5053,7 @@ pub fn regen_generation_role_population(
     };
     let generation = list_result(
         "regen_generation_role_modules",
-        vec![
-            (
-                Some("edges".to_string()),
-                Value::List(Rc::new(edge_values.into())),
-            ),
-            (Some("modules".to_string()), strings(modules)),
-        ],
+        vec![(Some("modules".to_string()), strings(modules))],
     )?;
     let bootstrap_sources = list_result("regen_bootstrap_source_modules", vec![])?;
     let bootstrap_products = list_result("regen_bootstrap_product_paths", vec![])?;

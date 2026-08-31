@@ -130,7 +130,10 @@ fn regen_generation_inputs(edited: List<String>) -> List<String> {
       && !(regen_bootstrap_edges |> any(edge => edge.source_module == m)))
 }
 
-fn regen_generation_role_modules(edges: List<DependencyEdge>, modules: List<String>) -> List<String> {
+// Explicit-roster authority: generation role is a property of the emitter/bootstrap surface, not
+// a reachability answer. Dependency edges bound affectedness elsewhere in this module; they are
+// intentionally not an input here, so the interface cannot imply they decide this role.
+fn regen_generation_role_modules(modules: List<String>) -> List<String> {
   let roots = modules |> filter(m =>
     (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
       && !(regen_bootstrap_edges |> any(edge => edge.source_module == m))

@@ -1,6 +1,7 @@
 module v2.test.claim.regen_convergence_transaction_witness_test
 
 import std.types { Bool, List, String }
+import gunbc.regen_affected_set { regen_generation_role_modules }
 
 import v2.workflow.regen_convergence_transaction {
   RegenSurfaceIdentity,
@@ -341,4 +342,17 @@ test fn non_seed_output_waits_for_publish_stage() -> Bool {
     RegenStagePlanned { stage: _ } => false
     RegenStagePlanningRefused { refusal: _ } => false
   }
+}
+
+// The explicit generation-role roster is the sole producer: every admitted fixture generation
+// input appears exactly once, while an ordinary subject is absent rather than silently promoted.
+test fn explicit_generation_role_roster_is_total_and_unique_for_generation_inputs() -> Bool {
+  let roles = regen_generation_role_modules(modules: [
+    "v1.compiler.emit_rust",
+    "v1.compiler.required_regen_host",
+    "std.ordinary_subject"
+  ])
+  count(roles |> filter(module => module == "v1.compiler.emit_rust")) == 1
+    && count(roles |> filter(module => module == "v1.compiler.required_regen_host")) == 1
+    && count(roles |> filter(module => module == "std.ordinary_subject")) == 0
 }

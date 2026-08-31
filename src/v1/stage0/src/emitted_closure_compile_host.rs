@@ -626,7 +626,7 @@ fn run_cargo(crate_dir: &Path, workspace: &Path) -> CargoVerdict {
 /// `this crate declares no modules`, so a caller would answer `entry module not declared` for a
 /// crate it never read -- execution-provenance loss, misattributing a filesystem defect to the
 /// emission.
-fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
+pub(crate) fn closure_modules(lib_rs: &Path) -> Result<Vec<String>, String> {
     let content = std::fs::read_to_string(lib_rs).map_err(|e| e.to_string())?;
     Ok(content
         .lines()

@@ -486,6 +486,13 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
   }
 }
 
+fn regen_stage_execution_admission_label(admission: RegenStageExecutionAdmission) -> String {
+  match admission {
+    RegenStageExecutionAdmitted => "Admitted"
+    RegenStageExecutionRefused { refusal: _ } => "Refused"
+  }
+}
+
 type RegenConvergenceFixture {
   g0_changed: List<RegenChangedSurface>
   producer_stage_build: RegenStageBuildTerminal
