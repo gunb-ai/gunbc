@@ -467,10 +467,22 @@ fn pattern_is_loop(p: OwnershipPattern) -> Bool {
   }
 }
 
-fn runner_arg_expr(mutant: MutantPlan, subject_arg_is_carrier: Bool) -> String {
+fn hidden_deep_copy_wrapper(c: CarrierRealization) -> String {
+  match c {
+    OwnedStringCarrier => "{ let rebuilt: String = input.chars().collect(); rebuilt }"
+    PersistentSequenceCarrier => "{ let rebuilt: im::Vector<i64> = input.iter().cloned().collect(); std::rc::Rc::new(rebuilt) }"
+    CopyScalarControl => "input"
+    DeepCloningSequenceCarrier => "input"
+    SharedRecordCarrier => "input"
+    PersistentMapCarrier => "input"
+    NestedCheapDeepRecordCarrier => "input"
+  }
+}
+
+fn runner_arg_expr(mutant: MutantPlan, c: CarrierRealization, subject_arg_is_carrier: Bool) -> String {
   match mutant {
     PlantHiddenDeepCopy =>
-      if subject_arg_is_carrier { "{ let rebuilt: String = input.chars().collect(); rebuilt }" }
+      if subject_arg_is_carrier { hidden_deep_copy_wrapper(c: c) }
       else { "input" }
     PlantRedundantShareClone => "input"
     PlantRedundantDeepClone => "input"
@@ -497,7 +509,7 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let ns_text = ns |> fold(init: "", f: (acc, n) =>
     if acc == "" { concat(to_string(n), "i64") } else { concat(acc, concat(", ", concat(to_string(n), "i64"))) }
   )
-  let arg = runner_arg_expr(mutant: mutant, subject_arg_is_carrier: !pattern_is_loop(p: id.ownership_pattern))
+  let arg = runner_arg_expr(mutant: mutant, c: id.carrier_realization, subject_arg_is_carrier: !pattern_is_loop(p: id.ownership_pattern))
   let call_expr = concat(module_path, concat("::ecq_subject_", concat(slug, concat("(", concat(arg, ")")))))
   let input_expr = concat(module_path, concat("::ecq_input_", concat(slug, "(n)")))
   let l_for = concat("    for n in [", concat(ns_text, "] {\n"))

@@ -3,7 +3,7 @@ module gunbc.emit_copy_qualification_wet_battery
 import gunbc.emit_copy_qualification {
   CopyScalarControl, OwnedStringCarrier, SharedRecordCarrier, PersistentSequenceCarrier,
   PersistentMapCarrier, NestedCheapDeepRecordCarrier,
-  qualification_is_qualified, qualification_slug
+  EmitCopyQualification, qualification_is_qualified, qualification_slug
 }
 import gunbc.emit_copy_qualification_fixture_gen {
   CleanSubject, PlantRedundantShareClone, PlantHiddenDeepCopy, PlantRedundantDeepClone,
@@ -56,29 +56,38 @@ fn ecq_wet_shard_nested_record_qualifies_holds() -> Bool {
 }
 
 // ── Calibration matrix (ruling §9): five specimens proving the arms independent ──────────────
-// Redundant SHARE clone: static arm reports, runtime deep-copy axis stays quiet — so the
-// refusals must be redundant-clone refusals, with NO excess-copy refusal in the shard.
+// The static-sensitive calibrations are DIFFERENTIAL against the same carrier's clean shard:
+// the production emitter's own output already carries redundant clones (a real finding of this
+// battery), so an absolute "no redundant refusals" baseline would test the emitter, not the
+// instrument. The planted mutation must move exactly its own axis relative to clean.
+fn refusal_count(verdicts: List<EmitCopyQualification>, slug_expected: String) -> Int {
+  verdicts |> filter(q => qualification_slug(q: q) == slug_expected) |> count
+}
+
+// Redundant SHARE clone: the planted pre-call Rc clone adds redundant-clone refusals and no
+// excess-copy refusals relative to clean.
 fn ecq_calibration_redundant_share_clone_reds_static_only_holds() -> Bool {
-  let verdicts = run_shard_with_receipt(c: SharedRecordCarrier, mutant: PlantRedundantShareClone)
-  let redundant = verdicts |> filter(q => qualification_slug(q: q) == "refused_redundant_clone") |> count
-  let excess = verdicts |> filter(q => qualification_slug(q: q) == "refused_excess_copy") |> count
-  redundant > 0 && excess == 0
+  let clean = run_shard_with_receipt(c: SharedRecordCarrier, mutant: CleanSubject)
+  let mutant = run_shard_with_receipt(c: SharedRecordCarrier, mutant: PlantRedundantShareClone)
+  refusal_count(verdicts: mutant, slug_expected: "refused_redundant_clone") > refusal_count(verdicts: clean, slug_expected: "refused_redundant_clone")
+    && refusal_count(verdicts: mutant, slug_expected: "refused_excess_copy") == refusal_count(verdicts: clean, slug_expected: "refused_excess_copy")
 }
 
-// Hidden deep copy: static arm may be clean; the runtime arm must refuse with excess copy on
-// constant-expectation string cases — and no redundant-clone refusal may stand in for it.
+// Hidden deep copy on the carrier whose clean shard qualifies fully: the in-window rebuild adds
+// excess-copy refusals and no redundant-clone refusals relative to clean.
 fn ecq_calibration_hidden_deep_copy_reds_runtime_only_holds() -> Bool {
-  let verdicts = run_shard_with_receipt(c: OwnedStringCarrier, mutant: PlantHiddenDeepCopy)
-  let excess = verdicts |> filter(q => qualification_slug(q: q) == "refused_excess_copy") |> count
-  let redundant = verdicts |> filter(q => qualification_slug(q: q) == "refused_redundant_clone") |> count
-  excess > 0 && redundant == 0
+  let clean = run_shard_with_receipt(c: PersistentSequenceCarrier, mutant: CleanSubject)
+  let mutant = run_shard_with_receipt(c: PersistentSequenceCarrier, mutant: PlantHiddenDeepCopy)
+  refusal_count(verdicts: mutant, slug_expected: "refused_excess_copy") > refusal_count(verdicts: clean, slug_expected: "refused_excess_copy")
+    && refusal_count(verdicts: mutant, slug_expected: "refused_redundant_clone") == refusal_count(verdicts: clean, slug_expected: "refused_redundant_clone")
 }
 
-// Obvious redundant deep clone: the static arm sees it first in the join order; the specimen
-// proves the redundant-clone refusal fires on a deep-clone planting too.
+// Obvious redundant deep clone: the planted String clone adds redundant-clone refusals
+// relative to clean.
 fn ecq_calibration_redundant_deep_clone_reds_holds() -> Bool {
-  let verdicts = run_shard_with_receipt(c: OwnedStringCarrier, mutant: PlantRedundantDeepClone)
-  (verdicts |> filter(q => qualification_slug(q: q) == "refused_redundant_clone") |> count) > 0
+  let clean = run_shard_with_receipt(c: OwnedStringCarrier, mutant: CleanSubject)
+  let mutant = run_shard_with_receipt(c: OwnedStringCarrier, mutant: PlantRedundantDeepClone)
+  refusal_count(verdicts: mutant, slug_expected: "refused_redundant_clone") > refusal_count(verdicts: clean, slug_expected: "refused_redundant_clone")
 }
 
 // Disconnected counter: every case refuses observation-unavailable — the dead-counter
