@@ -70,35 +70,35 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ReservedWordStrategy {
-    PrefixEscape { prefix: std::string::String },
-    SuffixEscape { suffix: std::string::String },
+    PrefixEscape { prefix: String },
+    SuffixEscape { suffix: String },
     NoEscape,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReservedWords {
-    pub keywords: Rc<Vec<std::string::String>>,
+    pub keywords: Rc<Vec<String>>,
     pub strategy: Rc<ReservedWordStrategy>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ProjectScaffold {
-    pub manifest_file: Option<std::string::String>,
-    pub module_init_file: Option<std::string::String>,
-    pub source_file_extension: std::string::String,
-    pub source_dir: Option<std::string::String>,
+    pub manifest_file: Option<String>,
+    pub module_init_file: Option<String>,
+    pub source_file_extension: String,
+    pub source_dir: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SerializationSpec {
-    pub struct_derives: Option<std::string::String>,
-    pub struct_derives_copy: Option<std::string::String>,
-    pub enum_derives: Option<std::string::String>,
-    pub enum_derives_copy: Option<std::string::String>,
-    pub tag_attribute: Option<std::string::String>,
-    pub rename_attribute_template: Option<std::string::String>,
-    pub derive_attribute: Option<std::string::String>,
-    pub default_value: Option<std::string::String>,
+    pub struct_derives: Option<String>,
+    pub struct_derives_copy: Option<String>,
+    pub enum_derives: Option<String>,
+    pub enum_derives_copy: Option<String>,
+    pub tag_attribute: Option<String>,
+    pub rename_attribute_template: Option<String>,
+    pub derive_attribute: Option<String>,
+    pub default_value: Option<String>,
 }
 
 #[derive(
@@ -112,92 +112,92 @@ pub enum TestNameStyle {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TestConventions {
-    pub file_prefix: std::string::String,
-    pub file_suffix: std::string::String,
-    pub file_dir: Option<std::string::String>,
-    pub function_prefix: std::string::String,
+    pub file_prefix: String,
+    pub file_suffix: String,
+    pub file_dir: Option<String>,
+    pub function_prefix: String,
     pub name_style: TestNameStyle,
-    pub async_decorator: Option<std::string::String>,
+    pub async_decorator: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ImportTrigger {
-    TypeUsageTrigger { type_name: std::string::String },
-    TraitImplTrigger { trait_name: std::string::String },
-    DeriveMacroTrigger { macro_name: std::string::String },
-    ContainerUsageTrigger { container: std::string::String },
+    TypeUsageTrigger { type_name: String },
+    TraitImplTrigger { trait_name: String },
+    DeriveMacroTrigger { macro_name: String },
+    ContainerUsageTrigger { container: String },
     AsyncUsageTrigger,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ImportRule {
     pub trigger: Rc<ImportTrigger>,
-    pub import_path: std::string::String,
+    pub import_path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SharingStrategy {
     pub needs_sharing: bool,
-    pub wrap_template: std::string::String,
-    pub wrap_type_prefix: std::string::String,
-    pub wrap_ctor_template: std::string::String,
-    pub wrap_ctor_open: std::string::String,
-    pub wrap_ctor_close: std::string::String,
-    pub clone_value: std::string::String,
-    pub deref_clone: std::string::String,
-    pub field_clone: std::string::String,
-    pub iter_owned: std::string::String,
-    pub clone_suffix: std::string::String,
-    pub borrow_param_template: std::string::String,
-    pub borrow_arg_template: std::string::String,
+    pub wrap_template: String,
+    pub wrap_type_prefix: String,
+    pub wrap_ctor_template: String,
+    pub wrap_ctor_open: String,
+    pub wrap_ctor_close: String,
+    pub clone_value: String,
+    pub deref_clone: String,
+    pub field_clone: String,
+    pub iter_owned: String,
+    pub clone_suffix: String,
+    pub borrow_param_template: String,
+    pub borrow_arg_template: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IndexingSemantics {
-    pub list_index: std::string::String,
-    pub map_index: std::string::String,
-    pub string_index: std::string::String,
-    pub list_slice: Option<std::string::String>,
-    pub string_slice: Option<std::string::String>,
+    pub list_index: String,
+    pub map_index: String,
+    pub string_index: String,
+    pub list_slice: Option<String>,
+    pub string_slice: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AnnotationRequirements {
-    pub let_binding_inferred: std::string::String,
-    pub let_binding_annotated: std::string::String,
-    pub lambda_param_typed: std::string::String,
-    pub lambda_param_untyped: std::string::String,
+    pub let_binding_inferred: String,
+    pub let_binding_annotated: String,
+    pub lambda_param_typed: String,
+    pub lambda_param_untyped: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ServiceFieldTemplates {
-    pub rest_decl: std::string::String,
-    pub auth_decl: std::string::String,
-    pub shell_decl: std::string::String,
-    pub file_decl: std::string::String,
-    pub rest_ctor: std::string::String,
-    pub auth_ctor: std::string::String,
-    pub shell_ctor: std::string::String,
-    pub file_ctor: std::string::String,
+    pub rest_decl: String,
+    pub auth_decl: String,
+    pub shell_decl: String,
+    pub file_decl: String,
+    pub rest_ctor: String,
+    pub auth_ctor: String,
+    pub shell_ctor: String,
+    pub file_ctor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BlockSyntax {
-    pub block_open: std::string::String,
-    pub block_close: std::string::String,
-    pub else_clause: std::string::String,
-    pub match_keyword: std::string::String,
-    pub case_keyword: std::string::String,
-    pub arm_separator: std::string::String,
-    pub stmt_terminator: std::string::String,
+    pub block_open: String,
+    pub block_close: String,
+    pub else_clause: String,
+    pub match_keyword: String,
+    pub case_keyword: String,
+    pub arm_separator: String,
+    pub stmt_terminator: String,
     pub significant_whitespace: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ForEachSyntax {
-    pub prefix: std::string::String,
-    pub separator: std::string::String,
+    pub prefix: String,
+    pub separator: String,
 }
 
 #[derive(
@@ -223,20 +223,20 @@ pub enum MatchValueForm {
 pub struct ExpressionSemantics {
     pub if_value_form: IfValueForm,
     pub match_value_form: MatchValueForm,
-    pub wildcard_case: Option<std::string::String>,
+    pub wildcard_case: Option<String>,
     pub variant_pattern: Option<Rc<VariantPatternSyntax>>,
-    pub guard_prefix: Option<std::string::String>,
-    pub empty_return_value: std::string::String,
-    pub return_suffix: std::string::String,
+    pub guard_prefix: Option<String>,
+    pub empty_return_value: String,
+    pub return_suffix: String,
     pub suppress_unit_return: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct VariantPatternSyntax {
-    pub open: std::string::String,
-    pub close: std::string::String,
-    pub binding_sep: std::string::String,
-    pub empty_suffix: std::string::String,
+    pub open: String,
+    pub close: String,
+    pub binding_sep: String,
+    pub empty_suffix: String,
 }
 
 #[derive(
@@ -253,35 +253,35 @@ pub enum NamingCase {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum VisibilitySpec {
-    KeywordVisibility { prefix: std::string::String },
+    KeywordVisibility { prefix: String },
     CaseVisibility { export_case: NamingCase },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TcoSyntax {
-    pub loop_keyword: std::string::String,
-    pub break_return: std::string::String,
-    pub continue_str: std::string::String,
-    pub temp_var_prefix: std::string::String,
-    pub temp_decl_prefix: std::string::String,
-    pub temp_assign_op: std::string::String,
+    pub loop_keyword: String,
+    pub break_return: String,
+    pub continue_str: String,
+    pub temp_var_prefix: String,
+    pub temp_decl_prefix: String,
+    pub temp_assign_op: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ServiceMethodStrategy {
-    SelfInParams { self_param: std::string::String },
-    ExternalReceiver { var_name: std::string::String },
+    SelfInParams { self_param: String },
+    ExternalReceiver { var_name: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ServiceReturnStrategy {
     ArrowReturn,
-    ErrorTupleReturn { error_type: std::string::String },
+    ErrorTupleReturn { error_type: String },
 }
 impl ServiceReturnStrategy {
-    pub fn error_type(&self) -> std::string::String {
+    pub fn error_type(&self) -> String {
         match self {
             ServiceReturnStrategy::ArrowReturn => panic!("no error_type on unit variant"),
             ServiceReturnStrategy::ErrorTupleReturn {
@@ -291,17 +291,14 @@ impl ServiceReturnStrategy {
     }
 }
 
-pub fn service_self_param(spec: Rc<LanguageSpec>) -> std::string::String {
+pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
         ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => "".to_string(),
     }
 }
 
-pub fn service_receiver_str(
-    spec: Rc<LanguageSpec>,
-    service_name: std::string::String,
-) -> std::string::String {
+pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> String {
     match (*spec.service_method.clone()).clone() {
         ServiceMethodStrategy::SelfInParams { self_param: _, .. } => "".to_string(),
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v1_rt::concat(
@@ -328,10 +325,7 @@ pub fn service_methods_inside_class(spec: Rc<LanguageSpec>) -> bool {
     }
 }
 
-pub fn service_return_str(
-    spec: Rc<LanguageSpec>,
-    ret_type: std::string::String,
-) -> std::string::String {
+pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
     match (*spec.service_return.clone()).clone() {
         ServiceReturnStrategy::ArrowReturn => {
             v1_rt::concat(spec.items.clone().return_arrow.clone(), ret_type.clone())
@@ -351,23 +345,20 @@ pub fn service_return_str(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemKeywords {
-    pub func_keyword: std::string::String,
-    pub async_prefix: std::string::String,
-    pub struct_keyword: std::string::String,
-    pub enum_keyword: std::string::String,
-    pub type_alias_keyword: std::string::String,
-    pub param_separator: std::string::String,
-    pub return_arrow: std::string::String,
-    pub param_type_sep: std::string::String,
-    pub module_keyword: std::string::String,
-    pub import_keyword: std::string::String,
-    pub import_from_keyword: std::string::String,
+    pub func_keyword: String,
+    pub async_prefix: String,
+    pub struct_keyword: String,
+    pub enum_keyword: String,
+    pub type_alias_keyword: String,
+    pub param_separator: String,
+    pub return_arrow: String,
+    pub param_type_sep: String,
+    pub module_keyword: String,
+    pub import_keyword: String,
+    pub import_from_keyword: String,
 }
 
-pub fn item_keyword_for_kind(
-    forms: Rc<Vec<Rc<ItemForm>>>,
-    kind: ItemFormKind,
-) -> std::string::String {
+pub fn item_keyword_for_kind(forms: Rc<Vec<Rc<ItemForm>>>, kind: ItemFormKind) -> String {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -387,7 +378,7 @@ pub fn item_keyword_for_kind(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LanguageSpec {
-    pub target_name: std::string::String,
+    pub target_name: String,
     pub reserved_words: Rc<ReservedWords>,
     pub scaffold: Rc<ProjectScaffold>,
     pub serialization: Rc<SerializationSpec>,
@@ -402,24 +393,24 @@ pub struct LanguageSpec {
     pub tco: Rc<TcoSyntax>,
     pub items: Rc<ItemKeywords>,
     pub expression_semantics: Rc<ExpressionSemantics>,
-    pub lambda_template: std::string::String,
-    pub error_expr_template: std::string::String,
-    pub list_literal_empty: std::string::String,
-    pub list_literal_template: std::string::String,
-    pub null_coalesce_template: std::string::String,
-    pub error_type_template: std::string::String,
-    pub type_arg_open: std::string::String,
-    pub type_arg_close: std::string::String,
-    pub void_type: std::string::String,
+    pub lambda_template: String,
+    pub error_expr_template: String,
+    pub list_literal_empty: String,
+    pub list_literal_template: String,
+    pub null_coalesce_template: String,
+    pub error_type_template: String,
+    pub type_arg_open: String,
+    pub type_arg_close: String,
+    pub void_type: String,
     pub tuple_syntax: Rc<TupleSyntax>,
     pub string_interp: Rc<StringInterpSyntax>,
-    pub callable_type_template: Option<std::string::String>,
-    pub callable_value_wrap_template: Option<std::string::String>,
+    pub callable_type_template: Option<String>,
+    pub callable_value_wrap_template: Option<String>,
     pub naming_case: NamingCase,
-    pub async_call_prefix: std::string::String,
-    pub bridge_method_prefix: std::string::String,
+    pub async_call_prefix: String,
+    pub bridge_method_prefix: String,
     pub bridge_method_case: NamingCase,
-    pub bridge_method_overrides: Rc<HashMap<std::string::String, std::string::String>>,
+    pub bridge_method_overrides: Rc<HashMap<String, String>>,
     pub record_lit: Rc<RecordLitSyntax>,
     pub service_method: Rc<ServiceMethodStrategy>,
     pub service_return: Rc<ServiceReturnStrategy>,
@@ -428,35 +419,35 @@ pub struct LanguageSpec {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TupleSyntax {
-    pub empty: std::string::String,
-    pub pair_template: std::string::String,
-    pub multi_template: std::string::String,
-    pub separator: std::string::String,
-    pub first_accessor: std::string::String,
-    pub second_accessor: std::string::String,
+    pub empty: String,
+    pub pair_template: String,
+    pub multi_template: String,
+    pub separator: String,
+    pub first_accessor: String,
+    pub second_accessor: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RecordLitSyntax {
-    pub named_open: std::string::String,
-    pub named_close: std::string::String,
-    pub named_empty: std::string::String,
-    pub named_field_sep: std::string::String,
-    pub named_field_join: std::string::String,
-    pub anon_empty: std::string::String,
-    pub anon_prefix: std::string::String,
-    pub anon_suffix: std::string::String,
-    pub anon_field_indent: std::string::String,
+    pub named_open: String,
+    pub named_close: String,
+    pub named_empty: String,
+    pub named_field_sep: String,
+    pub named_field_join: String,
+    pub anon_empty: String,
+    pub anon_prefix: String,
+    pub anon_suffix: String,
+    pub anon_field_indent: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum InterpStyle {
-    FormatArgs { placeholder: std::string::String },
+    FormatArgs { placeholder: String },
     InlineExpr,
 }
 impl InterpStyle {
-    pub fn placeholder(&self) -> std::string::String {
+    pub fn placeholder(&self) -> String {
         match self {
             InterpStyle::FormatArgs {
                 placeholder: __val, ..
@@ -468,22 +459,22 @@ impl InterpStyle {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EscapePair {
-    pub from: std::string::String,
-    pub to: std::string::String,
+    pub from: String,
+    pub to: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StringInterpSyntax {
     pub style: Rc<InterpStyle>,
-    pub format_template: std::string::String,
-    pub plain_template: std::string::String,
+    pub format_template: String,
+    pub plain_template: String,
     pub escape_pairs: Rc<Vec<Rc<EscapePair>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmojiCharEscape {
-    pub prefix: std::string::String,
-    pub suffix: std::string::String,
+    pub prefix: String,
+    pub suffix: String,
 }
 
 pub fn canonical_emoji_char_escape() -> Rc<EmojiCharEscape> {
@@ -669,7 +660,7 @@ pub fn rust_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
@@ -855,7 +846,7 @@ pub fn python_spec() -> Rc<LanguageSpec> {
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
         bridge_method_overrides: v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+            v1_rt::rc_empty_map::<String, String>(),
             "with".to_string(),
             "with_update".to_string(),
         ),
@@ -1031,7 +1022,7 @@ pub fn go_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "v2rt.".to_string(),
         bridge_method_case: NamingCase::PascalCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: "{".to_string(),
             named_close: "}".to_string(),
@@ -1213,7 +1204,7 @@ pub fn dag_spec() -> Rc<LanguageSpec> {
         async_call_prefix: "".to_string(),
         bridge_method_prefix: "".to_string(),
         bridge_method_case: NamingCase::SnakeCase,
-        bridge_method_overrides: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+        bridge_method_overrides: v1_rt::rc_empty_map::<String, String>(),
         record_lit: Rc::new(RecordLitSyntax {
             named_open: " {".to_string(),
             named_close: "}".to_string(),
@@ -1242,7 +1233,7 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
     }
 }
 
-pub fn target_keyword(target: RenderTarget, key: std::string::String) -> std::string::String {
+pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target.clone() {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
             Some(kw) => kw.clone(),
@@ -1273,7 +1264,7 @@ pub fn binop_symbol(
     target: RenderTarget,
     op: BinOp,
     algebra_field: Option<AlgebraFieldKind>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     {
         let ops = target_operators(target.clone());
         let op_matching = Rc::new({
@@ -1326,7 +1317,7 @@ pub fn binop_symbol(
     }
 }
 
-pub fn is_string_like(target: RenderTarget, name: std::string::String) -> bool {
+pub fn is_string_like(target: RenderTarget, name: String) -> bool {
     match target.clone() {
         RenderTarget::Rust => {
             let mut __found = false;
@@ -1392,17 +1383,14 @@ pub fn expression_semantics_for_target(target: RenderTarget) -> Rc<ExpressionSem
         .clone()
 }
 
-pub fn wrap_shared_type(target: RenderTarget, inner: std::string::String) -> std::string::String {
+pub fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
     {
         let tmpl = sharing_for_target(target.clone()).wrap_template.clone();
         v1_rt::replace(tmpl.clone(), "{0}".to_string(), inner.clone())
     }
 }
 
-pub fn sharing_wrap_ctor_for_target(
-    target: RenderTarget,
-    inner_expr: std::string::String,
-) -> std::string::String {
+pub fn sharing_wrap_ctor_for_target(target: RenderTarget, inner_expr: String) -> String {
     {
         let tmpl = sharing_for_target(target.clone())
             .wrap_ctor_template
@@ -1411,18 +1399,15 @@ pub fn sharing_wrap_ctor_for_target(
     }
 }
 
-pub fn sharing_wrap_ctor_open_for_target(target: RenderTarget) -> std::string::String {
+pub fn sharing_wrap_ctor_open_for_target(target: RenderTarget) -> String {
     sharing_for_target(target.clone()).wrap_ctor_open.clone()
 }
 
-pub fn sharing_wrap_ctor_close_for_target(target: RenderTarget) -> std::string::String {
+pub fn sharing_wrap_ctor_close_for_target(target: RenderTarget) -> String {
     sharing_for_target(target.clone()).wrap_ctor_close.clone()
 }
 
-pub fn sharing_type_is_wrapped_for_target(
-    target: RenderTarget,
-    type_name: std::string::String,
-) -> bool {
+pub fn sharing_type_is_wrapped_for_target(target: RenderTarget, type_name: String) -> bool {
     {
         let prefix = sharing_for_target(target.clone()).wrap_type_prefix.clone();
         let prefix_len = v1_rt::string_length(&prefix);

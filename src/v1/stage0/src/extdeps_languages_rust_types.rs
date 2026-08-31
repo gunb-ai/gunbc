@@ -38,22 +38,22 @@ pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
     CACHED.with(|c: &Rc<Vec<Rc<TypeCheckpoint>>>| c.clone())
 }
 
-pub fn rust_checkpoint_hash_row_retired_note() -> std::string::String {
+pub fn rust_checkpoint_hash_row_retired_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "The Hash row is RETIRED, not rebound, and the distinction is the rule it follows: a target row survives only where some exact source declaration genuinely realizes that way. A census of every `type Hash` declaration in the corpus finds exactly ONE -- v2.std.node.Hash = Fnv1a64Structural (src/v2/std/node.dag) -- and it must NOT realize as v1_rt::Hash. Every remaining occurrence of that spelling in the seed is inside a STRING LITERAL in v1.runtime_rust, which is generated v1_rt.rs text rather than a .dag type reference, so no declaration is left for the row to bind. WHAT THE ROW COST WHILE IT STOOD, measured rather than predicted: Fnv1a64Structural's public record constructors are deleted precisely so the `where lower_hex_16` refinement IS its construction wall (std.content_hash content_hash_family_constructor_note), and this row rendered that carrier away as a bare String alias, taking the wall with it -- a DESIGN 4b construction rung demoted with no diagnostic anywhere. The live specimen is the emitted 05_eval closure: v2_std_node.rs carried `pub type Hash = v1_rt::Hash` while functions in the SAME file returned Rc<Fnv1a64Structural>, and the two disagreed at 70 distinct E0308 sites. checkpoint_table_bypasses_identity_note recorded this class from declarations at both ends and stated that no live site had been produced by anyone; that emission is the site. Retiring the row is INDEPENDENT of keying the remaining rows on declaration identity: those rows still bypass identity, still answer one spelling for two declarations, and the emitter's type renderer carries no module plumbing to key them on -- see checkpoint_table_bypasses_identity_note for that residue, which this change does not close.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_checkpoint_scalar_arity_note() -> std::string::String {
+pub fn rust_checkpoint_scalar_arity_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "A TypeCheckpoint row states one thing: how a target SPELLS a dag type whose Rust arity is zero. It cannot express arity, so membership of this table IS the emitter's arity-0 claim — v1.compiler.05_emit_rust rust_scalar_checkpoint_reference_base reads it, and rust_render_checkpoint_scalar_bare strips every type argument from any leaf it matches (the E0109 wall, rust_checkpoint_scalar_phantom_params_note). Witness/witness rows were removed here 2026-08-16: Witness is the generic enum v2.std.witness.Witness<C> (src/v2/std/witness.dag), arity 1 by its single authority std.types container_type_arity, so the rows made the emitter drop the argument of every Witness<T> in type position and emit `Rc<Witness>` — rustc E0107 'missing generics for enum Witness', 4 sites in the 06_translate closure alone (docs/probes/root_d_generic_arity_2026-08-16.md). Nothing else was lost with them: coerce_primitive_type renders the bare leaf name 'Witness' through qualified_last_segment either way, and is_copy's Absent arm and Present{false} arm are the same decision at every consumer. A generic type may not be added to this table; its spelling is not the missing fact, its arity is.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
@@ -66,31 +66,31 @@ pub fn rust_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
     CACHED.with(|c: &Rc<Vec<Rc<InhabitantDecl>>>| c.clone())
 }
 
-pub fn rust_optional_template() -> std::string::String {
+pub fn rust_optional_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Option<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_none_expr() -> std::string::String {
+pub fn rust_none_expr() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "None".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rust_some_template() -> std::string::String {
+pub fn rust_some_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Some({0})".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_callable() -> Rc<CallableRepr> {
@@ -122,22 +122,22 @@ pub fn pass_non_copy_by_ref() -> bool {
     true
 }
 
-pub fn ref_prefix() -> std::string::String {
+pub fn ref_prefix() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "&".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn mut_ref_prefix() -> std::string::String {
+pub fn mut_ref_prefix() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "&mut ".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -150,58 +150,58 @@ pub enum SmartPointerKind {
     ArcPtr,
 }
 
-pub fn box_template() -> std::string::String {
+pub fn box_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Box<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn rc_template() -> std::string::String {
+pub fn rc_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Rc<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn arc_template() -> std::string::String {
+pub fn arc_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Arc<{0}>".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn common_trait_bounds() -> Rc<Vec<std::string::String>> {
+pub fn common_trait_bounds() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["Clone".to_string(), "Debug".to_string(), "Send".to_string(), "Sync".to_string(), "Serialize".to_string(), "Deserialize".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn where_clause_template() -> std::string::String {
+pub fn where_clause_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "where\n    {constraints}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn trait_bound_template() -> std::string::String {
+pub fn trait_bound_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "{type}: {bound}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_cast_syntax() -> Rc<CastSyntax> {
@@ -214,22 +214,22 @@ pub fn rust_cast_syntax() -> Rc<CastSyntax> {
     CACHED.with(|c: &Rc<CastSyntax>| c.clone())
 }
 
-pub fn serde_enum_tag_attribute() -> std::string::String {
+pub fn serde_enum_tag_attribute() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "#[serde(tag = \"_variant\")]".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn serde_rename_template() -> std::string::String {
+pub fn serde_rename_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "#[serde(rename = \"{key}\")]".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

@@ -28,13 +28,13 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UniqueAccum {
-    pub seen: Rc<HashMap<std::string::String, bool>>,
-    pub result: Rc<Vec<std::string::String>>,
+    pub seen: Rc<HashMap<String, bool>>,
+    pub result: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OpEntry {
-    pub name: std::string::String,
+    pub name: String,
     pub outputs: Rc<Vec<Rc<Node>>>,
     pub params: Rc<Vec<Rc<Node>>>,
 }
@@ -47,7 +47,7 @@ pub struct ServiceMethodResult {
 
 pub fn is_typed_service_call_receiver(
     receiver: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
@@ -73,8 +73,8 @@ pub fn is_typed_service_call_receiver(
 
 pub fn extract_typed_service_name(
     receiver: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprFieldAccess { summary: _, .. } => {
             let f =
@@ -100,13 +100,13 @@ pub fn extract_typed_service_name(
 
 pub fn collect_typed_service_calls(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let result = collect_typed_service_calls_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<std::string::String, bool>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -118,7 +118,7 @@ pub fn collect_typed_service_calls(
 pub fn collect_typed_service_calls_into(
     texpr: Rc<Node>,
     acc: Rc<UniqueAccum>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
@@ -170,7 +170,7 @@ pub fn collect_typed_service_calls_into(
 pub fn collect_called_func_names_into(
     texpr: Rc<Node>,
     acc: Rc<UniqueAccum>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UniqueAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let this_acc = match (*texpr.expr_data.clone()).clone() {
@@ -200,13 +200,13 @@ pub fn collect_called_func_names_into(
 
 pub fn collect_called_func_names(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let result = collect_called_func_names_into(
             texpr.clone(),
             Rc::new(UniqueAccum {
-                seen: v1_rt::rc_empty_map::<std::string::String, bool>(),
+                seen: v1_rt::rc_empty_map::<String, bool>(),
                 result: Rc::new(vec![]),
             }),
             source_indices.clone(),
@@ -217,9 +217,9 @@ pub fn collect_called_func_names(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemCallees {
-    pub item_name: std::string::String,
+    pub item_name: String,
     pub has_body: bool,
-    pub called: Rc<Vec<std::string::String>>,
+    pub called: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -273,9 +273,9 @@ pub fn build_module_callees(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Vec<Rc<Modu
 
 pub fn expand_transitive_services_once(
     module_callees: Rc<Vec<Rc<ModuleCallees>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<std::string::String, Rc<ItemInfo>>> {
-    module_callees.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<std::string::String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<std::string::String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
+    module_callees.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<ModuleCallees>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, entry: Rc<ItemCallees>| {
         let item_name = entry.item_name.clone();
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
@@ -289,7 +289,7 @@ let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.i
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
 }).iter().cloned()); } __result });
-let merged = extra.iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<std::string::String>>, svc: std::string::String| if { let mut __found = false; for s in svc_list.iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
+let merged = extra.iter().cloned().fold(info.service_names.clone(), |svc_list: Rc<Vec<String>>, svc: String| if { let mut __found = false; for s in svc_list.iter().cloned() { if (s.clone() == svc.clone()) { __found = true; break; } } __found } {
                         svc_list.clone()
                     } else {
                         v1_rt::rc_list_push(svc_list.clone(), svc.clone())
@@ -317,7 +317,7 @@ if same_count.clone() {
 }))
 }
 
-pub fn total_service_count(registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>) -> i64 {
+pub fn total_service_count(registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> i64 {
     Rc::new(v1_rt::map_values(&registry))
         .iter()
         .cloned()
@@ -328,9 +328,9 @@ pub fn total_service_count(registry: Rc<HashMap<std::string::String, Rc<ItemInfo
 
 pub fn expand_transitive_services_loop(
     mut module_callees: Rc<Vec<Rc<ModuleCallees>>>,
-    mut registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut remaining_passes: i64,
-) -> Rc<HashMap<std::string::String, Rc<ItemInfo>>> {
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     loop {
         if (remaining_passes.clone() <= 0) {
             break registry.clone();
@@ -355,9 +355,9 @@ pub fn expand_transitive_services_loop(
 
 pub fn expand_transitive_services(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     remaining_passes: i64,
-) -> Rc<HashMap<std::string::String, Rc<ItemInfo>>> {
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     expand_transitive_services_loop(
         build_module_callees(modules.clone()),
         registry.clone(),
@@ -367,9 +367,9 @@ pub fn expand_transitive_services(
 
 pub fn check_service_field_access_node(
     base_type: Rc<Node>,
-    field: std::string::String,
-    service_registry: Rc<HashMap<std::string::String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    field: String,
+    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     if ((base_type.connective.clone() == Connective::NoConnective)
         && ((base_type.children.clone().len() as i64) == 0))
@@ -396,9 +396,9 @@ pub fn check_service_field_access_node(
 
 pub fn check_service_method_call_node(
     receiver_type: Rc<Node>,
-    method: std::string::String,
-    service_registry: Rc<HashMap<std::string::String, Rc<Vec<Rc<OpEntry>>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    method: String,
+    service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<ServiceMethodResult>> {
     if ((receiver_type.connective.clone() == Connective::NoConnective)
         && ((receiver_type.children.clone().len() as i64) == 0))
@@ -497,7 +497,7 @@ pub fn check_service_method_call_node(
 
 pub fn service_op_entry(
     child: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OpEntry> {
     Rc::new(OpEntry {
         name: crate::v1_std_core::authored_name_at(source_indices.clone(), child.clone()),

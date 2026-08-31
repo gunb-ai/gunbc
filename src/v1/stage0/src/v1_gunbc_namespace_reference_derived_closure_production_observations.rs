@@ -79,7 +79,7 @@ impl NrdfcParsed {
     }
 }
 
-pub fn nrdfc_parse(file: std::string::String, source: std::string::String) -> Rc<NrdfcParsed> {
+pub fn nrdfc_parse(file: String, source: String) -> Rc<NrdfcParsed> {
     match (*crate::v1_gunbc_occurrence_binding_parser_walk::parse_authored_occurrence_binding_source(file.clone(), source.clone())).clone() {
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused => Rc::new(NrdfcParsed::NrdfcParsedRefused),
     ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady { transport, module_path, .. } => Rc::new(NrdfcParsed::NrdfcParsedReady {
@@ -92,7 +92,7 @@ pub fn nrdfc_parse(file: std::string::String, source: std::string::String) -> Rc
 
 pub fn same_file_neighbour_observation(
     parsed: Rc<NrdfcParsed>,
-    neighbour_name: std::string::String,
+    neighbour_name: String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
     NrdfcParsed::NrdfcParsedRefused => Rc::new(ReferenceBindingObservation::SameFileNeighbourProductionRefused {
@@ -117,7 +117,7 @@ pub fn same_file_neighbour_observation(
 
 pub fn sibling_branch_observation(
     parsed: Rc<NrdfcParsed>,
-    branch_binder_name: std::string::String,
+    branch_binder_name: String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
         NrdfcParsed::NrdfcParsedRefused => Rc::new(
@@ -168,7 +168,7 @@ pub fn sibling_branch_observation(
 
 pub fn later_declaration_observation(
     parsed: Rc<NrdfcParsed>,
-    later_name: std::string::String,
+    later_name: String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
     NrdfcParsed::NrdfcParsedRefused => Rc::new(ReferenceBindingObservation::LaterDeclarationProductionRefused {
@@ -193,7 +193,7 @@ pub fn later_declaration_observation(
 
 pub fn distinct_homonym_observation(
     parsed: Rc<NrdfcParsed>,
-    homonym_name: std::string::String,
+    homonym_name: String,
 ) -> Rc<ReferenceBindingObservation> {
     match (*parsed.clone()).clone() {
         NrdfcParsed::NrdfcParsedRefused => Rc::new(
@@ -244,10 +244,10 @@ pub fn distinct_homonym_observation(
 
 pub fn namespace_structural_binding_observations_from_parsed(
     parsed: Rc<NrdfcParsed>,
-    neighbour_name: std::string::String,
-    branch_binder_name: std::string::String,
-    later_name: std::string::String,
-    homonym_name: std::string::String,
+    neighbour_name: String,
+    branch_binder_name: String,
+    later_name: String,
+    homonym_name: String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     Rc::new(vec![
         same_file_neighbour_observation(parsed.clone(), neighbour_name.clone()),
@@ -258,12 +258,12 @@ pub fn namespace_structural_binding_observations_from_parsed(
 }
 
 pub fn namespace_structural_binding_observations_a_through_d(
-    file: std::string::String,
-    source: std::string::String,
-    neighbour_name: std::string::String,
-    branch_binder_name: std::string::String,
-    later_name: std::string::String,
-    homonym_name: std::string::String,
+    file: String,
+    source: String,
+    neighbour_name: String,
+    branch_binder_name: String,
+    later_name: String,
+    homonym_name: String,
 ) -> Rc<Vec<Rc<ReferenceBindingObservation>>> {
     namespace_structural_binding_observations_from_parsed(
         nrdfc_parse(file.clone(), source.clone()),
@@ -290,19 +290,19 @@ pub fn nrdfc_compiled_module(parsed: Rc<NrdfcParsed>) -> Rc<StructuralObservatio
 }
 
 pub fn namespace_structural_observation_compiled_module(
-    file: std::string::String,
-    source: std::string::String,
+    file: String,
+    source: String,
 ) -> Rc<StructuralObservationSubjectModule> {
     nrdfc_compiled_module(nrdfc_parse(file.clone(), source.clone()))
 }
 
 pub fn namespace_structural_observation_admissions(
-    file: std::string::String,
-    source: std::string::String,
-    neighbour_name: std::string::String,
-    branch_binder_name: std::string::String,
-    later_name: std::string::String,
-    homonym_name: std::string::String,
+    file: String,
+    source: String,
+    neighbour_name: String,
+    branch_binder_name: String,
+    later_name: String,
+    homonym_name: String,
 ) -> Rc<Vec<Rc<ReferenceDerivedClosureAdmission>>> {
     Rc::new({
         let mut __result = Vec::new();

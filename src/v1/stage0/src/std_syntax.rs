@@ -37,12 +37,12 @@ pub enum BinOp {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum LiteralValue {
-    LitStr { value: std::string::String },
+    LitStr { value: String },
     LitInt { value: i64 },
-    LitFloat { value: std::string::String },
+    LitFloat { value: String },
     LitBool { value: bool },
     LitNull,
-    LitSymbol { value: std::string::String },
+    LitSymbol { value: String },
 }
 
 #[derive(
@@ -76,7 +76,7 @@ pub enum ItemFormKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemForm {
     pub kind: ItemFormKind,
-    pub keyword: std::string::String,
+    pub keyword: String,
     pub has_type_params: bool,
     pub has_params: bool,
     pub has_return_type: bool,
@@ -103,7 +103,7 @@ pub enum AlgebraFieldKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AlgebraFieldEntry {
     pub kind: AlgebraFieldKind,
-    pub field_name: std::string::String,
+    pub field_name: String,
 }
 
 pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
@@ -141,7 +141,7 @@ pub fn algebra_field_entries() -> Rc<Vec<Rc<AlgebraFieldEntry>>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperatorSpec {
-    pub symbol: std::string::String,
+    pub symbol: String,
     pub left_bp: i64,
     pub right_bp: i64,
     pub binop: Option<BinOp>,
@@ -152,8 +152,8 @@ pub struct OperatorSpec {
 pub struct SyntaxSpec {
     pub item_forms: Rc<Vec<Rc<ItemForm>>>,
     pub operators: Rc<Vec<Rc<OperatorSpec>>>,
-    pub keyword_literals: Rc<HashMap<std::string::String, Rc<LiteralValue>>>,
-    pub keyword_set: Rc<HashMap<std::string::String, bool>>,
+    pub keyword_literals: Rc<HashMap<String, Rc<LiteralValue>>>,
+    pub keyword_set: Rc<HashMap<String, bool>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

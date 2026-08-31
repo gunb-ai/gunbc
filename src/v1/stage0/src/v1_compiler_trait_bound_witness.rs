@@ -19,10 +19,10 @@ pub enum TraitBoundWitnessScope {
 }
 
 pub fn v1_rc_match_scrutinee_clone_bound_param_names(
-    generic_param_names: Rc<Vec<std::string::String>>,
-    scrutinee_type_arg_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
+    scrutinee_type_arg_names: Rc<Vec<String>>,
     rc_match_needs_deref: bool,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     if !rc_match_needs_deref.clone() {
         Rc::new(vec![])
     } else {
@@ -54,12 +54,13 @@ pub fn v1_rc_match_scrutinee_clone_bound_param_names(
 }
 
 pub fn v1_union_bound_param_names(
-    base: Rc<Vec<std::string::String>>,
-    extra: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
-    extra.iter().cloned().fold(
-        base.clone(),
-        |acc: Rc<Vec<std::string::String>>, x: std::string::String| {
+    base: Rc<Vec<String>>,
+    extra: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
+    extra
+        .iter()
+        .cloned()
+        .fold(base.clone(), |acc: Rc<Vec<String>>, x: String| {
             if {
                 let mut __found = false;
                 for y in acc.iter().cloned() {
@@ -74,19 +75,18 @@ pub fn v1_union_bound_param_names(
             } else {
                 v1_rt::concat(acc.clone(), Rc::new(vec![x.clone()]))
             }
-        },
-    )
+        })
 }
 
 pub fn v1_call_forwarding_bound_wrapper_param_names(
-    callee_param_type_name: std::string::String,
-    callee_param_type_arg_names: Rc<Vec<std::string::String>>,
-    callee_generic_param_names: Rc<Vec<std::string::String>>,
-    callee_bound_param_names: Rc<Vec<std::string::String>>,
-    arg_type_name: std::string::String,
-    arg_type_arg_names: Rc<Vec<std::string::String>>,
-    wrapper_generic_param_names: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    callee_param_type_name: String,
+    callee_param_type_arg_names: Rc<Vec<String>>,
+    callee_generic_param_names: Rc<Vec<String>>,
+    callee_bound_param_names: Rc<Vec<String>>,
+    arg_type_name: String,
+    arg_type_arg_names: Rc<Vec<String>>,
+    wrapper_generic_param_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
     {
         let bare_match = if (({
             let mut __found = false;
@@ -183,10 +183,10 @@ pub fn v1_call_forwarding_bound_wrapper_param_names(
 }
 
 pub fn v1_equality_bound_param_name(
-    left_type_name: std::string::String,
-    right_type_name: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    left_type_name: String,
+    right_type_name: String,
+    generic_param_names: Rc<Vec<String>>,
+) -> Rc<Vec<String>> {
     if ((left_type_name.clone() == "".to_string()) || (right_type_name.clone() == "".to_string())) {
         Rc::new(vec![])
     } else {

@@ -32,7 +32,7 @@ use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn re_export_derive_op_effect(
-    operation_name: std::string::String,
+    operation_name: String,
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
@@ -51,7 +51,7 @@ pub fn re_export_check_modifier(
     )
 }
 
-pub fn re_export_parse_path_template(raw: std::string::String) -> Rc<PathTemplateParseResult> {
+pub fn re_export_parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
     crate::extdeps_uri_path::parse_path_template(raw.clone())
 }
 

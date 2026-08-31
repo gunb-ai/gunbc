@@ -60,7 +60,7 @@ pub fn display_width_columns(w: DisplayWidth) -> i64 {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnicodeBlock {
-    pub name: std::string::String,
+    pub name: String,
     pub start: i64,
     pub end_inclusive: i64,
     pub default_width: DisplayWidth,

@@ -122,7 +122,7 @@ impl ParsedHrefScheme {
     }
 }
 
-pub fn href_is_relative_reference(s: std::string::String) -> bool {
+pub fn href_is_relative_reference(s: String) -> bool {
     ((((v1_rt::starts_with(s.clone(), "/".to_string())
         || v1_rt::starts_with(s.clone(), "#".to_string()))
         || v1_rt::starts_with(s.clone(), "./".to_string()))
@@ -130,7 +130,7 @@ pub fn href_is_relative_reference(s: std::string::String) -> bool {
         || !v1_rt::contains(s.clone(), ":".to_string()))
 }
 
-pub fn parse_href_scheme(url: std::string::String) -> Rc<ParsedHrefScheme> {
+pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
     {
         let s = crate::std_algebra::trim(url.clone());
         if v1_rt::starts_with(s.clone(), "//".to_string()) {
@@ -331,7 +331,7 @@ impl UriUtf8OctetConstruction {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum UriPercentOctetWire {
-    UriPercentOctetEncoded { wire: std::string::String },
+    UriPercentOctetEncoded { wire: String },
     UriPercentOctetNibbleOutOfRange { digit: i64 },
 }
 
@@ -339,7 +339,7 @@ pub enum UriPercentOctetWire {
 #[serde(tag = "_variant")]
 pub enum UriPercentEncodeFoldState {
     UriPercentEncodeBuilding {
-        wire: std::string::String,
+        wire: String,
     },
     UriPercentEncodeRefused {
         cause: Rc<UriPercentEncodeRefusalCause>,
@@ -479,7 +479,7 @@ pub fn uri_hex_nibble_construction(d: i64) -> Rc<UriHexNibbleConstruction> {
     }
 }
 
-pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> std::string::String {
+pub fn uri_hex_nibble_wire(nibble: UriHexNibble) -> String {
     match nibble.clone() {
         UriHexNibble::UriNibble0 => "0".to_string(),
         UriHexNibble::UriNibble1 => "1".to_string(),
@@ -901,7 +901,7 @@ pub fn uri_percent_encode_scalar_fragment(cp: i64) -> Rc<UriPercentEncodeFoldSta
 #[serde(tag = "_variant")]
 pub enum UriPercentEncodeScalarOutcome {
     UriPercentEncodeScalarEncoded {
-        wire: std::string::String,
+        wire: String,
     },
     UriPercentEncodeScalarRefused {
         cause: Rc<UriPercentEncodeRefusalCause>,
@@ -944,17 +944,18 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 
 pub fn uri_percent_encode_outcome_wires(
     outcomes: Rc<Vec<Rc<UriPercentEncodeScalarOutcome>>>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     outcomes.iter().cloned().fold(
         Rc::new(vec![]),
-        |wires: Rc<Vec<std::string::String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| {
-            match (*outcome.clone()).clone() {
-                UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded {
-                    wire: wire, ..
-                } => v1_rt::rc_list_push(wires.clone(), wire.clone()),
-                UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {
-                    cause: _, ..
-                } => wires.clone(),
+        |wires: Rc<Vec<String>>, outcome: Rc<UriPercentEncodeScalarOutcome>| match (*outcome
+            .clone())
+        .clone()
+        {
+            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarEncoded { wire: wire, .. } => {
+                v1_rt::rc_list_push(wires.clone(), wire.clone())
+            }
+            UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused { cause: _, .. } => {
+                wires.clone()
             }
         },
     )

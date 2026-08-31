@@ -8,9 +8,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::ExprData::{
-    ExprBlock, ExprCall, ExprElaboratedLiteral, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprLambda, ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn,
-    ExprVar, NoExprData,
+    ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
+    ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
@@ -42,13 +41,13 @@ pub enum EdgeKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EdgeClassification {
     pub kind: EdgeKind,
-    pub site: std::string::String,
+    pub site: String,
     pub span_start: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BindingUsage {
-    pub name: std::string::String,
+    pub name: String,
     pub binding_kind: Option<Rc<VarBindingKind>>,
     pub consumers: Rc<Vec<Rc<EdgeClassification>>>,
 }
@@ -89,21 +88,21 @@ pub fn binding_fan_out(usage: Rc<BindingUsage>) -> i64 {
 #[serde(tag = "_variant")]
 pub enum OwnershipDecision {
     SoleOwner {
-        binding: std::string::String,
-        site: std::string::String,
+        binding: String,
+        site: String,
     },
     SharedError {
-        binding: std::string::String,
+        binding: String,
         consumer_count: i64,
-        sites: Rc<Vec<std::string::String>>,
+        sites: Rc<Vec<String>>,
     },
     Unclassified {
-        binding: std::string::String,
-        reason: std::string::String,
+        binding: String,
+        reason: String,
     },
 }
 impl OwnershipDecision {
-    pub fn binding(&self) -> std::string::String {
+    pub fn binding(&self) -> String {
         match self {
             OwnershipDecision::SoleOwner { binding: __val, .. } => __val.clone(),
             OwnershipDecision::SharedError { binding: __val, .. } => __val.clone(),
@@ -114,9 +113,9 @@ impl OwnershipDecision {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUnwrapProof {
-    pub site_key: std::string::String,
-    pub acc_param_name: std::string::String,
-    pub acc_type_name: std::string::String,
+    pub site_key: String,
+    pub acc_param_name: String,
+    pub acc_type_name: String,
     pub body_constructs_acc: bool,
     pub whole_acc_single_use: bool,
     pub safe_field_moves: bool,
@@ -126,28 +125,28 @@ pub struct FoldAccUnwrapProof {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FoldAccUseSummary {
     pub whole_acc_uses: i64,
-    pub field_moves: Rc<Vec<std::string::String>>,
+    pub field_moves: Rc<Vec<String>>,
     pub nested_acc_refs: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProof {
-    pub func_name: std::string::String,
-    pub bindings: Rc<HashMap<std::string::String, Rc<BindingUsage>>>,
+    pub func_name: String,
+    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
     pub decisions: Rc<Vec<Rc<OwnershipDecision>>>,
     pub fold_acc_unwrap: Rc<Vec<Rc<FoldAccUnwrapProof>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UsageAccum {
-    pub bindings: Rc<HashMap<std::string::String, Rc<BindingUsage>>>,
+    pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
     pub fold_call_nodes: Rc<Vec<Rc<Node>>>,
-    pub touched: Rc<Vec<std::string::String>>,
+    pub touched: Rc<Vec<String>>,
 }
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
-        bindings: v1_rt::rc_empty_map::<std::string::String, Rc<BindingUsage>>(),
+        bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
         fold_call_nodes: Rc::new(vec![]),
         touched: Rc::new(vec![]),
     })
@@ -155,9 +154,9 @@ pub fn empty_usage_accum() -> Rc<UsageAccum> {
 
 pub fn record_use(
     accum: Rc<UsageAccum>,
-    name: std::string::String,
+    name: String,
     kind: EdgeKind,
-    site: std::string::String,
+    site: String,
     binding_kind: Option<Rc<VarBindingKind>>,
     span_start: i64,
 ) -> Rc<UsageAccum> {
@@ -202,10 +201,10 @@ pub fn max_usage_by_fan_out(a: Rc<BindingUsage>, b: Rc<BindingUsage>) -> Rc<Bind
 }
 
 pub fn map_usage_merge_at(
-    base: Rc<HashMap<std::string::String, Rc<BindingUsage>>>,
-    key: std::string::String,
+    base: Rc<HashMap<String, Rc<BindingUsage>>>,
+    key: String,
     new_val: Rc<BindingUsage>,
-) -> Rc<HashMap<std::string::String, Rc<BindingUsage>>> {
+) -> Rc<HashMap<String, Rc<BindingUsage>>> {
     match v1_rt::map_get(&base, key.clone()) {
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
@@ -231,11 +230,10 @@ pub fn merge_branch_usages(
     {
         let binding_merged = branches.iter().cloned().fold(
             base.bindings.clone(),
-            |merged: Rc<HashMap<std::string::String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
+            |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
                 branch.touched.clone().iter().cloned().fold(
                     merged,
-                    |acc: Rc<HashMap<std::string::String, Rc<BindingUsage>>>,
-                     name: std::string::String| match v1_rt::map_get(
+                    |acc: Rc<HashMap<String, Rc<BindingUsage>>>, name: String| match v1_rt::map_get(
                         &branch.bindings.clone(),
                         name.clone(),
                     ) {
@@ -247,7 +245,7 @@ pub fn merge_branch_usages(
         );
         let touched_merged = branches.iter().cloned().fold(
             base.touched.clone(),
-            |acc: Rc<Vec<std::string::String>>, branch: Rc<UsageAccum>| {
+            |acc: Rc<Vec<String>>, branch: Rc<UsageAccum>| {
                 v1_rt::concat(acc, branch.touched.clone())
             },
         );
@@ -282,7 +280,7 @@ pub fn walk_expr(
     accum: Rc<UsageAccum>,
     texpr: Rc<Node>,
     in_tail: bool,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<UsageAccum> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -311,7 +309,6 @@ pub fn walk_expr(
                 }
             }
             ExprData::ExprLiteral { value: _, .. } => accum.clone(),
-            ExprData::ExprElaboratedLiteral { .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
                 let base_node = crate::v1_std_core::field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
@@ -843,7 +840,7 @@ pub fn build_read_only_params(
 
 pub fn collect_callable_refs(
     texpr: Rc<Node>,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BTreeSet<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -857,7 +854,6 @@ pub fn collect_callable_refs(
                 _ => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLiteral { value: _, .. } => v1_rt::rc_empty_set::<String>(),
-            ExprData::ExprElaboratedLiteral { .. } => v1_rt::rc_empty_set::<String>(),
             ExprData::ExprFieldAccess { .. } => collect_callable_refs(
                 crate::v1_std_core::field_access_base(texpr.clone()),
                 si.clone(),
@@ -1033,8 +1029,8 @@ pub fn merge_fold_acc_use_summaries(
 
 pub fn summarize_fold_acc_uses(
     node: Rc<Node>,
-    acc_name: std::string::String,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    acc_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
     inside_nested: bool,
 ) -> Rc<FoldAccUseSummary> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -1174,8 +1170,8 @@ pub fn summarize_fold_acc_uses(
 
 pub fn fold_lambda_acc_use_summary(
     lambda_node: Rc<Node>,
-    acc_name: std::string::String,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    acc_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUseSummary> {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => summarize_fold_acc_uses(
@@ -1190,8 +1186,8 @@ pub fn fold_lambda_acc_use_summary(
 
 pub fn fold_body_constructs_acc_struct(
     lambda_node: Rc<Node>,
-    acc_type_name: std::string::String,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    acc_type_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*lambda_node.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -1211,15 +1207,15 @@ pub fn fold_body_constructs_acc_struct(
 
 pub fn fold_body_safe_field_moves(
     lambda_node: Rc<Node>,
-    acc_name: std::string::String,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    acc_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary =
             fold_lambda_acc_use_summary(lambda_node.clone(), acc_name.clone(), si.clone());
         let deduped = summary.field_moves.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |seen: Rc<HashMap<std::string::String, bool>>, field: std::string::String| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |seen: Rc<HashMap<String, bool>>, field: String| {
                 v1_rt::rc_map_insert(seen, field.clone(), true)
             },
         );
@@ -1231,8 +1227,8 @@ pub fn fold_body_safe_field_moves(
 
 pub fn fold_body_consumes_acc_once(
     lambda_node: Rc<Node>,
-    acc_name: std::string::String,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    acc_name: String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let summary =
@@ -1244,7 +1240,7 @@ pub fn fold_body_consumes_acc_once(
 
 pub fn analyze_single_fold(
     method_call: Rc<Node>,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<FoldAccUnwrapProof> {
     {
         let args = crate::v1_std_core::method_arg_nodes(method_call.clone());
@@ -1313,10 +1309,10 @@ pub fn analyze_single_fold(
 }
 
 pub fn analyze_ownership(
-    func_name: std::string::String,
+    func_name: String,
     params: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<OwnershipProof> {
     {
         let initial =

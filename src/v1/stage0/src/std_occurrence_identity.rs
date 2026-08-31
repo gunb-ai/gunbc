@@ -22,13 +22,13 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn occurrence_identity_scope_law() -> std::string::String {
+pub fn occurrence_identity_scope_law() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "OccurrenceId values are unique only inside one explicit graph-scoped OccurrenceIdAllocator. A production source graph threads one allocator across every parsed source; a standalone parse creates one isolated allocator scope. Filename, SourceSpan, authored name, structural Node equality, content hash, and module-local allocator reset are forbidden identity inputs.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -179,7 +179,7 @@ pub enum OccurrenceRole {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceProjection {
     pub occurrence: OccurrenceId,
-    pub authored_name: std::string::String,
+    pub authored_name: String,
     pub diagnostic_span: Rc<SourceSpan>,
 }
 
@@ -219,8 +219,8 @@ pub struct OccurrenceTransport {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceIdentityAcceptanceLaw {
-    pub id: std::string::String,
-    pub required_receipt: std::string::String,
+    pub id: String,
+    pub required_receipt: String,
 }
 
 pub fn occurrence_identity_acceptance_law_rebuilt_reference() -> Rc<OccurrenceIdentityAcceptanceLaw>

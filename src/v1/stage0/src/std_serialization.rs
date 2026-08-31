@@ -18,16 +18,9 @@ pub enum VariantNaming {
     AsAuthored,
     SnakeCase,
     ScreamingSnakeCase,
-    StripPrefixAndSnakeCase {
-        prefix: std::string::String,
-    },
-    StripSuffixAndSnakeCase {
-        suffix: std::string::String,
-    },
-    StripPrefixSuffixAndSnakeCase {
-        prefix: std::string::String,
-        suffix: std::string::String,
-    },
+    StripPrefixAndSnakeCase { prefix: String },
+    StripSuffixAndSnakeCase { suffix: String },
+    StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -37,7 +30,7 @@ pub enum VariantEncoding {
         naming: Rc<VariantNaming>,
     },
     InternallyTaggedObject {
-        tag_field: std::string::String,
+        tag_field: String,
         naming: Rc<VariantNaming>,
     },
     UntaggedVariant,

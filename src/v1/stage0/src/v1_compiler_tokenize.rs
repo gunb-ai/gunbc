@@ -32,16 +32,16 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn is_keyword_text(text: std::string::String) -> bool {
+pub fn is_keyword_text(text: String) -> bool {
     match v1_rt::lookup(&dag_keyword_set(), text.clone()) {
         Some(_) => true,
         None => false,
     }
 }
 
-pub fn single_punct() -> Rc<HashMap<std::string::String, TokenShape>> {
+pub fn single_punct() -> Rc<HashMap<String, TokenShape>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, TokenShape>> = {
+        static CACHED: Rc<HashMap<String, TokenShape>> = {
             let mut __m = HashMap::new();
             __m.insert("(".to_string(), TokenShape::ShLParen);
             __m.insert(")".to_string(), TokenShape::ShRParen);
@@ -58,7 +58,7 @@ pub fn single_punct() -> Rc<HashMap<std::string::String, TokenShape>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, TokenShape>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, TokenShape>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -103,12 +103,12 @@ pub struct ScanResult {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceRef {
-    pub file: std::string::String,
-    pub text: std::string::String,
+    pub file: String,
+    pub text: String,
     pub source_chars: Rc<Vec<i64>>,
 }
 
-pub fn make_token(text: std::string::String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
+pub fn make_token(text: String, span: Rc<SourceSpan>, shape: TokenShape) -> Rc<Token> {
     Rc::new(Token {
         text: text.clone(),
         span: span.clone(),
@@ -116,7 +116,7 @@ pub fn make_token(text: std::string::String, span: Rc<SourceSpan>, shape: TokenS
     })
 }
 
-pub fn source_char(source: Rc<SourceRef>, pos: i64) -> std::string::String {
+pub fn source_char(source: Rc<SourceRef>, pos: i64) -> String {
     v1_rt::from_code_point(source.source_chars.clone()[(pos.clone()) as usize].clone())
 }
 
@@ -131,7 +131,7 @@ pub fn source_len(source: Rc<SourceRef>) -> i64 {
     (source.source_chars.clone().len() as i64)
 }
 
-pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> std::string::String {
+pub fn source_substring(source: Rc<SourceRef>, start: i64, end: i64) -> String {
     v1_rt::chars_to_string(&source.source_chars.clone(), start.clone(), end.clone())
 }
 
@@ -194,10 +194,7 @@ pub fn source_scan_to_eol(mut source: Rc<SourceRef>, mut start: i64) -> i64 {
     }
 }
 
-pub fn tokenize_artifact(
-    source: std::string::String,
-    file: std::string::String,
-) -> Rc<V1LexArtifact> {
+pub fn tokenize_artifact(source: String, file: String) -> Rc<V1LexArtifact> {
     {
         let c = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let src = Rc::new(SourceRef {
@@ -231,19 +228,19 @@ pub fn tokenize_artifact(
     }
 }
 
-pub fn tokenize(source: std::string::String, file: std::string::String) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: String, file: String) -> Rc<Vec<Rc<Token>>> {
     tokenize_artifact(source.clone(), file.clone())
         .tokens
         .clone()
 }
 
-pub fn v1_line_prefix_note() -> std::string::String {
+pub fn v1_line_prefix_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "The seed reads the PHYSICAL LINE PREFIX directly instead of threading a `have I seen a semantic token` flag. It can, because it holds the whole source and an index: source_line_start walks back to just after the previous line feed, and the shared std.source_annotation fold then judges the slice between there and the annotation.\n\nThis is the same rule the modeled lexer applies, not a second one — that lexer walks lexemes and so must thread the state forward, while this one can look back. Only the way each obtains the code points differs. Removing the flag also removes the failure it invited: the flag was set by token CATEGORY, which is wrong for any grammar whose tokens may themselves contain line feeds.\n\nThe backward walk stops at the previous line feed, so it costs one line, not one file.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
@@ -264,13 +261,13 @@ pub fn source_line_start(mut source: Rc<SourceRef>, mut pos: i64) -> i64 {
     }
 }
 
-pub fn v1_blank_line_lookback_note() -> std::string::String {
+pub fn v1_blank_line_lookback_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Whether a blank line precedes the annotation, observed here because it cannot be observed later — the whitespace between two captures is consumed before the parser sees anything, so by attachment time two adjacent comment lines and two blocks separated by a blank line are indistinguishable.\n\nThe previous line is the text between the line start before this one and this line's start. It is blank exactly when that text is indentation only, which is the SAME predicate placement uses, so a blank line and an indent-only prefix are one concept read at two positions rather than two spellings of whitespace. An annotation on the first line of a file has no previous line and is not preceded by one. The walk is bounded by one line.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn preceded_by_blank_line(source: Rc<SourceRef>, pos: i64) -> bool {
@@ -739,9 +736,9 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
 pub fn emit(
     pos: Rc<TokPos>,
     shape: TokenShape,
-    text: std::string::String,
+    text: String,
     len: i64,
-    file: std::string::String,
+    file: String,
 ) -> Rc<ScanResult> {
     {
         let token = make_token(
@@ -863,11 +860,11 @@ impl StringScanResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum EscapeProcessResult {
-    EscapesProcessed { text: std::string::String },
+    EscapesProcessed { text: String },
     EscapeProcessingRefused,
 }
 impl EscapeProcessResult {
-    pub fn text(&self) -> std::string::String {
+    pub fn text(&self) -> String {
         match self {
             EscapeProcessResult::EscapesProcessed { text: __val, .. } => __val.clone(),
             EscapeProcessResult::EscapeProcessingRefused => panic!("no text on unit variant"),
@@ -1125,22 +1122,22 @@ pub fn code_point_at(chars: Rc<Vec<i64>>, pos: i64) -> i64 {
     chars.clone()[(pos.clone()) as usize].clone()
 }
 
-pub fn escape_receipt_seed_growth_mark() -> std::string::String {
+pub fn escape_receipt_seed_growth_mark() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "🟡 Seed-growth mark (v1-test class): src/v1/stage0/tests/tokenize_escape_receipt.rs is hand-written Rust added to the v1 seed tree, counted here rather than left silent. The discovery-enrolled .dag wall in test.claim.string_brace_escape_witness_test constructs malformed source at runtime and executes the production v1 compile path, so malformed and unknown escape refusal is enforced in CI. The Rust receipt retains finer token identity, spelling, file and full-span assertions plus the decode table. Its wall-clock cost separation stays #[ignore]d because contention can fail correct code and the available work counter does not instrument char_at/string_length. This file does not enter the hand-maintained stage0 module ratchet because tests/ is not a crate module. DISSOLVES ON the v1 terminal deletion path, when the coverage moves under the v1-test-migration bar and this hand-written receipt deletes with src/v1. The benchmark half can dissolve earlier when a structural lens rejects per-character raw-String index walks.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn hex_escape_note() -> std::string::String {
+pub fn hex_escape_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "\\xNN decodes to the byte NN names. Before this arm every \\x fell through to the unknown-escape branch below, which preserves the backslash literally — so every ANSI code authored in .dag (extdeps.render.ansi.csi_esc, extdeps.render.terminal's reset, gunbc.ci_render's red/reset) emitted the six characters backslash-x-1-b instead of ESC, and no colour this repo authored had ever rendered. The witness that was supposed to catch it compared one undecoded literal against another, so it agreed with itself and could not fail (DESIGN §5 — a check satisfied by editing the declaration while the realization lies).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn hex_digit_value(cp: i64) -> Option<i64> {
@@ -1392,7 +1389,7 @@ pub fn is_hex_upper_digit(ch: i64) -> bool {
     (((ch.clone() >= 48) && (ch.clone() <= 57)) || ((ch.clone() >= 65) && (ch.clone() <= 70)))
 }
 
-pub fn all_hex_upper_in_range(mut text: std::string::String, mut pos: i64, mut end: i64) -> bool {
+pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> bool {
     loop {
         if (pos.clone() >= end.clone()) {
             break true;
@@ -1412,8 +1409,8 @@ pub fn all_hex_upper_in_range(mut text: std::string::String, mut pos: i64, mut e
 }
 
 pub fn sentinel_prefix_matches(
-    mut text: std::string::String,
-    mut prefix: std::string::String,
+    mut text: String,
+    mut prefix: String,
     mut pos: i64,
     mut len: i64,
 ) -> bool {
@@ -1437,8 +1434,8 @@ pub fn sentinel_prefix_matches(
 }
 
 pub fn sentinel_suffix_matches(
-    mut text: std::string::String,
-    mut suffix: std::string::String,
+    mut text: String,
+    mut suffix: String,
     mut pos: i64,
     mut sfx_len: i64,
     mut text_start: i64,
@@ -1462,7 +1459,7 @@ pub fn sentinel_suffix_matches(
     }
 }
 
-pub fn is_reserved_emit_sentinel(text: std::string::String) -> bool {
+pub fn is_reserved_emit_sentinel(text: String) -> bool {
     {
         let rule = crate::v1_compiler_languages::canonical_emoji_char_escape();
         let pfx = rule.prefix.clone();

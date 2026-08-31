@@ -21,10 +21,10 @@ pub enum IgnoreReason {
     SessionRuntimeState,
     MayContainSecrets,
     OutsideSubstrate,
-    SupersededAuthority { canonical: std::string::String },
+    SupersededAuthority { canonical: String },
 }
 impl IgnoreReason {
-    pub fn canonical(&self) -> std::string::String {
+    pub fn canonical(&self) -> String {
         match self {
             IgnoreReason::RegenerableFromSource => panic!("no canonical on unit variant"),
             IgnoreReason::LocalCacheState => panic!("no canonical on unit variant"),
@@ -40,7 +40,7 @@ impl IgnoreReason {
     }
 }
 
-pub fn ignore_reason_label(r: Rc<IgnoreReason>) -> std::string::String {
+pub fn ignore_reason_label(r: Rc<IgnoreReason>) -> String {
     match (*r.clone()).clone() {
         IgnoreReason::RegenerableFromSource => "regenerable from committed source".to_string(),
         IgnoreReason::LocalCacheState => "local cache; not project state".to_string(),
@@ -59,8 +59,8 @@ pub fn ignore_reason_label(r: Rc<IgnoreReason>) -> std::string::String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkspaceArtifact {
-    pub pattern: std::string::String,
-    pub meaning: std::string::String,
+    pub pattern: String,
+    pub meaning: String,
     pub reason: Rc<IgnoreReason>,
 }
 
@@ -68,16 +68,16 @@ pub struct WorkspaceArtifact {
 #[serde(tag = "_variant")]
 pub enum FootprintProvenance {
     CitedUpstream {
-        display: std::string::String,
-        upstream: std::string::String,
+        display: String,
+        upstream: String,
     },
     RepoTool {
-        display: std::string::String,
-        owner_module: std::string::String,
+        display: String,
+        owner_module: String,
     },
 }
 impl FootprintProvenance {
-    pub fn display(&self) -> std::string::String {
+    pub fn display(&self) -> String {
         match self {
             FootprintProvenance::CitedUpstream { display: __val, .. } => __val.clone(),
             FootprintProvenance::RepoTool { display: __val, .. } => __val.clone(),
@@ -91,7 +91,7 @@ pub struct WorkspaceFootprint {
     pub artifacts: Rc<Vec<Rc<WorkspaceArtifact>>>,
 }
 
-pub fn footprint_display(p: Rc<FootprintProvenance>) -> std::string::String {
+pub fn footprint_display(p: Rc<FootprintProvenance>) -> String {
     match (*p.clone()).clone() {
         FootprintProvenance::CitedUpstream {
             display: d,

@@ -34,7 +34,7 @@ pub fn filesystem_read_result_type() -> Rc<Node> {
     )
 }
 
-pub fn type_variable_node(id: std::string::String) -> Rc<Node> {
+pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
@@ -67,7 +67,7 @@ pub fn map_of_type_variables() -> Rc<Node> {
     .clone()
 }
 
-pub fn list_of_type_variable(id: std::string::String) -> Rc<Node> {
+pub fn list_of_type_variable(id: String) -> Rc<Node> {
     crate::v1_compiler_infer_types::make_container_type(
         "List".to_string(),
         type_variable_node(id.clone()),
@@ -107,9 +107,9 @@ pub fn builtin_kernel_seed_diagnostics() -> Rc<Vec<Rc<ErrorNode>>> {
     )
 }
 
-pub fn builtin_function_registry() -> Rc<HashMap<std::string::String, Rc<Node>>> {
+pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, Rc<Node>>> = {
+        static CACHED: Rc<HashMap<String, Rc<Node>>> = {
             let mut __m = HashMap::new();
             __m.insert("count".to_string(), int_type());
             __m.insert("string_length".to_string(), int_type());
@@ -246,14 +246,14 @@ pub fn builtin_function_registry() -> Rc<HashMap<std::string::String, Rc<Node>>>
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, Rc<Node>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Node>>>| c.clone())
 }
 
-pub fn infer_builtin_call_type(name: std::string::String) -> Option<Rc<Node>> {
+pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&builtin_function_registry(), name.clone())
 }
 
-pub fn resolve_builtin_call_type(name: std::string::String) -> Rc<Node> {
+pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name.clone()) {
         Some(v) => v.clone(),
         None => unit_type(),

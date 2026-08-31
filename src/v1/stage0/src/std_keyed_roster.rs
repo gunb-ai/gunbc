@@ -40,20 +40,14 @@ pub struct KeyedRosterDuplicateEvidence<K: Clone, V: Clone> {
     pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
-pub fn path_occurrence_count(
-    paths: Rc<Vec<std::string::String>>,
-    target: std::string::String,
-) -> i64 {
-    paths
-        .iter()
-        .cloned()
-        .fold(0, |n: i64, p: std::string::String| {
-            if (p.clone() == target.clone()) {
-                (n.clone() + 1)
-            } else {
-                n.clone()
-            }
-        })
+pub fn path_occurrence_count(paths: Rc<Vec<String>>, target: String) -> i64 {
+    paths.iter().cloned().fold(0, |n: i64, p: String| {
+        if (p.clone() == target.clone()) {
+            (n.clone() + 1)
+        } else {
+            n.clone()
+        }
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

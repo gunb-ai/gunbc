@@ -574,6 +574,19 @@ impl PositiveCelsiusDelta {
 
 pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
+pub type EventsPerMinute = Rc<Measure<(), (), i64>>;
+
+pub fn events_per_minute(count: Nat) -> EventsPerMinute {
+    Rc::new(Measure {
+        count: count.clone(),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn events_per_minute_count(r: EventsPerMinute) -> Nat {
+    measure_count(r.clone())
+}
+
 pub fn watt(count: Nat) -> Watt {
     Rc::new(Measure {
         count: count.clone(),
@@ -1095,13 +1108,13 @@ pub fn percent_scale_hundred() -> i64 {
     crate::extdeps_units_dimensionless::percent_unity_hundred_count()
 }
 
-pub fn percent_from_computed_int_frontier() -> std::string::String {
+pub fn percent_from_computed_int_frontier() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub type BasisPoint = Rc<Measure<(), (), i64>>;
@@ -1143,13 +1156,13 @@ pub enum ClockBasis {
     WallClock,
 }
 
-pub fn measure_clock_basis_note() -> std::string::String {
+pub fn measure_clock_basis_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "WHICH CLOCK a duration was read from, carried as data rather than spelled in a field name (operator ruling 2026-08-05). The defect this closes is not recording one clock instead of two — recording BOTH is correct — it is a duration whose meaning lives only in the name of the field holding it. A figure called wall_nanos and a figure called cpu_nanos are two magnitudes that compare, add and threshold as if they were the same quantity, and nothing in the type stops it: the fast-lane cap is enforced on CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004, 2507 against 5003 and 7944 against 5018 -- every number correct, only the bases differing, and no test could have caught any of it. THE REPO ALREADY RULED ON THIS SHAPE one magnitude over: extdeps.pricing.object_storage byte_basis_note opens with 'the unit word is not the unit' and resolves vendor GB-vs-GiB ambiguity with a typed ByteBasis on the row, never a second field named gibibytes beside one named gigabytes. This is that resolution for clocks. TWO ARMS AND NOT THREE, deliberately, and this is where it DIVERGES from ByteBasis: ByteBasisUnstated exists because vendors publish rates without saying which byte they mean, so the ambiguity is an external fact we can only record. A clock basis is never external -- this repository takes its own measurements and always knows which clock it read -- so an Unstated arm would model an absence that cannot occur here, and an uninhabited arm is its own defect. Failing to READ a clock is a different fact and is carried by Measured on the value, not by a third basis.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn clock_basis_eq(a: ClockBasis, b: ClockBasis) -> bool {
@@ -1173,13 +1186,13 @@ pub fn clock_basis_wall() -> ClockBasis {
     ClockBasis::WallClock
 }
 
-pub fn clock_basis_authority_reachability_note() -> std::string::String {
+pub fn clock_basis_authority_reachability_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "WHY THIS CARRIER LIVES IN std.measure AND NOT WHERE IT WAS FIRST DECLARED, generalized because the same authority hit the same wall twice in one day (2026-08-05). ClockBasis was minted in std.observation, the module whose events first needed it. Within hours it failed to be an authority twice, for two different reasons that look unrelated and are not. First it was internal, and gunbc's migration-policy carrier could not state its own basis without it being EXPORTED. Then std.realization_schedule -- which carried a forked second spelling, WitnessCostClock, that this lane was dissolving -- turned out to be UPSTREAM of std.observation through std.effect_grant and std.effects, so importing the authority created a cycle and the compiler refused it outright. A single authority that half the corpus cannot import is not a single authority. REACHABILITY IS PART OF WHAT MAKES SOMETHING AN AUTHORITY, not a deployment detail discovered afterwards, and it is the part nobody checks when minting one: declaring a concept once is assumed to settle it, when what actually settles it is every consumer being able to name it. The home is therefore chosen by who must reach it, not by who first needed it -- and here that answer is also the honest one on the merits, since which clock a duration was read from is a fact about the MEASUREMENT rather than about the observation event that happens to carry one, this module already owns the magnitudes the basis qualifies, and extdeps.pricing.object_storage ByteBasis is in-repo precedent for a basis living beside its magnitude. A METHOD NOTE, because the cycle was nearly missed: it was checked for by grepping the two files' direct imports, which showed no edge. That is a LOCAL instrument answering a question that is only decidable GLOBALLY, and it returned a confident wrong answer. Only the compiler could see it. When the question is transitive, only a transitive instrument answers it.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn clock_basis_label(b: ClockBasis) -> String {

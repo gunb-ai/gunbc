@@ -11,12 +11,12 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeCheckpoint {
-    pub dag_name: std::string::String,
-    pub target_type: std::string::String,
-    pub grounding_type: std::string::String,
-    pub default_expr: Option<std::string::String>,
+    pub dag_name: String,
+    pub target_type: String,
+    pub grounding_type: String,
+    pub default_expr: Option<String>,
     pub is_copy: Option<bool>,
-    pub literal_suffix: Option<std::string::String>,
+    pub literal_suffix: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -24,36 +24,36 @@ pub struct TypeCheckpoint {
 pub enum TypeRealizationDecision {
     Realized { checkpoint: Rc<TypeCheckpoint> },
     Unrealized,
-    Refused { cause: std::string::String },
+    Refused { cause: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InhabitantDecl {
-    pub algebra: std::string::String,
-    pub template: std::string::String,
+    pub algebra: String,
+    pub template: String,
     pub arity: i64,
-    pub identity_expr: Option<std::string::String>,
-    pub import_path: Option<std::string::String>,
+    pub identity_expr: Option<String>,
+    pub import_path: Option<String>,
     pub is_copy: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CallableRepr {
-    pub template: std::string::String,
-    pub param_separator: std::string::String,
-    pub return_separator: std::string::String,
-    pub import_path: Option<std::string::String>,
+    pub template: String,
+    pub param_separator: String,
+    pub return_separator: String,
+    pub import_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastRule {
-    pub from_type: std::string::String,
-    pub to_type: std::string::String,
+    pub from_type: String,
+    pub to_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CastSyntax {
-    pub template: std::string::String,
+    pub template: String,
     pub cast_rules: Rc<Vec<Rc<CastRule>>>,
 }
 
@@ -77,7 +77,7 @@ pub fn grounded_primitive_coproduct_identities() -> Rc<Vec<Rc<CastRule>>> {
     CACHED.with(|c: &Rc<Vec<Rc<CastRule>>>| c.clone())
 }
 
-pub fn dag_can_cast(source_type: std::string::String, target_type: std::string::String) -> bool {
+pub fn dag_can_cast(source_type: String, target_type: String) -> bool {
     ({
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {
@@ -103,7 +103,7 @@ pub fn dag_can_cast(source_type: std::string::String, target_type: std::string::
     })
 }
 
-pub fn is_dag_cast_domain_type(name: std::string::String) -> bool {
+pub fn is_dag_cast_domain_type(name: String) -> bool {
     {
         let mut __found = false;
         for r in dag_cast_rules().iter().cloned() {

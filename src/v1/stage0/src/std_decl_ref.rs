@@ -51,10 +51,7 @@ pub fn citation_is_outside_index(coverage: CitationIndexCoverage) -> bool {
     }
 }
 
-pub fn decl_ref(
-    module_path: std::string::String,
-    decl_name: std::string::String,
-) -> Rc<DeclarationRef> {
+pub fn decl_ref(module_path: String, decl_name: String) -> Rc<DeclarationRef> {
     Rc::new(DeclarationRef {
         module_path: module_path.clone(),
         decl_name: decl_name.clone(),
@@ -63,9 +60,9 @@ pub fn decl_ref(
 }
 
 pub fn decl_field_ref(
-    module_path: std::string::String,
-    decl_name: std::string::String,
-    field_name: std::string::String,
+    module_path: String,
+    decl_name: String,
+    field_name: String,
 ) -> Rc<DeclarationRef> {
     Rc::new(DeclarationRef {
         module_path: module_path.clone(),
@@ -106,7 +103,7 @@ pub fn declaration_ref_in_list(
         })
 }
 
-pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> std::string::String {
+pub fn declaration_ref_display_key(ref_: Rc<DeclarationRef>) -> String {
     match (*ref_.field.clone()).clone() {
         DeclField::WholeDeclaration => v1_rt::concat(
             ref_.module_path.clone(),

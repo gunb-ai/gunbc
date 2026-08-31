@@ -25,9 +25,9 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub fn dag_keywords() -> Rc<HashMap<std::string::String, std::string::String>> {
+pub fn dag_keywords() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("true".to_string(), "true".to_string());
             __m.insert("false".to_string(), "false".to_string());
@@ -39,12 +39,12 @@ pub fn dag_keywords() -> Rc<HashMap<std::string::String, std::string::String>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn dag_container_templates() -> Rc<HashMap<std::string::String, std::string::String>> {
+pub fn dag_container_templates() -> Rc<HashMap<String, String>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, std::string::String>> = {
+        static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "List<{0}>".to_string());
             __m.insert("set".to_string(), "Set<{0}>".to_string());
@@ -58,248 +58,248 @@ pub fn dag_container_templates() -> Rc<HashMap<std::string::String, std::string:
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, String>>| c.clone())
 }
 
-pub fn dag_reserved() -> Rc<Vec<std::string::String>> {
+pub fn dag_reserved() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec![])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn dag_string_types() -> Rc<Vec<std::string::String>> {
+pub fn dag_string_types() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["String".to_string(), "Secret".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn dag_func_keyword() -> std::string::String {
+pub fn dag_func_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "fn".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_async_prefix() -> std::string::String {
+pub fn dag_async_prefix() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_struct_keyword() -> std::string::String {
+pub fn dag_struct_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_enum_keyword() -> std::string::String {
+pub fn dag_enum_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_type_alias_keyword() -> std::string::String {
+pub fn dag_type_alias_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "type".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_param_separator() -> std::string::String {
+pub fn dag_param_separator() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_return_arrow() -> std::string::String {
+pub fn dag_return_arrow() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             " -> ".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_param_type_sep() -> std::string::String {
+pub fn dag_param_type_sep() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             ": ".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_module_keyword() -> std::string::String {
+pub fn dag_module_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "module".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_import_keyword() -> std::string::String {
+pub fn dag_import_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "import".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_import_from_keyword() -> std::string::String {
+pub fn dag_import_from_keyword() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_lambda_template() -> std::string::String {
+pub fn dag_lambda_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "({0}) => {1}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_error_expr_template() -> std::string::String {
+pub fn dag_error_expr_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "error({0})".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_list_literal_empty() -> std::string::String {
+pub fn dag_list_literal_empty() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "[]".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_list_literal_template() -> std::string::String {
+pub fn dag_list_literal_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "[{0}]".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_null_coalesce_template() -> std::string::String {
+pub fn dag_null_coalesce_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "{0} ?? {1}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_error_type_template() -> std::string::String {
+pub fn dag_error_type_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "__EMIT_BUG_{0}__".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_type_arg_open() -> std::string::String {
+pub fn dag_type_arg_open() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "<".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_type_arg_close() -> std::string::String {
+pub fn dag_type_arg_close() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             ">".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_void_type() -> std::string::String {
+pub fn dag_void_type() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_tuple_empty() -> std::string::String {
+pub fn dag_tuple_empty() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "()".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_tuple_pair_template() -> std::string::String {
+pub fn dag_tuple_pair_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "({0}, {1})".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_tuple_multi_template() -> std::string::String {
+pub fn dag_tuple_multi_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "({0})".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_tuple_separator() -> std::string::String {
+pub fn dag_tuple_separator() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             ", ".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn dag_source_extension() -> std::string::String {
+pub fn dag_source_extension() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             ".dag".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }

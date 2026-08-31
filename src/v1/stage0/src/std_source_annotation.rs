@@ -26,7 +26,7 @@ pub enum AnnotationPlacement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnboundAnnotationCapture {
-    pub lexeme: std::string::String,
+    pub lexeme: String,
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
@@ -36,7 +36,7 @@ pub struct UnboundAnnotationCapture {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceAnnotationDebt {
     pub subject: OccurrenceId,
-    pub text: std::string::String,
+    pub text: String,
     pub origin: Rc<SourceSpan>,
 }
 
@@ -95,9 +95,7 @@ pub fn annotation_attachment_refusal_origin(
     }
 }
 
-pub fn annotation_attachment_refusal_message(
-    refusal: Rc<AnnotationAttachmentRefusal>,
-) -> std::string::String {
+pub fn annotation_attachment_refusal_message(refusal: Rc<AnnotationAttachmentRefusal>) -> String {
     match (*refusal.clone()).clone() {
     AnnotationAttachmentRefusal::UnattachedAtScopeEnd { origin: _, .. } => "source annotation names no subject: no module item follows it. Move it above the declaration it describes.".to_string(),
     AnnotationAttachmentRefusal::TrailingNotModeled { origin: _, .. } => "source annotation follows code on its own line. Trailing placement has no attachment rule yet; move it to its own line above the declaration.".to_string(),
@@ -189,7 +187,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
         })
 }
 
-pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: std::string::String) -> bool {
+pub fn advance_line_prefix_indent_only_text(previous: bool, lexeme: String) -> bool {
     advance_line_prefix_indent_only(
         previous.clone(),
         Rc::new(lexeme.clone().chars().map(|c| c as i64).collect::<Vec<_>>()),
@@ -213,7 +211,7 @@ pub struct AnnotationSubject {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NormalizedAnnotationCapture {
-    pub text: std::string::String,
+    pub text: String,
     pub origin: Rc<SourceSpan>,
     pub placement: AnnotationPlacement,
     pub preceded_by_blank_line: bool,
@@ -381,8 +379,8 @@ pub fn annotation_subject_pick(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyedAnnotationRow {
-    pub subject_key: std::string::String,
-    pub text: std::string::String,
+    pub subject_key: String,
+    pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

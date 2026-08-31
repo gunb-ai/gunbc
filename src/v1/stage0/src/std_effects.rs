@@ -42,15 +42,9 @@ pub enum CreateCause<K> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum KeySource {
-    PathParam {
-        param: std::string::String,
-    },
-    InputField {
-        field: std::string::String,
-    },
-    CompositeKey {
-        fields: Rc<Vec<std::string::String>>,
-    },
+    PathParam { param: String },
+    InputField { field: String },
+    CompositeKey { fields: Rc<Vec<String>> },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -62,7 +56,7 @@ pub enum IdempotencyEvidence {
     IdentityEffect,
     NonIdempotent {
         shape: Rc<EffectShape<Rc<KeySource>>>,
-        reason: std::string::String,
+        reason: String,
     },
 }
 impl IdempotencyEvidence {
@@ -183,7 +177,7 @@ pub fn create_double_init_collapsible(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OperationEffect {
-    pub operation_name: std::string::String,
+    pub operation_name: String,
     pub shape: Rc<EffectShape<Rc<KeySource>>>,
     pub evidence: Rc<IdempotencyEvidence>,
 }
@@ -233,7 +227,7 @@ pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionV
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DerivedOpEffect {
-    pub operation_name: std::string::String,
+    pub operation_name: String,
     pub method: HttpMethod,
     pub path_template: Rc<PathTemplate>,
     pub shape: Rc<EffectShape<Rc<KeySource>>>,
@@ -246,11 +240,11 @@ pub enum DeriveOpEffectResult {
         effect: Rc<DerivedOpEffect>,
     },
     MalformedPathInput {
-        operation_name: std::string::String,
+        operation_name: String,
         method: HttpMethod,
-        raw_path: std::string::String,
-        segment: std::string::String,
-        reason: std::string::String,
+        raw_path: String,
+        segment: String,
+        reason: String,
     },
 }
 
@@ -299,7 +293,7 @@ pub fn derive_effect_shape(
 }
 
 pub fn derive_op_effect(
-    operation_name: std::string::String,
+    operation_name: String,
     method: HttpMethod,
     path: Rc<PathTemplate>,
 ) -> Rc<DeriveOpEffectResult> {
@@ -320,11 +314,11 @@ pub fn derive_op_effect(
 #[serde(tag = "_variant")]
 pub enum ModifierAgreement {
     Agrees,
-    Disagrees { reason: std::string::String },
-    DerivationUnknown { reason: std::string::String },
+    Disagrees { reason: String },
+    DerivationUnknown { reason: String },
 }
 impl ModifierAgreement {
-    pub fn reason(&self) -> std::string::String {
+    pub fn reason(&self) -> String {
         match self {
             ModifierAgreement::Agrees => panic!("no reason on unit variant"),
             ModifierAgreement::Disagrees { reason: __val, .. } => __val.clone(),
@@ -335,7 +329,7 @@ impl ModifierAgreement {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModifierCheck {
-    pub operation_name: std::string::String,
+    pub operation_name: String,
     pub declared_idempotent: bool,
     pub declared_readonly: bool,
     pub derived_shape: Rc<EffectShape<Rc<KeySource>>>,
@@ -426,9 +420,9 @@ pub fn check_modifier_vs_derivation(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IdempotencyTestObligation {
-    pub operation_name: std::string::String,
+    pub operation_name: String,
     pub effect_shape: Rc<EffectShape<Rc<KeySource>>>,
-    pub claim: std::string::String,
+    pub claim: String,
     pub witness_required: bool,
 }
 
@@ -462,7 +456,7 @@ pub fn generate_idempotency_obligations(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowEffectConcern {
-    pub workflow_name: std::string::String,
-    pub create_op: std::string::String,
-    pub reason: std::string::String,
+    pub workflow_name: String,
+    pub create_op: String,
+    pub reason: String,
 }

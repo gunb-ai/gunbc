@@ -31,8 +31,8 @@ pub struct NormalizeResult {
 
 pub fn check_bare_containers(
     n: Rc<Node>,
-    module_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    module_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let has_structure = ((match n.body.clone() {
@@ -200,7 +200,7 @@ pub fn check_bare_containers(
 
 pub fn normalize_module_diagnostics(
     m: Rc<ResolvedModule>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let items = crate::v1_std_core::module_items(m.module.clone());
@@ -227,7 +227,7 @@ pub fn normalize_module_diagnostics(
 
 pub fn normalize_graph(
     graph: Rc<ModuleGraph>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<NormalizeResult> {
     {
         let diags = Rc::new({

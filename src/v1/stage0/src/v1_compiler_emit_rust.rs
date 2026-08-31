@@ -35,7 +35,6 @@ pub use crate::gunbc_stage0_emitted_population_manifest::{
     emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
     emitted_population_manifest_line_separator,
 };
-pub use crate::gunbc_structural_realization_bindings::structural_ordering_rows;
 pub use crate::std_algebra::trim;
 pub use crate::std_coercion::TypeCheckpoint;
 pub use crate::std_content_hash::Fnv1a64Structural;
@@ -47,19 +46,6 @@ pub use crate::std_measure::millisecond_count;
 pub use crate::std_nat::Nat;
 pub use crate::std_occurrence_identity::NodeOccurrenceIdentity;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
-use crate::std_operator_realization::OperandRealization::{
-    HostNumericOperand, OperandIdentityUnavailable, StructuralOperand,
-};
-use crate::std_operator_realization::OperatorRealization::{
-    HostOperator, OperatorRealizationRefused, StructuralComparison, StructuralEquality,
-};
-use crate::std_operator_realization::OrderingTest::{OrderingIs, OrderingIsNot};
-pub use crate::std_operator_realization::{
-    operator_realization_for, operator_realization_refusal_message,
-};
-pub use crate::std_operator_realization::{
-    OperandRealization, OperatorRealization, OrderingTest, StructuralOrderingBinding,
-};
 pub use crate::std_primitive_projection::{
     primitive_identity_runtime_name, primitive_projection_row_for_declaration,
 };
@@ -80,15 +66,17 @@ use crate::std_target_representation::ExactBindingResolution::{
 };
 pub use crate::std_types::SourceSpan;
 pub use crate::std_types::{container_template_algebra, is_container_type, is_kernel_type};
-pub use crate::v1_compiler_artifact::RenderTarget;
 use crate::v1_compiler_artifact::RenderTarget::Rust;
+use crate::v1_compiler_artifact::RustModuleRenderSelection::{
+    RenderEveryModule, RenderSelectedMirrors,
+};
+pub use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 pub use crate::v1_compiler_closure_stub_v2_std_integer_rust::closure_stub_v2_std_integer_source;
 pub use crate::v1_compiler_closure_stub_v2_std_text_rust::closure_stub_v2_std_text_source;
 pub use crate::v1_compiler_coercion::decl_identity_file;
 pub use crate::v1_compiler_coercion::{
-    coerce_primitive_type, decl_file_declares_structurally, declaration_realizes_natively_on_rust,
-    is_copy, lookup_checkpoint, rust_lookup_exact_binding, rust_seed_host_numeric_alias,
-    target_callable, type_reference_decl_file,
+    coerce_primitive_type, is_copy, lookup_checkpoint, rust_lookup_exact_binding,
+    rust_seed_host_numeric_alias, target_callable, type_reference_decl_file,
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 use crate::v1_compiler_emit::BoundOperation::{
@@ -148,8 +136,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
     GlobalBareAmbiguousBinding, GlobalBareUniqueBinding,
 };
 pub use crate::v1_compiler_infer_env::{
-    authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
-    type_reference_declaration_ref,
+    authored_name, empty_symbol_index, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::item_kind;
@@ -213,10 +200,9 @@ use crate::v1_std_core::CompilerDiagnostic::{
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
-    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
-    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
-    NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
+    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
+    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
 };
 use crate::v1_std_core::FieldAccessStyle::{
     EnumAccessor, OptionalUnwrap, StoredField, TupleFirst, TupleSecond,
@@ -267,9 +253,9 @@ use std::rc::Rc;
 pub fn render_rust_applied_via_emit_info(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     render_rust_applied_type_shared(
         n.clone(),
         emit_info.fn_generic_param_names.clone(),
@@ -283,15 +269,12 @@ pub fn render_rust_applied_via_emit_info(
 pub fn render_rust_type(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(
-                n.clone(),
-                render_rust_text_carrier(n.clone(), shared_types.clone()),
-            );
+            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -353,9 +336,9 @@ pub fn render_rust_type(
 pub fn render_rust_arrow_position(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     render_rust_fn_sig_type(
         n.clone(),
         emit_info.fn_generic_param_names.clone(),
@@ -373,9 +356,9 @@ pub fn rust_type_node_is_arrow(n: Rc<Node>) -> bool {
 pub fn render_rust_arrow_type(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let repr = crate::v1_compiler_coercion::target_callable(RenderTarget::Rust);
         let param_strs = Rc::new({
@@ -437,15 +420,12 @@ pub fn render_rust_arrow_type(
 pub fn render_rust_type_without_applied_binding(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(
-                n.clone(),
-                render_rust_text_carrier(n.clone(), shared_types.clone()),
-            );
+            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -649,10 +629,7 @@ pub fn render_rust_type_without_applied_binding(
                                     {
                                         rust_carrier_optional_wrap(
                                             n.clone(),
-                                            render_rust_text_carrier(
-                                                n.clone(),
-                                                shared_types.clone(),
-                                            ),
+                                            render_rust_text_carrier(shared_types.clone()),
                                         )
                                     } else {
                                         crate::v1_compiler_emit::render_node_type(
@@ -672,52 +649,52 @@ pub fn render_rust_type_without_applied_binding(
     }
 }
 
-pub fn empty_string_bool_map() -> Rc<HashMap<std::string::String, bool>> {
-    v1_rt::rc_empty_map::<std::string::String, bool>()
+pub fn empty_string_bool_map() -> Rc<HashMap<String, bool>> {
+    v1_rt::rc_empty_map::<String, bool>()
 }
 
-pub fn rust_type_is_rc_wrapped(type_name: std::string::String) -> bool {
+pub fn rust_type_is_rc_wrapped(type_name: String) -> bool {
     crate::v1_compiler_languages::sharing_type_is_wrapped_for_target(
         RenderTarget::Rust,
         type_name.clone(),
     )
 }
 
-pub fn rust_shared_wrap_ctor(inner_expr: std::string::String) -> std::string::String {
+pub fn rust_shared_wrap_ctor(inner_expr: String) -> String {
     crate::v1_compiler_languages::sharing_wrap_ctor_for_target(
         RenderTarget::Rust,
         inner_expr.clone(),
     )
 }
 
-pub fn rust_shared_wrap_ctor_prefix() -> std::string::String {
+pub fn rust_shared_wrap_ctor_prefix() -> String {
     crate::v1_compiler_languages::sharing_wrap_ctor_open_for_target(RenderTarget::Rust)
 }
 
-pub fn rust_shared_wrap_ctor_suffix() -> std::string::String {
+pub fn rust_shared_wrap_ctor_suffix() -> String {
     crate::v1_compiler_languages::sharing_wrap_ctor_close_for_target(RenderTarget::Rust)
 }
 
-pub fn is_host_freemonoid_vec_alias(name: std::string::String) -> bool {
+pub fn is_host_freemonoid_vec_alias(name: String) -> bool {
     (name.clone() == "FreeMonoid".to_string())
 }
 
-pub fn is_host_optional_carrier_alias(name: std::string::String) -> bool {
+pub fn is_host_optional_carrier_alias(name: String) -> bool {
     (name.clone() == "Optional".to_string())
 }
 
-pub fn is_host_diagnostics_carrier_alias(name: std::string::String) -> bool {
+pub fn is_host_diagnostics_carrier_alias(name: String) -> bool {
     (name.clone() == "Diagnostics".to_string())
 }
 
-pub fn is_grounded_coproduct_native_alias(name: std::string::String) -> bool {
+pub fn is_grounded_coproduct_native_alias(name: String) -> bool {
     ((is_host_freemonoid_vec_alias(name.clone()) || is_host_optional_carrier_alias(name.clone()))
         || is_host_diagnostics_carrier_alias(name.clone()))
 }
 
 pub fn is_host_optional_carrier_type(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
         == "Optional".to_string())
@@ -726,15 +703,13 @@ pub fn is_host_optional_carrier_type(
 
 pub fn is_host_diagnostics_carrier_type(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
         == "Diagnostics".to_string())
 }
 
-pub fn render_rust_diagnostics_carrier_applied(
-    shared_types: Rc<BTreeSet<String>>,
-) -> std::string::String {
+pub fn render_rust_diagnostics_carrier_applied(shared_types: Rc<BTreeSet<String>>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "Option<".to_string(),
@@ -750,12 +725,12 @@ pub fn render_rust_diagnostics_carrier_applied(
 
 pub fn render_rust_optional_carrier_inner(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     match n.children.clone().first().cloned() {
         Some(elem) => render_rust_applied_type_arg(
             elem.clone(),
@@ -771,12 +746,12 @@ pub fn render_rust_optional_carrier_inner(
 
 pub fn render_rust_optional_carrier_applied(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             "Option<".to_string(),
@@ -793,48 +768,19 @@ pub fn render_rust_optional_carrier_applied(
     )
 }
 
-pub fn render_rust_text_carrier(
-    n: Rc<Node>,
-    shared_types: Rc<BTreeSet<String>>,
-) -> std::string::String {
-    {
-        let decl_file = crate::v1_compiler_coercion::type_reference_decl_file(n.clone());
-        if ((decl_file.clone() != "".to_string())
-            && !crate::v1_compiler_coercion::decl_file_declares_structurally(
-                "String".to_string(),
-                decl_file.clone(),
-            ))
-        {
-            "std::string::String".to_string()
-        } else {
-            render_rust_shared_type_if_needed(
-                "String".to_string(),
-                "String".to_string(),
-                shared_types.clone(),
-            )
-        }
-    }
+pub fn render_rust_text_carrier(shared_types: Rc<BTreeSet<String>>) -> String {
+    render_rust_shared_type_if_needed(
+        "String".to_string(),
+        "String".to_string(),
+        shared_types.clone(),
+    )
 }
 
-pub fn render_rust_text_carrier_identity_note() -> std::string::String {
-    thread_local! {
-        static CACHED: std::string::String = {
-            "The rendered spelling for a host-text type position is chosen by DECLARATION IDENTITY, not by the authored spelling alone. A module can carry both a kernel-String data row (bare String resolving to the kernel declaration) and a generated v2_std_text String use line introduced by a transitively referenced structural v2.std.text signature; in that module the bare spelling String is SHADOWED to the structural carrier, so every kernel row rendered bare inherits the wrong realization silently. A reference whose decl_file is known and NOT in structural_declaration_modules_for(String) therefore renders the grounding spelling std::string::String, which no use line can shadow. A reference resolving to a structural String declaration, or one whose identity is UNKNOWN (empty decl_file), keeps the bare reference spelling -- unknown identity yields no realization change, per type_reference_identity_note, so the residue of unknown-identity sites is the same counted bypass lookup_checkpoint's first arm already declares, never a new guess.".to_string()
-        };
-    }
-    CACHED.with(|c: &std::string::String| c.clone())
-}
-
-pub fn emit_rust_host_to_dag_string_via_seam(
-    host_expr: std::string::String,
-) -> std::string::String {
+pub fn emit_rust_host_to_dag_string_via_seam(host_expr: String) -> String {
     host_expr
 }
 
-pub fn emit_rust_map_literal_key(
-    field_name: std::string::String,
-    key_is_string: bool,
-) -> std::string::String {
+pub fn emit_rust_map_literal_key(field_name: String, key_is_string: bool) -> String {
     {
         let key_literal = v1_rt::concat(
             v1_rt::concat("\"".to_string(), field_name.clone()),
@@ -851,7 +797,7 @@ pub fn emit_rust_map_literal_key(
 
 pub fn map_literal_key_is_string(
     map_type_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match map_type_node.children.clone().first().cloned() {
         Some(key_child) => is_rust_string_like(key_child.clone(), source_indices.clone()),
@@ -869,30 +815,75 @@ pub fn map_literal_key_is_string(
     }
 }
 
-pub fn emit_rust_dag_string_to_host_via_seam(dag_expr: std::string::String) -> std::string::String {
+pub fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
     dag_expr
 }
 
-pub fn rust_host_string_op_fn_emit(name: std::string::String) -> Option<std::string::String> {
-    if (name.clone() == "trim".to_string()) {
+pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {
+    if (name.clone() == "host_string_text_from_rust_host".to_string()) {
         Some(v1_rt::concat(
             v1_rt::concat(
-                "pub fn trim(s: String) -> String {\n".to_string(),
-                "    v1_rt::trim(s)\n".to_string(),
+                v1_rt::concat(
+                    "pub fn host_string_text_from_rust_host(host: String) -> String {\n"
+                        .to_string(),
+                    "    host.chars().fold(v1_rt::freemonoid_empty::<i64>(), ".to_string(),
+                ),
+                "|acc, ch| v1_rt::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n"
+                    .to_string(),
             ),
             "}\n".to_string(),
         ))
     } else {
-        std::option::Option::None
+        if (name.clone() == "host_string_text_to_rust_host".to_string()) {
+            Some(v1_rt::concat(v1_rt::concat("pub fn host_string_text_to_rust_host(text: String) -> String {\n".to_string(), "    v1_rt::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n".to_string()), "}\n".to_string()))
+        } else {
+            std::option::Option::None
+        }
     }
 }
 
-pub fn rust_opaque_kernel_alias_type_eligible(name: std::string::String) -> bool {
+pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
+    if (name.clone() == "string_is_empty".to_string()) {
+        Some(v1_rt::concat(
+            v1_rt::concat(
+                "pub fn string_is_empty(s: String) -> bool {\n".to_string(),
+                "    s.is_empty()\n".to_string(),
+            ),
+            "}\n".to_string(),
+        ))
+    } else {
+        if (name.clone() == "string_head".to_string()) {
+            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: c as i64 }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
+        } else {
+            if (name.clone() == "string_tail".to_string()) {
+                Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n".to_string(), "    let mut __it = s.chars();\n".to_string()), "    match __it.next() {\n".to_string()), "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n".to_string()), "        None => Rc::new(ListTailResult::TailAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
+            } else {
+                if (name.clone() == "fold_source".to_string()) {
+                    Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n".to_string(), "    let mut __acc = (algebra.init)(src.clone());\n".to_string()), "    for _ in src.chars() {\n".to_string()), "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n".to_string()), "    }\n".to_string()), "    __acc\n".to_string()), "}\n".to_string()))
+                } else {
+                    if (name.clone() == "trim".to_string()) {
+                        Some(v1_rt::concat(
+                            v1_rt::concat(
+                                "pub fn trim(s: String) -> String {\n".to_string(),
+                                "    v1_rt::trim(s)\n".to_string(),
+                            ),
+                            "}\n".to_string(),
+                        ))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn rust_opaque_kernel_alias_type_eligible(name: String) -> bool {
     (((name.clone() == "Json".to_string()) || (name.clone() == "Bytes".to_string()))
         || (name.clone() == "Symbol".to_string()))
 }
 
-pub fn rust_opaque_kernel_alias_carrier(name: std::string::String) -> Option<std::string::String> {
+pub fn rust_opaque_kernel_alias_carrier(name: String) -> Option<String> {
     if rust_opaque_kernel_alias_type_eligible(name.clone()) {
         Some(crate::v1_compiler_coercion::coerce_primitive_type(
             RenderTarget::Rust,
@@ -904,10 +895,7 @@ pub fn rust_opaque_kernel_alias_carrier(name: std::string::String) -> Option<std
     }
 }
 
-pub fn rust_opaque_kernel_alias_type_decl(
-    name: std::string::String,
-    module_path: std::string::String,
-) -> std::string::String {
+pub fn rust_opaque_kernel_alias_type_decl(name: String, module_path: String) -> String {
     {
         let carrier = match rust_exact_binding_spelling(
             Some(crate::std_decl_ref::decl_ref(
@@ -945,50 +933,50 @@ pub fn rust_opaque_kernel_alias_type_decl(
     }
 }
 
-pub fn rust_ground_opaque_kernel_type_name(name: std::string::String) -> std::string::String {
+pub fn rust_ground_opaque_kernel_type_name(name: String) -> String {
     match rust_opaque_kernel_alias_carrier(name.clone()) {
         Some(carrier) => carrier.clone(),
         None => name.clone(),
     }
 }
 
-pub fn numeric_realization_relocation_note() -> std::string::String {
+pub fn numeric_realization_relocation_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "RELOCATED to v1.compiler.coercion (smart-ram-730, adhoc-2ea6fb98-a3f, 2026-08-21, review 54335): numeric_realization_identity_note, numeric_realization_roster_extension_note, numeric_realization_declaring_modules, decl_file_realizes_natively and rust_seed_host_numeric_alias moved there in full, completing the relocation checkpoint_table_bypasses_identity_note's structural_declaration_modules_for precedent already established for the negative-form (structural) half of this same two-authority shape -- this was the positive-form (native) half, still sitting in this module and reached back into by v1.compiler.coercion type_realization_decision, an import cycle DESIGN section 3 forbids (emit_rust already imports FROM coercion; coercion calling back into emit_rust closes the cycle). This module now imports only rust_seed_host_numeric_alias back from v1.compiler.coercion, exactly as it already imports lookup_checkpoint from there -- one direction, no cycle; numeric_realization_declaring_modules and decl_file_realizes_natively have no consumer left in this module, since rust_seed_host_numeric_alias was their only caller here and it moved with them. Agreed with swift-moth-294 (msg_502982ac, 2026-08-21) and sequenced behind gunbc#8716 (merged 2026-08-21T06:19:19Z), which is why the move landed now rather than when first proposed.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn checkpoint_table_bypasses_identity_note() -> std::string::String {
+pub fn checkpoint_table_bypasses_identity_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "CEILING, STATED BECAUSE THE CODE DELIVERS LESS THAN THE DELETION OF RustCorpusRepr SUGGESTS. lookup_checkpoint is keyed on the BARE dag_name and is consulted BEFORE the identity-keyed arm, so any name carrying a checkpoint row in extdeps/languages/rust/types.dag bypasses declaration keying entirely. Nat carries no row and therefore discriminates correctly -- dag/std/nat.dag realizes natively, src/v2/std/nat.dag refuses. Names WITH a row do not. This is not a regression introduced here: the table was already bare-name keyed and the global corpus mode was hiding the question. It is the honest rung. The class is MECHANICALLY PREVENTABLE rather than structurally impossible, and its executing evidence is v1.tests.claim.checkpoint_identity_keying_witness_test, which asserts the CURRENT bypassing answers on purpose so the gap is counted instead of assumed closed. THAT CITATION WAS FALSE WHEN THIS NOTE FIRST LANDED AND IS REPAIRED RATHER THAN SOFTENED. It named the residue block generated by v1.compiler.compiler_tests_rust ct_groupcompletion_checkpoint_fires_under_faithful_corpus_test, which emits into a module declared `#[cfg(test)] mod compiler_tests;` inside the v1-compiler crate -- while the only test step CI runs is `cargo test -p v1-compiler-tests`, a SEPARATE package consuming v1-compiler as an ordinary dependency, so cfg(test) is never set for it and the block is not compiled, let alone executed. Measured rather than reasoned: that step's binary enumerates 30 tests and none is this one, against a positive control confirming the enumeration is non-empty. So a ceiling disclosure cited evidence that had never run -- DESIGN section 4b(1) rung honesty violated in the compiler's own self-description, which is worse than sitting low because an inflated class never ranks for climbing. The assertions were re-authored as an enrolled .dag witness and now execute (seven rows PASS, including the discriminating row where two declarations share the spelling Nat and answer differently); the superseded generated-Rust block is deleted rather than left standing as a second, silent copy. POPULATION (census by vivid-wren-870, who owns the rows): SEVEN of the table's names are also declared under src/v2 -- Int, Float, Bool, Symbol, Unit, String, Hash; Bytes, Secret and Json are not. That is a LOWER BOUND obtained by grepping line-start `type <name>` declarations under src/v2; it does not find names introduced any other way, and it says NOTHING about how many sites bite in any real closure. Three of the seven are the same shape as Int in that the v2 declaration is a genuinely different STRUCTURE rather than a spelling coincidence -- Int is GroupCompletion<Nat>, String is FreeMonoid<Char>, Bool is a two-variant coproduct. Symbol and Unit are bodyless and may be declared-abstract rather than competing realizations, so their bypass may be harmless. Hash is the one that costs a GUARANTEE rather than merely a representation, and it belongs with the same-shape three rather than apart from them: the row targets v1_rt::Hash, which is `pub type Hash = String` in the seed, against a v2 declaration of Fnv1a64Structural -- a single-field record whose digest field is `String where lower_hex_16`. std.content_hash content_hash_family_constructor_note states the public forgeable record constructors are DELETED and that the where-refinement IS the construction wall, so realizing that type as a bare String alias renders away the carrier the wall is attached to. A name-keyed spelling row can therefore silently drop a §4b construction rung. Established from declarations at both ends (vivid-wren-870, re-read here); NO live site is claimed, because no closure reaching a v2-declared Hash through lookup_checkpoint has been emitted by either of us. NEXT-RUNG TRIGGER -- AND THE OBVIOUS SHAPE IS THE WRONG ONE. An earlier revision of this note named `the checkpoint rows gain a declaring-module column`. vivid-wren-870 refused that shape with an argument this note adopts: a TypeCheckpoint row is cited to the Rust reference and states how RUST spells a type, whereas which dag module declares Int is a gunbc-corpus fact, so a declaring-module column puts corpus data inside an extdeps upstream authority -- a layer inversion, and the same class as a row being asked a question its cited authority cannot answer. The expected terminal shape is TWO authorities rather than one wider one: extdeps keeps Rust type -> spelling, a corpus-side binding says this dag declaration realizes as that Rust type, and lookup_checkpoint keys on the second. That also lets the seven differ from each other, which one column keyed on a single module cannot express. Recorded as a proposal from the rows owner, not as a decision, and unbuilt at the time of writing. When it lands the residue assertions flip to None and the flip is the dissolution signal, not a regression. LANDED FOR HASH (this PR, T7): the second authority is v1.compiler.coercion structural_declaration_modules_for, a corpus-side row roster keyed on the dag_name and enumerating the modules whose declaration of that name is structural rather than native -- \"Hash\" => [\"src/v2/std/node.dag\"] is its one row. lookup_checkpoint (v1.compiler.coercion) now consults it before the bare-name table: when decl_file_declares_structurally holds, lookup_checkpoint refuses (none) rather than answering from the table, and every consumer that already carried a correct identity-arm fallback -- coerce_primitive_type, is_copy, literal_suffix, and the direct callers of lookup_checkpoint itself -- inherits the refusal once decl_file is threaded to the call, which it now is at every production call site across v1.compiler.emit_rust and v1.compiler.emit. table_present_hash_refuses_under_structural_declaration in the witness below is the flip this note predicted; it is no longer residue. LANDED FOR STRING (session merry-lark-67, per smart-ram-730's dispatch): structural_declaration_modules_for gained a second row, \"String\" => [\"src/v2/std/text.dag\", \"dag/std/string_type.dag\"] -- both declare `type String = FreeMonoid<Char>`, the structural free-monoid-over-Char carrier, never a host string, so a reference resolving to either module now refuses the bare-name table's `String`/`.to_string()` spelling instead of silently rendering it. residue_table_present_string_bypasses_identity in the legacy oracle (src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag) is retired for the same reason table_present_hash_refuses_under_structural_declaration closed for Hash, and is replaced there by table_present_string_refuses_under_structural_declaration_text / _string_type rather than repaired back to a passing bypass -- the flip is the dissolution signal, not a regression. LANDED FOR BOOL (session merry-lark-67, corpus-wide histogram from smart-ram-730; corrected same session, commit 127ad848070, per review 54257): structural_declaration_modules_for gained a third row, \"Bool\" => [\"src/v2/std/logic.dag\"] -- the initial enrollment mirrored String's two-row shape onto Bool and also listed dag/std/types.dag, but that module is the ordinary corpus-wide native Bool prelude (imported by 300+ dag/test/claim modules with no bit/width/encoding modeling riding on it), directly analogous to dag/std/integer.dag for Int, which sits in the POSITIVE numeric_realization_declaring_modules roster, never the negative structural one. Only src/v2/std/logic.dag's Bool is genuinely structural, carrying BoolWidthFact/BoolEncodingFact/BooleanAlgebra<Bool> modeling over the two-variant coproduct; a reference resolving to it refuses the bare-name table's `bool`/`false` spelling instead of silently rendering it, while a reference resolving to dag/std/types.dag renders natively as designed. The over-broad row caused required-floor to refuse native bool rendering for 5 unrelated fixtures (e0308_mechanical_trio_test, optional_carrier_signature_test) and caused required-regen to see drift across the self-hosted std_*.rs mirrors; both are the fabricated-plausible-ceiling failure this note elsewhere criticizes, disclosed and repaired here rather than left standing. Bool never had a residue row in the legacy oracle to flip; it lands directly as one CLOSED row, table_present_bool_refuses_under_structural_declaration_logic, alongside table_present_bool_renders_natively_for_the_corpus_prelude confirming dag/std/types.dag's native rendering. KNOWN GAP THIS ROW DOES NOT CLOSE, FOUND WHILE MEASURING IT: emit_typed_item's type-alias arm special-cases `item_text == \"String\"` UNCONDITIONALLY -- rust_string_grounded_type_alias_decl_line emits `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file, never consulting rust_scalar_checkpoint_render_base or this roster at all. So the module that declares `type String = FreeMonoid<Char>` keeps emitting itself as a host-String alias even after this row makes every REFERENCE to it refuse the bare-name table; the declaration and its own references can now disagree in the SAME emitted file. THAT KNOWN GAP IS NOW CLOSED, AND THE ROOT WAS NOT WHERE THIS NOTE PUT IT. The gap as recorded: emit_typed_item's type-alias arm special-cased `item_text == \"String\"` UNCONDITIONALLY, emitting `pub type String = std::string::String;` at the DECLARATION site regardless of decl_file and never consulting the identity-keyed authority every REFERENCE already routed through, so one emitted file could disagree with itself. This note framed that as a second bare-name bypass to be deleted. IT WAS NOT. The arm was COMPENSATING, and deleting it alone would have emitted `pub type String = String;` -- self-referential, because the checkpoint's target_type for String is the bare spelling `String` and the declaration site uses target_type as the alias's right-hand side. The real defect was that ONE FIELD CARRIED TWO SPELLING ROLES (the word arity is avoided here on purpose -- in this module it already means type-parameter count, see AliasDeclArityVerdict and rust_checkpoint_scalar_declared_arity_guard_note): one field answering two questions -- what a REFERENCE renders (bare `String`, correct and idiomatic) and what a DECLARATION is GROUNDED IN (`std::string::String`, the spelling no alias can shadow). Whichever spelling one field carried, one consumer was wrong, and the arm was the visible cost of making it try. std.coercion TypeCheckpoint now carries both spellings as separate fields; rust_scalar_checkpoint_reference_base and rust_scalar_checkpoint_grounding_base are two named entry points over one shared identity-keyed body, so every PRODUCTION caller states which question it asks by visibly naming it rather than by passing an argument. That is mechanically preventable, NOT structurally impossible: the shared body stays reachable and carries the discriminator, .dag has no function-privacy concept to hide it behind (the emitted emitter carries 665 pub fn and zero non-pub), and the next-rung trigger is a module-private function boundary in the language. The standing evidence for the narrower claim is that the shared body's only direct callers are the two wrappers; the three reference callers read the reference spelling, the single declaration-RHS caller reads grounding, and the arm is DELETED rather than guarded. WHAT THIS STILL DOES NOT CLOSE, stated so the ceiling is not read as retired: lookup_checkpoint's FIRST arm answers straight from the bare-name table when decl_file is the empty string, consulting no roster at all, so every site reaching emission with UNKNOWN declaration identity still realizes from the table exactly as this note describes. That bypass is live, its population is UNCOUNTED, and no estimate is offered here. It is a separate defect from the two-role split -- the split governs what a row can SAY once identity is known; the bypass governs whether identity is consulted at all -- and it is filed as its own row rather than folded into this one. HOW THIS CLOSURE AND THE REACHABILITY CORRECTION BELOW RELATE, because each narrows the other and reading either alone overstates it: the two-role split is what makes the DECLARATION site able to consult the identity-keyed authority at all, and royal-dove-436's finding is that the REFERENCE site for a String-spelled type never reaches lookup_checkpoint in the first place. So for String specifically the split repairs a position that was answering wrongly, while the position this note elsewhere calls gated is not yet reached -- the declaration half is closed and the reference half is unreachable, which is one authority with two different reasons its consumers do not see it, not one gap. Neither finding weakens the other and neither is the whole story for String; the split is stated here as closing the arm it deletes, never as making every String position identity-keyed. REACHABILITY CORRECTION (royal-dove-436, adhoc-c735d227-60b, 2026-08-21, measured on the 03_ingest closure): TWO CLAIMS ABOVE ARE FALSE FOR STRING AND ARE CORRECTED HERE RATHER THAN SOFTENED -- the LANDED FOR STRING clause's 'a reference resolving to either module now refuses the bare-name table's String/.to_string() spelling instead of silently rendering it', and the KNOWN GAP clause's 'even after this row makes every REFERENCE to it refuse the bare-name table'. The row does not make every reference refuse, because a String-spelled reference in TYPE position never reaches lookup_checkpoint at all. SIX type renderers in this module -- render_rust_type, render_rust_type_without_applied_binding, render_rust_applied_type, render_rust_type_with_applied_binding, render_rust_decl_type and render_rust_fn_sig_type -- each RETURN ON THEIR FIRST LINE (verified: the call is the statement immediately following each fn's own declaration) via is_host_text_carrier_type, rendering the literal \"String\" unconditionally on decl_file, ahead of every checkpoint or roster consultation; and is_host_text_carrier_type accepts the spelling String outright, so no path through those six can reach type_realization_decision's Unrealized-via-structural-gate arm for it. THE ROW IS THEREFORE PRESENT, CORRECT, AND UNREACHABLE FOR THE TEXT CARRIER IN TYPE POSITION -- an unreachable wall rather than a missing one, which is DESIGN section 6's coverage-by-illusion and a section 4b rung this note previously reported as held. This is a REACHABILITY claim about String's reference-site gate; it does NOT touch the Hash clause above, whose 'NO live site is claimed' is scoped to a v2-declared Hash reaching lookup_checkpoint and is unaffected, and it is a DIFFERENT mechanism from the declaration-site alias line the KNOWN GAP clause otherwise describes. SUPPORTING EVIDENCE, cited as a population rather than as the basis of the claim: 34 live E0308 sites in the 03_ingest closure pair a String-declared field or parameter against a FreeMonoid-realized value, every one of them a type position that rendered the native spelling while the roster says the declaration is structural (docs/probes/t2_t3_realization_route_2026-08-21.md, per-site TSV beside it). ESTABLISHED HOW, because the distinction decides what would falsify this: the reachability claim is decidable from the five renderers' control flow, which is how it was established -- NOT by a discriminating execution, and it says nothing about a sixth renderer that may handle some type position without that preamble. NEXT-RUNG TRIGGER: the short-circuit family is deleted so the existing authority becomes reachable, per docs/plans/carrier-realization-arbiter-repair-design.md, which also counts the decl_file == \"\" residue this module contributes (four sites) that the DECLARED RESIDUE note in v1.compiler.coercion says is uncounted. That design leaves the structural-vs-native direction to its owner and proposes an emit-only blast-radius measurement, not a merge, as the next step -- deliberately, because the over-broad Bool row recorded above is what picking a direction without that measurement already cost once. Int, Float, Symbol remain open -- they have no row in structural_declaration_modules_for -- and are the population the next instance of this class (a name question answered by authored spelling instead of declaration identity) inherits, per the class-level framing this ceiling was folded into. The roster is deliberately a single generic, identity-keyed mechanism with one row rather than a Hash-specific special case, so a future row for Int or String is an addition to this same authority, not a new mechanism. MEASURED CONSEQUENCE AT ARTIFACT GRAIN, added after this note first landed: the bypass is observable in the emitted FILE SET, not only in the emitter's answer. In a two-arm emission of one v2-only closure the file v2_std_integer.rs is present before the cut and ABSENT after it. That module declares exactly one item, the v2-declared structural Int, and its only type-position consumer was a single generated re-export line in std_algebra.rs; with Int reaching the bare-name checkpoint the re-export is no longer generated, nothing references the module, and it is not emitted. Every other hunk in that file is an offset shift from the deleted line -- the Int string literals are unchanged and the i64 count in the file is identical across arms, so nothing became native that was structural. AND THE DROP IS THE MINORITY CASE -- THE WRONG REALIZATION IS EMITTED, NOT AVOIDED. Across eleven emitted closures measured by smart-ibex-716 (corpus a6bceb6903, binaries a6bceb6903 and ad05a2f2d5), the module disappears in only 2; in the other 9 it SURVIVES with its content changed, from pub type Int = GroupCompletion<Rc<Nat>> to pub type Int = i64. So the native realization of the v2-declared Peano-completion type is already present in the emitted artifact. What is absent is only a consumer: the same census found ZERO type-position uses of the v2 Int in any of the eleven -- every qualified occurrence sits on a use line, and the only bare occurrences surviving a use-line exclusion were four string literals inside prose, one of them a parser test fixture. Two false positives were found and discarded on the way to that zero, both by pulling the specimen rather than trusting the count. The residue is therefore NOT a dead re-export being dropped, which was this note's first reading and is corrected here; it is a wrong realization sitting inert with no diagnostic attached, so the day any declaration binds a bare Int in one of those closures it binds i64 silently. THE HAZARD TRIGGER IS THEREFORE A TYPE POSITION APPEARING, not the re-export returning. This is recorded because a module leaving OR silently changing an alias target is the kind of consequence a content-only diff of one closure reads as offset noise: the instruments that name it are a file-set diff and a cross-closure alias-target read, and neither was in this PR's original receipt.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_scalar_checkpoint_reference_base(
-    dag_name: std::string::String,
-    decl_file: std::string::String,
-) -> Option<std::string::String> {
+    dag_name: String,
+    decl_file: String,
+) -> Option<String> {
     rust_scalar_checkpoint_spelling(dag_name.clone(), decl_file.clone(), false)
 }
 
 pub fn rust_scalar_checkpoint_grounding_base(
-    dag_name: std::string::String,
-    decl_file: std::string::String,
-) -> Option<std::string::String> {
+    dag_name: String,
+    decl_file: String,
+) -> Option<String> {
     rust_scalar_checkpoint_spelling(dag_name.clone(), decl_file.clone(), true)
 }
 
 pub fn rust_scalar_checkpoint_spelling(
-    dag_name: std::string::String,
-    decl_file: std::string::String,
+    dag_name: String,
+    decl_file: String,
     grounding: bool,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match crate::v1_compiler_coercion::lookup_checkpoint(
         RenderTarget::Rust,
         dag_name.clone(),
@@ -1009,21 +997,21 @@ pub fn rust_scalar_checkpoint_spelling(
     }
 }
 
-pub fn rust_checkpoint_scalar_phantom_params_note() -> std::string::String {
+pub fn rust_checkpoint_scalar_phantom_params_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Construction wall for E0109 (type arguments are not allowed on builtin type i64). A checkpoint scalar (lookup_checkpoint / rust_seed_host_numeric_alias — Int, Nat, i64, etc.) has arity 0 in Rust; DAG phantom params from GroupCompletion<Nat> or Compose<Int, MachineWidth<>> must not surface as i64<T>. Root fix: refuse phantom arg emission at the type-node renderer when the leaf is a checkpoint scalar and children > 0 — not a post-hoc string strip on the rendered output (DESIGN section 5: widening instead of refusing).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_render_checkpoint_scalar_bare(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     if ((n.children.clone().len() as i64) == 0) {
         std::option::Option::None
     } else {
@@ -1063,10 +1051,80 @@ pub fn rust_render_checkpoint_scalar_bare(
     }
 }
 
+pub fn binding_declares_span(binding: Rc<TypeBinding>, sp: Rc<SourceSpan>) -> bool {
+    match binding.resolved.clone().ident_span.clone() {
+        Some(s) => ((s.file.clone() == sp.file.clone()) && (s.start.clone() == sp.start.clone())),
+        None => false,
+    }
+}
+
+pub fn type_reference_declaration_ref(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
+) -> Option<Rc<DeclarationRef>> {
+    {
+        let rt = match n.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
+            _ => n.clone(),
+        };
+        let decl_name = crate::v1_std_core::qualified_last_segment(
+            crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone()),
+        );
+        if (decl_name.clone() == "".to_string()) {
+            return std::option::Option::None;
+        }
+        match rt.ident_span.clone() {
+            None => std::option::Option::None,
+            Some(sp) => match v1_rt::map_get(
+                &env.symbol_index.clone().global_bare.clone(),
+                decl_name.clone(),
+            )
+            .as_deref()
+            .cloned()
+            {
+                Some(GlobalBareLookupState::GlobalBareUniqueBinding {
+                    module_path: mp,
+                    binding: b,
+                    ..
+                }) => {
+                    if binding_declares_span(b.clone(), sp.clone()) {
+                        Some(crate::std_decl_ref::decl_ref(mp.clone(), decl_name.clone()))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+                Some(GlobalBareLookupState::GlobalBareAmbiguousBinding {
+                    candidates: cands,
+                    ..
+                }) => match Rc::new({
+                    let mut __result = Vec::new();
+                    for c in cands.iter().cloned() {
+                        if binding_declares_span(c.binding.clone(), sp.clone()) {
+                            __result.push(c);
+                        }
+                    }
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(c) => Some(crate::std_decl_ref::decl_ref(
+                        c.module_path.clone(),
+                        decl_name.clone(),
+                    )),
+                    None => std::option::Option::None,
+                },
+                None => std::option::Option::None,
+            },
+        }
+    }
+}
+
 pub fn rust_exact_binding_spelling(
     source: Option<Rc<DeclarationRef>>,
     grounding: bool,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match (*crate::v1_compiler_coercion::rust_lookup_exact_binding(source.clone())).clone() {
         ExactBindingResolution::ResolvedExactBinding { binding: b, .. } => {
             match crate::extdeps_languages_rust_representation::rust_exact_type_checkpoint(
@@ -1104,24 +1162,20 @@ pub fn rust_exact_binding_spelling(
 
 pub fn rust_exact_reference_spelling(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     rust_exact_binding_spelling(
-        crate::v1_compiler_infer_env::type_reference_declaration_ref(
-            n.clone(),
-            source_indices.clone(),
-            env.clone(),
-        ),
+        type_reference_declaration_ref(n.clone(), source_indices.clone(), env.clone()),
         false,
     )
 }
 
 pub fn rust_reference_checkpoint_spelling_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match rust_exact_reference_spelling(n.clone(), source_indices.clone(), env.clone()) {
         Some(exact) => Some(exact.clone()),
         None => rust_scalar_checkpoint_reference_base(
@@ -1132,10 +1186,10 @@ pub fn rust_reference_checkpoint_spelling_at(
 }
 
 pub fn rust_declaration_checkpoint_grounding_at(
-    module_path: std::string::String,
-    decl_name: std::string::String,
-    decl_file: std::string::String,
-) -> Option<std::string::String> {
+    module_path: String,
+    decl_name: String,
+    decl_file: String,
+) -> Option<String> {
     match rust_exact_binding_spelling(
         Some(crate::std_decl_ref::decl_ref(
             module_path.clone(),
@@ -1148,7 +1202,7 @@ pub fn rust_declaration_checkpoint_grounding_at(
     }
 }
 
-pub fn rust_seed_host_container_base(name: std::string::String) -> Option<std::string::String> {
+pub fn rust_seed_host_container_base(name: String) -> Option<String> {
     if ((name.clone() == "List".to_string()) || (name.clone() == "FreeMonoid".to_string())) {
         Some("Vec".to_string())
     } else {
@@ -1158,8 +1212,8 @@ pub fn rust_seed_host_container_base(name: std::string::String) -> Option<std::s
 
 pub fn rust_host_text_carrier_elem_name(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match n.children.clone().first().cloned() {
         Some(ch) => crate::v1_std_core::authored_name_at(source_indices.clone(), ch.clone()),
         None => match crate::v1_std_core::find_property(
@@ -1180,7 +1234,7 @@ pub fn rust_host_text_carrier_elem_name(
 
 pub fn is_host_text_carrier_type(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -1197,19 +1251,14 @@ pub fn is_host_text_carrier_type(
     }
 }
 
-pub fn rust_seed_host_freemonoid_empty(
-    carrier_name: std::string::String,
-) -> Option<std::string::String> {
+pub fn rust_seed_host_freemonoid_empty(carrier_name: String) -> Option<String> {
     match rust_seed_host_container_base(carrier_name.clone()) {
         Some(_) => Some(rust_shared_wrap_ctor("vec![]".to_string())),
         None => std::option::Option::None,
     }
 }
 
-pub fn rust_named_type_base(
-    name: std::string::String,
-    decl_file: std::string::String,
-) -> std::string::String {
+pub fn rust_named_type_base(name: String, decl_file: String) -> String {
     if ((name.clone() == "Witness".to_string()) || (name.clone() == "witness".to_string())) {
         "Witness".to_string()
     } else {
@@ -1221,20 +1270,17 @@ pub fn rust_named_type_base(
     }
 }
 
-pub fn rust_applied_type_base(
-    name: std::string::String,
-    decl_file: std::string::String,
-) -> std::string::String {
+pub fn rust_applied_type_base(name: String, decl_file: String) -> String {
     rust_named_type_base(name.clone(), decl_file.clone())
 }
 
-pub fn rust_witness_parent_leaf(parent: std::string::String) -> bool {
+pub fn rust_witness_parent_leaf(parent: String) -> bool {
     (crate::v1_std_core::qualified_last_segment(parent.clone()) == "Witness".to_string())
 }
 
 pub fn rust_peel_one_rc_type_node(
     type_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let seg = crate::v1_std_core::qualified_last_segment(type_node.name.clone());
@@ -1261,7 +1307,7 @@ pub fn rust_peel_one_rc_type_node(
 
 pub fn rust_peel_all_rc_type_node(
     mut type_node: Rc<Node>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     loop {
         let seg = crate::v1_std_core::qualified_last_segment(type_node.name.clone());
@@ -1278,9 +1324,9 @@ pub fn rust_peel_all_rc_type_node(
 }
 
 pub fn rust_witness_type_arg_admit_rendered(
-    rendered: std::string::String,
+    rendered: String,
     emit_info: Rc<EmitGraphInfo>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     if ((rendered.clone() == "_".to_string()) || (rendered.clone() == "".to_string())) {
         std::option::Option::None
     } else {
@@ -1306,7 +1352,7 @@ pub fn rust_witness_type_arg_admit_rendered(
 
 pub fn rust_witness_applied_type_arg_node(
     type_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match type_node.children.clone().first().cloned() {
         Some(child) => Some(child.clone()),
@@ -1328,8 +1374,8 @@ pub fn rust_witness_carrier_from_type_node(
     type_node: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         if ((type_node.inferred.clone() != std::option::Option::None)
             && crate::v1_std_core::is_compiler_error(type_node.inferred.clone().clone().unwrap()))
@@ -1377,8 +1423,8 @@ pub fn rust_witness_type_arg_render(
     type_node: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     rust_witness_carrier_from_type_node(
         type_node.clone(),
         shared_types.clone(),
@@ -1391,8 +1437,8 @@ pub fn rust_witness_type_arg_from_holds_value_field(
     fields: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match Rc::new({
         let mut __result = Vec::new();
         for f in fields.iter().cloned() {
@@ -1432,8 +1478,8 @@ pub fn rust_witness_type_arg_from_holds_value_field(
 pub fn rust_witness_type_arg_from_fn_return(
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match emit_info.fn_return_type.clone() {
         Some(rt) => rust_witness_carrier_from_type_node(
             rt.clone(),
@@ -1446,13 +1492,13 @@ pub fn rust_witness_type_arg_from_fn_return(
 }
 
 pub fn rust_witness_type_arg_for_variant(
-    variant_name: std::string::String,
+    variant_name: String,
     resolved_type: Rc<Node>,
     fields: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     if (variant_name.clone() == "Holds".to_string()) {
         match rust_witness_type_arg_from_holds_value_field(
             fields.clone(),
@@ -1494,15 +1540,15 @@ pub fn rust_witness_type_arg_for_variant(
 }
 
 pub fn rust_witness_variant_ctor_path(
-    variant_name: std::string::String,
-    ctor_name: std::string::String,
-    effective_parent: Option<std::string::String>,
+    variant_name: String,
+    ctor_name: String,
+    effective_parent: Option<String>,
     resolved_type: Rc<Node>,
     fields: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match effective_parent.clone() {
         Some(parent) => {
             if !rust_witness_parent_leaf(parent.clone()) {
@@ -1538,7 +1584,7 @@ pub fn rust_witness_variant_ctor_path(
     }
 }
 
-pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: std::string::String) -> bool {
+pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: String) -> bool {
     match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), type_name.clone()) {
         Some(item) => is_parametric_opaque_type_decl_item(item.clone(), env.source_indices.clone()),
         None => false,
@@ -1546,10 +1592,10 @@ pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: std::strin
 }
 
 pub fn is_parametric_opaque_type_base(
-    type_name: std::string::String,
-    def_mod_filename: std::string::String,
+    type_name: String,
+    def_mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     match type_item_by_name_in_module_filename(
@@ -1620,10 +1666,10 @@ pub fn closed_alias_peels_zero_param(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
 }
 
 pub fn alias_decl_arity_verdict(
-    type_name: std::string::String,
-    def_mod_filename: std::string::String,
+    type_name: String,
+    def_mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
     env: Rc<TypeEnv>,
 ) -> AliasDeclArityVerdict {
@@ -1657,7 +1703,7 @@ pub fn alias_decl_arity_verdict(
     }
 }
 
-pub fn alias_decl_arity_refusal_expr(type_name: std::string::String) -> std::string::String {
+pub fn alias_decl_arity_refusal_expr(type_name: String) -> String {
     emit_rust_compile_error_expr(v1_rt::concat(
         "alias decl arity absent for ".to_string(),
         type_name.clone(),
@@ -1665,9 +1711,9 @@ pub fn alias_decl_arity_refusal_expr(type_name: std::string::String) -> std::str
 }
 
 pub fn type_param_is_collection_element_in_values(
-    param_name: std::string::String,
+    param_name: String,
     value_params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -1699,9 +1745,9 @@ pub fn type_param_is_collection_element_in_values(
 }
 
 pub fn is_value_variant_type_arg(
-    generic_param_names: Rc<Vec<std::string::String>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-    name: std::string::String,
+    generic_param_names: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    name: String,
 ) -> bool {
     if {
         let mut __found = false;
@@ -1724,8 +1770,8 @@ pub fn is_value_variant_type_arg(
 
 pub fn type_leaf_name_for_collapse(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let a = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         if (a.clone() == "".to_string()) {
@@ -1736,7 +1782,7 @@ pub fn type_leaf_name_for_collapse(
     }
 }
 
-pub fn is_machine_width_phantom_token(name: std::string::String) -> bool {
+pub fn is_machine_width_phantom_token(name: String) -> bool {
     (((((name.clone() == "Word8".to_string()) || (name.clone() == "Word16".to_string()))
         || (name.clone() == "Word32".to_string()))
         || (name.clone() == "Word64".to_string()))
@@ -1745,9 +1791,9 @@ pub fn is_machine_width_phantom_token(name: std::string::String) -> bool {
 
 pub fn rust_type_arg_renders_as_unit(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((crate::v1_compiler_infer_resolve::is_width_nat_type_literal(n.clone())
         || is_machine_width_phantom_token(type_leaf_name_for_collapse(
@@ -1763,9 +1809,9 @@ pub fn rust_type_arg_renders_as_unit(
 
 pub fn type_node_has_value_variant_arg(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_value_variant_type_arg(
@@ -1821,18 +1867,18 @@ pub fn type_node_has_value_variant_arg(
 
 pub fn render_rust_phantom_opaque_applied_type_arg(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     scope: Rc<InferScope>,
     imports: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    module_name: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    module_name: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> std::string::String {
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
         generic_param_names.clone(),
@@ -1860,12 +1906,12 @@ pub fn render_rust_phantom_opaque_applied_type_arg(
 
 pub fn render_rust_phantom_opaque_applied_decl_arg(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
         generic_param_names.clone(),
@@ -1887,12 +1933,12 @@ pub fn render_rust_phantom_opaque_applied_decl_arg(
 
 pub fn render_rust_applied_type_arg(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     if rust_type_arg_renders_as_unit(
         n.clone(),
         generic_param_names.clone(),
@@ -1939,18 +1985,15 @@ pub fn render_rust_applied_type_arg(
 
 pub fn render_rust_applied_type(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(
-                n.clone(),
-                render_rust_text_carrier(n.clone(), shared_types.clone()),
-            );
+            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -2091,10 +2134,10 @@ pub fn render_rust_applied_type(
 }
 
 pub fn render_rust_shared_type_if_needed(
-    type_name: std::string::String,
-    rendered: std::string::String,
+    type_name: String,
+    rendered: String,
     shared_types: Rc<BTreeSet<String>>,
-) -> std::string::String {
+) -> String {
     if (v1_rt::set_contains(&shared_types, type_name.clone())
         && !rust_type_is_rc_wrapped(rendered.clone()))
     {
@@ -2104,10 +2147,7 @@ pub fn render_rust_shared_type_if_needed(
     }
 }
 
-pub fn rust_carrier_realizes_as_machine_scalar(
-    n: Rc<Node>,
-    type_name: std::string::String,
-) -> bool {
+pub fn rust_carrier_realizes_as_machine_scalar(n: Rc<Node>, type_name: String) -> bool {
     match crate::v1_compiler_coercion::rust_seed_host_numeric_alias(
         type_name.clone(),
         crate::v1_compiler_coercion::type_reference_decl_file(n.clone()),
@@ -2119,7 +2159,7 @@ pub fn rust_carrier_realizes_as_machine_scalar(
 
 pub fn rust_carrier_is_at_shared_layer(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
 ) -> bool {
     {
@@ -2133,10 +2173,10 @@ pub fn rust_carrier_is_at_shared_layer(
 
 pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
-    type_name: std::string::String,
-    rendered: std::string::String,
+    type_name: String,
+    rendered: String,
     shared_types: Rc<BTreeSet<String>>,
-) -> std::string::String {
+) -> String {
     {
         if rust_carrier_realizes_as_machine_scalar(n.clone(), type_name.clone()) {
             return rust_carrier_optional_wrap(n.clone(), rendered.clone());
@@ -2154,12 +2194,12 @@ pub fn render_rust_shared_type_with_optional(
 
 pub fn render_rust_applied_type_shared(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let rendered = render_rust_applied_type(
             n.clone(),
@@ -2181,18 +2221,15 @@ pub fn render_rust_applied_type_shared(
 
 pub fn render_rust_decl_type(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(
-                n.clone(),
-                render_rust_text_carrier(n.clone(), shared_types.clone()),
-            );
+            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -2329,7 +2366,7 @@ pub fn render_rust_decl_type(
                             {
                                 rust_carrier_optional_wrap(
                                     n.clone(),
-                                    render_rust_text_carrier(n.clone(), shared_types.clone()),
+                                    render_rust_text_carrier(shared_types.clone()),
                                 )
                             } else {
                                 if ((((n.connective.clone() == Connective::NoConnective)
@@ -2473,10 +2510,7 @@ if peel.clone() {
     })
 }
 
-pub fn rust_fn_sig_preserves_authored_alias_leaf(
-    name: std::string::String,
-    decl_file: std::string::String,
-) -> bool {
+pub fn rust_fn_sig_preserves_authored_alias_leaf(name: String, decl_file: String) -> bool {
     if crate::std_types::is_kernel_type(name.clone()) {
         false
     } else {
@@ -2495,10 +2529,7 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
     }
 }
 
-pub fn rust_carrier_optional_wrap(
-    n: Rc<Node>,
-    rendered: std::string::String,
-) -> std::string::String {
+pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
@@ -2514,18 +2545,15 @@ pub fn rust_carrier_optional_wrap(
 
 pub fn render_rust_fn_sig_type(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(
-                n.clone(),
-                render_rust_text_carrier(n.clone(), shared_types.clone()),
-            );
+            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
         if is_host_optional_carrier_type(n.clone(), source_indices.clone()) {
             return render_rust_optional_carrier_applied(
@@ -2581,7 +2609,7 @@ pub fn render_rust_fn_sig_type(
                 {
                     rust_carrier_optional_wrap(
                         n.clone(),
-                        render_rust_text_carrier(n.clone(), shared_types.clone()),
+                        render_rust_text_carrier(shared_types.clone()),
                     )
                 } else {
                     if (((((((n.connective.clone() == Connective::NoConnective)
@@ -2642,9 +2670,9 @@ pub fn render_rust_fn_sig_type(
 pub fn render_rust_fn_sig_type_applied_binding(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     match crate::v1_std_core::find_property(
         n.properties.clone(),
         "__applied_type_args".to_string(),
@@ -2729,7 +2757,7 @@ pub fn render_rust_fn_sig_type_applied_binding(
 
 pub fn rust_decl_type_container_arg_needs_resolved_overlay(
     arg: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> bool {
     {
@@ -2766,7 +2794,7 @@ pub fn rust_decl_type_container_arg_needs_resolved_overlay(
 
 pub fn render_rust_decl_type_container_arg(
     arg: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
     if rust_decl_type_container_arg_needs_resolved_overlay(
@@ -2782,7 +2810,7 @@ pub fn render_rust_decl_type_container_arg(
 
 pub fn alias_rhs_container_arg(
     arg: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match arg.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -2799,41 +2827,41 @@ pub fn alias_rhs_container_arg(
     }
 }
 
-pub fn rust_fn_sig_leaf_name_dotted_note() -> std::string::String {
+pub fn rust_fn_sig_leaf_name_dotted_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Construction wall for the dotted-render class in FN-SIG TYPE position (sibling of coerce_primitive_type_dotted_fallback_note for primitives and emit_typed_record_lit's bare_qualified_name for record-lit construction). render_rust_fn_sig_type / render_rust_fn_sig_type_applied_binding / render_rust_decl_type all extract a leaf type's name via authored_name_at and then both (a) key lookups against is_container_type/shared_types/closed_alias_peel_verdict and (b) pass that same string as literal Rust output via render_rust_shared_type_with_optional's `rendered` argument. A namespace-qualified closure-param or aliased-decl type (e.g. impl Fn(v2.lens.complexity_accumulator_copy.Finding) -> bool) previously reached (b) verbatim -- dots and all, an invalid Rust token sequence rustc reports as 'expected one of !, (, +, ::, or <, found .'. Since every lookup in (a) is keyed on the bare declared name (same reasoning as alias_rhs_qualified_name_routing_note below), the fix is to route the leaf-name extraction through rust_fn_sig_leaf_name (which wraps authored_name_at with qualified_last_segment, the single authority) so both the lookup key and the emitted text are bare together -- not a second dotted-name fallback forked per call site. Every already-bare name renders exactly as before.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_fn_sig_leaf_name(
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     n: Rc<Node>,
-) -> std::string::String {
+) -> String {
     crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
         source_indices.clone(),
         n.clone(),
     ))
 }
 
-pub fn alias_rhs_qualified_name_routing_note() -> std::string::String {
+pub fn alias_rhs_qualified_name_routing_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Construction wall for the dotted-render class. A namespace-QUALIFIED name in a type position (post-PR 6848 resolution) arrives from authored_name_at as the full dotted spelling, e.g. std.algebra.FreeMonoid. Every routing lookup on this path — alias_rhs_rust_qualify_module_filename via lookup_item, rust_seed_host_container_base, alias_base_is_zero_param_decl, is_parametric_opaque_type_base, shared_types — is keyed on the BARE declared name, so a dotted spelling matched nothing, def_mod fell back to the local module, and the else arm rendered the dotted string VERBATIM into Rust. That is not valid Rust: rustc reports 'expected one of !, (, +, ::, ;, <, or where, found .', a PARSE error, which then masks every later error in the module.\n\nMeasured blast radius before the fix: the emitted 04_infer closure (50 files) contained exactly ONE such line — 'pub type List<T> = std.algebra.FreeMonoid<T>' in v2_std_collection.rs — and that single line blocked 4 of 5 self-host flip candidates, because std.collection sits in essentially every deep-module closure. The control that proves the fault is qualified-specific is the very next declaration: 'type Set<T> = PointwisePower<T>' (BARE) already routed correctly to Rc<crate::v2_std_algebra::PointwisePower<T>>.\n\nFix: route on the TERMINAL segment via qualified_last_segment (v1.std.core, the existing authority — a qualified name IS a containment path, and its last segment is the declared name the registry knows). Not a string dot-to-colon rewrite: that would FABRICATE a path from the spelling instead of RESOLVING the declaration, and would silently produce a wrong path whenever the qualifier does not match the defining module. Because qualified_last_segment is the identity on an unqualified name, every bare name renders exactly as before — the seed stays byte-identical by construction, which is why this lands with regen_divergence_count=0 rather than merely hoping for it.\n\nThe v2 corpus authors qualified names in type position only rarely today, which is why one line carried this much weight; the point of fixing the renderer rather than editing that one declaration is that the next qualified name must not reintroduce it (DESIGN: do not cement the seed's accidents).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_alias_rhs_applied_container_or_base(
     n: Rc<Node>,
-    leaf: std::string::String,
-    base: std::string::String,
-    arg_list: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    leaf: String,
+    base: String,
+    arg_list: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
         match arg_list.clone().first().cloned() {
             Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
@@ -2888,18 +2916,18 @@ pub fn rust_alias_rhs_applied_container_or_base(
 
 pub fn render_rust_alias_rhs_type(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     scope: Rc<InferScope>,
     imports: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    module_name: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    module_name: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> std::string::String {
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if crate::v1_compiler_infer::is_where_refinement_type(n.clone()) {
             match n.children.clone().first().cloned() {
@@ -3224,7 +3252,7 @@ pub fn render_rust_alias_rhs_type(
     })
 }
 
-pub fn type_variable_node(id: std::string::String) -> Rc<Node> {
+pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
@@ -3255,10 +3283,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn type_var_in_fn_generic_scope(
-    id: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
-) -> bool {
+pub fn type_var_in_fn_generic_scope(id: String, generic_param_names: Rc<Vec<String>>) -> bool {
     {
         let mut __found = false;
         for g in generic_param_names.iter().cloned() {
@@ -3271,7 +3296,7 @@ pub fn type_var_in_fn_generic_scope(
     }
 }
 
-pub fn value_ref_qualified_leaf(name: std::string::String) -> std::string::String {
+pub fn value_ref_qualified_leaf(name: String) -> String {
     if v1_rt::string_contains(&name, ".".to_string()) {
         crate::v1_std_core::qualified_last_segment(name.clone())
     } else {
@@ -3279,7 +3304,7 @@ pub fn value_ref_qualified_leaf(name: std::string::String) -> std::string::Strin
     }
 }
 
-pub fn value_ref_qualifier_prefix(name: std::string::String) -> std::string::String {
+pub fn value_ref_qualifier_prefix(name: String) -> String {
     {
         let leaf = value_ref_qualified_leaf(name.clone());
         if (leaf.clone() == name.clone()) {
@@ -3294,10 +3319,7 @@ pub fn value_ref_qualifier_prefix(name: std::string::String) -> std::string::Str
     }
 }
 
-pub fn value_ref_normalize_self_module(
-    name: std::string::String,
-    module_name: std::string::String,
-) -> std::string::String {
+pub fn value_ref_normalize_self_module(name: String, module_name: String) -> String {
     if (v1_rt::string_contains(&name, ".".to_string())
         && (value_ref_qualifier_prefix(name.clone()) == module_name.clone()))
     {
@@ -3307,7 +3329,7 @@ pub fn value_ref_normalize_self_module(
     }
 }
 
-pub fn rust_is_uppercase_letter(c: std::string::String) -> bool {
+pub fn rust_is_uppercase_letter(c: String) -> bool {
     ((((((((((((((((((((((((((c.clone() == "A".to_string())
         || (c.clone() == "B".to_string()))
         || (c.clone() == "C".to_string()))
@@ -3336,10 +3358,7 @@ pub fn rust_is_uppercase_letter(c: std::string::String) -> bool {
         || (c.clone() == "Z".to_string()))
 }
 
-pub fn rust_read_rendered_type_ident(
-    type_str: std::string::String,
-    start: i64,
-) -> std::string::String {
+pub fn rust_read_rendered_type_ident(type_str: String, start: i64) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (start.clone() >= v1_rt::string_length(&type_str)) {
             "".to_string()
@@ -3366,8 +3385,8 @@ pub fn rust_read_rendered_type_ident(
 }
 
 pub fn rust_fold_rendered_type_has_spurious_generic_atom(
-    atom: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    atom: String,
+    generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     if (atom.clone() == "".to_string()) {
         false
@@ -3381,9 +3400,9 @@ pub fn rust_fold_rendered_type_has_spurious_generic_atom(
 }
 
 pub fn rust_fold_rendered_type_has_spurious_from_pos(
-    mut type_str: std::string::String,
+    mut type_str: String,
     mut search_from: i64,
-    mut generic_param_names: Rc<Vec<std::string::String>>,
+    mut generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     loop {
         if ((type_str.clone() == "_".to_string()) || (type_str.clone() == "".to_string())) {
@@ -3418,15 +3437,15 @@ pub fn rust_fold_rendered_type_has_spurious_from_pos(
 }
 
 pub fn rust_fold_rendered_type_has_any_spurious_generic(
-    type_str: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    type_str: String,
+    generic_param_names: Rc<Vec<String>>,
 ) -> bool {
     rust_fold_rendered_type_has_spurious_from_pos(type_str.clone(), 0, generic_param_names.clone())
 }
 
 pub fn type_leaf_is_unbound_in_closure_scope(
-    name: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    name: String,
+    generic_param_names: Rc<Vec<String>>,
     env: Rc<TypeEnv>,
 ) -> bool {
     if type_var_in_fn_generic_scope(name.clone(), generic_param_names.clone()) {
@@ -3449,9 +3468,9 @@ pub fn type_leaf_is_unbound_in_closure_scope(
 
 pub fn type_node_has_closure_unbound_generic_atom(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     env: Rc<TypeEnv>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let leaf_name = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -3529,8 +3548,8 @@ pub fn type_node_has_closure_unbound_generic_atom(
 
 pub fn type_node_has_unbound_type_variable(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (n.inferred.clone() != std::option::Option::None) {
@@ -3595,7 +3614,7 @@ pub fn type_node_has_unbound_type_variable(
 
 pub fn is_rust_value_type(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
@@ -3612,7 +3631,7 @@ pub fn is_rust_value_type(
 
 pub fn is_rust_string_like(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(n.clone());
@@ -3623,7 +3642,7 @@ pub fn is_rust_string_like(
     }
 }
 
-pub fn rust_source_root() -> std::string::String {
+pub fn rust_source_root() -> String {
     match crate::v1_compiler_languages::scaffold_for_target(RenderTarget::Rust)
         .source_dir
         .clone()
@@ -3633,13 +3652,13 @@ pub fn rust_source_root() -> std::string::String {
     }
 }
 
-pub fn rust_source_ext() -> std::string::String {
+pub fn rust_source_ext() -> String {
     crate::v1_compiler_languages::scaffold_for_target(RenderTarget::Rust)
         .source_file_extension
         .clone()
 }
 
-pub fn rust_visibility_prefix() -> std::string::String {
+pub fn rust_visibility_prefix() -> String {
     match (*crate::v1_compiler_languages::visibility_for_target(RenderTarget::Rust)).clone() {
         VisibilitySpec::KeywordVisibility { prefix: p, .. } => p.clone(),
         _ => "__VISIBILITY_SPEC_MISMATCH__".to_string(),
@@ -3652,20 +3671,20 @@ pub fn rust_items() -> Rc<ItemKeywords> {
         .clone()
 }
 
-pub fn rust_ord_derives_text() -> std::string::String {
+pub fn rust_ord_derives_text() -> String {
     "#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]"
         .to_string()
 }
 
-pub fn rust_ord_derives_copy_text() -> std::string::String {
+pub fn rust_ord_derives_copy_text() -> String {
     "#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]".to_string()
 }
 
 pub fn rust_nominal_ord_derives_for_shape(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if crate::v1_compiler_trait_derive_emit::rust_symbol_wrapped_ord_carrier_shape_eligible(
         children.clone(),
         source_indices.clone(),
@@ -3678,7 +3697,7 @@ pub fn rust_nominal_ord_derives_for_shape(
 
 pub fn rust_nominal_ord_type_decl_ord_eligible(
     decl: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_compiler_trait_derive_emit::rust_nominal_identity_carrier_shape_eligible(
         decl.clone(),
@@ -3691,7 +3710,7 @@ pub fn rust_nominal_ord_type_decl_ord_eligible(
 
 pub fn rust_nominal_ord_type_ref_eligible(
     elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     {
@@ -3714,7 +3733,7 @@ pub fn rust_nominal_ord_type_ref_eligible(
 
 pub fn rust_nominal_ord_type_eligible(
     elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     ((crate::v1_compiler_trait_derive_emit::rust_nominal_identity_carrier_shape_eligible(
@@ -3730,7 +3749,7 @@ pub fn rust_nominal_ord_type_eligible(
     ))
 }
 
-pub fn rust_serde_tag_attr() -> std::string::String {
+pub fn rust_serde_tag_attr() -> String {
     match crate::v1_compiler_languages::serialization_for_target(RenderTarget::Rust)
         .tag_attribute
         .clone()
@@ -3745,18 +3764,18 @@ pub fn rust_serde_tag_attr() -> std::string::String {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustEnumWireSerde {
-    pub enum_attr: std::string::String,
-    pub rename_prefix: Option<std::string::String>,
-    pub rename_suffix: Option<std::string::String>,
-    pub rename_style: Option<std::string::String>,
-    pub error_message: Option<std::string::String>,
+    pub enum_attr: String,
+    pub rename_prefix: Option<String>,
+    pub rename_suffix: Option<String>,
+    pub rename_style: Option<String>,
+    pub error_message: Option<String>,
 }
 
 pub fn rust_serde_policy(
-    enum_attr: std::string::String,
-    rename_prefix: Option<std::string::String>,
-    rename_suffix: Option<std::string::String>,
-    rename_style: Option<std::string::String>,
+    enum_attr: String,
+    rename_prefix: Option<String>,
+    rename_suffix: Option<String>,
+    rename_style: Option<String>,
 ) -> Rc<RustEnumWireSerde> {
     Rc::new(RustEnumWireSerde {
         enum_attr: enum_attr.clone(),
@@ -3767,7 +3786,7 @@ pub fn rust_serde_policy(
     })
 }
 
-pub fn rust_serde_policy_error(message: std::string::String) -> Rc<RustEnumWireSerde> {
+pub fn rust_serde_policy_error(message: String) -> Rc<RustEnumWireSerde> {
     Rc::new(RustEnumWireSerde {
         enum_attr: "".to_string(),
         rename_prefix: std::option::Option::None,
@@ -3795,7 +3814,7 @@ pub fn rust_untagged_policy() -> Rc<RustEnumWireSerde> {
     )
 }
 
-pub fn rust_serde_error_policy(message: std::string::String) -> Rc<RustEnumWireSerde> {
+pub fn rust_serde_error_policy(message: String) -> Rc<RustEnumWireSerde> {
     rust_serde_policy_error(message.clone())
 }
 
@@ -3828,8 +3847,8 @@ pub fn rust_screaming_snake_string_policy() -> Rc<RustEnumWireSerde> {
 
 pub fn field_value_by_name(
     record: Rc<Node>,
-    field_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -3850,7 +3869,7 @@ pub fn field_value_by_name(
     }
 }
 
-pub fn literal_string_value(n: Rc<Node>) -> Option<std::string::String> {
+pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -3862,9 +3881,9 @@ pub fn literal_string_value(n: Rc<Node>) -> Option<std::string::String> {
 
 pub fn record_string_field(
     record: Rc<Node>,
-    field_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match field_value_by_name(record.clone(), field_name.clone(), source_indices.clone()) {
         Some(value_node) => literal_string_value(value_node.clone()),
         None => std::option::Option::None,
@@ -3873,7 +3892,7 @@ pub fn record_string_field(
 
 pub fn naming_policy_node(
     encoding: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     field_value_by_name(
         encoding.clone(),
@@ -3884,8 +3903,8 @@ pub fn naming_policy_node(
 
 pub fn coproduct_decl_ref_decl_name(
     body: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match field_value_by_name(
         body.clone(),
         "coproduct".to_string(),
@@ -3902,9 +3921,9 @@ pub fn coproduct_decl_ref_decl_name(
 
 pub fn optional_string_record_field(
     record: Rc<Node>,
-    field_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match field_value_by_name(record.clone(), field_name.clone(), source_indices.clone()) {
         Some(n) => literal_string_value(n.clone()),
         None => std::option::Option::None,
@@ -3913,9 +3932,9 @@ pub fn optional_string_record_field(
 
 pub fn required_literal_string_policy_field(
     record: Rc<Node>,
-    field_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match field_value_by_name(record.clone(), field_name.clone(), source_indices.clone()) {
         Some(n) => literal_string_value(n.clone()),
         None => std::option::Option::None,
@@ -3924,7 +3943,7 @@ pub fn required_literal_string_policy_field(
 
 pub fn rust_string_policy_for_naming(
     naming: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     {
         let naming_name =
@@ -3996,9 +4015,9 @@ pub fn rust_string_policy_for_naming(
 }
 
 pub fn rust_internal_policy_for_naming(
-    tag_field: std::string::String,
+    tag_field: String,
     naming: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     {
         let naming_name =
@@ -4107,7 +4126,7 @@ pub fn rust_internal_policy_for_naming(
 
 pub fn rust_internal_policy_for_encoding(
     encoding: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     match record_string_field(
         encoding.clone(),
@@ -4132,7 +4151,7 @@ pub fn rust_internal_policy_for_encoding(
 
 pub fn resolve_wire_serde_policy_from_encoding_node(
     ve: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     {
         let encoding_name =
@@ -4167,7 +4186,7 @@ pub fn resolve_wire_serde_policy_from_encoding_node(
 
 pub fn resolve_wire_serde_policy(
     wire_item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
     match wire_item.body.clone() {
     Some(ve) => resolve_wire_serde_policy_from_encoding_node(ve.clone(), source_indices.clone()),
@@ -4178,30 +4197,30 @@ pub fn resolve_wire_serde_policy(
 }
 }
 
-pub fn item_binding_is_named(env: Rc<TypeEnv>, node: Rc<Node>, name: std::string::String) -> bool {
+pub fn item_binding_is_named(env: Rc<TypeEnv>, node: Rc<Node>, name: String) -> bool {
     ((crate::v1_compiler_infer_env::authored_name(env.clone(), node.clone()) == name.clone())
         || (node.name.clone() == name.clone()))
 }
 
 pub fn resolve_wire_serde_policy_for_coproduct(
     wire_contract_item: Option<Rc<Node>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    data_items: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 ) -> Rc<RustEnumWireSerde> {
     resolve_wire_serde_policy_for_coproduct_seen(
         wire_contract_item.clone(),
         source_indices.clone(),
         data_items.clone(),
-        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         32,
     )
 }
 
 pub fn resolve_wire_serde_policy_for_coproduct_seen(
     mut wire_contract_item: Option<Rc<Node>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    mut data_items: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
-    mut seen_aliases: Rc<HashMap<std::string::String, bool>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    mut seen_aliases: Rc<HashMap<String, bool>>,
     mut fuel: i64,
 ) -> Rc<RustEnumWireSerde> {
     loop {
@@ -4294,7 +4313,7 @@ continue;
 
 pub fn coproduct_wire_contract_encoding(
     contract_item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match contract_item.body.clone() {
         Some(body) => {
@@ -4306,7 +4325,7 @@ pub fn coproduct_wire_contract_encoding(
 
 pub fn variant_encoding_is_string_variant(
     encoding: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_std_core::authored_name_at(source_indices.clone(), encoding.clone())
         == "StringVariant".to_string())
@@ -4314,8 +4333,8 @@ pub fn variant_encoding_is_string_variant(
 
 pub fn coproduct_wire_contract_targets(
     contract_item: Rc<Node>,
-    coproduct_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    coproduct_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match contract_item.body.clone() {
         Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
@@ -4326,14 +4345,14 @@ pub fn coproduct_wire_contract_targets(
     }
 }
 
-pub fn emit_rust_compile_error_item(message: std::string::String) -> std::string::String {
+pub fn emit_rust_compile_error_item(message: String) -> String {
     v1_rt::concat(
         v1_rt::concat("compile_error!(\"".to_string(), message.clone()),
         "\");".to_string(),
     )
 }
 
-pub fn emit_rust_compile_error_expr(message: std::string::String) -> std::string::String {
+pub fn emit_rust_compile_error_expr(message: String) -> String {
     v1_rt::concat(
         v1_rt::concat("compile_error!(\"".to_string(), message.clone()),
         "\")".to_string(),
@@ -4342,7 +4361,7 @@ pub fn emit_rust_compile_error_expr(message: std::string::String) -> std::string
 
 pub fn module_imports_std_serialization_coproduct_wire_contract(
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -4377,7 +4396,7 @@ pub fn module_imports_std_serialization_coproduct_wire_contract(
 pub fn data_item_type_is_coproduct_wire_contract(
     item: Rc<Node>,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match item.type_annotation.clone() {
         Some(type_node) => {
@@ -4394,7 +4413,7 @@ pub fn data_item_type_is_coproduct_wire_contract(
 
 pub fn module_defines_local_coproduct_wire_contract_type(
     module_items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -4423,7 +4442,7 @@ pub fn is_coproduct_wire_contract_row(
     item: Rc<Node>,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone()) {
         false
@@ -4463,9 +4482,9 @@ pub fn is_coproduct_wire_contract_row(
 
 pub fn emit_coproduct_wire_contract_target_validation(
     contract_item: Rc<Node>,
-    local_coproduct_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    local_coproduct_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match contract_item.body.clone() {
         Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices.clone()) {
             Some(target_name) => {
@@ -4502,9 +4521,9 @@ pub fn emit_coproduct_wire_contract_target_validation(
 pub fn emit_coproduct_wire_contract_validations(
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    local_coproduct_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    local_coproduct_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((local_coproduct_names.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -4551,11 +4570,11 @@ pub fn emit_coproduct_wire_contract_validations(
 }
 
 pub fn resolve_local_coproduct_wire_policy(
-    coproduct_name: std::string::String,
+    coproduct_name: String,
     all_unit_variants: bool,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<RustEnumWireSerde>> {
     {
         let contracts = Rc::new({
@@ -4616,12 +4635,10 @@ pub fn resolve_local_coproduct_wire_policy(
     }
 }
 
-pub fn build_data_item_index(
-    modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<std::string::String, Rc<Node>>> {
+pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
     modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
-        |acc: Rc<HashMap<std::string::String, Rc<Node>>>, tm: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
             let module_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -4639,7 +4656,7 @@ pub fn build_data_item_index(
             .cloned()
             .fold(
                 acc,
-                |item_acc: Rc<HashMap<std::string::String, Rc<Node>>>, item: Rc<Node>| {
+                |item_acc: Rc<HashMap<String, Rc<Node>>>, item: Rc<Node>| {
                     let item_name = crate::v1_std_core::authored_name_at(
                         tm.type_env.clone().source_indices.clone(),
                         item.clone(),
@@ -4657,10 +4674,10 @@ pub fn build_data_item_index(
 
 pub fn build_qualified_item_registry(
     modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<std::string::String, Rc<ItemInfo>>> {
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<std::string::String, Rc<ItemInfo>>(),
-        |acc: Rc<HashMap<std::string::String, Rc<ItemInfo>>>, tm: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+        |acc: Rc<HashMap<String, Rc<ItemInfo>>>, tm: Rc<TypedModule>| {
             let module_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -4670,32 +4687,30 @@ pub fn build_qualified_item_registry(
                 .cloned()
                 .fold(
                     acc,
-                    |acc2: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-                     item_name: std::string::String| match v1_rt::map_get(
-                        &tm.item_registry.clone(),
-                        item_name.clone(),
-                    ) {
-                        Some(info) => {
-                            let qualified_name = v1_rt::concat(
-                                v1_rt::concat(module_name.clone(), ".".to_string()),
-                                item_name.clone(),
-                            );
-                            match v1_rt::map_get(&acc2, qualified_name.clone()) {
-                                Some(_) => v1_rt::rc_map_insert(
-                                    acc2.clone(),
-                                    qualified_name.clone(),
-                                    duplicate_qualified_item_registry_marker(
+                    |acc2: Rc<HashMap<String, Rc<ItemInfo>>>, item_name: String| {
+                        match v1_rt::map_get(&tm.item_registry.clone(), item_name.clone()) {
+                            Some(info) => {
+                                let qualified_name = v1_rt::concat(
+                                    v1_rt::concat(module_name.clone(), ".".to_string()),
+                                    item_name.clone(),
+                                );
+                                match v1_rt::map_get(&acc2, qualified_name.clone()) {
+                                    Some(_) => v1_rt::rc_map_insert(
+                                        acc2.clone(),
                                         qualified_name.clone(),
+                                        duplicate_qualified_item_registry_marker(
+                                            qualified_name.clone(),
+                                        ),
                                     ),
-                                ),
-                                None => v1_rt::rc_map_insert(
-                                    acc2.clone(),
-                                    qualified_name.clone(),
-                                    info.clone(),
-                                ),
+                                    None => v1_rt::rc_map_insert(
+                                        acc2.clone(),
+                                        qualified_name.clone(),
+                                        info.clone(),
+                                    ),
+                                }
                             }
+                            None => acc2.clone(),
                         }
-                        None => acc2.clone(),
                     },
                 )
         },
@@ -4703,30 +4718,31 @@ pub fn build_qualified_item_registry(
 }
 
 pub fn merge_item_registries(
-    bare: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    qualified: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-) -> Rc<HashMap<std::string::String, Rc<ItemInfo>>> {
+    bare: Rc<HashMap<String, Rc<ItemInfo>>>,
+    qualified: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     Rc::new(v1_rt::map_keys(&qualified)).iter().cloned().fold(
         bare.clone(),
-        |acc: Rc<HashMap<std::string::String, Rc<ItemInfo>>>, key: std::string::String| {
-            match v1_rt::map_get(&qualified, key.clone()) {
-                Some(info) => v1_rt::rc_map_insert(acc.clone(), key.clone(), info.clone()),
-                None => acc.clone(),
-            }
+        |acc: Rc<HashMap<String, Rc<ItemInfo>>>, key: String| match v1_rt::map_get(
+            &qualified,
+            key.clone(),
+        ) {
+            Some(info) => v1_rt::rc_map_insert(acc.clone(), key.clone(), info.clone()),
+            None => acc.clone(),
         },
     )
 }
 
-pub fn duplicate_qualified_item_registry_marker_note() -> std::string::String {
+pub fn duplicate_qualified_item_registry_marker_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Fail-closed marker row for duplicate exact module.leaf keys in the qualified item_registry overlay. build_qualified_item_registry inserts this sentinel instead of last-write-wins. Consumers: emit_qualified_value_ref_crate_ident (dotted Present path), value_ref_item_info_refusal (emit_var_ref / emit_typed_expr_base Present arms) — both refuse via emit_error_expr when is_duplicate_qualified_item_registry_marker holds. DEFINE-AND-CONSUME, not define-only.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn duplicate_qualified_item_registry_marker(name: std::string::String) -> Rc<ItemInfo> {
+pub fn duplicate_qualified_item_registry_marker(name: String) -> Rc<ItemInfo> {
     Rc::new(ItemInfo {
         name: name.clone(),
         module_name: "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string(),
@@ -4743,7 +4759,7 @@ pub fn is_duplicate_qualified_item_registry_marker(info: Rc<ItemInfo>) -> bool {
     (info.module_name.clone() == "__DUPLICATE_QUALIFIED_ITEM_REGISTRY_KEY__".to_string())
 }
 
-pub fn value_ref_registry_lookup_key(resolved_name: std::string::String) -> std::string::String {
+pub fn value_ref_registry_lookup_key(resolved_name: String) -> String {
     {
         let qualifier = value_ref_qualifier_prefix(resolved_name.clone());
         if (qualifier.clone() == "".to_string()) {
@@ -4755,8 +4771,8 @@ pub fn value_ref_registry_lookup_key(resolved_name: std::string::String) -> std:
 }
 
 pub fn lookup_item_for_value_ref(
-    resolved_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    resolved_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Option<Rc<ItemInfo>> {
     crate::v1_compiler_emit::lookup_item(
         registry.clone(),
@@ -4765,10 +4781,10 @@ pub fn lookup_item_for_value_ref(
 }
 
 pub fn emit_qualified_value_ref_crate_ident(
-    leaf: std::string::String,
+    leaf: String,
     info: Rc<ItemInfo>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-) -> std::string::String {
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> String {
     if is_duplicate_qualified_item_registry_marker(info.clone()) {
         crate::v1_compiler_emit::emit_error_expr(
             "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay"
@@ -4791,7 +4807,7 @@ pub fn emit_qualified_value_ref_crate_ident(
     }
 }
 
-pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> std::string::String {
+pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> String {
     crate::v1_compiler_emit::emit_error_expr(
         "duplicate qualified item_registry key — refuse ambiguous module.leaf overlay".to_string(),
         RenderTarget::Rust,
@@ -4799,10 +4815,10 @@ pub fn value_ref_item_info_refusal(info: Rc<ItemInfo>) -> std::string::String {
 }
 
 pub fn insert_scoped_data_item(
-    scoped: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
-    name: std::string::String,
+    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    name: String,
     item: Rc<Node>,
-) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     {
         let existing = match v1_rt::map_get(&scoped, name.clone()) {
             Some(entries) => entries.clone(),
@@ -4818,8 +4834,8 @@ pub fn insert_scoped_data_item(
 
 pub fn build_scoped_data_item_index(
     typed_module: Rc<TypedModule>,
-    data_items: Rc<HashMap<std::string::String, Rc<Node>>>,
-) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>> {
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     {
         let module_name = crate::v1_std_core::authored_name_at(
             typed_module.type_env.clone().source_indices.clone(),
@@ -4837,8 +4853,8 @@ pub fn build_scoped_data_item_index(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<Vec<Rc<Node>>>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>, item: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<Node>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, item: Rc<Node>| {
                 insert_scoped_data_item(
                     acc,
                     crate::v1_std_core::authored_name_at(
@@ -4854,7 +4870,7 @@ pub fn build_scoped_data_item_index(
             .cloned()
             .fold(
                 local.clone(),
-                |acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+                |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
                     let import_path = crate::v1_std_core::authored_name_at(
                         typed_module.type_env.clone().source_indices.clone(),
                         imp.clone(),
@@ -4870,8 +4886,8 @@ pub fn build_scoped_data_item_index(
                         .cloned()
                         .fold(
                             acc.clone(),
-                            |inner: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
-                             imported_name: std::string::String| {
+                            |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+                             imported_name: String| {
                                 let qualified = v1_rt::concat(
                                     v1_rt::concat(import_path.clone(), ".".to_string()),
                                     imported_name.clone(),
@@ -4893,14 +4909,14 @@ pub fn build_scoped_data_item_index(
 }
 
 pub fn augment_scoped_data_item_index_with_imports(
-    scoped: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
+    scoped: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    data_items: Rc<HashMap<std::string::String, Rc<Node>>>,
-) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     imports.iter().cloned().fold(
         scoped.clone(),
-        |acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imp: Rc<Node>| {
             let import_path =
                 crate::v1_std_core::authored_name_at(source_indices.clone(), imp.clone());
             if crate::v1_std_core::import_is_all(imp.clone()) {
@@ -4911,8 +4927,7 @@ pub fn augment_scoped_data_item_index_with_imports(
                     .cloned()
                     .fold(
                         acc.clone(),
-                        |inner: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
-                         imported_name: std::string::String| {
+                        |inner: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, imported_name: String| {
                             match v1_rt::map_get(&inner, imported_name.clone()) {
                                 Some(_) => inner.clone(),
                                 None => {
@@ -4937,7 +4952,7 @@ pub fn augment_scoped_data_item_index_with_imports(
     )
 }
 
-pub fn rust_serde_rename_template_text() -> std::string::String {
+pub fn rust_serde_rename_template_text() -> String {
     match crate::v1_compiler_languages::serialization_for_target(RenderTarget::Rust)
         .rename_attribute_template
         .clone()
@@ -4950,7 +4965,7 @@ pub fn rust_serde_rename_template_text() -> std::string::String {
     }
 }
 
-pub fn rust_test_file_path(module_name: std::string::String) -> std::string::String {
+pub fn rust_test_file_path(module_name: String) -> String {
     {
         let conventions =
             crate::v1_compiler_languages::test_conventions_for_target(RenderTarget::Rust);
@@ -4973,11 +4988,11 @@ pub fn rust_test_file_path(module_name: std::string::String) -> std::string::Str
     }
 }
 
-pub fn rust_test_name(projection: Rc<TestProjection>) -> std::string::String {
+pub fn rust_test_name(projection: Rc<TestProjection>) -> String {
     crate::v1_compiler_emit_core_support::test_function_name(projection.clone(), RenderTarget::Rust)
 }
 
-pub fn rust_async_test_decorator() -> std::string::String {
+pub fn rust_async_test_decorator() -> String {
     match crate::v1_compiler_languages::test_conventions_for_target(RenderTarget::Rust)
         .async_decorator
         .clone()
@@ -4992,9 +5007,9 @@ pub fn rust_async_test_decorator() -> std::string::String {
 
 pub fn emit_rust_block_stmts(
     mut remaining: Rc<Vec<Rc<Node>>>,
-    mut text: Rc<Vec<std::string::String>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
     mut shared_types: Rc<BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
@@ -5041,9 +5056,9 @@ pub fn emit_rust_block_stmts(
 
 pub fn emit_rust_init_block_stmts(
     mut remaining: Rc<Vec<Rc<Node>>>,
-    mut text: Rc<Vec<std::string::String>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
     mut shared_types: Rc<BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
@@ -5110,9 +5125,9 @@ pub fn emit_rust_init_block_stmts(
 }
 
 pub fn rust_qualify_type_leaf_name(
-    name: std::string::String,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> std::string::String {
+    name: String,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
     match v1_rt::map_get(&variant_to_enum, name.clone()) {
         Some(parent) => {
             if (parent.clone() != "".to_string()) {
@@ -5126,9 +5141,9 @@ pub fn rust_qualify_type_leaf_name(
 }
 
 pub fn rust_render_type_leaf_name(
-    name: std::string::String,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> std::string::String {
+    name: String,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
     if (name.clone() == "Unit".to_string()) {
         "()".to_string()
     } else {
@@ -5143,14 +5158,11 @@ pub fn rust_render_type_leaf_name(
     }
 }
 
-pub fn rust_phantom_zst_marker_def(vname: std::string::String) -> std::string::String {
+pub fn rust_phantom_zst_marker_def(vname: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n".to_string(), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), vname.clone()), ";".to_string())
 }
 
-pub fn emit_phantom_zst_markers_for_enum(
-    children: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> std::string::String {
+pub fn emit_phantom_zst_markers_for_enum(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     {
         let markers = Rc::new({
             let mut __result = Vec::new();
@@ -5195,8 +5207,8 @@ pub fn emit_phantom_zst_markers_for_enum(
 
 pub fn phantom_marker_name_shadowed_by_real_type_item(
     items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    vname: std::string::String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    vname: String,
 ) -> bool {
     {
         let mut __found = false;
@@ -5222,7 +5234,7 @@ pub fn phantom_marker_name_shadowed_by_real_type_item(
 pub fn collect_phantom_zst_marker_names(
     items: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
@@ -5243,53 +5255,45 @@ pub fn collect_phantom_zst_marker_names(
     })
     .iter()
     .cloned()
-    .fold(
-        Rc::new(vec![]),
-        |acc: Rc<Vec<std::string::String>>, item: Rc<Node>| {
-            item.children.clone().iter().cloned().fold(
-                acc,
-                |inner: Rc<Vec<std::string::String>>, child: Rc<Node>| {
-                    if ((child.children.clone().len() as i64) == 0) {
-                        {
-                            let vname = crate::v1_compiler_infer_env::authored_name(
-                                env.clone(),
-                                child.clone(),
-                            );
-                            if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
-                                && !{
-                                    let mut __found = false;
-                                    for n in inner.iter().cloned() {
-                                        if (n.clone() == vname.clone()) {
-                                            __found = true;
-                                            break;
-                                        }
+    .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, item: Rc<Node>| {
+        item.children.clone().iter().cloned().fold(
+            acc,
+            |inner: Rc<Vec<String>>, child: Rc<Node>| {
+                if ((child.children.clone().len() as i64) == 0) {
+                    {
+                        let vname =
+                            crate::v1_compiler_infer_env::authored_name(env.clone(), child.clone());
+                        if ((is_phantom_unit_variant_type_arg(env.clone(), vname.clone())
+                            && !{
+                                let mut __found = false;
+                                for n in inner.iter().cloned() {
+                                    if (n.clone() == vname.clone()) {
+                                        __found = true;
+                                        break;
                                     }
-                                    __found
-                                })
-                                && !phantom_marker_name_shadowed_by_real_type_item(
-                                    items.clone(),
-                                    env.source_indices.clone(),
-                                    vname.clone(),
-                                ))
-                            {
-                                v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
-                            } else {
-                                inner.clone()
-                            }
+                                }
+                                __found
+                            })
+                            && !phantom_marker_name_shadowed_by_real_type_item(
+                                items.clone(),
+                                env.source_indices.clone(),
+                                vname.clone(),
+                            ))
+                        {
+                            v1_rt::concat(inner.clone(), Rc::new(vec![vname.clone()]))
+                        } else {
+                            inner.clone()
                         }
-                    } else {
-                        inner.clone()
                     }
-                },
-            )
-        },
-    )
+                } else {
+                    inner.clone()
+                }
+            },
+        )
+    })
 }
 
-pub fn emit_module_phantom_zst_markers(
-    items: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> std::string::String {
+pub fn emit_module_phantom_zst_markers(items: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for vname in collect_phantom_zst_marker_names(items.clone(), env.clone())
@@ -5335,7 +5339,7 @@ pub fn is_simple_disj(item: Rc<Node>) -> bool {
     }
 }
 
-pub fn is_dag_value_type_name(name: std::string::String) -> bool {
+pub fn is_dag_value_type_name(name: String) -> bool {
     match crate::v1_compiler_coercion::is_copy(RenderTarget::Rust, name.clone(), "".to_string()) {
         Some(v) => v.clone(),
         None => false,
@@ -5425,7 +5429,7 @@ pub fn maybe_mark_shared_type(
 }
 
 pub fn build_shared_types(
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     recursive_type_set: Rc<BTreeSet<String>>,
     target: RenderTarget,
 ) -> Rc<BTreeSet<String>> {
@@ -5461,7 +5465,7 @@ pub fn build_shared_types(
         });
         collection_keys.iter().cloned().fold(
             user_shared.clone(),
-            |acc: Rc<BTreeSet<String>>, key: std::string::String| {
+            |acc: Rc<BTreeSet<String>>, key: String| {
                 let pascal = crate::v1_compiler_emit_core_support::to_pascal(key.clone());
                 v1_rt::rc_set_insert(acc, pascal.clone())
             },
@@ -5471,15 +5475,15 @@ pub fn build_shared_types(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipProofEntry {
-    pub name: std::string::String,
+    pub name: String,
     pub proof: Rc<OwnershipProof>,
     pub param_names: Rc<BTreeSet<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OwnershipBuildResult {
-    pub ownership_index: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
-    pub read_only_params_index: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 }
 
 pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<OwnershipBuildResult> {
@@ -5576,11 +5580,8 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
         });
         proofs.iter().cloned().fold(
             Rc::new(OwnershipBuildResult {
-                ownership_index: v1_rt::rc_empty_map::<std::string::String, Rc<BTreeSet<String>>>(),
-                read_only_params_index: v1_rt::rc_empty_map::<
-                    std::string::String,
-                    Rc<BTreeSet<String>>,
-                >(),
+                ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
+                read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
                 let acc = v1_rt::take_owned(acc);
@@ -5620,24 +5621,26 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
 
 pub fn group_unlisted_type_names(
     diags: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     diags.iter().cloned().fold(
-        v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
-        |acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>, en: Rc<ErrorNode>| {
-            match (*en.diagnostic.clone()).clone() {
-                CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
-                    let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
-                        Some(v) => v.clone(),
-                        None => Rc::new(vec![]),
-                    };
-                    v1_rt::rc_map_insert(
-                        acc.clone(),
-                        en.module_name.clone(),
-                        v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
-                    )
-                }
-                _ => acc.clone(),
+        v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<String>>>>, en: Rc<ErrorNode>| match (*en
+            .diagnostic
+            .clone())
+        .clone()
+        {
+            CompilerDiagnostic::UnlistedImportUse { name: nm, .. } => {
+                let existing = match v1_rt::map_get(&acc, en.module_name.clone()) {
+                    Some(v) => v.clone(),
+                    None => Rc::new(vec![]),
+                };
+                v1_rt::rc_map_insert(
+                    acc.clone(),
+                    en.module_name.clone(),
+                    v1_rt::concat(existing.clone(), Rc::new(vec![nm.clone()])),
+                )
             }
+            _ => acc.clone(),
         },
     )
 }
@@ -5659,8 +5662,8 @@ pub fn v1_item_signature_type_exprs(item: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn v1_map_key_seed_type_exprs(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    type_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    type_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let declaration_field_exprs = Rc::new({
@@ -5709,10 +5712,10 @@ pub fn v1_map_key_seed_type_exprs(
 
 pub fn merged_module_source_indices(
     modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<std::string::String, Rc<NewlineIndex>>> {
+) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<std::string::String, Rc<NewlineIndex>>(),
-        |acc: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
             v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
@@ -5721,17 +5724,16 @@ pub fn merged_module_source_indices(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitRustContext {
     pub emit_info: Rc<EmitGraphInfo>,
-    pub registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    pub data_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    pub registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub data_items: Rc<HashMap<String, Rc<Node>>>,
     pub workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     pub workflow_default_diags: Rc<Vec<Rc<ErrorNode>>>,
     pub anonymous_record_diags: Rc<Vec<Rc<ErrorNode>>>,
-    pub svc_module_map: Rc<HashMap<std::string::String, std::string::String>>,
+    pub svc_module_map: Rc<HashMap<String, String>>,
     pub test_projections: Rc<Vec<Rc<TestProjection>>>,
-    pub export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    pub export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     pub module_index: Rc<ModuleIndex>,
-    pub unlisted_type_names_by_module:
-        Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    pub unlisted_type_names_by_module: Rc<HashMap<String, Rc<Vec<String>>>>,
 }
 
 pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> {
@@ -5824,8 +5826,8 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
             __result
         });
         let svc_module_map = typed.modules.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
-            |acc: Rc<HashMap<std::string::String, std::string::String>>, tm: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, tm: Rc<TypedModule>| {
                 let svc_items = Rc::new({
                     let mut __result = Vec::new();
                     for item in tm.items.clone().iter().cloned() {
@@ -5843,7 +5845,7 @@ pub fn build_emit_rust_context(typed: Rc<ResolvedGraph>) -> Rc<EmitRustContext> 
                 );
                 svc_items.iter().cloned().fold(
                     acc,
-                    |a: Rc<HashMap<std::string::String, std::string::String>>, svc: Rc<Node>| {
+                    |a: Rc<HashMap<String, String>>, svc: Rc<Node>| {
                         v1_rt::rc_map_insert(
                             a,
                             crate::v1_std_core::authored_name_at(
@@ -5907,6 +5909,16 @@ pub fn emit_rust_reference_derived_census(typed: Rc<ResolvedGraph>) -> Reference
 }
 
 pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
+    emit_rust_selected(
+        typed.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn emit_rust_selected(
+    typed: Rc<ResolvedGraph>,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<EmitResult> {
     {
         let ctx = build_emit_rust_context(typed.clone());
         let emit_info = ctx.emit_info.clone();
@@ -5945,7 +5957,24 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let test_projections = ctx.test_projections.clone();
         let module_emissions = Rc::new({
             let mut __result = Vec::new();
-            for tm in typed.modules.clone().iter().cloned() {
+            for tm in Rc::new({
+                let mut __result = Vec::new();
+                for tm in typed.modules.clone().iter().cloned() {
+                    if rust_module_render_selection_renders(
+                        selection.clone(),
+                        crate::v1_std_core::authored_name_at(
+                            tm.type_env.clone().source_indices.clone(),
+                            tm.module.clone(),
+                        ),
+                    ) {
+                        __result.push(tm);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
                 __result.push(emit_module_full_with_dispositions(
                     tm.clone(),
                     ctx.clone(),
@@ -5968,30 +5997,24 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             }
             __result
         });
-        let test_files = Rc::new({
+        let module_paths = Rc::new({
             let mut __result = Vec::new();
-            for f in Rc::new({
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.push(rust_module_emit_path(crate::v1_std_core::authored_name_at(
+                    tm.type_env.clone().source_indices.clone(),
+                    tm.module.clone(),
+                )));
+            }
+            __result
+        });
+        let test_module_names = Rc::new({
+            let mut __result = Vec::new();
+            for name in Rc::new({
                 let mut __result = Vec::new();
                 for tm in typed.modules.clone().iter().cloned() {
-                    __result.push(emit_test_file(
-                        crate::v1_std_core::authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
-                            tm.module.clone(),
-                        ),
-                        Rc::new({
-                            let mut __result = Vec::new();
-                            for p in test_projections.iter().cloned() {
-                                if (p.module_name.clone()
-                                    == crate::v1_std_core::authored_name_at(
-                                        tm.type_env.clone().source_indices.clone(),
-                                        tm.module.clone(),
-                                    ))
-                                {
-                                    __result.push(p);
-                                }
-                            }
-                            __result
-                        }),
+                    __result.push(crate::v1_std_core::authored_name_at(
+                        tm.type_env.clone().source_indices.clone(),
+                        tm.module.clone(),
                     ));
                 }
                 __result
@@ -5999,9 +6022,56 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             .iter()
             .cloned()
             {
-                if (v1_rt::string_length(&f.content.clone()) > 0) {
-                    __result.push(f);
+                if ((Rc::new({
+                    let mut __result = Vec::new();
+                    for p in test_projections.iter().cloned() {
+                        if (p.module_name.clone() == name.clone()) {
+                            __result.push(p);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    > 0)
+                {
+                    __result.push(name);
                 }
+            }
+            __result
+        });
+        let test_file_paths = Rc::new({
+            let mut __result = Vec::new();
+            for name in test_module_names.iter().cloned() {
+                __result.push(rust_test_file_path(name.clone()));
+            }
+            __result
+        });
+        let test_files = Rc::new({
+            let mut __result = Vec::new();
+            for name in Rc::new({
+                let mut __result = Vec::new();
+                for name in test_module_names.iter().cloned() {
+                    if rust_module_render_selection_renders(selection.clone(), name.clone()) {
+                        __result.push(name);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(emit_test_file(
+                    name.clone(),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for p in test_projections.iter().cloned() {
+                            if (p.module_name.clone() == name.clone()) {
+                                __result.push(p);
+                            }
+                        }
+                        __result
+                    }),
+                ));
             }
             __result
         });
@@ -6044,16 +6114,20 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         } else {
             Rc::new(vec![])
         };
-        let v2_std_text_stub = if (module_files_reference_v2_std_text(module_files.clone())
-            && !module_files_include_v2_std_text(module_files.clone()))
-        {
+        let v2_std_text_stub = if closure_needs_module_filename_stub(
+            typed.clone(),
+            ctx.clone(),
+            "v2_std_text".to_string(),
+        ) {
             Rc::new(vec![emit_v2_std_text_closure_stub_module()])
         } else {
             Rc::new(vec![])
         };
-        let v2_std_integer_stub = if (module_files_reference_v2_std_integer(module_files.clone())
-            && !module_files_include_v2_std_integer(module_files.clone()))
-        {
+        let v2_std_integer_stub = if closure_needs_module_filename_stub(
+            typed.clone(),
+            ctx.clone(),
+            "v2_std_integer".to_string(),
+        ) {
             Rc::new(vec![emit_v2_std_integer_closure_stub_module()])
         } else {
             Rc::new(vec![])
@@ -6068,7 +6142,59 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             dry_run_file.clone(),
         );
-        let lib_file = emit_lib_rs_from_files(all_mod_files.clone(), has_pipeline.clone());
+        let all_mod_paths = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        module_paths.clone(),
+                        Rc::new({
+                            let mut __result = Vec::new();
+                            for f in v2_std_text_stub.iter().cloned() {
+                                __result.push(f.path.clone());
+                            }
+                            __result
+                        }),
+                    ),
+                    Rc::new({
+                        let mut __result = Vec::new();
+                        for f in v2_std_integer_stub.iter().cloned() {
+                            __result.push(f.path.clone());
+                        }
+                        __result
+                    }),
+                ),
+                Rc::new(vec![rt_file.path.clone()]),
+            ),
+            Rc::new({
+                let mut __result = Vec::new();
+                for f in dry_run_file.iter().cloned() {
+                    __result.push(f.path.clone());
+                }
+                __result
+            }),
+        );
+        let lib_file = emit_lib_rs_from_paths(all_mod_paths.clone(), has_pipeline.clone());
+        let emitted_paths = v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    Rc::new(vec![
+                        cargo.path.clone(),
+                        lib_file.path.clone(),
+                        main_file.path.clone(),
+                    ]),
+                    all_mod_paths.clone(),
+                ),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for f in compiler_tests_file.iter().cloned() {
+                        __result.push(f.path.clone());
+                    }
+                    __result
+                }),
+            ),
+            test_file_paths.clone(),
+        );
+        let population_manifest = emit_emitted_population_manifest(emitted_paths.clone());
         let emitted_files = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -6079,7 +6205,6 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             test_files.clone(),
         );
-        let population_manifest = emit_emitted_population_manifest(emitted_files.clone());
         let files = v1_rt::concat(
             emitted_files.clone(),
             Rc::new(vec![population_manifest.clone()]),
@@ -6091,20 +6216,62 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
-pub fn emitted_population_manifest_path() -> std::string::String {
+pub fn rust_module_emit_filename(module_name: String) -> String {
+    {
+        let raw = crate::v1_compiler_emit_core_support::module_to_filename(module_name.clone());
+        if (raw.clone() == "main".to_string()) {
+            "main_mod".to_string()
+        } else {
+            raw.clone()
+        }
+    }
+}
+
+pub fn rust_module_emit_path(module_name: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            rust_source_root(),
+            rust_module_emit_filename(module_name.clone()),
+        ),
+        rust_source_ext(),
+    )
+}
+
+pub fn rust_module_render_selection_renders(
+    selection: Rc<RustModuleRenderSelection>,
+    module_name: String,
+) -> bool {
+    match (*selection.clone()).clone() {
+        RustModuleRenderSelection::RenderEveryModule => true,
+        RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: basenames,
+            ..
+        } => {
+            let mut __found = false;
+            for b in basenames.iter().cloned() {
+                if (b.clone()
+                    == v1_rt::concat(
+                        rust_module_emit_filename(module_name.clone()),
+                        rust_source_ext(),
+                    ))
+                {
+                    __found = true;
+                    break;
+                }
+            }
+            __found
+        }
+    }
+}
+
+pub fn emitted_population_manifest_path() -> String {
     v1_rt::concat(rust_source_root(), emitted_population_manifest_basename())
 }
 
-pub fn emit_emitted_population_manifest(files: Rc<Vec<Rc<TextFile>>>) -> Rc<TextFile> {
+pub fn emit_emitted_population_manifest(paths: Rc<Vec<String>>) -> Rc<TextFile> {
     {
         let declared = v1_rt::concat(
-            Rc::new({
-                let mut __result = Vec::new();
-                for f in files.iter().cloned() {
-                    __result.push(f.path.clone());
-                }
-                __result
-            }),
+            paths.clone(),
             Rc::new(vec![emitted_population_manifest_path()]),
         );
         let lines = Rc::new({
@@ -6160,17 +6327,122 @@ pub fn emit_compiler_tests_module() -> Rc<TextFile> {
     })
 }
 
-pub fn emitted_files_carry_use_line(
-    files: Rc<Vec<Rc<TextFile>>>,
-    line: std::string::String,
+pub fn module_reference_candidate_names(
+    typed_module: Rc<TypedModule>,
+    ctx: Rc<EmitRustContext>,
+) -> Rc<Vec<String>> {
+    {
+        let source_indices = typed_module.type_env.clone().source_indices.clone();
+        let emit_info = ctx.emit_info.clone();
+        let this_module_name = crate::v1_std_core::authored_name_at(
+            source_indices.clone(),
+            typed_module.module.clone(),
+        );
+        let items = typed_module.items.clone();
+        let value_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_value_ref_names(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.type_summaries.clone(),
+                        emit_info.variant_to_enum.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
+        let item_emit_surface_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in items.iter().cloned() {
+                __result.extend(
+                    (*collect_item_emit_surface_names(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let type_surface_names =
+            crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
+        let field_surface_names = collect_items_field_import_surface_names(
+            item_emit_surface_names.clone(),
+            emit_info.clone(),
+        );
+        let variant_payload_structs = expand_variant_payload_struct_imports(
+            type_surface_names.clone(),
+            emit_info.type_summaries.clone(),
+            emit_info.variant_to_enum.clone(),
+        );
+        let realized_surface_names =
+            crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
+                let mut __result = Vec::new();
+                for item in items.iter().cloned() {
+                    __result.extend(
+                        (*collect_item_realized_surface_names(
+                            item.clone(),
+                            emit_info.shared_types.clone(),
+                            source_indices.clone(),
+                            emit_info.clone(),
+                        ))
+                        .iter()
+                        .cloned(),
+                    );
+                }
+                __result
+            }));
+        let unlisted_type_names = match v1_rt::map_get(
+            &ctx.unlisted_type_names_by_module.clone(),
+            this_module_name.clone(),
+        ) {
+            Some(v) => v.clone(),
+            None => Rc::new(vec![]),
+        };
+        let origin_candidates = crate::std_repair_input_origin::repair_input_origin_candidates(
+            this_module_name.clone(),
+            unlisted_type_names.clone(),
+            value_names.clone(),
+            type_surface_names.clone(),
+            field_surface_names.clone(),
+            variant_payload_structs.clone(),
+            realized_surface_names.clone(),
+        );
+        Rc::new({
+            let mut __result = Vec::new();
+            for name in crate::v1_compiler_emit_core_support::unique_strings(
+                crate::std_repair_input_origin::repair_input_origin_compatibility_names(
+                    origin_candidates.clone(),
+                ),
+            )
+            .iter()
+            .cloned()
+            {
+                if !reference_is_host_realized_builtin(name.clone()) {
+                    __result.push(name);
+                }
+            }
+            __result
+        })
+    }
+}
+
+pub fn registry_declares_module_filename(
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    filename: String,
 ) -> bool {
     {
         let mut __found = false;
-        for f in files.iter().cloned() {
-            if v1_rt::string_contains(
-                &f.content.clone(),
-                v1_rt::concat("\n".to_string(), line.clone()),
-            ) {
+        for info in Rc::new(v1_rt::map_values(&registry)).iter().cloned() {
+            if (crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
+                == filename.clone())
+            {
                 __found = true;
                 break;
             }
@@ -6179,36 +6451,38 @@ pub fn emitted_files_carry_use_line(
     }
 }
 
-pub fn module_files_reference_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
-    emitted_files_carry_use_line(
-        files.clone(),
-        v1_rt::concat(
-            rust_visibility_prefix(),
-            "use crate::v2_std_text::".to_string(),
-        ),
-    )
-}
-
-pub fn module_files_reference_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
-    emitted_files_carry_use_line(
-        files.clone(),
-        v1_rt::concat(
-            rust_visibility_prefix(),
-            "use crate::v2_std_integer::".to_string(),
-        ),
-    )
-}
-
-pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
+pub fn closure_references_module_filename(
+    typed: Rc<ResolvedGraph>,
+    ctx: Rc<EmitRustContext>,
+    filename: String,
+) -> bool {
     {
-        let expected = v1_rt::concat(
-            v1_rt::concat(rust_source_root(), "v2_std_text".to_string()),
-            rust_source_ext(),
-        );
+        if !registry_declares_module_filename(ctx.registry.clone(), filename.clone()) {
+            return false;
+        }
         {
             let mut __found = false;
-            for f in files.iter().cloned() {
-                if (f.path.clone() == expected.clone()) {
+            for tm in typed.modules.clone().iter().cloned() {
+                if {
+                    let mut __found = false;
+                    for name in module_reference_candidate_names(tm.clone(), ctx.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if match v1_rt::map_get(&ctx.registry.clone(), name.clone()) {
+                            Some(info) => {
+                                (crate::v1_compiler_emit_core_support::module_to_filename(
+                                    info.module_name.clone(),
+                                ) == filename.clone())
+                            }
+                            None => false,
+                        } {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                } {
                     __found = true;
                     break;
                 }
@@ -6218,23 +6492,17 @@ pub fn module_files_include_v2_std_text(files: Rc<Vec<Rc<TextFile>>>) -> bool {
     }
 }
 
-pub fn module_files_include_v2_std_integer(files: Rc<Vec<Rc<TextFile>>>) -> bool {
-    {
-        let expected = v1_rt::concat(
-            v1_rt::concat(rust_source_root(), "v2_std_integer".to_string()),
-            rust_source_ext(),
-        );
-        {
-            let mut __found = false;
-            for f in files.iter().cloned() {
-                if (f.path.clone() == expected.clone()) {
-                    __found = true;
-                    break;
-                }
-            }
-            __found
-        }
-    }
+pub fn closure_needs_module_filename_stub(
+    typed: Rc<ResolvedGraph>,
+    ctx: Rc<EmitRustContext>,
+    filename: String,
+) -> bool {
+    (closure_references_module_filename(typed.clone(), ctx.clone(), filename.clone())
+        && !typed_closure_includes_module_filename(
+            typed.modules.clone(),
+            filename.clone(),
+            merged_module_source_indices(typed.modules.clone()),
+        ))
 }
 
 pub fn emit_v2_std_integer_closure_stub_module() -> Rc<TextFile> {
@@ -6260,29 +6528,29 @@ pub fn emit_v2_std_text_closure_stub_module() -> Rc<TextFile> {
     })
 }
 
-pub fn lib_rs_mod_name_from_file(f: Rc<TextFile>) -> std::string::String {
+pub fn lib_rs_mod_name_from_path(path: String) -> String {
     {
         let src_prefix_len = v1_rt::string_length(&rust_source_root());
         let ext_len = v1_rt::string_length(&rust_source_ext());
-        let path_len = v1_rt::string_length(&f.path.clone());
+        let path_len = v1_rt::string_length(&path);
         v1_rt::substring(
-            &f.path.clone(),
+            &path,
             src_prefix_len.clone(),
             (path_len.clone() - ext_len.clone()),
         )
     }
 }
 
-pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<std::string::String>> {
+pub fn hand_maintained_map_key_required_type_names() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["ItemKind".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn emit_lib_rs_mod_decl(mod_name: std::string::String) -> std::string::String {
+pub fn emit_lib_rs_mod_decl(mod_name: String) -> String {
     {
         let declaration = v1_rt::concat(
             v1_rt::concat(
@@ -6305,13 +6573,11 @@ pub fn emit_lib_rs_mod_decl(mod_name: std::string::String) -> std::string::Strin
     }
 }
 
-pub fn is_lib_rs_macro_provider(mod_name: std::string::String) -> bool {
+pub fn is_lib_rs_macro_provider(mod_name: String) -> bool {
     (mod_name.clone() == "v1_interpreter_dispatch_generated".to_string())
 }
 
-pub fn order_lib_rs_mod_names(
-    mod_names: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+pub fn order_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in mod_names.iter().cloned() {
@@ -6323,9 +6589,7 @@ pub fn order_lib_rs_mod_names(
     })
 }
 
-pub fn order_partial_lib_rs_mod_names(
-    mod_names: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+pub fn order_partial_lib_rs_mod_names(mod_names: Rc<Vec<String>>) -> Rc<Vec<String>> {
     v1_rt::concat(
         Rc::new({
             let mut __result = Vec::new();
@@ -6348,16 +6612,16 @@ pub fn order_partial_lib_rs_mod_names(
     )
 }
 
-pub fn emit_lib_rs_from_files(
-    all_module_files: Rc<Vec<Rc<TextFile>>>,
+pub fn emit_lib_rs_from_paths(
+    all_module_paths: Rc<Vec<String>>,
     has_compiler_tests: bool,
 ) -> Rc<TextFile> {
     {
         let file_derived_names = Rc::new(
-            all_module_files
+            all_module_paths
                 .iter()
                 .cloned()
-                .map(lib_rs_mod_name_from_file)
+                .map(lib_rs_mod_name_from_path)
                 .collect::<Vec<_>>(),
         );
         let mod_names = if has_compiler_tests.clone() {
@@ -6396,7 +6660,7 @@ pub fn emit_lib_rs_from_files(
 
 pub fn emit_module(
     typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let base_info =
@@ -6454,7 +6718,7 @@ pub fn emit_module(
             registry.clone(),
             emit_info.clone(),
             shared_types.clone(),
-            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+            v1_rt::rc_empty_map::<String, String>(),
             build_data_item_index(Rc::new(vec![typed_module.clone()])),
             export_sets.clone(),
             Rc::new(vec![typed_module.clone()]),
@@ -6468,11 +6732,10 @@ pub fn emit_module(
 
 pub fn build_module_export_sets(
     modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>> {
+) -> Rc<HashMap<String, Rc<HashMap<String, bool>>>> {
     modules.iter().cloned().fold(
-        v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
-        |acc: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-         tm: Rc<TypedModule>| {
+        v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+        |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, tm: Rc<TypedModule>| {
             let m_name = crate::v1_std_core::authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 tm.module.clone(),
@@ -6482,8 +6745,8 @@ pub fn build_module_export_sets(
                 tm.type_env.clone().source_indices.clone(),
             );
             let exported_set = exported.iter().cloned().fold(
-                v1_rt::rc_empty_map::<std::string::String, bool>(),
-                |inner: Rc<HashMap<std::string::String, bool>>, n: std::string::String| {
+                v1_rt::rc_empty_map::<String, bool>(),
+                |inner: Rc<HashMap<String, bool>>, n: String| {
                     v1_rt::rc_map_insert(inner, n.clone(), true)
                 },
             );
@@ -6494,8 +6757,8 @@ pub fn build_module_export_sets(
 
 pub fn emit_inferred_type_leaf_name(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match n.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             let is_optional = (rt.return_cardinality.clone() == Cardinality::CardOptional);
@@ -6514,9 +6777,9 @@ pub fn emit_inferred_type_leaf_name(
 
 pub fn anonymous_record_lit_surface_name(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> String {
     {
         let lit_field_names = Rc::new({
             let mut __result = Vec::new();
@@ -6529,8 +6792,8 @@ pub fn anonymous_record_lit_surface_name(
             __result
         });
         let field_type_hints = n.children.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
-            |acc: Rc<HashMap<std::string::String, std::string::String>>, f: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
                 let fname =
                     crate::v1_std_core::field_init_node_name_at(f.clone(), source_indices.clone());
                 let fval = crate::v1_std_core::field_init_node_value(f.clone());
@@ -6579,10 +6842,10 @@ pub fn anonymous_record_lit_surface_name(
 
 pub fn record_lit_variant_payload_struct_surfaces(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
     {
         let variant_name =
             match crate::v1_std_core::record_lit_type_name_at(n.clone(), source_indices.clone()) {
@@ -6637,11 +6900,11 @@ pub fn record_lit_variant_payload_struct_surfaces(
 
 pub fn record_lit_field_type_hints(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<std::string::String, std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, String>> {
     n.children.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
-        |acc: Rc<HashMap<std::string::String, std::string::String>>, f: Rc<Node>| {
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
             let fname =
                 crate::v1_std_core::field_init_node_name_at(f.clone(), source_indices.clone());
             let fval = crate::v1_std_core::field_init_node_value(f.clone());
@@ -6660,11 +6923,11 @@ pub fn record_lit_field_type_hints(
 }
 
 pub fn record_lit_resolved_ctor_import_names(
-    type_name: std::string::String,
+    type_name: String,
     n: Rc<Node>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let from_template = match crate::std_types::container_template_algebra(type_name.clone()) {
             Some(algebra) => {
@@ -6730,10 +6993,10 @@ pub fn record_lit_resolved_ctor_import_names(
 
 pub fn record_lit_ref_names(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
             parent_enum: pe, ..
@@ -6815,9 +7078,9 @@ pub fn record_lit_ref_names(
 
 pub fn collect_anonymous_record_lit_heads(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_head = match (*n.expr_data.clone()).clone() {
             ExprData::ExprRecordLit { parent_enum: _, .. } => {
@@ -6952,9 +7215,9 @@ pub fn collect_anonymous_record_lit_heads(
 }
 
 pub fn collect_items_field_import_surface_names(
-    surface_names: Rc<Vec<std::string::String>>,
+    surface_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let type_summaries = emit_info.type_summaries.clone();
         let variant_to_enum = emit_info.variant_to_enum.clone();
@@ -6992,8 +7255,8 @@ match summary_lookup.clone() {
 
 pub fn collect_pattern_ref_names(
     pattern: Rc<MatchPattern>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Rc<Vec<std::string::String>> {
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
@@ -7042,10 +7305,10 @@ pub fn collect_pattern_ref_names(
 
 pub fn collect_value_ref_names(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_name = match (*n.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -7195,8 +7458,8 @@ pub fn collect_value_ref_names(
 
 pub fn collect_item_type_surface_names(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let from_ann = match item.type_annotation.clone() {
             Some(t) => crate::v1_compiler_infer_emit_info::collect_type_node_import_surface_names(
@@ -7237,16 +7500,16 @@ pub fn collect_item_type_surface_names(
 
 pub fn emit_scrutinee_type_name(
     scrutinee: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     emit_inferred_type_leaf_name(scrutinee.clone(), source_indices.clone())
 }
 
 pub fn collect_pattern_rc_prelude_parent_enums(
     pattern: Rc<MatchPattern>,
-    scrut_type: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Rc<Vec<std::string::String>> {
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<String>> {
     match (*pattern.clone()).clone() {
         MatchPattern::VariantPattern {
             name: n,
@@ -7277,11 +7540,11 @@ pub fn collect_pattern_rc_prelude_parent_enums(
 pub fn collect_rc_pattern_prelude_parent_enums(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
-    scrut_type: std::string::String,
+    scrut_type: String,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
@@ -7392,9 +7655,9 @@ pub fn collect_rc_pattern_prelude_parent_enums(
 
 pub fn collect_match_pattern_parent_enums(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMatch => {
             let scrut = crate::v1_std_core::match_scrutinee(expr.clone());
@@ -7462,9 +7725,9 @@ pub fn collect_match_pattern_parent_enums(
 
 pub fn variant_record_lit_summary_key(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> String {
     match (*n.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
             parent_enum: pe, ..
@@ -7499,10 +7762,10 @@ pub fn variant_record_lit_summary_key(
 pub fn collect_record_lit_field_struct_surfaces(
     parent: Rc<Node>,
     field_init: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
     {
         let field_name =
             crate::v1_std_core::field_init_node_name_at(field_init.clone(), source_indices.clone());
@@ -7556,9 +7819,9 @@ pub fn collect_record_lit_field_struct_surfaces(
 
 pub fn collect_value_emit_type_surface_names(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let variant_to_enum = emit_info.variant_to_enum.clone();
         let type_summaries = emit_info.type_summaries.clone();
@@ -7748,9 +8011,9 @@ pub fn collect_value_emit_type_surface_names(
 
 pub fn collect_item_emit_surface_names(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let from_signature = collect_item_type_surface_names(item.clone(), source_indices.clone());
         let from_body = match item.body.clone() {
@@ -7769,11 +8032,11 @@ pub fn collect_item_emit_surface_names(
 }
 
 pub fn provider_proven_exports_symbol(
-    name: std::string::String,
-    provider_module: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    name: String,
+    provider_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     name_in_transitive_export_surface(
@@ -7787,7 +8050,7 @@ pub fn provider_proven_exports_symbol(
     )
 }
 
-pub fn imported_names_in_use_line(line: std::string::String) -> Rc<Vec<std::string::String>> {
+pub fn imported_names_in_use_line(line: String) -> Rc<Vec<String>> {
     if (v1_rt::contains(line.clone(), "use ".to_string()) == false) {
         Rc::new(vec![])
     } else {
@@ -7848,20 +8111,20 @@ pub fn imported_names_in_use_line(line: std::string::String) -> Rc<Vec<std::stri
     }
 }
 
-pub fn reference_derived_use_lines_note() -> std::string::String {
+pub fn reference_derived_use_lines_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "emit_import_closure_root (§5). emit_imports wires a per-module use-line only for names in an authored import list. Namespace-only resolution (post-PR 6848) references cross-module names WITHOUT importing them, so the ref is KNOWN but the use-line is declined (advisory UnlistedImportUse, is_error_diagnostic=false) — a §5 fail-open (⊤-as-ignorance) that emits invalid Rust (E0422/E0433/E0425 downstream). This pass derives the missing use-lines from the SAME resolver signal, split by reference kind onto its precise authority (§2 Realization: one closure, two consumers): (1) TYPE refs come from the resolver's UnlistedImportUse diagnostics (04_resolve.dag resolve_node, masked && not-in-SVN at type positions) threaded through ResolvedGraph.diagnostics — zero-drift by construction, the resolver already applied its SVN mask AT RESOLVE TIME; (2) VALUE-position refs come from collect_value_ref_names, a NARROW walk that structurally excludes the type over-collection classes (container heads, field labels, deep-inferred type names): fn/data refs (FunctionValueBinding ExprVar + ExprCall callee names) AND record-literal type constructions (ExprRecordLit type name + its parent_enum) — the latter matter because a GENERIC user type constructed as `T{..}` (e.g. RealizedStep<Nano>) is grounded by resolve_node (masked flips false into the defining-module descent) so it NEVER fires UnlistedImportUse, yet its bare `T` still needs a use-line; (3) TYPE-surface refs on item signatures come from collect_item_emit_surface_names (collect_item_type_surface_names + collect_value_emit_type_surface_names over data bodies) over each item's type_annotation, param types, inferred Resolved return/signature, AND value-position record-literal / variant-parent-enum surfaces the emitter will qualify (e.g. UriScheme::Https in a data anchor) — covering masked-at-resolve TYPE positions (e.g. partial-import return type PilotWidget) that never enter UnlistedImportUse and are not ExprVar/ExprCall harvests. Registry cross-module resolve + is_known_variant fallback keep variant constructors routed through their parent's import. CONSTRUCTION WALL (ROOT 3, §5): a candidate that registry-resolves to a provider module MUST also pass provider_proven_exports_symbol (name_in_transitive_export_surface) before any use-line is synthesized — never a plausible guess from the bare-name registry alone (the v1_rt::member fabrication class: registry homonym without export proof). NOTE the SVN authority is resolve-time-only: env.source_visible_names is built in 04_infer's unresolved_env and consumed by resolve_node, but is NOT persisted onto TypedModule.type_env (emit reads empty_map), so emit MUST NOT re-apply an SVN filter — it would be a no-op that (worse, when non-empty) diverges from the resolve-time mask. The union is instead already-imported filtered (a name already carried by an authored import / prelude / carrier use-line is skipped — this is what keeps a fully-imported SEED module zero-drift: its refs are all in an import line) and kernel filtered (no E0252 against the runtime prelude), then LOCAL-DECL filtered (any name the module itself declares — local_decl_names from authored_name_at over items, plus local_type_names aliases/phantoms — is never an import candidate: the containment tree binds a bare ref to the module's own declaration before any cross-module lookup, and the bare-name registry is last-write-wins, so a dual-tree homonym — dag/std List/Map/GroupCompletion vs their src/v2/std twins — steals the registry row and would otherwise synthesize a SELF-COLLIDING pub-use, the E0255 std_dup class measured on the 2026-07-22 curated 4-module baseline), then cross-module registry-resolved (a ref the registry maps to this same module is skipped), then reuses emit_specific_import_block for variant/reexport correctness with a §5 direct-emit fallback (arm (c): the name resolved via registry to provider AND export-proven). A candidate that registry-resolves to nothing, or resolves but fails export proof, is left unsynthesized, and it never fabricates a use-line. STEP 2 HAS LANDED: the reason is no longer silent. Each such candidate carries a ReferenceDerivedCandidateDisposition -- CandidateRegistryAbsent or CandidateExportProofFailed, distinct because the remedies are opposite -- and CandidateExportProofFailed emits the typed, located, counted ReferenceDerivedImportExportUnproven. THE EMISSION IS NOT REFUSED, and the distinction matters because a reader of the phrase typed refusal will otherwise expect one: the diagnostic is ADVISORY, so emission completes and produces its files beside it. Measured on the required build lane at this branch head, entry:src/v2/compiler/00_compile.dag: emitted=175 blocking=0 -- so what step 2 closed is the SILENCE, not the emission. Whether the line stops is the severity question, and v1.compiler.core reference_derived_import_refusal_severity_note owns it, including why the blocking flip was executed and then falsified by its own first run over a second closure. SCOPE (emit_module_full): import-free modules run the full union (TYPE unlisted + VALUE refs) — the namespace-resolution case the post-PR-6848 regression is about. SUPERSEDED-MECHANISM, THIS CUT (eager-deer-389): the two sentences that follow describe the corpus_repr_is_faithful / HostNative gate, which NO LONGER EXISTS -- RustCorpusRepr and both its variants are deleted and the gate is gone, so import-bearing modules are no longer split by corpus mode. They are retained as the history of WHY the walk was gated at all (the spurious-use-line and seed zero-drift hazards below are real and still constrain any future gating), not as a live description; reference_use_lines_representation_invariant_note in this module carries the post-cut statement. Read them as quarry. AS WRITTEN BEFORE THE CUT: Import-bearing modules run reference_derived_use_lines ONLY when corpus_repr_is_faithful (FaithfulFreeMonoid / v2 namespace corpus): a partial-import namespace module (e.g. v2.std.node_query importing Outcome but calling outcome_with_diagnostics, or importing Outcome but annotating NamedEdgeTargetLookup) must synthesize BOTH the missing fn-value use-line AND the missing type use-line without duplicating names emit_imports already owns. HostNative import-bearing modules (v1 seed) get [] — running the walk there adds spurious/wrong use-lines (registry homonyms like kernel_span/is_type_variable) and breaks zero-drift seed regen.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn expand_variant_payload_struct_imports(
-    names: Rc<Vec<std::string::String>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+    names: Rc<Vec<String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in names.iter().cloned() {
@@ -7913,19 +8176,19 @@ pub fn expand_variant_payload_struct_imports(
     })
 }
 
-pub fn reference_derived_authored_source_gate_note() -> std::string::String {
+pub fn reference_derived_authored_source_gate_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "reference_derived_use_lines synthesizes a use-line only for an ATTESTED candidate: two authored-source-text forms decided by reference_derived_candidate_authored (NewlineIndex char_codes), plus one emitter-attested form decided by collect_anonymous_record_lit_heads (emitter_attested_anonymous_head_note — a head the emitter itself renders for an anonymous record literal, which the authored text structurally cannot spell). Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn module_authored_source_text(
     module: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match v1_rt::map_get(&source_indices, module.span.clone().file.clone()) {
         Some(index) => v1_rt::chars_to_string(
             &index.char_codes.clone(),
@@ -7936,34 +8199,31 @@ pub fn module_authored_source_text(
     }
 }
 
-pub fn reference_derived_candidate_spelled_in_module(
-    module_source: std::string::String,
-    name: std::string::String,
-) -> bool {
+pub fn reference_derived_candidate_spelled_in_module(module_source: String, name: String) -> bool {
     ((module_source.clone() != "".to_string())
         && v1_rt::string_contains(&module_source, name.clone()))
 }
 
-pub fn host_realized_builtin_needs_no_import_note() -> std::string::String {
+pub fn host_realized_builtin_needs_no_import_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "A derived use-line must name a provider the EMITTED code actually paths into, and a host-realized builtin is not one. emit_typed_call intercepts a family of free calls by name -- to_string, discriminant, get, with, empty_set among them -- and renders each as a host expression: to_string(value: e) becomes (e.clone()).to_string(), the Rust METHOD, never a path to v1.compiler.emit_core_support. So the SOURCE reference is real and resolves to a real provider module, while the EMITTED module never mentions that provider. Importing it is dead in a single-crate build and FATAL under the seven-crate stage0 partition, where the provider is not even a member of the consuming crate -- which is exactly how this surfaced: E0432 unresolved import crate::v1_compiler_emit_core_support in v1-stage0-std-core, from a `pub use` this derivation emitted for v1.std.core's to_string calls. Two authorities are READ rather than duplicated, and both answer the same question -- does this name's emitted form contain a path to another module. v1.compiler.infer_method builtin_function_registry: a name it resolves is a host builtin, realized as a host expression. std.types is_container_type: List, Set and Map are structural containers rendered inline as Vec and HashMap, so a `pub use crate::std_types::` List-and-Map re-export names a provider the emitted code never paths into either -- dead in one crate, and E0432 in v1-stage0-emit-core where std_types is a member of v1-stage0-extdeps-languages instead. That second half is the same defect one level out: the first filter fixed a host-realized CALL, this one a host-realized TYPE, and the shared property is realization-without-a-path rather than anything about calls or types. LATENT, NOT NEW: import-free modules always received derived use-lines, so the defect predates this cut; deleting the corpus_repr gate merely extended the derivation to import-bearing modules, where v1.std.core is the first member to carry an intercepted free call. CEILING: the roster this consults covers five of the eight names the call emitter intercepts (empty_map, map and utf8_decode_bytes are absent from it), so a module that both references one of those three across a module boundary AND lands in a different partition crate would still refuse. None exists today. The right terminal shape is the one the closure-stub note already names -- derive use-lines from the EMITTED reference set rather than from source references, which needs no roster of intercepts at all because an intercepted call emits no path.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn reference_is_host_realized_builtin(name: std::string::String) -> bool {
+pub fn reference_is_host_realized_builtin(name: String) -> bool {
     ((crate::v1_compiler_infer_method::infer_builtin_call_type(name.clone())
         != std::option::Option::None)
         || crate::std_types::is_container_type(name.clone()))
 }
 
 pub fn reference_derived_variant_induced_parent_spelled(
-    module_source: std::string::String,
-    enum_name: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    module_source: String,
+    enum_name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> bool {
     match v1_rt::map_get(&type_summaries, enum_name.clone()) {
         Some(summary) => match (*summary.repr.clone()).clone() {
@@ -7996,10 +8256,10 @@ pub fn reference_derived_variant_induced_parent_spelled(
 }
 
 pub fn reference_derived_candidate_authored(
-    module_source: std::string::String,
-    name: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    module_source: String,
+    name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
 ) -> bool {
     (reference_derived_candidate_spelled_in_module(module_source.clone(), name.clone())
         || reference_derived_variant_induced_parent_spelled(
@@ -8010,7 +8270,7 @@ pub fn reference_derived_candidate_authored(
         ))
 }
 
-pub fn rust_identifier_tokens(s: std::string::String) -> Rc<Vec<std::string::String>> {
+pub fn rust_identifier_tokens(s: String) -> Rc<Vec<String>> {
     {
         let spaced = v1_rt::replace(
             v1_rt::replace(
@@ -8132,9 +8392,9 @@ pub fn rust_identifier_tokens(s: std::string::String) -> Rc<Vec<std::string::Str
 pub fn collect_type_node_realized_surface_names(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     rust_identifier_tokens(render_rust_type(
         n.clone(),
         shared_types.clone(),
@@ -8146,9 +8406,9 @@ pub fn collect_type_node_realized_surface_names(
 pub fn collect_item_realized_surface_names(
     item: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let from_ann = match item.type_annotation.clone() {
             Some(t) => collect_type_node_realized_surface_names(
@@ -8195,8 +8455,8 @@ pub fn collect_item_realized_surface_names(
 
 pub fn local_coproduct_variant_names(
     items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for item in Rc::new({
@@ -8246,37 +8506,31 @@ pub fn local_coproduct_variant_names(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ReferenceDerivedCandidateDisposition {
-    CandidateSurvived {
-        provider_module: std::string::String,
-    },
+    CandidateSurvived { provider_module: String },
     CandidateOwnModule,
-    CandidateVariantDelegatedToParent {
-        parent_enum: std::string::String,
-    },
+    CandidateVariantDelegatedToParent { parent_enum: String },
     CandidateVariantParentUnresolved,
     CandidateRegistryAbsent,
-    CandidateExportProofFailed {
-        provider_module: std::string::String,
-    },
+    CandidateExportProofFailed { provider_module: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceDerivedCandidateRow {
-    pub module_name: std::string::String,
-    pub name: std::string::String,
+    pub module_name: String,
+    pub name: String,
     pub disposition: Rc<ReferenceDerivedCandidateDisposition>,
 }
 
 pub fn reference_derived_candidate_disposition(
-    name: std::string::String,
-    this_module_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    name: String,
+    this_module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     in_type_position: bool,
 ) -> Rc<ReferenceDerivedCandidateDisposition> {
     if (crate::v1_compiler_infer_emit_info::is_known_variant(type_summaries.clone(), name.clone())
@@ -8385,7 +8639,7 @@ pub fn reference_derived_candidate_survived(
 
 pub fn reference_derived_disposition_name(
     disposition: Rc<ReferenceDerivedCandidateDisposition>,
-) -> std::string::String {
+) -> String {
     match (*disposition.clone()).clone() {
         ReferenceDerivedCandidateDisposition::CandidateSurvived {
             provider_module: _, ..
@@ -8509,24 +8763,24 @@ pub fn reference_derived_census(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReferenceDerivedUseLinePlan {
-    pub lines: Rc<Vec<std::string::String>>,
+    pub lines: Rc<Vec<String>>,
     pub rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
 }
 
 pub fn reference_derived_use_line_plan(
     items: Rc<Vec<Rc<Node>>>,
-    unlisted_type_names: Rc<Vec<std::string::String>>,
-    this_module_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    unlisted_type_names: Rc<Vec<String>>,
+    this_module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-    local_type_names: Rc<Vec<std::string::String>>,
-    already_imported_names: Rc<Vec<std::string::String>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    local_type_names: Rc<Vec<String>>,
+    already_imported_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
     shared_types: Rc<BTreeSet<String>>,
-    emitted_source: std::string::String,
+    emitted_source: String,
 ) -> Rc<ReferenceDerivedUseLinePlan> {
     {
         let module_source = match Rc::new({
@@ -8580,8 +8834,8 @@ pub fn reference_derived_use_line_plan(
         let type_surface_names =
             crate::v1_compiler_emit_core_support::unique_strings(item_emit_surface_names.clone());
         let type_position_set = type_surface_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, nm: std::string::String| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
                 v1_rt::rc_map_insert(acc, nm.clone(), true)
             },
         );
@@ -8629,10 +8883,8 @@ pub fn reference_derived_use_line_plan(
             }));
         let emitted_source_tokens = rust_identifier_tokens(emitted_source.clone());
         let emitted_source_token_set = emitted_source_tokens.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, t: std::string::String| {
-                v1_rt::rc_map_insert(acc, t.clone(), true)
-            },
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, t: String| v1_rt::rc_map_insert(acc, t.clone(), true),
         );
         let origin_candidates = crate::std_repair_input_origin::repair_input_origin_candidates(
             this_module_name.clone(),
@@ -8734,8 +8986,8 @@ pub fn reference_derived_use_line_plan(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, nm: std::string::String| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
                 v1_rt::rc_map_insert(acc, nm.clone(), true)
             },
         );
@@ -8882,20 +9134,20 @@ v1_rt::concat(block_lines.clone(), fallback.clone())
 }
 
 pub fn qualified_type_reference_rows(
-    names: Rc<Vec<std::string::String>>,
-    this_module_name: std::string::String,
-    already: Rc<HashMap<std::string::String, bool>>,
-    names_already_in_lines: Rc<Vec<std::string::String>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    names: Rc<Vec<String>>,
+    this_module_name: String,
+    already: Rc<HashMap<String, bool>>,
+    names_already_in_lines: Rc<Vec<String>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<Rc<ReferenceDerivedCandidateRow>>> {
     {
         let leaves_done = names_already_in_lines.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, nm: std::string::String| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, nm: String| {
                 v1_rt::rc_map_insert(acc, nm.clone(), true)
             },
         );
@@ -8988,10 +9240,7 @@ pub fn qualified_type_reference_rows(
     }
 }
 
-pub fn registry_row_is_type_declared_in(
-    info: Rc<ItemInfo>,
-    module_name: std::string::String,
-) -> bool {
+pub fn registry_row_is_type_declared_in(info: Rc<ItemInfo>, module_name: String) -> bool {
     if (info.module_name.clone() != module_name.clone()) {
         false
     } else {
@@ -9004,8 +9253,8 @@ pub fn registry_row_is_type_declared_in(
 
 pub fn qualified_type_reference_use_lines(
     rows: Rc<Vec<Rc<ReferenceDerivedCandidateRow>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-) -> Rc<Vec<std::string::String>> {
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+) -> Rc<Vec<String>> {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
         for r in rows.iter().cloned() {
@@ -9047,19 +9296,19 @@ pub fn qualified_type_reference_use_lines(
 
 pub fn reference_derived_use_lines(
     items: Rc<Vec<Rc<Node>>>,
-    unlisted_type_names: Rc<Vec<std::string::String>>,
-    this_module_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    unlisted_type_names: Rc<Vec<String>>,
+    this_module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-    local_type_names: Rc<Vec<std::string::String>>,
-    already_imported_names: Rc<Vec<std::string::String>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    local_type_names: Rc<Vec<String>>,
+    already_imported_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
     shared_types: Rc<BTreeSet<String>>,
-    emitted_source: std::string::String,
-) -> Rc<Vec<std::string::String>> {
+    emitted_source: String,
+) -> Rc<Vec<String>> {
     {
         let plan = reference_derived_use_line_plan(
             items.clone(),
@@ -9117,15 +9366,15 @@ pub fn emit_module_full_with_dispositions(
 
 pub fn emit_module_full(
     typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
-    svc_module_map: Rc<HashMap<std::string::String, std::string::String>>,
-    data_items: Rc<HashMap<std::string::String, Rc<Node>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    svc_module_map: Rc<HashMap<String, String>>,
+    data_items: Rc<HashMap<String, Rc<Node>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-    unlisted_type_names: Rc<Vec<std::string::String>>,
+    unlisted_type_names: Rc<Vec<String>>,
 ) -> Rc<ModuleEmission> {
     {
         let m = typed_module.module.clone();
@@ -9498,14 +9747,10 @@ pub fn emit_module_full(
         } else {
             v1_rt::concat("\n\n".to_string(), phantom_zst_markers.clone())
         };
-        let raw_filename = crate::v1_compiler_emit_core_support::module_to_filename(
-            crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone()),
-        );
-        let filename = if (raw_filename.clone() == "main".to_string()) {
-            "main_mod".to_string()
-        } else {
-            raw_filename.clone()
-        };
+        let module_emit_path = rust_module_emit_path(crate::v1_compiler_infer_env::authored_name(
+            scope.type_env.clone(),
+            m.clone(),
+        ));
         let module_attrs =
             if (crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone())
                 == "std.error_primitives".to_string())
@@ -9517,10 +9762,7 @@ pub fn emit_module_full(
         let content = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("// Generated by v1 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), crate::v1_compiler_infer_env::authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs.clone()), prelude.clone()), imports_section.clone()), svc_imports_str.clone()), local_uses_str.clone()), "\n\n".to_string()), coproduct_wire_contract_validation_section.clone()), items_str.clone()), phantom_section.clone()), "\n".to_string());
         Rc::new(ModuleEmission {
             file: Rc::new(TextFile {
-                path: v1_rt::concat(
-                    v1_rt::concat(rust_source_root(), filename.clone()),
-                    rust_source_ext(),
-                ),
+                path: module_emit_path.clone(),
                 content: content.clone(),
             }),
             reference_rows: reference_plan.rows.clone(),
@@ -9532,10 +9774,7 @@ pub fn emit_module_full(
     }
 }
 
-pub fn emit_import_name(
-    n: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-) -> std::string::String {
+pub fn emit_import_name(n: String, registry: Rc<HashMap<String, Rc<ItemInfo>>>) -> String {
     {
         let is_data = match v1_rt::map_get(&registry, n.clone()) {
             Some(info) => (info.kind.clone() == ItemKind::DataItem),
@@ -9550,13 +9789,13 @@ pub fn emit_import_name(
 }
 
 pub fn is_import_graph_type_name(
-    name: std::string::String,
-    import_module: std::string::String,
+    name: String,
+    import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     if has_physical_type_def_in_module_filename(
@@ -9626,10 +9865,10 @@ pub fn is_import_graph_type_name(
 }
 
 pub fn item_defining_module_filename(
-    name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    fallback: std::string::String,
-) -> std::string::String {
+    name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    fallback: String,
+) -> String {
     match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
         Some(info) => {
             crate::v1_compiler_emit_core_support::module_to_filename(info.module_name.clone())
@@ -9640,15 +9879,15 @@ pub fn item_defining_module_filename(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleIndex {
-    pub by_name: Rc<HashMap<std::string::String, Rc<TypedModule>>>,
-    pub by_filename: Rc<HashMap<std::string::String, Rc<Vec<Rc<TypedModule>>>>>,
+    pub by_name: Rc<HashMap<String, Rc<TypedModule>>>,
+    pub by_filename: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>,
 }
 
 pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> {
     {
         let by_name = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<TypedModule>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            |acc: Rc<HashMap<String, Rc<TypedModule>>>, tm: Rc<TypedModule>| {
                 let nm = crate::v1_std_core::authored_name_at(
                     tm.type_env.clone().source_indices.clone(),
                     tm.module.clone(),
@@ -9660,9 +9899,8 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
             },
         );
         let by_filename = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<Vec<Rc<TypedModule>>>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<TypedModule>>>>>,
-             tm: Rc<TypedModule>| {
+            v1_rt::rc_empty_map::<String, Rc<Vec<Rc<TypedModule>>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<TypedModule>>>>>, tm: Rc<TypedModule>| {
                 let fname = crate::v1_compiler_emit_core_support::module_to_filename(
                     crate::v1_std_core::authored_name_at(
                         tm.type_env.clone().source_indices.clone(),
@@ -9689,18 +9927,18 @@ pub fn build_module_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<ModuleIndex> 
 }
 
 pub fn typed_module_by_name(
-    module_name: std::string::String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Option<Rc<TypedModule>> {
     v1_rt::map_get(&module_index.by_name.clone(), module_name.clone())
 }
 
 pub fn contracts_items_for_module(
-    module_name: std::string::String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<Rc<Node>>> {
     match typed_module_by_name(
@@ -9715,9 +9953,9 @@ pub fn contracts_items_for_module(
 }
 
 pub fn contracts_imports_for_module(
-    module_name: std::string::String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Rc<Vec<Rc<Node>>> {
     match typed_module_by_name(
@@ -9732,11 +9970,11 @@ pub fn contracts_imports_for_module(
 }
 
 pub fn module_name_from_filename(
-    mod_filename: std::string::String,
+    mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match v1_rt::map_get(&module_index.by_filename.clone(), mod_filename.clone()) {
         Some(mods) => Rc::new({
             let mut __result = Vec::new();
@@ -9755,10 +9993,10 @@ pub fn module_name_from_filename(
 }
 
 pub fn has_physical_type_def_in_module_filename(
-    rhs_name: std::string::String,
-    mod_filename: std::string::String,
+    rhs_name: String,
+    mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     match v1_rt::map_get(&module_index.by_filename.clone(), mod_filename.clone()) {
@@ -9799,12 +10037,12 @@ pub fn has_physical_type_def_in_module_filename(
 }
 
 pub fn find_variant_parent_in_module(
-    variant_name: std::string::String,
-    module_name: std::string::String,
+    variant_name: String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match typed_module_by_name(
         module_name.clone(),
         typed_modules.clone(),
@@ -9865,10 +10103,10 @@ pub fn find_variant_parent_in_module(
 }
 
 pub fn type_name_is_export_source_in_module(
-    name: std::string::String,
-    module_name: std::string::String,
+    name: String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
@@ -9903,12 +10141,12 @@ pub fn type_name_is_export_source_in_module(
 }
 
 pub fn type_name_is_rust_importable_in_module(
-    name: std::string::String,
-    module_name: std::string::String,
+    name: String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
@@ -9959,12 +10197,12 @@ pub fn type_name_is_rust_importable_in_module(
 }
 
 pub fn imported_name_is_non_emittable_type(
-    name: std::string::String,
-    import_module: std::string::String,
+    name: String,
+    import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     {
@@ -9998,12 +10236,12 @@ pub fn imported_name_is_non_emittable_type(
 }
 
 pub fn name_in_transitive_export_surface(
-    name: std::string::String,
-    module_name: std::string::String,
-    visited: Rc<Vec<std::string::String>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    name: String,
+    module_name: String,
+    visited: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -10080,13 +10318,13 @@ pub fn name_in_transitive_export_surface(
 }
 
 pub fn reexport_source_module_name(
-    name: std::string::String,
-    import_module: std::string::String,
+    name: String,
+    import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     reexport_source_module_name_with_visited(
         name.clone(),
         import_module.clone(),
@@ -10099,14 +10337,14 @@ pub fn reexport_source_module_name(
 }
 
 pub fn reexport_source_module_name_with_visited(
-    mut name: std::string::String,
-    mut import_module: std::string::String,
-    mut visited: Rc<Vec<std::string::String>>,
+    mut name: String,
+    mut import_module: String,
+    mut visited: Rc<Vec<String>>,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut module_index: Rc<ModuleIndex>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     loop {
         if {
             let mut __found = false;
@@ -10182,14 +10420,14 @@ continue;
 }
 
 pub fn import_module_enum_scope(
-    import_module: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    import_module: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let physical = enum_names_in_module(
             import_module.clone(),
@@ -10258,11 +10496,11 @@ pub fn import_module_enum_scope(
 }
 
 pub fn enum_names_in_module(
-    module_name: std::string::String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     match typed_module_by_name(
         module_name.clone(),
         typed_modules.clone(),
@@ -10297,10 +10535,10 @@ pub fn enum_names_in_module(
 }
 
 pub fn enum_physically_defined_in_module(
-    enum_name: std::string::String,
-    module_name: std::string::String,
+    enum_name: String,
+    module_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     match typed_module_by_name(
@@ -10328,13 +10566,13 @@ pub fn enum_physically_defined_in_module(
 }
 
 pub fn wildcard_import_pool_surface_names(
-    module_name: std::string::String,
-    visited: Rc<Vec<std::string::String>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    module_name: String,
+    visited: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if {
             let mut __found = false;
@@ -10409,12 +10647,12 @@ pub fn wildcard_import_pool_surface_names(
 }
 
 pub fn wildcard_reexport_surface_names(
-    import_module: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    import_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let local_candidates = match v1_rt::map_get(&export_sets, import_module.clone()) {
             Some(exported) => Rc::new(v1_rt::sorted_map_keys(&exported)),
@@ -10454,14 +10692,14 @@ pub fn wildcard_reexport_surface_names(
 }
 
 pub fn graph_type_import_module_filename(
-    name: std::string::String,
-    import_module: std::string::String,
-    mod_name: std::string::String,
+    name: String,
+    import_module: String,
+    mod_name: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     if has_physical_type_def_in_module_filename(
         name.clone(),
         mod_name.clone(),
@@ -10486,14 +10724,14 @@ pub fn graph_type_import_module_filename(
 }
 
 pub fn variant_defining_module_filename_for_import(
-    mut variant_name: std::string::String,
-    mut import_module: std::string::String,
+    mut variant_name: String,
+    mut import_module: String,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    mut fallback: std::string::String,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut fallback: String,
     mut module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     loop {
         match find_variant_parent_in_module(
             variant_name.clone(),
@@ -10537,16 +10775,16 @@ pub fn variant_defining_module_filename_for_import(
 }
 
 pub fn variant_parent_defining_module_filename(
-    parent_enum: std::string::String,
-    variant_name: std::string::String,
-    import_module: std::string::String,
+    parent_enum: String,
+    variant_name: String,
+    import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    fallback: std::string::String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    fallback: String,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     match find_variant_parent_in_module(
         variant_name.clone(),
         import_module.clone(),
@@ -10586,13 +10824,13 @@ pub fn variant_parent_defining_module_filename(
 }
 
 pub fn explicit_import_source_module_for_name(
-    name: std::string::String,
-    import_module: std::string::String,
+    name: String,
+    import_module: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match typed_module_by_name(
         import_module.clone(),
         typed_modules.clone(),
@@ -10700,15 +10938,15 @@ pub fn explicit_import_source_module_for_name(
 }
 
 pub fn reexport_variant_parent_in_import_module(
-    mut variant_name: std::string::String,
-    mut import_module: std::string::String,
-    mut registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    mut type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    mut variant_name: String,
+    mut import_module: String,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut module_index: Rc<ModuleIndex>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     loop {
         match reexport_source_module_name(
             variant_name.clone(),
@@ -10764,16 +11002,16 @@ pub fn reexport_variant_parent_in_import_module(
 }
 
 pub fn alias_rhs_rust_qualify_module_filename(
-    name: std::string::String,
-    alias_module: std::string::String,
+    name: String,
+    alias_module: String,
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     {
         let spell_mod = alias_rhs_base_module_filename(
             name.clone(),
@@ -10821,16 +11059,16 @@ pub fn alias_rhs_rust_qualify_module_filename(
 }
 
 pub fn alias_rhs_base_module_filename(
-    name: std::string::String,
-    alias_module: std::string::String,
+    name: String,
+    alias_module: String,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     scope: Rc<InferScope>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     {
         let local_mod =
             crate::v1_compiler_emit_core_support::module_to_filename(alias_module.clone());
@@ -10876,15 +11114,15 @@ pub fn alias_rhs_base_module_filename(
 }
 
 pub fn alias_rhs_base_module_from_import_or_registry(
-    name: std::string::String,
+    name: String,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    local_mod: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    local_mod: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     match Rc::new({
         let mut __result = Vec::new();
         for imp in Rc::new({
@@ -10988,8 +11226,8 @@ pub fn alias_rhs_base_module_from_import_or_registry(
 
 pub fn item_generic_param_names(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in item.params.clone().iter().cloned() {
@@ -11003,10 +11241,10 @@ pub fn item_generic_param_names(
 }
 
 pub fn type_item_by_name_in_module_filename(
-    rhs_name: std::string::String,
-    mod_filename: std::string::String,
+    rhs_name: String,
+    mod_filename: String,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> Option<Rc<Node>> {
     match module_name_from_filename(
@@ -11053,14 +11291,14 @@ pub fn type_item_by_name_in_module_filename(
 
 pub fn type_item_has_rust_nominal_shell_authority(
     item: Rc<Node>,
-    item_text: std::string::String,
-    module_name: std::string::String,
+    item_text: String,
+    module_name: String,
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     if crate::v1_compiler_emit_core_support::is_type_def_item(item.clone()) {
@@ -11128,10 +11366,7 @@ pub fn type_item_has_rust_nominal_shell_authority(
     }
 }
 
-pub fn is_phantom_unit_variant_type_arg(
-    env: Rc<TypeEnv>,
-    variant_name: std::string::String,
-) -> bool {
+pub fn is_phantom_unit_variant_type_arg(env: Rc<TypeEnv>, variant_name: String) -> bool {
     match crate::v1_compiler_infer_resolve::lookup_unit_variant_phantom_type(
         env.clone(),
         variant_name.clone(),
@@ -11142,15 +11377,15 @@ pub fn is_phantom_unit_variant_type_arg(
 }
 
 pub fn rhs_base_has_rust_type_authority_in_module(
-    mut rhs_name: std::string::String,
-    mut def_mod_filename: std::string::String,
-    mut module_name: std::string::String,
+    mut rhs_name: String,
+    mut def_mod_filename: String,
+    mut module_name: String,
     mut imports: Rc<Vec<Rc<Node>>>,
     mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    mut export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut module_index: Rc<ModuleIndex>,
 ) -> bool {
     loop {
@@ -11249,13 +11484,13 @@ pub fn rhs_base_has_rust_type_authority_in_module(
 
 pub fn alias_rhs_nominal_shell_has_rust_authority(
     n: Rc<Node>,
-    module_name: std::string::String,
+    module_name: String,
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -11368,7 +11603,7 @@ pub fn alias_rhs_nominal_shell_has_rust_authority(
 
 pub fn is_self_referential_opaque_type_resolved(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let item_text = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
@@ -11383,7 +11618,7 @@ pub fn is_self_referential_opaque_type_resolved(
 
 pub fn is_zero_param_self_referential_opaque_decl(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (crate::v1_compiler_emit_core_support::is_bare_leaf_item(item.clone())
         && is_self_referential_opaque_type_resolved(item.clone(), source_indices.clone()))
@@ -11391,7 +11626,7 @@ pub fn is_zero_param_self_referential_opaque_decl(
 
 pub fn is_parametric_opaque_type_decl_item(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((((((item.params.clone().len() as i64) > 0)
         && (item.body.clone() == std::option::Option::None))
@@ -11406,8 +11641,8 @@ pub fn is_parametric_opaque_type_decl_item(
 pub fn emit_zero_param_phantom_opaque_struct(
     item: Rc<Node>,
     map_key_required: bool,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let item_text = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
         v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(crate::extdeps_languages_rust_emit::rust_trait_derive_attr_from_traits(crate::v1_compiler_trait_derive_emit::v1_with_map_key_requirement(crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits(), map_key_required.clone())), "\n".to_string()), rust_visibility_prefix()), rust_items().struct_keyword.clone()), " ".to_string()), item_text.clone()), "(pub std::marker::PhantomData<()>);".to_string())
@@ -11417,8 +11652,8 @@ pub fn emit_zero_param_phantom_opaque_struct(
 pub fn emit_parametric_phantom_opaque_struct(
     item: Rc<Node>,
     map_key_required: bool,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let item_text = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
         let type_params = emit_type_params(item.params.clone(), source_indices.clone());
@@ -11436,13 +11671,13 @@ pub fn emit_parametric_phantom_opaque_struct(
 
 pub fn is_emittable_parametric_type_alias_item(
     item: Rc<Node>,
-    item_text: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    module_name: std::string::String,
+    item_text: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
     imports: Rc<Vec<Rc<Node>>>,
     scope: Rc<InferScope>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
 ) -> bool {
@@ -11490,17 +11725,17 @@ pub fn is_emittable_parametric_type_alias_item(
 }
 
 pub fn import_variant_parent_for_name(
-    n: std::string::String,
-    import_module: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    n: String,
+    import_module: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-    imported_enums: Rc<Vec<std::string::String>>,
-    import_module_enums: Rc<Vec<std::string::String>>,
-) -> std::string::String {
+    imported_enums: Rc<Vec<String>>,
+    import_module_enums: Rc<Vec<String>>,
+) -> String {
     if is_import_graph_type_name(
         n.clone(),
         import_module.clone(),
@@ -11566,17 +11801,17 @@ pub fn import_variant_parent_for_name(
 }
 
 pub fn emit_specific_import_block(
-    import_module: std::string::String,
-    mod_name: std::string::String,
-    filtered_names: Rc<Vec<std::string::String>>,
+    import_module: String,
+    mod_name: String,
+    filtered_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    local_names: Rc<Vec<std::string::String>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    local_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     {
         let type_summaries = emit_info.type_summaries.clone();
         let deduped_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
@@ -12229,7 +12464,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
     }
 }
 
-pub fn rust_use_crate_marker(line: std::string::String) -> std::string::String {
+pub fn rust_use_crate_marker(line: String) -> String {
     if v1_rt::contains(line.clone(), "pub use crate::".to_string()) {
         "pub use crate::".to_string()
     } else {
@@ -12241,7 +12476,7 @@ pub fn rust_use_crate_marker(line: std::string::String) -> std::string::String {
     }
 }
 
-pub fn rust_use_after_crate(line: std::string::String) -> std::string::String {
+pub fn rust_use_after_crate(line: String) -> String {
     {
         let marker = rust_use_crate_marker(line.clone());
         if (marker.clone() == "".to_string()) {
@@ -12265,7 +12500,7 @@ pub fn rust_use_after_crate(line: std::string::String) -> std::string::String {
     }
 }
 
-pub fn rust_pub_use_module_name(line: std::string::String) -> std::string::String {
+pub fn rust_pub_use_module_name(line: String) -> String {
     {
         let rest = rust_use_after_crate(line.clone());
         if (rest.clone() == "".to_string()) {
@@ -12323,30 +12558,26 @@ pub fn rust_pub_use_module_name(line: std::string::String) -> std::string::Strin
                                 segments
                                     .iter()
                                     .cloned()
-                                    .fold(
-                                        (0, "".to_string()),
-                                        |acc: (i64, String), seg: std::string::String| {
-                                            if (acc.0.clone() < (seg_count.clone() - 1)) {
-                                                {
-                                                    let next = if (acc.1.clone() == "".to_string())
-                                                    {
-                                                        seg.clone()
-                                                    } else {
+                                    .fold((0, "".to_string()), |acc: (i64, String), seg: String| {
+                                        if (acc.0.clone() < (seg_count.clone() - 1)) {
+                                            {
+                                                let next = if (acc.1.clone() == "".to_string()) {
+                                                    seg.clone()
+                                                } else {
+                                                    v1_rt::concat(
                                                         v1_rt::concat(
-                                                            v1_rt::concat(
-                                                                acc.1.clone(),
-                                                                "::".to_string(),
-                                                            ),
-                                                            seg.clone(),
-                                                        )
-                                                    };
-                                                    ((acc.0.clone() + 1), next.clone())
-                                                }
-                                            } else {
-                                                acc.clone()
+                                                            acc.1.clone(),
+                                                            "::".to_string(),
+                                                        ),
+                                                        seg.clone(),
+                                                    )
+                                                };
+                                                ((acc.0.clone() + 1), next.clone())
                                             }
-                                        },
-                                    )
+                                        } else {
+                                            acc.clone()
+                                        }
+                                    })
                                     .1
                                     .clone()
                             }
@@ -12359,7 +12590,7 @@ pub fn rust_pub_use_module_name(line: std::string::String) -> std::string::Strin
     }
 }
 
-pub fn rust_pub_use_singleton_name(line: std::string::String) -> std::string::String {
+pub fn rust_pub_use_singleton_name(line: String) -> String {
     {
         let rest = rust_use_after_crate(line.clone());
         if (((rest.clone() == "".to_string()) || v1_rt::contains(rest.clone(), "::{".to_string()))
@@ -12395,7 +12626,7 @@ pub fn rust_pub_use_singleton_name(line: std::string::String) -> std::string::St
     }
 }
 
-pub fn rust_pub_use_braced_names(line: std::string::String) -> Rc<Vec<std::string::String>> {
+pub fn rust_pub_use_braced_names(line: String) -> Rc<Vec<String>> {
     if (v1_rt::contains(line.clone(), "::{".to_string())
         && (rust_use_crate_marker(line.clone()) != "".to_string()))
     {
@@ -12435,11 +12666,7 @@ pub fn rust_pub_use_braced_names(line: std::string::String) -> Rc<Vec<std::strin
     }
 }
 
-pub fn rust_pub_use_braced_line_has_name(
-    line: std::string::String,
-    mod_name: std::string::String,
-    name: std::string::String,
-) -> bool {
+pub fn rust_pub_use_braced_line_has_name(line: String, mod_name: String, name: String) -> bool {
     (((rust_pub_use_module_name(line.clone()) == mod_name.clone())
         && v1_rt::contains(line.clone(), "::{".to_string()))
         && (((v1_rt::contains(
@@ -12469,10 +12696,7 @@ pub fn rust_pub_use_braced_line_has_name(
         )))
 }
 
-pub fn rust_pub_use_singleton_covered(
-    line: std::string::String,
-    lines: Rc<Vec<std::string::String>>,
-) -> bool {
+pub fn rust_pub_use_singleton_covered(line: String, lines: Rc<Vec<String>>) -> bool {
     {
         let mod_name = rust_pub_use_module_name(line.clone());
         let name = rust_pub_use_singleton_name(line.clone());
@@ -12497,10 +12721,7 @@ pub fn rust_pub_use_singleton_covered(
     }
 }
 
-pub fn rust_pub_use_braced_subset_covered(
-    line: std::string::String,
-    lines: Rc<Vec<std::string::String>>,
-) -> bool {
+pub fn rust_pub_use_braced_subset_covered(line: String, lines: Rc<Vec<String>>) -> bool {
     {
         let mod_name = rust_pub_use_module_name(line.clone());
         let names = rust_pub_use_braced_names(line.clone());
@@ -12546,10 +12767,7 @@ pub struct BracedImportCoverAccum {
     pub covered: bool,
 }
 
-pub fn rust_pub_use_braced_equal_prior_covered(
-    line: std::string::String,
-    lines: Rc<Vec<std::string::String>>,
-) -> bool {
+pub fn rust_pub_use_braced_equal_prior_covered(line: String, lines: Rc<Vec<String>>) -> bool {
     {
         let mod_name = rust_pub_use_module_name(line.clone());
         let names = rust_pub_use_braced_names(line.clone());
@@ -12562,7 +12780,7 @@ pub fn rust_pub_use_braced_equal_prior_covered(
                         found_current: false,
                         covered: false,
                     },
-                    |inner: BracedImportCoverAccum, other: std::string::String| {
+                    |inner: BracedImportCoverAccum, other: String| {
                         if (inner.found_current.clone() || inner.covered.clone()) {
                             inner.clone()
                         } else {
@@ -12609,7 +12827,7 @@ pub fn rust_pub_use_braced_equal_prior_covered(
     }
 }
 
-pub fn rust_use_bound_symbol(entry: std::string::String) -> std::string::String {
+pub fn rust_use_bound_symbol(entry: String) -> String {
     match Rc::new(
         entry
             .clone()
@@ -12627,7 +12845,7 @@ pub fn rust_use_bound_symbol(entry: std::string::String) -> std::string::String 
     }
 }
 
-pub fn rust_use_line_bound_symbols(line: std::string::String) -> Rc<Vec<std::string::String>> {
+pub fn rust_use_line_bound_symbols(line: String) -> Rc<Vec<String>> {
     if ((rust_use_crate_marker(line.clone()) == "".to_string())
         || v1_rt::contains(line.clone(), "::*".to_string()))
     {
@@ -12657,28 +12875,21 @@ pub fn rust_use_line_bound_symbols(line: std::string::String) -> Rc<Vec<std::str
     }
 }
 
-pub fn strip_repeated_use_symbols(
-    lines: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+pub fn strip_repeated_use_symbols(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let owners = lines.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
-            |acc: Rc<HashMap<std::string::String, std::string::String>>,
-             line: std::string::String| {
+            v1_rt::rc_empty_map::<String, String>(),
+            |acc: Rc<HashMap<String, String>>, line: String| {
                 rust_use_line_bound_symbols(line.clone())
                     .iter()
                     .cloned()
-                    .fold(
-                        acc,
-                        |inner: Rc<HashMap<std::string::String, std::string::String>>,
-                         bound: std::string::String| {
-                            if v1_rt::map_contains_key(&inner, bound.clone()) {
-                                inner.clone()
-                            } else {
-                                v1_rt::rc_map_insert(inner.clone(), bound.clone(), line.clone())
-                            }
-                        },
-                    )
+                    .fold(acc, |inner: Rc<HashMap<String, String>>, bound: String| {
+                        if v1_rt::map_contains_key(&inner, bound.clone()) {
+                            inner.clone()
+                        } else {
+                            v1_rt::rc_map_insert(inner.clone(), bound.clone(), line.clone())
+                        }
+                    })
             },
         );
         Rc::new({
@@ -12809,9 +13020,7 @@ pub fn strip_repeated_use_symbols(
     }
 }
 
-pub fn dedupe_rust_import_lines(
-    lines: Rc<Vec<std::string::String>>,
-) -> Rc<Vec<std::string::String>> {
+pub fn dedupe_rust_import_lines(lines: Rc<Vec<String>>) -> Rc<Vec<String>> {
     {
         let exact = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
@@ -12842,14 +13051,14 @@ pub fn dedupe_rust_import_lines(
 pub fn emit_imports(
     imports: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    local_names: Rc<Vec<std::string::String>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    local_names: Rc<Vec<String>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
     supplement_items: Rc<Vec<Rc<Node>>>,
-) -> std::string::String {
+) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -12903,7 +13112,7 @@ Rc::new(block.clone().split(&"\n".to_string()).map(|s| s.to_string()).collect::<
 
 pub fn type_node_is_faithful_string_leaf(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let _n = n.clone();
@@ -12914,7 +13123,7 @@ pub fn type_node_is_faithful_string_leaf(
 
 pub fn node_tree_has_faithful_string_leaf(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if type_node_is_faithful_string_leaf(n.clone(), source_indices.clone()) {
@@ -12952,8 +13161,8 @@ pub fn node_tree_has_faithful_string_leaf(
 
 pub fn node_tree_references_type_name(
     n: Rc<Node>,
-    type_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
@@ -13000,24 +13209,24 @@ pub fn node_tree_references_type_name(
     })
 }
 
-pub fn data_field_struct_import_provider_note() -> std::string::String {
+pub fn data_field_struct_import_provider_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "§3 single authority for 'which module PROVIDES this field-struct name'. This synth exists because an ANONYMOUS record literal takes its type from the FIELD it initializes (an unnamed record literal on the `io` field), so the constructed type name appears NOWHERE in the source text and can therefore never sit in an authored import list — emit_imports, which derives use-lines only from import lists, has no candidate to work from and the emitted Rust refuses (E0422 `cannot find struct ... in this scope`).\n\nThe predicate was `has_physical_type_def_in_module_filename` — field type PHYSICALLY DEFINED in the module being imported from. That is strictly narrower than the question actually being asked, which is whether the imported module PROVIDES the name. `extdeps.realization.compile_stage_memo` imports CacheInterfaceCatalogFacts from `extdeps.cache.types` and constructs its `io` / `placement` fields, but those types are defined in the SIBLING modules `extdeps.cache.catalog_io` / `extdeps.cache.catalog_placement` and merely re-exported by `extdeps.cache.types` — so the physical-definition test rejected them and the use-line was never synthesized. Measured, not assumed: materialization_carriers first_error = error E0422 cannot find struct, variant or union type CacheInterfaceCatalogIoSemantics in this scope.\n\n`name_in_transitive_export_surface` is the existing authority for that question (get_exported_names counts specific-import names as exports, which is exactly re-export), so this reuses it rather than minting a second reachability rule. Routing needs no change: graph_type_import_module_filename already groups emitted use-lines by the type's DEFINING module, so admitting the candidate yields a braced use-line against crate::extdeps_cache_catalog_io on its own.\n\nINCREMENT 2 (generic-argument axis, #6986): build_field_type_map also walks the resolved field-type NODE TREE via collect_type_node_import_surface_names (04_emit_info.dag), populating TypeSummary.field_import_surface_names; this synth consumes that list so List<CacheEvidence> admits CacheEvidence (field_type_map still maps field→HEAD for lookup). Witness: field_import_surface_generic_arg_test. Re-probe 2026-07-21: materialization_carriers CacheEvidence E0422 cleared; first error advanced to E0425 cannot find value extdeps (namespace/dotted-path class — distinct blocker).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn module_data_field_struct_import_names(
     items: Rc<Vec<Rc<Node>>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    import_module: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    import_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
         let mut __result = Vec::new();
         for item in Rc::new({
@@ -13087,8 +13296,8 @@ pub fn module_data_field_struct_import_names(
 
 pub fn typed_closure_includes_module_filename(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-    filename: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    filename: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -13107,7 +13316,7 @@ pub fn typed_closure_includes_module_filename(
 
 pub fn module_item_has_faithful_string_leaf(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((node_tree_has_faithful_string_leaf(item.clone(), source_indices.clone()) || {
         let mut __found = false;
@@ -13126,8 +13335,8 @@ pub fn module_item_has_faithful_string_leaf(
 
 pub fn module_item_references_type_name(
     item: Rc<Node>,
-    type_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((node_tree_references_type_name(item.clone(), type_name.clone(), source_indices.clone())
         || match item.type_annotation.clone() {
@@ -13164,7 +13373,7 @@ pub fn module_item_references_type_name(
 
 pub fn module_item_references_faithful_expanded_type(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((module_item_references_type_name(
         item.clone(),
@@ -13183,7 +13392,7 @@ pub fn module_item_references_faithful_expanded_type(
 
 pub fn module_needs_faithful_carrier_imports(
     items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if true {
         false
@@ -13230,7 +13439,7 @@ pub fn module_needs_faithful_carrier_imports(
 
 pub fn module_renders_faithful_text_carrier(
     items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if true {
         false
@@ -13249,9 +13458,9 @@ pub fn module_renders_faithful_text_carrier(
 }
 
 pub fn rust_import_name_already_resolved(
-    imported_names: Rc<Vec<std::string::String>>,
-    local_type_names: Rc<Vec<std::string::String>>,
-    name: std::string::String,
+    imported_names: Rc<Vec<String>>,
+    local_type_names: Rc<Vec<String>>,
+    name: String,
 ) -> bool {
     ({
         let mut __found = false;
@@ -13275,13 +13484,13 @@ pub fn rust_import_name_already_resolved(
 }
 
 pub fn emit_faithful_text_carrier_import_lines(
-    imported_names: Rc<Vec<std::string::String>>,
-    local_type_names: Rc<Vec<std::string::String>>,
+    imported_names: Rc<Vec<String>>,
+    local_type_names: Rc<Vec<String>>,
     items: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let closure_has_std_measure = typed_closure_includes_module_filename(
             typed_modules.clone(),
@@ -13523,10 +13732,7 @@ pub fn emit_faithful_text_carrier_import_lines(
     }
 }
 
-pub fn emit_prelude(
-    imported_names: Rc<Vec<std::string::String>>,
-    local_type_names: Rc<Vec<std::string::String>>,
-) -> std::string::String {
+pub fn emit_prelude(imported_names: Rc<Vec<String>>, local_type_names: Rc<Vec<String>>) -> String {
     {
         let base = v1_rt::concat(
             v1_rt::concat(
@@ -13544,7 +13750,7 @@ pub fn emit_prelude(
     }
 }
 
-pub fn emit_non_empty_wrappers() -> std::string::String {
+pub fn emit_non_empty_wrappers() -> String {
     {
         let vec_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub struct NonEmptyVec<T>(Vec<T>);\n\n".to_string(), "impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {\n".to_string()), "    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n".to_string()), "        f.debug_tuple(\"NonEmptyVec\").field(&self.0).finish()\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> Clone for NonEmptyVec<T> {\n".to_string()), "    fn clone(&self) -> Self {\n".to_string()), "        Self(self.0.clone())\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {\n".to_string()), "    fn eq(&self, other: &Self) -> bool {\n".to_string()), "        self.0 == other.0\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "impl<T: Clone> NonEmptyVec<T> {\n".to_string()), "    pub fn new(items: Vec<T>) -> Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyVec requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn into_vec(self) -> Vec<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
         let set_wrapper = v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Debug, Clone, PartialEq)]\n".to_string(), "pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);\n\n".to_string()), "impl<T: Ord> NonEmptyBTreeSet<T> {\n".to_string()), "    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {\n".to_string()), "        if items.is_empty() {\n".to_string()), "            Err(\"NonEmptyBTreeSet requires at least one element\")\n".to_string()), "        } else {\n".to_string()), "            Ok(Self(items))\n".to_string()), "        }\n".to_string()), "    }\n\n".to_string()), "    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {\n".to_string()), "        &self.0\n".to_string()), "    }\n\n".to_string()), "    pub fn into_set(self) -> std::collections::BTreeSet<T> {\n".to_string()), "        self.0\n".to_string()), "    }\n".to_string()), "}".to_string());
@@ -13557,19 +13763,19 @@ pub fn emit_non_empty_wrappers() -> std::string::String {
 
 pub fn emit_typed_item(
     item: Rc<Node>,
-    module_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     module_index: Rc<ModuleIndex>,
-) -> std::string::String {
+) -> String {
     {
         let env = scope.type_env.clone();
         let qualified_name = v1_rt::concat(
@@ -13986,7 +14192,7 @@ pub fn needs_box_wrapping(
     mut n: Rc<Node>,
     mut recursive_types: Rc<BTreeSet<String>>,
     mut shared_types: Rc<BTreeSet<String>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -14027,8 +14233,8 @@ pub fn needs_box_wrapping(
 
 pub fn emit_type_params(
     params: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -14053,9 +14259,7 @@ pub fn emit_type_params(
     }
 }
 
-pub fn emit_bare_type_params(
-    generic_param_names: Rc<Vec<std::string::String>>,
-) -> std::string::String {
+pub fn emit_bare_type_params(generic_param_names: Rc<Vec<String>>) -> String {
     if ((generic_param_names.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -14078,9 +14282,9 @@ pub fn emit_bare_type_params(
 
 pub fn emit_type_params_with_clone_bound(
     params: Rc<Vec<Rc<Node>>>,
-    clone_param: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    clone_param: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -14167,12 +14371,12 @@ pub fn function_type_params_have_collision(type_params: Rc<Vec<Rc<Node>>>) -> bo
 
 pub fn emit_item_header_clone_param_names(
     item: Rc<Node>,
-    item_name: std::string::String,
+    item_name: String,
     has_fn_fields: bool,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     if has_fn_fields.clone() {
         crate::v1_compiler_trait_derive_emit::v1_item_wf_propagated_clone_bounded_param_names(
             item_name.clone(),
@@ -14193,9 +14397,9 @@ pub fn emit_item_header_clone_param_names(
 
 pub fn emit_type_params_from_clone_param_names(
     params: Rc<Vec<Rc<Node>>>,
-    clone_param_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    clone_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((clone_param_names.clone().len() as i64) > 0) {
         crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_clone_bounds(
             params.clone(),
@@ -14208,11 +14412,11 @@ pub fn emit_type_params_from_clone_param_names(
 }
 
 pub fn emit_item_type_params_with_clone_bounds(
-    item_name: std::string::String,
+    item_name: String,
     params: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let generic_param_names = Rc::new({
             let mut __result = Vec::new();
@@ -14243,8 +14447,8 @@ pub fn emit_item_type_params_with_clone_bounds(
 }
 
 pub fn v1_carrier_param_needs_clone_bound(
-    item_name: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    item_name: String,
+    generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     ((crate::v1_compiler_trait_derive_emit::v1_item_clone_bounded_param_names(
@@ -14258,10 +14462,10 @@ pub fn v1_carrier_param_needs_clone_bound(
 
 pub fn emit_item_clone_bound_refusal(
     item: Rc<Node>,
-    item_name: std::string::String,
+    item_name: String,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((item.params.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -14287,10 +14491,10 @@ pub fn emit_type_def_from_connective(
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<std::string::String, Rc<Vec<Rc<Node>>>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     module_items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-) -> std::string::String {
+) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let is_product = crate::v1_compiler_infer_types::is_product_type(item.clone());
@@ -14608,8 +14812,8 @@ pub fn emit_type_def_from_connective(
 
 pub fn type_node_mentions_name(
     n: Rc<Node>,
-    target: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    target: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone())
@@ -14632,10 +14836,10 @@ pub fn type_node_mentions_name(
 }
 
 pub fn struct_unused_param_names(
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.iter().cloned() {
@@ -14661,10 +14865,10 @@ pub fn struct_unused_param_names(
 }
 
 pub fn alias_unused_param_names(
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     rhs: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for p in generic_param_names.iter().cloned() {
@@ -14676,7 +14880,7 @@ pub fn alias_unused_param_names(
     })
 }
 
-pub fn rust_phantom_marker_inner(unused: Rc<Vec<std::string::String>>) -> std::string::String {
+pub fn rust_phantom_marker_inner(unused: Rc<Vec<String>>) -> String {
     {
         let pascal_unused = Rc::new({
             let mut __result = Vec::new();
@@ -14699,18 +14903,18 @@ pub fn rust_phantom_marker_inner(unused: Rc<Vec<std::string::String>>) -> std::s
     }
 }
 
-pub fn rust_phantom_field_name() -> std::string::String {
+pub fn rust_phantom_field_name() -> String {
     "_phantom".to_string()
 }
 
-pub fn type_has_fn_fields(name: std::string::String, emit_info: Rc<EmitGraphInfo>) -> bool {
+pub fn type_has_fn_fields(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     match v1_rt::map_get(&emit_info.type_summaries.clone(), name.clone()) {
         Some(ts) => ts.has_fn_fields.clone(),
         None => false,
     }
 }
 
-pub fn struct_needs_serde(name: std::string::String, emit_info: Rc<EmitGraphInfo>) -> bool {
+pub fn struct_needs_serde(name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     !type_has_fn_fields(name.clone(), emit_info.clone())
 }
 
@@ -14727,10 +14931,7 @@ pub fn item_seals_construction(item: Rc<Node>) -> bool {
     }
 }
 
-pub fn type_name_seals_construction(
-    type_name: std::string::String,
-    emit_info: Rc<EmitGraphInfo>,
-) -> bool {
+pub fn type_name_seals_construction(type_name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     match crate::v1_compiler_infer_emit_info::lookup_emit_type_decl(
         emit_info.clone(),
         type_name.clone(),
@@ -14741,14 +14942,14 @@ pub fn type_name_seals_construction(
 }
 
 pub fn emit_sealed_struct_accessors(
-    name: std::string::String,
-    type_params: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    name: String,
+    type_params: String,
+    generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         if ((children.clone().len() as i64) == 0) {
             return "".to_string();
@@ -14829,9 +15030,9 @@ pub fn emit_sealed_struct_accessors(
 }
 
 pub fn emit_struct_from_children(
-    name: std::string::String,
-    type_params: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    name: String,
+    type_params: String,
+    generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
@@ -14839,7 +15040,7 @@ pub fn emit_struct_from_children(
     deserialize_forbidden: bool,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
         let surface = crate::v1_compiler_trait_derive_emit::v1_emit_struct_from_capability_table(
@@ -14978,9 +15179,9 @@ pub fn emit_struct_from_children(
 pub fn render_rust_type_with_applied_binding(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     render_rust_type_with_applied_binding_in_scope(
         n.clone(),
         Rc::new(vec![]),
@@ -14992,17 +15193,14 @@ pub fn render_rust_type_with_applied_binding(
 
 pub fn render_rust_type_with_applied_binding_in_scope(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         if is_host_text_carrier_type(n.clone(), source_indices.clone()) {
-            return rust_carrier_optional_wrap(
-                n.clone(),
-                render_rust_text_carrier(n.clone(), shared_types.clone()),
-            );
+            return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
         match crate::v1_std_core::find_property(
             n.properties.clone(),
@@ -15035,8 +15233,7 @@ pub fn render_rust_type_with_applied_binding_in_scope(
                                     generic_param_names.clone(),
                                     shared_types.clone(),
                                     source_indices.clone(),
-                                    v1_rt::rc_empty_map::<std::string::String, std::string::String>(
-                                    ),
+                                    v1_rt::rc_empty_map::<String, String>(),
                                     env.clone(),
                                 )
                             }
@@ -15046,7 +15243,7 @@ pub fn render_rust_type_with_applied_binding_in_scope(
                                 generic_param_names.clone(),
                                 shared_types.clone(),
                                 source_indices.clone(),
-                                v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+                                v1_rt::rc_empty_map::<String, String>(),
                                 env.clone(),
                             )
                         }
@@ -15080,12 +15277,12 @@ pub fn render_rust_type_with_applied_binding_in_scope(
 
 pub fn render_rust_field_type_with_applied_binding(
     field: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let authored_type = crate::v1_std_core::field_node_type_expr(field.clone());
         if ((generic_param_names.clone().len() as i64) > 0) {
@@ -15149,11 +15346,11 @@ pub fn render_rust_field_type_with_applied_binding(
 
 pub fn rust_field_carrier_final_type(
     rt_field: Rc<Node>,
-    ty: std::string::String,
+    ty: String,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if needs_box_wrapping(
         rt_field.clone(),
         recursive_types.clone(),
@@ -15179,15 +15376,15 @@ pub fn rust_field_carrier_final_type(
 }
 
 pub fn emit_struct_field_from_child(
-    struct_name: std::string::String,
+    struct_name: String,
     child: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
     sealed: bool,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let rt_child = crate::v1_compiler_infer_types::resolved_type(child.clone());
         let authored_child_type = crate::v1_std_core::field_node_type_expr(child.clone());
@@ -15377,13 +15574,13 @@ pub fn emit_struct_field_from_child(
 }
 
 pub fn emit_rust_field_definition(
-    authored: std::string::String,
-    final_ty: std::string::String,
-    rename_attr: std::string::String,
-    indent: std::string::String,
-    visibility: std::string::String,
+    authored: String,
+    final_ty: String,
+    rename_attr: String,
+    indent: String,
+    visibility: String,
     needs_serde: bool,
-) -> std::string::String {
+) -> String {
     {
         let snake = crate::v1_compiler_emit_core_support::to_snake(authored.clone());
         let emitted = crate::v1_compiler_emit::emit_ident(authored.clone(), RenderTarget::Rust);
@@ -15423,14 +15620,14 @@ pub fn emit_rust_field_definition(
 }
 
 pub fn enum_derives(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     has_fn_fields: bool,
     deserialize_forbidden: bool,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     crate::v1_compiler_trait_derive_emit::v1_emit_enum_derives(
         children.clone(),
         has_fn_fields.clone(),
@@ -15442,16 +15639,16 @@ pub fn enum_derives(
 }
 
 pub fn emit_enum_from_children(
-    name: std::string::String,
-    type_params: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    name: String,
+    type_params: String,
+    generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let has_fn_fields = type_has_fn_fields(name.clone(), emit_info.clone());
         let deserialize_forbidden = enum_variant_payloads_forbid_deserialize(
@@ -15562,10 +15759,7 @@ pub fn emit_enum_from_children(
     }
 }
 
-pub fn find_shared_enum_fields(
-    children: Rc<Vec<Rc<Node>>>,
-    env: Rc<TypeEnv>,
-) -> Rc<Vec<std::string::String>> {
+pub fn find_shared_enum_fields(children: Rc<Vec<Rc<Node>>>, env: Rc<TypeEnv>) -> Rc<Vec<String>> {
     {
         let fielded = Rc::new({
             let mut __result = Vec::new();
@@ -15632,15 +15826,15 @@ pub fn find_shared_enum_fields(
 }
 
 pub fn emit_enum_shared_accessors(
-    name: std::string::String,
-    type_params: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    name: String,
+    type_params: String,
+    generic_param_names: Rc<Vec<String>>,
     children: Rc<Vec<Rc<Node>>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let all_shared = find_shared_enum_fields(children.clone(), env.clone());
         if ((all_shared.clone().len() as i64) == 0) {
@@ -15798,10 +15992,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
     }
 }
 
-pub fn string_without_prefix(
-    value: std::string::String,
-    prefix: std::string::String,
-) -> Option<std::string::String> {
+pub fn string_without_prefix(value: String, prefix: String) -> Option<String> {
     if (v1_rt::string_length(&prefix) == 0) {
         std::option::Option::None
     } else {
@@ -15819,10 +16010,7 @@ pub fn string_without_prefix(
     }
 }
 
-pub fn string_without_suffix(
-    value: std::string::String,
-    suffix: std::string::String,
-) -> Option<std::string::String> {
+pub fn string_without_suffix(value: String, suffix: String) -> Option<String> {
     if (v1_rt::string_length(&suffix) == 0) {
         std::option::Option::None
     } else {
@@ -15844,11 +16032,7 @@ pub fn string_without_suffix(
     }
 }
 
-pub fn string_index_of_from(
-    mut haystack: std::string::String,
-    mut needle: std::string::String,
-    mut pos: i64,
-) -> Option<i64> {
+pub fn string_index_of_from(mut haystack: String, mut needle: String, mut pos: i64) -> Option<i64> {
     loop {
         if ((pos.clone() + v1_rt::string_length(&needle)) > v1_rt::string_length(&haystack)) {
             break std::option::Option::None;
@@ -15871,14 +16055,14 @@ pub fn string_index_of_from(
     }
 }
 
-pub fn string_index_of(haystack: std::string::String, needle: std::string::String) -> Option<i64> {
+pub fn string_index_of(haystack: String, needle: String) -> Option<i64> {
     string_index_of_from(haystack.clone(), needle.clone(), 0)
 }
 
 pub fn wire_variant_tag_for_policy(
-    authored: std::string::String,
+    authored: String,
     policy: Rc<RustEnumWireSerde>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     if (policy.error_message.clone() != std::option::Option::None) {
         std::option::Option::None
     } else {
@@ -15936,7 +16120,7 @@ pub fn wire_variant_tag_for_policy(
     }
 }
 
-pub fn policy_serde_tag_field(policy: Rc<RustEnumWireSerde>) -> Option<std::string::String> {
+pub fn policy_serde_tag_field(policy: Rc<RustEnumWireSerde>) -> Option<String> {
     {
         let needle = "tag = \"".to_string();
         match string_index_of(policy.enum_attr.clone(), needle.clone()) {
@@ -15972,9 +16156,9 @@ pub fn policy_is_string_variant(policy: Rc<RustEnumWireSerde>) -> bool {
 }
 
 pub fn wire_variant_rename_attr_for_policy(
-    authored: std::string::String,
+    authored: String,
     policy: Rc<RustEnumWireSerde>,
-) -> std::string::String {
+) -> String {
     match wire_variant_tag_for_policy(authored.clone(), policy.clone()) {
         Some(tag) => match policy.rename_style.clone() {
             Some(style) => {
@@ -15994,9 +16178,9 @@ pub fn wire_variant_rename_attr_for_policy(
 }
 
 pub fn variant_rename_validation_for_policy(
-    authored: std::string::String,
+    authored: String,
     policy: Rc<RustEnumWireSerde>,
-) -> std::string::String {
+) -> String {
     match policy.rename_style.clone() {
         Some(style) => {
             if (style.clone() == "StripAffixAndSnakeCase".to_string()) {
@@ -16048,7 +16232,7 @@ pub fn variant_rename_validations_for_policy(
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
-) -> std::string::String {
+) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for text in Rc::new({
@@ -16075,11 +16259,11 @@ pub fn variant_rename_validations_for_policy(
 
 pub fn enum_variant_field_type_node(
     env: Rc<TypeEnv>,
-    enum_name: std::string::String,
-    variant_name: std::string::String,
-    field_name: std::string::String,
+    enum_name: String,
+    variant_name: String,
+    field_name: String,
     fallback: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), enum_name.clone()) {
         Some(enum_node) => match crate::v1_std_core::find_child_named(
@@ -16110,8 +16294,8 @@ pub fn enum_variant_field_type_node(
 pub fn render_variant_payload_type(
     n: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((n.connective.clone() == Connective::NoConnective)
         && ((n.children.clone().len() as i64) > 0))
     {
@@ -16157,7 +16341,7 @@ pub fn render_variant_payload_type(
 
 pub fn variant_is_synthetic_positional_payload(
     fields: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if ((fields.clone().len() as i64) != 1) {
         false
@@ -16174,14 +16358,14 @@ pub fn variant_is_synthetic_positional_payload(
 
 pub fn emit_variant_from_child(
     child: Rc<Node>,
-    enum_name: std::string::String,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    enum_name: String,
+    generic_param_names: Rc<Vec<String>>,
     recursive_types: Rc<BTreeSet<String>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     serde_policy: Rc<RustEnumWireSerde>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let child_text = crate::v1_compiler_infer_env::authored_name(env.clone(), child.clone());
         let rename_attr =
@@ -16406,8 +16590,8 @@ pub fn v1_fn_body_derived_clone_param_names(
     body: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
         let type_params = function_type_params(params.clone());
@@ -16495,23 +16679,22 @@ pub fn v1_fn_body_derived_clone_param_names(
 }
 
 pub fn v1_fn_bounds_by_param(
-    clone_param_names: Rc<Vec<std::string::String>>,
-    eq_param_names: Rc<Vec<std::string::String>>,
-    map_key_param_names: Rc<Vec<std::string::String>>,
-    static_param_names: Rc<Vec<std::string::String>>,
-) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
+    clone_param_names: Rc<Vec<String>>,
+    eq_param_names: Rc<Vec<String>>,
+    map_key_param_names: Rc<Vec<String>>,
+    static_param_names: Rc<Vec<String>>,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let with_clone = clone_param_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
-            |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
-             n: std::string::String| {
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| {
                 v1_rt::rc_map_insert(m, n.clone(), Rc::new(vec!["Clone".to_string()]))
             },
         );
         let with_eq = eq_param_names.iter().cloned().fold(
             with_clone.clone(),
-            |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
-             n: std::string::String| match v1_rt::map_get(&m, n.clone()) {
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
                 Some(traits) => v1_rt::rc_map_insert(
                     m.clone(),
                     n.clone(),
@@ -16526,8 +16709,8 @@ pub fn v1_fn_bounds_by_param(
         );
         let with_key = map_key_param_names.iter().cloned().fold(
             with_eq.clone(),
-            |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
-             n: std::string::String| match v1_rt::map_get(&m, n.clone()) {
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
                 Some(traits) => v1_rt::rc_map_insert(
                     m.clone(),
                     n.clone(),
@@ -16538,8 +16721,8 @@ pub fn v1_fn_bounds_by_param(
         );
         static_param_names.iter().cloned().fold(
             with_key.clone(),
-            |m: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
-             n: std::string::String| match v1_rt::map_get(&m, n.clone()) {
+            |m: Rc<HashMap<String, Rc<Vec<String>>>>, n: String| match v1_rt::map_get(&m, n.clone())
+            {
                 Some(traits) => v1_rt::rc_map_insert(
                     m.clone(),
                     n.clone(),
@@ -16553,7 +16736,7 @@ pub fn v1_fn_bounds_by_param(
     }
 }
 
-pub fn rust_map_key_bound_traits() -> Rc<Vec<std::string::String>> {
+pub fn rust_map_key_bound_traits() -> Rc<Vec<String>> {
     Rc::new(vec![
         "std::cmp::Eq".to_string(),
         "std::hash::Hash".to_string(),
@@ -16563,9 +16746,9 @@ pub fn rust_map_key_bound_traits() -> Rc<Vec<std::string::String>> {
 pub fn v1_fn_signature_map_key_param_names(
     value_params: Rc<Vec<Rc<Node>>>,
     ret: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let from_params = Rc::new({
             let mut __result = Vec::new();
@@ -16611,9 +16794,9 @@ pub fn v1_fn_signature_map_key_param_names(
 
 pub fn v1_fn_body_equality_bound_param_names(
     body: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let here = match (*body.expr_data.clone()).clone() {
             ExprData::ExprBinOp { op, .. } => {
@@ -16637,7 +16820,7 @@ pub fn v1_fn_body_equality_bound_param_names(
         };
         body.children.clone().iter().cloned().fold(
             here.clone(),
-            |acc: Rc<Vec<std::string::String>>, child: Rc<Node>| {
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
                     acc,
                     v1_fn_body_equality_bound_param_names(
@@ -16661,8 +16844,8 @@ pub fn is_equality_comparison(op: BinOp) -> bool {
 
 pub fn v1_resolved_type_name_or_empty(
     e: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone())
@@ -16674,11 +16857,11 @@ pub fn v1_resolved_type_name_or_empty(
 pub fn v1_call_forwarding_forwarded_param_names(
     call: Rc<Node>,
     callee_value_params: Rc<Vec<Rc<Node>>>,
-    callee_generic_param_names: Rc<Vec<std::string::String>>,
-    callee_bound_param_names: Rc<Vec<std::string::String>>,
-    wrapper_generic_param_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    callee_generic_param_names: Rc<Vec<String>>,
+    callee_bound_param_names: Rc<Vec<String>>,
+    wrapper_generic_param_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
         if ((callee_bound_param_names.clone().len() as i64) == 0) {
@@ -16716,13 +16899,13 @@ crate::v1_compiler_trait_bound_witness::v1_call_forwarding_bound_wrapper_param_n
 }
 
 pub fn v1_call_forwarding_clone_bound_param_names(
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
-    fn_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
         let call_node = match (*body.expr_data.clone()).clone() {
@@ -16782,11 +16965,11 @@ pub fn v1_call_forwarding_clone_bound_param_names(
 }
 
 pub fn v1_call_forwarding_equality_bound_param_names(
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     body: Rc<Node>,
-    fn_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if ((generic_param_names.clone().len() as i64) == 0) {
             return Rc::new(vec![]);
@@ -16802,7 +16985,7 @@ pub fn v1_call_forwarding_equality_bound_param_names(
         };
         body.children.clone().iter().cloned().fold(
             here.clone(),
-            |acc: Rc<Vec<std::string::String>>, child: Rc<Node>| {
+            |acc: Rc<Vec<String>>, child: Rc<Node>| {
                 crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
                     acc,
                     v1_call_forwarding_equality_bound_param_names(
@@ -16819,10 +17002,10 @@ pub fn v1_call_forwarding_equality_bound_param_names(
 
 pub fn v1_call_site_equality_forwarded_param_names(
     call: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
-    fn_decl_items: Rc<HashMap<std::string::String, Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    generic_param_names: Rc<Vec<String>>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let si = source_indices.clone();
         let callee_name = crate::v1_std_core::expr_call_func_at(call.clone(), si.clone());
@@ -16863,9 +17046,9 @@ pub fn v1_call_site_equality_forwarded_param_names(
 }
 
 pub fn rust_body_is_bare_self_call(
-    name: std::string::String,
+    name: String,
     body: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*body.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
@@ -16878,10 +17061,7 @@ pub fn rust_body_is_bare_self_call(
     }
 }
 
-pub fn rust_seam_primitive_name(
-    module_path: std::string::String,
-    name: std::string::String,
-) -> std::string::String {
+pub fn rust_seam_primitive_name(module_path: String, name: String) -> String {
     match crate::std_primitive_projection::primitive_projection_row_for_declaration(
         crate::std_decl_ref::decl_ref(module_path.clone(), name.clone()),
     ) {
@@ -16893,10 +17073,10 @@ pub fn rust_seam_primitive_name(
 }
 
 pub fn rust_host_seam_is_unrealized(
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
     body: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (rust_body_is_bare_self_call(name.clone(), body.clone(), source_indices.clone())
         && (rust_runtime_primitive_has_bridge(rust_seam_primitive_name(
@@ -16906,15 +17086,15 @@ pub fn rust_host_seam_is_unrealized(
 }
 
 pub fn emit_fn_def(
-    name: std::string::String,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let host_text_op = rust_host_string_op_fn_emit(name.clone());
@@ -16924,204 +17104,212 @@ pub fn emit_fn_def(
                 None => "".to_string(),
             };
         }
-        let type_params = function_type_params(params.clone());
-        let value_params = function_value_params(params.clone());
-        if function_type_params_have_collision(type_params.clone()) {
-            return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
-        }
-        let generic_param_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in type_params.iter().cloned() {
-                __result.push(crate::v1_std_core::generic_param_name_at(
-                    p.clone(),
+        match rust_host_string_seam_fn_emit(name.clone()) {
+            Some(seam_fn) => {
+                let _unused = seam_fn.clone();
+                "".to_string()
+            }
+            None => {
+                let type_params = function_type_params(params.clone());
+                let value_params = function_value_params(params.clone());
+                if function_type_params_have_collision(type_params.clone()) {
+                    return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
+                }
+                let generic_param_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in type_params.iter().cloned() {
+                        __result.push(crate::v1_std_core::generic_param_name_at(
+                            p.clone(),
+                            si.clone(),
+                        ));
+                    }
+                    __result
+                });
+                let body_emit_info = crate::v1_compiler_infer_emit_info::emit_info_with_fn_return(
+                    crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
+                        emit_info.clone(),
+                        generic_param_names.clone(),
+                        scope.type_env.clone(),
+                    ),
+                    Some(inferred.clone()),
+                );
+                let value_param_names = Rc::new({
+                    let mut __result = Vec::new();
+                    for p in value_params.iter().cloned() {
+                        __result.push(p.name.clone());
+                    }
+                    __result
+                });
+                let ret_name = crate::v1_std_core::authored_name_at(si.clone(), inferred.clone());
+                let return_is_bare_generic = ((Rc::new({
+                    let mut __result = Vec::new();
+                    for g in generic_param_names.iter().cloned() {
+                        if (g.clone() == ret_name.clone()) {
+                            __result.push(g);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    > 0);
+                let body_is_param_ref = ((Rc::new({
+                    let mut __result = Vec::new();
+                    for n in value_param_names.iter().cloned() {
+                        if (n.clone() == body.name.clone()) {
+                            __result.push(n);
+                        }
+                    }
+                    __result
+                })
+                .len() as i64)
+                    > 0);
+                let self_derived_clone_param_names = v1_fn_body_derived_clone_param_names(
+                    params.clone(),
+                    inferred.clone(),
+                    body.clone(),
+                    emit_info.clone(),
+                    shared_types.clone(),
                     si.clone(),
-                ));
-            }
-            __result
-        });
-        let body_emit_info = crate::v1_compiler_infer_emit_info::emit_info_with_fn_return(
-            crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
-                emit_info.clone(),
-                generic_param_names.clone(),
-                scope.type_env.clone(),
-            ),
-            Some(inferred.clone()),
-        );
-        let value_param_names = Rc::new({
-            let mut __result = Vec::new();
-            for p in value_params.iter().cloned() {
-                __result.push(p.name.clone());
-            }
-            __result
-        });
-        let ret_name = crate::v1_std_core::authored_name_at(si.clone(), inferred.clone());
-        let return_is_bare_generic = ((Rc::new({
-            let mut __result = Vec::new();
-            for g in generic_param_names.iter().cloned() {
-                if (g.clone() == ret_name.clone()) {
-                    __result.push(g);
-                }
-            }
-            __result
-        })
-        .len() as i64)
-            > 0);
-        let body_is_param_ref = ((Rc::new({
-            let mut __result = Vec::new();
-            for n in value_param_names.iter().cloned() {
-                if (n.clone() == body.name.clone()) {
-                    __result.push(n);
-                }
-            }
-            __result
-        })
-        .len() as i64)
-            > 0);
-        let self_derived_clone_param_names = v1_fn_body_derived_clone_param_names(
-            params.clone(),
-            inferred.clone(),
-            body.clone(),
-            emit_info.clone(),
-            shared_types.clone(),
-            si.clone(),
-        );
-        let call_forwarding_clone_param_names = v1_call_forwarding_clone_bound_param_names(
-            generic_param_names.clone(),
-            body.clone(),
-            emit_info.fn_decl_items.clone(),
-            emit_info.clone(),
-            shared_types.clone(),
-            si.clone(),
-        );
-        let derived_clone_param_names_with_rc_match =
-            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                self_derived_clone_param_names.clone(),
-                call_forwarding_clone_param_names.clone(),
-            );
-        let module_path = scope.type_env.clone().module_path.clone();
-        let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0) && crate::v1_compiler_trait_derive_emit::trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path.clone())) {
-            generic_param_names.clone()
-        } else {
-            derived_clone_param_names_with_rc_match.clone()
-        };
-        let self_eq_param_names = v1_fn_body_equality_bound_param_names(
-            body.clone(),
-            generic_param_names.clone(),
-            si.clone(),
-        );
-        let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
-            generic_param_names.clone(),
-            body.clone(),
-            emit_info.fn_decl_items.clone(),
-            si.clone(),
-        );
-        let eq_param_names = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-            self_eq_param_names.clone(),
-            call_forwarding_eq_param_names.clone(),
-        );
-        let map_key_param_names = v1_fn_signature_map_key_param_names(
-            value_params.clone(),
-            inferred.clone(),
-            generic_param_names.clone(),
-            si.clone(),
-        );
-        let returns_fn_field_record = type_has_fn_fields(
-            rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
-            emit_info.clone(),
-        );
-        let returns_arrow_or_fn_field_record =
-            (((inferred.params.clone().len() as i64) > 0) || returns_fn_field_record.clone());
-        let static_param_names = if returns_fn_field_record.clone() {
-            generic_param_names.clone()
-        } else {
-            Rc::new(vec![])
-        };
-        let bounds_by_param = v1_fn_bounds_by_param(
-            clone_param_names.clone(),
-            eq_param_names.clone(),
-            map_key_param_names.clone(),
-            static_param_names.clone(),
-        );
-        let needs_bound = (((((clone_param_names.clone().len() as i64) > 0)
-            || ((eq_param_names.clone().len() as i64) > 0))
-            || ((map_key_param_names.clone().len() as i64) > 0))
-            || ((static_param_names.clone().len() as i64) > 0));
-        let type_params_str = if needs_bound.clone() {
-            crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_bounds(
-                type_params.clone(),
-                bounds_by_param.clone(),
-                si.clone(),
-            )
-        } else {
-            emit_type_params(type_params.clone(), si.clone())
-        };
-        let params_str = emit_params(
-            value_params.clone(),
-            generic_param_names.clone(),
-            shared_types.clone(),
-            si.clone(),
-            emit_info.read_only_params.clone(),
-            emit_info.variant_to_enum.clone(),
-            scope.type_env.clone(),
-            returns_arrow_or_fn_field_record.clone(),
-        );
-        let ret_str = emit_inferred(
-            inferred.clone(),
-            generic_param_names.clone(),
-            shared_types.clone(),
-            si.clone(),
-            emit_info.variant_to_enum.clone(),
-            scope.type_env.clone(),
-        );
-        let body_scope =
-            crate::v1_compiler_infer::build_params_scope(scope.clone(), value_params.clone());
-        let depth = 0;
-        let use_tco = crate::v1_compiler_emit::is_tco_eligible(
-            name.clone(),
-            body.clone(),
-            registry.clone(),
-            si.clone(),
-        );
-        let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
-            name.clone(),
-            body.clone(),
-            registry.clone(),
-            si.clone(),
-        ) && (use_tco.clone() == false));
-        if rust_host_seam_is_unrealized(
-            scope.module_name.clone(),
-            name.clone(),
-            body.clone(),
-            si.clone(),
-        ) {
-            {
-                let kw = rust_items().func_keyword.clone();
-                return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(1)), "panic!(\"unrealized host seam '".to_string()), name.clone()), "' in ".to_string()), scope.module_name.clone()), ": this declaration's whole body is a self-call, so it has no behaviour on this target. ".to_string()), "It compiles as a refusal rather than as recursion. Give it a row in ".to_string()), "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}".to_string());
-            }
-        }
-        if use_tco.clone() {
-            {
-                let tco_params_str = emit_tco_params(
+                );
+                let call_forwarding_clone_param_names = v1_call_forwarding_clone_bound_param_names(
+                    generic_param_names.clone(),
+                    body.clone(),
+                    emit_info.fn_decl_items.clone(),
+                    emit_info.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                );
+                let derived_clone_param_names_with_rc_match =
+                    crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                        self_derived_clone_param_names.clone(),
+                        call_forwarding_clone_param_names.clone(),
+                    );
+                let module_path = scope.type_env.clone().module_path.clone();
+                let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0) && crate::v1_compiler_trait_derive_emit::trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path.clone())) {
+                generic_param_names.clone()
+            } else {
+                derived_clone_param_names_with_rc_match.clone()
+            };
+                let self_eq_param_names = v1_fn_body_equality_bound_param_names(
+                    body.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                );
+                let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
+                    generic_param_names.clone(),
+                    body.clone(),
+                    emit_info.fn_decl_items.clone(),
+                    si.clone(),
+                );
+                let eq_param_names =
+                    crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                        self_eq_param_names.clone(),
+                        call_forwarding_eq_param_names.clone(),
+                    );
+                let map_key_param_names = v1_fn_signature_map_key_param_names(
                     value_params.clone(),
+                    inferred.clone(),
+                    generic_param_names.clone(),
+                    si.clone(),
+                );
+                let returns_fn_field_record = type_has_fn_fields(
+                    rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
+                    emit_info.clone(),
+                );
+                let returns_arrow_or_fn_field_record = (((inferred.params.clone().len() as i64)
+                    > 0)
+                    || returns_fn_field_record.clone());
+                let static_param_names = if returns_fn_field_record.clone() {
+                    generic_param_names.clone()
+                } else {
+                    Rc::new(vec![])
+                };
+                let bounds_by_param = v1_fn_bounds_by_param(
+                    clone_param_names.clone(),
+                    eq_param_names.clone(),
+                    map_key_param_names.clone(),
+                    static_param_names.clone(),
+                );
+                let needs_bound = (((((clone_param_names.clone().len() as i64) > 0)
+                    || ((eq_param_names.clone().len() as i64) > 0))
+                    || ((map_key_param_names.clone().len() as i64) > 0))
+                    || ((static_param_names.clone().len() as i64) > 0));
+                let type_params_str = if needs_bound.clone() {
+                    crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_bounds(
+                        type_params.clone(),
+                        bounds_by_param.clone(),
+                        si.clone(),
+                    )
+                } else {
+                    emit_type_params(type_params.clone(), si.clone())
+                };
+                let params_str = emit_params(
+                    value_params.clone(),
+                    generic_param_names.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                    emit_info.read_only_params.clone(),
+                    emit_info.variant_to_enum.clone(),
+                    scope.type_env.clone(),
+                    returns_arrow_or_fn_field_record.clone(),
+                );
+                let ret_str = emit_inferred(
+                    inferred.clone(),
                     generic_param_names.clone(),
                     shared_types.clone(),
                     si.clone(),
                     emit_info.variant_to_enum.clone(),
                     scope.type_env.clone(),
                 );
-                let body_str = emit_typed_tco_body(
-                    body.clone(),
-                    name.clone(),
+                let body_scope = crate::v1_compiler_infer::build_params_scope(
+                    scope.clone(),
                     value_params.clone(),
-                    registry.clone(),
-                    body_scope.clone(),
-                    (depth.clone() + 1),
-                    shared_types.clone(),
-                    body_emit_info.clone(),
                 );
-                let kw = rust_items().func_keyword.clone();
-                v1_rt::concat(
-                    v1_rt::concat(
+                let depth = 0;
+                let use_tco = crate::v1_compiler_emit::is_tco_eligible(
+                    name.clone(),
+                    body.clone(),
+                    registry.clone(),
+                    si.clone(),
+                );
+                let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
+                    name.clone(),
+                    body.clone(),
+                    registry.clone(),
+                    si.clone(),
+                ) && (use_tco.clone() == false));
+                if rust_host_seam_is_unrealized(
+                    scope.module_name.clone(),
+                    name.clone(),
+                    body.clone(),
+                    si.clone(),
+                ) {
+                    {
+                        let kw = rust_items().func_keyword.clone();
+                        return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(1)), "panic!(\"unrealized host seam '".to_string()), name.clone()), "' in ".to_string()), scope.module_name.clone()), ": this declaration's whole body is a self-call, so it has no behaviour on this target. ".to_string()), "It compiles as a refusal rather than as recursion. Give it a row in ".to_string()), "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}".to_string());
+                    }
+                }
+                if use_tco.clone() {
+                    {
+                        let tco_params_str = emit_tco_params(
+                            value_params.clone(),
+                            generic_param_names.clone(),
+                            shared_types.clone(),
+                            si.clone(),
+                            emit_info.variant_to_enum.clone(),
+                            scope.type_env.clone(),
+                        );
+                        let body_str = emit_typed_tco_body(
+                            body.clone(),
+                            name.clone(),
+                            value_params.clone(),
+                            registry.clone(),
+                            body_scope.clone(),
+                            (depth.clone() + 1),
+                            shared_types.clone(),
+                            body_emit_info.clone(),
+                        );
+                        let kw = rust_items().func_keyword.clone();
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -17132,52 +17320,58 @@ pub fn emit_fn_def(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
-                                                                rust_visibility_prefix(),
-                                                                kw.clone(),
+                                                                v1_rt::concat(
+                                                                    v1_rt::concat(
+                                                                        rust_visibility_prefix(),
+                                                                        kw.clone(),
+                                                                    ),
+                                                                    " ".to_string(),
+                                                                ),
+                                                                crate::v1_compiler_emit::emit_ident(
+                                                                    name.clone(),
+                                                                    RenderTarget::Rust,
+                                                                ),
                                                             ),
-                                                            " ".to_string(),
+                                                            type_params_str.clone(),
                                                         ),
-                                                        crate::v1_compiler_emit::emit_ident(
-                                                            name.clone(),
-                                                            RenderTarget::Rust,
-                                                        ),
+                                                        "(".to_string(),
                                                     ),
-                                                    type_params_str.clone(),
+                                                    tco_params_str.clone(),
                                                 ),
-                                                "(".to_string(),
+                                                ")".to_string(),
                                             ),
-                                            tco_params_str.clone(),
+                                            ret_str.clone(),
                                         ),
-                                        ")".to_string(),
+                                        " {\n".to_string(),
                                     ),
-                                    ret_str.clone(),
+                                    crate::v1_compiler_emit_core_support::make_indent(
+                                        (depth.clone() + 1),
+                                    ),
                                 ),
-                                " {\n".to_string(),
+                                body_str.clone(),
                             ),
-                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
-                        ),
-                        body_str.clone(),
-                    ),
-                    "\n}".to_string(),
-                )
-            }
-        } else {
-            {
-                let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
-                emit_fn_def_non_tco(
-                    name.clone(),
-                    type_params_str.clone(),
-                    params_str.clone(),
-                    ret_str.clone(),
-                    body.clone(),
-                    registry.clone(),
-                    body_scope.clone(),
-                    depth.clone(),
-                    shared_types.clone(),
-                    body_emit_info.clone(),
-                    needs_stacker.clone(),
-                    return_is_unit.clone(),
-                )
+                            "\n}".to_string(),
+                        )
+                    }
+                } else {
+                    {
+                        let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
+                        emit_fn_def_non_tco(
+                            name.clone(),
+                            type_params_str.clone(),
+                            params_str.clone(),
+                            ret_str.clone(),
+                            body.clone(),
+                            registry.clone(),
+                            body_scope.clone(),
+                            depth.clone(),
+                            shared_types.clone(),
+                            body_emit_info.clone(),
+                            needs_stacker.clone(),
+                            return_is_unit.clone(),
+                        )
+                    }
+                }
             }
         }
     }
@@ -17185,7 +17379,7 @@ pub fn emit_fn_def(
 
 pub fn return_type_is_unit(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let authored = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
@@ -17207,10 +17401,10 @@ pub fn rust_declared_return_is_callable(emit_info: Rc<EmitGraphInfo>) -> bool {
 }
 
 pub fn rust_callable_return_wrap(
-    body_str: std::string::String,
+    body_str: String,
     texpr: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let is_lambda_body = match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprLambda => true,
@@ -17236,12 +17430,12 @@ pub fn rust_callable_return_wrap(
 pub fn emit_rust_fn_body_expr(
     texpr: Rc<Node>,
     return_is_unit: bool,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     if return_is_unit.clone() {
         emit_rust_unit_discarding_stmt(
             texpr.clone(),
@@ -17279,12 +17473,12 @@ pub fn inferred_expr_is_optional(texpr: Rc<Node>) -> bool {
 
 pub fn emit_rust_unit_discarding_optional_typed(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitNull => "()".to_string(),
@@ -17325,12 +17519,12 @@ pub fn emit_rust_unit_discarding_optional_typed(
 
 pub fn emit_rust_unit_discarding_stmt(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let si = scope.type_env.clone().source_indices.clone();
         match (*texpr.expr_data.clone()).clone() {
@@ -17580,19 +17774,19 @@ pub fn emit_rust_unit_discarding_stmt(
 }
 
 pub fn emit_fn_def_non_tco(
-    name: std::string::String,
-    type_params_str: std::string::String,
-    params_str: std::string::String,
-    ret_str: std::string::String,
+    name: String,
+    type_params_str: String,
+    params_str: String,
+    ret_str: String,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_stacker: bool,
     return_is_unit: bool,
-) -> std::string::String {
+) -> String {
     if needs_stacker.clone() {
         {
             let body_str = emit_rust_fn_body_expr(
@@ -17664,16 +17858,16 @@ pub fn emit_fn_def_non_tco(
 }
 
 pub fn emit_func_def(
-    name: std::string::String,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         if ((function_type_params(params.clone()).len() as i64) > 0) {
             return v1_rt::concat(v1_rt::concat("compile_error!(\"emit_func_def saw type params in `".to_string(), name.clone()), "` — func/pattern/interface don't route through the generic-fn split today; the parser invariant at parse_block_body_from_prefix has changed. Plumb type_params through this path or dissolve via ParamKind/params-slot partition.\");\n".to_string());
@@ -17767,12 +17961,12 @@ pub fn emit_func_def(
 
 pub fn emit_func_body(
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let si = scope.type_env.clone().source_indices.clone();
         match (*body.expr_data.clone()).clone() {
@@ -17916,12 +18110,12 @@ pub fn emit_func_body(
 
 pub fn emit_tco_params(
     params: Rc<Vec<Rc<Node>>>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
@@ -17943,12 +18137,12 @@ pub fn emit_tco_params(
 
 pub fn emit_tco_param(
     param: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
         let ty = if ((authored.params.clone().len() as i64) > 0) {
@@ -17993,13 +18187,13 @@ pub fn emit_tco_param(
 pub fn emit_func_params(
     params: Rc<Vec<Rc<Node>>>,
     uses: Rc<Vec<Rc<Node>>>,
-    service_names: Rc<Vec<std::string::String>>,
+    service_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<BTreeSet<String>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
@@ -18065,8 +18259,8 @@ pub fn emit_func_params(
 pub fn emit_func_inferred(
     inferred: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             " -> Result<".to_string(),
@@ -18083,14 +18277,14 @@ pub fn emit_func_inferred(
 
 pub fn emit_params(
     params: Rc<Vec<Rc<Node>>>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<BTreeSet<String>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
     enclosing_returns_arrow: bool,
-) -> std::string::String {
+) -> String {
     {
         let strs = Rc::new({
             let mut __result = Vec::new();
@@ -18114,12 +18308,12 @@ pub fn emit_params(
 
 pub fn render_rust_param_sig_type(
     param: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let type_node = crate::v1_compiler_infer_types::resolved_type(param.clone());
         render_rust_fn_sig_type(
@@ -18135,13 +18329,13 @@ pub fn render_rust_param_sig_type(
 
 pub fn emit_rust_param_type(
     n: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
     enclosing_returns_arrow: bool,
-) -> std::string::String {
+) -> String {
     if ((n.params.clone().len() as i64) > 0) {
         {
             let param_types = Rc::new({
@@ -18203,14 +18397,14 @@ pub fn emit_rust_param_type(
 
 pub fn emit_param(
     param: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     read_only_params: Rc<BTreeSet<String>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
     enclosing_returns_arrow: bool,
-) -> std::string::String {
+) -> String {
     {
         let pname = crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone());
         let authored = crate::v1_std_core::param_node_type_expr(param.clone());
@@ -18246,12 +18440,12 @@ pub fn emit_param(
 
 pub fn emit_inferred(
     inferred: Rc<Node>,
-    generic_param_names: Rc<Vec<std::string::String>>,
+    generic_param_names: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    variant_to_enum: Rc<HashMap<std::string::String, std::string::String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant_to_enum: Rc<HashMap<String, String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     v1_rt::concat(
         rust_items().return_arrow.clone(),
         render_rust_fn_sig_type(
@@ -18267,7 +18461,7 @@ pub fn emit_inferred(
 
 pub fn needs_reference_node(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if ((n.connective.clone() != Connective::NoConnective)
         || ((n.children.clone().len() as i64) > 0))
@@ -18293,7 +18487,7 @@ pub fn is_string_lit_pattern(p: Rc<MatchPattern>) -> bool {
     }
 }
 
-pub fn pattern_string_binding_name(path: Rc<Vec<std::string::String>>) -> std::string::String {
+pub fn pattern_string_binding_name(path: Rc<Vec<String>>) -> String {
     if ((path.clone().len() as i64) == 0) {
         "__pos0_val".to_string()
     } else {
@@ -18319,10 +18513,7 @@ pub fn pattern_string_binding_name(path: Rc<Vec<std::string::String>>) -> std::s
     }
 }
 
-pub fn positional_payload_string_guard(
-    fb_pat: Rc<MatchPattern>,
-    bind_name: std::string::String,
-) -> std::string::String {
+pub fn positional_payload_string_guard(fb_pat: Rc<MatchPattern>, bind_name: String) -> String {
     match (*fb_pat.clone()).clone() {
         MatchPattern::LitPattern { ref value, .. }
             if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
@@ -18341,9 +18532,9 @@ pub fn positional_payload_string_guard(
 
 pub fn collect_field_binding_string_guards(
     field_bindings: Rc<Vec<Rc<Node>>>,
-    path_prefix: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    path_prefix: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let parts = Rc::new({
             let mut __result = Vec::new();
@@ -18400,9 +18591,9 @@ pub fn collect_field_binding_string_guards(
 
 pub fn collect_pattern_string_guards(
     mut pattern: Rc<MatchPattern>,
-    mut path_prefix: Rc<Vec<std::string::String>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    mut path_prefix: Rc<Vec<String>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     loop {
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
@@ -18571,12 +18762,12 @@ pub fn has_string_lit_with_bind(arms: Rc<Vec<Rc<Node>>>) -> bool {
 
 pub fn emit_pattern(
     pattern: Rc<MatchPattern>,
-    path_prefix: Rc<Vec<std::string::String>>,
+    path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    scrut_type: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    scrut_type: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {
             declaration: declaration,
@@ -18605,11 +18796,11 @@ pub fn emit_pattern(
 }
 
 pub fn pattern_parent_enum(
-    name: std::string::String,
-    parent_enum: Option<std::string::String>,
-    scrut_type: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Option<std::string::String> {
+    name: String,
+    parent_enum: Option<String>,
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
     {
         let scrut_is_known_enum = ((scrut_type.clone() != "".to_string())
             && is_enum_type_name(scrut_type.clone(), type_summaries.clone()));
@@ -18626,9 +18817,9 @@ pub fn pattern_parent_enum(
 }
 
 pub fn unique_variant_parent(
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    variant_name: std::string::String,
-) -> Option<std::string::String> {
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    variant_name: String,
+) -> Option<String> {
     {
         let parent_matches = Rc::new({
             let mut __result = Vec::new();
@@ -18656,21 +18847,21 @@ pub fn unique_variant_parent(
     }
 }
 
-pub fn is_optional_variant_name(name: std::string::String) -> bool {
+pub fn is_optional_variant_name(name: String) -> bool {
     ((((name.clone() == "Present".to_string()) || (name.clone() == "Absent".to_string()))
         || (name.clone() == "Some".to_string()))
         || (name.clone() == "None".to_string()))
 }
 
-pub fn is_optional_like_parent_name(name: std::string::String) -> bool {
+pub fn is_optional_like_parent_name(name: String) -> bool {
     ((name.clone() == "Optional".to_string()) || (name.clone() == "Diagnostics".to_string()))
 }
 
-pub fn is_some_like_variant_name(name: std::string::String) -> bool {
+pub fn is_some_like_variant_name(name: String) -> bool {
     ((name.clone() == "Present".to_string()) || (name.clone() == "Some".to_string()))
 }
 
-pub fn is_optional_parent(parent_enum: Option<std::string::String>) -> bool {
+pub fn is_optional_parent(parent_enum: Option<String>) -> bool {
     match parent_enum.clone() {
         Some(parent) => is_optional_like_parent_name(parent.clone()),
         None => false,
@@ -18678,12 +18869,12 @@ pub fn is_optional_parent(parent_enum: Option<std::string::String>) -> bool {
 }
 
 pub fn positional_payload_scrut_type(
-    parent_enum: Option<std::string::String>,
-    variant_name: std::string::String,
+    parent_enum: Option<String>,
+    variant_name: String,
     field_binding: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let type_key = match parent_enum.clone() {
             Some(parent) => crate::v1_compiler_infer_emit_info::variant_summary_key(
@@ -18722,10 +18913,7 @@ pub fn positional_payload_scrut_type(
     }
 }
 
-pub fn rust_variant_path(
-    parent: std::string::String,
-    rust_name: std::string::String,
-) -> std::string::String {
+pub fn rust_variant_path(parent: String, rust_name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             crate::v1_std_core::qualified_last_segment(parent.clone()),
@@ -18735,10 +18923,7 @@ pub fn rust_variant_path(
     )
 }
 
-pub fn rust_variant_path_opt(
-    rust_name: std::string::String,
-    resolved_parent: Option<std::string::String>,
-) -> std::string::String {
+pub fn rust_variant_path_opt(rust_name: String, resolved_parent: Option<String>) -> String {
     match resolved_parent.clone() {
         Some(parent) => rust_variant_path(parent.clone(), rust_name.clone()),
         None => crate::v1_std_core::qualified_last_segment(rust_name.clone()),
@@ -18746,11 +18931,11 @@ pub fn rust_variant_path_opt(
 }
 
 pub fn variant_pattern_shape_str(
-    qualified: std::string::String,
-    rust_name: std::string::String,
-    resolved_parent: Option<std::string::String>,
+    qualified: String,
+    rust_name: String,
+    resolved_parent: Option<String>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let shape_key = rust_variant_path_opt(rust_name.clone(), resolved_parent.clone());
         let is_positional = (v1_rt::set_contains(
@@ -18776,15 +18961,15 @@ pub fn variant_pattern_shape_str(
 }
 
 pub fn emit_variant_pattern(
-    name: std::string::String,
-    parent_enum: Option<std::string::String>,
+    name: String,
+    parent_enum: Option<String>,
     field_bindings: Rc<Vec<Rc<Node>>>,
-    path_prefix: Rc<Vec<std::string::String>>,
+    path_prefix: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    scrut_type: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    scrut_type: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let bare_name = crate::v1_std_core::qualified_last_segment(name.clone());
         let resolved_parent = pattern_parent_enum(
@@ -19048,7 +19233,7 @@ pub struct RcPatternAnalysis {
     pub matches_rc_variant: bool,
     pub matches_option_rc_variant: bool,
     pub needs_rc_pattern: bool,
-    pub ref_bound_fields: Rc<Vec<std::string::String>>,
+    pub ref_bound_fields: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -19067,10 +19252,7 @@ pub fn empty_rc_pattern_analysis() -> Rc<RcPatternAnalysis> {
     })
 }
 
-pub fn field_needs_rc_ref(
-    field_name: std::string::String,
-    rc_analysis: Rc<RcPatternAnalysis>,
-) -> bool {
+pub fn field_needs_rc_ref(field_name: String, rc_analysis: Rc<RcPatternAnalysis>) -> bool {
     {
         let mut __found = false;
         for name in rc_analysis.ref_bound_fields.clone().iter().cloned() {
@@ -19085,10 +19267,10 @@ pub fn field_needs_rc_ref(
 
 pub fn analyze_rc_pattern(
     pattern: Rc<MatchPattern>,
-    scrut_type: std::string::String,
+    scrut_type: String,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RcPatternAnalysis> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
@@ -19208,7 +19390,7 @@ pub fn box_bound_fields_for_pattern(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     scope: Rc<InferScope>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     match (*pattern.clone()).clone() {
         MatchPattern::VariantPattern {
             name: n,
@@ -19297,10 +19479,10 @@ pub fn rc_pattern_analysis_with_box_fields(
 pub fn analyze_rc_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
-    scrut_type: std::string::String,
+    scrut_type: String,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> RcMatchAnalysis {
     {
         let arm_analyses = Rc::new({
@@ -19381,13 +19563,13 @@ pub fn analyze_rc_match(
 
 pub fn emit_pattern_rc_aware(
     pattern: Rc<MatchPattern>,
-    path_prefix: Rc<Vec<std::string::String>>,
+    path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<BTreeSet<String>>,
-    scrut_type: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    scrut_type: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::Bind {
             declaration: declaration,
@@ -19417,16 +19599,16 @@ pub fn emit_pattern_rc_aware(
 }
 
 pub fn emit_variant_pattern_rc_aware(
-    name: std::string::String,
-    parent_enum: Option<std::string::String>,
+    name: String,
+    parent_enum: Option<String>,
     field_bindings: Rc<Vec<Rc<Node>>>,
-    path_prefix: Rc<Vec<std::string::String>>,
+    path_prefix: Rc<Vec<String>>,
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<BTreeSet<String>>,
-    scrut_type: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    scrut_type: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let bare_name = crate::v1_std_core::qualified_last_segment(name.clone());
         let resolved_parent = pattern_parent_enum(
@@ -19736,11 +19918,11 @@ pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
 }
 
 pub fn variant_pattern_shape_for(
-    name: std::string::String,
-    parent_enum: Option<std::string::String>,
-    scrut_type: std::string::String,
+    name: String,
+    parent_enum: Option<String>,
+    scrut_type: String,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let bare_name = crate::v1_std_core::qualified_last_segment(name.clone());
         let resolved_parent = pattern_parent_enum(
@@ -19779,9 +19961,9 @@ pub fn collect_pattern_rc_variant_guards(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
@@ -19880,9 +20062,9 @@ pub fn rc_pattern_preludes(
     pattern: Rc<MatchPattern>,
     rc_analysis: Rc<RcPatternAnalysis>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*pattern.clone()).clone() {
             MatchPattern::VariantPattern {
@@ -20041,11 +20223,11 @@ pub fn rc_pattern_preludes(
 }
 
 pub fn explicit_record_struct_name(
-    type_name: Option<std::string::String>,
+    type_name: Option<String>,
     inferred_node: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let is_optional = (inferred_node.return_cardinality.clone() == Cardinality::CardOptional);
         if is_optional.clone() {
@@ -20105,14 +20287,14 @@ pub fn explicit_record_struct_name(
 
 pub fn is_simple_type_node(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     is_rust_value_type(n.clone(), source_indices.clone())
 }
 
 pub fn variant_parent_from_binding_kind(
     binding_kind: Option<Rc<VarBindingKind>>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match binding_kind.clone().as_deref().cloned() {
         Some(VarBindingKind::VariantValueBinding {
             parent_enum: parent_enum,
@@ -20122,7 +20304,7 @@ pub fn variant_parent_from_binding_kind(
     }
 }
 
-pub fn apply_clone(expr: std::string::String) -> std::string::String {
+pub fn apply_clone(expr: String) -> String {
     crate::v1_compiler_emit_core_support::apply_type_template1(
         crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
             .clone_value
@@ -20131,7 +20313,7 @@ pub fn apply_clone(expr: std::string::String) -> std::string::String {
     )
 }
 
-pub fn apply_deref_clone(expr: std::string::String) -> std::string::String {
+pub fn apply_deref_clone(expr: String) -> String {
     crate::v1_compiler_emit_core_support::apply_type_template1(
         crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
             .deref_clone
@@ -20140,10 +20322,7 @@ pub fn apply_deref_clone(expr: std::string::String) -> std::string::String {
     )
 }
 
-pub fn apply_field_clone(
-    expr: std::string::String,
-    field: std::string::String,
-) -> std::string::String {
+pub fn apply_field_clone(expr: String, field: String) -> String {
     crate::v1_compiler_emit_core_support::apply_type_template2(
         crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
             .field_clone
@@ -20153,23 +20332,17 @@ pub fn apply_field_clone(
     )
 }
 
-pub fn clone_iterator_suffix() -> std::string::String {
+pub fn clone_iterator_suffix() -> String {
     crate::v1_compiler_languages::sharing_for_target(RenderTarget::Rust)
         .clone_suffix
         .clone()
 }
 
-pub fn freemonoid_empty_from_variant_parent(
-    leaf_name: std::string::String,
-    enum_name: std::string::String,
-) -> bool {
+pub fn freemonoid_empty_from_variant_parent(leaf_name: String, enum_name: String) -> bool {
     ((leaf_name.clone() == "Empty".to_string()) && (enum_name.clone() == "FreeMonoid".to_string()))
 }
 
-pub fn freemonoid_empty_from_emit_info(
-    leaf_name: std::string::String,
-    emit_info: Rc<EmitGraphInfo>,
-) -> bool {
+pub fn freemonoid_empty_from_emit_info(leaf_name: String, emit_info: Rc<EmitGraphInfo>) -> bool {
     ((leaf_name.clone() == "Empty".to_string())
         && match v1_rt::map_get(&emit_info.variant_to_enum.clone(), "Empty".to_string()) {
             Some(p) => (p.clone() == "FreeMonoid".to_string()),
@@ -20177,21 +20350,21 @@ pub fn freemonoid_empty_from_emit_info(
         })
 }
 
-pub fn emit_freemonoid_empty_rc_value() -> std::string::String {
+pub fn emit_freemonoid_empty_rc_value() -> String {
     rust_shared_wrap_ctor("vec![]".to_string())
 }
 
-pub fn emit_freemonoid_empty_variant_body() -> std::string::String {
+pub fn emit_freemonoid_empty_variant_body() -> String {
     "vec![]".to_string()
 }
 
 pub fn effective_variant_parent_from_enum_lookup(
-    leaf_name: std::string::String,
+    leaf_name: String,
     rt: Rc<Node>,
     binding_kind: Option<Rc<VarBindingKind>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let rt_name = crate::v1_std_core::authored_name_at(source_indices.clone(), rt.clone());
         if (((rt.ident_span.clone() != std::option::Option::None)
@@ -20210,12 +20383,12 @@ pub fn effective_variant_parent_from_enum_lookup(
 }
 
 pub fn effective_variant_parent_from_resolved(
-    leaf_name: std::string::String,
+    leaf_name: String,
     rt: Rc<Node>,
     binding_kind: Option<Rc<VarBindingKind>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match rt.return_cardinality.clone() {
         Cardinality::CardOptional => {
             if is_optional_variant_name(leaf_name.clone()) {
@@ -20241,12 +20414,12 @@ pub fn effective_variant_parent_from_resolved(
 }
 
 pub fn effective_variant_parent(
-    name: std::string::String,
+    name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
     resolved_type: Option<Rc<InferredNode>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let leaf_name = value_ref_qualified_leaf(name.clone());
         let cached = match v1_rt::map_get(&emit_info.variant_to_enum.clone(), leaf_name.clone()) {
@@ -20278,8 +20451,8 @@ pub fn effective_variant_parent(
 }
 
 pub fn variant_ref_self_wraps(
-    name: std::string::String,
-    enum_name: std::string::String,
+    name: String,
+    enum_name: String,
     shared_types: Rc<BTreeSet<String>>,
 ) -> bool {
     (freemonoid_empty_from_variant_parent(name.clone(), enum_name.clone())
@@ -20287,10 +20460,10 @@ pub fn variant_ref_self_wraps(
 }
 
 pub fn emit_value_ref_ident(
-    name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     if v1_rt::string_contains(&name, ".".to_string()) {
         {
             let leaf = value_ref_qualified_leaf(name.clone());
@@ -20322,9 +20495,7 @@ pub fn emit_value_ref_ident(
     }
 }
 
-pub fn emit_none_keyword_for_resolved_type(
-    resolved_type: Option<Rc<InferredNode>>,
-) -> std::string::String {
+pub fn emit_none_keyword_for_resolved_type(resolved_type: Option<Rc<InferredNode>>) -> String {
     match resolved_type.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => match rt.return_cardinality.clone() {
             Cardinality::CardOptional => {
@@ -20344,15 +20515,15 @@ pub fn emit_none_keyword_for_resolved_type(
 }
 
 pub fn emit_var_ref(
-    name: std::string::String,
+    name: String,
     binding_kind: Option<Rc<VarBindingKind>>,
     resolved_type: Option<Rc<InferredNode>>,
     shared_types: Rc<BTreeSet<String>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    module_name: std::string::String,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> String {
     {
         let resolved_name = value_ref_normalize_self_module(name.clone(), module_name.clone());
         let leaf_name = value_ref_qualified_leaf(resolved_name.clone());
@@ -20492,12 +20663,12 @@ pub fn emit_var_ref(
 
 pub fn emit_typed_expr_base(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         match (*texpr.expr_data.clone()).clone() {
@@ -20619,7 +20790,7 @@ pub fn emit_typed_expr_base(
 
 pub fn field_access_field_is_boxed(
     base: Rc<Node>,
-    field: std::string::String,
+    field: String,
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -20667,8 +20838,8 @@ pub fn field_access_field_is_boxed(
 pub fn type_expr_reaches_sealed_carrier(
     n: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    seen: Rc<HashMap<std::string::String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    seen: Rc<HashMap<String, bool>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let name = crate::v1_std_core::qualified_last_segment(
@@ -20736,14 +20907,14 @@ pub fn type_expr_reaches_sealed_carrier(
 }
 
 pub fn decl_children_forbid_deserialize(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let seen = v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
+            v1_rt::rc_empty_map::<String, bool>(),
             crate::v1_std_core::qualified_last_segment(name.clone()),
             true,
         );
@@ -20768,7 +20939,7 @@ pub fn decl_children_forbid_deserialize(
 pub fn item_forbids_deserialize(
     item: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if item_seals_construction(item.clone()) {
         true
@@ -20783,14 +20954,14 @@ pub fn item_forbids_deserialize(
 }
 
 pub fn enum_variant_payloads_forbid_deserialize(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let seen = v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
+            v1_rt::rc_empty_map::<String, bool>(),
             crate::v1_std_core::qualified_last_segment(name.clone()),
             true,
         );
@@ -20823,14 +20994,14 @@ pub fn enum_variant_payloads_forbid_deserialize(
 
 pub fn emit_typed_field_access(
     base: Rc<Node>,
-    field: std::string::String,
+    field: String,
     summary: Option<Rc<FieldSummary>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let base_str = emit_typed_expr_base(
             base.clone(),
@@ -21042,19 +21213,19 @@ pub fn emit_typed_field_access(
 
 pub fn type_needs_rc(
     type_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     type_needs_rc_seen(
         type_node.clone(),
-        v1_rt::rc_empty_map::<std::string::String, bool>(),
+        v1_rt::rc_empty_map::<String, bool>(),
         source_indices.clone(),
     )
 }
 
 pub fn type_needs_rc_seen(
     mut type_node: Rc<Node>,
-    mut seen: Rc<HashMap<std::string::String, bool>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut seen: Rc<HashMap<String, bool>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(type_node.clone());
@@ -21124,14 +21295,14 @@ pub fn type_needs_rc_seen(
     }
 }
 
-pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: std::string::String) -> bool {
+pub fn rust_runtime_bridge_passes_receiver_by_ref(function_name: String) -> bool {
     v1_rt::map_contains_key(
         &crate::extdeps_languages_rust_emit::rt_ref_map_functions(),
         function_name.clone(),
     )
 }
 
-pub fn rust_runtime_bridge_name(function_name: std::string::String) -> std::string::String {
+pub fn rust_runtime_bridge_name(function_name: String) -> String {
     match v1_rt::map_get(
         &crate::extdeps_languages_rust_emit::rt_bridge_function_names(),
         function_name.clone(),
@@ -21144,8 +21315,8 @@ pub fn rust_runtime_bridge_name(function_name: std::string::String) -> std::stri
 pub fn rust_empty_map_value_type_str(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match map_type
         .children
         .clone()
@@ -21174,8 +21345,8 @@ pub fn rust_empty_map_value_type_str(
 pub fn rust_empty_map_kv_type_str(
     map_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let key_str = match map_type.children.clone().first().cloned() {
             Some(key_child) => render_rust_type(
@@ -21215,7 +21386,7 @@ pub fn type_node_child_is_type_variable(c: Rc<Node>) -> bool {
 
 pub fn rust_btree_set_element_ord_eligible(
     elem_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
 ) -> bool {
     {
@@ -21237,21 +21408,21 @@ pub fn rust_btree_set_element_ord_eligible(
     }
 }
 
-pub fn rust_btree_set_ord_name_grain_note() -> std::string::String {
+pub fn rust_btree_set_ord_name_grain_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "The name-grain arms admit ONLY CHILDLESS nodes: a scalar/opaque-alias name denotes a childless carrier, and a name roster never examines type arguments, so without this gate any shape wearing an eligible name would be Ord-eligible by name alone (Symbol carrying Float must refuse; the enrolled negative control rust_btree_set_ord_eligibility_requires_nominal_carrier_shape is the discriminating RED). Shape-bearing nominal carriers are judged by rust_nominal_ord_type_eligible, which does examine structure.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_empty_set_element_type_str(
     set_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
             let elem_node = crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
@@ -21291,9 +21462,9 @@ pub fn rust_empty_set_element_type_str(
 pub fn emit_rust_empty_set_expr(
     set_type: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match set_type.children.clone().first().cloned() {
         Some(elem_child) => {
             let elem_node = crate::v1_compiler_infer_types::child_type_node(elem_child.clone());
@@ -21347,14 +21518,14 @@ pub fn emit_rust_empty_set_expr(
     }
 }
 
-pub fn rust_runtime_bridge_result_wraps_in_rc(function_name: std::string::String) -> bool {
+pub fn rust_runtime_bridge_result_wraps_in_rc(function_name: String) -> bool {
     v1_rt::map_contains_key(
         &crate::extdeps_languages_rust_emit::rt_wraps_result(),
         function_name.clone(),
     )
 }
 
-pub fn rust_method_template_result_wraps_in_rc(method_name: std::string::String) -> bool {
+pub fn rust_method_template_result_wraps_in_rc(method_name: String) -> bool {
     v1_rt::map_contains_key(
         &crate::extdeps_languages_rust_emit::rust_method_wraps_result(),
         method_name.clone(),
@@ -21362,7 +21533,7 @@ pub fn rust_method_template_result_wraps_in_rc(method_name: std::string::String)
 }
 
 pub fn rust_plain_call_emits_as_runtime_bridge(
-    func: std::string::String,
+    func: String,
     callee_is_function_value: bool,
 ) -> bool {
     ((callee_is_function_value.clone() == false)
@@ -21374,12 +21545,12 @@ pub fn rust_plain_call_emits_as_runtime_bridge(
 
 pub fn emit_rust_expr_var(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    module_name: std::string::String,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprVar {
             binding_kind: binding_kind,
@@ -21406,12 +21577,12 @@ pub fn emit_rust_expr_var(
 
 pub fn emit_rust_expr_field_access(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         match (*expr.expr_data.clone()).clone() {
@@ -21481,9 +21652,7 @@ pub fn call_semantics_target(cs: Option<Rc<CallSemantics>>) -> Rc<CallTargetIden
     }
 }
 
-pub fn call_target_runtime_primitive_name(
-    target: Rc<CallTargetIdentity>,
-) -> Option<std::string::String> {
+pub fn call_target_runtime_primitive_name(target: Rc<CallTargetIdentity>) -> Option<String> {
     match (*target.clone()).clone() {
         CallTargetIdentity::RuntimePrimitiveCall { primitive_name, .. } => {
             Some(primitive_name.clone())
@@ -21507,7 +21676,7 @@ pub fn call_target_projected_declaration(
     }
 }
 
-pub fn rust_runtime_primitive_has_bridge(primitive_name: std::string::String) -> bool {
+pub fn rust_runtime_primitive_has_bridge(primitive_name: String) -> bool {
     v1_rt::map_contains_key(
         &crate::extdeps_languages_rust_emit::rt_functions(),
         primitive_name.clone(),
@@ -21516,12 +21685,12 @@ pub fn rust_runtime_primitive_has_bridge(primitive_name: std::string::String) ->
 
 pub fn emit_rust_expr_call(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall {
             call_semantics: cs, ..
@@ -21552,12 +21721,12 @@ pub fn emit_rust_expr_call(
 
 pub fn emit_rust_expr_method_call(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
             method_semantics: method_semantics,
@@ -21592,12 +21761,12 @@ pub fn emit_rust_expr_method_call(
 
 pub fn emit_rust_expr_match(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprMatch => {
             let s = crate::v1_std_core::match_scrutinee(expr.clone());
@@ -21621,12 +21790,12 @@ pub fn emit_rust_expr_match(
 
 pub fn emit_rust_expr_if(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprIf => {
             let c = crate::v1_std_core::if_condition(expr.clone());
@@ -21652,12 +21821,12 @@ pub fn emit_rust_expr_if(
 
 pub fn emit_rust_expr_let(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = crate::v1_std_core::let_binding_name_at(
@@ -21686,12 +21855,12 @@ pub fn emit_rust_expr_let(
 
 pub fn emit_rust_expr_record_lit(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
             parent_enum: parent_enum,
@@ -21794,12 +21963,12 @@ pub fn emit_rust_expr_record_lit(
 
 pub fn emit_rust_expr_string_interp(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprStringInterp => {
             let ps = Rc::new({
@@ -21841,12 +22010,12 @@ pub fn emit_rust_expr_string_interp(
 
 pub fn emit_rust_expr_block(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBlock => emit_typed_block(
             expr.children.clone(),
@@ -21865,12 +22034,12 @@ pub fn emit_rust_expr_block(
 
 pub fn emit_rust_expr_cast(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCast => crate::v1_compiler_emit::emit_typed_cast_shared(
             crate::v1_std_core::cast_expr(expr.clone()),
@@ -21898,12 +22067,12 @@ pub fn emit_rust_expr_cast(
 
 pub fn emit_rust_expr_for_each(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprForEach => {
             let v = crate::v1_std_core::foreach_variable_at(
@@ -21932,12 +22101,12 @@ pub fn emit_rust_expr_for_each(
 
 pub fn emit_rust_expr_index(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprIndex => {
             let b = crate::v1_std_core::index_base(expr.clone());
@@ -21961,12 +22130,12 @@ pub fn emit_rust_expr_index(
 
 pub fn emit_rust_expr_slice(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprSlice => {
             let b = crate::v1_std_core::slice_base(expr.clone());
@@ -21992,12 +22161,12 @@ pub fn emit_rust_expr_slice(
 
 pub fn emit_rust_expr_bin_op(
     expr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprBinOp {
             op,
@@ -22023,13 +22192,13 @@ pub fn emit_rust_expr_bin_op(
 
 pub fn emit_typed_expr(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     fuel: i64,
-) -> std::string::String {
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         crate::v1_compiler_emit::emit_shared_expr(
             texpr.clone(),
@@ -22203,12 +22372,12 @@ pub fn emit_typed_expr(
 
 pub fn emit_cloned_arg(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     emit_typed_expr(
         texpr.clone(),
         registry.clone(),
@@ -22221,8 +22390,8 @@ pub fn emit_cloned_arg(
 }
 
 pub fn is_enum_type_name(
-    type_name: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    type_name: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> bool {
     crate::v1_compiler_infer_emit_info::is_enum_in_summaries(
         type_summaries.clone(),
@@ -22231,11 +22400,11 @@ pub fn is_enum_type_name(
 }
 
 pub fn contextual_variant_parent_from_type_name(
-    variant_name: std::string::String,
+    variant_name: String,
     resolved_type: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let rt_name =
             crate::v1_std_core::authored_name_at(source_indices.clone(), resolved_type.clone());
@@ -22255,11 +22424,11 @@ pub fn contextual_variant_parent_from_type_name(
 }
 
 pub fn contextual_variant_parent_absent(
-    variant_name: std::string::String,
+    variant_name: String,
     resolved_type: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match resolved_type.return_cardinality.clone() {
         Cardinality::CardOptional => {
             if is_optional_variant_name(variant_name.clone()) {
@@ -22283,12 +22452,12 @@ pub fn contextual_variant_parent_absent(
 }
 
 pub fn contextual_variant_parent(
-    variant_name: std::string::String,
-    parent_enum: Option<std::string::String>,
+    variant_name: String,
+    parent_enum: Option<String>,
     resolved_type: Rc<Node>,
     emit_info: Rc<EmitGraphInfo>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match parent_enum.clone() {
         Some(explicit_parent) => {
             if crate::v1_compiler_infer_emit_info::variant_belongs_to_enum(
@@ -22312,7 +22481,7 @@ pub fn contextual_variant_parent(
 
 pub fn is_map_typed_expr(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
@@ -22327,7 +22496,7 @@ pub fn is_map_typed_expr(
 
 pub fn is_collection_typed_expr(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match texpr.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
@@ -22341,7 +22510,7 @@ pub fn discriminant_zero_field_variant_tag(
     arg: Rc<Node>,
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
             if ((arg.children.clone().len() as i64) != 0) {
@@ -22374,12 +22543,12 @@ pub fn discriminant_zero_field_variant_tag(
 
 pub fn emit_discriminant_call_lowering(
     value_arg: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let arg = crate::v1_std_core::arg_value(value_arg.clone());
         match discriminant_zero_field_variant_tag(arg.clone(), scope.clone(), emit_info.clone()) {
@@ -22401,12 +22570,12 @@ pub fn emit_discriminant_call_lowering(
 
 pub fn emit_discriminant_call_scrutinee_lowering(
     arg: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let scrutinee = emit_typed_expr(
             arg.clone(),
@@ -22508,17 +22677,17 @@ pub fn emit_discriminant_call_scrutinee_lowering(
 }
 
 pub fn emit_typed_call_expr(
-    func: std::string::String,
+    func: String,
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let target_is_runtime = call_target_is_runtime_primitive(call_target.clone());
         let call_str = if (target_is_runtime.clone() && (func.clone() == "empty_map".to_string())) {
@@ -22588,13 +22757,13 @@ pub fn emit_typed_call_expr(
 }
 
 pub fn rust_call_arg_fail_closed_unwrap(
-    arg_str: std::string::String,
+    arg_str: String,
     arg: Rc<Node>,
     callee: Option<Rc<ItemInfo>>,
     idx: i64,
-    func: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    func: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match callee.clone() {
         Some(info) => match function_value_params(info.params.clone())
             .iter()
@@ -22624,11 +22793,11 @@ pub fn rust_call_arg_fail_closed_unwrap(
 }
 
 pub fn rust_call_arg_function_value_adapt(
-    arg_str: std::string::String,
+    arg_str: String,
     arg: Rc<Node>,
     callee: Option<Rc<ItemInfo>>,
     idx: i64,
-) -> std::string::String {
+) -> String {
     {
         let is_call_result = match (*arg.expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => true,
@@ -22708,14 +22877,14 @@ pub fn rust_call_arg_function_value_adapt(
 }
 
 pub fn emit_typed_function_value_call(
-    func: std::string::String,
+    func: String,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
@@ -22766,16 +22935,16 @@ pub fn lambda_argument_scope(arg: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferSc
 }
 
 pub fn emit_typed_call(
-    func: std::string::String,
+    func: String,
     args: Rc<Vec<Rc<Node>>>,
     callee_is_function_value: bool,
     call_target: Rc<CallTargetIdentity>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         if callee_is_function_value.clone() {
             return emit_typed_function_value_call(
@@ -23282,7 +23451,7 @@ pub fn emit_typed_call(
 pub fn fill_default_args(
     ordered: Rc<Vec<Rc<Node>>>,
     callee: Option<Rc<ItemInfo>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -23363,7 +23532,7 @@ pub fn fill_default_args(
 pub fn fill_op_default_args(
     ordered: Rc<Vec<Rc<Node>>>,
     op_params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -23372,12 +23541,13 @@ pub fn fill_op_default_args(
     {
         let si = scope.type_env.clone().source_indices.clone();
         let arg_map = ordered.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<Node>>>, a: Rc<Node>| {
-                match crate::v1_std_core::arg_name_at(a.clone(), si.clone()) {
-                    Some(n) => v1_rt::rc_map_insert(acc.clone(), n.clone(), a.clone()),
-                    None => acc.clone(),
-                }
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, a: Rc<Node>| match crate::v1_std_core::arg_name_at(
+                a.clone(),
+                si.clone(),
+            ) {
+                Some(n) => v1_rt::rc_map_insert(acc.clone(), n.clone(), a.clone()),
+                None => acc.clone(),
             },
         );
         let unnamed_args = Rc::new({
@@ -23429,10 +23599,10 @@ pub fn fill_op_default_args(
 }
 
 pub fn emit_nested_rt_concat(
-    mut remaining: Rc<Vec<std::string::String>>,
-    mut acc: std::string::String,
+    mut remaining: Rc<Vec<String>>,
+    mut acc: String,
     mut shared_types: Rc<BTreeSet<String>>,
-) -> std::string::String {
+) -> String {
     loop {
         match remaining.clone().first().cloned() {
             None => {
@@ -23475,11 +23645,11 @@ pub fn emit_nested_rt_concat(
 #[serde(tag = "_variant")]
 pub enum IterOwnedReceiverCloneDisposition {
     IterOwnedReceiverCloneDropped,
-    IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: std::string::String },
+    IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: String },
     IterOwnedReceiverCloneRetainedNotSimpleIdentifier,
 }
 impl IterOwnedReceiverCloneDisposition {
-    pub fn receiver_name(&self) -> std::string::String {
+    pub fn receiver_name(&self) -> String {
         match self {
             IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneDropped => panic!("no receiver_name on unit variant"),
             IterOwnedReceiverCloneDisposition::IterOwnedReceiverCloneRetainedDownstreamReference { receiver_name: __val, .. } => __val.clone(),
@@ -23491,7 +23661,7 @@ impl IterOwnedReceiverCloneDisposition {
 pub fn iter_owned_receiver_clone_disposition(
     receiver: Rc<Node>,
     downstream: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<IterOwnedReceiverCloneDisposition> {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprVar {
@@ -23525,12 +23695,12 @@ pub fn iter_owned_receiver_clone_disposition(
 pub fn emit_typed_iter_owned_receiver(
     receiver: Rc<Node>,
     downstream: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let disposition = iter_owned_receiver_clone_disposition(
             receiver.clone(),
@@ -23562,15 +23732,15 @@ pub fn emit_typed_iter_owned_receiver(
 }
 
 pub fn emit_typed_for_each(
-    variable: std::string::String,
+    variable: String,
     collection: Rc<Node>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing
@@ -23617,12 +23787,12 @@ pub fn emit_typed_for_each(
 pub fn emit_typed_index(
     base: Rc<Node>,
     index: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
         let base_str = emit_typed_expr(
@@ -23681,12 +23851,12 @@ pub fn emit_typed_slice(
     base: Rc<Node>,
     start: Rc<Node>,
     end: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let spec = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust);
         let base_str = emit_typed_expr(
@@ -23755,10 +23925,10 @@ pub fn emit_typed_slice(
 pub fn collection_element_type(
     receiver_type: Option<Rc<InferredNode>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
     type_env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     match receiver_type.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             let __rt_is_container = crate::v1_compiler_infer_types::node_is_element_collection(
@@ -23814,7 +23984,7 @@ pub fn collection_element_type(
 
 pub fn lambda_scope_from_children(
     scope: Rc<InferScope>,
-    params: Rc<Vec<std::string::String>>,
+    params: Rc<Vec<String>>,
     param_nodes: Rc<Vec<Rc<Node>>>,
 ) -> Rc<InferScope> {
     Rc::new(
@@ -23857,15 +24027,15 @@ pub fn lambda_scope_from_children(
 }
 
 pub fn lambda_param_type_strs(
-    params: Rc<Vec<std::string::String>>,
+    params: Rc<Vec<String>>,
     param_nodes: Rc<Vec<Rc<Node>>>,
-    fallback_types: Rc<Vec<std::string::String>>,
+    fallback_types: Rc<Vec<String>>,
     shared_types: Rc<BTreeSet<String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     emit_info: Rc<EmitGraphInfo>,
     fold_acc_uses_fallback: bool,
     type_env: Rc<TypeEnv>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for pair in Rc::new(
@@ -23980,13 +24150,13 @@ pub fn lambda_param_type_strs(
 
 pub fn emit_typed_collection_lambda(
     lambda_expr: Rc<Node>,
-    elem_type_str: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    elem_type_str: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
             let ps = crate::v1_std_core::lambda_param_names_at(
@@ -24046,15 +24216,15 @@ pub fn emit_typed_collection_lambda(
 
 pub fn emit_typed_fold_lambda(
     lambda_expr: Rc<Node>,
-    acc_type_str: std::string::String,
-    elem_type_str: std::string::String,
+    acc_type_str: String,
+    elem_type_str: String,
     elem_borrowed: bool,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
             let ps = crate::v1_std_core::lambda_param_names_at(
@@ -24208,12 +24378,12 @@ pub fn emit_rust_fold_method_call(
     result_type: Option<Rc<InferredNode>>,
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
@@ -24699,7 +24869,7 @@ pub fn emit_rust_fold_method_call(
 
 pub fn fold_lambda_element_unused(
     lambda_expr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*lambda_expr.expr_data.clone()).clone() {
         ExprData::ExprLambda => {
@@ -24719,12 +24889,12 @@ pub fn fold_lambda_element_unused(
 pub fn emit_rust_sort_by_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let recv_str = emit_typed_iter_owned_receiver(
             receiver.clone(),
@@ -24800,12 +24970,12 @@ pub fn emit_rust_sort_by_method_call(
 pub fn emit_rust_map_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let recv_str = emit_typed_expr(
             receiver.clone(),
@@ -25022,12 +25192,12 @@ pub fn emit_rust_higher_order_method(
     ho_spec: Rc<HigherOrderMethodSpec>,
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing
@@ -25177,12 +25347,12 @@ pub fn emit_rust_higher_order_method(
 pub fn emit_rust_get_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let recv_str = emit_typed_expr(
             receiver.clone(),
@@ -25245,12 +25415,12 @@ pub fn emit_rust_get_method_call(
 pub fn emit_rust_with_method_call(
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let base_str = emit_typed_expr(
             receiver.clone(),
@@ -25363,12 +25533,12 @@ pub fn emit_rust_with_method_call(
 
 pub fn emit_rust_first_method_call(
     receiver: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*receiver.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
             method_semantics: _,
@@ -25438,17 +25608,17 @@ pub fn emit_rust_first_method_call(
 }
 
 pub fn emit_rust_generic_method_call(
-    method_name: std::string::String,
+    method_name: String,
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
     result_type: Option<Rc<InferredNode>>,
     runtime_bridge: bool,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let function_name = method_name.clone();
         if ((runtime_bridge.clone() == false)
@@ -25577,26 +25747,26 @@ pub fn emit_rust_generic_method_call(
 }
 
 pub fn rust_unrealized_service_op_refusal(
-    service_name: std::string::String,
-    method: std::string::String,
-    module_name: std::string::String,
-) -> std::string::String {
+    service_name: String,
+    method: String,
+    module_name: String,
+) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("panic!(\"unrealized host seam: service op ".to_string(), service_name.clone()), ".".to_string()), method.clone()), " in ".to_string()), module_name.clone()), ": the Rust realization binds a service only through an async fn parameter, and this function declares none\")".to_string())
 }
 
 pub fn emit_typed_method_call(
     method_call_node: Rc<Node>,
     receiver: Rc<Node>,
-    method: std::string::String,
+    method: String,
     args: Rc<Vec<Rc<Node>>>,
     result_type: Option<Rc<InferredNode>>,
     method_semantics: Option<Rc<MethodSemantics>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     if (method_semantics.clone() != std::option::Option::None) {
         match (*method_semantics.clone().unwrap()).clone() {
             MethodSemantics::ServiceMethodSemantics {
@@ -25644,8 +25814,8 @@ pub fn emit_typed_method_call(
                         .iter()
                         .cloned()
                         .fold(
-                            v1_rt::rc_empty_map::<std::string::String, bool>(),
-                            |acc: Rc<HashMap<std::string::String, bool>>, p: Rc<Node>| {
+                            v1_rt::rc_empty_map::<String, bool>(),
+                            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                                 v1_rt::rc_map_insert(
                                     acc,
                                     crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
@@ -25675,8 +25845,8 @@ pub fn emit_typed_method_call(
                         .iter()
                         .cloned()
                         .fold(
-                            v1_rt::rc_empty_map::<std::string::String, bool>(),
-                            |acc: Rc<HashMap<std::string::String, bool>>, p: Rc<Node>| {
+                            v1_rt::rc_empty_map::<String, bool>(),
+                            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                                 v1_rt::rc_map_insert(
                                     acc,
                                     crate::v1_std_core::param_node_name_at(p.clone(), si.clone()),
@@ -26129,12 +26299,12 @@ if rust_method_template_result_wraps_in_rc(method_name.clone()) {
 
 pub fn emit_typed_first_arg(
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match args.clone().first().cloned() {
         Some(a) => emit_typed_expr(
             crate::v1_std_core::arg_value(a.clone()),
@@ -26149,10 +26319,7 @@ pub fn emit_typed_first_arg(
     }
 }
 
-pub fn freemonoid_match_arm_for(
-    arms: Rc<Vec<Rc<Node>>>,
-    variant: std::string::String,
-) -> Option<Rc<Node>> {
+pub fn freemonoid_match_arm_for(arms: Rc<Vec<Rc<Node>>>, variant: String) -> Option<Rc<Node>> {
     Rc::new({
         let mut __result = Vec::new();
         for arm in arms.iter().cloned() {
@@ -26171,9 +26338,9 @@ pub fn freemonoid_match_arm_for(
 
 pub fn freemonoid_cons_binding(
     cons_arm: Rc<Node>,
-    field: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match (*crate::v1_std_core::arm_pattern(cons_arm.clone())).clone() {
         MatchPattern::VariantPattern {
             field_bindings: fbs,
@@ -26207,9 +26374,9 @@ pub fn freemonoid_cons_binding(
 
 pub fn arm_resolved_parent_enum(
     arm: Rc<Node>,
-    scrut_type: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Option<std::string::String> {
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
     match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
         MatchPattern::VariantPattern {
             name: n,
@@ -26225,7 +26392,7 @@ pub fn arm_resolved_parent_enum(
     }
 }
 
-pub fn parent_enum_is_freemonoid(p: Option<std::string::String>) -> bool {
+pub fn parent_enum_is_freemonoid(p: Option<String>) -> bool {
     match p.clone() {
         Some(nm) => (nm.clone() == "FreeMonoid".to_string()),
         None => false,
@@ -26250,7 +26417,7 @@ pub fn freemonoid_catchall_arm(arms: Rc<Vec<Rc<Node>>>) -> Option<Rc<Node>> {
     .cloned()
 }
 
-pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> std::string::String {
+pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> String {
     match (*crate::v1_std_core::arm_pattern(arm.clone())).clone() {
         MatchPattern::Bind {
             declaration: declaration,
@@ -26262,8 +26429,8 @@ pub fn freemonoid_catchall_bind_name(arm: Rc<Node>) -> std::string::String {
 
 pub fn arms_are_freemonoid_coproduct(
     arms: Rc<Vec<Rc<Node>>>,
-    scrut_type: std::string::String,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    scrut_type: String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> bool {
     {
         let has_empty = match freemonoid_match_arm_for(arms.clone(), "Empty".to_string()) {
@@ -26301,7 +26468,7 @@ pub fn arms_are_freemonoid_coproduct(
     }
 }
 
-pub fn freemonoid_tail_let_from_fm(tail_bind: std::string::String) -> std::string::String {
+pub fn freemonoid_tail_let_from_fm(tail_bind: String) -> String {
     if (tail_bind.clone() == "_".to_string()) {
         "".to_string()
     } else {
@@ -26315,12 +26482,12 @@ pub fn freemonoid_tail_let_from_fm(tail_bind: std::string::String) -> std::strin
 pub fn freemonoid_empty_branch_body(
     empty_arm: Option<Rc<Node>>,
     catchall: Option<Rc<Node>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match empty_arm.clone() {
         Some(ea) => emit_typed_expr(
             crate::v1_std_core::arm_body(ea.clone()),
@@ -26363,13 +26530,13 @@ pub fn freemonoid_empty_branch_body(
 pub fn freemonoid_nonempty_branch_body(
     cons_arm: Option<Rc<Node>>,
     catchall: Option<Rc<Node>>,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match cons_arm.clone() {
         Some(ca) => {
             let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
@@ -26426,14 +26593,14 @@ pub fn freemonoid_nonempty_branch_body(
 }
 
 pub fn emit_native_freemonoid_match(
-    scrut_str: std::string::String,
+    scrut_str: String,
     arms: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let empty_arm = freemonoid_match_arm_for(arms.clone(), "Empty".to_string());
@@ -26484,10 +26651,10 @@ pub fn emit_native_freemonoid_match(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcGroupedArmPlan {
     pub groupable: bool,
-    pub variant: std::string::String,
-    pub pat_str: std::string::String,
-    pub ref_field: std::string::String,
-    pub inner_pat_str: std::string::String,
+    pub variant: String,
+    pub pat_str: String,
+    pub ref_field: String,
+    pub inner_pat_str: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -26498,14 +26665,11 @@ pub struct RcGroupedArmEntry {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RcGroupedArmAcc {
-    pub seen: Rc<Vec<std::string::String>>,
-    pub out: Rc<Vec<std::string::String>>,
+    pub seen: Rc<Vec<String>>,
+    pub out: Rc<Vec<String>>,
 }
 
-pub fn ungroupable_arm_plan(
-    variant: std::string::String,
-    pat_str: std::string::String,
-) -> Rc<RcGroupedArmPlan> {
+pub fn ungroupable_arm_plan(variant: String, pat_str: String) -> Rc<RcGroupedArmPlan> {
     Rc::new(RcGroupedArmPlan {
         groupable: false,
         variant: variant.clone(),
@@ -26517,8 +26681,8 @@ pub fn ungroupable_arm_plan(
 
 pub fn variant_pattern_field_binding_named(
     pattern: Rc<MatchPattern>,
-    field_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match (*pattern.clone()).clone() {
         MatchPattern::VariantPattern {
@@ -26541,7 +26705,7 @@ pub fn variant_pattern_field_binding_named(
     }
 }
 
-pub fn variant_pattern_bare_name(pattern: Rc<MatchPattern>) -> std::string::String {
+pub fn variant_pattern_bare_name(pattern: Rc<MatchPattern>) -> String {
     match (*pattern.clone()).clone() {
         MatchPattern::VariantPattern { name: n, .. } => {
             crate::v1_std_core::qualified_last_segment(n.clone())
@@ -26555,7 +26719,7 @@ pub fn rc_grouped_arm_plan(
     scope: Rc<InferScope>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    scrut_type: std::string::String,
+    scrut_type: String,
 ) -> Rc<RcGroupedArmPlan> {
     {
         let si = scope.type_env.clone().source_indices.clone();
@@ -26669,7 +26833,7 @@ pub fn rc_grouped_arm_plan(
 
 pub fn rc_group_members(
     entries: Rc<Vec<Rc<RcGroupedArmEntry>>>,
-    variant: std::string::String,
+    variant: String,
 ) -> Rc<Vec<Rc<RcGroupedArmEntry>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -26707,13 +26871,13 @@ pub fn rc_group_is_whole_coverage(
 pub fn emit_rc_grouped_match_arm(
     members: Rc<Vec<Rc<RcGroupedArmEntry>>>,
     plan: Rc<RcGroupedArmPlan>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     match_result_type: Rc<Node>,
-) -> std::string::String {
+) -> String {
     {
         let inner_arms = Rc::new({
             let mut __result = Vec::new();
@@ -26764,14 +26928,14 @@ pub fn emit_rc_grouped_match_arm(
 
 pub fn emit_typed_match_arm_strs(
     arms: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    scrut_type: std::string::String,
+    scrut_type: String,
     match_result_type: Rc<Node>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let has_irrefutable = {
             let mut __found = false;
@@ -26893,12 +27057,12 @@ pub fn emit_typed_match_arm_strs(
 pub fn emit_typed_match(
     scrutinee: Rc<Node>,
     arms: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let scrut_str = emit_typed_expr(
             scrutinee.clone(),
@@ -27092,13 +27256,13 @@ pub fn emit_typed_match(
 
 pub fn emit_typed_match_arm_body_str(
     arm: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     match_result_type: Rc<Node>,
-) -> std::string::String {
+) -> String {
     {
         let arm_b = crate::v1_std_core::arm_body(arm.clone());
         let si = scope.type_env.clone().source_indices.clone();
@@ -27150,15 +27314,15 @@ pub fn emit_typed_match_arm_body_str(
 
 pub fn emit_typed_match_arm(
     arm: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    scrut_type: std::string::String,
+    scrut_type: String,
     match_result_type: Rc<Node>,
     string_from_mode: bool,
-) -> std::string::String {
+) -> String {
     {
         let arm_pat = crate::v1_std_core::arm_pattern(arm.clone());
         let arm_g = crate::v1_std_core::arm_guard(arm.clone());
@@ -27332,12 +27496,12 @@ pub fn emit_typed_if(
     condition: Rc<Node>,
     then_branch: Rc<Node>,
     else_branch: Option<Rc<Node>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let cond_str = emit_typed_expr(
             condition.clone(),
@@ -27372,15 +27536,15 @@ pub fn emit_typed_if(
 }
 
 pub fn emit_typed_let(
-    name: std::string::String,
+    name: String,
     value: Rc<Node>,
     body: Option<Rc<Node>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let val_str = emit_typed_expr(
             value.clone(),
@@ -27415,8 +27579,8 @@ pub fn emit_typed_let(
 
 pub fn is_optional_struct_field(
     emit_info: Rc<EmitGraphInfo>,
-    struct_name: std::string::String,
-    field_name: std::string::String,
+    struct_name: String,
+    field_name: String,
 ) -> bool {
     match crate::v1_compiler_infer_emit_info::lookup_emit_type_summary(
         emit_info.clone(),
@@ -27435,9 +27599,9 @@ pub fn is_optional_struct_field(
 }
 
 pub fn rust_struct_field_lookup_candidates(
-    struct_name: std::string::String,
+    struct_name: String,
     scope: Rc<InferScope>,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let from_template = match crate::std_types::container_template_algebra(struct_name.clone())
         {
@@ -27486,8 +27650,8 @@ pub fn rust_struct_field_lookup_candidates(
 
 pub fn expr_var_occurrence_names(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_name = match (*n.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -27524,10 +27688,7 @@ pub fn expr_var_occurrence_names(
     })
 }
 
-pub fn rust_callable_capture_preamble(
-    lambda_node: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> std::string::String {
+pub fn rust_callable_capture_preamble(lambda_node: Rc<Node>, scope: Rc<InferScope>) -> String {
     {
         let names = expr_var_occurrence_names(
             lambda_node.clone(),
@@ -27569,10 +27730,10 @@ pub fn rust_callable_capture_preamble(
 }
 
 pub fn rust_callable_field_value_wrap(
-    raw: std::string::String,
+    raw: String,
     value_node: Option<Rc<Node>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let lambda = match value_node.clone() {
             Some(vn) => match (*vn.expr_data.clone()).clone() {
@@ -27610,8 +27771,8 @@ pub fn rust_callable_field_value_wrap(
 
 pub fn rust_struct_field_type_node(
     scope: Rc<InferScope>,
-    struct_name: std::string::String,
-    field_name: std::string::String,
+    struct_name: String,
+    field_name: String,
 ) -> Option<Rc<Node>> {
     match crate::v1_compiler_infer_env::lookup_type_by_name(
         scope.type_env.clone(),
@@ -27628,8 +27789,8 @@ pub fn rust_struct_field_type_node(
 
 pub fn rust_record_field_needs_fn_rc(
     scope: Rc<InferScope>,
-    struct_name: std::string::String,
-    field_name: std::string::String,
+    struct_name: String,
+    field_name: String,
 ) -> bool {
     {
         let mut __found = false;
@@ -27654,15 +27815,15 @@ pub fn rust_record_field_needs_fn_rc(
 }
 
 pub fn rust_callable_field_method_call(
-    method_name: std::string::String,
+    method_name: String,
     receiver: Rc<Node>,
     args: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> Option<std::string::String> {
+) -> Option<String> {
     if rust_receiver_has_callable_method_field(receiver.clone(), method_name.clone(), scope.clone())
     {
         {
@@ -27715,7 +27876,7 @@ pub fn rust_callable_field_method_call(
 
 pub fn rust_receiver_has_callable_method_field(
     receiver: Rc<Node>,
-    method_name: std::string::String,
+    method_name: String,
     scope: Rc<InferScope>,
 ) -> bool {
     {
@@ -27738,8 +27899,8 @@ pub fn rust_receiver_has_callable_method_field(
 pub fn rust_struct_field_type_node_variant_aware(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
-    struct_name: std::string::String,
-    field_name: std::string::String,
+    struct_name: String,
+    field_name: String,
 ) -> Option<Rc<Node>> {
     match rust_struct_field_type_node(scope.clone(), struct_name.clone(), field_name.clone()) {
         Some(n) => Some(n.clone()),
@@ -27775,8 +27936,8 @@ pub fn rust_struct_field_type_node_variant_aware(
 
 pub fn rust_struct_field_type_node_from_container(
     container: Rc<Node>,
-    field_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match crate::v1_std_core::find_child_named(
         container.clone(),
@@ -27794,8 +27955,8 @@ pub fn rust_record_field_needs_box(
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
-    struct_name: std::string::String,
-    field_name: std::string::String,
+    struct_name: String,
+    field_name: String,
 ) -> bool {
     match rust_struct_field_type_node_variant_aware(
         scope.clone(),
@@ -27814,14 +27975,14 @@ pub fn rust_record_field_needs_box(
 }
 
 pub fn wrap_rust_record_field_value(
-    raw: std::string::String,
+    raw: String,
     value_node: Option<Rc<Node>>,
     scope: Rc<InferScope>,
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
-    struct_name: std::string::String,
-    field_name: std::string::String,
-) -> std::string::String {
+    struct_name: String,
+    field_name: String,
+) -> String {
     {
         let is_bounded_lattice_field = (struct_name.clone() == "BoundedLattice".to_string());
         if rust_record_field_needs_fn_rc(scope.clone(), struct_name.clone(), field_name.clone()) {
@@ -27969,10 +28130,10 @@ pub fn is_already_optional(
 
 pub fn lookup_struct_field_type_name(
     struct_node: Rc<Node>,
-    field_name: std::string::String,
-    variant_name: Option<std::string::String>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    field_name: String,
+    variant_name: Option<String>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let direct = match crate::v1_std_core::find_child_named(
             struct_node.clone(),
@@ -28064,14 +28225,14 @@ pub fn lookup_struct_field_type_name(
 pub fn emit_field_value_with_context(
     field_value: Rc<Node>,
     struct_node: Rc<Node>,
-    outer_type_name: Option<std::string::String>,
-    field_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    outer_type_name: Option<String>,
+    field_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*field_value.expr_data.clone()).clone() {
         ExprData::ExprRecordLit {
             parent_enum: pe, ..
@@ -28175,8 +28336,8 @@ pub fn emit_field_value_with_context(
 }
 
 pub fn struct_candidates_by_field_names(
-    field_names: Rc<Vec<std::string::String>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    field_names: Rc<Vec<String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let n_fields = (field_names.clone().len() as i64);
@@ -28219,9 +28380,9 @@ pub fn struct_candidates_by_field_names(
 }
 
 pub fn anonymous_record_struct_candidates(
-    field_names: Rc<Vec<std::string::String>>,
-    field_type_hints: Rc<HashMap<std::string::String, std::string::String>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
 ) -> Rc<Vec<Rc<TypeSummary>>> {
     {
         let candidates =
@@ -28272,9 +28433,9 @@ pub fn anonymous_record_struct_candidates(
 
 pub fn ambiguous_anonymous_record_literal_diagnostics(
     n: Rc<Node>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    module_name: std::string::String,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: String,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let current = match (*n.expr_data.clone()).clone() {
@@ -28319,7 +28480,12 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
                                             .iter()
                                             .cloned()
                                             .collect();
-                                            __sorted.sort_by(|a: &std::string::String, b: &std::string::String| { let __ka = (|name: std::string::String| name.clone())(a.clone()); let __kb = (|name: std::string::String| name.clone())(b.clone()); __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal) });
+                                            __sorted.sort_by(|a: &String, b: &String| {
+                                                let __ka = (|name: String| name.clone())(a.clone());
+                                                let __kb = (|name: String| name.clone())(b.clone());
+                                                __ka.partial_cmp(&__kb)
+                                                    .unwrap_or(std::cmp::Ordering::Equal)
+                                            });
                                             __sorted
                                         });
                                         Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::AmbiguousAnonymousRecordLiteral {
@@ -28449,10 +28615,10 @@ pub fn ambiguous_anonymous_record_literal_diagnostics(
 }
 
 pub fn find_struct_name_by_fields(
-    field_names: Rc<Vec<std::string::String>>,
-    field_type_hints: Rc<HashMap<std::string::String, std::string::String>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Option<std::string::String> {
+    field_names: Rc<Vec<String>>,
+    field_type_hints: Rc<HashMap<String, String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
     {
         let candidates = anonymous_record_struct_candidates(
             field_names.clone(),
@@ -28471,9 +28637,9 @@ pub fn find_struct_name_by_fields(
 }
 
 pub fn find_unique_struct_name_by_fields(
-    field_names: Rc<Vec<std::string::String>>,
-    type_summaries: Rc<HashMap<std::string::String, Rc<TypeSummary>>>,
-) -> Option<std::string::String> {
+    field_names: Rc<Vec<String>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Option<String> {
     {
         let candidates =
             struct_candidates_by_field_names(field_names.clone(), type_summaries.clone());
@@ -28489,16 +28655,16 @@ pub fn find_unique_struct_name_by_fields(
 }
 
 pub fn emit_typed_record_lit(
-    type_name: Option<std::string::String>,
+    type_name: Option<String>,
     fields: Rc<Vec<Rc<Node>>>,
-    parent_enum: Option<std::string::String>,
+    parent_enum: Option<String>,
     resolved_type: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let struct_name = explicit_record_struct_name(
             type_name.clone(),
@@ -28644,9 +28810,8 @@ pub fn emit_typed_record_lit(
                                 __result
                             });
                             let field_type_hints = fields.iter().cloned().fold(
-                                v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
-                                |acc: Rc<HashMap<std::string::String, std::string::String>>,
-                                 f: Rc<Node>| {
+                                v1_rt::rc_empty_map::<String, String>(),
+                                |acc: Rc<HashMap<String, String>>, f: Rc<Node>| {
                                     let fname = crate::v1_std_core::field_init_node_name_at(
                                         f.clone(),
                                         scope.type_env.clone().source_indices.clone(),
@@ -29155,7 +29320,12 @@ pub fn emit_typed_record_lit(
                                         }
                                         __result
                                     });
-                                    let provided_set = provided_names.iter().cloned().fold(v1_rt::rc_empty_map::<std::string::String, bool>(), |acc: Rc<HashMap<std::string::String, bool>>, n: std::string::String| v1_rt::rc_map_insert(acc, n.clone(), true));
+                                    let provided_set = provided_names.iter().cloned().fold(
+                                        v1_rt::rc_empty_map::<String, bool>(),
+                                        |acc: Rc<HashMap<String, bool>>, n: String| {
+                                            v1_rt::rc_map_insert(acc, n.clone(), true)
+                                        },
+                                    );
                                     let summary = crate::v1_compiler_infer_emit_info::lookup_emit_type_summary(emit_info.clone(), variant_summary_name.clone());
                                     let default_strs = match summary.clone() {
                                         Some(s) => {
@@ -29299,7 +29469,7 @@ Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("    ".to_s
     }
 }
 
-pub fn rust_zero_value(type_name: std::string::String) -> Option<std::string::String> {
+pub fn rust_zero_value(type_name: String) -> Option<String> {
     if (type_name.clone() == "Int".to_string()) {
         Some("0".to_string())
     } else {
@@ -29320,12 +29490,12 @@ pub fn emit_typed_bin_op(
     algebra_field: Option<AlgebraFieldKind>,
     left: Rc<Node>,
     right: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let l_str = emit_typed_expr(
             left.clone(),
@@ -29352,373 +29522,133 @@ pub fn emit_typed_bin_op(
                 RenderTarget::Rust,
             )
         } else {
-            match (*binop_operator_realization(op.clone(), left.clone(), scope.clone())).clone() {
-                OperatorRealization::OperatorRealizationRefused { cause: c, .. } => {
-                    emit_rust_compile_error_expr(
-                        crate::std_operator_realization::operator_realization_refusal_message(
-                            c.clone(),
-                        ),
-                    )
-                }
-                OperatorRealization::StructuralComparison {
-                    binding: b,
-                    test: t,
-                    ..
-                } => emit_rust_structural_comparison(
-                    l_str.clone(),
-                    r_str.clone(),
-                    b.clone(),
-                    t.clone(),
-                ),
-                OperatorRealization::StructuralEquality { declaration: _, .. } => {
-                    emit_rust_host_bin_op(
-                        op.clone(),
-                        algebra_field.clone(),
-                        left.clone(),
-                        right.clone(),
-                        l_str.clone(),
-                        r_str.clone(),
-                        scope.clone(),
-                    )
-                }
-                OperatorRealization::HostOperator => emit_rust_host_bin_op(
+            {
+                let op_str = crate::v1_compiler_emit::emit_bin_op_symbol(
                     op.clone(),
+                    RenderTarget::Rust,
                     algebra_field.clone(),
+                );
+                if is_string_comparison(
+                    op.clone(),
                     left.clone(),
                     right.clone(),
-                    l_str.clone(),
-                    r_str.clone(),
-                    scope.clone(),
-                ),
-            }
-        }
-    }
-}
-
-pub fn rust_operand_realization(
-    operand: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> Rc<OperandRealization> {
-    rust_operand_realization_of_type(
-        crate::v1_compiler_infer_types::resolved_type(operand.clone()),
-        scope.clone(),
-        8,
-    )
-}
-
-pub fn rust_operand_realization_of_type(
-    mut rt: Rc<Node>,
-    mut scope: Rc<InferScope>,
-    mut fuel: i64,
-) -> Rc<OperandRealization> {
-    loop {
-        match crate::v1_compiler_infer_env::type_reference_declaration_ref(
-            rt.clone(),
-            scope.type_env.clone().source_indices.clone(),
-            scope.type_env.clone(),
-        ) {
-            None => {
-                break Rc::new(OperandRealization::OperandIdentityUnavailable);
-            }
-            Some(d) => {
-                if crate::v1_compiler_coercion::declaration_realizes_natively_on_rust(
-                    d.clone(),
-                    crate::v1_compiler_coercion::type_reference_decl_file(rt.clone()),
+                    scope.type_env.clone().source_indices.clone(),
                 ) {
-                    break Rc::new(OperandRealization::HostNumericOperand);
-                } else {
-                    let decl = match rt.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: r, .. }) => r.clone(),
-                        _ => rt.clone(),
-                    };
-                    if ((fuel.clone() > 0)
-                        && crate::v1_compiler_infer::is_where_refinement_type(rt.clone()))
                     {
-                        match rt.children.clone().first().cloned() {
-                            Some(base) => {
-                                let base_resolved =
-                                    match crate::v1_compiler_infer_env::lookup_type_for(
-                                        scope.type_env.clone(),
-                                        base.clone(),
-                                    ) {
-                                        Some(r) => r.clone(),
-                                        None => base.clone(),
-                                    };
-                                {
-                                    let __tco_0 = base_resolved.clone();
-                                    let __tco_1 = (fuel - 1);
-                                    rt = __tco_0;
-                                    fuel = __tco_1;
-                                    continue;
-                                }
-                            }
-                            None => {
-                                break Rc::new(OperandRealization::StructuralOperand {
-                                    declaration: d.clone(),
-                                });
-                            }
-                        }
-                    } else {
-                        if ((fuel.clone() > 0)
-                            && crate::v1_compiler_emit_core_support::is_type_alias_item(
-                                decl.clone(),
-                                scope.type_env.clone().source_indices.clone(),
-                            ))
-                        {
+                        let l_optional = is_optional_typed_expr(left.clone());
+                        let r_optional = is_optional_typed_expr(right.clone());
+                        if (l_optional.clone() || r_optional.clone()) {
                             {
-                                let __tco_0 =
-                                    crate::v1_compiler_infer_types::resolved_type(decl.clone());
-                                let __tco_1 = (fuel - 1);
-                                rt = __tco_0;
-                                fuel = __tco_1;
-                                continue;
-                            }
-                        } else {
-                            break Rc::new(OperandRealization::StructuralOperand {
-                                declaration: d.clone(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-pub fn binop_operator_realization(
-    op: BinOp,
-    left: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> Rc<OperatorRealization> {
-    crate::std_operator_realization::operator_realization_for(
-        op.clone(),
-        rust_operand_realization(left.clone(), scope.clone()),
-        structural_ordering_rows(),
-    )
-}
-
-pub fn rust_declaration_path(
-    module_path: std::string::String,
-    decl_name: std::string::String,
-) -> std::string::String {
-    v1_rt::concat(
-        v1_rt::concat(
-            v1_rt::concat(
-                "crate::".to_string(),
-                crate::v1_compiler_emit_core_support::module_to_filename(module_path.clone()),
-            ),
-            "::".to_string(),
-        ),
-        crate::v1_compiler_emit::emit_ident(decl_name.clone(), RenderTarget::Rust),
-    )
-}
-
-pub fn emit_rust_structural_comparison(
-    l_str: std::string::String,
-    r_str: std::string::String,
-    binding: Rc<StructuralOrderingBinding>,
-    test: Rc<OrderingTest>,
-) -> std::string::String {
-    {
-        let call = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            rust_declaration_path(
-                                binding.compare.clone().module_path.clone(),
-                                binding.compare.clone().decl_name.clone(),
-                            ),
-                            "(".to_string(),
-                        ),
-                        l_str.clone(),
-                    ),
-                    ", ".to_string(),
-                ),
-                r_str.clone(),
-            ),
-            ")".to_string(),
-        );
-        let ordering = v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "crate::".to_string(),
-                    crate::v1_compiler_emit_core_support::module_to_filename(
-                        binding.ordering.clone().module_path.clone(),
-                    ),
-                ),
-                "::".to_string(),
-            ),
-            binding.ordering.clone().decl_name.clone(),
-        );
-        match (*test.clone()).clone() {
-            OrderingTest::OrderingIs { variant: v, .. } => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("(".to_string(), call.clone()),
-                                " == ".to_string(),
-                            ),
-                            ordering.clone(),
-                        ),
-                        "::".to_string(),
-                    ),
-                    v.clone(),
-                ),
-                ")".to_string(),
-            ),
-            OrderingTest::OrderingIsNot { variant: v, .. } => v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat("(".to_string(), call.clone()),
-                                " != ".to_string(),
-                            ),
-                            ordering.clone(),
-                        ),
-                        "::".to_string(),
-                    ),
-                    v.clone(),
-                ),
-                ")".to_string(),
-            ),
-        }
-    }
-}
-
-pub fn emit_rust_host_bin_op(
-    op: BinOp,
-    algebra_field: Option<AlgebraFieldKind>,
-    left: Rc<Node>,
-    right: Rc<Node>,
-    l_str: std::string::String,
-    r_str: std::string::String,
-    scope: Rc<InferScope>,
-) -> std::string::String {
-    {
-        let op_str = crate::v1_compiler_emit::emit_bin_op_symbol(
-            op.clone(),
-            RenderTarget::Rust,
-            algebra_field.clone(),
-        );
-        if is_string_comparison(
-            op.clone(),
-            left.clone(),
-            right.clone(),
-            scope.type_env.clone().source_indices.clone(),
-        ) {
-            {
-                let l_optional = is_optional_typed_expr(left.clone());
-                let r_optional = is_optional_typed_expr(right.clone());
-                if (l_optional.clone() || r_optional.clone()) {
-                    {
-                        let l_cmp = if l_optional.clone() {
-                            v1_rt::concat(l_str.clone(), ".as_deref()".to_string())
-                        } else {
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "Some(".to_string(),
-                                    emit_rust_dag_string_to_host_via_seam(l_str.clone()),
-                                ),
-                                ").as_deref()".to_string(),
-                            )
-                        };
-                        let r_cmp = if r_optional.clone() {
-                            v1_rt::concat(r_str.clone(), ".as_deref()".to_string())
-                        } else {
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "Some(".to_string(),
-                                    emit_rust_dag_string_to_host_via_seam(r_str.clone()),
-                                ),
-                                ").as_deref()".to_string(),
-                            )
-                        };
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
+                                let l_cmp = if l_optional.clone() {
+                                    v1_rt::concat(l_str.clone(), ".as_deref()".to_string())
+                                } else {
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat("(".to_string(), l_cmp.clone()),
-                                            " ".to_string(),
-                                        ),
-                                        op_str.clone(),
-                                    ),
-                                    " ".to_string(),
-                                ),
-                                r_cmp.clone(),
-                            ),
-                            ")".to_string(),
-                        )
-                    }
-                } else {
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "(".to_string(),
+                                            "Some(".to_string(),
                                             emit_rust_dag_string_to_host_via_seam(l_str.clone()),
                                         ),
-                                        " ".to_string(),
+                                        ").as_deref()".to_string(),
+                                    )
+                                };
+                                let r_cmp = if r_optional.clone() {
+                                    v1_rt::concat(r_str.clone(), ".as_deref()".to_string())
+                                } else {
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "Some(".to_string(),
+                                            emit_rust_dag_string_to_host_via_seam(r_str.clone()),
+                                        ),
+                                        ").as_deref()".to_string(),
+                                    )
+                                };
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    v1_rt::concat("(".to_string(), l_cmp.clone()),
+                                                    " ".to_string(),
+                                                ),
+                                                op_str.clone(),
+                                            ),
+                                            " ".to_string(),
+                                        ),
+                                        r_cmp.clone(),
                                     ),
-                                    op_str.clone(),
-                                ),
-                                " ".to_string(),
-                            ),
-                            emit_rust_dag_string_to_host_via_seam(r_str.clone()),
-                        ),
-                        ")".to_string(),
-                    )
-                }
-            }
-        } else {
-            {
-                let both_string = (is_string_typed_expr(
-                    left.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ) && is_string_typed_expr(
-                    right.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ));
-                let is_str_concat = ((op_str.clone() == "+".to_string()) && both_string.clone());
-                if is_str_concat.clone() {
-                    v1_rt::concat(
-                        v1_rt::concat(
+                                    ")".to_string(),
+                                )
+                            }
+                        } else {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat("(".to_string(), l_str.clone()),
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat(
+                                                    "(".to_string(),
+                                                    emit_rust_dag_string_to_host_via_seam(
+                                                        l_str.clone(),
+                                                    ),
+                                                ),
+                                                " ".to_string(),
+                                            ),
+                                            op_str.clone(),
+                                        ),
                                         " ".to_string(),
                                     ),
-                                    op_str.clone(),
+                                    emit_rust_dag_string_to_host_via_seam(r_str.clone()),
                                 ),
-                                " &".to_string(),
-                            ),
-                            r_str.clone(),
-                        ),
-                        ")".to_string(),
-                    )
+                                ")".to_string(),
+                            )
+                        }
+                    }
                 } else {
-                    v1_rt::concat(
-                        v1_rt::concat(
+                    {
+                        let both_string = (is_string_typed_expr(
+                            left.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ) && is_string_typed_expr(
+                            right.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        ));
+                        let is_str_concat =
+                            ((op_str.clone() == "+".to_string()) && both_string.clone());
+                        if is_str_concat.clone() {
                             v1_rt::concat(
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat("(".to_string(), l_str.clone()),
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("(".to_string(), l_str.clone()),
+                                                " ".to_string(),
+                                            ),
+                                            op_str.clone(),
+                                        ),
+                                        " &".to_string(),
+                                    ),
+                                    r_str.clone(),
+                                ),
+                                ")".to_string(),
+                            )
+                        } else {
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            v1_rt::concat(
+                                                v1_rt::concat("(".to_string(), l_str.clone()),
+                                                " ".to_string(),
+                                            ),
+                                            op_str.clone(),
+                                        ),
                                         " ".to_string(),
                                     ),
-                                    op_str.clone(),
+                                    r_str.clone(),
                                 ),
-                                " ".to_string(),
-                            ),
-                            r_str.clone(),
-                        ),
-                        ")".to_string(),
-                    )
+                                ")".to_string(),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -29738,7 +29668,7 @@ pub fn is_string_comparison(
     op: BinOp,
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match op.clone() {
         BinOp::Eq => {
@@ -29755,7 +29685,7 @@ pub fn is_string_comparison(
 
 pub fn is_string_typed_expr(
     e: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match e.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
@@ -29773,12 +29703,12 @@ pub fn is_string_typed_expr(
 
 pub fn emit_typed_string_interp(
     parts: Rc<Vec<Rc<StringPart>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let has_interpolations = {
             let mut __found = false;
@@ -29859,7 +29789,7 @@ pub fn emit_typed_string_interp(
 
 pub fn typed_interp_format_part(
     part: Rc<StringPart>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
@@ -29895,12 +29825,12 @@ pub fn typed_interp_format_part(
 
 pub fn emit_typed_block(
     stmts: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let state = emit_rust_block_stmts(
             stmts.clone(),
@@ -29926,9 +29856,9 @@ pub fn emit_typed_block(
 
 pub fn emit_tco_init_block_stmts(
     mut remaining: Rc<Vec<Rc<Node>>>,
-    mut text: Rc<Vec<std::string::String>>,
+    mut text: Rc<Vec<String>>,
     mut scope: Rc<InferScope>,
-    mut registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    mut registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut depth: i64,
     mut shared_types: Rc<BTreeSet<String>>,
     mut emit_info: Rc<EmitGraphInfo>,
@@ -29989,12 +29919,12 @@ pub fn emit_tco_init_block_stmts(
 pub fn emit_tco_init_stmt(
     stmt: Rc<Node>,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*stmt.expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = crate::v1_std_core::let_binding_name_at(
@@ -30058,14 +29988,14 @@ pub fn emit_tco_init_stmt(
 
 pub fn emit_typed_tco_body(
     texpr: Rc<Node>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let inner = emit_typed_tco_expr(
             texpr.clone(),
@@ -30092,10 +30022,10 @@ pub fn emit_typed_tco_body(
 
 pub fn emit_rust_tco_non_self_call(
     frame: Rc<TcoFrame>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprCall {
             call_semantics: cs, ..
@@ -30129,12 +30059,12 @@ pub fn emit_rust_tco_non_self_call(
 
 pub fn emit_rust_tco_if(
     frame: Rc<TcoFrame>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprIf => {
             let c = crate::v1_std_core::if_condition(frame.expr.clone());
@@ -30225,14 +30155,14 @@ pub fn emit_rust_tco_if(
 pub fn freemonoid_tco_empty_branch_body(
     empty_arm: Option<Rc<Node>>,
     catchall: Option<Rc<Node>>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match empty_arm.clone() {
         Some(ea) => emit_typed_tco_expr(
             crate::v1_std_core::arm_body(ea.clone()),
@@ -30277,15 +30207,15 @@ pub fn freemonoid_tco_empty_branch_body(
 pub fn freemonoid_tco_nonempty_branch_body(
     cons_arm: Option<Rc<Node>>,
     catchall: Option<Rc<Node>>,
-    si: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    fn_name: std::string::String,
+    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match cons_arm.clone() {
         Some(ca) => {
             let head_bind = freemonoid_cons_binding(ca.clone(), "head".to_string(), si.clone());
@@ -30344,16 +30274,16 @@ pub fn freemonoid_tco_nonempty_branch_body(
 }
 
 pub fn emit_native_freemonoid_tco_match(
-    scrut_str: std::string::String,
+    scrut_str: String,
     arms: Rc<Vec<Rc<Node>>>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let empty_arm = freemonoid_match_arm_for(arms.clone(), "Empty".to_string());
@@ -30407,12 +30337,12 @@ pub fn emit_native_freemonoid_tco_match(
 
 pub fn emit_rust_tco_match(
     frame: Rc<TcoFrame>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
             let s = crate::v1_std_core::match_scrutinee(frame.expr.clone());
@@ -30582,12 +30512,12 @@ pub fn emit_rust_tco_match(
 
 pub fn emit_rust_tco_let(
     frame: Rc<TcoFrame>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = crate::v1_std_core::let_binding_name_at(
@@ -30677,12 +30607,12 @@ pub fn emit_rust_tco_let(
 
 pub fn emit_rust_tco_block(
     frame: Rc<TcoFrame>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
         ExprData::ExprBlock => {
             let ss = frame.expr.clone().children.clone();
@@ -30736,10 +30666,10 @@ pub fn emit_rust_tco_block(
 
 pub fn emit_rust_tco_default_return(
     frame: Rc<TcoFrame>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let val_str = emit_typed_expr(
             frame.expr.clone(),
@@ -30759,14 +30689,14 @@ pub fn emit_rust_tco_default_return(
 
 pub fn emit_typed_tco_expr(
     texpr: Rc<Node>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_shared_tco_expr(
         Rc::new(TcoFrame {
             expr: texpr.clone(),
@@ -30846,15 +30776,15 @@ pub fn emit_typed_tco_expr(
 
 pub fn emit_typed_tco_match_arm(
     arm: Rc<Node>,
-    fn_name: std::string::String,
+    fn_name: String,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-    scrut_type: std::string::String,
-) -> std::string::String {
+    scrut_type: String,
+) -> String {
     {
         let arm_pat = crate::v1_std_core::arm_pattern(arm.clone());
         let arm_g = crate::v1_std_core::arm_guard(arm.clone());
@@ -31002,8 +30932,8 @@ pub fn emit_typed_tco_match_arm(
 
 pub fn expr_references_var(
     node: Rc<Node>,
-    var_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    var_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*node.expr_data.clone()).clone() {
@@ -31030,12 +30960,12 @@ pub fn expr_references_var(
 pub fn emit_typed_tco_reassign(
     args: Rc<Vec<Rc<Node>>>,
     params: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let arg_values = Rc::new({
@@ -31057,8 +30987,8 @@ pub fn emit_typed_tco_reassign(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |m: Rc<HashMap<std::string::String, bool>>, pair: (i64, Rc<Node>)| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |m: Rc<HashMap<String, bool>>, pair: (i64, Rc<Node>)| {
                 let pname = crate::v1_std_core::param_node_name_at(pair.1.clone(), si.clone());
                 let av = match arg_values
                     .clone()
@@ -31217,10 +31147,10 @@ pub fn emit_typed_tco_reassign(
 
 pub fn emit_service_def(
     item: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let safe_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
             crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone()),
@@ -31251,12 +31181,12 @@ pub fn emit_service_def(
 }
 
 pub fn emit_service_struct(
-    name: std::string::String,
+    name: String,
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let derives = "#[derive(Debug, Clone)]".to_string();
         let config_fields = emit_service_config_fields(
@@ -31289,8 +31219,8 @@ pub fn emit_service_config_fields(
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
             fallback_transport.clone(),
@@ -31329,14 +31259,14 @@ pub fn emit_service_config_fields(
 }
 
 pub fn emit_service_impl(
-    name: std::string::String,
+    name: String,
     transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
-) -> std::string::String {
+) -> String {
     {
         let depth = 0;
         let new_method = emit_service_new_method(
@@ -31381,12 +31311,12 @@ pub fn emit_service_impl(
 }
 
 pub fn emit_service_new_method(
-    name: std::string::String,
+    name: String,
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
     service_item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
             fallback_transport.clone(),
@@ -31530,8 +31460,8 @@ pub fn emit_service_new_method(
 
 pub fn emit_auth_source_ctor(
     source_expr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match (*source_expr.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => match crate::v1_std_core::record_lit_type_name_at(source_expr.clone(), source_indices.clone()) {
     Some(variant) => if (variant.clone() == "EnvVar".to_string()) {
@@ -31553,8 +31483,8 @@ pub fn emit_auth_source_ctor(
 
 pub fn emit_modifier_doc_from_props(
     properties: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let names = crate::v1_compiler_emit::extract_modifier_names(
             properties.clone(),
@@ -31575,15 +31505,15 @@ pub fn emit_modifier_doc_from_props(
 }
 
 pub fn emit_operation_method(
-    service_name: std::string::String,
+    service_name: String,
     transport: Rc<Node>,
     op_node: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
     service_item: Rc<Node>,
-) -> std::string::String {
+) -> String {
     {
         let op_text = crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone());
         let input_params = Rc::new({
@@ -31605,7 +31535,7 @@ pub fn emit_operation_method(
                         Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
-                        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+                        v1_rt::rc_empty_map::<String, String>(),
                         env.clone(),
                         false,
                     ),
@@ -31748,15 +31678,15 @@ pub fn emit_operation_method(
 }
 
 pub fn emit_dry_run_branch_from_props(
-    op_name: std::string::String,
+    op_name: String,
     inferred: Rc<Node>,
     mock_props: Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     op_node: Rc<Node>,
     env: Rc<TypeEnv>,
     shared_types: Rc<BTreeSet<String>>,
-) -> std::string::String {
+) -> String {
     {
         let log_line = v1_rt::concat(
             v1_rt::concat("eprintln!(\"[dry-run] ".to_string(), op_name.clone()),
@@ -31853,16 +31783,16 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 
 pub fn emit_transport_call(
     bound: Rc<BoundOperation>,
-    op_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    op_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     inferred: Rc<Node>,
     service_item: Rc<Node>,
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     match (*bound.clone()).clone() {
         BoundOperation::RestBound { transport: t, .. } => emit_rest_call(
             op_name.clone(),
@@ -31910,16 +31840,16 @@ pub fn emit_transport_call(
 }
 
 pub fn emit_rest_call(
-    op_name: std::string::String,
+    op_name: String,
     transport: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     service_item: Rc<Node>,
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let has_config_auth = match crate::v1_std_core::service_config_auth(
             service_item.clone(),
@@ -32031,8 +31961,8 @@ pub fn emit_rest_call(
 
 pub fn emit_rest_client_init(
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match crate::v1_std_core::transport_tls_posture(transport.clone(), source_indices.clone()) {
         Some(p) => {
             if (p.clone() == "InsecureAcceptAnyCert".to_string()) {
@@ -32060,8 +31990,8 @@ pub fn emit_rest_client_init(
 
 pub fn emit_rest_basic_auth_line(
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match crate::v1_std_core::transport_auth_basic(transport.clone(), source_indices.clone()) {
         Some(b) => {
             let user_field = Rc::new({
@@ -32138,8 +32068,8 @@ pub fn emit_rest_basic_auth_line(
 
 pub fn emit_rest_http_method(
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match crate::v1_std_core::transport_method(transport.clone(), source_indices.clone()) {
         Some(m) => match m.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: _, .. }) => {
@@ -32173,9 +32103,9 @@ pub fn emit_rest_http_method(
 
 pub fn emit_rest_url_line(
     transport: Rc<Node>,
-    op_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    op_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match crate::v1_std_core::transport_path_template(transport.clone(), source_indices.clone()) {
         Some(path_node) => match (*path_node.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. }
@@ -32304,9 +32234,9 @@ pub fn emit_rest_url_line(
 pub fn emit_rest_auth_line(
     transport: Rc<Node>,
     service_item: Rc<Node>,
-    http_method: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    http_method: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let auth_scheme =
             crate::v1_std_core::service_config_auth(service_item.clone(), source_indices.clone());
@@ -32401,8 +32331,8 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::con
 
 pub fn emit_rest_query_line(
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match crate::v1_std_core::transport_query(transport.clone(), source_indices.clone()) {
         Some(q) => {
             let pairs = Rc::new({
@@ -32451,8 +32381,8 @@ pub fn emit_rest_query_line(
 
 pub fn emit_rest_body_line(
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match crate::v1_std_core::transport_request_body(transport.clone(), source_indices.clone()) {
     Some(b) => match (*b.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { .. } => {
@@ -32484,7 +32414,7 @@ v1_rt::concat(v1_rt::concat(Rc::new(vec![body_init.clone()]), opt_lines.clone())
 }
 }
 
-pub fn has_response_prefix(name: std::string::String) -> bool {
+pub fn has_response_prefix(name: String) -> bool {
     if (v1_rt::string_length(&name) < 9) {
         false
     } else {
@@ -32494,7 +32424,7 @@ pub fn has_response_prefix(name: std::string::String) -> bool {
 
 pub fn has_from_key_fields(
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let rt = crate::v1_compiler_infer_types::resolved_type(op_node.clone());
@@ -32519,7 +32449,7 @@ pub fn has_from_key_fields(
 
 pub fn has_response_200_property(
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -32537,7 +32467,7 @@ pub fn has_response_200_property(
 
 pub fn operation_response_200_resolved_type(
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     env: Rc<TypeEnv>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
@@ -32580,7 +32510,7 @@ pub fn operation_response_200_resolved_type(
 
 pub fn is_json_wire_declaration_type(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let n = crate::v1_std_core::authored_name_at(
@@ -32606,7 +32536,7 @@ pub fn is_json_wire_declaration_type(
     }
 }
 
-pub fn path_segment_is_list_index(seg: std::string::String) -> bool {
+pub fn path_segment_is_list_index(seg: String) -> bool {
     if (v1_rt::string_length(&seg) == 0) {
         false
     } else {
@@ -32628,15 +32558,15 @@ pub fn path_segment_is_list_index(seg: std::string::String) -> bool {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WirePathProjection {
-    pub expr: std::string::String,
+    pub expr: String,
     pub node: Option<Rc<Node>>,
     pub ok: bool,
 }
 
 pub fn wire_child_for_segment(
     wire_node: Rc<Node>,
-    seg: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    seg: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     {
         let normed = crate::v1_compiler_infer_types::normalize_access_type_node(wire_node.clone());
@@ -32671,9 +32601,9 @@ pub fn wire_child_for_segment(
 
 pub fn advance_wire_path_projection(
     state: Rc<WirePathProjection>,
-    seg: std::string::String,
-    full_path: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    seg: String,
+    full_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<WirePathProjection> {
     if !state.ok.clone() {
         state.clone()
@@ -32754,10 +32684,10 @@ pub fn advance_wire_path_projection(
 }
 
 pub fn emit_wire_struct_path_chain(
-    base: std::string::String,
+    base: String,
     wire_node: Rc<Node>,
-    from_path: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    from_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<WirePathProjection> {
     {
         let segs = Rc::new({
@@ -32784,7 +32714,7 @@ pub fn emit_wire_struct_path_chain(
                 node: Some(wire_node.clone()),
                 ok: true,
             }),
-            |acc: Rc<WirePathProjection>, seg: std::string::String| {
+            |acc: Rc<WirePathProjection>, seg: String| {
                 advance_wire_path_projection(
                     acc,
                     seg.clone(),
@@ -32797,11 +32727,11 @@ pub fn emit_wire_struct_path_chain(
 }
 
 pub fn emit_typed_wire_field_assign(
-    field_name: std::string::String,
-    from_path: std::string::String,
+    field_name: String,
+    from_path: String,
     wire_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let projection = emit_wire_struct_path_chain(
             "__rest_wire".to_string(),
@@ -32826,7 +32756,7 @@ pub fn emit_typed_wire_field_assign(
     }
 }
 
-pub fn escape_json_pointer_segment(seg: std::string::String) -> std::string::String {
+pub fn escape_json_pointer_segment(seg: String) -> String {
     v1_rt::replace(
         v1_rt::replace(seg.clone(), "~".to_string(), "~0".to_string()),
         "/".to_string(),
@@ -32835,11 +32765,11 @@ pub fn escape_json_pointer_segment(seg: std::string::String) -> std::string::Str
 }
 
 pub fn emit_json_value_extract(
-    var_name: std::string::String,
-    from_path: std::string::String,
-    dag_type_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    var_name: String,
+    from_path: String,
+    dag_type_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let escaped_path = Rc::new({
             let mut __result = Vec::new();
@@ -32932,10 +32862,10 @@ pub fn emit_json_value_extract(
 
 pub fn emit_from_key_extraction(
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let rt = crate::v1_compiler_infer_types::resolved_type(op_node.clone());
         let children = rt.children.clone();
@@ -33049,8 +32979,8 @@ match ch.inferred.clone().as_deref().cloned() {
 pub fn emit_plain_response_body(
     op_node: Rc<Node>,
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let is_text = match crate::v1_std_core::transport_response_format(
             transport.clone(),
@@ -33073,10 +33003,10 @@ pub fn emit_plain_response_body(
 pub fn emit_response_code_handling(
     op_node: Rc<Node>,
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let use_from_key = has_from_key_fields(op_node.clone(), source_indices.clone());
         let response_props = Rc::new({
@@ -33143,10 +33073,10 @@ pub fn emit_response_arm(
     op_node: Rc<Node>,
     use_from_key: bool,
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let name =
             crate::v1_std_core::field_init_node_name_at(prop.clone(), source_indices.clone());
@@ -33215,7 +33145,7 @@ pub fn emit_response_arm(
     }
 }
 
-pub fn has_exit_prefix(name: std::string::String) -> bool {
+pub fn has_exit_prefix(name: String) -> bool {
     if (v1_rt::string_length(&name) < 5) {
         false
     } else {
@@ -33226,8 +33156,8 @@ pub fn has_exit_prefix(name: std::string::String) -> bool {
 pub fn emit_exit_code_handling(
     op_node: Rc<Node>,
     inferred: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let exit_props = Rc::new({
             let mut __result = Vec::new();
@@ -33296,8 +33226,8 @@ pub fn emit_exit_code_handling(
 pub fn emit_exit_arm(
     prop: Rc<Node>,
     inferred: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let name =
             crate::v1_std_core::field_init_node_name_at(prop.clone(), source_indices.clone());
@@ -33326,14 +33256,14 @@ pub fn emit_exit_arm(
 }
 
 pub fn emit_shell_call(
-    op_name: std::string::String,
+    op_name: String,
     transport: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     depth: i64,
     inferred: Rc<Node>,
     op_node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let argv = transport.children.clone();
         let optional_params = Rc::new({
@@ -33352,8 +33282,8 @@ pub fn emit_shell_call(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, p: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, p: Rc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
                     crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone()),
@@ -33546,9 +33476,9 @@ pub fn emit_shell_call(
 
 pub fn emit_shell_argv_element(
     arg: Rc<Node>,
-    optional_params: Rc<HashMap<std::string::String, bool>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    optional_params: Rc<HashMap<String, bool>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     match (*arg.expr_data.clone()).clone() {
         ExprData::ExprLiteral { ref value, .. }
             if matches!(value.as_ref(), LiteralValue::LitStr { .. }) =>
@@ -33676,8 +33606,8 @@ pub fn emit_shell_argv_element(
 
 pub fn emit_shell_return(
     inferred: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let effective = crate::v1_compiler_emit::unwrap_single_field_product(inferred.clone());
         let is_product = crate::v1_compiler_infer_types::is_product_type(effective.clone());
@@ -33766,10 +33696,7 @@ pub fn emit_shell_return(
     }
 }
 
-pub fn emit_shell_channel_expr(
-    channel: std::string::String,
-    is_optional: bool,
-) -> std::string::String {
+pub fn emit_shell_channel_expr(channel: String, is_optional: bool) -> String {
     {
         let base = if (channel.clone() == "exit_success".to_string()) {
             "output.status.success()".to_string()
@@ -33799,8 +33726,8 @@ pub fn emit_file_call(
     verb: FileVerb,
     path_template: Rc<Node>,
     result_fields: Rc<Vec<Rc<FileResultField>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let path_line = emit_file_path_line(path_template.clone(), source_indices.clone());
         let action = v1_rt::concat(
@@ -33818,7 +33745,7 @@ pub fn emit_file_call(
     }
 }
 
-pub fn file_verb_action_expr(verb: FileVerb) -> std::string::String {
+pub fn file_verb_action_expr(verb: FileVerb) -> String {
     match verb.clone() {
         FileVerb::FileRead => file_read_match_expr(),
         FileVerb::FileWrite => file_write_expr(),
@@ -33830,8 +33757,8 @@ pub fn file_verb_action_expr(verb: FileVerb) -> std::string::String {
 
 pub fn emit_file_path_line(
     path_template: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let path_node = path_template.clone();
         match (*path_node.expr_data.clone()).clone() {
@@ -33952,73 +33879,70 @@ pub fn emit_file_path_line(
     }
 }
 
-pub fn file_empty_path_guard() -> std::string::String {
+pub fn file_empty_path_guard() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "if file_path.is_empty() { return Err(\"file transport resolved to an empty path\".into()); }".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_channel_binding_prefix() -> std::string::String {
+pub fn file_channel_binding_prefix() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "#[allow(unused_variables)]\nlet (file_success, file_content, file_error, file_byte_count): (bool, String, String, i64) = ".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_read_match_expr() -> std::string::String {
+pub fn file_read_match_expr() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "match std::fs::read_to_string(&file_path) {\n    Ok(read_text) => { let read_bytes = read_text.len() as i64; (true, read_text, String::new(), read_bytes) }\n    Err(read_err) => (false, String::new(), format!(\"{}\", read_err), 0i64),\n};".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_delete_match_expr() -> std::string::String {
+pub fn file_delete_match_expr() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "match std::fs::remove_file(&file_path) {\n    Ok(()) => (true, String::new(), String::new(), 0i64),\n    Err(delete_err) => (false, String::new(), format!(\"{}\", delete_err), 0i64),\n};".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_list_match_expr() -> std::string::String {
+pub fn file_list_match_expr() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "match std::fs::read_dir(&file_path) {\n    Ok(dir_entries) => {\n        let mut entry_names: Vec<String> = dir_entries.filter_map(|e| e.ok()).filter_map(|e| e.file_name().into_string().ok()).collect();\n        entry_names.sort();\n        let listing = entry_names.join(\"\\n\");\n        let listing_bytes = listing.len() as i64;\n        (true, listing, String::new(), listing_bytes)\n    }\n    Err(list_err) => (false, String::new(), format!(\"{}\", list_err), 0i64),\n};".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_write_expr() -> std::string::String {
+pub fn file_write_expr() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    match std::fs::write(&file_path, content.as_bytes()) {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(write_err) => (false, String::new(), format!(\"{}\", write_err), 0i64),\n    }\n};".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn file_write_owner_only_expr() -> std::string::String {
+pub fn file_write_owner_only_expr() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "{\n    let payload_bytes = content.len() as i64;\n    let owner_only_result = (|| -> std::io::Result<()> {\n        #[cfg(unix)]\n        {\n            use std::io::Write;\n            use std::os::unix::fs::OpenOptionsExt;\n            let mut owner_only_file = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&file_path)?;\n            owner_only_file.write_all(content.as_bytes())?;\n            return Ok(());\n        }\n        #[cfg(not(unix))]\n        {\n            return Err(std::io::Error::new(std::io::ErrorKind::Unsupported, \"write_owner_only refused: owner-only mode-at-creation is unavailable on this platform\"));\n        }\n    })();\n    match owner_only_result {\n        Ok(()) => (true, String::new(), String::new(), payload_bytes),\n        Err(owner_only_err) => (false, String::new(), format!(\"{}\", owner_only_err), 0i64),\n    }\n};".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn emit_file_channel_expr(
-    channel: FileResultChannel,
-    is_optional: bool,
-) -> std::string::String {
+pub fn emit_file_channel_expr(channel: FileResultChannel, is_optional: bool) -> String {
     {
         let base = match channel.clone() {
             FileResultChannel::FileChanSuccess => "file_success".to_string(),
@@ -34038,7 +33962,7 @@ pub fn emit_file_channel_expr(
     }
 }
 
-pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>) -> std::string::String {
+pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>) -> String {
     {
         let field_exprs = Rc::new({
             let mut __result = Vec::new();
@@ -34075,7 +33999,7 @@ pub fn emit_file_return(result_fields: Rc<Vec<Rc<FileResultField>>>) -> std::str
     }
 }
 
-pub fn emit_local_call(op_name: std::string::String) -> std::string::String {
+pub fn emit_local_call(op_name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -34092,7 +34016,7 @@ pub fn emit_resource_def(
     item: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let cap_children = item.children.clone();
@@ -34144,7 +34068,7 @@ pub fn emit_capability_method(
     cap_node: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -34165,7 +34089,7 @@ pub fn emit_capability_method(
                         Rc::new(vec![]),
                         shared_types.clone(),
                         env.source_indices.clone(),
-                        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+                        v1_rt::rc_empty_map::<String, String>(),
                         env.clone(),
                         false,
                     ),
@@ -34256,7 +34180,7 @@ pub fn data_value_has_cross_refs(value: Rc<Node>) -> bool {
 
 pub fn data_def_annotation_is_named_refinement(
     annotation: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let ann_name =
@@ -34269,15 +34193,15 @@ pub fn data_def_annotation_is_named_refinement(
 }
 
 pub fn emit_data_def(
-    name: std::string::String,
+    name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
-) -> std::string::String {
+) -> String {
     {
         let annotation_type_node = type_node.clone();
         let ann_name = crate::v1_std_core::authored_name_at(
@@ -34459,13 +34383,13 @@ pub fn value_inferred_type_is_rc_wrapped(
 pub fn emit_data_def_body(
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     needs_rc: bool,
-) -> std::string::String {
+) -> String {
     {
         let raw_ty_str = render_rust_type(
             type_node.clone(),
@@ -34609,106 +34533,74 @@ pub fn emit_data_def_body(
                     .to_string(),
             }
         } else {
-            if match (*value.expr_data.clone()).clone() {
-                ExprData::ExprElaboratedLiteral { .. } => true,
-                _ => false,
-            } {
-                v1_rt::concat(
-                    "            ".to_string(),
-                    emit_typed_expr(
-                        value.clone(),
-                        registry.clone(),
-                        scope.clone(),
-                        depth.clone(),
-                        shared_types.clone(),
-                        emit_info.clone(),
-                        1024,
-                    ),
-                )
-            } else {
-                if (crate::v1_compiler_emit::has_nested_records_node(
-                    type_node.clone(),
+            if (crate::v1_compiler_emit::has_nested_records_node(
+                type_node.clone(),
+                scope.type_env.clone().source_indices.clone(),
+            ) && !data_value_has_cross_refs(value.clone()))
+            {
+                match (*crate::v1_compiler_emit::emit_data_value_json(
+                    value.clone(),
                     scope.type_env.clone().source_indices.clone(),
-                ) && !data_value_has_cross_refs(value.clone()))
+                ))
+                .clone()
                 {
-                    match (*crate::v1_compiler_emit::emit_data_value_json(
-                        value.clone(),
+                    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
+                        v1_rt::concat(
+                            "            compile_error!(\"".to_string(),
+                            crate::v1_compiler_emit_core_support::escape_string_literal_body(
+                                r.clone(),
+                            ),
+                        ),
+                        "\")".to_string(),
+                    ),
+                    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                "            serde_json::from_value(serde_json::json!(".to_string(),
+                                json_str.clone(),
+                            ),
+                            "))\n".to_string(),
+                        ),
+                        "                .expect(\"valid data definition\")".to_string(),
+                    ),
+                }
+            } else {
+                {
+                    let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
+                        type_node.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                    ))
-                    .clone()
-                    {
-                        EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
-                            v1_rt::concat(
-                                "            compile_error!(\"".to_string(),
-                                crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                                    r.clone(),
-                                ),
-                            ),
-                            "\")".to_string(),
-                        ),
-                        EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
-                            v1_rt::concat(
-                                v1_rt::concat(
-                                    "            serde_json::from_value(serde_json::json!("
-                                        .to_string(),
-                                    json_str.clone(),
-                                ),
-                                "))\n".to_string(),
-                            ),
-                            "                .expect(\"valid data definition\")".to_string(),
-                        ),
-                    }
-                } else {
-                    {
-                        let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
-                            type_node.clone(),
-                            scope.type_env.clone().source_indices.clone(),
-                        );
-                        if is_map.clone() {
-                            match (*value.expr_data.clone()).clone() {
-                                ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                                    let key_is_string = map_literal_key_is_string(
-                                        type_node.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    );
-                                    let inserts = Rc::new({
-                                        let mut __result = Vec::new();
-                                        for f in value.children.clone().iter().cloned() {
-                                            __result.push({
-                                    let val_str = emit_typed_expr(crate::v1_std_core::field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
+                    );
+                    if is_map.clone() {
+                        match (*value.expr_data.clone()).clone() {
+                            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                                let key_is_string = map_literal_key_is_string(
+                                    type_node.clone(),
+                                    scope.type_env.clone().source_indices.clone(),
+                                );
+                                let inserts = Rc::new({
+                                    let mut __result = Vec::new();
+                                    for f in value.children.clone().iter().cloned() {
+                                        __result.push({
+                                let val_str = emit_typed_expr(crate::v1_std_core::field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(".to_string(), emit_rust_map_literal_key(crate::v1_std_core::field_init_node_name_at(f.clone(), scope.type_env.clone().source_indices.clone()), key_is_string.clone())), ", ".to_string()), val_str.clone()), ");".to_string())
 });
-                                        }
-                                        __result
-                                    });
-                                    let inserts_str = inserts.clone().join(&"\n".to_string());
+                                    }
+                                    __result
+                                });
+                                let inserts_str = inserts.clone().join(&"\n".to_string());
+                                v1_rt::concat(
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(
-                                                "            let mut __m = HashMap::new();\n"
-                                                    .to_string(),
-                                                inserts_str.clone(),
-                                            ),
-                                            "\n".to_string(),
+                                            "            let mut __m = HashMap::new();\n"
+                                                .to_string(),
+                                            inserts_str.clone(),
                                         ),
-                                        "            Rc::new(__m)".to_string(),
-                                    )
-                                }
-                                _ => {
-                                    let val_str = emit_typed_expr(
-                                        value.clone(),
-                                        registry.clone(),
-                                        scope.clone(),
-                                        depth.clone(),
-                                        shared_types.clone(),
-                                        emit_info.clone(),
-                                        1024,
-                                    );
-                                    v1_rt::concat("            ".to_string(), val_str.clone())
-                                }
+                                        "\n".to_string(),
+                                    ),
+                                    "            Rc::new(__m)".to_string(),
+                                )
                             }
-                        } else {
-                            {
+                            _ => {
                                 let val_str = emit_typed_expr(
                                     value.clone(),
                                     registry.clone(),
@@ -34718,66 +34610,74 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(
                                     emit_info.clone(),
                                     1024,
                                 );
-                                let is_already_wrapped = match (*value.expr_data.clone()).clone() {
-                                    ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-                                    ExprData::ExprListLit => true,
-                                    ExprData::ExprVar {
-                                        binding_kind: bk, ..
-                                    } => {
-                                        let vname = crate::v1_std_core::expr_var_name_at(
-                                            value.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        );
-                                        match effective_variant_parent(
-                                            vname.clone(),
-                                            bk.clone(),
-                                            value.inferred.clone(),
-                                            emit_info.clone(),
-                                            scope.type_env.clone().source_indices.clone(),
-                                        ) {
-                                            Some(enum_name) => variant_ref_self_wraps(
-                                                vname.clone(),
-                                                enum_name.clone(),
-                                                shared_types.clone(),
-                                            ),
-                                            None => value_inferred_type_is_rc_wrapped(
-                                                value.clone(),
-                                                shared_types.clone(),
-                                                scope.clone(),
-                                                emit_info.clone(),
-                                            ),
-                                        }
-                                    }
-                                    _ => value_inferred_type_is_rc_wrapped(
-                                        value.clone(),
-                                        shared_types.clone(),
-                                        scope.clone(),
-                                        emit_info.clone(),
-                                    ),
-                                };
-                                let wrap_start =
-                                    if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                                        rust_shared_wrap_ctor_prefix()
-                                    } else {
-                                        "".to_string()
-                                    };
-                                let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone())
-                                {
-                                    rust_shared_wrap_ctor_suffix()
-                                } else {
-                                    "".to_string()
-                                };
-                                v1_rt::concat(
-                                    v1_rt::concat(
-                                        v1_rt::concat(
-                                            "            ".to_string(),
-                                            wrap_start.clone(),
-                                        ),
-                                        val_str.clone(),
-                                    ),
-                                    wrap_end.clone(),
-                                )
+                                v1_rt::concat("            ".to_string(), val_str.clone())
                             }
+                        }
+                    } else {
+                        {
+                            let val_str = emit_typed_expr(
+                                value.clone(),
+                                registry.clone(),
+                                scope.clone(),
+                                depth.clone(),
+                                shared_types.clone(),
+                                emit_info.clone(),
+                                1024,
+                            );
+                            let is_already_wrapped = match (*value.expr_data.clone()).clone() {
+                                ExprData::ExprRecordLit { parent_enum: _, .. } => true,
+                                ExprData::ExprListLit => true,
+                                ExprData::ExprVar {
+                                    binding_kind: bk, ..
+                                } => {
+                                    let vname = crate::v1_std_core::expr_var_name_at(
+                                        value.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    match effective_variant_parent(
+                                        vname.clone(),
+                                        bk.clone(),
+                                        value.inferred.clone(),
+                                        emit_info.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    ) {
+                                        Some(enum_name) => variant_ref_self_wraps(
+                                            vname.clone(),
+                                            enum_name.clone(),
+                                            shared_types.clone(),
+                                        ),
+                                        None => value_inferred_type_is_rc_wrapped(
+                                            value.clone(),
+                                            shared_types.clone(),
+                                            scope.clone(),
+                                            emit_info.clone(),
+                                        ),
+                                    }
+                                }
+                                _ => value_inferred_type_is_rc_wrapped(
+                                    value.clone(),
+                                    shared_types.clone(),
+                                    scope.clone(),
+                                    emit_info.clone(),
+                                ),
+                            };
+                            let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
+                                rust_shared_wrap_ctor_prefix()
+                            } else {
+                                "".to_string()
+                            };
+                            let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone()) {
+                                rust_shared_wrap_ctor_suffix()
+                            } else {
+                                "".to_string()
+                            };
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat("            ".to_string(), wrap_start.clone()),
+                                    val_str.clone(),
+                                ),
+                                wrap_end.clone(),
+                            )
                         }
                     }
                 }
@@ -34787,7 +34687,7 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(
 }
 
 pub fn emit_test_file(
-    module_name: std::string::String,
+    module_name: String,
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     {
@@ -34849,7 +34749,7 @@ pub fn emit_test_file(
     }
 }
 
-pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> std::string::String {
+pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({
             let mut __result = Vec::new();
@@ -34867,7 +34767,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> std::strin
                         Rc::new(vec![]),
                         v1_rt::rc_empty_set::<String>(),
                         projection.source_indices.clone(),
-                        v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
+                        v1_rt::rc_empty_map::<String, String>(),
                         projection.type_env.clone(),
                         false,
                     ),
@@ -34907,7 +34807,7 @@ pub fn rust_test_signature_comment(projection: Rc<TestProjection>) -> std::strin
     }
 }
 
-pub fn emit_operation_test(projection: Rc<TestProjection>, depth: i64) -> std::string::String {
+pub fn emit_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
     {
         let test_name = rust_test_name(projection.clone());
         let struct_name = crate::v1_compiler_emit_core_support::sanitize_service_name(
@@ -34938,8 +34838,8 @@ pub fn emit_operation_test(projection: Rc<TestProjection>, depth: i64) -> std::s
 
 pub fn emit_rust_default_value(
     param: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let type_name = crate::v1_std_core::authored_name_at(
             source_indices.clone(),
@@ -34976,8 +34876,8 @@ pub fn emit_rust_default_value(
 pub fn emit_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let body_str = crate::v1_compiler_emit::emit_simple_expr(
             crate::v1_std_core::field_init_node_value(mock_prop.clone()),
@@ -35003,11 +34903,7 @@ pub fn emit_mock_prop_setup(
     }
 }
 
-pub fn emit_cargo_dep(
-    name: std::string::String,
-    version: std::string::String,
-    features: Rc<Vec<std::string::String>>,
-) -> std::string::String {
+pub fn emit_cargo_dep(name: String, version: String, features: Rc<Vec<String>>) -> String {
     if ((features.clone().len() as i64) > 0) {
         {
             let feat_strs = Rc::new({
@@ -35046,10 +34942,10 @@ pub fn emit_cargo_dep(
 }
 
 pub fn emit_cargo_dep_no_default_features(
-    name: std::string::String,
-    version: std::string::String,
-    features: Rc<Vec<std::string::String>>,
-) -> std::string::String {
+    name: String,
+    version: String,
+    features: Rc<Vec<String>>,
+) -> String {
     {
         let feat_strs = Rc::new({
             let mut __result = Vec::new();
@@ -35077,7 +34973,7 @@ pub fn emit_cargo_dep_no_default_features(
     }
 }
 
-pub fn emit_cargo_toml(crate_name: std::string::String, has_services: bool) -> Rc<TextFile> {
+pub fn emit_cargo_toml(crate_name: String, has_services: bool) -> Rc<TextFile> {
     {
         let header = v1_rt::concat(
             crate::extdeps_cargo_version::render_cargo_package_header_prefix(crate_name.clone()),
@@ -35161,20 +35057,19 @@ pub fn emit_cargo_toml(crate_name: std::string::String, has_services: bool) -> R
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowFunc {
-    pub name: std::string::String,
-    pub module_name: std::string::String,
+    pub name: String,
+    pub module_name: String,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Rc<Node>,
     pub uses: Rc<Vec<Rc<Node>>>,
-    pub service_names: Rc<Vec<std::string::String>>,
-    pub resolved_defaults: Rc<HashMap<std::string::String, std::string::String>>,
-    pub unresolvable_default_data_references:
-        Rc<HashMap<std::string::String, Rc<UnresolvableDataReference>>>,
+    pub service_names: Rc<Vec<String>>,
+    pub resolved_defaults: Rc<HashMap<String, String>>,
+    pub unresolvable_default_data_references: Rc<HashMap<String, Rc<UnresolvableDataReference>>>,
     pub read_only_params: Rc<BTreeSet<String>>,
-    pub source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-pub fn extract_literal_string(expr: Rc<Node>) -> Option<std::string::String> {
+pub fn extract_literal_string(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -35195,51 +35090,41 @@ pub fn extract_literal_string(expr: Rc<Node>) -> Option<std::string::String> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataImportEdge {
-    pub module_path: std::string::String,
+    pub module_path: String,
     pub is_all: bool,
-    pub specific_names: Rc<Vec<std::string::String>>,
+    pub specific_names: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataDeclIndex {
-    pub by_module: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<Node>>>>>,
-    pub imports_by_module: Rc<HashMap<std::string::String, Rc<Vec<Rc<DataImportEdge>>>>>,
-    pub source_indices_by_module:
-        Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, Rc<NewlineIndex>>>>>,
+    pub by_module: Rc<HashMap<String, Rc<HashMap<String, Rc<Node>>>>>,
+    pub imports_by_module: Rc<HashMap<String, Rc<Vec<Rc<DataImportEdge>>>>>,
+    pub source_indices_by_module: Rc<HashMap<String, Rc<HashMap<String, Rc<NewlineIndex>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DataRefResolution {
-    DataRefResolved {
-        module_path: std::string::String,
-        body: Rc<Node>,
-    },
-    DataRefAmbiguous {
-        modules: Rc<Vec<std::string::String>>,
-    },
+    DataRefResolved { module_path: String, body: Rc<Node> },
+    DataRefAmbiguous { modules: Rc<Vec<String>> },
     DataRefVisibilityBudgetExhausted,
     DataRefAbsent,
 }
 
 pub fn empty_data_decl_index() -> Rc<DataDeclIndex> {
     Rc::new(DataDeclIndex {
-        by_module: v1_rt::rc_empty_map::<
-            std::string::String,
-            Rc<HashMap<std::string::String, Rc<Node>>>,
-        >(),
-        imports_by_module: v1_rt::rc_empty_map::<std::string::String, Rc<Vec<Rc<DataImportEdge>>>>(
-        ),
+        by_module: v1_rt::rc_empty_map::<String, Rc<HashMap<String, Rc<Node>>>>(),
+        imports_by_module: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<DataImportEdge>>>>(),
         source_indices_by_module: v1_rt::rc_empty_map::<
-            std::string::String,
-            Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+            String,
+            Rc<HashMap<String, Rc<NewlineIndex>>>,
         >(),
     })
 }
 
 pub fn data_import_edges(
     module: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<DataImportEdge>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -35265,14 +35150,14 @@ pub fn data_import_edges(
 
 pub fn record_data_decl(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
     body: Rc<Node>,
 ) -> Rc<DataDeclIndex> {
     {
         let bucket = match v1_rt::map_get(&index.by_module.clone(), module_path.clone()) {
             Some(m) => m.clone(),
-            None => v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
+            None => v1_rt::rc_empty_map::<String, Rc<Node>>(),
         };
         Rc::new(DataDeclIndex {
             by_module: v1_rt::rc_map_insert(
@@ -35330,8 +35215,8 @@ pub fn build_data_decl_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<DataDeclIn
 
 pub fn data_decl_in_module(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
 ) -> Option<Rc<Node>> {
     match v1_rt::map_get(&index.by_module.clone(), module_path.clone()) {
         Some(m) => v1_rt::map_get(&m, name.clone()),
@@ -35341,7 +35226,7 @@ pub fn data_decl_in_module(
 
 pub fn data_decl_module_edges(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
+    module_path: String,
 ) -> Rc<Vec<Rc<DataImportEdge>>> {
     match v1_rt::map_get(&index.imports_by_module.clone(), module_path.clone()) {
         Some(e) => e.clone(),
@@ -35349,7 +35234,7 @@ pub fn data_decl_module_edges(
     }
 }
 
-pub fn data_import_admits_name(edge: Rc<DataImportEdge>, name: std::string::String) -> bool {
+pub fn data_import_admits_name(edge: Rc<DataImportEdge>, name: String) -> bool {
     (edge.is_all.clone() || {
         let mut __found = false;
         for n in edge.specific_names.clone().iter().cloned() {
@@ -35362,7 +35247,7 @@ pub fn data_import_admits_name(edge: Rc<DataImportEdge>, name: std::string::Stri
     })
 }
 
-pub fn data_import_reexports_name(edge: Rc<DataImportEdge>, name: std::string::String) -> bool {
+pub fn data_import_reexports_name(edge: Rc<DataImportEdge>, name: String) -> bool {
     if edge.is_all.clone() {
         false
     } else {
@@ -35376,7 +35261,7 @@ pub fn data_reference_visibility_depth_limit() -> i64 {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DataDeclReach {
-    pub modules: Rc<Vec<std::string::String>>,
+    pub modules: Rc<Vec<String>>,
     pub budget_exhausted: bool,
 }
 
@@ -35399,8 +35284,8 @@ pub fn merge_data_decl_reach(
 
 pub fn data_decl_reexporting_modules(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
     depth: i64,
 ) -> Rc<DataDeclReach> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -35450,8 +35335,8 @@ pub fn data_decl_reexporting_modules(
 
 pub fn data_decl_visible_modules(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
 ) -> Rc<DataDeclReach> {
     match data_decl_in_module(index.clone(), module_path.clone(), name.clone()) {
         Some(_) => Rc::new(DataDeclReach {
@@ -35499,8 +35384,8 @@ pub fn data_decl_visible_modules(
 
 pub fn resolve_data_reference(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
 ) -> Rc<DataRefResolution> {
     {
         let reach = data_decl_visible_modules(index.clone(), module_path.clone(), name.clone());
@@ -35531,9 +35416,9 @@ pub fn resolve_data_reference(
 
 pub fn data_decl_source_indices(
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    fallback: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<std::string::String, Rc<NewlineIndex>>> {
+    module_path: String,
+    fallback: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     match v1_rt::map_get(&index.source_indices_by_module.clone(), module_path.clone()) {
         Some(si) => si.clone(),
         None => fallback,
@@ -35548,15 +35433,15 @@ pub fn workflow_default_fold_depth_limit() -> i64 {
 #[serde(tag = "_variant")]
 pub enum ConstantFold {
     ConstantFolded {
-        module_path: std::string::String,
+        module_path: String,
         expr: Rc<Node>,
     },
     ConstantFoldAmbiguousDataReference {
-        name: std::string::String,
-        modules: Rc<Vec<std::string::String>>,
+        name: String,
+        modules: Rc<Vec<String>>,
     },
     ConstantFoldVisibilityBudgetExhausted {
-        name: std::string::String,
+        name: String,
     },
     ConstantFoldUnresolved,
 }
@@ -35564,8 +35449,8 @@ pub enum ConstantFold {
 pub fn fold_constant_default_expr(
     expr: Rc<Node>,
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    module_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
 ) -> Rc<ConstantFold> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
@@ -35682,13 +35567,11 @@ pub fn fold_constant_default_expr(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum DataReferenceUnresolvableCause {
-    DataReferenceAmbiguous {
-        modules: Rc<Vec<std::string::String>>,
-    },
+    DataReferenceAmbiguous { modules: Rc<Vec<String>> },
     DataReferenceVisibilityBudgetExhausted,
 }
 impl DataReferenceUnresolvableCause {
-    pub fn modules(&self) -> Rc<Vec<std::string::String>> {
+    pub fn modules(&self) -> Rc<Vec<String>> {
         match self {
             DataReferenceUnresolvableCause::DataReferenceAmbiguous { modules: __val, .. } => {
                 __val.clone()
@@ -35702,28 +35585,28 @@ impl DataReferenceUnresolvableCause {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct UnresolvableDataReference {
-    pub name: std::string::String,
+    pub name: String,
     pub cause: Rc<DataReferenceUnresolvableCause>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WorkflowParamDefaults {
-    pub resolved: Rc<HashMap<std::string::String, std::string::String>>,
-    pub ambiguous: Rc<HashMap<std::string::String, Rc<UnresolvableDataReference>>>,
+    pub resolved: Rc<HashMap<String, String>>,
+    pub ambiguous: Rc<HashMap<String, Rc<UnresolvableDataReference>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ParamDefaultResolution {
     ParamDefaultLiteral {
-        value: std::string::String,
+        value: String,
     },
     ParamDefaultAmbiguousDataReference {
-        name: std::string::String,
-        modules: Rc<Vec<std::string::String>>,
+        name: String,
+        modules: Rc<Vec<String>>,
     },
     ParamDefaultVisibilityBudgetExhausted {
-        name: std::string::String,
+        name: String,
     },
     ParamDefaultUnresolved,
 }
@@ -35731,8 +35614,8 @@ pub enum ParamDefaultResolution {
 pub fn resolve_param_default(
     param: Rc<Node>,
     index: Rc<DataDeclIndex>,
-    module_path: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    module_path: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ParamDefaultResolution> {
     match crate::v1_std_core::param_node_default_value(param.clone()) {
         Some(dv) => match (*fold_constant_default_expr(
@@ -35773,11 +35656,11 @@ pub fn resolve_param_default(
 
 pub fn to_workflow_func(
     item: Rc<Node>,
-    module_name: std::string::String,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    module_name: String,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     index: Rc<DataDeclIndex>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    read_only_params_index: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<WorkflowFunc> {
     {
         let item_name = crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
@@ -35787,8 +35670,8 @@ pub fn to_workflow_func(
                 None => Rc::new(vec![]),
             };
         let param_defaults = item.params.clone().iter().cloned().fold(Rc::new(WorkflowParamDefaults {
-    resolved: v1_rt::rc_empty_map::<std::string::String, std::string::String>(),
-    ambiguous: v1_rt::rc_empty_map::<std::string::String, Rc<UnresolvableDataReference>>(),
+    resolved: v1_rt::rc_empty_map::<String, String>(),
+    ambiguous: v1_rt::rc_empty_map::<String, Rc<UnresolvableDataReference>>(),
 }), |acc: Rc<WorkflowParamDefaults>, p: Rc<Node>| {
             let param_name = crate::v1_std_core::param_node_name_at(p.clone(), source_indices.clone());
 match (*resolve_param_default(p.clone(), index.clone(), module_name.clone(), source_indices.clone())).clone() {
@@ -35842,8 +35725,8 @@ match (*resolve_param_default(p.clone(), index.clone(), module_name.clone(), sou
 
 pub fn is_workflow_item(
     item: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     if (item.body.clone() == std::option::Option::None) {
         false
@@ -35867,8 +35750,8 @@ pub fn is_workflow_item(
 
 pub fn collect_workflow_funcs(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
-    read_only_params_index: Rc<HashMap<std::string::String, Rc<BTreeSet<String>>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
 ) -> Rc<Vec<Rc<WorkflowFunc>>> {
     {
         let index = build_data_decl_index(modules.clone());
@@ -35917,7 +35800,7 @@ pub fn collect_workflow_funcs(
     }
 }
 
-pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<std::string::String> {
+pub fn cli_default_literal_value(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: v, .. } => match (*v.clone()).clone() {
             LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
@@ -35983,10 +35866,7 @@ if resolved.clone() {
     })
 }
 
-pub fn find_resource_module(
-    resource_name: std::string::String,
-    modules: Rc<Vec<Rc<TypedModule>>>,
-) -> std::string::String {
+pub fn find_resource_module(resource_name: String, modules: Rc<Vec<Rc<TypedModule>>>) -> String {
     {
         let matching = Rc::new({
             let mut __result = Vec::new();
@@ -36027,8 +35907,8 @@ pub fn emit_main_rs(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     modules: Rc<Vec<Rc<TypedModule>>>,
     has_services: bool,
-    crate_name: std::string::String,
-    svc_module_map: Rc<HashMap<std::string::String, std::string::String>>,
+    crate_name: String,
+    svc_module_map: Rc<HashMap<String, String>>,
 ) -> Rc<TextFile> {
     {
         let has_pipeline = {
@@ -36296,8 +36176,8 @@ pub fn emit_main_rs(
 pub fn emit_main_mod_uses(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     has_pipeline: bool,
-    crate_name: std::string::String,
-) -> std::string::String {
+    crate_name: String,
+) -> String {
     {
         let mod_names = Rc::new({
             let mut __result = Vec::new();
@@ -36344,10 +36224,10 @@ pub fn emit_main_mod_uses(
 
 pub fn emit_cli_struct(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
-    binary_name: std::string::String,
-    about: std::string::String,
-    version_attr: std::string::String,
-) -> std::string::String {
+    binary_name: String,
+    about: String,
+    version_attr: String,
+) -> String {
     {
         let about_attr = if (about.clone() != "".to_string()) {
             v1_rt::concat(
@@ -36403,7 +36283,7 @@ pub fn emit_cli_struct(
 pub fn emit_subcommand_enum(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     has_pipeline: bool,
-) -> std::string::String {
+) -> String {
     {
         let depth = 0;
         let variants = Rc::new({
@@ -36446,10 +36326,7 @@ pub fn emit_subcommand_enum(
     }
 }
 
-pub fn emit_modeled_subcommand_variant(
-    sub: Rc<CliSubcommandRow>,
-    depth: i64,
-) -> std::string::String {
+pub fn emit_modeled_subcommand_variant(sub: Rc<CliSubcommandRow>, depth: i64) -> String {
     {
         let doc_lines = Rc::new({
             let mut __result = Vec::new();
@@ -36518,7 +36395,7 @@ pub fn emit_modeled_subcommand_variant(
     }
 }
 
-pub fn emit_modeled_option_field(opt: Rc<CliOptionRow>, depth: i64) -> std::string::String {
+pub fn emit_modeled_option_field(opt: Rc<CliOptionRow>, depth: i64) -> String {
     {
         let indent = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         let doc_str = Rc::new({
@@ -36560,7 +36437,7 @@ pub fn emit_modeled_option_field(opt: Rc<CliOptionRow>, depth: i64) -> std::stri
     }
 }
 
-pub fn cli_option_arg_attribute_body(opt: Rc<CliOptionRow>) -> std::string::String {
+pub fn cli_option_arg_attribute_body(opt: Rc<CliOptionRow>) -> String {
     {
         let derived_long = v1_rt::replace(opt.field.clone(), "_".to_string(), "-".to_string());
         let long_part = if (derived_long.clone() == opt.long.clone()) {
@@ -36584,7 +36461,7 @@ pub fn cli_option_arg_attribute_body(opt: Rc<CliOptionRow>) -> std::string::Stri
     }
 }
 
-pub fn cli_option_default_literal(value: Rc<CliOptionValue>) -> Option<std::string::String> {
+pub fn cli_option_default_literal(value: Rc<CliOptionValue>) -> Option<String> {
     match (*value.clone()).clone() {
         CliOptionValue::CliTextValue {
             text_default: d, ..
@@ -36608,7 +36485,7 @@ pub fn cli_option_default_literal(value: Rc<CliOptionValue>) -> Option<std::stri
     }
 }
 
-pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> std::string::String {
+pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> String {
     {
         let base = match (*opt.value.clone()).clone() {
             CliOptionValue::CliTextValue { .. } => "String".to_string(),
@@ -36628,7 +36505,7 @@ pub fn cli_option_rust_type(opt: Rc<CliOptionRow>) -> std::string::String {
     }
 }
 
-pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> std::string::String {
+pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> String {
     {
         let variant_name = crate::v1_compiler_emit_core_support::to_pascal(wf.name.clone());
         let doc_line = v1_rt::concat(
@@ -36685,9 +36562,9 @@ pub fn emit_subcommand_variant(wf: Rc<WorkflowFunc>, depth: i64) -> std::string:
 
 pub fn emit_subcommand_field(
     param: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    resolved_defaults: Rc<HashMap<std::string::String, std::string::String>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    resolved_defaults: Rc<HashMap<String, String>>,
+) -> String {
     {
         let field_name = crate::v1_compiler_emit::emit_ident(
             crate::v1_std_core::param_node_name_at(param.clone(), source_indices.clone()),
@@ -36736,8 +36613,8 @@ pub fn emit_subcommand_field(
 
 pub fn emit_cli_param_type_node(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
         let has_structure = (n.connective.clone() != Connective::NoConnective);
@@ -36791,8 +36668,8 @@ pub fn emit_main_fn(
     workflow_funcs: Rc<Vec<Rc<WorkflowFunc>>>,
     has_services: bool,
     has_pipeline: bool,
-    crate_name: std::string::String,
-) -> std::string::String {
+    crate_name: String,
+) -> String {
     {
         let depth = 0;
         let async_attr = if has_services.clone() {
@@ -36880,7 +36757,7 @@ pub fn emit_main_fn(
     }
 }
 
-pub fn emit_compile_match_arm(crate_name: std::string::String) -> std::string::String {
+pub fn emit_compile_match_arm(crate_name: String) -> String {
     {
         let pipeline_mod = crate::v1_compiler_emit_core_support::module_to_filename(
             "v1.compiler.compile".to_string(),
@@ -36889,11 +36766,11 @@ pub fn emit_compile_match_arm(crate_name: std::string::String) -> std::string::S
     }
 }
 
-pub fn emit_run_match_arm(crate_name: std::string::String) -> std::string::String {
+pub fn emit_run_match_arm(crate_name: String) -> String {
     v1_rt::concat(v1_rt::concat("\n        Commands::Run { source_roots, function, entry, claim_run, args } => {\n".to_string(), "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run, args);\n".to_string()), "        },".to_string())
 }
 
-pub fn emit_main_pipeline_fns(crate_name: std::string::String) -> std::string::String {
+pub fn emit_main_pipeline_fns(crate_name: String) -> String {
     {
         let pipeline_mod = crate::v1_compiler_emit_core_support::module_to_filename(
             "v1.compiler.compile".to_string(),
@@ -36922,37 +36799,34 @@ pub fn emit_main_pipeline_fns(crate_name: std::string::String) -> std::string::S
 }
 
 pub fn emit_compile_target_helpers(
-    crate_name: std::string::String,
-    pipeline_mod: std::string::String,
-    artifact_mod: std::string::String,
-) -> std::string::String {
+    crate_name: String,
+    pipeline_mod: String,
+    artifact_mod: String,
+) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("fn render_target_from_name(target: &str) -> Option<".to_string(), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget> {\n".to_string()), "    match target {\n".to_string()), "        \"rust\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Rust),\n".to_string()), "        \"python\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Python),\n".to_string()), "        \"go\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Go),\n".to_string()), "        \"dag\" => Some(".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget::Dag),\n".to_string()), "        _ => None,\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn parse_render_targets(target: &str) -> Vec<(String, ".to_string()), crate_name.clone()), "::".to_string()), artifact_mod.clone()), "::RenderTarget)> {\n".to_string()), "    let mut targets = Vec::new();\n".to_string()), "    for part in target.split('+') {\n".to_string()), "        let trimmed = part.trim();\n".to_string()), "        if trimmed.is_empty() {\n".to_string()), "            continue;\n".to_string()), "        }\n".to_string()), "        match render_target_from_name(trimmed) {\n".to_string()), "            Some(render_target) => targets.push((trimmed.to_string(), render_target)),\n".to_string()), "            None => {\n".to_string()), "                eprintln!(\"unknown target: {}. supported: rust, python, go, dag, rust+dag\", target);\n".to_string()), "                std::process::exit(1);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    if targets.is_empty() {\n".to_string()), "        eprintln!(\"error: --target must name at least one target\");\n".to_string()), "        std::process::exit(1);\n".to_string()), "    }\n".to_string()), "    targets\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn write_output_files(output_dir: &str, result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) {\n".to_string()), "    std::fs::create_dir_all(format!(\"{}/src\", output_dir))\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to create output dir: {}\", e));\n".to_string()), "    for file in result.files.iter() {\n".to_string()), "        let out_path = format!(\"{}/{}\", output_dir, file.path);\n".to_string()), "        if let Some(parent) = std::path::Path::new(&out_path).parent() {\n".to_string()), "            std::fs::create_dir_all(parent).ok();\n".to_string()), "        }\n".to_string()), "        std::fs::write(&out_path, &*file.content)\n".to_string()), "            .unwrap_or_else(|e| panic!(\"failed to write {}: {}\", file.path, e));\n".to_string()), "    }\n".to_string()), "}\n".to_string()), "\n".to_string()), "fn hard_errors(result: &".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::PipelineResult) -> bool {\n".to_string()), "    result.diagnostics.iter().any(|d| {\n".to_string()), "        !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })\n".to_string()), "    })\n".to_string()), "}\n".to_string()), "\n".to_string())
 }
 
-pub fn emit_collect_dag_files_fn() -> std::string::String {
+pub fn emit_collect_dag_files_fn() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Recursively find all .dag files under a directory.\n".to_string(), "/// Fail-closed: panics on unreadable directory entries.\n".to_string()), "fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {\n".to_string()), "    let mut entries: Vec<_> = std::fs::read_dir(dir)\n".to_string()), "        .unwrap_or_else(|e| panic!(\"failed to read dir {:?}: {}\", dir, e))\n".to_string()), "        .map(|e| e.unwrap_or_else(|e| panic!(\"failed to read dir entry in {:?}: {}\", dir, e)))\n".to_string()), "        .collect();\n".to_string()), "    entries.sort_by_key(|e| e.file_name());\n".to_string()), "    for entry in entries {\n".to_string()), "        let path = entry.path();\n".to_string()), "        if path.is_dir() {\n".to_string()), "            collect_dag_files(&path, files);\n".to_string()), "        } else if path.extension().map(|e| e == \"dag\").unwrap_or(false) {\n".to_string()), "            files.push(path);\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn emit_extract_module_path_fn() -> std::string::String {
+pub fn emit_extract_module_path_fn() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Extract the `module x.y.z` declaration from a .dag file's first lines.\n".to_string(), "fn extract_module_path(content: &str) -> Option<String> {\n".to_string()), "    for line in content.lines() {\n".to_string()), "        let trimmed = line.trim();\n".to_string()), "        if trimmed.starts_with(\"module \") {\n".to_string()), "            return Some(trimmed[\"module \".len()..].trim().to_string());\n".to_string()), "        }\n".to_string()), "        if !trimmed.is_empty() && !trimmed.starts_with(\"//\") {\n".to_string()), "            break;\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    None\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn emit_extract_import_paths_fn() -> std::string::String {
+pub fn emit_extract_import_paths_fn() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Extract import module paths from a .dag file's import declarations.\n".to_string(), "fn extract_import_paths(content: &str) -> Vec<String> {\n".to_string()), "    let mut imports = Vec::new();\n".to_string()), "    for line in content.lines() {\n".to_string()), "        let trimmed = line.trim();\n".to_string()), "        if trimmed.starts_with(\"import \") {\n".to_string()), "            let rest = trimmed[\"import \".len()..].trim();\n".to_string()), "            let module_path = rest.split('{').next().unwrap_or(rest).trim();\n".to_string()), "            if !module_path.is_empty() {\n".to_string()), "                imports.push(module_path.to_string());\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    imports\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn emit_dep_pool_type_and_fns() -> std::string::String {
+pub fn emit_dep_pool_type_and_fns() -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("#[derive(Clone, Copy, PartialEq, Eq)]\nenum DependencyPoolIndex {\n    Strict,\n    PrimaryPrecedence,\n}\n\n".to_string(), "fn parse_dependency_pool_index(value: &str) -> DependencyPoolIndex {\n".to_string()), "    match value {\n".to_string()), "        \"strict\" => DependencyPoolIndex::Strict,\n".to_string()), "        \"primary-precedence\" => DependencyPoolIndex::PrimaryPrecedence,\n".to_string()), "        other => {\n".to_string()), "            eprintln!(\"unknown --dependency-pool-index: {} (expected strict | primary-precedence)\", other);\n".to_string()), "            std::process::exit(1);\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "fn insert_module_path(\n".to_string()), "    index: &mut HashMap<String, std::path::PathBuf>,\n".to_string()), "    module_path: String,\n".to_string()), "    path: std::path::PathBuf,\n".to_string()), "    within_root: &mut HashMap<String, std::path::PathBuf>,\n".to_string()), ") {\n".to_string()), "    if let Some(existing) = within_root.get(&module_path) {\n".to_string()), "        panic!(\"duplicate module path '{}' within source root: declared in both {:?} and {:?}\", module_path, existing, path);\n".to_string()), "    }\n".to_string()), "    within_root.insert(module_path.clone(), path.clone());\n".to_string()), "    index.insert(module_path, path);\n".to_string()), "}\n\n".to_string()), "fn index_source_root(root: &str, index: &mut HashMap<String, std::path::PathBuf>, pool_fill_only: bool) {\n".to_string()), "    let root_path = std::path::Path::new(root);\n".to_string()), "    if !root_path.exists() {\n".to_string()), "        panic!(\"source root does not exist: {}\", root);\n".to_string()), "    }\n".to_string()), "    let mut dag_files = Vec::new();\n".to_string()), "    collect_dag_files(root_path, &mut dag_files);\n".to_string()), "    let mut within_root = HashMap::new();\n".to_string()), "    for path in dag_files {\n".to_string()), "        let content = std::fs::read_to_string(&path)\n".to_string()), "            .unwrap_or_else(|e| panic!(\"failed to read {:?}: {}\", path, e));\n".to_string()), "        if let Some(module_path) = extract_module_path(&content) {\n".to_string()), "            if pool_fill_only {\n".to_string()), "                if index.contains_key(&module_path) {\n".to_string()), "                    continue;\n".to_string()), "                }\n".to_string()), "                insert_module_path(index, module_path, path, &mut within_root);\n".to_string()), "            } else if let Some(existing) = index.get(&module_path) {\n".to_string()), "                panic!(\"duplicate module path '{}': declared in both {:?} and {:?}\", module_path, existing, path);\n".to_string()), "            } else {\n".to_string()), "                insert_module_path(index, module_path, path, &mut within_root);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "}\n\n".to_string()), "fn build_module_index(source_roots: &[String], pool_index: DependencyPoolIndex) -> HashMap<String, std::path::PathBuf> {\n".to_string()), "    let mut index = HashMap::new();\n".to_string()), "    if source_roots.is_empty() {\n".to_string()), "        return index;\n".to_string()), "    }\n".to_string()), "    match pool_index {\n".to_string()), "        DependencyPoolIndex::Strict => {\n".to_string()), "            for root in source_roots {\n".to_string()), "                index_source_root(root, &mut index, false);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "        DependencyPoolIndex::PrimaryPrecedence => {\n".to_string()), "            index_source_root(&source_roots[0], &mut index, false);\n".to_string()), "            for root in &source_roots[1..] {\n".to_string()), "                index_source_root(root, &mut index, true);\n".to_string()), "            }\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "    index\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn emit_resolve_transitively_fn(
-    crate_name: std::string::String,
-    pipeline_mod: std::string::String,
-) -> std::string::String {
+pub fn emit_resolve_transitively_fn(crate_name: String, pipeline_mod: String) -> String {
     v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("/// Resolve imports transitively from entry modules.\n".to_string(), "/// Fail-closed: panics on unreadable imported files.\n".to_string()), "/// Returns sources sorted by path for deterministic fixed-point convergence.\n".to_string()), "fn resolve_transitively_with_seen(\n".to_string()), "    entry_sources: Vec<(String, String)>,\n".to_string()), "    index: &HashMap<String, std::path::PathBuf>,\n".to_string()), "    mut seen: HashMap<String, Rc<".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile>>,\n".to_string()), ") -> Vec<Rc<".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile>> {\n".to_string()), "    let mut queue: Vec<(String, String)> = entry_sources;\n".to_string()), "\n".to_string()), "    while let Some((_path, content)) = queue.pop() {\n".to_string()), "        let imports = extract_import_paths(&content);\n".to_string()), "        for module_path in imports {\n".to_string()), "            if seen.contains_key(&module_path) {\n".to_string()), "                continue;\n".to_string()), "            }\n".to_string()), "            if let Some(file_path) = index.get(&module_path) {\n".to_string()), "                let file_content = std::fs::read_to_string(file_path)\n".to_string()), "                    .unwrap_or_else(|e| panic!(\"failed to read imported module '{}' at {:?}: {}\",\n".to_string()), "                        module_path, file_path, e));\n".to_string()), "                let rel_path = file_path.to_string_lossy().to_string();\n".to_string()), "                let source = Rc::new(".to_string()), crate_name.clone()), "::".to_string()), pipeline_mod.clone()), "::SourceFile {\n".to_string()), "                    path: rel_path.clone(),\n".to_string()), "                    content: file_content.clone(),\n".to_string()), "                });\n".to_string()), "                seen.insert(module_path, source);\n".to_string()), "                queue.push((rel_path, file_content));\n".to_string()), "            }\n".to_string()), "            // If not found in index, the compiler's resolve stage will report the error.\n".to_string()), "        }\n".to_string()), "    }\n".to_string()), "\n".to_string()), "    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();\n".to_string()), "    result.sort_by(|a, b| a.path.cmp(&b.path));\n".to_string()), "    result\n".to_string()), "}\n\n".to_string())
 }
 
-pub fn emit_main_diagnostic_fns(crate_name: std::string::String) -> std::string::String {
+pub fn emit_main_diagnostic_fns(crate_name: String) -> String {
     {
         let core_mod =
             crate::v1_compiler_emit_core_support::module_to_filename("v1.std.core".to_string());
@@ -36960,7 +36834,7 @@ pub fn emit_main_diagnostic_fns(crate_name: std::string::String) -> std::string:
     }
 }
 
-pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> std::string::String {
+pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     {
         let variant_name = crate::v1_compiler_emit_core_support::to_pascal(wf.name.clone());
         let mod_name =
@@ -37056,7 +36930,7 @@ pub fn emit_main_match_arm(wf: Rc<WorkflowFunc>, has_services: bool) -> std::str
     }
 }
 
-pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> std::string::String {
+pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     {
         let param_args = Rc::new({
             let mut __result = Vec::new();
@@ -37077,17 +36951,14 @@ pub fn emit_main_call_args(wf: Rc<WorkflowFunc>, has_services: bool) -> std::str
     }
 }
 
-pub fn emit_main_service_args(wf: Rc<WorkflowFunc>, has_services: bool) -> std::string::String {
+pub fn emit_main_service_args(wf: Rc<WorkflowFunc>, has_services: bool) -> String {
     {
         let service_args = emit_main_service_arg_list(wf.clone(), has_services.clone());
         service_args.clone().join(&", ".to_string())
     }
 }
 
-pub fn emit_main_service_arg_list(
-    wf: Rc<WorkflowFunc>,
-    has_services: bool,
-) -> Rc<Vec<std::string::String>> {
+pub fn emit_main_service_arg_list(wf: Rc<WorkflowFunc>, has_services: bool) -> Rc<Vec<String>> {
     {
         let sharing = crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Rust)
             .sharing

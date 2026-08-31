@@ -75,7 +75,7 @@ pub enum ReferenceBindingProductionGap {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StructuralObservationSubjectModule {
-    SubjectModuleProduced { module_path: std::string::String },
+    SubjectModuleProduced { module_path: String },
     SubjectModuleProductionRefused { gap: ReferenceBindingProductionGap },
 }
 

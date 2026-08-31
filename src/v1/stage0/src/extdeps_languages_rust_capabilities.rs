@@ -58,13 +58,13 @@ pub fn extdeps_model_scope() -> Rc<ExternalModelScope> {
     CACHED.with(|c: &Rc<ExternalModelScope>| c.clone())
 }
 
-pub fn rust_capabilities_note() -> std::string::String {
+pub fn rust_capabilities_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Rust and serde CAPABILITY ROWS for the B1 capability-keyed model (operator ruling 2026-08-19, option b). std.trait_derive_shape holds the AGNOSTIC half -- the source-shape vocabulary and a table lookup PARAMETERIZED on the capability carrier, naming no carrier itself. THIS module holds the RUST-SPECIFIC half: the closed RustCapability alphabet, the shape-by-capability rows instantiated at K = RustCapability, and the derive-trait list builders. A new target language adds a sibling module of rows here and edits neither the fold nor std -- DESIGN section 4: a new target language is ROWS in extdeps/languages, never an edit to the fold. WHY THE COPRODUCT WAS THE WRONG CARRIER FOR THE INTERFACE: Serialize and Deserialize are serde names, not Rust language names -- an independently versioned upstream -- and their spellings were ALREADY cited in extdeps.languages.rust.emit, so the std coproduct was a redundant KEY SET forked from a key extdeps already spelled out. WHY IT IS STILL THE RIGHT CARRIER FOR THE REALIZATION: an open Symbol brand cannot be matched exhaustively, and rust_trait_derive_spelling is TOTAL by exhaustive match. So the alphabet is re-homed here rather than deleted, and because the std predicate is generic the seed path speaks the alphabet END TO END -- v1.compiler.trait_derive_emit instantiates the predicate at K = RustCapability and needs no lift into the open key space at all. An earlier revision of this migration carried rust_capability_key and rust_capability_keys to perform exactly that lift; parameterizing std deleted both, which is the usual tell that the decomposition is right. ROW FIDELITY: the rows below were extracted mechanically from the predecessor nested match and verified cell-for-cell -- 71 admitted pairs extracted against 71 in the source -- rather than re-derived by hand. WHAT IS DELIBERATELY ABSENT: sixteen one-line data rows binding each key name to its symbol literal, and a rust_capability_emission_order list, were authored in this migration and NEVER REFERENCED -- experimental residue by DESIGN section 6, deleted rather than left to read as authority. Emission order is carried by the list builders, which is where it was before this migration.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn rust_capability_shape_table() -> Rc<TargetCapabilityShapeTable<RustCapability>> {
@@ -216,13 +216,13 @@ pub enum RustCapability {
     RustNeg,
 }
 
-pub fn rust_capability_alphabet_note() -> std::string::String {
+pub fn rust_capability_alphabet_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "CLOSED Rust capability alphabet. The B1 keyed contract makes TargetCapabilityKey an OPEN Symbol brand so unrelated modules can share one key space without a coproduct edit -- but an open brand cannot be matched exhaustively, and rust_trait_derive_spelling was TOTAL by exhaustive match before this migration. Deleting the coproduct outright would have traded a structural guarantee (DESIGN section 4b: no Accepted program can spell an unknown capability) for a runtime refusal, which is a rung DROP dressed as a migration. So the coproduct is RE-HOMED rather than deleted: this closed alphabet is Rust s own realization vocabulary, exhaustive at every spelling site, and rust_capability_key is the single total producer that lifts it into the shared open key space. Interface speaks keys; realization speaks the alphabet (DESIGN section 3).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn record_derive_traits_heap() -> Rc<Vec<RustCapability>> {

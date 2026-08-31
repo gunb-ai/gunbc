@@ -365,17 +365,14 @@ pub fn repr_grounding_group_completion_carrier_trigger() -> Rc<Disposition> {
     CACHED.with(|c: &Rc<Disposition>| c.clone())
 }
 
-pub fn repr_grounding_group_completion_carrier(
-    module_path: std::string::String,
-    name: std::string::String,
-) -> bool {
+pub fn repr_grounding_group_completion_carrier(module_path: String, name: String) -> bool {
     ((module_path.clone() == "std.algebra".to_string())
         && (name.clone() == "GroupCompletion".to_string()))
 }
 
 pub fn repr_grounding_supplemental_bool_host_bridge_target(
-    module_path: std::string::String,
-    name: std::string::String,
+    module_path: String,
+    name: String,
 ) -> bool {
     ((module_path.clone() == "std.types".to_string()) && (name.clone() == "Bool".to_string()))
 }

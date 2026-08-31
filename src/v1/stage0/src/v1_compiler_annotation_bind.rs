@@ -158,7 +158,7 @@ pub fn annotation_subjects(
     }
 }
 
-pub fn strip_line_comment_delimiter(lexeme: std::string::String) -> std::string::String {
+pub fn strip_line_comment_delimiter(lexeme: String) -> String {
     {
         let len = v1_rt::string_length(&lexeme);
         if v1_rt::starts_with(lexeme.clone(), "// ".to_string()) {
@@ -173,7 +173,7 @@ pub fn strip_line_comment_delimiter(lexeme: std::string::String) -> std::string:
     }
 }
 
-pub fn render_line_comment_delimiter(line: std::string::String) -> std::string::String {
+pub fn render_line_comment_delimiter(line: String) -> String {
     if (v1_rt::string_length(&line) == 0) {
         "//".to_string()
     } else {
@@ -181,7 +181,7 @@ pub fn render_line_comment_delimiter(line: std::string::String) -> std::string::
     }
 }
 
-pub fn render_annotation_block(text: std::string::String) -> std::string::String {
+pub fn render_annotation_block(text: String) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for line in Rc::new(
@@ -203,14 +203,14 @@ pub fn render_annotation_block(text: std::string::String) -> std::string::String
 pub fn render_subject_annotation_blocks(
     graph: Rc<SourceAnnotationGraph>,
     subject: OccurrenceId,
-) -> Option<std::string::String> {
+) -> Option<String> {
     {
         let texts = crate::std_source_annotation::source_annotation_graph_rows(graph.clone())
             .iter()
             .cloned()
             .fold(
                 Rc::new(vec![]),
-                |acc: Rc<Vec<std::string::String>>, row: Rc<SourceAnnotationDebt>| {
+                |acc: Rc<Vec<String>>, row: Rc<SourceAnnotationDebt>| {
                     if (row.subject.clone().value.clone() == subject.value.clone()) {
                         v1_rt::rc_list_push(acc.clone(), row.text.clone())
                     } else {
@@ -260,7 +260,7 @@ pub fn eligible_key_entries(
 pub fn authored_name_among(
     entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
     id: OccurrenceId,
-) -> Option<std::string::String> {
+) -> Option<String> {
     entries.iter().cloned().fold(
         std::option::Option::None,
         |acc: _, entry: Rc<OccurrenceIndexEntry>| {
@@ -273,10 +273,7 @@ pub fn authored_name_among(
     )
 }
 
-pub fn eligible_name_count(
-    entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>,
-    name: std::string::String,
-) -> i64 {
+pub fn eligible_name_count(entries: Rc<Vec<Rc<OccurrenceIndexEntry>>>, name: String) -> i64 {
     entries
         .iter()
         .cloned()

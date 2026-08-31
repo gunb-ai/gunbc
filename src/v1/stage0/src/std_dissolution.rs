@@ -119,7 +119,7 @@ pub fn dissolution_is_bound(condition: Rc<DissolutionCondition>) -> bool {
     }
 }
 
-pub fn dissolution_description(condition: Rc<DissolutionCondition>) -> std::string::String {
+pub fn dissolution_description(condition: Rc<DissolutionCondition>) -> String {
     match (*condition.clone()).clone() {
         DissolutionCondition::BoundDissolution { trigger: t, .. } => {
             crate::std_decl_ref::declaration_ref_display_key(dissolution_trigger_ref(t.clone()))

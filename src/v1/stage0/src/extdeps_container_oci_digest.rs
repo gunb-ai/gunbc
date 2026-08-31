@@ -61,7 +61,7 @@ pub fn oci_encoded_digest_char_allowed(cp: i64) -> bool {
         || (cp.clone() == 45))
 }
 
-pub fn oci_encoded_digest_syntax_valid(mut text: std::string::String, mut index: i64) -> bool {
+pub fn oci_encoded_digest_syntax_valid(mut text: String, mut index: i64) -> bool {
     loop {
         if (index.clone() >= v1_rt::string_length(&text)) {
             break (v1_rt::string_length(&text) > 0);
@@ -83,7 +83,7 @@ pub fn oci_encoded_digest_syntax_valid(mut text: std::string::String, mut index:
     }
 }
 
-pub fn oci_encoded_digest(text: std::string::String) -> Option<String> {
+pub fn oci_encoded_digest(text: String) -> Option<String> {
     if oci_other_digest_encoded(text.clone()) {
         Some(text.clone())
     } else {
@@ -100,7 +100,7 @@ pub fn oci_digest_algorithm_separator_char_allowed(cp: i64) -> bool {
 }
 
 pub fn oci_digest_algorithm_syntax_valid(
-    mut text: std::string::String,
+    mut text: String,
     mut index: i64,
     mut in_component: bool,
 ) -> bool {
@@ -148,17 +148,17 @@ pub fn oci_digest_algorithm_syntax_valid(
     }
 }
 
-pub fn oci_digest_algorithm_wire_holds(algorithm: std::string::String) -> bool {
+pub fn oci_digest_algorithm_wire_holds(algorithm: String) -> bool {
     ((v1_rt::string_length(&algorithm) > 0)
         && oci_digest_algorithm_syntax_valid(algorithm.clone(), 0, false))
 }
 
-pub fn oci_other_digest_algorithm(value: std::string::String) -> bool {
+pub fn oci_other_digest_algorithm(value: String) -> bool {
     ((oci_digest_algorithm_wire_holds(value.clone()) && (value.clone() != "sha256".to_string()))
         && (value.clone() != "sha512".to_string()))
 }
 
-pub fn oci_other_digest_encoded(value: std::string::String) -> bool {
+pub fn oci_other_digest_encoded(value: String) -> bool {
     oci_encoded_digest_syntax_valid(value.clone(), 0)
 }
 
@@ -180,7 +180,7 @@ pub enum OciContentDigest {
     OciOtherDigest(Rc<OciOtherDigestBody>),
 }
 
-pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> std::string::String {
+pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
         OciContentDigest::OciSha256Digest(_) => "sha256".to_string(),
         OciContentDigest::OciSha512Digest(_) => "sha512".to_string(),
@@ -188,7 +188,7 @@ pub fn oci_content_digest_wire_algorithm(d: Rc<OciContentDigest>) -> std::string
     }
 }
 
-pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> std::string::String {
+pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> String {
     match (*d.clone()).clone() {
         OciContentDigest::OciSha256Digest(digest) => digest.hex.clone(),
         OciContentDigest::OciSha512Digest(digest) => digest.hex.clone(),
@@ -196,7 +196,7 @@ pub fn oci_content_digest_encoded_hex(d: Rc<OciContentDigest>) -> std::string::S
     }
 }
 
-pub fn render_oci_content_digest_wire(d: Rc<OciContentDigest>) -> std::string::String {
+pub fn render_oci_content_digest_wire(d: Rc<OciContentDigest>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             oci_content_digest_wire_algorithm(d.clone()),
@@ -208,13 +208,13 @@ pub fn render_oci_content_digest_wire(d: Rc<OciContentDigest>) -> std::string::S
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OciWireDigestParts {
-    pub algorithm: std::string::String,
-    pub encoded: std::string::String,
+    pub algorithm: String,
+    pub encoded: String,
 }
 
 pub fn oci_wire_digest_parts_from_split(
-    algorithm: std::string::String,
-    encoded: std::string::String,
+    algorithm: String,
+    encoded: String,
 ) -> Rc<OciWireDigestParts> {
     Rc::new(OciWireDigestParts {
         algorithm: algorithm.clone(),
@@ -222,7 +222,7 @@ pub fn oci_wire_digest_parts_from_split(
     })
 }
 
-pub fn oci_wire_digest_parts(raw: std::string::String) -> Option<Rc<OciWireDigestParts>> {
+pub fn oci_wire_digest_parts(raw: String) -> Option<Rc<OciWireDigestParts>> {
     {
         let parts = Rc::new(
             raw.clone()
@@ -238,7 +238,7 @@ pub fn oci_wire_digest_parts(raw: std::string::String) -> Option<Rc<OciWireDiges
     }
 }
 
-pub fn parse_oci_content_digest_wire(raw: std::string::String) -> Option<Rc<OciContentDigest>> {
+pub fn parse_oci_content_digest_wire(raw: String) -> Option<Rc<OciContentDigest>> {
     match oci_wire_digest_parts(raw.clone()) {
         Some(parts) => {
             if (parts.algorithm.clone() == "sha256".to_string()) {
@@ -277,7 +277,7 @@ pub fn parse_oci_content_digest_wire(raw: std::string::String) -> Option<Rc<OciC
     }
 }
 
-pub fn oci_sha256_content_digest(hex: std::string::String) -> Option<Rc<OciContentDigest>> {
+pub fn oci_sha256_content_digest(hex: String) -> Option<Rc<OciContentDigest>> {
     match crate::std_content_hash::sha256_hex_digest(hex.clone()) {
         Some(digest) => Some(oci_content_digest_from_validated_sha256(digest.clone())),
         None => std::option::Option::None,

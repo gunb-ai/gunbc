@@ -103,11 +103,11 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn go_emit_module_root() -> std::string::String {
+pub fn go_emit_module_root() -> String {
     "generated".to_string()
 }
 
-pub fn go_v2rt_import_path() -> std::string::String {
+pub fn go_v2rt_import_path() -> String {
     v1_rt::concat(go_emit_module_root(), "/v2rt".to_string())
 }
 
@@ -193,7 +193,7 @@ pub fn emit_go_v2rt_module() -> Rc<TextFile> {
     })
 }
 
-pub fn emit_go_mod(module_name: std::string::String) -> Rc<TextFile> {
+pub fn emit_go_mod(module_name: String) -> Rc<TextFile> {
     {
         let manifest_path =
             match crate::v1_compiler_languages::scaffold_for_target(RenderTarget::Go)
@@ -216,7 +216,7 @@ pub fn emit_go_mod(module_name: std::string::String) -> Rc<TextFile> {
 
 pub fn go_mock_expr_uses_fmt(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let rendered = crate::v1_compiler_emit::emit_simple_expr(
@@ -236,7 +236,7 @@ pub fn go_mock_expr_uses_fmt(
     }
 }
 
-pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> std::string::String {
+pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> String {
     {
         let needs_fmt = {
             let mut __found = false;
@@ -268,7 +268,7 @@ pub fn go_test_import_block(projections: Rc<Vec<Rc<TestProjection>>>) -> std::st
     }
 }
 
-pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> std::string::String {
+pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({
             let mut __result = Vec::new();
@@ -323,7 +323,7 @@ pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> std::string:
 }
 
 pub fn emit_go_test_file(
-    module_name: std::string::String,
+    module_name: String,
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
@@ -391,7 +391,7 @@ pub fn emit_go_test_file(
     }
 }
 
-pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> std::string::String {
+pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
     {
         let test_name = crate::v1_compiler_emit_core_support::test_function_name(
             projection.clone(),
@@ -420,8 +420,8 @@ pub fn emit_go_operation_test(projection: Rc<TestProjection>, depth: i64) -> std
 pub fn emit_go_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             crate::v1_compiler_emit::emit_ident(
@@ -443,7 +443,7 @@ pub fn emit_go_mock_prop_setup(
 
 pub fn emit_go_module(
     typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -533,7 +533,7 @@ pub fn emit_go_module(
     }
 }
 
-pub fn go_package_name(module_name: std::string::String) -> std::string::String {
+pub fn go_package_name(module_name: String) -> String {
     {
         let parts = Rc::new(
             module_name
@@ -570,8 +570,8 @@ pub fn go_package_name(module_name: std::string::String) -> std::string::String 
 pub fn emit_go_imports(
     items: Rc<Vec<Rc<Node>>>,
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let has_services = {
             let mut __found = false;
@@ -652,7 +652,7 @@ pub fn collect_go_std_imports(
     has_services: bool,
     has_types: bool,
     has_functions: bool,
-) -> Rc<Vec<std::string::String>> {
+) -> Rc<Vec<String>> {
     {
         let fmt_import = if ((has_types.clone() || has_functions.clone()) || has_services.clone()) {
             Rc::new(vec!["\t\"fmt\"".to_string()])
@@ -687,9 +687,9 @@ pub fn collect_go_std_imports(
 
 pub fn emit_go_typed_item(
     item: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let env = scope.type_env.clone();
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
@@ -765,7 +765,7 @@ pub fn emit_go_typed_item(
     }
 }
 
-pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> std::string::String {
+pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
@@ -778,10 +778,10 @@ pub fn emit_go_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> std
 }
 
 pub fn emit_go_struct_from_children(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     if ((children.clone().len() as i64) == 0) {
         v1_rt::concat(
             v1_rt::concat(
@@ -853,7 +853,7 @@ pub fn emit_go_struct_from_children(
     }
 }
 
-pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> std::string::String {
+pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let child_text = crate::v1_compiler_infer_env::authored_name(env.clone(), child.clone());
         let ty = crate::v1_compiler_emit::emit_node_type(
@@ -882,10 +882,10 @@ pub fn emit_go_struct_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> std
 }
 
 pub fn emit_go_sum_from_children(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let has_data = {
             let mut __found = false;
@@ -1011,11 +1011,7 @@ pub fn emit_go_sum_from_children(
     }
 }
 
-pub fn emit_go_variant_struct(
-    parent_name: std::string::String,
-    child: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> std::string::String {
+pub fn emit_go_variant_struct(parent_name: String, child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let struct_name = v1_rt::concat(
             parent_name.clone(),
@@ -1088,10 +1084,10 @@ pub fn emit_go_variant_struct(
 }
 
 pub fn emit_go_type_alias(
-    name: std::string::String,
+    name: String,
     base: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1116,13 +1112,13 @@ pub fn emit_go_type_alias(
 }
 
 pub fn emit_go_fn_def(
-    name: std::string::String,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let si = scope.type_env.clone().source_indices.clone();
         let params_str = crate::v1_compiler_emit::emit_params_shared(
@@ -1179,14 +1175,14 @@ pub fn emit_go_fn_def(
 }
 
 pub fn emit_go_func_def(
-    name: std::string::String,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let service_names =
             match crate::v1_compiler_emit::lookup_item(registry.clone(), name.clone()) {
@@ -1265,9 +1261,9 @@ pub fn emit_go_func_def(
 pub fn emit_go_func_params(
     params: Rc<Vec<Rc<Node>>>,
     uses: Rc<Vec<Rc<Node>>>,
-    service_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    service_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
@@ -1326,11 +1322,11 @@ pub fn emit_go_func_params(
 
 pub fn emit_go_typed_expr(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_unified_typed_expr(
         texpr.clone(),
         RenderTarget::Go,
@@ -1350,10 +1346,10 @@ pub fn emit_go_typed_expr(
 
 pub fn emit_go_transport_body(
     bound: Rc<BoundOperation>,
-    op_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    op_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_unified_transport_dispatch(
         bound.clone(),
         op_name.clone(),
@@ -1368,9 +1364,9 @@ pub fn emit_go_transport_body(
 
 pub fn emit_go_service_def(
     item: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_unified_service_def(
         item.clone(),
         RenderTarget::Go,
@@ -1386,11 +1382,11 @@ pub fn emit_go_service_def(
 }
 
 pub fn emit_go_service_struct(
-    name: std::string::String,
+    name: String,
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
             fallback_transport.clone(),
@@ -1468,11 +1464,11 @@ pub fn emit_go_service_struct(
 }
 
 pub fn emit_go_rest_call(
-    op_name: std::string::String,
+    op_name: String,
     transport: Rc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         let url_line = v1_rt::concat(
@@ -1562,11 +1558,11 @@ pub fn emit_go_rest_call(
 }
 
 pub fn emit_go_shell_call(
-    op_name: std::string::String,
+    op_name: String,
     transport: Rc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         let cmd_line = v1_rt::concat(
@@ -1626,7 +1622,7 @@ pub fn emit_go_shell_call(
     }
 }
 
-pub fn emit_go_local_call(op_name: std::string::String, depth: i64) -> std::string::String {
+pub fn emit_go_local_call(op_name: String, depth: i64) -> String {
     {
         let prefix = crate::v1_compiler_emit_core_support::make_indent(depth.clone());
         v1_rt::concat(
@@ -1645,7 +1641,7 @@ pub fn emit_go_local_call(op_name: std::string::String, depth: i64) -> std::stri
     }
 }
 
-pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> std::string::String {
+pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let cap_children = Rc::new({
@@ -1688,11 +1684,7 @@ pub fn emit_go_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> std::string::St
     }
 }
 
-pub fn emit_go_capability_method(
-    cap_node: Rc<Node>,
-    depth: i64,
-    env: Rc<TypeEnv>,
-) -> std::string::String {
+pub fn emit_go_capability_method(cap_node: Rc<Node>, depth: i64, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -1749,13 +1741,13 @@ pub fn emit_go_capability_method(
 }
 
 pub fn emit_go_data_def(
-    name: std::string::String,
+    name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
-) -> std::string::String {
+) -> String {
     {
         let ty_str = crate::v1_compiler_emit::emit_node_type(
             type_node.clone(),
@@ -1785,7 +1777,7 @@ pub fn emit_go_data_def(
     }
 }
 
-pub fn go_export_ident(name: std::string::String) -> std::string::String {
+pub fn go_export_ident(name: String) -> String {
     match (*crate::v1_compiler_emit_core_support::language_spec(RenderTarget::Go)
         .visibility
         .clone())

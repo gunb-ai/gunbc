@@ -46,7 +46,7 @@ pub enum RustRepresentation {
     RustSerdeJsonValue,
 }
 
-pub fn rust_representation_slug(representation: RustRepresentation) -> std::string::String {
+pub fn rust_representation_slug(representation: RustRepresentation) -> String {
     match representation.clone() {
         RustRepresentation::RustStdString => "rust_std_string".to_string(),
         RustRepresentation::RustSymbolNewtype => "rust_symbol_newtype".to_string(),
@@ -67,18 +67,18 @@ pub fn rust_representation_eq(a: RustRepresentation, b: RustRepresentation) -> b
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RustRepresentationRealization {
     pub spelling: Rc<RepresentationSpelling<RustRepresentation>>,
-    pub default_expr: Option<std::string::String>,
+    pub default_expr: Option<String>,
     pub is_copy: bool,
-    pub literal_suffix: Option<std::string::String>,
+    pub literal_suffix: Option<String>,
 }
 
 pub fn rust_realization(
     representation: RustRepresentation,
-    reference_position: std::string::String,
-    grounding_position: std::string::String,
-    default_expr: Option<std::string::String>,
+    reference_position: String,
+    grounding_position: String,
+    default_expr: Option<String>,
     is_copy: bool,
-    literal_suffix: Option<std::string::String>,
+    literal_suffix: Option<String>,
 ) -> Rc<RustRepresentationRealization> {
     Rc::new(RustRepresentationRealization {
         spelling: Rc::new(RepresentationSpelling {

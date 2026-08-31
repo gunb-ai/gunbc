@@ -13,22 +13,22 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn content_hash_family_grounding_note() -> std::string::String {
+pub fn content_hash_family_grounding_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "ContentHash is grounded on hash family (feature:content-hash-family-grounded). Fnv1a64Structural is the fnv1a64 structural-fingerprint family minted only by content_hash_* and atom_identity_hash pipelines. Sha256Digest, Sha1Digest, and Sha512Digest are cited cryptographic digest families: Sha256Digest via sha256_hex_digest / extdeps.crypto.hash bridges; Sha1Digest via sha1_hex_digest / extdeps.crypto.hash and extdeps.git.object_store git_object_id_content_hash (Git SHA-1 object ids — cited upstream in extdeps/git/object_store.dag, not minted here); Sha512Digest via sha512_hex_digest, extdeps.crypto.hash sha512_digest / sha512_digest_content_hash (FIPS 180-4), and extdeps.npm npm_decode_integrity (npm package-lock SRI wire → typed NpmIntegrityDecode; canonical internal form is lowercase hex). OCI OciSha512Digest now carries Sha512Digest directly — OciSha512DigestHex/OciSha512DigestBody dissolved once npm became the second validated SHA-512 consumer. ContentHash is their coproduct — Fnv1a64 | Sha256Hash | Sha1Hash | Sha512Hash. CLAIM SCOPE (reviews 45353/45359): Phase A makes cross-family comparison unwritable at family-specific carrier construction walls and at union-carrier integrity paths (admit_pin_integrity CrossFamilyIdentityIncomparable) and refuses bare union `==`/`!=` at R0 eval; substrate typecheck still permits authoring cross-family ContentHash == ContentHash until Phase B. PHASE A (this PR, lands dissolve-on carrier half): union-level eq/combine helpers deleted; per-family eq/combine only; OciDescriptor.digest requires OciContentDigest (algorithm-qualified, extdeps.container.oci.digest); GateRosterHash and v2.std.node.Hash require Fnv1a64Structural; GitObjectId for tree hashes; extdeps.pin admit_pin_integrity routes cross-family to CrossFamilyIdentityIncomparable (typed refusal, not silent false). PHASE B (dissolve-on remainder, DESIGN §3 ContentHash row): substrate refuses union-level `==`/`!=` at typecheck so cross-family comparison is structurally unwritable — not landed here. Until Phase B, R0 interpreter backstop only (content_hash_cross_family_eq_v1_seed_bridge_note; same guarantee-recovery class as numeric-tower CrossRepresentationEquality). UNION CARRIERS: extdeps.pin Pin.expected_identity and extdeps.realization.emit_on_demand_host ObservedToolIdentity.observed_identity hold ContentHash because Pin<Subject> is generic. content_hash_of_value mints structural ContentHash only through content_hash_atom. Rehydrate an observed fnv1a64 digest with as_content_hash_structural(structural: structural_content_hash(digest: …)), never by labeling arbitrary text. Wire serialization (sha256:<hex> for Sha256Hash; sha512:<hex> for Sha512Hash; raw hex for Sha1Hash and Fnv1a64) lives in serialize_content_hash.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn content_hash_cross_family_eq_v1_seed_bridge_note() -> std::string::String {
+pub fn content_hash_cross_family_eq_v1_seed_bridge_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Seed-retained hand-Rust backstop (reviews 45323/45331/45353/45359; same wall-after-grounding class as numeric-tower CrossRepresentationEquality in src/v1/stage0/src/v1_interpreter.rs cross_representation_numeric_straddle). cross_family_content_hash_straddle refuses bare `==`/`!=` when both operands are ContentHash values (Value::Variant type_name ContentHash) with mismatched family tags (Fnv1a64 vs Sha256Hash vs Sha1Hash vs Sha512Hash), because the substrate still derives PartialEq on coproducts and a cross-variant compare would fabricate `false` (DESIGN §5). Scoped by coproduct type_name, not variant-name homonyms alone (review 45353). DELETE SCAFFOLD — not a second digest concept; R0 safety backstop only until Phase B of feature:content-hash-family-grounded lands. CENSUS SHRINK — eval_binop Eq/Ne path in v1_interpreter.rs only; Value::eq stays infallible for map keys (same split as numeric tower). WITNESS — UNWITNESSED as of 2026-08-11 (gunbc#8146, review 51178). The witness WAS src/v1/tests/src/cross_representation_equality_test.rs cross_family_content_hash_bare_eq_refuses and cross_family_content_hash_homonym_variant_names_do_not_trigger_guard (discriminating RED if guard removed or over-broad); that module was deleted by the v1 Rust test-suite cutover. Two facts keep this from reading as a regression this PR caused: the suite was gated by cargo test --no-run, so those assertions had not executed since that gate landed — the receipt was already nominal — and the guard itself is untouched and still live in v1_interpreter.rs eval_binop. What is gone is the proof, not the backstop. DISSOLVE-ON: re-establish both assertions as a floor witness through compile_dag_diagnostic_census (naming the expected refusal, since a bare false cannot separate the guard firing from an unrelated earlier failure), OR land Phase B, which makes union-level == a typecheck refusal and retires the R0 backstop and this row together. EXPLICIT DEFERRAL — dissolves when Phase B makes ContentHash union-level `==`/`!=` a typecheck refusal (substrate coproduct eq-suppression) or when union carriers re-ground to family-specific types zero reachable sites; LANE model↔realization fork (DESIGN open thread, same row as CrossRepresentationEquality); ROADMAP docs/plans/compiler-guarantee-recovery-gap-analysis.md Cross-representation `==` full class (R0 backstop today, R3 primitive-grounding ceiling) plus DESIGN §3 dissolve-on feature:content-hash-family-grounded Phase B.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -98,7 +98,7 @@ pub fn content_hash_is_lower_hex_code_point(cp: i64) -> bool {
     (((cp.clone() >= 48) && (cp.clone() <= 57)) || ((cp.clone() >= 97) && (cp.clone() <= 102)))
 }
 
-pub fn content_hash_validate_lower_hex_syntax(text: std::string::String) -> bool {
+pub fn content_hash_validate_lower_hex_syntax(text: String) -> bool {
     {
         let mut __all = true;
         for c in Rc::new(text.clone().chars().map(|c| c as i64).collect::<Vec<_>>())
@@ -114,15 +114,12 @@ pub fn content_hash_validate_lower_hex_syntax(text: std::string::String) -> bool
     }
 }
 
-pub fn content_hash_validate_lower_hex_length(
-    text: std::string::String,
-    expected_hex_digits: i64,
-) -> bool {
+pub fn content_hash_validate_lower_hex_length(text: String, expected_hex_digits: i64) -> bool {
     ((v1_rt::string_length(&text) == expected_hex_digits.clone())
         && content_hash_validate_lower_hex_syntax(text.clone()))
 }
 
-pub fn sha256_hex_digest(hex: std::string::String) -> Option<Rc<Sha256Digest>> {
+pub fn sha256_hex_digest(hex: String) -> Option<Rc<Sha256Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 64) {
         Some(Rc::new(Sha256Digest { hex: hex.clone() }))
     } else {
@@ -130,7 +127,7 @@ pub fn sha256_hex_digest(hex: std::string::String) -> Option<Rc<Sha256Digest>> {
     }
 }
 
-pub fn sha1_hex_digest(hex: std::string::String) -> Option<Rc<Sha1Digest>> {
+pub fn sha1_hex_digest(hex: String) -> Option<Rc<Sha1Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 40) {
         Some(Rc::new(Sha1Digest { hex: hex.clone() }))
     } else {
@@ -138,7 +135,7 @@ pub fn sha1_hex_digest(hex: std::string::String) -> Option<Rc<Sha1Digest>> {
     }
 }
 
-pub fn sha512_hex_digest(hex: std::string::String) -> Option<Rc<Sha512Digest>> {
+pub fn sha512_hex_digest(hex: String) -> Option<Rc<Sha512Digest>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 128) {
         Some(Rc::new(Sha512Digest { hex: hex.clone() }))
     } else {
@@ -146,7 +143,7 @@ pub fn sha512_hex_digest(hex: std::string::String) -> Option<Rc<Sha512Digest>> {
     }
 }
 
-pub fn fnv1a64_structural_hex_digest(hex: std::string::String) -> Option<Rc<Fnv1a64Structural>> {
+pub fn fnv1a64_structural_hex_digest(hex: String) -> Option<Rc<Fnv1a64Structural>> {
     if content_hash_validate_lower_hex_length(hex.clone(), 16) {
         Some(structural_content_hash(hex.clone()))
     } else {
@@ -174,7 +171,7 @@ pub fn content_hash_of_value(value: String) -> Rc<ContentHash> {
     as_content_hash_structural(content_hash_atom(value.clone()))
 }
 
-pub fn content_hash_from_structural_digest(digest: std::string::String) -> Option<Rc<ContentHash>> {
+pub fn content_hash_from_structural_digest(digest: String) -> Option<Rc<ContentHash>> {
     match fnv1a64_structural_hex_digest(digest.clone()) {
         Some(structural) => Some(as_content_hash_structural(structural.clone())),
         None => std::option::Option::None,

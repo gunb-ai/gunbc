@@ -41,21 +41,21 @@ pub fn default_stage0_package_version() -> CargoPackageVersion {
     CACHED.with(|c: &CargoPackageVersion| c.clone())
 }
 
-pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> std::string::String {
+pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {
     v1_rt::concat(
         v1_rt::concat("version = \"".to_string(), version.clone()),
         "\"".to_string(),
     )
 }
 
-pub fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> std::string::String {
+pub fn render_cargo_version_requirement_toml(req: CargoVersionRequirement) -> String {
     v1_rt::concat(
         v1_rt::concat("\"".to_string(), req.clone()),
         "\"".to_string(),
     )
 }
 
-pub fn render_cargo_package_header_prefix(name: std::string::String) -> std::string::String {
+pub fn render_cargo_package_header_prefix(name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat("[package]\nname = \"".to_string(), name.clone()),

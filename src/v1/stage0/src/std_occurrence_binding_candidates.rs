@@ -77,22 +77,22 @@ use crate::NonEmptyVec;
 use im::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
-pub fn occurrence_binding_candidates_roadmap_anchor() -> std::string::String {
+pub fn occurrence_binding_candidates_roadmap_anchor() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "gunbc.roadmap_authority namespace-reference-derived-closure".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn occurrence_module_path_convergence_note() -> std::string::String {
+pub fn occurrence_module_path_convergence_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Convergence, not fork: OccurrenceModulePathRow.module_path matches std.decl_ref.DeclarationRef.module_path (NonEmptyStr) — the single declaration-identity authority's existing representation, not a weaker String parallel and not a premature v2.std.qualified_name import (zero dag/std→v2 imports exist today). module_path becomes v2.std.qualified_name.QualifiedName when the namespace and module-identity lanes land those carriers (same trigger as std.observation observation_segment_grounding_note). Until then the representation is std's existing one, so there is nothing new to migrate.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -285,13 +285,13 @@ pub fn declaration_exposure_eq(
     }
 }
 
-pub fn declaration_exposure_from_containment_note() -> std::string::String {
+pub fn declaration_exposure_from_containment_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Single authority for declaration exposure from containment prefix shape and module path. OccurrenceCategory is never consulted. DeclarationExposureGrounding selects how module-root and direct-module-child shapes map to DeclarationExposure: NamespaceStructuralRootExposure (N2 resolve path — empty ancestors => RootExposure); ModuleLocalMemberExposure (in-module binding walk — module-root and direct-module-child => ModuleExposure); CrossFileProviderExportedExposure (cross-file provider declarations exported to consumers — module-root and direct-module-child => RootExposure at derivation, never via a post-hoc upgrade). Nested declarations always derive LexicalExposure via occurrence_containment_parent_scope.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -784,17 +784,17 @@ pub fn declaration_exposed_on_reference_chain(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct OccurrenceCandidateIndex {
     pub entries_by_id: Rc<HashMap<i64, Rc<OccurrenceIndexEntry>>>,
-    pub declarations_by_name: Rc<HashMap<std::string::String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+    pub declarations_by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
     pub module_by_occurrence: Rc<HashMap<i64, NonEmptyStr>>,
     pub exposure_by_occurrence: Rc<HashMap<i64, Rc<DeclarationExposure>>>,
     pub order_by_occurrence: Rc<HashMap<i64, AuthoredTokenOrdinal>>,
 }
 
 pub fn declarations_by_name_insert(
-    acc: Rc<HashMap<std::string::String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
-    name: std::string::String,
+    acc: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+    name: String,
     declaration: Rc<DeclarationOccurrence>,
-) -> Rc<HashMap<std::string::String, Rc<Vec<Rc<DeclarationOccurrence>>>>> {
+) -> Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>> {
     match v1_rt::map_get(&acc, name.clone()) {
         None => v1_rt::rc_map_insert(
             acc.clone(),
@@ -813,7 +813,7 @@ pub fn declarations_by_name_insert(
 #[serde(tag = "_variant")]
 pub enum DeclarationsByNameBuild {
     DeclarationsByNameReady {
-        by_name: Rc<HashMap<std::string::String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+        by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
     },
     DeclarationsByNameMissingIndexEntry {
         occurrence: OccurrenceId,
@@ -824,7 +824,7 @@ pub enum DeclarationsByNameBuild {
 #[serde(tag = "_variant")]
 pub enum DeclarationsByNameFold {
     DeclarationsByNameFoldReady {
-        by_name: Rc<HashMap<std::string::String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
+        by_name: Rc<HashMap<String, Rc<Vec<Rc<DeclarationOccurrence>>>>>,
     },
     DeclarationsByNameFoldMissing {
         occurrence: OccurrenceId,
@@ -1375,13 +1375,13 @@ pub fn direct_module_dependencies_from_bound_population(
     }
 }
 
-pub fn module_path_file_row_dissolution_note() -> std::string::String {
+pub fn module_path_file_row_dissolution_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "See module_path_file_row_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn module_path_file_row_dissolve_on() -> Rc<DissolutionCondition> {
@@ -1427,7 +1427,7 @@ impl ModulePathFileIndexRefusal {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModulePathFileIndexBuild {
-    pub entries: Rc<HashMap<std::string::String, FilePath>>,
+    pub entries: Rc<HashMap<String, FilePath>>,
     pub refusal: Option<Rc<ModulePathFileIndexRefusal>>,
 }
 
@@ -1435,7 +1435,7 @@ pub struct ModulePathFileIndexBuild {
 #[serde(tag = "_variant")]
 pub enum ModulePathFileIndex {
     ModulePathFileIndexReady {
-        entries: Rc<HashMap<std::string::String, FilePath>>,
+        entries: Rc<HashMap<String, FilePath>>,
     },
     ModulePathFileIndexRefused {
         refusal: Rc<ModulePathFileIndexRefusal>,
@@ -1494,7 +1494,7 @@ pub fn module_path_file_index_from_rows(
     {
         let build = rows.iter().cloned().fold(
             Rc::new(ModulePathFileIndexBuild {
-                entries: v1_rt::rc_empty_map::<std::string::String, String>(),
+                entries: v1_rt::rc_empty_map::<String, String>(),
                 refusal: std::option::Option::None,
             }),
             |acc: Rc<ModulePathFileIndexBuild>, row: Rc<ModulePathFileRow>| {
@@ -1512,13 +1512,13 @@ pub fn module_path_file_index_from_rows(
     }
 }
 
-pub fn structural_binding_walk_refusal_note() -> std::string::String {
+pub fn structural_binding_walk_refusal_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515). Single authority (std.occurrence_binding_candidates): the parser-walk local copy of this type/refusal/fn is deleted, and every consumer imports this one.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -1561,7 +1561,7 @@ pub struct CrossFileBindingProvenance {
 }
 
 pub fn file_for_module_path(
-    module_files: Rc<HashMap<std::string::String, String>>,
+    module_files: Rc<HashMap<String, String>>,
     module_path: String,
 ) -> Option<String> {
     v1_rt::map_get(&module_files, module_path.clone())
@@ -1569,7 +1569,7 @@ pub fn file_for_module_path(
 
 pub fn cross_file_binding_provenance_from_provider(
     provider: Rc<BoundReferenceProvider>,
-    module_files: Rc<HashMap<std::string::String, String>>,
+    module_files: Rc<HashMap<String, String>>,
 ) -> Rc<CrossFileBindingProvenanceProjection> {
     match file_for_module_path(module_files.clone(), provider.consumer_module.clone()) {
     None => Rc::new(CrossFileBindingProvenanceProjection::CrossFileBindingProvenanceProjectionFilePathMissing {
@@ -1619,7 +1619,7 @@ pub enum CrossFileBindingProvenancePopulation {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CrossFileBindingProvenanceBuild {
-    pub module_files: Rc<HashMap<std::string::String, FilePath>>,
+    pub module_files: Rc<HashMap<String, FilePath>>,
     pub provenances_reversed: Rc<Vec<Rc<CrossFileBindingProvenance>>>,
     pub first_failure: Option<Rc<CrossFileBindingProvenanceProjection>>,
     pub more_failures_reversed: Rc<Vec<Rc<CrossFileBindingProvenanceProjection>>>,
@@ -1659,7 +1659,7 @@ pub fn cross_file_binding_provenance_fold_step(
 
 pub fn cross_file_binding_provenance_from_bound_population(
     population: Rc<BoundReferencePopulation>,
-    module_files: Rc<HashMap<std::string::String, String>>,
+    module_files: Rc<HashMap<String, String>>,
 ) -> Rc<CrossFileBindingProvenancePopulation> {
     match (*population.clone()).clone() {
         BoundReferencePopulation::ReferencePopulationRefused { .. } => Rc::new(
@@ -1871,7 +1871,7 @@ pub fn direct_file_dependencies_from_cross_file_population(
 
 pub fn reference_derived_provider_files_for_consumer(
     population: Rc<BoundReferencePopulation>,
-    module_files: Rc<HashMap<std::string::String, String>>,
+    module_files: Rc<HashMap<String, String>>,
     consumer_file: String,
 ) -> Rc<ReferenceDerivedProviderFileProjection> {
     match (*cross_file_binding_provenance_from_bound_population(population.clone(), module_files.clone())).clone() {
@@ -1922,7 +1922,7 @@ pub enum ReferenceDerivedDependencyProjection {
 
 pub fn reference_derived_dependency_projection(
     population: Rc<BoundReferencePopulation>,
-    module_files: Rc<HashMap<std::string::String, String>>,
+    module_files: Rc<HashMap<String, String>>,
 ) -> Rc<ReferenceDerivedDependencyProjection> {
     match (*cross_file_binding_provenance_from_bound_population(population.clone(), module_files.clone())).clone() {
     CrossFileBindingProvenancePopulation::AllCrossFileBindingsBound { provenances: provenances, .. } => Rc::new(ReferenceDerivedDependencyProjection::ReferenceDerivedDependencyProjectionReady {
@@ -3058,13 +3058,13 @@ pub fn resolve_all_references_via_structural_candidates(
     })
 }
 
-pub fn occurrence_safe_collector_dedup_receipt() -> std::string::String {
+pub fn occurrence_safe_collector_dedup_receipt() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "SCAFFOLD: production occurrence collector must deduplicate repeated discovery of the same identity before candidate binding. Dissolves when a live collector path executes the receipt and Section13RepeatedDiscoverySameIdentityCollapse moves to Executing via exact-head join.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(
@@ -3354,7 +3354,7 @@ pub fn section13_first_uncovered_law(
 pub fn section13_observation_joins_receipt(
     receipt: Rc<DeclarationRef>,
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: std::string::String,
+    required_head: String,
 ) -> Option<bool> {
     observations.iter().cloned().fold(
         std::option::Option::None,
@@ -3378,7 +3378,7 @@ pub fn section13_observation_joins_receipt(
 pub fn section13_adjudicate_row(
     row: Rc<Section13PopulationLawRosterRow>,
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: std::string::String,
+    required_head: String,
 ) -> Rc<Section13PopulationLawRosterVerdict> {
     match (*row.evidence.clone()).clone() {
     Section13PopulationLawEvidence::Section13PopulationLawExecuting { receipt: receipt, .. } => if !section13_module_path_is_symbolic(receipt.module_path.clone()) {
@@ -3411,7 +3411,7 @@ pub fn section13_adjudicate_row(
 
 pub fn section13_population_law_roster_adjudicate(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: std::string::String,
+    required_head: String,
 ) -> Rc<Section13PopulationLawRosterVerdict> {
     {
         let rows = section13_population_law_roster();
@@ -3434,7 +3434,7 @@ pub fn section13_population_law_roster_adjudicate(
 
 pub fn section13_population_law_roster_denominator_holds(
     observations: Rc<Vec<Rc<Section13ExactHeadExecutionObservation>>>,
-    required_head: std::string::String,
+    required_head: String,
 ) -> bool {
     match (*section13_population_law_roster_adjudicate(observations.clone(), required_head.clone()))
         .clone()

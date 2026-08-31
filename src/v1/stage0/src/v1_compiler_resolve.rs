@@ -62,25 +62,25 @@ pub struct ResolvedModule {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedImport {
-    pub module_path: std::string::String,
+    pub module_path: String,
     pub is_all: bool,
-    pub specific_names: Rc<Vec<std::string::String>>,
+    pub specific_names: Rc<Vec<String>>,
     pub target_module: Option<Rc<Node>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DepEdge {
-    pub from_module: std::string::String,
-    pub to_module: std::string::String,
+    pub from_module: String,
+    pub to_module: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolveAccum {
-    pub imports_by_name: Rc<HashMap<std::string::String, Rc<Vec<Rc<ResolvedImport>>>>>,
+    pub imports_by_name: Rc<HashMap<String, Rc<Vec<Rc<ResolvedImport>>>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn map_has(m: Rc<HashMap<std::string::String, bool>>, key: std::string::String) -> bool {
+pub fn map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
         None => false,
@@ -89,7 +89,7 @@ pub fn map_has(m: Rc<HashMap<std::string::String, bool>>, key: std::string::Stri
 
 pub fn resolve_modules_with_occurrence_transport(
     module_inputs: Rc<Vec<Rc<ModuleOccurrenceInput>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     occurrence_transport: Rc<OccurrenceTransport>,
 ) -> Rc<ModuleGraph> {
     {
@@ -113,8 +113,8 @@ pub fn resolve_modules_with_occurrence_transport(
             __result
         });
         let module_index = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<Node>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<Node>>>, m: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, Rc<Node>>(),
+            |acc: Rc<HashMap<String, Rc<Node>>>, m: Rc<Node>| {
                 v1_rt::rc_map_insert(
                     acc,
                     crate::v1_std_core::authored_name_at(source_indices.clone(), m.clone()),
@@ -123,14 +123,12 @@ pub fn resolve_modules_with_occurrence_transport(
             },
         );
         let export_sets = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<HashMap<std::string::String, bool>>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-             m: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
+            |acc: Rc<HashMap<String, Rc<HashMap<String, bool>>>>, m: Rc<Node>| {
                 let exported = get_exported_names(m.clone(), source_indices.clone());
                 let exported_set = exported.iter().cloned().fold(
-                    v1_rt::rc_empty_map::<std::string::String, bool>(),
-                    |inner_acc: Rc<HashMap<std::string::String, bool>>,
-                     name: std::string::String| {
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    |inner_acc: Rc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(inner_acc, name.clone(), true)
                     },
                 );
@@ -143,10 +141,7 @@ pub fn resolve_modules_with_occurrence_transport(
         );
         let resolve_accum = modules.iter().cloned().fold(
             Rc::new(ResolveAccum {
-                imports_by_name: v1_rt::rc_empty_map::<
-                    std::string::String,
-                    Rc<Vec<Rc<ResolvedImport>>>,
-                >(),
+                imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
@@ -189,8 +184,8 @@ pub fn resolve_modules_with_occurrence_transport(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, i64>(),
-            |acc: Rc<HashMap<std::string::String, i64>>, pair: (i64, String)| {
+            v1_rt::rc_empty_map::<String, i64>(),
+            |acc: Rc<HashMap<String, i64>>, pair: (i64, String)| {
                 v1_rt::rc_map_insert(acc, pair.1.clone(), pair.0.clone())
             },
         );
@@ -255,7 +250,7 @@ pub fn resolve_modules_with_occurrence_transport(
 
 pub fn resolve_modules(
     modules: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleGraph> {
     resolve_modules_with_occurrence_transport(
         Rc::new({
@@ -285,10 +280,7 @@ pub fn resolve_modules(
     )
 }
 
-pub fn find_module(
-    module_index: Rc<HashMap<std::string::String, Rc<Node>>>,
-    path: std::string::String,
-) -> Option<Rc<Node>> {
+pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&module_index, path.clone())
 }
 
@@ -300,9 +292,9 @@ pub struct ModuleResolveResult {
 
 pub fn resolve_module_imports(
     module: Rc<Node>,
-    module_index: Rc<HashMap<std::string::String, Rc<Node>>>,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    module_index: Rc<HashMap<String, Rc<Node>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ModuleResolveResult> {
     {
         let local_definition_names = Rc::new({
@@ -318,10 +310,8 @@ pub fn resolve_module_imports(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, n: std::string::String| {
-                v1_rt::rc_map_insert(acc, n.clone(), true)
-            },
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(acc, n.clone(), true),
         );
         let results = Rc::new({
             let mut __result = Vec::new();
@@ -382,11 +372,11 @@ pub struct ImportResolveResult {
 
 pub fn resolve_import(
     import: Rc<Node>,
-    module_index: Rc<HashMap<std::string::String, Rc<Node>>>,
-    importing_module: std::string::String,
-    export_sets: Rc<HashMap<std::string::String, Rc<HashMap<std::string::String, bool>>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-    local_definition_names: Rc<HashMap<std::string::String, bool>>,
+    module_index: Rc<HashMap<String, Rc<Node>>>,
+    importing_module: String,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    local_definition_names: Rc<HashMap<String, bool>>,
 ) -> Rc<ImportResolveResult> {
     {
         let import_path =
@@ -418,7 +408,7 @@ pub fn resolve_import(
             Some(target_mod) => {
                 let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
                     Some(set) => set.clone(),
-                    None => v1_rt::rc_empty_map::<std::string::String, bool>(),
+                    None => v1_rt::rc_empty_map::<String, bool>(),
                 };
                 let shadow_diags = if crate::v1_std_core::import_is_all(import.clone()) {
                     Rc::new(vec![])
@@ -518,8 +508,8 @@ pub fn resolve_import(
 
 pub fn get_exported_names(
     module: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let item_names = Rc::new({
             let mut __result = Vec::new();
@@ -578,15 +568,15 @@ pub fn get_exported_names(
 
 pub fn get_item_name(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone())
 }
 
 pub fn get_variant_names(
     item: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     {
         let is_coproduct = (item.connective.clone() == Connective::Disj);
         if is_coproduct.clone() {
@@ -608,18 +598,18 @@ pub fn get_variant_names(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuplicateCheckState {
-    pub seen_names: Rc<HashMap<std::string::String, bool>>,
+    pub seen_names: Rc<HashMap<String, bool>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 pub fn check_duplicate_modules(
     modules: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let result = modules.iter().cloned().fold(
             Rc::new(DuplicateCheckState {
-                seen_names: v1_rt::rc_empty_map::<std::string::String, bool>(),
+                seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
             }),
             |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
@@ -658,7 +648,7 @@ pub fn check_duplicate_modules(
 
 pub fn check_duplicate_declarations(
     module: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     {
         let module_name =
@@ -668,7 +658,7 @@ pub fn check_duplicate_declarations(
             .cloned()
             .fold(
                 Rc::new(DuplicateCheckState {
-                    seen_names: v1_rt::rc_empty_map::<std::string::String, bool>(),
+                    seen_names: v1_rt::rc_empty_map::<String, bool>(),
                     diagnostics: Rc::new(vec![]),
                 }),
                 |state: Rc<DuplicateCheckState>, item: Rc<Node>| {
@@ -707,15 +697,15 @@ pub fn check_duplicate_declarations(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
-    pub sorted: Rc<Vec<std::string::String>>,
+    pub sorted: Rc<Vec<String>>,
     pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
 pub fn adjacency_add_edge(
-    adjacency: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
-    from_module: std::string::String,
-    to_module: std::string::String,
-) -> Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>> {
+    adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
+    from_module: String,
+    to_module: String,
+) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
             Some(lst) => lst.clone(),
@@ -729,7 +719,7 @@ pub fn adjacency_add_edge(
     }
 }
 
-pub fn topo_sort_key(name: std::string::String) -> std::string::String {
+pub fn topo_sort_key(name: String) -> String {
     if (name.clone() == "std.types".to_string()) {
         "".to_string()
     } else {
@@ -739,7 +729,7 @@ pub fn topo_sort_key(name: std::string::String) -> std::string::String {
 
 pub fn topological_sort(
     modules: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TopoResult> {
     {
         let module_names = Rc::new({
@@ -753,8 +743,8 @@ pub fn topological_sort(
             __result
         });
         let module_name_set = module_names.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, name: std::string::String| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
@@ -805,15 +795,14 @@ pub fn topological_sort(
             __result
         });
         let adjacency = explicit_edges.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, Rc<Vec<std::string::String>>>(),
-            |acc: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
-             edge: Rc<DepEdge>| {
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, edge: Rc<DepEdge>| {
                 adjacency_add_edge(acc, edge.from_module.clone(), edge.to_module.clone())
             },
         );
         let in_degree_map = modules.iter().cloned().fold(
-            v1_rt::rc_empty_map::<std::string::String, i64>(),
-            |acc: Rc<HashMap<std::string::String, i64>>, m: Rc<Node>| {
+            v1_rt::rc_empty_map::<String, i64>(),
+            |acc: Rc<HashMap<String, i64>>, m: Rc<Node>| {
                 let m_name =
                     crate::v1_std_core::authored_name_at(source_indices.clone(), m.clone());
                 v1_rt::rc_map_insert(
@@ -857,9 +846,9 @@ pub fn topological_sort(
             .iter()
             .cloned()
             .collect();
-            __sorted.sort_by(|a: &std::string::String, b: &std::string::String| {
-                let __ka = (|name: std::string::String| topo_sort_key(name.clone()))(a.clone());
-                let __kb = (|name: std::string::String| topo_sort_key(name.clone()))(b.clone());
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|name: String| topo_sort_key(name.clone()))(a.clone());
+                let __kb = (|name: String| topo_sort_key(name.clone()))(b.clone());
                 __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted
@@ -880,8 +869,8 @@ pub fn topological_sort(
         } else {
             {
                 let sorted_set = result.sorted.clone().iter().cloned().fold(
-                    v1_rt::rc_empty_map::<std::string::String, bool>(),
-                    |acc: Rc<HashMap<std::string::String, bool>>, name: std::string::String| {
+                    v1_rt::rc_empty_map::<String, bool>(),
+                    |acc: Rc<HashMap<String, bool>>, name: String| {
                         v1_rt::rc_map_insert(acc, name.clone(), true)
                     },
                 );
@@ -912,15 +901,15 @@ pub fn topological_sort(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnDrainState {
-    pub sorted: Rc<Vec<std::string::String>>,
-    pub in_degree_map: Rc<HashMap<std::string::String, i64>>,
+    pub sorted: Rc<Vec<String>>,
+    pub in_degree_map: Rc<HashMap<String, i64>>,
 }
 
 pub fn kahn_drain(
-    mut queue: Rc<Vec<std::string::String>>,
-    mut sorted: Rc<Vec<std::string::String>>,
-    mut in_degree_map: Rc<HashMap<std::string::String, i64>>,
-    mut adjacency: Rc<HashMap<std::string::String, Rc<Vec<std::string::String>>>>,
+    mut queue: Rc<Vec<String>>,
+    mut sorted: Rc<Vec<String>>,
+    mut in_degree_map: Rc<HashMap<String, i64>>,
+    mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut fuel: i64,
 ) -> Rc<KahnDrainState> {
     loop {
@@ -935,7 +924,7 @@ pub fn kahn_drain(
                 sorted: sorted.clone(),
                 in_degree_map: in_degree_map.clone(),
             }),
-            |state: Rc<KahnDrainState>, node: std::string::String| {
+            |state: Rc<KahnDrainState>, node: String| {
                 let state = v1_rt::take_owned(state);
                 {
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
@@ -945,8 +934,7 @@ pub fn kahn_drain(
                     };
                     let new_degrees = neighbors.iter().cloned().fold(
                         state.in_degree_map,
-                        |deg_map: Rc<HashMap<std::string::String, i64>>,
-                         neighbor: std::string::String| {
+                        |deg_map: Rc<HashMap<String, i64>>, neighbor: String| {
                             let current = match v1_rt::map_get(&deg_map, neighbor.clone()) {
                                 Some(d) => d.clone(),
                                 None => 0,
@@ -996,8 +984,8 @@ pub fn kahn_drain(
         .iter()
         .cloned()
         .fold(
-            v1_rt::rc_empty_map::<std::string::String, bool>(),
-            |acc: Rc<HashMap<std::string::String, bool>>, name: std::string::String| {
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
                 v1_rt::rc_map_insert(acc, name.clone(), true)
             },
         );
@@ -1006,9 +994,9 @@ pub fn kahn_drain(
                 .iter()
                 .cloned()
                 .collect();
-            __sorted.sort_by(|a: &std::string::String, b: &std::string::String| {
-                let __ka = (|name: std::string::String| name.clone())(a.clone());
-                let __kb = (|name: std::string::String| name.clone())(b.clone());
+            __sorted.sort_by(|a: &String, b: &String| {
+                let __ka = (|name: String| name.clone())(a.clone());
+                let __kb = (|name: String| name.clone())(b.clone());
                 __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
             });
             __sorted

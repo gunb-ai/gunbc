@@ -58,11 +58,11 @@ pub enum ItemKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ItemInfo {
-    pub name: std::string::String,
-    pub module_name: std::string::String,
+    pub name: String,
+    pub module_name: String,
     pub kind: ItemKind,
-    pub service_names: Rc<Vec<std::string::String>>,
-    pub resource_names: Rc<Vec<std::string::String>>,
+    pub service_names: Rc<Vec<String>>,
+    pub resource_names: Rc<Vec<String>>,
     pub params: Rc<Vec<Rc<Node>>>,
     pub is_self_recursive: bool,
     pub has_non_tail_self_call: bool,
@@ -111,21 +111,21 @@ pub struct TypedModule {
     pub type_env_cache: Rc<TypeEnvCache>,
     pub interface: Rc<ModuleInterface>,
     pub func_env: Rc<ResolvedFuncEnv>,
-    pub item_registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub occurrence_transport: Option<Rc<OccurrenceTransport>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypedGraph {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedGraph {
     pub modules: Rc<Vec<Rc<TypedModule>>>,
-    pub item_registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
     pub emit_graph_info: Rc<EmitGraphInfo>,
 }
@@ -133,7 +133,7 @@ pub struct ResolvedGraph {
 pub fn inferred_to_outputs(
     inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     if (inferred.clone() == std::option::Option::None) {
         Rc::new(vec![])

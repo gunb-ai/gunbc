@@ -33,7 +33,7 @@ use std::rc::Rc;
 #[serde(tag = "_variant")]
 pub enum FrontierSubject {
     PathSubject {
-        path: std::string::String,
+        path: String,
     },
     DeclSubject {
         #[serde(rename = "ref")]
@@ -49,8 +49,8 @@ pub struct FrontierRow {
 }
 
 pub fn frontier_row_path(
-    path: std::string::String,
-    reason: std::string::String,
+    path: String,
+    reason: String,
     dissolution: Rc<DissolutionCondition>,
 ) -> Rc<FrontierRow> {
     Rc::new(FrontierRow {
@@ -62,7 +62,7 @@ pub fn frontier_row_path(
 
 pub fn frontier_row_decl(
     ref_: Rc<DeclarationRef>,
-    reason: std::string::String,
+    reason: String,
     dissolution: Rc<DissolutionCondition>,
 ) -> Rc<FrontierRow> {
     Rc::new(FrontierRow {
@@ -110,7 +110,7 @@ pub fn frontier_subject_eq(a: Rc<FrontierSubject>, b: Rc<FrontierSubject>) -> bo
     (a.clone() == b.clone())
 }
 
-pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> std::string::String {
+pub fn frontier_subject_key(subject: Rc<FrontierSubject>) -> String {
     match (*subject.clone()).clone() {
         FrontierSubject::PathSubject { path: p, .. } => p.clone(),
         FrontierSubject::DeclSubject { ref_: r, .. } => {
@@ -144,7 +144,7 @@ pub fn frontier_rows_keyed_roster_build(
     )
 }
 
-pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<std::string::String>> {
+pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for row in rows.iter().cloned() {
@@ -154,7 +154,7 @@ pub fn frontier_path_subjects(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<std::str
     })
 }
 
-pub fn frontier_units(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<std::string::String>> {
+pub fn frontier_units(rows: Rc<Vec<Rc<FrontierRow>>>) -> Rc<Vec<String>> {
     frontier_path_subjects(rows.clone())
 }
 

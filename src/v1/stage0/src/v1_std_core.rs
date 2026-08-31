@@ -29,7 +29,6 @@ use crate::std_algebra::CostShape::*;
 pub use crate::std_algebra::{AlgebraFieldTemplate, CollectionSizeEffect, CostShape};
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::*;
-pub use crate::std_literal_elaboration::LiteralElaboration;
 use crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic;
 use crate::std_occurrence_identity::OccurrenceTransportRefusal::{
     DuplicateAuthoredOccurrenceIdentity, DuplicateSuppliedCandidateIdentity,
@@ -71,7 +70,7 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Token {
-    pub text: std::string::String,
+    pub text: String,
     pub span: Rc<SourceSpan>,
     pub shape: TokenShape,
 }
@@ -180,11 +179,11 @@ pub enum InferredNode {
         node: Rc<Node>,
     },
     CompilerError {
-        message: std::string::String,
+        message: String,
         span: Rc<SourceSpan>,
     },
     TypeVariable {
-        id: std::string::String,
+        id: String,
     },
 }
 
@@ -213,11 +212,11 @@ pub fn has_inferred(n: Rc<Node>) -> bool {
 pub enum VarBindingKind {
     LocalValueBinding,
     FunctionValueBinding,
-    VariantValueBinding { parent_enum: std::string::String },
+    VariantValueBinding { parent_enum: String },
     MatchBoundBinding,
 }
 impl VarBindingKind {
-    pub fn parent_enum(&self) -> std::string::String {
+    pub fn parent_enum(&self) -> String {
         match self {
             VarBindingKind::LocalValueBinding => panic!("no parent_enum on unit variant"),
             VarBindingKind::FunctionValueBinding => panic!("no parent_enum on unit variant"),
@@ -231,20 +230,20 @@ impl VarBindingKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredCallableIdentity {
-    pub owner_module_path: std::string::String,
-    pub decl_name: std::string::String,
+    pub owner_module_path: String,
+    pub decl_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CallTargetIdentity {
     RuntimePrimitiveCall {
-        primitive_name: std::string::String,
+        primitive_name: String,
         projected_from: Option<Rc<DeclaredCallableIdentity>>,
     },
     SourceDeclarationCall {
-        owner_module_path: std::string::String,
-        decl_name: std::string::String,
+        owner_module_path: String,
+        decl_name: String,
     },
     CallableTargetUndetermined,
 }
@@ -278,7 +277,7 @@ pub enum MethodSemantics {
         algebra_template: Option<Rc<AlgebraFieldTemplate>>,
     },
     ServiceMethodSemantics {
-        service_name: std::string::String,
+        service_name: String,
         op_params: Rc<Vec<Rc<Node>>>,
     },
 }
@@ -301,13 +300,9 @@ pub enum ExprData {
     ExprLiteral {
         value: Rc<LiteralValue>,
     },
-    ExprElaboratedLiteral {
-        value: Rc<LiteralValue>,
-        elaboration: Rc<LiteralElaboration>,
-    },
     ExprError {
         kind: ExprErrorKind,
-        message: std::string::String,
+        message: String,
     },
     ExprVar {
         binding_kind: Option<Rc<VarBindingKind>>,
@@ -326,7 +321,7 @@ pub enum ExprData {
     ExprIf,
     ExprLet,
     ExprRecordLit {
-        parent_enum: Option<std::string::String>,
+        parent_enum: Option<String>,
     },
     ExprListLit,
     ExprBinOp {
@@ -356,8 +351,8 @@ pub enum MatchPattern {
         value: Rc<LiteralValue>,
     },
     VariantPattern {
-        name: std::string::String,
-        parent_enum: Option<std::string::String>,
+        name: String,
+        parent_enum: Option<String>,
         field_bindings: Rc<Vec<Rc<Node>>>,
     },
     Wildcard,
@@ -375,7 +370,7 @@ pub enum UnaryOpKind {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum StringPart {
-    Text { value: std::string::String },
+    Text { value: String },
     Interpolation { expr: Rc<Node> },
 }
 
@@ -409,253 +404,253 @@ pub struct CompileResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TextFile {
     pub path: FilePath,
-    pub content: std::string::String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum CompilerDiagnostic {
     UnresolvedImport {
-        module_path: std::string::String,
-        importing_module: std::string::String,
+        module_path: String,
+        importing_module: String,
         span: Rc<SourceSpan>,
     },
     MissingExport {
-        name: std::string::String,
-        module_path: std::string::String,
-        importing_module: std::string::String,
+        name: String,
+        module_path: String,
+        importing_module: String,
         span: Rc<SourceSpan>,
     },
     ImportShadowedByLocalDefinition {
-        name: std::string::String,
-        module_path: std::string::String,
-        importing_module: std::string::String,
+        name: String,
+        module_path: String,
+        importing_module: String,
         span: Rc<SourceSpan>,
     },
     UnresolvedType {
-        name: std::string::String,
+        name: String,
         span: Rc<SourceSpan>,
     },
     TypeMismatch {
-        expected: std::string::String,
-        got: std::string::String,
+        expected: String,
+        got: String,
         span: Rc<SourceSpan>,
     },
     ArityMismatch {
-        name: std::string::String,
+        name: String,
         expected: i64,
         got: i64,
         span: Rc<SourceSpan>,
     },
     VariantNotFound {
-        variant: std::string::String,
-        type_name: std::string::String,
+        variant: String,
+        type_name: String,
         span: Rc<SourceSpan>,
     },
     FieldNotFound {
-        field: std::string::String,
-        type_name: std::string::String,
+        field: String,
+        type_name: String,
         span: Rc<SourceSpan>,
     },
     MethodNotFound {
-        method: std::string::String,
-        receiver_type: std::string::String,
+        method: String,
+        receiver_type: String,
         span: Rc<SourceSpan>,
     },
     MethodExistenceUndecided {
-        method: std::string::String,
-        receiver_type: std::string::String,
+        method: String,
+        receiver_type: String,
         span: Rc<SourceSpan>,
     },
     MethodExistenceFrontierAdmitted {
-        method: std::string::String,
-        receiver_type: std::string::String,
-        trigger: std::string::String,
+        method: String,
+        receiver_type: String,
+        trigger: String,
         span: Rc<SourceSpan>,
     },
     ReceiverTypeUnestablished {
-        method: std::string::String,
+        method: String,
         span: Rc<SourceSpan>,
     },
     FrontierOccurrenceBudgetExceeded {
-        method: std::string::String,
-        receiver_type: std::string::String,
+        method: String,
+        receiver_type: String,
         declared: i64,
         observed: i64,
         span: Rc<SourceSpan>,
     },
     MissingField {
-        field: std::string::String,
-        type_name: std::string::String,
+        field: String,
+        type_name: String,
         span: Rc<SourceSpan>,
     },
     NonExhaustiveMatch {
-        missing: Rc<Vec<std::string::String>>,
+        missing: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     CircularDependency {
-        modules: Rc<Vec<std::string::String>>,
+        modules: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     DuplicateModule {
-        name: std::string::String,
+        name: String,
         span: Rc<SourceSpan>,
     },
     DuplicateDeclaration {
-        module_name: std::string::String,
-        name: std::string::String,
+        module_name: String,
+        name: String,
         span: Rc<SourceSpan>,
     },
     MissingAnnotation {
-        fn_name: std::string::String,
-        what: std::string::String,
+        fn_name: String,
+        what: String,
         span: Rc<SourceSpan>,
     },
     ParseError {
-        message: std::string::String,
+        message: String,
         span: Rc<SourceSpan>,
     },
     InternalError {
-        message: std::string::String,
+        message: String,
         span: Rc<SourceSpan>,
     },
     ComplexityUnknown {
-        func_name: std::string::String,
-        reason: std::string::String,
+        func_name: String,
+        reason: String,
         span: Rc<SourceSpan>,
     },
     WhereRefinementUnenforced {
-        predicate: std::string::String,
-        formal_type: std::string::String,
-        reason: std::string::String,
+        predicate: String,
+        formal_type: String,
+        reason: String,
         span: Rc<SourceSpan>,
     },
     OwnershipViolation {
-        binding: std::string::String,
-        fn_name: std::string::String,
+        binding: String,
+        fn_name: String,
         consumers: i64,
         span: Rc<SourceSpan>,
     },
     VariantCollision {
-        variant: std::string::String,
-        enum1: std::string::String,
-        enum2: std::string::String,
+        variant: String,
+        enum1: String,
+        enum2: String,
         span: Rc<SourceSpan>,
     },
     SoleConstructorViolation {
-        type_name: std::string::String,
+        type_name: String,
         span: Rc<SourceSpan>,
     },
     OptionalCastNotEliminated {
-        source_type: std::string::String,
-        target_type: std::string::String,
+        source_type: String,
+        target_type: String,
         span: Rc<SourceSpan>,
     },
     BareNoneNotAdmittedByFieldType {
-        field: std::string::String,
-        type_name: std::string::String,
-        declared_type: std::string::String,
+        field: String,
+        type_name: String,
+        declared_type: String,
         span: Rc<SourceSpan>,
     },
     SourceAnnotationRefused {
         refusal: Rc<AnnotationAttachmentRefusal>,
     },
     ConstructorCallAdmissionRefused {
-        constructor_module_path: std::string::String,
-        constructor_decl_name: std::string::String,
-        caller_module_path: std::string::String,
-        caller_decl_name: std::string::String,
-        permitted_callers: Rc<Vec<std::string::String>>,
+        constructor_module_path: String,
+        constructor_decl_name: String,
+        caller_module_path: String,
+        caller_decl_name: String,
+        permitted_callers: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     AdmitCallersEntryNotDeclRef {
-        constructor_decl_name: std::string::String,
+        constructor_decl_name: String,
         span: Rc<SourceSpan>,
     },
     DeclaredTypeNotInhabited {
-        position: std::string::String,
-        expected: std::string::String,
-        got: std::string::String,
+        position: String,
+        expected: String,
+        got: String,
         span: Rc<SourceSpan>,
     },
     DeclaredTypeInhabitanceUndecided {
-        position: std::string::String,
-        reason: std::string::String,
+        position: String,
+        reason: String,
         span: Rc<SourceSpan>,
     },
     UnlistedImportUse {
-        name: std::string::String,
+        name: String,
         span: Rc<SourceSpan>,
     },
     ReferenceDerivedImportProviderUnknown {
-        name: std::string::String,
-        referencing_module: std::string::String,
+        name: String,
+        referencing_module: String,
         span: Rc<SourceSpan>,
     },
     ReferenceDerivedImportExportUnproven {
-        name: std::string::String,
-        referencing_module: std::string::String,
-        provider_module: std::string::String,
+        name: String,
+        referencing_module: String,
+        provider_module: String,
         span: Rc<SourceSpan>,
     },
     UnlistedVariantValueUse {
-        name: std::string::String,
+        name: String,
         span: Rc<SourceSpan>,
     },
     AmbiguousReference {
-        name: std::string::String,
-        candidates: Rc<Vec<std::string::String>>,
+        name: String,
+        candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     DataReferenceVisibilityBudgetExceeded {
-        name: std::string::String,
+        name: String,
         span: Rc<SourceSpan>,
     },
     ParameterDefaultFormNotAdmitted {
-        parameter: std::string::String,
-        admitted: Rc<Vec<std::string::String>>,
+        parameter: String,
+        admitted: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     AmbiguousAnonymousRecordLiteral {
-        candidates: Rc<Vec<std::string::String>>,
+        candidates: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     ModuleFilenameCollision {
-        filename: std::string::String,
-        modules: Rc<Vec<std::string::String>>,
+        filename: String,
+        modules: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     CallArgumentNameUnknown {
-        callee: std::string::String,
-        argument: std::string::String,
-        declared: Rc<Vec<std::string::String>>,
+        callee: String,
+        argument: String,
+        declared: Rc<Vec<String>>,
         span: Rc<SourceSpan>,
     },
     CallPositionalSurplus {
-        callee: std::string::String,
+        callee: String,
         supplied: i64,
         capacity: i64,
         span: Rc<SourceSpan>,
     },
     CallArgumentDuplicate {
-        callee: std::string::String,
-        argument: std::string::String,
+        callee: String,
+        argument: String,
         span: Rc<SourceSpan>,
     },
     CallPositionalDeficit {
-        callee: std::string::String,
-        parameter: std::string::String,
+        callee: String,
+        parameter: String,
         supplied: i64,
         required: i64,
         span: Rc<SourceSpan>,
     },
     CallNamedArgOnFunctionValue {
-        callee: std::string::String,
-        argument: std::string::String,
+        callee: String,
+        argument: String,
         span: Rc<SourceSpan>,
     },
     TypeArgumentArityMismatch {
-        type_name: std::string::String,
+        type_name: String,
         supplied: i64,
         declared: i64,
         span: Rc<SourceSpan>,
@@ -664,23 +659,23 @@ pub enum CompilerDiagnostic {
         refusal: Rc<OccurrenceTransportRefusal>,
     },
     ContainerSpellingUnrecognized {
-        name: std::string::String,
-        container_leaf: std::string::String,
+        name: String,
+        container_leaf: String,
         span: Rc<SourceSpan>,
     },
     ServiceConfigReferenceJudgmentDeferred {
-        field: std::string::String,
-        referenced_name: std::string::String,
-        trigger: std::string::String,
+        field: String,
+        referenced_name: String,
+        trigger: String,
         span: Rc<SourceSpan>,
     },
     TransportEmissionNotModeled {
-        transport_kind: std::string::String,
-        service: std::string::String,
-        operation: std::string::String,
-        declaring_module: std::string::String,
-        target: std::string::String,
-        missing_realization_fact: std::string::String,
+        transport_kind: String,
+        service: String,
+        operation: String,
+        declaring_module: String,
+        target: String,
+        missing_realization_fact: String,
         span: Rc<SourceSpan>,
     },
 }
@@ -688,7 +683,7 @@ pub enum CompilerDiagnostic {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ErrorNode {
     pub diagnostic: Rc<CompilerDiagnostic>,
-    pub module_name: std::string::String,
+    pub module_name: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -726,7 +721,7 @@ pub fn occurrence_transport_refusal_diagnostic_span(
 
 pub fn occurrence_transport_refusal_diagnostic_message(
     refusal: Rc<OccurrenceTransportRefusal>,
-) -> std::string::String {
+) -> String {
     match (*refusal.clone()).clone() {
     OccurrenceTransportRefusal::MissingAuthoredOccurrenceIdentity { diagnostic_span: _, .. } => "occurrence transport refused: missing authored occurrence identity".to_string(),
     OccurrenceTransportRefusal::DuplicateAuthoredOccurrenceIdentity { occurrence, .. } => v1_rt::concat("occurrence transport refused: duplicate authored occurrence identity ".to_string(), (occurrence.value.clone()).to_string()),
@@ -801,7 +796,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> std::string::String {
+pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
     match (*d.clone()).clone() {
     CompilerDiagnostic::UnresolvedImport { module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("unresolved import: module '".to_string(), m.clone()), "' not found (imported by '".to_string()), i.clone()), "')".to_string()),
     CompilerDiagnostic::MissingExport { name: n, module_path: m, importing_module: i, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("name '".to_string(), n.clone()), "' not found in module '".to_string()), m.clone()), "' (imported by '".to_string()), i.clone()), "')".to_string()),
@@ -858,7 +853,7 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> std::string::String {
 }
 }
 
-pub fn is_where_refinement_unenforced_advisory_reason(reason: std::string::String) -> bool {
+pub fn is_where_refinement_unenforced_advisory_reason(reason: String) -> bool {
     ((((((reason.clone() == "predicate deferred at compile time".to_string())
         || (reason.clone() == "predicate not enforced at compile time".to_string()))
         || (reason.clone() == "non-literal value at refined position".to_string()))
@@ -867,19 +862,19 @@ pub fn is_where_refinement_unenforced_advisory_reason(reason: std::string::Strin
         || (reason.clone() == "string predicate not implemented".to_string()))
 }
 
-pub fn compiler_diagnostic_seed_projection_note() -> std::string::String {
+pub fn compiler_diagnostic_seed_projection_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "HAND-RUST GATE receipt for the CompilerDiagnostic seed projection (codex reviews 45469, 45481). Adding a variant to this coproduct forces arms in two TOTAL matches in the hand-maintained seed transport, cli_run.rs's compile_clean_diagnostic_histogram_key and its method-name extractor; without them the seed does not compile, so the arms are the mechanical consequence of the .dag change, not host-side capability someone chose to write in Rust. THIS IS A DIFFERENT CLASS FROM THE GATE'S USUAL SUBJECT and the distinction is the whole receipt: the gate's other explicit deferrals — the emit-surface retirement rows — are DECISION SURFACES that could live in .dag and are deferred for a stated reason, so they owe a dissolution schedule of their own. This clause used to name cli_run::selection_control_input_sources alongside them; that symbol was DELETED with affected-set selection (2026-08-15), so the deferral it recorded was discharged by deletion rather than by a schedule, and the citation was left naming nothing — the DESIGN section 3 stale-citation class, inside a receipt whose own argument is that an unverifiable figure rots silently. An exhaustiveness arm owes none, because it cannot live anywhere but the seed's projection of the coproduct, and it disappears exactly when the seed does. CHECKABLE RECEIPT for the FIVE variants this lane adds (MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded). It read SIX until the unjudged conformance advisory was excluded from this PR (codex review 45767); DeclaredTypeConformanceUnjudged and its arms are gone with it, which is why the figures below moved again. Two commands, and the receipt is exactly their output — EACH FIGURE NAMES THE COMMAND THAT PRODUCES IT, because a number with no command behind it cannot be checked and rots silently. (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 747 at origin/main and 747 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 23 added / 0 removed, and `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line is inside an existing fn and none declares one. The 23 lines are the five diagnostic arms plus the advisory-classification entries described next. THE NUMBERS IN A RECEIPT MUST TRACK THE DIFF THEY CERTIFY: this row read five variants and 13 lines after a sixth variant landed (codex review 45501), and then read a fn census of 742 that NO command reproduced — 501 bare `fn` and 245 `pub fn` on either side, never 742 — so the figure certifying that hand-Rust had not grown was itself unverifiable. A receipt whose number cannot be re-derived is indistinguishable from one that is wrong. Re-derive all three figures from the commands above whenever this coproduct changes, rather than carrying them forward. THE ADVISORY CLASSIFICATION IS PART OF THIS RECEIPT AND WAS THE DEFECT IT ALMOST HID: compile_clean_diagnostic_is_advisory is a CLOSED ALLOWLIST, not the complement of is_hard, so the two non-blocking variants this lane adds were counted by NEITHER predicate — rendered to the terminal while the gate reported zero of them. The residue was described as counted while nothing in the repository counted it, and the population figures quoted in review came from a grep over log text rather than from any mechanism (found by executing the gate before and after and seeing its advisory total sit unchanged at 4590 while the printed population halved). Adding a non-blocking variant to the coproduct therefore obliges a matching entry in that allowlist, or the frontier it represents is invisible to the gate that is supposed to bound it. Lane: compiler-static-failure-closure (v1-method-existence-wall / v1-declared-type-conformance-wall). Dissolves with the seed itself, ROADMAP hand-MAINTAINED to zero at v2 self-host; no separate trigger, because there is no separable work to schedule. Not migration debt and not a delete candidate. SECOND LANE, SECOND EXPANSION (review 55680, finding 2). ImportShadowedByLocalDefinition is a SIXTH variant, added by a different lane for the import-shadow wall, and it forces one arm in each of the same two total matches. The five-variant figures above were measured against THAT lane's base and do not reproduce here -- (a) alone now answers 884 rather than 747 -- which is the rot this receipt exists to make visible: a figure survives its own truth by naming a command nobody re-runs. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 884 at origin/main and 884 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 4 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 4 lines are this variant's two arms, one per total match, as rustfmt renders them. NO HOST CAPABILITY IS ADDED: both arms are the mechanical consequence of the .dag coproduct gaining a member, and they disappear exactly when the seed does. THIRD LANE, THIRD EXPANSION (codex review 56224, finding 1). DataReferenceVisibilityBudgetExceeded and ParameterDefaultFormNotAdmitted are a SEVENTH and EIGHTH variant, added by the typed-data-reference-refusal lane so that the three terminal arms of v1.compiler.emit_rust validate_workflow_param_defaults stop rendering three distinct causes as InternalError. Each forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 884 was that lane's base, this lane's base is 890, and a receipt that edited the earlier number in place would destroy the evidence that a figure moves per lane -- which is the entire argument this row makes. RE-MEASURED ON THIS HEAD, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 890 at origin/main and 890 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 8 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 8 lines are this lane's FOUR arms -- two variants, one arm each in both total matches -- as rustfmt renders them across braced blocks. WHY EIGHT LINES FOR FOUR ARMS AND NOT FOUR: three of the four arms exceed the line width once the variant name is spelled, so rustfmt renders them as braced blocks; the count is a property of the formatter, not of added capability, which is exactly why (c) is measured beside it rather than inferred from (b). THE THIRTEEN LINES IN v1_std_core.rs ARE NOT PART OF THIS RECEIPT AND MUST NOT BE ADDED TO IT: that file is the GENERATED mirror of this module, emitted by required-regen from the .dag authority above, so its growth is authored here in .dag and is not hand-Rust surface. Counting it would be the same category error as counting compiler_tests.rs, which the plan projection already rules out for the same reason. FOURTH LANE, FOURTH EXPANSION (duplicate-declaration wall, 2026-08-27). DuplicateDeclaration is a NINTH variant, added so that v1.compiler.resolve check_duplicate_declarations can refuse a module declaring one name twice -- a state the compiler previously ACCEPTED with zero diagnostics while the symbol index silently kept the last declaration. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED: 890 was that lane's base, this lane's base is 895. THIS LANE CHANGES THE RECEIPT'S NAMED COMMANDS, AND THE REASON IS THIS ROW'S OWN ARGUMENT TURNED ON ITSELF (codex review 56644). Every prior lane wrote `origin/main` as the comparison base. A DIFF HAS TWO SIDES AND ONLY ONE OF THEM IS THIS BRANCH: origin/main moves under other people's merges, so a receipt keyed to the MOVING ref reports a figure that changes without anyone touching the change it certifies. Measured here rather than argued: this lane's diff was 2 added / 0 removed when authored, and hours later the same `git diff --numstat origin/main` command answered 6 added / 64 removed -- the 64 removals being main's work, not this branch's, and the figure now describing a diff nobody authored. That is exactly the rot this row exists to make visible, arriving through the ref rather than through the number, which is why it survived three lanes: each author re-measured honestly and the command was already wrong. THE REPAIR IS A STABLE BASE: every figure below is measured against `$(git merge-base origin/main HEAD)`, which is this branch's own fork point and does not move, and the base commit is NAMED so the reading is reproducible after a later merge -- ddb7f533e4. RE-MEASURED ON THIS HEAD against that base: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 895 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 895, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so every added line sits inside an existing fn and none declares one. The 2 lines are this variant's two arms, one per total match, each short enough that rustfmt renders it on one line -- which is why the per-arm line count differs from the prior lane's and is measured rather than inherited. THE EARLIER LANES' FIGURES ARE NOT RE-BASED OR AMENDED: they were correct against the main they named at the time, and rewriting them would destroy the evidence that a receipt keyed to a moving ref decays, which is the whole finding here. What changes is the command the NEXT lane runs. THE NEW VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- a duplicate declaration must stop the line, since every realization downstream of it is built on whichever definition happened to survive. NEITHER NEW VARIANT IS NON-BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and neither variant is listed as an exception, which is correct -- both replace a blocking InternalError at a refusal site, and the witness measures the ambiguity arm as one BLOCKING AmbiguousReference row rather than an advisory one. FOURTH LANE, FOURTH EXPANSION (codex review 56887). ModuleFilenameCollision is a NINTH variant, added by the module-filename-collision lane so that two modules whose names differ only by a dot-versus-underscore refuse at emit instead of overwriting one emitted file silently. It forces one arm in each of the same two total matches. THE PRIOR LANE'S FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives: 890 was that lane's base, this lane's base is 896, and editing an earlier number in place would destroy the evidence that a figure moves per lane. RE-MEASURED ON THIS HEAD against origin/main 9538523a3c, same three commands: (a) `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896 at origin/main and 896 on this branch, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat origin/main -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff origin/main -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match; both render on a single line, which is why this lane's line count is 2 where the third lane's four arms cost 8 -- the difference is rustfmt's wrapping of longer variant names, not added capability. THE VARIANT IS BLOCKING, so the advisory-allowlist obligation this row records does not fire: is_interpreter_blocking_diagnostic answers true by default and ModuleFilenameCollision is not listed as an exception, which is correct -- a collision silently overwrites an emitted file, and an advisory would be the fail-open the diagnostic exists to close. DISSOLUTION: this lane mints NO separate trigger and inherits the one this row already carries -- the arms are the mechanical consequence of the .dag coproduct gaining a member, they cannot live anywhere but the seed's projection of it, and they disappear exactly when the seed does, at the ROADMAP row v1-zero-hand-maintained-rust. FIFTH LANE, FIFTH EXPANSION (type-argument-arity wall, 2026-08-27). TypeArgumentArityMismatch is a TENTH variant, added so that v1.compiler.infer refuses a generic application whose supplied type-argument count disagrees with the declaration's parameter count -- a state alias_chain_type_arg_subst previously absorbed in BOTH directions with no diagnostic anywhere, so a correct application and an arity-wrong one compiled identically at the floor band. It forces one arm in each of the same two total matches. THE PRIOR LANES' FIGURES DO NOT REPRODUCE HERE AND ARE NOT AMENDED, for the reason the third lane already gives. RE-MEASURED ON THIS HEAD against the STABLE base `$(git merge-base origin/main HEAD)`, which the fourth lane's repair installed and which is 42eed29357 here: (a) `git show $(git merge-base origin/main HEAD):src/v1/stage0/src/cli_run.rs | grep -cE '^(pub )?fn '` is 896 and `grep -cE '^(pub )?fn ' src/v1/stage0/src/cli_run.rs` is 896, so the hand-Rust CARRIER census is FLAT. (b) `git diff --numstat $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs` is 2 added / 0 removed. (c) `git diff $(git merge-base origin/main HEAD) -- src/v1/stage0/src/cli_run.rs | grep -cE '^\\+.*\\bfn '` is 0, so both added lines sit inside existing fns and neither declares one. The 2 lines are this lane's TWO arms, one per total match, each rendered on one line. THE VARIANT IS BLOCKING and carries no arm in is_error_diagnostic or is_interpreter_blocking_diagnostic: both answer true by default and it is listed as an exception in neither, which is the intended reading -- an application bound at the wrong arity leaves a declared type parameter standing for nothing, and every judgment downstream of it is made against a hole. The advisory-allowlist obligation this row records therefore does not fire. DISSOLUTION: inherited, not minted, exactly as the fourth lane's.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FrontierOccurrenceKey {
-    pub method: std::string::String,
-    pub receiver_shape: std::string::String,
+    pub method: String,
+    pub receiver_shape: String,
 }
 
 pub fn diagnostic_frontier_occurrence_key(
@@ -919,13 +914,13 @@ pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     }
 }
 
-pub fn where_refinement_deferral_reason_scaffold_note() -> std::string::String {
+pub fn where_refinement_deferral_reason_scaffold_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier).".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
@@ -975,10 +970,7 @@ pub fn is_discovery_corpus_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> boo
     }
 }
 
-pub fn make_error_node(
-    diagnostic: Rc<CompilerDiagnostic>,
-    module_name: std::string::String,
-) -> Rc<ErrorNode> {
+pub fn make_error_node(diagnostic: Rc<CompilerDiagnostic>, module_name: String) -> Rc<ErrorNode> {
     Rc::new(ErrorNode {
         diagnostic: diagnostic.clone(),
         module_name: module_name.clone(),
@@ -987,33 +979,24 @@ pub fn make_error_node(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFuncSig {
-    pub name: std::string::String,
+    pub name: String,
     pub params: Rc<Vec<Rc<Node>>>,
     pub inferred: Option<Rc<Node>>,
     pub is_async: bool,
-    pub output_provenance: Rc<Vec<Rc<HashMap<std::string::String, Rc<SubValueRelation>>>>>,
-    pub variant_provenance: Rc<
-        HashMap<
-            std::string::String,
-            Rc<
-                HashMap<
-                    std::string::String,
-                    Rc<HashMap<std::string::String, Rc<SubValueRelation>>>,
-                >,
-            >,
-        >,
-    >,
+    pub output_provenance: Rc<Vec<Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+    pub variant_provenance:
+        Rc<HashMap<String, Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclaredFuncEnv {
-    pub signatures: Rc<HashMap<std::string::String, Rc<DeclaredFuncSig>>>,
+    pub signatures: Rc<HashMap<String, Rc<DeclaredFuncSig>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Node {
     pub occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    pub name: std::string::String,
+    pub name: String,
     pub ident: Option<i64>,
     pub span: Rc<SourceSpan>,
     pub ident_span: Option<Rc<SourceSpan>>,
@@ -1033,10 +1016,7 @@ pub struct Node {
     pub expr_data: Rc<ExprData>,
 }
 
-pub fn default_ident_span(
-    name: std::string::String,
-    span: Rc<SourceSpan>,
-) -> Option<Rc<SourceSpan>> {
+pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<SourceSpan>> {
     if (name.clone() == "".to_string()) {
         std::option::Option::None
     } else {
@@ -1087,7 +1067,7 @@ pub fn make_expr_node(
 
 pub fn make_named_expr_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
@@ -1119,7 +1099,7 @@ pub fn make_named_expr_node(
 
 pub fn make_pattern_binder_declaration_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     make_named_expr_node(
@@ -1136,7 +1116,7 @@ pub fn make_pattern_binder_declaration_node(
 pub fn make_expr_error_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
     kind: ExprErrorKind,
-    message: std::string::String,
+    message: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -1170,7 +1150,7 @@ pub fn make_expr_error_node(
 
 pub fn make_arg_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: Option<std::string::String>,
+    name: Option<String>,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1242,7 +1222,7 @@ pub fn make_arm_node(
 
 pub fn make_resource_use_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     resource: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1272,8 +1252,8 @@ pub fn make_resource_use_node(
 
 pub fn resource_use_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
@@ -1291,7 +1271,7 @@ pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
 
 pub fn make_field_init_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     value: Rc<Node>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1321,7 +1301,7 @@ pub fn make_field_init_node(
 
 pub fn make_field_binding_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    field_name: std::string::String,
+    field_name: String,
     binding: Rc<MatchPattern>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1351,8 +1331,8 @@ pub fn make_field_binding_node(
 
 pub fn field_binding_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
@@ -1365,7 +1345,7 @@ pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
 
 pub fn make_text_part_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    text: std::string::String,
+    text: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -1425,7 +1405,7 @@ pub fn make_interp_part_node(
 
 pub fn make_param_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
@@ -1462,7 +1442,7 @@ pub fn make_param_node(
 
 pub fn make_resolved_param_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     type_expr: Rc<Node>,
     default_value: Option<Rc<Node>>,
     properties: Rc<Vec<Rc<Node>>>,
@@ -1502,22 +1482,22 @@ pub fn make_resolved_param_node(
 
 pub fn param_node_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
 pub fn generic_param_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
 pub fn authored_name_at(
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     node: Rc<Node>,
-) -> std::string::String {
+) -> String {
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(index) => {
@@ -1548,8 +1528,8 @@ pub fn authored_name_at(
 
 pub fn find_child_named(
     n: Rc<Node>,
-    name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -1570,8 +1550,8 @@ pub fn find_child_named(
 
 pub fn has_child_named(
     n: Rc<Node>,
-    name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -1611,7 +1591,7 @@ pub fn param_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 
 pub fn make_field_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     type_expr: Rc<Node>,
     cardinality: Cardinality,
     default_value: Option<Rc<Node>>,
@@ -1650,8 +1630,8 @@ pub fn make_field_node(
 
 pub fn field_node_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
@@ -1681,8 +1661,8 @@ pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn field_node_from_key(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match find_property(
         n.properties.clone(),
         "from_key".to_string(),
@@ -1699,7 +1679,7 @@ pub fn field_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 
 pub fn make_variant_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     fields: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1729,8 +1709,8 @@ pub fn make_variant_node(
 
 pub fn variant_node_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
@@ -1744,33 +1724,33 @@ pub fn variant_node_span(n: Rc<Node>) -> Rc<SourceSpan> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ChildRole {
-    pub name: std::string::String,
-    pub accessor: std::string::String,
+    pub name: String,
+    pub accessor: String,
     pub position: i64,
     pub required: bool,
 }
 
-pub fn expr_child_roles() -> Rc<HashMap<std::string::String, Rc<Vec<Rc<ChildRole>>>>> {
+pub fn expr_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, Rc<Vec<Rc<ChildRole>>>>> = {
+        static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
             serde_json::from_value(serde_json::json!({"ExprFieldAccess": [{"name": "base", "accessor": "field_access_base", "position": 0, "required": true}], "ExprBinOp": [{"name": "left", "accessor": "binop_left", "position": 0, "required": true}, {"name": "right", "accessor": "binop_right", "position": 1, "required": true}], "ExprUnaryOp": [{"name": "operand", "accessor": "unaryop_operand", "position": 0, "required": true}], "ExprIf": [{"name": "condition", "accessor": "if_condition", "position": 0, "required": true}, {"name": "then", "accessor": "if_then_branch", "position": 1, "required": true}, {"name": "else", "accessor": "if_else_branch", "position": 2, "required": false}], "ExprMatch": [{"name": "scrutinee", "accessor": "match_scrutinee", "position": 0, "required": true}], "ExprLet": [{"name": "value", "accessor": "let_value", "position": 0, "required": true}, {"name": "body", "accessor": "let_body", "position": 1, "required": false}], "ExprLambda": [{"name": "body", "accessor": "lambda_body", "position": 0, "required": true}], "ExprMethodCall": [{"name": "receiver", "accessor": "method_receiver", "position": 0, "required": true}], "ExprCast": [{"name": "expr", "accessor": "cast_expr", "position": 0, "required": true}, {"name": "target", "accessor": "cast_target", "position": 1, "required": true}], "ExprForEach": [{"name": "collection", "accessor": "foreach_collection", "position": 0, "required": true}, {"name": "body", "accessor": "foreach_body", "position": 1, "required": true}], "ExprIndex": [{"name": "base", "accessor": "index_base", "position": 0, "required": true}, {"name": "index", "accessor": "index_expr", "position": 1, "required": true}], "ExprSlice": [{"name": "base", "accessor": "slice_base", "position": 0, "required": true}, {"name": "start", "accessor": "slice_start", "position": 1, "required": true}, {"name": "end", "accessor": "slice_end", "position": 2, "required": true}], "ExprReturn": [{"name": "value", "accessor": "return_value", "position": 0, "required": true}]}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
 }
 
-pub fn wrapper_child_roles() -> Rc<HashMap<std::string::String, Rc<Vec<Rc<ChildRole>>>>> {
+pub fn wrapper_child_roles() -> Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, Rc<Vec<Rc<ChildRole>>>>> = {
+        static CACHED: Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>> = {
             serde_json::from_value(serde_json::json!({"Arg": [{"name": "value", "accessor": "arg_value", "position": 0, "required": true}], "Arm": [{"name": "guard", "accessor": "arm_guard", "position": 0, "required": false}, {"name": "body", "accessor": "arm_body", "position": -1, "required": true}], "FieldInit": [{"name": "value", "accessor": "field_init_node_value", "position": 0, "required": true}]}))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, Rc<Vec<Rc<ChildRole>>>>>| c.clone())
 }
 
-pub fn is_child_accessor_in_model(name: std::string::String) -> bool {
+pub fn is_child_accessor_in_model(name: String) -> bool {
     ({
         let mut __found = false;
         for roles in Rc::new(v1_rt::map_values(&expr_child_roles()))
@@ -1816,9 +1796,7 @@ pub fn is_child_accessor_in_model(name: std::string::String) -> bool {
     })
 }
 
-pub fn child_roles_for_variant(
-    variant_name: std::string::String,
-) -> Option<Rc<Vec<Rc<ChildRole>>>> {
+pub fn child_roles_for_variant(variant_name: String) -> Option<Rc<Vec<Rc<ChildRole>>>> {
     v1_rt::map_get(&expr_child_roles(), variant_name.clone())
 }
 
@@ -1832,9 +1810,9 @@ pub enum NodeFieldRole {
     MetadataField,
 }
 
-pub fn node_field_roles() -> Rc<HashMap<std::string::String, NodeFieldRole>> {
+pub fn node_field_roles() -> Rc<HashMap<String, NodeFieldRole>> {
     thread_local! {
-        static CACHED: Rc<HashMap<std::string::String, NodeFieldRole>> = {
+        static CACHED: Rc<HashMap<String, NodeFieldRole>> = {
             let mut __m = HashMap::new();
             __m.insert("children".to_string(), NodeFieldRole::ChildrenListField);
             __m.insert("params".to_string(), NodeFieldRole::ChildrenListField);
@@ -1844,17 +1822,17 @@ pub fn node_field_roles() -> Rc<HashMap<std::string::String, NodeFieldRole>> {
             Rc::new(__m)
         };
     }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, NodeFieldRole>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, NodeFieldRole>>| c.clone())
 }
 
-pub fn is_children_list_field(field_name: std::string::String) -> bool {
+pub fn is_children_list_field(field_name: String) -> bool {
     match v1_rt::lookup(&node_field_roles(), field_name.clone()) {
         Some(NodeFieldRole::ChildrenListField) => true,
         _ => false,
     }
 }
 
-pub fn is_sub_value_field(field_name: std::string::String) -> bool {
+pub fn is_sub_value_field(field_name: String) -> bool {
     match v1_rt::lookup(&node_field_roles(), field_name.clone()) {
         Some(NodeFieldRole::SubValueField) => true,
         Some(NodeFieldRole::ChildrenListField) => true,
@@ -1881,9 +1859,9 @@ impl FunctionSizeEffect {
     }
 }
 
-pub fn function_size_effects() -> Rc<HashMap<std::string::String, Rc<FunctionSizeEffect>>> {
+pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
     thread_local! {
-            static CACHED: Rc<HashMap<std::string::String, Rc<FunctionSizeEffect>>> = {
+            static CACHED: Rc<HashMap<String, Rc<FunctionSizeEffect>>> = {
                 let mut __m = HashMap::new();
                 __m.insert("with_required_cardinality".to_string(), Rc::new(FunctionSizeEffect::PropertyContraction {
         domain_size: 2,
@@ -1897,10 +1875,10 @@ pub fn function_size_effects() -> Rc<HashMap<std::string::String, Rc<FunctionSiz
                 Rc::new(__m)
             };
         }
-    CACHED.with(|c: &Rc<HashMap<std::string::String, Rc<FunctionSizeEffect>>>| c.clone())
+    CACHED.with(|c: &Rc<HashMap<String, Rc<FunctionSizeEffect>>>| c.clone())
 }
 
-pub fn is_tree_size_preserving(func_name: std::string::String) -> bool {
+pub fn is_tree_size_preserving(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
         Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizePreserving => true,
@@ -1911,7 +1889,7 @@ pub fn is_tree_size_preserving(func_name: std::string::String) -> bool {
     }
 }
 
-pub fn is_tree_size_reducing(func_name: std::string::String) -> bool {
+pub fn is_tree_size_reducing(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
         Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizeReducing => true,
@@ -1921,7 +1899,7 @@ pub fn is_tree_size_reducing(func_name: std::string::String) -> bool {
     }
 }
 
-pub fn is_property_contraction(func_name: std::string::String) -> bool {
+pub fn is_property_contraction(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name.clone()) {
         Some(effect) => match (*effect.clone()).clone() {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
@@ -1931,7 +1909,7 @@ pub fn is_property_contraction(func_name: std::string::String) -> bool {
     }
 }
 
-pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: std::string::String) -> Rc<Node> {
+pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr
         .children
         .clone()
@@ -1952,8 +1930,8 @@ pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: std::string::String) -> 
 
 pub fn arg_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let name = authored_name_at(source_indices.clone(), n.clone());
         if (name.clone() == "".to_string()) {
@@ -2005,8 +1983,8 @@ pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
 
 pub fn field_init_node_name_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), n.clone())
 }
 
@@ -2024,11 +2002,11 @@ pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DeclRefCoords {
-    pub module_path: std::string::String,
-    pub decl_name: std::string::String,
+    pub module_path: String,
+    pub decl_name: String,
 }
 
-pub fn decl_ref_coords_label(coords: Rc<DeclRefCoords>) -> std::string::String {
+pub fn decl_ref_coords_label(coords: Rc<DeclRefCoords>) -> String {
     v1_rt::concat(
         v1_rt::concat(coords.module_path.clone(), ".".to_string()),
         coords.decl_name.clone(),
@@ -2037,9 +2015,9 @@ pub fn decl_ref_coords_label(coords: Rc<DeclRefCoords>) -> std::string::String {
 
 pub fn call_named_arg_string_optional(
     call: Rc<Node>,
-    arg_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    arg_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match Rc::new({
         let mut __result = Vec::new();
         for a in call.children.clone().iter().cloned() {
@@ -2069,7 +2047,7 @@ pub enum AdmitCallersEntry {
 
 pub fn decl_ref_coords_from_call_expr(
     expr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<DeclRefCoords>> {
     if (expr_call_func_at(expr.clone(), source_indices.clone()) != "decl_ref".to_string()) {
         std::option::Option::None
@@ -2097,7 +2075,7 @@ pub fn decl_ref_coords_from_call_expr(
 
 pub fn admit_callers_entries_from_list(
     exprs: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<AdmitCallersEntry>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -2119,7 +2097,7 @@ pub fn admit_callers_entries_from_list(
 
 pub fn fn_admit_callers(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Vec<Rc<AdmitCallersEntry>>>> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -2233,8 +2211,8 @@ pub fn unaryop_operand(texpr: Rc<Node>) -> Rc<Node> {
 
 pub fn expr_var_name_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
@@ -2244,8 +2222,8 @@ pub fn field_access_base(texpr: Rc<Node>) -> Rc<Node> {
 
 pub fn field_access_field_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
@@ -2258,13 +2236,13 @@ pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FieldAccessSpine {
-    pub root: std::string::String,
-    pub dotted: std::string::String,
+    pub root: String,
+    pub dotted: String,
 }
 
 pub fn field_access_spine(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldAccessSpine>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -2296,8 +2274,8 @@ pub fn field_access_spine(
 
 pub fn expr_call_func_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
@@ -2329,8 +2307,8 @@ pub fn method_arg_nodes(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn expr_method_name_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
@@ -2350,8 +2328,8 @@ pub fn lambda_body(texpr: Rc<Node>) -> Rc<Node> {
 
 pub fn lambda_param_names_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for n in Rc::new(
@@ -2388,8 +2366,8 @@ pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn let_binding_name_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
@@ -2411,8 +2389,8 @@ pub fn foreach_body(texpr: Rc<Node>) -> Rc<Node> {
 
 pub fn foreach_variable_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     authored_name_at(source_indices.clone(), texpr.clone())
 }
 
@@ -2446,8 +2424,8 @@ pub fn block_stmts(texpr: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn record_lit_type_name_at(
     texpr: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     {
         let name = authored_name_at(source_indices.clone(), texpr.clone());
         if (name.clone() == "".to_string()) {
@@ -2458,139 +2436,139 @@ pub fn record_lit_type_name_at(
     }
 }
 
-pub fn transport_url_key() -> std::string::String {
+pub fn transport_url_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "base_url".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_path_key() -> std::string::String {
+pub fn transport_path_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "base_path".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_auth_token_key() -> std::string::String {
+pub fn transport_auth_token_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "auth_token".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_auth_header_key() -> std::string::String {
+pub fn transport_auth_header_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "auth_header".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_auth_scheme_key() -> std::string::String {
+pub fn transport_auth_scheme_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "auth_scheme".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_method_key() -> std::string::String {
+pub fn transport_method_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "method".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_path_template_key() -> std::string::String {
+pub fn transport_path_template_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "path".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_query_key() -> std::string::String {
+pub fn transport_query_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "query".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_body_key() -> std::string::String {
+pub fn transport_body_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "body".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_stdin_key() -> std::string::String {
+pub fn transport_stdin_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "stdin".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_verb_key() -> std::string::String {
+pub fn transport_verb_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "verb".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_response_format_key() -> std::string::String {
+pub fn transport_response_format_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "response_format".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_headers_key() -> std::string::String {
+pub fn transport_headers_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "headers".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_auth_basic_key() -> std::string::String {
+pub fn transport_auth_basic_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "auth_basic".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn transport_tls_key() -> std::string::String {
+pub fn transport_tls_key() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "tls".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn make_transport_node(
@@ -2843,8 +2821,8 @@ pub fn file_transport_node(
 
 pub fn find_property(
     props: Rc<Vec<Rc<Node>>>,
-    prop_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    prop_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -2865,9 +2843,9 @@ pub fn find_property(
 
 pub fn find_property_string(
     props: Rc<Vec<Rc<Node>>>,
-    prop_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    prop_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match find_property(props.clone(), prop_name.clone(), source_indices.clone()) {
         Some(n) => expr_literal_string_optional(n.clone()),
         None => std::option::Option::None,
@@ -2878,10 +2856,6 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*expr.expr_data.clone()).clone() {
             ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
-                LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
-                _ => std::option::Option::None,
-            },
-            ExprData::ExprElaboratedLiteral { value: lit, .. } => match (*lit.clone()).clone() {
                 LiteralValue::LitInt { value: v, .. } => Some(v.clone()),
                 _ => std::option::Option::None,
             },
@@ -2897,7 +2871,7 @@ pub fn expr_literal_int_optional(expr: Rc<Node>) -> Option<i64> {
     })
 }
 
-pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<std::string::String> {
+pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
             LiteralValue::LitStr { value: v, .. } => Some(v.clone()),
@@ -2907,7 +2881,7 @@ pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<std::string::Strin
     }
 }
 
-pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<std::string::String> {
+pub fn expr_literal_symbol_optional(expr: Rc<Node>) -> Option<String> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
             LiteralValue::LitSymbol { value: v, .. } => Some(v.clone()),
@@ -2928,9 +2902,6 @@ pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
                     break true;
                 }
             },
-            ExprData::ExprElaboratedLiteral { .. } => {
-                break true;
-            }
             ExprData::ExprUnaryOp {
                 op: UnaryOpKind::Neg,
                 ..
@@ -2955,8 +2926,8 @@ pub fn record_lit_expr_optional(expr: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn record_lit_named_field_value_optional(
     record_expr: Rc<Node>,
-    field: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    field: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match record_lit_expr_optional(record_expr.clone()) {
         Some(record) => match Rc::new({
@@ -2980,7 +2951,7 @@ pub fn record_lit_named_field_value_optional(
 
 pub fn transport_base_path(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -2991,7 +2962,7 @@ pub fn transport_base_path(
 
 pub fn transport_verb(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3006,7 +2977,7 @@ pub fn transport_has_argv(t: Rc<Node>) -> bool {
 
 pub fn is_rest_transport(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (transport_base_url(t.clone(), source_indices.clone()) != std::option::Option::None)
 }
@@ -3017,7 +2988,7 @@ pub fn is_shell_transport(t: Rc<Node>) -> bool {
 
 pub fn is_file_transport(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (transport_base_path(t.clone(), source_indices.clone()) != std::option::Option::None)
 }
@@ -3029,7 +3000,7 @@ pub fn is_bare_transport(t: Rc<Node>) -> bool {
 
 pub fn classify_transport(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<TransportKind> {
     if is_rest_transport(t.clone(), source_indices.clone()) {
         Some(TransportKind::RestTransport)
@@ -3052,7 +3023,7 @@ pub fn classify_transport(
 
 pub fn is_local_transport(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match classify_transport(t.clone(), source_indices.clone()) {
         Some(TransportKind::LocalTransport) => true,
@@ -3062,7 +3033,7 @@ pub fn is_local_transport(
 
 pub fn field_init_operation_modifier(
     field_init: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<OperationModifier> {
     {
         let fi_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
@@ -3082,7 +3053,7 @@ pub fn field_init_operation_modifier(
     }
 }
 
-pub fn operation_modifier_name(modifier: OperationModifier) -> std::string::String {
+pub fn operation_modifier_name(modifier: OperationModifier) -> String {
     match modifier.clone() {
         OperationModifier::Idempotent => "idempotent".to_string(),
         OperationModifier::Readonly => "readonly".to_string(),
@@ -3092,7 +3063,7 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> std::string::Stri
 
 pub fn transport_base_url(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3103,7 +3074,7 @@ pub fn transport_base_url(
 
 pub fn transport_auth_token(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3114,8 +3085,8 @@ pub fn transport_auth_token(
 
 pub fn transport_auth_header_name(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     find_property_string(
         t.properties.clone(),
         transport_auth_header_key(),
@@ -3125,7 +3096,7 @@ pub fn transport_auth_header_name(
 
 pub fn transport_has_auth(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match find_property(
         t.properties.clone(),
@@ -3139,7 +3110,7 @@ pub fn transport_has_auth(
 
 pub fn transport_method(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3150,7 +3121,7 @@ pub fn transport_method(
 
 pub fn transport_path_template(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3161,7 +3132,7 @@ pub fn transport_path_template(
 
 pub fn transport_query(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3172,7 +3143,7 @@ pub fn transport_query(
 
 pub fn transport_request_body(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3183,7 +3154,7 @@ pub fn transport_request_body(
 
 pub fn transport_stdin(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3194,7 +3165,7 @@ pub fn transport_stdin(
 
 pub fn transport_response_format(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3203,7 +3174,7 @@ pub fn transport_response_format(
     )
 }
 
-pub fn is_config_reserved_key(name: std::string::String) -> bool {
+pub fn is_config_reserved_key(name: String) -> bool {
     ((((((((((((((name.clone() == transport_url_key())
         || (name.clone() == transport_path_key()))
         || (name.clone() == transport_auth_scheme_key()))
@@ -3222,7 +3193,7 @@ pub fn is_config_reserved_key(name: std::string::String) -> bool {
 
 pub fn transport_auth_basic(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
@@ -3233,8 +3204,8 @@ pub fn transport_auth_basic(
 
 pub fn transport_tls_posture(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Option<std::string::String> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     match find_property(
         t.properties.clone(),
         transport_tls_key(),
@@ -3247,7 +3218,7 @@ pub fn transport_tls_posture(
 
 pub fn transport_headers(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -3262,7 +3233,7 @@ pub fn transport_headers(
 
 pub fn transport_env(
     t: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<Node>>> {
     Rc::new({
         let mut __result = Vec::new();
@@ -3307,8 +3278,8 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
 
 pub fn expr_has_self_call(
     texpr: Rc<Node>,
-    fn_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    fn_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -3348,9 +3319,9 @@ pub fn expr_has_self_call(
 
 pub fn expr_has_non_tail_self_call(
     texpr: Rc<Node>,
-    fn_name: std::string::String,
+    fn_name: String,
     in_tail: bool,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
@@ -3398,7 +3369,6 @@ pub fn expr_has_non_tail_self_call(
                 binding_kind: _, ..
             } => false,
             ExprData::ExprLiteral { value: _, .. } => false,
-            ExprData::ExprElaboratedLiteral { .. } => false,
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let mut __found = false;
                 for child in texpr.children.clone().iter().cloned() {
@@ -3615,7 +3585,7 @@ pub enum ServiceConfigField {
     SvcRateLimit,
 }
 
-pub fn service_config_field_property_name(field: ServiceConfigField) -> std::string::String {
+pub fn service_config_field_property_name(field: ServiceConfigField) -> String {
     match field.clone() {
         ServiceConfigField::SvcEndpoint => "svc_endpoint".to_string(),
         ServiceConfigField::SvcAuth => "svc_auth".to_string(),
@@ -3635,9 +3605,7 @@ pub fn service_config_known_fields() -> Rc<Vec<ServiceConfigField>> {
     ])
 }
 
-pub fn service_config_field_for_property_name(
-    name: std::string::String,
-) -> Option<ServiceConfigField> {
+pub fn service_config_field_for_property_name(name: String) -> Option<ServiceConfigField> {
     Rc::new({
         let mut __result = Vec::new();
         for f in service_config_known_fields().iter().cloned() {
@@ -3722,7 +3690,7 @@ pub fn service_config_properties(
 
 pub fn has_service_config(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let mut __found = false;
@@ -3740,7 +3708,7 @@ pub fn has_service_config(
 
 pub fn service_config_endpoint(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
@@ -3751,7 +3719,7 @@ pub fn service_config_endpoint(
 
 pub fn service_config_auth(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
@@ -3762,7 +3730,7 @@ pub fn service_config_auth(
 
 pub fn service_config_rate_limit(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
@@ -3773,7 +3741,7 @@ pub fn service_config_rate_limit(
 
 pub fn service_config_auth_input(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
@@ -3784,7 +3752,7 @@ pub fn service_config_auth_input(
 
 pub fn service_config_auth_source(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
@@ -3795,7 +3763,7 @@ pub fn service_config_auth_source(
 
 pub fn module_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     imports: Rc<Vec<Rc<Node>>>,
     items: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
@@ -3825,7 +3793,7 @@ pub fn module_node(
 
 pub fn import_node(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    module_path: std::string::String,
+    module_path: String,
     is_all: bool,
     specific_names: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
@@ -3887,8 +3855,8 @@ pub fn import_is_all(n: Rc<Node>) -> bool {
 
 pub fn import_specific_names_at(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for c in n.children.clone().iter().cloned() {
@@ -3908,7 +3876,7 @@ pub fn module_items(n: Rc<Node>) -> Rc<Vec<Rc<Node>>> {
 
 pub fn leaf_node_with_span(
     occurrence_identity: Rc<NodeOccurrenceIdentity>,
-    name: std::string::String,
+    name: String,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -3934,7 +3902,7 @@ pub fn leaf_node_with_span(
     })
 }
 
-pub fn kernel_span(name: std::string::String) -> Rc<SourceSpan> {
+pub fn kernel_span(name: String) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
         file: v1_rt::concat(
             v1_rt::concat("<kernel:".to_string(), name.clone()),
@@ -4148,13 +4116,13 @@ pub fn none_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn tuple_type_name() -> std::string::String {
+pub fn tuple_type_name() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Tuple".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn error_type() -> Rc<Node> {
@@ -4192,7 +4160,7 @@ pub fn error_type() -> Rc<Node> {
     CACHED.with(|c: &Rc<Node>| c.clone())
 }
 
-pub fn make_file_span(file: std::string::String, start: i64, end: i64) -> Rc<SourceSpan> {
+pub fn make_file_span(file: String, start: i64, end: i64) -> Rc<SourceSpan> {
     Rc::new(SourceSpan {
         file: file.clone(),
         start: start.clone(),
@@ -4216,15 +4184,12 @@ pub struct LineCol {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NewlineIndex {
-    pub file: std::string::String,
+    pub file: String,
     pub offsets: Rc<Vec<i64>>,
     pub char_codes: Rc<Vec<i64>>,
 }
 
-pub fn build_newline_index(
-    file: std::string::String,
-    source: std::string::String,
-) -> Rc<NewlineIndex> {
+pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
     {
         let char_codes = Rc::new(source.clone().chars().map(|c| c as i64).collect::<Vec<_>>());
         let offsets = Rc::new(
@@ -4294,7 +4259,7 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
     }
 }
 
-pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> std::string::String {
+pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
     {
         let src_len = (index.char_codes.clone().len() as i64);
         let line_start = if (line.clone() <= 1) {
@@ -4331,7 +4296,7 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> std::string::String
     }
 }
 
-pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> std::string::String {
+pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> String {
     v1_rt::chars_to_string(
         &index.char_codes.clone(),
         span.start.clone(),
@@ -4341,8 +4306,8 @@ pub fn source_text_at(index: Rc<NewlineIndex>, span: Rc<SourceSpan>) -> std::str
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InternTable {
-    pub strings: Rc<Vec<std::string::String>>,
-    pub index: Rc<HashMap<std::string::String, i64>>,
+    pub strings: Rc<Vec<String>>,
+    pub index: Rc<HashMap<String, i64>>,
     pub next_id: i64,
     pub authored_token_ordinals: Rc<AuthoredTokenOrdinalSpace>,
 }
@@ -4356,11 +4321,7 @@ pub struct InternResult {
 pub fn empty_intern_table() -> Rc<InternTable> {
     Rc::new(InternTable {
         strings: Rc::new(vec!["".to_string()]),
-        index: v1_rt::rc_map_insert(
-            v1_rt::rc_empty_map::<std::string::String, i64>(),
-            "".to_string(),
-            0,
-        ),
+        index: v1_rt::rc_map_insert(v1_rt::rc_empty_map::<String, i64>(), "".to_string(), 0),
         next_id: 1,
         authored_token_ordinals:
             crate::std_occurrence_identity::authored_token_ordinal_space_initial(),
@@ -4379,7 +4340,7 @@ pub fn intern_table_with_authored_token_ordinals(
     })
 }
 
-pub fn intern(table: Rc<InternTable>, s: std::string::String) -> Rc<InternResult> {
+pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Rc::new(InternResult {
             table: table.clone(),
@@ -4400,21 +4361,21 @@ pub fn intern(table: Rc<InternTable>, s: std::string::String) -> Rc<InternResult
     }
 }
 
-pub fn intern_str(table: Rc<InternTable>, id: i64) -> std::string::String {
+pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
     match table.strings.clone().get((id.clone()) as usize).cloned() {
         Some(s) => s.clone(),
         None => "".to_string(),
     }
 }
 
-pub fn intern_find(table: Rc<InternTable>, s: std::string::String) -> Option<i64> {
+pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Some(id.clone()),
         None => std::option::Option::None,
     }
 }
 
-pub fn intern_find_or_empty(table: Rc<InternTable>, s: std::string::String) -> i64 {
+pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => id.clone(),
         None => 0,
@@ -4438,7 +4399,7 @@ pub fn merge_intern_tables(tables: Rc<Vec<Rc<InternTable>>>) -> Rc<InternTable> 
             );
             t.strings.clone().iter().cloned().fold(
                 merged.clone(),
-                |m: Rc<InternTable>, s: std::string::String| {
+                |m: Rc<InternTable>, s: String| {
                     if (s.clone() == "".to_string()) {
                         m.clone()
                     } else {
@@ -4547,7 +4508,7 @@ pub fn preserve_outer_optional_cardinality(outer: Rc<Node>, inner: Rc<Node>) -> 
     }
 }
 
-pub fn module_path_segments(path: std::string::String) -> Rc<Vec<std::string::String>> {
+pub fn module_path_segments(path: String) -> Rc<Vec<String>> {
     if (path.clone() == "".to_string()) {
         Rc::new(vec![])
     } else {
@@ -4560,7 +4521,7 @@ pub fn module_path_segments(path: std::string::String) -> Rc<Vec<std::string::St
     }
 }
 
-pub fn qualified_last_segment(name: std::string::String) -> std::string::String {
+pub fn qualified_last_segment(name: String) -> String {
     match module_path_segments(name.clone()).last().cloned() {
         Some(s) => s.clone(),
         None => name.clone(),
@@ -4572,10 +4533,10 @@ pub fn qualified_last_segment(name: std::string::String) -> std::string::String 
 pub enum ContainerSpellingVerdict {
     ContainerSpellingDeclared { arity: i64 },
     NotAContainerSpelling,
-    ContainerSpellingUnknown { container_leaf: std::string::String },
+    ContainerSpellingUnknown { container_leaf: String },
 }
 
-pub fn known_container_leaf(name: std::string::String) -> Option<std::string::String> {
+pub fn known_container_leaf(name: String) -> Option<String> {
     {
         let leaf = qualified_last_segment(name.clone());
         match crate::std_types::container_expected_arity(leaf.clone()) {
@@ -4585,7 +4546,7 @@ pub fn known_container_leaf(name: std::string::String) -> Option<std::string::St
     }
 }
 
-pub fn container_spelling_verdict(name: std::string::String) -> Rc<ContainerSpellingVerdict> {
+pub fn container_spelling_verdict(name: String) -> Rc<ContainerSpellingVerdict> {
     match crate::std_types::container_expected_arity(name.clone()) {
         Some(arity) => Rc::new(ContainerSpellingVerdict::ContainerSpellingDeclared {
             arity: arity.clone(),
@@ -4601,7 +4562,7 @@ pub fn container_spelling_verdict(name: std::string::String) -> Rc<ContainerSpel
 
 pub fn type_node_name_is_authored(
     node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
@@ -4614,7 +4575,7 @@ pub fn type_node_name_is_authored(
 
 pub fn authored_container_spelling_verdict(
     node: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<ContainerSpellingVerdict> {
     if type_node_name_is_authored(node.clone(), source_indices.clone()) {
         container_spelling_verdict(authored_name_at(source_indices.clone(), node.clone()))
@@ -4631,7 +4592,7 @@ pub fn authored_container_spelling_verdict(
     }
 }
 
-pub fn type_name_compatible(a: std::string::String, b: std::string::String) -> bool {
+pub fn type_name_compatible(a: String, b: String) -> bool {
     if (a.clone() == b.clone()) {
         true
     } else {

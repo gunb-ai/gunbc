@@ -56,107 +56,107 @@ pub fn go_callable() -> Rc<CallableRepr> {
     CACHED.with(|c: &Rc<CallableRepr>| c.clone())
 }
 
-pub fn pointer_template() -> std::string::String {
+pub fn pointer_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "*{0}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn go_optional_template() -> std::string::String {
+pub fn go_optional_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "*{0}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn address_of_template() -> std::string::String {
+pub fn address_of_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "&{value}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn nil_literal() -> std::string::String {
+pub fn nil_literal() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "nil".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn visibility_by_case() -> bool {
     true
 }
 
-pub fn embedded_field_syntax() -> std::string::String {
+pub fn embedded_field_syntax() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "{type}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn empty_interface() -> std::string::String {
+pub fn empty_interface() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "interface{}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn any_type() -> std::string::String {
+pub fn any_type() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "any".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn interface_def_template() -> std::string::String {
+pub fn interface_def_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "type {name} interface {\n{methods}\n}".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn integer_types() -> Rc<Vec<std::string::String>> {
+pub fn integer_types() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["int".to_string(), "int8".to_string(), "int16".to_string(), "int32".to_string(), "int64".to_string(), "uint".to_string(), "uint8".to_string(), "uint16".to_string(), "uint32".to_string(), "uint64".to_string(), "uintptr".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn float_types() -> Rc<Vec<std::string::String>> {
+pub fn float_types() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["float32".to_string(), "float64".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
-pub fn type_conversion_template() -> std::string::String {
+pub fn type_conversion_template() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "{type}({expr})".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn go_cast_syntax() -> Rc<CastSyntax> {

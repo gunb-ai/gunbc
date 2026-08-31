@@ -68,7 +68,7 @@ pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
     }
 }
 
-pub fn type_variable_node(id: std::string::String) -> Rc<Node> {
+pub fn type_variable_node(id: String) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: "".to_string(),
@@ -116,7 +116,7 @@ pub fn is_type_expr_annotation(n: Rc<Node>) -> bool {
 
 pub fn node_is_collection(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     ((((n.children.clone().len() as i64) > 0)
         && (n.connective.clone() == Connective::NoConnective))
@@ -128,7 +128,7 @@ pub fn node_is_collection(
 
 pub fn node_is_keyed_collection(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((n.children.clone().len() as i64) == 2)
         && node_is_collection(n.clone(), source_indices.clone()))
@@ -136,7 +136,7 @@ pub fn node_is_keyed_collection(
 
 pub fn node_is_element_collection(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((n.children.clone().len() as i64) == 1)
         && node_is_collection(n.clone(), source_indices.clone()))
@@ -144,7 +144,7 @@ pub fn node_is_element_collection(
 
 pub fn node_is_set_collection(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (node_is_element_collection(n.clone(), source_indices.clone())
         && (crate::v1_std_core::qualified_last_segment(crate::v1_std_core::authored_name_at(
@@ -155,8 +155,8 @@ pub fn node_is_set_collection(
 
 pub fn canonical_template_name(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let nm = crate::v1_std_core::authored_name_at(source_indices.clone(), n.clone());
         match crate::std_types::container_template_algebra(
@@ -168,7 +168,7 @@ pub fn canonical_template_name(
     }
 }
 
-pub fn is_declared_container_alias_spelling(name: std::string::String) -> bool {
+pub fn is_declared_container_alias_spelling(name: String) -> bool {
     match crate::std_types::container_template_alias_algebra(
         crate::v1_std_core::qualified_last_segment(name.clone()),
     ) {
@@ -177,15 +177,12 @@ pub fn is_declared_container_alias_spelling(name: std::string::String) -> bool {
     }
 }
 
-pub fn container_alias_canonical_spelling(
-    algebra: std::string::String,
-) -> Option<std::string::String> {
+pub fn container_alias_canonical_spelling(algebra: String) -> Option<String> {
     Rc::new(v1_rt::sorted_map_keys(&container_template_alias_rows()))
         .iter()
         .cloned()
-        .fold(
-            std::option::Option::None,
-            |acc: _, k: std::string::String| match acc.clone() {
+        .fold(std::option::Option::None, |acc: _, k: String| {
+            match acc.clone() {
                 Some(_) => acc.clone(),
                 None => match v1_rt::map_get(&container_template_alias_rows(), k.clone()) {
                     Some(v) => {
@@ -197,11 +194,11 @@ pub fn container_alias_canonical_spelling(
                     }
                     None => std::option::Option::None,
                 },
-            },
-        )
+            }
+        })
 }
 
-pub fn container_kind_canonical(name: std::string::String) -> std::string::String {
+pub fn container_kind_canonical(name: String) -> String {
     {
         let last = crate::v1_std_core::qualified_last_segment(name.clone());
         match v1_rt::map_get(&kernel_algebra_profile(), last.clone()) {
@@ -217,7 +214,7 @@ pub fn container_kind_canonical(name: std::string::String) -> std::string::Strin
     }
 }
 
-pub fn kernel_profile_lookup(name: std::string::String) -> Option<AlgebraProfile> {
+pub fn kernel_profile_lookup(name: String) -> Option<AlgebraProfile> {
     v1_rt::map_get(
         &kernel_algebra_profile(),
         container_kind_canonical(name.clone()),
@@ -226,7 +223,7 @@ pub fn kernel_profile_lookup(name: std::string::String) -> Option<AlgebraProfile
 
 pub fn reground_alias_carrier_identity(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if (((n.name.clone() != "".to_string())
         && (n.name.clone()
@@ -261,8 +258,8 @@ pub fn reground_alias_carrier_identity(
 
 pub fn structural_carrier_template_name(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if (n.name.clone() != "".to_string()) {
         canonical_template_name(
             Rc::new(Node {
@@ -314,10 +311,10 @@ pub fn is_unit_like(n: Rc<Node>) -> bool {
 pub enum TypeResolutionVerdict {
     FullyResolved,
     UnderResolved,
-    ContainerSpellingUnresolvable { name: std::string::String },
+    ContainerSpellingUnresolvable { name: String },
 }
 impl TypeResolutionVerdict {
-    pub fn name(&self) -> std::string::String {
+    pub fn name(&self) -> String {
         match self {
             TypeResolutionVerdict::FullyResolved => panic!("no name on unit variant"),
             TypeResolutionVerdict::UnderResolved => panic!("no name on unit variant"),
@@ -344,7 +341,7 @@ pub fn combine_resolution_verdicts(
 
 pub fn type_resolution_verdict(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeResolutionVerdict> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let self_is_type_var = match n.inferred.clone() {
@@ -406,7 +403,7 @@ pub fn type_resolution_verdict(
 
 pub fn is_fully_resolved(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     match (*type_resolution_verdict(n.clone(), source_indices.clone())).clone() {
         TypeResolutionVerdict::FullyResolved => true,
@@ -541,7 +538,7 @@ pub fn bare_set_node() -> Option<Rc<Node>> {
     }
 }
 
-pub fn kernel_container_profile_miss_diagnostic(kind_name: std::string::String) -> Rc<ErrorNode> {
+pub fn kernel_container_profile_miss_diagnostic(kind_name: String) -> Rc<ErrorNode> {
     {
         let msg = v1_rt::concat(
             "missing kernel container profile: ".to_string(),
@@ -557,7 +554,7 @@ pub fn kernel_container_profile_miss_diagnostic(kind_name: std::string::String) 
     }
 }
 
-pub fn missing_kernel_container_profile_type(kind_name: std::string::String) -> Rc<Node> {
+pub fn missing_kernel_container_profile_type(kind_name: String) -> Rc<Node> {
     {
         let msg = v1_rt::concat(
             "missing kernel container profile: ".to_string(),
@@ -599,7 +596,7 @@ pub struct KernelTypeBuild {
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-pub fn make_kernel_record_field(field_name: std::string::String, field_type: Rc<Node>) -> Rc<Node> {
+pub fn make_kernel_record_field(field_name: String, field_type: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: field_name.clone(),
@@ -625,10 +622,7 @@ pub fn make_kernel_record_field(field_name: std::string::String, field_type: Rc<
     })
 }
 
-pub fn make_kernel_record_type(
-    type_name: std::string::String,
-    fields: Rc<Vec<Rc<Node>>>,
-) -> Rc<Node> {
+pub fn make_kernel_record_type(type_name: String, fields: Rc<Vec<Rc<Node>>>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: type_name.clone(),
@@ -652,10 +646,7 @@ pub fn make_kernel_record_type(
     })
 }
 
-pub fn make_container_type(
-    kind_name: std::string::String,
-    element: Rc<Node>,
-) -> Rc<KernelTypeBuild> {
+pub fn make_container_type(kind_name: String, element: Rc<Node>) -> Rc<KernelTypeBuild> {
     match crate::std_types::container_param_name(kind_name.clone(), 0) {
         Some(param_name) => Rc::new(KernelTypeBuild {
             ty: Rc::new(Node {
@@ -899,7 +890,7 @@ pub fn make_tuple_type(first: Rc<Node>, second: Rc<Node>) -> Rc<Node> {
     })
 }
 
-pub fn algebra_value_field(name: std::string::String, type_node: Rc<Node>) -> Rc<Node> {
+pub fn algebra_value_field(name: String, type_node: Rc<Node>) -> Rc<Node> {
     Rc::new(Node {
         occurrence_identity: Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name: name.clone(),
@@ -926,7 +917,7 @@ pub fn algebra_value_field(name: std::string::String, type_node: Rc<Node>) -> Rc
 }
 
 pub fn algebra_method_field(
-    name: std::string::String,
+    name: String,
     param_types: Rc<Vec<Rc<Node>>>,
     return_type: Rc<Node>,
 ) -> Rc<Node> {
@@ -973,7 +964,7 @@ pub fn algebra_method_field(
 }
 
 pub fn enrich_base_with_fields(
-    name: std::string::String,
+    name: String,
     base: Rc<Node>,
     fields: Rc<Vec<Rc<Node>>>,
 ) -> Rc<Node> {
@@ -1000,11 +991,11 @@ pub fn enrich_base_with_fields(
     })
 }
 
-pub fn placeholder_type_node(name: std::string::String) -> Rc<Node> {
+pub fn placeholder_type_node(name: String) -> Rc<Node> {
     nominal_type_ref(name.clone())
 }
 
-pub fn nominal_type_ref(name: std::string::String) -> Rc<Node> {
+pub fn nominal_type_ref(name: String) -> Rc<Node> {
     crate::v1_std_core::leaf_node_with_span(
         Rc::new(NodeOccurrenceIdentity::OccurrenceSynthetic),
         name.clone(),
@@ -1015,7 +1006,7 @@ pub fn nominal_type_ref(name: std::string::String) -> Rc<Node> {
 pub fn algebra_child_or_placeholder(
     base: Rc<Node>,
     child_index: i64,
-    placeholder: std::string::String,
+    placeholder: String,
 ) -> Rc<Node> {
     match Rc::new({
         let mut __result = Vec::new();
@@ -1057,7 +1048,7 @@ pub fn algebra_child_or_placeholder(
 pub fn instantiate_algebra_type(
     template: Rc<AlgebraTypeTemplate>,
     base: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let elem = algebra_child_or_placeholder(base.clone(), 0, "T".to_string());
@@ -1198,7 +1189,7 @@ pub fn instantiate_algebra_type(
 pub fn instantiate_algebra_field(
     template: Rc<AlgebraFieldTemplate>,
     base: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
         let param_bs = Rc::new({
@@ -1248,9 +1239,9 @@ pub fn instantiate_algebra_field(
 }
 
 pub fn enrich_kernel_type(
-    name: std::string::String,
+    name: String,
     base: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
         let profile = kernel_profile_lookup(name.clone());
@@ -1301,9 +1292,9 @@ pub fn unify_template(
     template: Rc<AlgebraTypeTemplate>,
     concrete: Rc<Node>,
     receiver: Rc<Node>,
-    subst: Rc<HashMap<std::string::String, Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<std::string::String, Rc<Node>>> {
+    subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template.clone()).clone() {
             AlgebraTypeTemplate::AlgebraTypeVariable { id: var_id, .. } => {
@@ -1481,9 +1472,9 @@ pub fn build_type_substitution(
     param_templates: Rc<Vec<Rc<AlgebraTypeTemplate>>>,
     arg_types: Rc<Vec<Rc<Node>>>,
     receiver: Rc<Node>,
-    base_subst: Rc<HashMap<std::string::String, Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<std::string::String, Rc<Node>>> {
+    base_subst: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<HashMap<String, Rc<Node>>> {
     {
         let first_is_self = match param_templates.clone().first().cloned() {
             Some(t) => is_receiver_self(t.clone()),
@@ -1523,8 +1514,7 @@ pub fn build_type_substitution(
         });
         pairs.iter().cloned().fold(
             base_subst.clone(),
-            |subst: Rc<HashMap<std::string::String, Rc<Node>>>,
-             pair: (i64, Rc<AlgebraTypeTemplate>)| {
+            |subst: Rc<HashMap<String, Rc<Node>>>, pair: (i64, Rc<AlgebraTypeTemplate>)| {
                 let arg_type = match Rc::new({
                     let mut __result = Vec::new();
                     for ap in Rc::new({
@@ -1574,9 +1564,9 @@ pub fn build_type_substitution(
 
 pub fn apply_type_substitution(
     template: Rc<AlgebraTypeTemplate>,
-    subst: Rc<HashMap<std::string::String, Rc<Node>>>,
+    subst: Rc<HashMap<String, Rc<Node>>>,
     receiver: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*template.clone()).clone() {
@@ -1935,8 +1925,8 @@ pub fn resolve_type_variables_from_template(
     template: Rc<AlgebraFieldTemplate>,
     arg_types: Rc<Vec<Rc<Node>>>,
     receiver_type: Rc<Node>,
-    overrides: Rc<HashMap<std::string::String, Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    overrides: Rc<HashMap<String, Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
         let subst = build_type_substitution(
@@ -2041,8 +2031,8 @@ pub fn normalize_access_type_node(mut n: Rc<Node>) -> Rc<Node> {
 
 pub fn node_type_shape_argument_list(
     args: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match args.clone().first().cloned() {
             Some(a) => {
@@ -2073,8 +2063,8 @@ pub fn node_type_shape_argument_list(
 
 pub fn node_type_shape(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let __is_leaf = (((n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) == 0))
@@ -2224,7 +2214,7 @@ pub fn node_type_shape(
 pub fn node_type_compatible(
     mut left: Rc<Node>,
     mut right: Rc<Node>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
@@ -2410,7 +2400,7 @@ pub fn node_type_compatible(
 pub fn prefer_specific_type(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let left_is_container = node_is_element_collection(left.clone(), source_indices.clone());
@@ -2478,7 +2468,7 @@ pub fn prefer_specific_type(
 pub fn node_type_equals(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let left_err = if (left.inferred.clone() != std::option::Option::None) {
@@ -2544,7 +2534,7 @@ pub fn node_type_equals(
 pub fn node_type_equals_core(
     left: Rc<Node>,
     right: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let left_leaf = (((left.connective.clone() == Connective::NoConnective)
@@ -2795,8 +2785,8 @@ pub fn node_type_equals_core(
 
 pub fn node_type_deps(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> Rc<Vec<std::string::String>> {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let n_is_type_var = if (n.inferred.clone() != std::option::Option::None) {
             is_type_variable(n.inferred.clone().clone().unwrap())
@@ -2923,7 +2913,7 @@ pub fn infer_literal_node(lit: Rc<LiteralValue>) -> Rc<Node> {
 
 pub fn method_receiver_element_node(
     receiver_type: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(receiver_type.clone());
@@ -2978,7 +2968,7 @@ pub fn extract_optional_inner_node(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> std::string::String {
+pub fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
     match kind.clone() {
         AlgebraFieldKind::AlgAdd => "add".to_string(),
         AlgebraFieldKind::AlgMul => "mul".to_string(),
@@ -3022,7 +3012,7 @@ pub struct AlgebraFieldMatch {
 pub fn first_matching_algebra_field(
     mut n: Rc<Node>,
     mut candidates: Rc<Vec<AlgebraFieldKind>>,
-    mut source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<AlgebraFieldMatch>> {
     loop {
         match candidates.clone().first().cloned() {
@@ -3067,7 +3057,7 @@ pub struct BinOpInferred {
 pub fn infer_binop_type_node(
     op: BinOp,
     left_type: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<BinOpInferred> {
     match op.clone() {
         BinOp::Eq => Rc::new(BinOpInferred {
@@ -3159,7 +3149,7 @@ pub fn infer_binop_type_node(
 
 pub fn for_each_element_type_node(
     n: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     {
         let normed = normalize_access_type_node(n.clone());
@@ -3193,7 +3183,7 @@ pub fn for_each_element_type_node(
     }
 }
 
-pub fn emit_map_has(m: Rc<HashMap<std::string::String, bool>>, key: std::string::String) -> bool {
+pub fn emit_map_has(m: Rc<HashMap<String, bool>>, key: String) -> bool {
     match v1_rt::map_get(&m, key.clone()) {
         Some(_) => true,
         None => false,

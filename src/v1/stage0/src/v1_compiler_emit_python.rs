@@ -174,7 +174,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     }
 }
 
-pub fn py_derive_attribute() -> std::string::String {
+pub fn py_derive_attribute() -> String {
     match crate::v1_compiler_languages::serialization_for_target(RenderTarget::Python)
         .derive_attribute
         .clone()
@@ -184,7 +184,7 @@ pub fn py_derive_attribute() -> std::string::String {
     }
 }
 
-pub fn py_default_value() -> std::string::String {
+pub fn py_default_value() -> String {
     match crate::v1_compiler_languages::serialization_for_target(RenderTarget::Python)
         .default_value
         .clone()
@@ -246,7 +246,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
     }
 }
 
-pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> std::string::String {
+pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
     {
         let params_str = Rc::new({
             let mut __result = Vec::new();
@@ -301,7 +301,7 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> std::str
 }
 
 pub fn emit_py_test_file(
-    module_name: std::string::String,
+    module_name: String,
     projections: Rc<Vec<Rc<TestProjection>>>,
 ) -> Rc<TextFile> {
     if ((projections.clone().len() as i64) == 0) {
@@ -346,7 +346,7 @@ pub fn emit_py_test_file(
     }
 }
 
-pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> std::string::String {
+pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> String {
     {
         let test_name = crate::v1_compiler_emit_core_support::test_function_name(
             projection.clone(),
@@ -372,8 +372,8 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> std
 pub fn emit_py_mock_prop_setup(
     mock_prop: Rc<Node>,
     depth: i64,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     v1_rt::concat(
         v1_rt::concat(
             crate::v1_compiler_emit::emit_ident(
@@ -395,7 +395,7 @@ pub fn emit_py_mock_prop_setup(
 
 pub fn emit_py_module(
     typed_module: Rc<TypedModule>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -463,8 +463,8 @@ pub fn emit_py_module(
 
 pub fn emit_py_imports(
     imports: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
     } else {
@@ -554,7 +554,7 @@ pub fn emit_py_imports(
     }
 }
 
-pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> std::string::String {
+pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
     {
         let items = typed_module.items.clone();
         let has_structs = {
@@ -627,9 +627,9 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> std::string::String {
 
 pub fn emit_py_typed_item(
     item: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let env = scope.type_env.clone();
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
@@ -710,7 +710,7 @@ pub fn emit_py_typed_item(
     }
 }
 
-pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> std::string::String {
+pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let is_product = (item.connective.clone() == Connective::Conj);
@@ -723,10 +723,10 @@ pub fn emit_py_type_def_from_connective(item: Rc<Node>, env: Rc<TypeEnv>) -> std
 }
 
 pub fn emit_py_dataclass_from_children(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     if ((children.clone().len() as i64) == 0) {
         v1_rt::concat(
             v1_rt::concat(
@@ -762,10 +762,7 @@ pub fn emit_py_dataclass_from_children(
     }
 }
 
-pub fn emit_py_dataclass_field_from_child(
-    child: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> std::string::String {
+pub fn emit_py_dataclass_field_from_child(child: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let ty = crate::v1_compiler_emit::emit_node_type(
             crate::v1_compiler_infer_types::resolved_type(child.clone()),
@@ -801,10 +798,10 @@ pub fn emit_py_dataclass_field_from_child(
 }
 
 pub fn emit_py_enum_from_children(
-    name: std::string::String,
+    name: String,
     children: Rc<Vec<Rc<Node>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let has_data = {
             let mut __found = false;
@@ -899,10 +896,10 @@ pub fn emit_py_enum_from_children(
 }
 
 pub fn emit_py_variant_class_from_child(
-    parent_name: std::string::String,
+    parent_name: String,
     child: Rc<Node>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     {
         let class_name = v1_rt::concat(
             parent_name.clone(),
@@ -942,13 +939,13 @@ pub fn emit_py_variant_class_from_child(
 }
 
 pub fn emit_py_fn_def(
-    name: std::string::String,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let depth = 0;
         let si = scope.type_env.clone().source_indices.clone();
@@ -1073,14 +1070,14 @@ pub fn emit_py_fn_def(
 }
 
 pub fn emit_py_func_def(
-    name: std::string::String,
+    name: String,
     params: Rc<Vec<Rc<Node>>>,
     inferred: Rc<Node>,
     uses: Rc<Vec<Rc<Node>>>,
     body: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let depth = 0;
         let service_names =
@@ -1163,9 +1160,9 @@ pub fn emit_py_func_def(
 pub fn emit_py_func_params(
     params: Rc<Vec<Rc<Node>>>,
     uses: Rc<Vec<Rc<Node>>>,
-    service_names: Rc<Vec<std::string::String>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    service_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let param_strs = Rc::new({
             let mut __result = Vec::new();
@@ -1224,11 +1221,11 @@ pub fn emit_py_func_params(
 
 pub fn emit_py_typed_expr(
     texpr: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
     fuel: i64,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_unified_typed_expr(
         texpr.clone(),
         RenderTarget::Python,
@@ -1248,10 +1245,10 @@ pub fn emit_py_typed_expr(
 
 pub fn emit_py_transport_body(
     bound: Rc<BoundOperation>,
-    op_name: std::string::String,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
+    op_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     depth: i64,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_unified_transport_dispatch(
         bound.clone(),
         op_name.clone(),
@@ -1266,9 +1263,9 @@ pub fn emit_py_transport_body(
 
 pub fn emit_py_service_def(
     item: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     env: Rc<TypeEnv>,
-) -> std::string::String {
+) -> String {
     crate::v1_compiler_emit::emit_unified_service_def(
         item.clone(),
         RenderTarget::Python,
@@ -1284,8 +1281,8 @@ pub fn emit_py_service_def(
 pub fn emit_py_service_init(
     fallback_transport: Rc<Node>,
     op_children: Rc<Vec<Rc<Node>>>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let fs = crate::v1_compiler_emit::compute_service_fields(
             fallback_transport.clone(),
@@ -1331,10 +1328,10 @@ pub fn emit_py_service_init(
 }
 
 pub fn emit_py_rest_call(
-    op_name: std::string::String,
+    op_name: String,
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let self_base_url = v1_rt::concat(
             v1_rt::concat("{".to_string(), "self.base_url".to_string()),
@@ -1373,8 +1370,8 @@ pub fn emit_py_rest_call(
 
 pub fn emit_py_headers_dict(
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let auth_entry =
             if crate::v1_std_core::transport_has_auth(transport.clone(), source_indices.clone()) {
@@ -1434,10 +1431,10 @@ pub fn emit_py_headers_dict(
 }
 
 pub fn emit_py_shell_call(
-    op_name: std::string::String,
+    op_name: String,
     transport: Rc<Node>,
-    source_indices: Rc<HashMap<std::string::String, Rc<NewlineIndex>>>,
-) -> std::string::String {
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
     {
         let envs = crate::v1_std_core::transport_env(transport.clone(), source_indices.clone());
         let env_dict_entries = Rc::new({
@@ -1510,7 +1507,7 @@ pub fn emit_py_shell_call(
     }
 }
 
-pub fn emit_py_local_call(op_name: std::string::String) -> std::string::String {
+pub fn emit_py_local_call(op_name: String) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -1523,7 +1520,7 @@ pub fn emit_py_local_call(op_name: std::string::String) -> std::string::String {
     )
 }
 
-pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> std::string::String {
+pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let item_text = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
         let depth = 0;
@@ -1564,7 +1561,7 @@ pub fn emit_py_resource_def(item: Rc<Node>, env: Rc<TypeEnv>) -> std::string::St
     }
 }
 
-pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> std::string::String {
+pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String {
     {
         let input_params = Rc::new({
             let mut __result = Vec::new();
@@ -1605,12 +1602,12 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> std::s
 }
 
 pub fn emit_py_data_def(
-    name: std::string::String,
+    name: String,
     type_node: Rc<Node>,
     value: Rc<Node>,
-    registry: Rc<HashMap<std::string::String, Rc<ItemInfo>>>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
-) -> std::string::String {
+) -> String {
     {
         let ty_str = crate::v1_compiler_emit::emit_node_type(
             type_node.clone(),

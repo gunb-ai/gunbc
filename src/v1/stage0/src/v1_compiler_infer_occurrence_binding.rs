@@ -12,17 +12,13 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum ModulePathBindingProjection {
-    ModulePathBindingHit {
-        owner: std::string::String,
-    },
+    ModulePathBindingHit { owner: String },
     ModulePathBindingMiss,
-    ModulePathBindingAmbiguous {
-        owners: Rc<Vec<std::string::String>>,
-    },
+    ModulePathBindingAmbiguous { owners: Rc<Vec<String>> },
 }
 
 pub fn module_path_owner_binding_decide(
-    owners: Rc<Vec<std::string::String>>,
+    owners: Rc<Vec<String>>,
 ) -> Rc<ModulePathBindingProjection> {
     {
         let owner_count = (owners.clone().len() as i64);
@@ -45,10 +41,7 @@ pub fn module_path_owner_binding_decide(
     }
 }
 
-pub fn ambiguity_labels_from_decide(
-    owners: Rc<Vec<std::string::String>>,
-    name: std::string::String,
-) -> Rc<Vec<std::string::String>> {
+pub fn ambiguity_labels_from_decide(owners: Rc<Vec<String>>, name: String) -> Rc<Vec<String>> {
     match (*module_path_owner_binding_decide(owners.clone())).clone() {
         ModulePathBindingProjection::ModulePathBindingAmbiguous {
             owners: ambiguous_owners,

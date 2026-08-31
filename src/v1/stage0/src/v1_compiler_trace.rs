@@ -21,23 +21,23 @@ pub struct SpanMapping {
 #[serde(tag = "_variant")]
 pub enum TraceEvent {
     TraceEnter {
-        node_id: std::string::String,
+        node_id: String,
         span: Rc<SourceSpan>,
-        inputs: Rc<HashMap<std::string::String, std::string::String>>,
+        inputs: Rc<HashMap<String, String>>,
     },
     TraceExit {
-        node_id: std::string::String,
+        node_id: String,
         span: Rc<SourceSpan>,
-        output: std::string::String,
+        output: String,
     },
     TraceError {
-        node_id: std::string::String,
+        node_id: String,
         span: Rc<SourceSpan>,
-        message: std::string::String,
+        message: String,
     },
 }
 impl TraceEvent {
-    pub fn node_id(&self) -> std::string::String {
+    pub fn node_id(&self) -> String {
         match self {
             TraceEvent::TraceEnter { node_id: __val, .. } => __val.clone(),
             TraceEvent::TraceExit { node_id: __val, .. } => __val.clone(),
@@ -55,9 +55,9 @@ impl TraceEvent {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TraceFrame {
-    pub func_name: std::string::String,
+    pub func_name: String,
     pub span: Rc<SourceSpan>,
-    pub bindings: Rc<HashMap<std::string::String, std::string::String>>,
+    pub bindings: Rc<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,7 +120,7 @@ pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
     }
 }
 
-pub fn event_node_id(event: Rc<TraceEvent>) -> std::string::String {
+pub fn event_node_id(event: Rc<TraceEvent>) -> String {
     match (*event.clone()).clone() {
         TraceEvent::TraceEnter { node_id: id, .. } => id.clone(),
         TraceEvent::TraceExit { node_id: id, .. } => id.clone(),
@@ -131,7 +131,7 @@ pub fn event_node_id(event: Rc<TraceEvent>) -> std::string::String {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum TraceFilter {
-    FilterByFunc { func_name: std::string::String },
+    FilterByFunc { func_name: String },
     FilterBySpan { start: i64, end: i64 },
     FilterErrors,
 }
@@ -182,7 +182,7 @@ pub fn replay_trace(trace: Rc<Trace>, filter: Rc<TraceFilter>) -> Rc<Vec<Rc<Trac
     }
 }
 
-pub fn format_span(sp: Rc<SourceSpan>) -> std::string::String {
+pub fn format_span(sp: Rc<SourceSpan>) -> String {
     v1_rt::concat(
         v1_rt::concat(
             v1_rt::concat(
@@ -195,7 +195,7 @@ pub fn format_span(sp: Rc<SourceSpan>) -> std::string::String {
     )
 }
 
-pub fn format_trace_event(event: Rc<TraceEvent>) -> std::string::String {
+pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
     match (*event.clone()).clone() {
         TraceEvent::TraceEnter {
             node_id: id,
@@ -247,7 +247,7 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> std::string::String {
     }
 }
 
-pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<std::string::String>> {
+pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for e in trace.events.clone().iter().cloned() {
@@ -259,15 +259,15 @@ pub fn format_trace(trace: Rc<Trace>) -> Rc<Vec<std::string::String>> {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ReproCase {
-    pub func_name: std::string::String,
-    pub inputs: Rc<HashMap<std::string::String, std::string::String>>,
-    pub expected_output: Option<std::string::String>,
+    pub func_name: String,
+    pub inputs: Rc<HashMap<String, String>>,
+    pub expected_output: Option<String>,
     pub trace: Option<Rc<Trace>>,
 }
 
 pub fn capture_repro(
-    func_name: std::string::String,
-    inputs: Rc<HashMap<std::string::String, std::string::String>>,
+    func_name: String,
+    inputs: Rc<HashMap<String, String>>,
     trace: Rc<Trace>,
 ) -> Rc<ReproCase> {
     Rc::new(ReproCase {
@@ -280,7 +280,7 @@ pub fn capture_repro(
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SourceMap {
-    pub generated_file: std::string::String,
+    pub generated_file: String,
     pub mappings: Rc<Vec<Rc<SpanMapping>>>,
 }
 

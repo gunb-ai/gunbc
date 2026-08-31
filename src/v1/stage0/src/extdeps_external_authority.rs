@@ -20,22 +20,22 @@ pub struct ExternalAuthority {
     pub uri: Rc<Uri>,
 }
 
-pub fn external_model_scope_law() -> std::string::String {
+pub fn external_model_scope_law() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "DESIGN §3 'External upstream decomposition' (operator verdicts on gunbc#7556 and gunbc#7571): 'one concept, one authority' unifies a shared interface or formal shape; it does not merge independently governed entities that inhabit that shape. Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority, declared as one ExternalModelScope per module: ONE subject, one-or-more citations. A subject can have several citations; a module cannot silently have several independently governed subjects. A generic hub may define or re-export agnostic shapes but may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state. Observations produced by this repository are receipts in the observing product/workflow layer (downstream), never 'Unobserved' properties authored inside an upstream module.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
-pub fn external_subject_symbolic_identity_note() -> std::string::String {
+pub fn external_subject_symbolic_identity_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "Subject identity is SYMBOLIC, never a name string (operator verdict on gunbc#7571, 2026-08-01, closing the string-spelling fork an earlier revision opened: 'Chromium' / 'chromium' / 'The Chromium Projects' were distinct subjects, and a scope restated a legal name its own module already declared). ExternalSubjectRef carries a DeclarationRef to the subject's one declaration — e.g. extdeps.vendor.microsoft's scope points at its existing 'microsoft' Vendor declaration rather than repeating 'Microsoft Corporation'. The same §3 cite-the-symbol rule that moved FactCitation.fact off prose applies to every identity this carrier holds.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -69,13 +69,13 @@ pub struct FactCitation {
     pub authority: Rc<ExternalAuthority>,
 }
 
-pub fn external_model_scope_decision_kernel_note() -> std::string::String {
+pub fn external_model_scope_decision_kernel_note() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "HONESTY BOUNDARY (operator verdict on gunbc#7571, 2026-08-01): external_model_scope_decision is a pure DECISION KERNEL over DECLARED fact rows — it is NOT an admission wall, because its inputs (DeclaredScopeFacts) are caller-authored: a module whose declarations carry three subjects admits if the caller declares one. What IS mechanically enforced today is scope PRESENCE at the storage grain (gunbc.extdeps_scope_frontier's manifest + live cover witness). Subject-content coherence — that a module's actual declarations attribute to exactly its declared subject — is the named enforcement frontier feature:extdeps-subject-content-derived: it dissolves when a Node-tree projection derives DeclaredScopeFacts from the real module tree (the module's extdeps_model_scope declaration, the subject attribution of every product-/engine-/distribution-specific declaration, and any consumer-coverage declarations actually present) and feeds THIS kernel, at which point the kernel's verdict becomes an admission fact rather than a coherence check of what a caller chose to say. The RED/GREEN controls below the kernel exercise the decision shape the projection will feed; they are controls of the kernel, not proof of a wall.".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

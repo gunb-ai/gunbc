@@ -4806,13 +4806,10 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
-        // THE ELABORATED LITERAL EVALUATES AS ITS SOURCE LITERAL IN THE INTERPRETER: the
-        // interpreter realizes the structural destinations natively by its own grounding
-        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
-        // under that grounding IS the literal, and evaluating the constructor tree instead would
-        // route a natively-realized Bool through variant patterns that have no runtime form here.
-        // The structural image is consumed by emission, which is where the destination is
-        // structural; the emitted-bytes witnesses exercise that path.
+        // An elaborated literal occurrence: the typed tree carries the homomorphism record beside
+        // the original literal; interpretation evaluates the ORIGINAL literal value -- the
+        // elaboration is an emission-target realization fact, and the interpreter is the
+        // source-semantics arm where the kernel literal IS the value.
         ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),

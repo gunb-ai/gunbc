@@ -6,6 +6,7 @@ use self::BoundaryKind::*;
 use self::DagInferredRecord::*;
 use self::PartitionRule::*;
 use self::RenderTarget::*;
+use self::RustModuleRenderSelection::*;
 pub use crate::std_types::SourceSpan;
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
@@ -38,12 +39,30 @@ pub enum ArtifactKind {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum RustModuleRenderSelection {
+    RenderEveryModule,
+    RenderSelectedMirrors { basenames: Rc<Vec<String>> },
+}
+impl RustModuleRenderSelection {
+    pub fn basenames(&self) -> Rc<Vec<String>> {
+        match self {
+            RustModuleRenderSelection::RenderEveryModule => panic!("no basenames on unit variant"),
+            RustModuleRenderSelection::RenderSelectedMirrors {
+                basenames: __val, ..
+            } => __val.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Artifact {
-    pub name: std::string::String,
+    pub name: String,
     pub kind: ArtifactKind,
     pub target: RenderTarget,
-    pub entry_modules: Rc<Vec<std::string::String>>,
-    pub dependencies: Rc<Vec<std::string::String>>,
+    pub entry_modules: Rc<Vec<String>>,
+    pub dependencies: Rc<Vec<String>>,
+    pub module_selection: Rc<RustModuleRenderSelection>,
 }
 
 #[derive(
@@ -60,10 +79,10 @@ pub enum BoundaryKind {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Boundary {
-    pub from_artifact: std::string::String,
-    pub to_artifact: std::string::String,
+    pub from_artifact: String,
+    pub to_artifact: String,
     pub kind: BoundaryKind,
-    pub contract: std::string::String,
+    pub contract: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -105,8 +124,20 @@ pub struct ArtifactOutput {
 }
 
 pub fn default_artifact_plan(
-    root_modules: Rc<Vec<std::string::String>>,
+    root_modules: Rc<Vec<String>>,
     target: RenderTarget,
+) -> Rc<ArtifactPlan> {
+    selected_artifact_plan(
+        root_modules.clone(),
+        target.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn selected_artifact_plan(
+    root_modules: Rc<Vec<String>>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
 ) -> Rc<ArtifactPlan> {
     plan_artifacts(Rc::new(PartitionRule::Explicit {
         artifacts: Rc::new(vec![Rc::new(Artifact {
@@ -115,6 +146,7 @@ pub fn default_artifact_plan(
             target: target.clone(),
             entry_modules: root_modules.clone(),
             dependencies: Rc::new(vec![]),
+            module_selection: selection.clone(),
         })]),
     }))
 }
@@ -128,10 +160,10 @@ pub enum DagInferredRecord {
         node: DagNodeId,
     },
     TypeVariableRef {
-        id: std::string::String,
+        id: String,
     },
     CompilerErrorRecord {
-        message: std::string::String,
+        message: String,
         span: Rc<SourceSpan>,
     },
 }
@@ -140,26 +172,26 @@ pub enum DagInferredRecord {
 pub struct DagModuleRef {
     pub module: DagNodeId,
     pub items: Rc<Vec<DagNodeId>>,
-    pub item_registry_keys: Rc<Vec<std::string::String>>,
+    pub item_registry_keys: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagDiagnosticRecord {
-    pub severity: std::string::String,
-    pub message: std::string::String,
+    pub severity: String,
+    pub message: String,
     pub span: Rc<SourceSpan>,
-    pub module_name: Option<std::string::String>,
-    pub category: Option<std::string::String>,
+    pub module_name: Option<String>,
+    pub category: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagArtifact {
-    pub version: std::string::String,
-    pub nodes: Rc<HashMap<DagNodeId, std::string::String>>,
-    pub modules: Rc<Vec<std::string::String>>,
-    pub item_registry_keys: Rc<Vec<std::string::String>>,
-    pub diagnostics: Rc<Vec<std::string::String>>,
-    pub files: Rc<Vec<std::string::String>>,
+    pub version: String,
+    pub nodes: Rc<HashMap<DagNodeId, String>>,
+    pub modules: Rc<Vec<String>>,
+    pub item_registry_keys: Rc<Vec<String>>,
+    pub diagnostics: Rc<Vec<String>>,
+    pub files: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

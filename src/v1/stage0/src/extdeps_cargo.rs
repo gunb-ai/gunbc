@@ -50,7 +50,7 @@ pub enum RustEdition {
     Edition2024,
 }
 
-pub fn rust_edition_str(edition: RustEdition) -> std::string::String {
+pub fn rust_edition_str(edition: RustEdition) -> String {
     match edition.clone() {
         RustEdition::Edition2015 => "2015".to_string(),
         RustEdition::Edition2018 => "2018".to_string(),
@@ -80,10 +80,10 @@ pub fn min_cargo_version() -> CargoToolVersionFloor {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoPackage {
-    pub name: std::string::String,
+    pub name: String,
     pub version: CargoPackageVersion,
     pub edition: RustEdition,
-    pub path: std::string::String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -91,16 +91,16 @@ pub struct CargoPackage {
 pub enum CargoDepSource {
     RegistryDep {
         version: CargoVersionRequirement,
-        features: Rc<Vec<std::string::String>>,
+        features: Rc<Vec<String>>,
     },
     LocalPathDep {
-        path: std::string::String,
+        path: String,
     },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoDependency {
-    pub name: std::string::String,
+    pub name: String,
     pub source: Rc<CargoDepSource>,
 }
 
@@ -108,13 +108,13 @@ pub struct CargoDependency {
 #[serde(tag = "_variant")]
 pub enum CargoTarget {
     Lib,
-    Bin { name: std::string::String },
-    CargoTest { name: std::string::String },
-    Example { name: std::string::String },
-    Bench { name: std::string::String },
+    Bin { name: String },
+    CargoTest { name: String },
+    Example { name: String },
+    Bench { name: String },
 }
 impl CargoTarget {
-    pub fn name(&self) -> std::string::String {
+    pub fn name(&self) -> String {
         match self {
             CargoTarget::Lib => panic!("no name on unit variant"),
             CargoTarget::Bin { name: __val, .. } => __val.clone(),
@@ -127,7 +127,7 @@ impl CargoTarget {
 
 pub fn cargo_target_source_path(
     target: Rc<CargoTarget>,
-    package_name: std::string::String,
+    package_name: String,
 ) -> Rc<FilePathParts> {
     match (*target.clone()).clone() {
         CargoTarget::Lib => Rc::new(FilePathParts {
@@ -169,7 +169,7 @@ pub fn cargo_target_source_path(
     }
 }
 
-pub fn rust_module_candidate_paths(stem: std::string::String) -> Rc<Vec<Rc<FilePathParts>>> {
+pub fn rust_module_candidate_paths(stem: String) -> Rc<Vec<Rc<FilePathParts>>> {
     Rc::new(vec![
         Rc::new(FilePathParts {
             segments: Rc::new(vec![
@@ -185,19 +185,19 @@ pub fn rust_module_candidate_paths(stem: std::string::String) -> Rc<Vec<Rc<FileP
 
 pub type CargoProfile = String;
 
-pub fn canonical_profiles() -> Rc<Vec<std::string::String>> {
+pub fn canonical_profiles() -> Rc<Vec<String>> {
     thread_local! {
-        static CACHED: Rc<Vec<std::string::String>> = {
+        static CACHED: Rc<Vec<String>> = {
             Rc::new(vec!["dev".to_string(), "release".to_string(), "test".to_string(), "bench".to_string()])
         };
     }
-    CACHED.with(|c: &Rc<Vec<std::string::String>>| c.clone())
+    CACHED.with(|c: &Rc<Vec<String>>| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CargoFeature {
-    pub name: std::string::String,
-    pub dependencies: Rc<Vec<std::string::String>>,
+    pub name: String,
+    pub dependencies: Rc<Vec<String>>,
 }
 
 #[derive(
@@ -209,13 +209,13 @@ pub enum TestHarness {
     NoHarness,
 }
 
-pub fn default_profile() -> std::string::String {
+pub fn default_profile() -> String {
     thread_local! {
-        static CACHED: std::string::String = {
+        static CACHED: String = {
             "dev".to_string()
         };
     }
-    CACHED.with(|c: &std::string::String| c.clone())
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn cargo_environment_variables_authority() -> Rc<ExternalAuthority> {
@@ -253,8 +253,8 @@ pub fn cargo_environment_variable_name(variable: CargoEnvironmentVariable) -> St
 }
 
 pub fn cargo_workspace_footprint(
-    target_dir_patterns: Rc<Vec<std::string::String>>,
-    cargo_home_pattern: std::string::String,
+    target_dir_patterns: Rc<Vec<String>>,
+    cargo_home_pattern: String,
 ) -> Rc<WorkspaceFootprint> {
     Rc::new(WorkspaceFootprint {
         provenance: Rc::new(FootprintProvenance::CitedUpstream {

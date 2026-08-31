@@ -19,7 +19,7 @@ pub fn probe_source() -> Rc<SourceFile> {
     })
 }
 
-pub fn probe_emitted() -> std::string::String {
+pub fn probe_emitted() -> String {
     {
         let result = crate::v1_compiler_compile::compile_sources(
             Rc::new(vec![probe_source()]),
