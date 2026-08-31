@@ -7,6 +7,7 @@ import v1.compiler.type_head_exposure { TypeHeadExposure }
 
 import std.types { SourceSpan, is_kernel_type }
 import std.decl_ref { decl_ref, DeclarationRef }
+import std.operator_realization { OperandDeclaration }
 
 import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecursion, OptionalRecursion, SetRecursion, MapValueRecursion, SubValueRelation, SubValueUnknown, PreservedValue }
 import std.algebra { FreeMonoid, Empty, Cons }
@@ -1305,90 +1306,45 @@ fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
 // (lookup_type_for) carries the declaration's own ident_span, which is the span the global roster is
 // matched on. Without this arm every recursive destination answered Absent here and fell to the
 // identity-unavailable arms downstream (measured: the Peano literal and ordering rows passed for
-// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler).
-fn declaration_ref_for_span(decl_name: String, sp: SourceSpan, env: TypeEnv) -> DeclarationRef? {
-  match map_get(env.symbol_index.global_bare, decl_name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
-    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
-        Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
-        Absent => none
-      }
-    Absent => none
-  }
-}
-
-// A QUALIFIED AUTHORED NAME IS ITSELF AN IDENTITY, joined against the census rather than trusted:
-// the resolver qualifies borrowed type names with their owner module path
-// (qualify_borrowed_type_names), so a resolved reference spelled `v2.std.text.String` names its
-// declaring module in its own name. The census row for the bare segment must AGREE -- a prefix
-// with no census row of that module answers none, so nothing is minted from the spelling alone.
-fn declaration_ref_from_qualified_name(qualified: String, env: TypeEnv) -> DeclarationRef? {
-  let decl_name = qualified_last_segment(name: qualified)
-  let module_prefix = qualified_all_but_last(name: qualified)
-  if decl_name == "" || module_prefix == "" { return none }
-  match map_get(env.symbol_index.global_bare, decl_name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } =>
-      if mp == module_prefix { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
-    Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      match cands |> filter(c => c.module_path == module_prefix) |> first {
-        Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
-        Absent => none
-      }
-    Absent => none
-  }
-}
-
-fn declaration_ref_of_node(rt: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let authored = authored_name_at(source_indices: source_indices, node: rt)
-  let decl_name = qualified_last_segment(name: authored)
-  if decl_name == "" { return none }
-  let by_span = match rt.ident_span {
-    Absent => none
-    Present { value: sp } => declaration_ref_for_span(decl_name: decl_name, sp: sp, env: env)
-  }
-  match by_span {
-    Present { value: d } => Present { value: d }
-    Absent => declaration_ref_from_qualified_name(qualified: authored, env: env)
-  }
-}
-
-// THREE HOPS, SAME IDENTITY DISCIPLINE, TRIED IN ORDER. (1) The resolved node's own ident_span --
-// this answers when the resolver substituted the declaration node itself, and is EXACT: reordering
-// the hops to put a name-keyed lookup first was tried and regressed the Peano battery on the
-// dag/std-vs-v2.std Nat homonym. (2) The env binding for the reference (lookup_type_for) -- the
-// recursive in-place case and the resolved-ALIAS case, where the substitution carries the
-// OCCURRENCE site's span rather than the declaration's. (3) The module-visible NAME binding
-// (lookup_type_by_name, merged from XL-0N c7b8056) -- the emitter's scope env; the found node is
-// still matched by SPAN against the census, so a by-name hit only ever confirms an exact
-// declaration. KNOWN RESIDUE, measured and deliberately NOT papered over here: in a closure where
-// std.types is importable, a text-importing module's String annotation can reach infer UNRESOLVED
-// with a kernel-minted span, all three hops decline, and the literal stays a host literal at a
-// structural boundary. Four widenings were built and each measured WORSE on the emitted-closure
-// board (leaf-name guard 108->174, terminal unique-census hop ->569, module-binding rederivation
-// ->437, one-authority renderer over those ->745): every wider answer invents structural
-// identities for the kernel corpus faster than it repairs the text modules. The residue therefore
-// stays a declined identity -- fail closed, the boundary lane's declared rung drop covers it --
-// and the successor is the carrier-realization arbiter design plus the resolver defect (the
-// import binding lost when std.types enters the closure), not a wider reader. All hops answer
-// only from the census by declaration span, never from a spelling, so an identity none can supply
-// is still Absent.
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let from_resolved = match n.inferred {
-    Present { value: Resolved { node: r } } => declaration_ref_of_node(rt: r, source_indices: source_indices, env: env)
-    _ => none
-  }
-  match from_resolved {
-    Present { value: d } => Present { value: d }
-    Absent =>
+// v2.std.logic Bool and failed for v2.std.nat Nat on the same compiler). The ident-keyed lookup is
+// scoped: a parameter's type reference is bound in its function's scope, so this read is correct
+// at inference and NOT at emission, where only the module env survives. A by-name arm was tried
+// here for the emitter and refuted: the module-visible name is answered by pool precedence, so it
+// returned std.nat.Nat for a module that imported v2.std.nat.Nat, and the span match then confirmed
+// that homonym exactly. The reading is therefore done once, at inference, and carried on the typed
+// tree (std.operator_realization OperandDeclaration on ExprBinOp) for emission to consume.
+fn type_reference_declaration(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> OperandDeclaration? {
+  let rt = match n.inferred {
+    Present { value: Resolved { node: r } } => r
+    _ =>
       match lookup_type_for(env: env, node: n) {
-        Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
-        Absent =>
-          match lookup_type_by_name(env: env, name: authored_name_at(source_indices: source_indices, node: n)) {
-            Present { value: bound } => declaration_ref_of_node(rt: bound, source_indices: source_indices, env: env)
-            Absent => declaration_ref_of_node(rt: n, source_indices: source_indices, env: env)
-          }
+        Present { value: bound } => bound
+        Absent => n
       }
+  }
+  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
+  if decl_name == "" { return none }
+  match rt.ident_span {
+    Absent => none
+    Present { value: sp } =>
+      match map_get(env.symbol_index.global_bare, decl_name) {
+        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
+          if binding_declares_span(binding: b, sp: sp) {
+            Present { value: OperandDeclaration { declaration: decl_ref(module_path: mp, decl_name: decl_name), decl_file: sp.file } }
+          } else { none }
+        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
+          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
+            Present { value: c } => Present { value: OperandDeclaration { declaration: decl_ref(module_path: c.module_path, decl_name: decl_name), decl_file: sp.file } }
+            Absent => none
+          }
+        Absent => none
+      }
+  }
+}
+
+fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
+  match type_reference_declaration(n: n, source_indices: source_indices, env: env) {
+    Present { value: od } => Present { value: od.declaration }
+    Absent => none
   }
 }

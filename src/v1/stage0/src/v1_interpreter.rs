@@ -5018,6 +5018,14 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
+
+        // An elaborated literal (std.literal_elaboration) evaluates as the kernel value: this
+        // interpreter realizes the structural destinations natively by its own grounding
+        // (Zero/Succ as Int per #5428, v2.std.logic Bool as bool), so the image of the literal
+        // under that grounding IS the literal, and evaluating the constructor tree instead would
+        // route a natively-realized Bool through variant patterns that have no runtime form here.
+        // The structural image is consumed by emission, which is where the destination is
+        // structural; the emitted-bytes witnesses exercise that path.
         ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
@@ -11388,7 +11396,144 @@ fn dispatch_shell(
     }
 
     let stdout_policy = bounded_shell_host_drain::default_shell_stdout_capture_policy();
-    let stderr_policy = bounded_shell_host_drain::default_shell_stderr_capture_policy();
+    let stderr_complete_limit = match param_env.lookup(ctx.sym("stderr_capture")) {
+        Some(Value::Variant {
+            variant_name,
+            fields: _,
+            ..
+        }) if ctx.resolve(*variant_name).as_str() == "Complete" => {
+            let (budget, source) = crate::memory_governor::read_host_budget_bytes();
+            Some(budget.ok_or_else(|| InterpError::TypeError {
+                msg: format!(
+                    "WitnessStderrCaptureCompleteBudgetUnreadable: Complete stderr capture requires the active GUNBC_MEMORY_BUDGET_BYTES authority ({source})"
+                ),
+            })? as usize)
+        }
+        Some(Value::Variant {
+            variant_name,
+            fields,
+            ..
+        }) if ctx.resolve(*variant_name).as_str() == "BoundedTail" => {
+            let bytes = fields
+                .iter()
+                .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                .and_then(|(_, value)| match value {
+                    Value::Record { fields: mfields, .. } => {
+                        mfields.iter().find(|(mname, _)| ctx.resolve(*mname).as_str() == "count").and_then(
+                            |(_, mv)| match mv {
+                                Value::Int(n) => Some(*n),
+                                _ => None,
+                            },
+                        )
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with an integer count)"
+                        .to_string(),
+                })?;
+            if bytes < 0 {
+                return Err(InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative"
+                        .to_string(),
+                });
+            }
+            None
+        }
+        Some(Value::Record { type_name, fields })
+            if ctx.resolve(*type_name).as_str() == "BoundedTail" =>
+        {
+            let bytes = fields
+                .iter()
+                .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                .and_then(|(_, value)| match value {
+                    Value::Record { fields: mfields, .. } => {
+                        mfields.iter().find(|(mname, _)| ctx.resolve(*mname).as_str() == "count").and_then(
+                            |(_, mv)| match mv {
+                                Value::Int(n) => Some(*n),
+                                _ => None,
+                            },
+                        )
+                    }
+                    _ => None,
+                })
+                .ok_or_else(|| InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with an integer count)"
+                        .to_string(),
+                })?;
+            if bytes < 0 {
+                return Err(InterpError::TypeError {
+                    msg: "WitnessStderrCapturePolicy.BoundedTail bytes must be non-negative"
+                        .to_string(),
+                });
+            }
+            None
+        }
+        Some(other) => {
+            return Err(InterpError::TypeError {
+                msg: format!("unknown WitnessStderrCapturePolicy value: {other}"),
+            })
+        }
+        None => None,
+    };
+    let stderr_policy = match stderr_complete_limit {
+        Some(max_bytes) => {
+            bounded_shell_host_drain::StreamCapturePolicy::CompleteWithin { max_bytes }
+        }
+        None => match param_env.lookup(ctx.sym("stderr_capture")) {
+            Some(Value::Variant {
+                variant_name,
+                fields,
+                ..
+            }) if ctx.resolve(*variant_name).as_str() == "BoundedTail" => {
+                let bytes = fields
+                    .iter()
+                    .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                    .and_then(|(_, value)| match value {
+                        Value::Record { fields: mfields, .. } => mfields
+                            .iter()
+                            .find(|(mname, _)| ctx.resolve(*mname).as_str() == "count")
+                            .and_then(|(_, mv)| match mv {
+                                Value::Int(n) if *n >= 0 => Some(*n as usize),
+                                _ => None,
+                            }),
+                        _ => None,
+                    })
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with a non-negative integer count); refusing rather than defaulting"
+                            .to_string(),
+                    })?;
+                bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
+                    max_tail_bytes: bytes,
+                }
+            }
+            Some(Value::Record { type_name, fields })
+                if ctx.resolve(*type_name).as_str() == "BoundedTail" =>
+            {
+                let bytes = fields
+                    .iter()
+                    .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
+                    .and_then(|(_, value)| match value {
+                        Value::Record { fields: mfields, .. } => mfields
+                            .iter()
+                            .find(|(mname, _)| ctx.resolve(*mname).as_str() == "count")
+                            .and_then(|(_, mv)| match mv {
+                                Value::Int(n) if *n >= 0 => Some(*n as usize),
+                                _ => None,
+                            }),
+                        _ => None,
+                    })
+                    .ok_or_else(|| InterpError::TypeError {
+                        msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with a non-negative integer count); refusing rather than defaulting"
+                            .to_string(),
+                    })?;
+                bounded_shell_host_drain::StreamCapturePolicy::DigestAndBoundedTail {
+                    max_tail_bytes: bytes,
+                }
+            }
+            _ => bounded_shell_host_drain::default_shell_stderr_capture_policy(),
+        },
+    };
 
     let capture = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
         use std::io::Write;
@@ -11461,6 +11606,16 @@ fn dispatch_shell(
         capture
     };
 
+    if let Some(limit_bytes) = stderr_complete_limit {
+        if capture.stderr.truncated {
+            return Err(InterpError::ShellOutputLimitExceeded {
+                stream: "stderr",
+                total_bytes: capture.stderr.total_bytes,
+                limit_bytes: limit_bytes as u64,
+                argv0: argv[0].clone(),
+            });
+        }
+    }
     shell_result_from_capture(&capture, &argv[0])
 }
 

@@ -70,7 +70,6 @@ pub enum LiteralUnfolding {
         true_variant: Rc<DeclarationRef>,
         false_variant: Rc<DeclarationRef>,
     },
-    UnicodeScalarSequenceUnfold,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -117,7 +116,9 @@ pub fn literal_homomorphism_for(
                     Some(row) => Rc::new(LiteralHomomorphismLookup::LiteralHomomorphismFound {
                         row: row.clone(),
                     }),
-                    None => Rc::new(LiteralHomomorphismLookup::LiteralHomomorphismAbsent),
+                    std::option::Option::None => {
+                        Rc::new(LiteralHomomorphismLookup::LiteralHomomorphismAbsent)
+                    }
                 }
             } else {
                 Rc::new(LiteralHomomorphismLookup::LiteralHomomorphismAmbiguous {

@@ -431,7 +431,28 @@ pub struct TransitionAdmission {
 /// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
 /// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
 /// Removed by the roster's own rule before the PR merged, so the rows never reached main.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// XL-0N (`node://adhoc-aec65f93-b00`, gunbc#9719): ONE relocation, rostered by its author under
+/// the rule this ledger states -- "a run carrying a real namespace delta still refuses it as
+/// UNADJUDICATED until its author adds a row here". The operand's declaration must be read where
+/// the type reference's SCOPED env binding is live, which is inference; `v1.compiler.emit_rust`
+/// cannot be imported by `v1.compiler.infer` (emission depends on inference, not the reverse), so
+/// the identity read `type_reference_declaration_ref` moves to `v1.compiler.infer_env`, where the
+/// only other consumer already lives. The move is the whole change to this spelling: same function,
+/// same signature, one declaring module -- not a requalification, and no second declaration is left
+/// behind. `emit_rust`'s own call site now resolves to the new declarer, which is the delta below.
+///
+/// DISSOLVE-ON: this pull request merging. Base and head then both carry the relocation, no run can
+/// produce this delta, the row reports stale on every build, and it is removed by that trigger
+/// exactly as all six shrinks above were -- a stale row here refuses every unrelated PR.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
+    label: "type_reference_declaration_ref relocated to v1.compiler.infer_env (XL-0N, gunbc#9719)",
+    subject: AdmissionSubject::Binding {
+        module: "v1.compiler.emit_rust",
+        in_declaration: "rust_exact_reference_spelling",
+        spelling: "type_reference_declaration_ref",
+    },
+    disposition: NamespaceDeltaDisposition::TargetChanged,
+}];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.

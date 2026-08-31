@@ -76,7 +76,9 @@ pub fn parse_authored_occurrence_binding_source(
             crate::v1_std_core::empty_intern_table(),
         );
         match crate::v1_compiler_parse::parse_with_table_ready_module_path(parsed.clone()) {
-            None => Rc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused),
+            std::option::Option::None => {
+                Rc::new(ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceRefused)
+            }
             Some(module_path) => Rc::new(
                 ParsedOccurrenceBindingSource::ParsedOccurrenceBindingSourceReady {
                     transport: parsed.occurrence_transport.clone(),
@@ -147,7 +149,7 @@ pub fn reference_named(
         .cloned()
     {
         Some(reference) => Some(reference.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -159,7 +161,7 @@ pub fn references_named(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<ReferenceOccurrence>>>, reference: Rc<ReferenceOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), reference.occurrence.clone()) {
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
                         true => v1_rt::concat(acc.clone(), Rc::new(vec![reference.clone()])),
@@ -179,7 +181,7 @@ pub fn declarations_named(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<DeclarationOccurrence>>>, declaration: Rc<DeclarationOccurrence>| {
             match index_entry_for_occurrence(transport.clone(), declaration.occurrence.clone()) {
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
                 Some(entry) => {
                     match (entry.projection.clone().authored_name.clone() == name.clone()) {
                         true => v1_rt::concat(acc.clone(), Rc::new(vec![declaration.clone()])),
@@ -206,12 +208,14 @@ pub fn index_entry_for_occurrence(
             std::option::Option::None,
             |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
-                None => match (entry.projection.clone().occurrence.clone().value.clone()
-                    == occurrence.value.clone())
-                {
-                    true => Some(entry.clone()),
-                    false => None,
-                },
+                std::option::Option::None => {
+                    match (entry.projection.clone().occurrence.clone().value.clone()
+                        == occurrence.value.clone())
+                    {
+                        true => Some(entry.clone()),
+                        false => std::option::Option::None,
+                    }
+                }
             },
         )
 }
@@ -231,13 +235,15 @@ pub fn occurrence_id_for_authored_name(
             std::option::Option::None,
             |found: _, entry: Rc<OccurrenceIndexEntry>| match found.clone() {
                 Some(_) => found.clone(),
-                None => match (entry.projection.clone().authored_name.clone() == name.clone()) {
-                    true => Some(entry.projection.clone().occurrence.clone()),
-                    false => None,
-                },
+                std::option::Option::None => {
+                    match (entry.projection.clone().authored_name.clone() == name.clone()) {
+                        true => Some(entry.projection.clone().occurrence.clone()),
+                        false => std::option::Option::None,
+                    }
+                }
             },
         ) {
         Some(occurrence) => Some(occurrence.clone()),
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }

@@ -2764,7 +2764,7 @@ fn body_lower_reify_arrow_body(body: Node) -> Outcome<Node> {
   }
 }
 
-fn body_lower_if_navigation_reject(captured: Node) -> Outcome<Node> {
+fn body_lower_if_navigation_reject<T>(captured: Node) -> Outcome<T> {
   outcome_rejected(
     d: body_lower_diagnostic(
       reason: ^body_lowering_reason_if_navigation_refused,

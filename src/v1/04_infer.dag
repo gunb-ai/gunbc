@@ -8,8 +8,9 @@ import std.content_hash {
   content_hash_validate_lower_hex_length,
 }
 import extdeps.container.oci.digest { oci_other_digest_algorithm, oci_other_digest_encoded }
-import std.syntax { Add, BinOp, LitStr, LitInt, LitBool, LiteralValue }
+import std.syntax { Add, Sub, Mul, Div, Mod, Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce, BinOp, LitStr, LitInt, LitBool, LiteralValue }
 import std.decl_ref { DeclarationRef }
+import std.operator_realization { OperandDeclaration }
 import std.literal_elaboration {
   LiteralElaboration, LiteralHomomorphism, LiteralUnfolding, PeanoUnfold, BooleanUnfold, UnicodeScalarSequenceUnfold,
   LiteralElaborationOutcome, DirectLiteral, ViaHomomorphism, LiteralElaborationRefused,
@@ -49,6 +50,7 @@ import v1.std.core {
   FrontierOccurrenceKey, diagnostic_frontier_occurrence_key,
   InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, OptionalCastNotEliminated, BareNoneNotAdmittedByFieldType, ConstructorCallAdmissionRefused, UnresolvedType, FieldNotFound, MethodNotFound, MethodExistenceUndecided, MethodExistenceFrontierAdmitted, ReceiverTypeUnestablished, FrontierOccurrenceBudgetExceeded, MissingField, AmbiguousReference, ServiceConfigReferenceJudgmentDeferred, UnlistedVariantValueUse,
   CallArgumentNameUnknown, CallPositionalSurplus, CallPositionalDeficit, CallNamedArgOnFunctionValue, CallArgumentDuplicate,
+  EqualityOnFunctionMember, EqualityMemberUnjudgeable,
   TypeArgumentArityMismatch,
   resource_use_name_at, resource_use_resource,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -123,7 +125,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref,
+  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -154,7 +156,7 @@ import std.termination {
   proportional_divisor_from_int_at_least_two,
   OneStep
 }
-import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons }
+import std.algebra { CollectionSizeEffect, ShrinkEffect, FreeMonoid, Empty, Cons, carrier_container_equality_rows }
 import v1.compiler.infer_resolve {
   resolve_node, resolve_item_types, fn_type_param_names, peel_nominal_alias_identity, preserve_nominal_brand_on_resolve,
   resolve_generic_use_decl,
@@ -2346,6 +2348,232 @@ fn exposure_is_application(exposure: TypeHeadExposure) -> Bool {
   match exposure {
     ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => true
     _ => false
+  }
+}
+
+data equality_admission_wall_note: String = "WALL (DESIGN 5, XL-0E ruling 2026-08-30): equality on function-bearing values is an ACCEPTANCE defect, not an emitter formatting error. Before this wall, infer_binop_type_node answered Eq/Ne with bool_type for EVERY left type and the ExprBinOp arm emitted no diagnostic, so '==' was accepted on types whose equality semantics do not exist -- a record of interpreter functions, a runtime value carrying a closure environment. The interpretation path then answered from a host comparison the emission path cannot realize (rustc E0369: no PartialEq derives for fn-carrying types -- the refusal lived below the floor, in the wrong compiler, in the wrong phase). The admission is derived from the COMPLETE RESOLVED TYPE, never from a leaf spelling: an Arrow refuses; a kernel scalar admits; an algebra-carrier spelling admits or refuses by algebra_profile_equality_extensional -- the declared support-axis consequence in std.algebra, so finite-support carriers (List, Map, Set and their canonical names) lift the question into their type ARGUMENTS while open-support carriers (PartialFunction) refuse outright; a product walks every member and a coproduct walks every arm's members, under a visited set keyed on declaration identity so recursive structural data (Peano Nat: Zero | Succ { prev: Nat }) admits by the coinductive reading; a member that resolves nowhere refuses as EqualityMemberUnjudgeable rather than admitting silently. DELIBERATE BOUNDARIES, stated per rung honesty rather than implied covered: (1) a leaf whose head is OpaqueTypeHead at every authority -- a declared brand like v2.std.node.Symbol, or a generic type parameter -- carries no member this walk can judge and ADMITS at this rung; the admission is instantiation-blind, so a type parameter later bound to a function-bearing type is not caught at the generic declaration site. A StuckTypeHead operand (no declaration identity at all) is the same parameter case seen one authority earlier -- measured live at v2.std.collection map_insert's 'candidate == key' over bare K, a load-bearing generic comparison -- and admits under the same boundary rather than refusing on a namelessness that is a property of genericity, not of brokenness. Next-rung trigger for both: instantiation-grain admission, i.e. judging '==' where type arguments are known, which requires the call-site substitution the checker does not thread to this seam today. (2) '== none' / '!= none' is a PRESENCE test on the optional structure, not member equality, and is exempt before any walk (398 live sites measured 2026-08-30). An empty list literal comparison ('x == []' / '!= []') is the same idiom one carrier over -- an EMPTINESS test on the finite container, decidable by cardinality regardless of element admissibility -- and is likewise exempt before any walk (surfaced live at dag/gunbc/commit_workflow.dag 'refusals == []' and dag/extdeps/languages/markdown.dag 'inner == []', where the floor's per-witness resolve grain hands the literal a synthesized element node with no declaration identity). (3) Lt/Gt/Le/Ge ordering admission is the same defect one operator over and is NOT walled here -- ordering on a function-bearing type still accepts; that class is named rather than silently included. (4) Operands already carrying a compiler error are not judged: the resolution diagnostic owns the site. Cost shape (DESIGN 6): the walk runs only at Eq/Ne sites, kernel and opaque leaves return before any peel, and peel_nominal_alias_identity is reached only for structured or aliased operands (see where_refinement_peel_cost_note for why eager peels at this grain were withdrawn once already)."
+
+type EqualityAdmissionRefusal {
+  type_name: String
+  member: String
+  member_judged: Bool
+}
+
+data equality_extensional_container_rows: Map<String, Bool> = carrier_container_equality_rows()
+
+fn equality_refused(carrier: String, member: String, member_judged: Bool) -> EqualityAdmissionRefusal? {
+  Present { value: EqualityAdmissionRefusal { type_name: carrier, member: member, member_judged: member_judged } }
+}
+
+fn equality_field_refusal(owner_name: String, ch: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  let ft = child_type_node(ch: ch)
+  if (ft.connective == Arrow) {
+    equality_refused(carrier: owner_name, member: authored_name_at(source_indices: scope.type_env.source_indices, node: ch), member_judged: true)
+  } else {
+    equality_operand_admission(n: ft, scope: scope, visited: visited, depth: depth)
+  }
+}
+
+fn equality_member_fields_refusal(owner_name: String, fields: List<Node>, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  fold(fields, init: none, f: (acc, ch) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => equality_field_refusal(owner_name: owner_name, ch: ch, scope: scope, visited: visited, depth: depth)
+    })
+}
+
+fn equality_operand_admission(n: Node, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  let source_indices = scope.type_env.source_indices
+  if depth > 64 {
+    equality_refused(carrier: authored_name_at(source_indices: source_indices, node: n), member: "type expansion depth exceeded", member_judged: false)
+  } else {
+    let peeled = normalize_access_type_node(n: n)
+    if peeled.return_cardinality == CardOptional || (peeled.name == "Optional" && (peeled.children |> count) == 1) {
+      equality_operand_admission(n: extract_optional_inner_node(n: peeled), scope: scope, visited: visited, depth: depth)
+    } else {
+      let name = authored_name_at(source_indices: source_indices, node: peeled)
+      let leaf = qualified_last_segment(name: name)
+      let identity = type_reference_identity(n: peeled, source_indices: source_indices)
+      if identity != "::" && map_contains_key(visited, identity) {
+        none
+      } else {
+        let visited2 = if identity == "::" { visited } else { map_insert(visited, identity, true) }
+        if (peeled.connective == Arrow) {
+          equality_refused(carrier: name, member: "function value", member_judged: true)
+        } else if (peeled.connective == Conj) {
+          equality_member_fields_refusal(owner_name: name, fields: peeled.children, scope: scope, visited: visited2, depth: depth + 1)
+        } else if (peeled.connective == Disj) {
+          fold(peeled.children, init: none, f: (acc, v) =>
+            match acc {
+              Present { value: _ } => acc
+              Absent => equality_member_fields_refusal(owner_name: concat(name, ".", authored_name_at(source_indices: source_indices, node: v)), fields: v.children, scope: scope, visited: visited2, depth: depth + 1)
+            })
+        } else if is_kernel_type(name: leaf) {
+          none
+        } else {
+          match map_get(equality_extensional_container_rows, leaf) {
+            Present { value: extensional } =>
+              if extensional {
+                fold(peeled.children, init: none, f: (acc, ch) =>
+                  match acc {
+                    Present { value: _ } => acc
+                    Absent => equality_operand_admission(n: child_type_node(ch: ch), scope: scope, visited: visited2, depth: depth + 1)
+                  })
+              } else {
+                equality_refused(carrier: name, member: "open-support carrier: extensional equality is not enumerable", member_judged: true)
+              }
+            Absent => equality_leaf_admission(peeled: peeled, name: name, ident_key: identity, scope: scope, visited: visited2, depth: depth)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn equality_exposure_refusal(exposure: TypeHeadExposure, name: String, at_operand_root: Bool) -> EqualityAdmissionRefusal? {
+  match exposure {
+    ExposedTypeHead { view: KernelScalarHead { type_identity: _ } } => none
+    ExposedTypeHead { view: CallableHead { type_identity: _ } } => equality_refused(carrier: name, member: "function value", member_judged: true)
+    ExposedTypeHead { view: ProductHead { type_identity: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
+    ExposedTypeHead { view: CoproductHead { type_identity: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
+    ExposedTypeHead { view: ApplicationHead { constructor_identity: _, argument_identities: _ } } => equality_refused(carrier: name, member: "members not exposed at this reference", member_judged: false)
+    OpaqueTypeHead { type_identity: _ } => none
+    StuckTypeHead { cause: c } => if at_operand_root { none } else { equality_refused(carrier: name, member: c, member_judged: false) }
+    MalformedApplicationHead { cause: c } => equality_refused(carrier: name, member: c, member_judged: false)
+  }
+}
+
+fn equality_leaf_admission(peeled: Node, name: String, ident_key: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  let source_indices = scope.type_env.source_indices
+  if decl_file_realizes_natively(decl_file: type_reference_decl_file(n: peeled)) {
+    return none
+  }
+  let resolved = peel_nominal_alias_identity(n: peeled, env: scope.type_env, module_name: scope.module_name)
+  let resolved_identity = type_reference_identity(n: resolved, source_indices: source_indices)
+  if (resolved.connective != NoConnective) || resolved_identity != ident_key || (resolved.children |> count) != (peeled.children |> count) {
+    if resolved_identity == ident_key {
+      equality_resolved_declaration_structure(rt: resolved, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+    } else {
+      equality_operand_admission(n: resolved, scope: scope, visited: visited, depth: depth + 1)
+    }
+  } else {
+    match peeled.inferred {
+      Present { value: Resolved { node: rt } } => equality_resolved_declaration_admission(rt: rt, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+      _ => equality_unresolved_leaf_admission(peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+    }
+  }
+}
+
+fn equality_ambiguous_candidate_by_identity(cs: List<GlobalBareCandidate>, ident: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  fold(cs, init: none, f: (acc, c) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => if node_declaration_identity(n: c.binding.resolved, source_indices: source_indices) == ident { Present { value: c.binding.resolved } } else { none }
+    })
+}
+
+fn equality_unresolved_leaf_admission(peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  match map_get(scope.type_env.symbol_index.global_bare, qualified_last_segment(name: name)) {
+    Present { value: GlobalBareUniqueBinding { module_path: _, binding: b } } =>
+      equality_resolved_declaration_admission(rt: b.resolved, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+    Present { value: GlobalBareAmbiguousBinding { candidates: cs } } =>
+      match equality_ambiguous_candidate_by_identity(cs: cs, ident: type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices), source_indices: scope.type_env.source_indices) {
+        Present { value: rt } => equality_resolved_declaration_admission(rt: rt, peeled: peeled, name: name, scope: scope, visited: visited, depth: depth)
+        Absent => equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
+      }
+    Absent => equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
+  }
+}
+
+fn equality_resolved_declaration_admission(rt: Node, peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  let rt_identity = node_declaration_identity(n: rt, source_indices: scope.type_env.source_indices)
+  if rt_identity != "::" && map_contains_key(visited, rt_identity) {
+    none
+  } else {
+    equality_resolved_declaration_structure(rt: rt, peeled: peeled, name: name, scope: scope, visited: if rt_identity == "::" { visited } else { map_insert(visited, rt_identity, true) }, depth: depth)
+  }
+}
+
+fn equality_resolved_declaration_structure(rt: Node, peeled: Node, name: String, scope: InferScope, visited: Map<String, Bool>, depth: Int) -> EqualityAdmissionRefusal? {
+  if (rt.connective == Arrow) {
+    equality_refused(carrier: name, member: "function value", member_judged: true)
+  } else if (rt.connective == Conj) {
+    equality_member_fields_refusal(owner_name: name, fields: rt.children, scope: scope, visited: visited, depth: depth + 1)
+  } else if (rt.connective == Disj) {
+    fold(rt.children, init: none, f: (acc, v) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => equality_member_fields_refusal(owner_name: concat(name, ".", authored_name_at(source_indices: scope.type_env.source_indices, node: v)), fields: v.children, scope: scope, visited: visited, depth: depth + 1)
+      })
+  } else if (rt.children |> count) > 0 || type_reference_identity(n: rt, source_indices: scope.type_env.source_indices) != type_reference_identity(n: peeled, source_indices: scope.type_env.source_indices) {
+    equality_operand_admission(n: rt, scope: scope, visited: visited, depth: depth + 1)
+  } else {
+    equality_exposure_refusal(exposure: expected_type_head_exposure(formal: peeled, scope: scope), name: name, at_operand_root: depth == 0)
+  }
+}
+
+fn equality_operand_is_empty_list_literal(n: Node) -> Bool {
+  match n.expr_data {
+    ExprListLit => (n.children |> count) == 0
+    _ => false
+  }
+}
+
+fn equality_operand_is_presence_literal(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
+  leaf == "None" || leaf == "Absent" || leaf == "none"
+}
+
+fn equality_admission_refusal_diag(r: EqualityAdmissionRefusal, span: SourceSpan) -> CompilerDiagnostic {
+  if r.member_judged {
+    EqualityOnFunctionMember { type_name: r.type_name, member: r.member, span: span }
+  } else {
+    EqualityMemberUnjudgeable { type_name: r.type_name, member: r.member, span: span }
+  }
+}
+
+fn equality_admission_diags(op: BinOp, left_typed: Node, right_typed: Node, scope: InferScope, span: SourceSpan) -> List<ErrorNode> {
+  let judged_op = match op {
+    Eq => true
+    Ne => true
+    Add => false
+    Sub => false
+    Mul => false
+    Div => false
+    Mod => false
+    Lt => false
+    Gt => false
+    Le => false
+    Ge => false
+    And => false
+    Or => false
+    NullCoalesce => false
+  }
+  if !judged_op {
+    []
+  } else {
+    let source_indices = scope.type_env.source_indices
+    let lt = resolved_type(n: left_typed)
+    let rt = resolved_type(n: right_typed)
+    if equality_operand_is_presence_literal(n: lt, source_indices: source_indices)
+      || equality_operand_is_presence_literal(n: rt, source_indices: source_indices)
+      || equality_operand_is_presence_literal(n: left_typed, source_indices: source_indices)
+      || equality_operand_is_presence_literal(n: right_typed, source_indices: source_indices)
+      || equality_operand_is_empty_list_literal(n: left_typed)
+      || equality_operand_is_empty_list_literal(n: right_typed)
+      || (lt.inferred != none && is_compiler_error(inferred: lt.inferred.value))
+      || (rt.inferred != none && is_compiler_error(inferred: rt.inferred.value)) {
+      []
+    } else {
+      match equality_operand_admission(n: lt, scope: scope, visited: empty_map(), depth: 0) {
+        Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+        Absent =>
+          match equality_operand_admission(n: rt, scope: scope, visited: empty_map(), depth: 0) {
+            Present { value: r } => [make_error_node(diagnostic: equality_admission_refusal_diag(r: r, span: span), module_name: scope.module_name)]
+            Absent => []
+          }
+      }
+    }
   }
 }
 
@@ -5132,6 +5360,27 @@ type BinopOperands {
   right: InferResult
 }
 
+// THE LEFT OPERAND'S DECLARATION, read here where the reference's scoped binding is live, after
+// hopping a where-refinement to its base (`type Char = Int where ...` realizes as Int): the fact
+// std.operator_realization decides on, stamped on the ExprBinOp node for emission. Absent when the
+// operand's type node names no declaration (an inference-synthesized node), which emission answers
+// by operator class.
+fn operand_declaration_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandDeclaration? {
+  if fuel > 0 && is_where_refinement_type(ty: rt) {
+    match rt.children |> first {
+      Present { value: base } =>
+        let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
+          Present { value: r } => r
+          Absent => base
+        }
+        operand_declaration_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
+      Absent => type_reference_declaration(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+    }
+  } else {
+    type_reference_declaration(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env)
+  }
+}
+
 fn infer_operand_literal(lit_expr: Node, other: Node, scope: InferScope) -> InferResult {
   let other_type = match other.inferred {
     Present { value: Resolved { node: rt } } => Present { value: rt }
@@ -6277,10 +6526,11 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
       let right_typed = right_result.typed
       let right_diags = right_result.diagnostics
       let binop_info = infer_binop_type_node(op: op, left_type: resolved_type(n: left_typed), source_indices: scope.type_env.source_indices)
-      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
+      let eq_wall_diags = equality_admission_diags(op: op, left_typed: left_typed, right_typed: right_typed, scope: scope, span: span)
+      let bo_texpr = make_expr_node(occurrence_identity: texpr.occurrence_identity, expr_data: ExprBinOp { op: op, algebra_field: binop_info.algebra_field, operand: operand_declaration_of_type(rt: resolved_type(n: left_typed), scope: scope, fuel: 8) }, children: [left_typed, right_typed], inferred: Present { value: Resolved { node: binop_info.result_type } }, span: span)
       InferResult {
         typed: bo_texpr,
-        diagnostics: concat(left_diags, right_diags)
+        diagnostics: concat(concat(left_diags, right_diags), eq_wall_diags)
       }
 
     ExprUnaryOp { op: op } =>
@@ -12497,7 +12747,8 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     clone_impl_required_type_params: empty_map(),
     fn_generic_param_names: [],
     fn_type_env: empty_type_env(),
-    fn_return_type: none
+    fn_return_type: none,
+    expected_type: none
   }
 }
 

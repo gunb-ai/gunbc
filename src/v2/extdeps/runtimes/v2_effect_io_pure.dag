@@ -399,22 +399,28 @@ fn effect_io_pure_roundtrip_through_store(
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
     Accepted { value: written, diagnostics: None } =>
-      if written == payload {
-        let store1 = effect_io_pure_apply_write(
-          store: store0,
-          locator: locator,
-          payload: written
-        )
-        let bundle1 = effect_io_pure_handler_binding(store: store1)
-        let read_args = Cons { head: locator_arg, tail: Empty }
-        let read_request = effect_io_pure_read_request(args: read_args)
-        let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
-        match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
-          Accepted { value: read_back, diagnostics: None } => read_back == written
-          _ => false
-        }
-      } else {
-        false
+      match runtime_value_equality(a: written, b: payload) {
+        RuntimeValuesEqual =>
+          let store1 = effect_io_pure_apply_write(
+            store: store0,
+            locator: locator,
+            payload: written
+          )
+          let bundle1 = effect_io_pure_handler_binding(store: store1)
+          let read_args = Cons { head: locator_arg, tail: Empty }
+          let read_request = effect_io_pure_read_request(args: read_args)
+          let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
+          match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {
+            Accepted { value: read_back, diagnostics: None } =>
+              match runtime_value_equality(a: read_back, b: written) {
+                RuntimeValuesEqual => true
+                RuntimeValuesDiffer => false
+                RuntimeValueEqualityUnavailable { reason: _ } => false
+              }
+            _ => false
+          }
+        RuntimeValuesDiffer => false
+        RuntimeValueEqualityUnavailable { reason: _ } => false
       }
     _ => false
   }

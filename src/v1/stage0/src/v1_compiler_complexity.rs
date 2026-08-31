@@ -344,7 +344,7 @@ pub fn method_callback_element_position(
             ..
         }) => match at.clone() {
             Some(template) => template.callback_element_position.clone(),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         _ => std::option::Option::None,
     }
@@ -364,7 +364,7 @@ pub fn iteration_element_name(
                 .cloned()
                 .skip(pos.clone() as usize)
                 .next(),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     }
 }
@@ -452,7 +452,7 @@ pub fn parser_state_base_var(
                 )),
                 _ => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         _ => std::option::Option::None,
     }
@@ -559,7 +559,7 @@ pub fn parser_state_expr_progress(
                 } else {
                     match v1_rt::map_get(&env.state_aliases.clone(), name.clone()) {
                         Some(progress) => progress.clone(),
-                        None => DescentEvidence::DescentUnknown,
+                        std::option::Option::None => DescentEvidence::DescentUnknown,
                     }
                 }
             }
@@ -576,10 +576,10 @@ pub fn parser_state_expr_progress(
                                     consumed_true_set.clone(),
                                     result_name.clone(),
                                 ),
-                                None => DescentEvidence::DescentUnknown,
+                                std::option::Option::None => DescentEvidence::DescentUnknown,
                             }
                         }
-                        None => DescentEvidence::DescentUnknown,
+                        std::option::Option::None => DescentEvidence::DescentUnknown,
                     }
                 } else {
                     DescentEvidence::DescentUnknown
@@ -598,7 +598,7 @@ pub fn parser_state_expr_progress(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 }
             }
             ExprData::ExprIf => {
@@ -610,7 +610,7 @@ pub fn parser_state_expr_progress(
                     Some(name) => {
                         v1_rt::rc_map_insert(consumed_true_set.clone(), name.clone(), true)
                     }
-                    None => consumed_true_set.clone(),
+                    std::option::Option::None => consumed_true_set.clone(),
                 };
                 let then_progress = parser_state_expr_progress(
                     crate::v1_std_core::if_then_branch(expr.clone()),
@@ -629,7 +629,7 @@ pub fn parser_state_expr_progress(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 };
                 crate::std_termination::descent_evidence_lattice_meet(
                     then_progress.clone(),
@@ -655,7 +655,7 @@ pub fn parser_state_expr_progress(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 }
             }
             ExprData::ExprMatch => {
@@ -683,7 +683,7 @@ pub fn parser_state_expr_progress(
                             crate::std_termination::descent_evidence_lattice_meet(acc, p.clone())
                         },
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 }
             }
             ExprData::ExprBlock => parser_block_state_progress(
@@ -708,7 +708,7 @@ pub fn parser_block_state_progress(
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> DescentEvidence {
     match stmts.clone().last().cloned() {
-        None => DescentEvidence::DescentUnknown,
+        std::option::Option::None => DescentEvidence::DescentUnknown,
         Some(last_stmt) => {
             let leading = Rc::new(
                 stmts
@@ -724,7 +724,7 @@ pub fn parser_block_state_progress(
                     .clone()
                 {
                     ExprData::ExprLet => match crate::v1_std_core::let_body(stmt.clone()) {
-                        None => parser_env_with_binding(
+                        std::option::Option::None => parser_env_with_binding(
                             crate::v1_std_core::let_binding_name_at(stmt.clone(), si.clone()),
                             crate::v1_std_core::let_value(stmt.clone()),
                             acc_env.clone(),
@@ -770,7 +770,7 @@ pub fn parser_result_source_for_expr(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 };
             match (*crate::v1_compiler_parse::parser_result_witness(expr.clone(), si.clone()))
                 .clone()
@@ -900,7 +900,7 @@ pub fn parser_call_edge_progress(
                 input_progress.clone()
             }
         }
-        None => DescentEvidence::DescentUnknown,
+        std::option::Option::None => DescentEvidence::DescentUnknown,
     }
 }
 
@@ -922,7 +922,7 @@ pub fn collect_parser_progress_block_edges(
             }),
             |acc: Rc<ParserProgressAcc>, stmt: Rc<Node>| match (*stmt.expr_data.clone()).clone() {
                 ExprData::ExprLet => match crate::v1_std_core::let_body(stmt.clone()) {
-                    None => {
+                    std::option::Option::None => {
                         let value_expr = crate::v1_std_core::let_value(stmt.clone());
                         let value_edges = collect_parser_progress_edges(
                             caller.clone(),
@@ -1060,7 +1060,7 @@ pub fn collect_parser_progress_edges(
                     Some(name) => {
                         v1_rt::rc_map_insert(consumed_true_set.clone(), name.clone(), true)
                     }
-                    None => consumed_true_set.clone(),
+                    std::option::Option::None => consumed_true_set.clone(),
                 };
                 let then_edges = collect_parser_progress_edges(
                     caller.clone(),
@@ -1083,7 +1083,7 @@ pub fn collect_parser_progress_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 v1_rt::concat(
                     v1_rt::concat(cond_edges.clone(), then_edges.clone()),
@@ -1122,7 +1122,7 @@ pub fn collect_parser_progress_edges(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 v1_rt::concat(value_edges.clone(), body_edges.clone())
             }
@@ -1265,7 +1265,7 @@ pub fn parser_success_progress(
                     consumed_true_set.clone(),
                     crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone()),
                 ),
-                None => DescentEvidence::DescentUnknown,
+                std::option::Option::None => DescentEvidence::DescentUnknown,
             },
             ExprData::ExprCall { .. } => parser_result_state_progress(
                 parser_result_source_for_expr(
@@ -1297,13 +1297,13 @@ pub fn parser_success_progress(
                                     consumed_true_set.clone(),
                                     si.clone(),
                                 ),
-                                None => DescentEvidence::DescentUnknown,
+                                std::option::Option::None => DescentEvidence::DescentUnknown,
                             }
                         } else {
                             DescentEvidence::DescentUnknown
                         }
                     }
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 }
             }
             ExprData::ExprIf => {
@@ -1315,7 +1315,7 @@ pub fn parser_success_progress(
                     Some(name) => {
                         v1_rt::rc_map_insert(consumed_true_set.clone(), name.clone(), true)
                     }
-                    None => consumed_true_set.clone(),
+                    std::option::Option::None => consumed_true_set.clone(),
                 };
                 let then_progress = parser_success_progress(
                     crate::v1_std_core::if_then_branch(expr.clone()),
@@ -1334,7 +1334,7 @@ pub fn parser_success_progress(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 };
                 crate::std_termination::descent_evidence_lattice_meet(
                     then_progress.clone(),
@@ -1360,7 +1360,7 @@ pub fn parser_success_progress(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 }
             }
             ExprData::ExprBlock => {
@@ -1380,7 +1380,7 @@ pub fn parser_success_progress(
                         .clone()
                     {
                         ExprData::ExprLet => match crate::v1_std_core::let_body(stmt.clone()) {
-                            None => {
+                            std::option::Option::None => {
                                 let next_env = parser_env_with_binding(
                                     crate::v1_std_core::let_binding_name_at(
                                         stmt.clone(),
@@ -1412,7 +1412,7 @@ pub fn parser_success_progress(
                         consumed_true_set.clone(),
                         si.clone(),
                     ),
-                    None => DescentEvidence::DescentUnknown,
+                    std::option::Option::None => DescentEvidence::DescentUnknown,
                 }
             }
             _ => DescentEvidence::DescentUnknown,
@@ -1459,7 +1459,7 @@ pub fn parser_member_is_always_advancing(
                 si.clone(),
             ) == DescentEvidence::Strict))
         }
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -1499,7 +1499,7 @@ pub fn infer_parser_always_advancing_members_worklist(
                             ) {
                                 let callers = match v1_rt::map_get(&reverse_graph, name.clone()) {
                                     Some(members) => members.clone(),
-                                    None => Rc::new(vec![]),
+                                    std::option::Option::None => Rc::new(vec![]),
                                 };
                                 {
                                     let __tco_0 =
@@ -1517,7 +1517,7 @@ pub fn infer_parser_always_advancing_members_worklist(
                                 }
                             }
                         }
-                        None => {
+                        std::option::Option::None => {
                             let __tco_0 = rest.clone();
                             queue = __tco_0;
                             continue;
@@ -1525,7 +1525,7 @@ pub fn infer_parser_always_advancing_members_worklist(
                     }
                 }
             }
-            None => {
+            std::option::Option::None => {
                 break proven.clone();
             }
         }
@@ -1550,7 +1550,7 @@ pub fn infer_parser_always_advancing_members(
                 __result.extend(
                     (*match v1_rt::map_get(&func_index, name.clone()) {
                         Some(entry) => Rc::new(vec![entry.clone()]),
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -1584,7 +1584,7 @@ pub fn parser_function_names(
                     (parser_state_param(entry.params.clone(), si.clone())
                         != std::option::Option::None)
                 }
-                None => false,
+                std::option::Option::None => false,
             } {
                 __result.push(name);
             }
@@ -1723,7 +1723,7 @@ pub fn collect_parser_edges_for_scc(
                         (parser_state_param(entry.params.clone(), si.clone())
                             != std::option::Option::None)
                     }
-                    None => false,
+                    std::option::Option::None => false,
                 }) {
                     __all = false;
                     break;
@@ -1758,10 +1758,10 @@ pub fn collect_parser_edges_for_scc(
                                             v1_rt::rc_empty_map::<String, bool>(),
                                             si.clone(),
                                         ),
-                                        None => Rc::new(vec![]),
+                                        std::option::Option::None => Rc::new(vec![]),
                                     }
                                 }
-                                None => Rc::new(vec![]),
+                                std::option::Option::None => Rc::new(vec![]),
                             })
                             .iter()
                             .cloned(),
@@ -1949,7 +1949,7 @@ pub fn max_path_self_calls_with_cont(
                         continue_calls.clone(),
                         si.clone(),
                     ),
-                    None => continue_calls.clone(),
+                    std::option::Option::None => continue_calls.clone(),
                 };
                 let branch_max = if (then_calls.clone() > else_calls.clone()) {
                     then_calls.clone()
@@ -1980,7 +1980,7 @@ pub fn max_path_self_calls_with_cont(
                         continue_calls.clone(),
                         si.clone(),
                     ),
-                    None => continue_calls.clone(),
+                    std::option::Option::None => continue_calls.clone(),
                 };
                 (val_calls.clone() + body_calls.clone())
             }
@@ -2180,7 +2180,7 @@ pub fn max_path_target_calls_with_cont(
                         continue_calls.clone(),
                         si.clone(),
                     ),
-                    None => continue_calls.clone(),
+                    std::option::Option::None => continue_calls.clone(),
                 };
                 let branch_max = if (then_calls.clone() > else_calls.clone()) {
                     then_calls.clone()
@@ -2211,7 +2211,7 @@ pub fn max_path_target_calls_with_cont(
                         continue_calls.clone(),
                         si.clone(),
                     ),
-                    None => continue_calls.clone(),
+                    std::option::Option::None => continue_calls.clone(),
                 };
                 (val_calls.clone() + body_calls.clone())
             }
@@ -2301,7 +2301,7 @@ pub fn build_scc_measure_params(
                 name.clone(),
                 recursive_measure_param_names(entry.body.clone(), entry.params.clone(), si.clone()),
             ),
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -2323,7 +2323,7 @@ pub fn target_call_has_arithmetic_descent(
                     let callee_measure_params =
                         match v1_rt::map_get(&scc_measure_params, callee.clone()) {
                             Some(params) => params.clone(),
-                            None => v1_rt::rc_empty_map::<String, String>(),
+                            std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
                         };
                     {
                         let mut __found = false;
@@ -2360,7 +2360,7 @@ pub fn target_call_has_arithmetic_descent(
                                                 param_name.clone(),
                                             ) != std::option::Option::None)
                                         }
-                                        None => false,
+                                        std::option::Option::None => false,
                                     })
                             } {
                                 __found = true;
@@ -2370,7 +2370,7 @@ pub fn target_call_has_arithmetic_descent(
                         __found
                     }
                 }
-                None => false,
+                std::option::Option::None => false,
             }
         }
     }
@@ -2441,7 +2441,7 @@ pub fn descending_name_set_without_key(
             } else {
                 match v1_rt::map_get(&names, name.clone()) {
                     Some(source) => v1_rt::rc_map_insert(acc.clone(), name.clone(), source.clone()),
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             }
         },
@@ -2498,7 +2498,7 @@ pub fn condition_param_names(
                 let name = crate::v1_std_core::expr_var_name_at(expr.clone(), si.clone());
                 match v1_rt::map_get(&param_set, name.clone()) {
                     Some(_) => seed_string_map(name.clone(), name.clone()),
-                    None => v1_rt::rc_empty_map::<String, String>(),
+                    std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
                 }
             }
             _ => expr.children.clone().iter().cloned().fold(
@@ -2541,7 +2541,7 @@ pub fn recursive_measure_param_names(
                     Some(eb) => {
                         recursive_measure_param_names(eb.clone(), params.clone(), si.clone())
                     }
-                    None => v1_rt::rc_empty_map::<String, String>(),
+                    std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
                 };
                 v1_rt::rc_map_merge(
                     v1_rt::rc_map_merge(
@@ -2581,7 +2581,7 @@ pub fn recursive_measure_param_names(
             }
             ExprData::ExprLet => match crate::v1_std_core::let_body(body.clone()) {
                 Some(b) => recursive_measure_param_names(b.clone(), params.clone(), si.clone()),
-                None => v1_rt::rc_empty_map::<String, String>(),
+                std::option::Option::None => v1_rt::rc_empty_map::<String, String>(),
             },
             ExprData::ExprBlock => body.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_map::<String, String>(),
@@ -2613,7 +2613,7 @@ pub fn recursive_param_name_for_arg(
 ) -> Option<String> {
     match crate::v1_std_core::arg_name_at(arg_node.clone(), si.clone()) {
         Some(name) => Some(name.clone()),
-        None => Rc::new({
+        std::option::Option::None => Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new({
                 let mut __result = Vec::new();
@@ -2911,7 +2911,7 @@ pub fn is_tree_size_preserving_wrapper(
 pub fn wrapper_inner_arg(expr: Rc<Node>) -> Rc<Node> {
     match expr.children.clone().first().cloned() {
         Some(arg_node) => crate::v1_std_core::arg_value(arg_node.clone()),
-        None => expr,
+        std::option::Option::None => expr,
     }
 }
 
@@ -2928,7 +2928,7 @@ pub fn is_sub_value_extractor(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineI
 pub fn extractor_inner_arg(expr: Rc<Node>) -> Rc<Node> {
     match expr.children.clone().first().cloned() {
         Some(arg_node) => crate::v1_std_core::arg_value(arg_node.clone()),
-        None => expr,
+        std::option::Option::None => expr,
     }
 }
 
@@ -2981,7 +2981,7 @@ pub fn is_list_shrink_expr(
                         }
                         _ => false,
                     },
-                    None => false,
+                    std::option::Option::None => false,
                 })
         }
         _ => false,
@@ -3018,7 +3018,7 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
                         }
                         _ => false,
                     },
-                    None => false,
+                    std::option::Option::None => false,
                 })
         }
         _ => false,
@@ -3057,7 +3057,7 @@ pub fn is_tokens_consuming_call(
                 vars.clone(),
                 si.clone(),
             ),
-            None => false,
+            std::option::Option::None => false,
         },
         _ => false,
     }
@@ -3071,16 +3071,18 @@ pub fn consuming_tokens_arg(
         std::option::Option::None,
         |acc: _, child: Rc<Node>| match acc.clone() {
             Some(_) => acc.clone(),
-            None => match crate::v1_std_core::arg_name_at(child.clone(), si.clone()) {
-                Some(name) => {
-                    if (name.clone() == "tokens".to_string()) {
-                        Some(crate::v1_std_core::arg_value(child.clone()))
-                    } else {
-                        std::option::Option::None
+            std::option::Option::None => {
+                match crate::v1_std_core::arg_name_at(child.clone(), si.clone()) {
+                    Some(name) => {
+                        if (name.clone() == "tokens".to_string()) {
+                            Some(crate::v1_std_core::arg_value(child.clone()))
+                        } else {
+                            std::option::Option::None
+                        }
                     }
+                    std::option::Option::None => std::option::Option::None,
                 }
-                None => std::option::Option::None,
-            },
+            }
         },
     )
 }
@@ -3142,7 +3144,7 @@ pub fn is_tokens_input_expr(
                             expr = __tco_0;
                             continue;
                         }
-                        None => {
+                        std::option::Option::None => {
                             break false;
                         }
                     }
@@ -3153,7 +3155,7 @@ pub fn is_tokens_input_expr(
                             expr = __tco_0;
                             continue;
                         }
-                        None => {
+                        std::option::Option::None => {
                             break false;
                         }
                     }
@@ -3229,7 +3231,7 @@ pub fn expr_contains_descent(
                             check_list.clone(),
                             si.clone(),
                         ),
-                        None => false,
+                        std::option::Option::None => false,
                     })
                 }
                 ExprData::ExprBlock => match expr.children.clone().last().cloned() {
@@ -3241,7 +3243,7 @@ pub fn expr_contains_descent(
                         check_list.clone(),
                         si.clone(),
                     ),
-                    None => false,
+                    std::option::Option::None => false,
                 },
                 ExprData::ExprVar {
                     binding_kind: _, ..
@@ -3295,7 +3297,7 @@ pub fn expr_contains_descent(
                             check_list.clone(),
                             si.clone(),
                         ),
-                        None => false,
+                        std::option::Option::None => false,
                     }
                 }
                 _ => false,
@@ -3361,7 +3363,7 @@ pub fn is_if_option_descent(
                     },
                     _ => false,
                 },
-                None => true,
+                std::option::Option::None => true,
             };
             (then_has_descent.clone() && else_is_none.clone())
         }
@@ -3633,7 +3635,7 @@ pub fn collect_descent_vars(
                                     _ => false,
                                 })
                         }
-                        None => false,
+                        std::option::Option::None => false,
                     }
                 } else {
                     false
@@ -3672,7 +3674,7 @@ pub fn collect_descent_vars(
                         check_list.clone(),
                         si.clone(),
                     ),
-                    None => next_vars.clone(),
+                    std::option::Option::None => next_vars.clone(),
                 }
             }
             ExprData::ExprMatch => {
@@ -3769,7 +3771,7 @@ pub fn collect_descent_vars(
                         check_list.clone(),
                         si.clone(),
                     ),
-                    None => vars.clone(),
+                    std::option::Option::None => vars.clone(),
                 };
                 v1_rt::rc_map_merge(then_vars.clone(), else_vars.clone())
             }
@@ -3795,7 +3797,7 @@ pub fn collect_descent_vars(
                     check_list.clone(),
                     si.clone(),
                 ),
-                None => vars.clone(),
+                std::option::Option::None => vars.clone(),
             },
             _ => vars.clone(),
         }
@@ -3913,7 +3915,7 @@ pub fn all_self_calls_descend_inc(
                         check_list.clone(),
                         si.clone(),
                     ),
-                    None => true,
+                    std::option::Option::None => true,
                 };
                 (val_ok.clone() && body_ok.clone())
             }
@@ -4030,7 +4032,7 @@ pub fn all_self_calls_descend_inc(
                         check_list.clone(),
                         si.clone(),
                     ),
-                    None => true,
+                    std::option::Option::None => true,
                 };
                 ((cond_ok.clone() && then_ok.clone()) && else_ok.clone())
             }
@@ -4179,7 +4181,7 @@ pub fn all_self_calls_descend_inc(
                                                     si.clone(),
                                                 )
                                             }
-                                            None => true,
+                                            std::option::Option::None => true,
                                         },
                                         _ => all_self_calls_descend_inc(
                                             arg_val.clone(),
@@ -4255,7 +4257,7 @@ pub fn unwrap_to_match(mut body: Rc<Node>) -> Option<Rc<Node>> {
                     body = __tco_0;
                     continue;
                 }
-                None => {
+                std::option::Option::None => {
                     break std::option::Option::None;
                 }
             },
@@ -4265,7 +4267,7 @@ pub fn unwrap_to_match(mut body: Rc<Node>) -> Option<Rc<Node>> {
                     body = __tco_0;
                     continue;
                 }
-                None => {
+                std::option::Option::None => {
                     break std::option::Option::None;
                 }
             },
@@ -4303,7 +4305,7 @@ pub fn matches_on_sub_value_field(
                 _ => false,
             }
         }
-        None => false,
+        std::option::Option::None => false,
     }
 }
 
@@ -4485,7 +4487,9 @@ pub fn classify_self_call_evidence(
                                                 check_list.clone(),
                                                 si.clone(),
                                             ),
-                                            None => DescentEvidence::DescentUnknown,
+                                            std::option::Option::None => {
+                                                DescentEvidence::DescentUnknown
+                                            }
                                         }
                                     } else {
                                         DescentEvidence::DescentUnknown
@@ -4786,7 +4790,7 @@ pub fn collect_evidence_incremental(
                                     _ => false,
                                 })
                         }
-                        None => false,
+                        std::option::Option::None => false,
                     }
                 } else {
                     false
@@ -4826,7 +4830,7 @@ pub fn collect_evidence_incremental(
                         branching_only.clone(),
                         si.clone(),
                     ),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 };
                 merge_optional_evidence(val_ev.clone(), body_ev.clone())
             }
@@ -4947,7 +4951,7 @@ pub fn collect_evidence_incremental(
                 let else_path = if branching_only.clone() {
                     match else_opt.clone() {
                         Some(eb) => max_path_self_calls(eb.clone(), func_name.clone(), si.clone()),
-                        None => 0,
+                        std::option::Option::None => 0,
                     }
                 } else {
                     0
@@ -4980,7 +4984,7 @@ pub fn collect_evidence_incremental(
                             branching_only.clone(),
                             si.clone(),
                         ),
-                        None => std::option::Option::None,
+                        std::option::Option::None => std::option::Option::None,
                     }
                 };
                 merge_optional_evidence(
@@ -5123,7 +5127,7 @@ pub fn collect_evidence_incremental(
                                                 si.clone(),
                                             )
                                         }
-                                        None => std::option::Option::None,
+                                        std::option::Option::None => std::option::Option::None,
                                     },
                                     _ => collect_evidence_incremental(
                                         arg_val.clone(),
@@ -5247,7 +5251,7 @@ pub fn construct_termination_proof(
             std::option::Option::None,
             |best: _, p: Rc<Node>| match best.clone() {
                 Some(_) => best.clone(),
-                None => {
+                std::option::Option::None => {
                     let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
                     let type_name = crate::v1_std_core::authored_name_at(
                         si.clone(),
@@ -5261,7 +5265,7 @@ pub fn construct_termination_proof(
                             dim.clone(),
                             si.clone(),
                         ),
-                        None => {
+                        std::option::Option::None => {
                             let tree_evidence = try_dimension_for_param(
                                 body.clone(),
                                 func_name.clone(),
@@ -5329,7 +5333,7 @@ pub fn construct_termination_proof(
         );
         let single_dim_proof = match structural_proof.clone() {
             Some(_) => structural_proof.clone(),
-            None => match parser_state_param(params.clone(), si.clone()) {
+            std::option::Option::None => match parser_state_param(params.clone(), si.clone()) {
                 Some(state_param) => {
                     let self_set = seed_bool_map(func_name.clone());
                     let edges = collect_parser_progress_edges(
@@ -5361,12 +5365,12 @@ pub fn construct_termination_proof(
                         std::option::Option::None
                     }
                 }
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
         };
         match single_dim_proof.clone() {
             Some(_) => single_dim_proof.clone(),
-            None => {
+            std::option::Option::None => {
                 let self_set = seed_bool_map(func_name.clone());
                 let func_entry = Rc::new(FuncEntry {
                     name: func_name.clone(),
@@ -5397,7 +5401,7 @@ pub fn construct_branching_termination_proof(
         std::option::Option::None,
         |best: _, p: Rc<Node>| match best.clone() {
             Some(_) => best.clone(),
-            None => {
+            std::option::Option::None => {
                 let pname = crate::v1_std_core::param_node_name_at(p.clone(), si.clone());
                 let type_name = crate::v1_std_core::authored_name_at(
                     si.clone(),
@@ -5439,7 +5443,7 @@ pub fn construct_branching_termination_proof(
                         }
                     }
                     Some(IterationDimension::ArithmeticRepeat) => std::option::Option::None,
-                    None => {
+                    std::option::Option::None => {
                         let tree_ev = try_branching_dimension_for_param(
                             body.clone(),
                             func_name.clone(),
@@ -5511,7 +5515,7 @@ pub fn proof_to_call_pattern(proof: Rc<TerminationProof>) -> Rc<CallPattern> {
                 Rc::new(CallPattern::WorklistDrainCall { element: p.clone() })
             }
         },
-        None => Rc::new(CallPattern::SameArgumentCall),
+        std::option::Option::None => Rc::new(CallPattern::SameArgumentCall),
     }
 }
 
@@ -5528,7 +5532,7 @@ pub fn classify_recursion_pattern(
             {
                 let outer = match params.clone().first().cloned() {
                     Some(p0) => crate::v1_std_core::param_node_name_at(p0.clone(), si.clone()),
-                    None => "_fold_body".to_string(),
+                    std::option::Option::None => "_fold_body".to_string(),
                 };
                 crate::std_computation::lower_call_pattern(Rc::new(CallPattern::FoldBodyCall {
                     outer_collection: outer.clone(),
@@ -5660,7 +5664,7 @@ pub fn classify_recursion_pattern(
                                     });
                                 match tree_rels.clone().first().cloned() {
                                     Some(_) => tree_rels.clone().first().cloned(),
-                                    None => Rc::new({
+                                    std::option::Option::None => Rc::new({
                                         let mut __result = Vec::new();
                                         for call_ev in all_evidence.iter().cloned() {
                                             __result.extend(
@@ -5692,7 +5696,7 @@ pub fn classify_recursion_pattern(
                                 }
                                 _ => false,
                             },
-                            None => false,
+                            std::option::Option::None => false,
                         };
                         if is_arithmetic_branching.clone() {
                             crate::std_computation::lower_call_pattern(Rc::new(
@@ -5705,14 +5709,18 @@ pub fn classify_recursion_pattern(
                                         rel.clone(),
                                     ) {
                                         Some(target) => target.clone(),
-                                        None => crate::std_computation::lower_call_pattern(
-                                            Rc::new(CallPattern::SameArgumentCall),
-                                        ),
+                                        std::option::Option::None => {
+                                            crate::std_computation::lower_call_pattern(Rc::new(
+                                                CallPattern::SameArgumentCall,
+                                            ))
+                                        }
                                     }
                                 }
-                                None => crate::std_computation::lower_call_pattern(Rc::new(
-                                    CallPattern::SameArgumentCall,
-                                )),
+                                std::option::Option::None => {
+                                    crate::std_computation::lower_call_pattern(Rc::new(
+                                        CallPattern::SameArgumentCall,
+                                    ))
+                                }
                             }
                         }
                     }
@@ -5748,7 +5756,7 @@ pub fn classify_recursion_pattern(
                                     }
                                 }
                             }
-                            None => false,
+                            std::option::Option::None => false,
                         };
                         let branching_proof =
                             if ((path_calls.clone() > 1) && !proof_safe_for_branching.clone()) {
@@ -5784,7 +5792,7 @@ pub fn classify_recursion_pattern(
                                     }
                                 }
                             }
-                            None => false,
+                            std::option::Option::None => false,
                         };
                         match proof.clone() {
                             Some(p) => {
@@ -5798,9 +5806,11 @@ pub fn classify_recursion_pattern(
                                             Some(bp) => crate::std_computation::lower_call_pattern(
                                                 proof_to_call_pattern(bp.clone()),
                                             ),
-                                            None => crate::std_computation::lower_call_pattern(
-                                                Rc::new(CallPattern::SameArgumentCall),
-                                            ),
+                                            std::option::Option::None => {
+                                                crate::std_computation::lower_call_pattern(Rc::new(
+                                                    CallPattern::SameArgumentCall,
+                                                ))
+                                            }
                                         }
                                     } else {
                                         crate::std_computation::lower_call_pattern(Rc::new(
@@ -5809,7 +5819,7 @@ pub fn classify_recursion_pattern(
                                     }
                                 }
                             }
-                            None => {
+                            std::option::Option::None => {
                                 if (path_calls.clone() > 1) {
                                     match branching_proof.clone() {
                                         Some(bp) => {
@@ -5823,9 +5833,11 @@ pub fn classify_recursion_pattern(
                                                 ))
                                             }
                                         }
-                                        None => crate::std_computation::lower_call_pattern(
-                                            Rc::new(CallPattern::SameArgumentCall),
-                                        ),
+                                        std::option::Option::None => {
+                                            crate::std_computation::lower_call_pattern(Rc::new(
+                                                CallPattern::SameArgumentCall,
+                                            ))
+                                        }
                                     }
                                 } else {
                                     crate::std_computation::lower_call_pattern(Rc::new(
@@ -5857,7 +5869,7 @@ pub fn bounded_recursive_cost(
                     body: simplify_cost(per_iter.clone()),
                 })
             }
-            None => Rc::new(CostExpr::CostUnknown {
+            std::option::Option::None => Rc::new(CostExpr::CostUnknown {
                 reason: v1_rt::concat("same-argument recursion in ".to_string(), func_name.clone()),
             }),
         }
@@ -5880,12 +5892,12 @@ pub fn bounded_scc_cost(
                     body: simplify_cost(per_iter.clone()),
                 })
             }
-            None => Rc::new(CostExpr::CostUnknown {
+            std::option::Option::None => Rc::new(CostExpr::CostUnknown {
                 reason: v1_rt::concat(
                     "same-argument mutual recursion in ".to_string(),
                     match members.clone().first().cloned() {
                         Some(n) => n.clone(),
-                        None => "scc".to_string(),
+                        std::option::Option::None => "scc".to_string(),
                     },
                 ),
             }),
@@ -6085,7 +6097,7 @@ pub fn build_call_graph(
 pub fn scc_label(members: Rc<Vec<String>>) -> String {
     match members.clone().first().cloned() {
         Some(name) => name.clone(),
-        None => "scc".to_string(),
+        std::option::Option::None => "scc".to_string(),
     }
 }
 
@@ -6154,7 +6166,9 @@ pub fn classify_scc_call_progress(
                                             descent_vars.clone(),
                                             si.clone(),
                                         ),
-                                        None => DescentEvidence::DescentUnknown,
+                                        std::option::Option::None => {
+                                            DescentEvidence::DescentUnknown
+                                        }
                                     }
                                 } else {
                                     DescentEvidence::DescentUnknown
@@ -6244,7 +6258,9 @@ pub fn collect_scc_child_edges(
                         let callee_params =
                             match v1_rt::map_get(&scc_measure_params, callee.clone()) {
                                 Some(p) => p.clone(),
-                                None => v1_rt::rc_empty_map::<String, String>(),
+                                std::option::Option::None => {
+                                    v1_rt::rc_empty_map::<String, String>()
+                                }
                             };
                         let progress = body.children.clone().iter().cloned().fold(
                             DescentEvidence::DescentUnknown,
@@ -6257,7 +6273,7 @@ pub fn collect_scc_child_edges(
                                         (v1_rt::map_get(&callee_params, aname.clone())
                                             != std::option::Option::None)
                                     }
-                                    None => false,
+                                    std::option::Option::None => false,
                                 };
                                 if targets_measure.clone() {
                                     {
@@ -6374,7 +6390,7 @@ pub fn collect_scc_child_edges(
                                                         si.clone(),
                                                     )
                                                 }
-                                                None => Rc::new(vec![]),
+                                                std::option::Option::None => Rc::new(vec![]),
                                             },
                                             _ => collect_scc_child_edges(
                                                 arg_val.clone(),
@@ -6588,7 +6604,7 @@ pub fn collect_scc_child_edges(
                                     _ => false,
                                 })
                         }
-                        None => false,
+                        std::option::Option::None => false,
                     }
                 } else {
                     false
@@ -6629,7 +6645,7 @@ pub fn collect_scc_child_edges(
                         scc_measure_params.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 v1_rt::concat(val_edges.clone(), body_edges.clone())
             }
@@ -6743,7 +6759,7 @@ pub fn collect_scc_child_edges(
                         scc_measure_params.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(vec![]),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 v1_rt::concat(
                     cond_edges.clone(),
@@ -6830,7 +6846,7 @@ pub fn is_scc_container_child_descent(
                             );
                             best_edges.clone()
                         }
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     })
                     .iter()
                     .cloned(),
@@ -6907,7 +6923,7 @@ pick_best_param_edges(best, param_map.clone())
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&best_map)).iter().cloned() { __result.push({
                 let ev = match v1_rt::map_get(&best_map, callee.clone()) {
     Some(e) => e.clone(),
-    None => DescentEvidence::DescentUnknown,
+    std::option::Option::None => DescentEvidence::DescentUnknown,
 };
 Rc::new(ProofEdge {
     caller: name.clone(),
@@ -6916,7 +6932,7 @@ Rc::new(ProofEdge {
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    std::option::Option::None => Rc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -6995,11 +7011,11 @@ let unique_keys = all_keys.iter().cloned().fold(v1_rt::rc_empty_map::<String, bo
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                 let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
-    None => DescentEvidence::DescentUnknown,
+    std::option::Option::None => DescentEvidence::DescentUnknown,
 };
 let list_ev = match v1_rt::map_get(&list_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
-    None => DescentEvidence::DescentUnknown,
+    std::option::Option::None => DescentEvidence::DescentUnknown,
 };
 Rc::new(ProofEdge {
     caller: name.clone(),
@@ -7008,7 +7024,7 @@ Rc::new(ProofEdge {
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    std::option::Option::None => Rc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -7077,11 +7093,11 @@ let unique_keys = all_keys.iter().cloned().fold(v1_rt::rc_empty_map::<String, bo
 Rc::new({ let mut __result = Vec::new(); for callee in Rc::new(v1_rt::map_keys(&unique_keys)).iter().cloned() { __result.push({
                         let tree_ev = match v1_rt::map_get(&tree_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
-    None => DescentEvidence::DescentUnknown,
+    std::option::Option::None => DescentEvidence::DescentUnknown,
 };
 let parser_ev = match v1_rt::map_get(&parser_edge_map, callee.clone()) {
     Some(ev) => ev.clone(),
-    None => DescentEvidence::DescentUnknown,
+    std::option::Option::None => DescentEvidence::DescentUnknown,
 };
 Rc::new(ProofEdge {
     caller: name.clone(),
@@ -7090,7 +7106,7 @@ Rc::new(ProofEdge {
 })
 }); } __result })
 },
-    None => Rc::new(vec![]),
+    std::option::Option::None => Rc::new(vec![]),
 }).iter().cloned());
                     }
                     __result
@@ -7133,7 +7149,7 @@ let descending_param = match self_evidence.clone().first().cloned() {
     _ => "".to_string(),
 }
             }),
-    None => "".to_string(),
+    std::option::Option::None => "".to_string(),
 };
 let self_edge = if self_has_calls.clone() {
                 if self_all_structural.clone() {
@@ -7185,7 +7201,7 @@ Rc::new(vec![Rc::new(ProofEdge {
 }).iter().cloned()); } __result });
 v1_rt::concat(self_edge.clone(), cross_edges.clone())
 },
-    None => Rc::new(vec![]),
+    std::option::Option::None => Rc::new(vec![]),
 }).iter().cloned());
             }
             __result
@@ -7235,10 +7251,10 @@ pub fn scc_descending_param(
                                     }
                                 },
                             ),
-                            None => "".to_string(),
+                            std::option::Option::None => "".to_string(),
                         }
                     }
-                    None => "".to_string(),
+                    std::option::Option::None => "".to_string(),
                 }
             }
         })
@@ -7413,7 +7429,7 @@ pub fn construct_scc_termination_proof(
                                                         DescentEvidence::DescentUnknown => false,
                                                         _ => true,
                                                     },
-                                                    None => false,
+                                                    std::option::Option::None => false,
                                                 }) {
                                                     __all = false;
                                                     break;
@@ -7464,7 +7480,7 @@ pub fn construct_scc_termination_proof(
                                                                 }
                                                                 _ => true,
                                                             },
-                                                            None => false,
+                                                            std::option::Option::None => false,
                                                         }) {
                                                             __all = false;
                                                             break;
@@ -7528,7 +7544,7 @@ pub fn classify_scc_recursion_pattern(
         );
         match proof.clone() {
             Some(p) => crate::std_computation::lower_call_pattern(proof_to_call_pattern(p.clone())),
-            None => {
+            std::option::Option::None => {
                 let scc_measure_params =
                     build_scc_measure_params(members.clone(), func_index.clone(), si.clone());
                 match classify_parser_scc_recursion_pattern(
@@ -7537,7 +7553,7 @@ pub fn classify_scc_recursion_pattern(
                     si.clone(),
                 ) {
                     Some(parser_target) => parser_target.clone(),
-                    None => {
+                    std::option::Option::None => {
                         let all_arithmetic = {
                             let mut __all = true;
                             for name in members.iter().cloned() {
@@ -7556,7 +7572,7 @@ pub fn classify_scc_recursion_pattern(
                                                 si.clone(),
                                             ))
                                     }
-                                    None => false,
+                                    std::option::Option::None => false,
                                 }) {
                                     __all = false;
                                     break;
@@ -7574,12 +7590,16 @@ pub fn classify_scc_recursion_pattern(
                                                 .cloned()
                                             {
                                                 Some(k) => k.clone(),
-                                                None => "_scc_arithmetic".to_string(),
+                                                std::option::Option::None => {
+                                                    "_scc_arithmetic".to_string()
+                                                }
                                             },
-                                            None => "_scc_arithmetic".to_string(),
+                                            std::option::Option::None => {
+                                                "_scc_arithmetic".to_string()
+                                            }
                                         }
                                     }
-                                    None => "_scc_arithmetic".to_string(),
+                                    std::option::Option::None => "_scc_arithmetic".to_string(),
                                 };
                                 crate::std_computation::lower_call_pattern(Rc::new(
                                     CallPattern::ArithmeticSubtractCall {
@@ -7811,7 +7831,7 @@ pub fn derive_peak_space(
 ) -> Rc<CostExpr> {
     match v1_rt::map_get(&output_size, "result".to_string()) {
         Some(out) => fold_peak_space(work.clone(), out.clone()),
-        None => space_of(work.clone()),
+        std::option::Option::None => space_of(work.clone()),
     }
 }
 
@@ -7831,9 +7851,9 @@ pub fn cost_account_space_from_summary(
     match summary.peak_space.clone() {
         Some(ps) => match eval_cost_expr_concrete(ps.clone(), size_env.clone()) {
             Some(bytes) => Some(crate::std_measure::byte_size(bytes.clone())),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
-        None => std::option::Option::None,
+        std::option::Option::None => std::option::Option::None,
     }
 }
 
@@ -7858,9 +7878,9 @@ pub fn cost_expr_degree(e: Rc<CostExpr>) -> Option<i64> {
                 } else {
                     rd.clone()
                 }),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostMax {
             left: l, right: r, ..
@@ -7871,22 +7891,22 @@ pub fn cost_expr_degree(e: Rc<CostExpr>) -> Option<i64> {
                 } else {
                     rd.clone()
                 }),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostMul {
             left: l, right: r, ..
         } => match cost_expr_degree(l.clone()) {
             Some(ld) => match cost_expr_degree(r.clone()) {
                 Some(rd) => Some((ld.clone() + rd.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostSum { body: bd, .. } => match cost_expr_degree(bd.clone()) {
             Some(bdeg) => Some((1 + bdeg.clone())),
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostLog { .. } => Some(0),
         CostExpr::CostExtern { name: _, .. } => std::option::Option::None,
@@ -7905,14 +7925,14 @@ pub fn degree_to_bound(degree: i64, param: String) -> Rc<CostBound> {
 pub fn space_asymptotic_bound(work: Rc<CostExpr>, param: String) -> Rc<CostBound> {
     match cost_expr_degree(space_of(work.clone())) {
         Some(d) => degree_to_bound(d.clone(), param.clone()),
-        None => Rc::new(CostBound::ForeverBound),
+        std::option::Option::None => Rc::new(CostBound::ForeverBound),
     }
 }
 
 pub fn time_asymptotic_bound(work: Rc<CostExpr>, param: String) -> Rc<CostBound> {
     match cost_expr_degree(work.clone()) {
         Some(d) => degree_to_bound(d.clone(), param.clone()),
-        None => Rc::new(CostBound::ForeverBound),
+        std::option::Option::None => Rc::new(CostBound::ForeverBound),
     }
 }
 
@@ -7926,9 +7946,9 @@ pub fn eval_size_expr_concrete(s: Rc<SizeExpr>, env: Rc<HashMap<String, i64>>) -
         } => match eval_size_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_size_expr_concrete(r.clone(), env.clone()) {
                 Some(rv) => Some((lv.clone() + rv.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         SizeExpr::SizeMax {
             left: l, right: r, ..
@@ -7939,9 +7959,9 @@ pub fn eval_size_expr_concrete(s: Rc<SizeExpr>, env: Rc<HashMap<String, i64>>) -
                 } else {
                     rv.clone()
                 }),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
     })
 }
@@ -7962,27 +7982,27 @@ pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -
         } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
                 Some(rv) => Some((lv.clone() + rv.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostMul {
             left: l, right: r, ..
         } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
                 Some(rv) => Some((lv.clone() * rv.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostMax {
             left: l, right: r, ..
         } => match eval_cost_expr_concrete(l.clone(), env.clone()) {
             Some(lv) => match eval_cost_expr_concrete(r.clone(), env.clone()) {
                 Some(rv) => Some(int_max2(lv.clone(), rv.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostSum {
             upper: up,
@@ -7991,9 +8011,9 @@ pub fn eval_cost_expr_concrete(e: Rc<CostExpr>, env: Rc<HashMap<String, i64>>) -
         } => match eval_size_expr_concrete(up.clone(), env.clone()) {
             Some(n) => match eval_cost_expr_concrete(bd.clone(), env.clone()) {
                 Some(bv) => Some((n.clone() * bv.clone())),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         },
         CostExpr::CostLog { .. } => std::option::Option::None,
         CostExpr::CostExtern { name: _, .. } => std::option::Option::None,
@@ -8058,7 +8078,7 @@ pub fn receiver_size_var(
             } => {
                 let inner_recv = match recv.children.clone().first().cloned() {
                     Some(r) => r.clone(),
-                    None => recv.clone(),
+                    std::option::Option::None => recv.clone(),
                 };
                 if method_preserves_collection_size(method_semantics.clone()) {
                     {
@@ -8108,7 +8128,7 @@ pub fn resolve_lambda_arg(
         .cloned();
         match f_arg.clone() {
             Some(fa) => Some(crate::v1_std_core::arg_value(fa.clone())),
-            None => Rc::new({
+            std::option::Option::None => Rc::new({
                 let mut __result = Vec::new();
                 for a in mc_arg_nodes.iter().cloned() {
                     __result.push(crate::v1_std_core::arg_value(a.clone()));
@@ -8144,7 +8164,7 @@ pub fn resolve_callback_cost(
                         recursion_ctx.clone(),
                         si.clone(),
                     ),
-                    None => cost_of_expr(
+                    std::option::Option::None => cost_of_expr(
                         la.clone(),
                         func_index.clone(),
                         scc_index.clone(),
@@ -8165,7 +8185,7 @@ pub fn resolve_callback_cost(
                 si.clone(),
             ),
         },
-        None => Rc::new(SummaryResult {
+        std::option::Option::None => Rc::new(SummaryResult {
             summary: Rc::new(ComplexitySummary {
                 work: Rc::new(CostExpr::CostConst { value: 1 }),
                 span: Rc::new(CostExpr::CostConst { value: 1 }),
@@ -8246,7 +8266,7 @@ pub fn cost_of_method_by_shape(
                     recursion_ctx.clone(),
                     si.clone(),
                 ),
-                None => Rc::new(SummaryResult {
+                std::option::Option::None => Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
                         work: Rc::new(CostExpr::CostConst { value: 1 }),
                         span: Rc::new(CostExpr::CostConst { value: 1 }),
@@ -8858,7 +8878,7 @@ pub fn build_legend(size_names: Rc<Vec<String>>) -> Rc<Legend> {
                         ),
                         suffix: "".to_string(),
                     }),
-                    None => Rc::new(Legend {
+                    std::option::Option::None => Rc::new(Legend {
                         substitution: v1_rt::rc_empty_map::<String, String>(),
                         suffix: "".to_string(),
                     }),
@@ -8917,13 +8937,13 @@ pub fn substitute_size(size: Rc<SizeExpr>, legend: Rc<HashMap<String, String>>) 
                 Some(short) => Rc::new(SizeExpr::SizeVar {
                     name: short.clone(),
                 }),
-                None => size.clone(),
+                std::option::Option::None => size.clone(),
             },
             SizeExpr::SizeVar { name: n, .. } => match v1_rt::map_get(&legend, n.clone()) {
                 Some(short) => Rc::new(SizeExpr::SizeVar {
                     name: short.clone(),
                 }),
-                None => size.clone(),
+                std::option::Option::None => size.clone(),
             },
             SizeExpr::SizeAdd {
                 left: l, right: r, ..
@@ -9077,7 +9097,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
                 item.clone(),
             ) {
                 Some(_) => acc.clone(),
-                None => Rc::new(DeduplicateAcc {
+                std::option::Option::None => Rc::new(DeduplicateAcc {
                     seen: v1_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
                     out: v1_rt::rc_list_push(acc.out.clone(), item.clone()),
                 }),
@@ -9229,7 +9249,7 @@ pub fn cost_of_expr(
                         recursion_ctx.clone(),
                         si.clone(),
                     ),
-                    None => Rc::new(SummaryResult {
+                    std::option::Option::None => Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 1 }),
                             span: Rc::new(CostExpr::CostConst { value: 1 }),
@@ -9340,7 +9360,7 @@ pub fn cost_of_expr(
                                     recursion_ctx.clone(),
                                     si.clone(),
                                 )),
-                                None => Some(Rc::new(SummaryResult {
+                                std::option::Option::None => Some(Rc::new(SummaryResult {
                                     summary: Rc::new(ComplexitySummary {
                                         work: cost_seq(
                                             recv_r.summary.clone().work.clone(),
@@ -9548,7 +9568,7 @@ pub fn cost_of_expr(
                             table: er.table.clone(),
                         })
                     }
-                    None => Rc::new(SummaryResult {
+                    std::option::Option::None => Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
                             work: Rc::new(CostExpr::CostConst { value: 0 }),
                             span: Rc::new(CostExpr::CostConst { value: 0 }),
@@ -9621,7 +9641,7 @@ pub fn cost_of_expr(
                             table: b_r.table.clone(),
                         })
                     }
-                    None => v_r.clone(),
+                    std::option::Option::None => v_r.clone(),
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
@@ -9815,11 +9835,11 @@ pub fn get_or_compute_summary(
             summary: cached.clone(),
             table: table.clone(),
         }),
-        None => match v1_rt::map_get(&func_index, func_name.clone()) {
+        std::option::Option::None => match v1_rt::map_get(&func_index, func_name.clone()) {
             Some(entry) => {
                 let target = match v1_rt::map_get(&scc_index, func_name.clone()) {
                     Some(info) => Some(info.pattern.clone()),
-                    None => std::option::Option::None,
+                    std::option::Option::None => std::option::Option::None,
                 };
                 let is_recursive = (target.clone() != std::option::Option::None);
                 let zero_placeholder = Rc::new(ComplexitySummary {
@@ -9845,7 +9865,7 @@ pub fn get_or_compute_summary(
                 );
                 let scc_members = match v1_rt::map_get(&scc_index, func_name.clone()) {
                     Some(info) => info.members.clone(),
-                    None => Rc::new(vec![]),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 let is_scc = ((scc_members.clone().len() as i64) > 1);
                 let bounded = match target.clone() {
@@ -9884,7 +9904,7 @@ pub fn get_or_compute_summary(
                             })
                         }
                     }
-                    None => result.summary.clone(),
+                    std::option::Option::None => result.summary.clone(),
                 };
                 let simplified_work = simplify_cost(bounded.work.clone());
                 let simplified = Rc::new(ComplexitySummary {
@@ -9904,7 +9924,7 @@ pub fn get_or_compute_summary(
                     table: final_table.clone(),
                 })
             }
-            None => {
+            std::option::Option::None => {
                 let is_unexpected_miss =
                     (v1_rt::map_get(&scc_index, func_name.clone()) != std::option::Option::None);
                 if is_unexpected_miss.clone() {
@@ -9971,7 +9991,7 @@ pub fn collect_call_evidence(
                     if (v1_rt::map_get(&target_set, callee.clone()) != std::option::Option::None) {
                         match de.clone() {
                             Some(evidence) => Rc::new(vec![evidence.clone()]),
-                            None => Rc::new(vec![]),
+                            std::option::Option::None => Rc::new(vec![]),
                         }
                     } else {
                         Rc::new(vec![])
@@ -10068,7 +10088,7 @@ pub fn merge_param_evidence(
                 acc.clone(),
                 crate::std_induction::sub_value_to_evidence(rel.clone()),
             ),
-            None => acc.clone(),
+            std::option::Option::None => acc.clone(),
         },
     )
 }
@@ -10082,7 +10102,7 @@ pub fn extract_shrink_factor(
         |acc: Option<Rc<ShrinkFactor>>, call_evidence: Rc<Vec<Rc<SubValueRelation>>>| match acc
             .clone()
         {
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
             Some(prev) => match call_evidence
                 .clone()
                 .iter()
@@ -10117,7 +10137,7 @@ pub fn extract_shrink_factor(
                     }
                     _ => acc.clone(),
                 },
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
             },
         },
     )
@@ -10151,9 +10171,9 @@ pub fn max_path_descending(
                                 SubValueRelation::ArithmeticDescent { .. } => 1,
                                 _ => 0,
                             },
-                            None => 0,
+                            std::option::Option::None => 0,
                         },
-                        None => 0,
+                        std::option::Option::None => 0,
                     }
                 } else {
                     0
@@ -10194,7 +10214,7 @@ pub fn max_path_descending(
                         param_index.clone(),
                         si.clone(),
                     ),
-                    None => 0,
+                    std::option::Option::None => 0,
                 };
                 let branch_max = if (then_count.clone() > else_count.clone()) {
                     then_count.clone()
@@ -10267,7 +10287,7 @@ pub fn distinct_descended_fields(
                         }
                         _ => acc.clone(),
                     },
-                    None => acc.clone(),
+                    std::option::Option::None => acc.clone(),
                 }
             },
         );
@@ -10389,7 +10409,7 @@ pub fn analyze_structural_bounds(
                                             })]),
                                         )
                                     }
-                                    None => pacc.clone(),
+                                    std::option::Option::None => pacc.clone(),
                                 }
                             }
                             _ => pacc.clone(),
@@ -10425,7 +10445,7 @@ pub fn build_complexity_report(
                 entry.name.clone(),
             ) {
                 Some(_) => acc.clone(),
-                None => {
+                std::option::Option::None => {
                     if (max_path_self_calls(entry.body.clone(), entry.name.clone(), si.clone()) > 0)
                     {
                         {
@@ -10467,7 +10487,7 @@ pub fn build_complexity_report(
             |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
                 let callees = match v1_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
-                    None => Rc::new(vec![]),
+                    std::option::Option::None => Rc::new(vec![]),
                 };
                 let unique_set = callees.iter().cloned().fold(
                     v1_rt::rc_empty_map::<String, bool>(),
@@ -10480,7 +10500,7 @@ pub fn build_complexity_report(
                     |inner: Rc<HashMap<String, i64>>, callee: String| {
                         let current = match v1_rt::map_get(&inner, callee.clone()) {
                             Some(v) => v.clone(),
-                            None => 0,
+                            std::option::Option::None => 0,
                         };
                         v1_rt::rc_map_insert(inner.clone(), callee.clone(), (current.clone() + 1))
                     },
@@ -10534,7 +10554,7 @@ pub fn build_complexity_report(
                             func_name.clone(),
                             crate::std_measure::byte_size_count(bs.clone()),
                         ),
-                        None => acc.function_space_bytes.clone(),
+                        std::option::Option::None => acc.function_space_bytes.clone(),
                     };
                     let new_processed =
                         v1_rt::rc_map_insert(acc.processed.clone(), func_name.clone(), true);
@@ -10552,7 +10572,7 @@ pub fn build_complexity_report(
                     };
                     let callees = match v1_rt::map_get(&call_forward, func_name.clone()) {
                         Some(cs) => cs.clone(),
-                        None => Rc::new(vec![]),
+                        std::option::Option::None => Rc::new(vec![]),
                     };
                     let unique_set = callees.iter().cloned().fold(
                         v1_rt::rc_empty_map::<String, bool>(),
@@ -10566,7 +10586,7 @@ pub fn build_complexity_report(
                         |fi: Rc<HashMap<String, i64>>, callee: String| {
                             let current = match v1_rt::map_get(&fi, callee.clone()) {
                                 Some(v) => v.clone(),
-                                None => 0,
+                                std::option::Option::None => 0,
                             };
                             v1_rt::rc_map_insert(fi.clone(), callee.clone(), (current.clone() - 1))
                         },
@@ -10576,7 +10596,7 @@ pub fn build_complexity_report(
                         |t: Rc<CostInternTable>, callee: String| {
                             let remaining = match v1_rt::map_get(&new_fan_in, callee.clone()) {
                                 Some(v) => v.clone(),
-                                None => 0,
+                                std::option::Option::None => 0,
                             };
                             if ((remaining.clone() <= 0)
                                 && set_has(new_processed.clone(), callee.clone()))
@@ -10589,7 +10609,7 @@ pub fn build_complexity_report(
                     );
                     let self_fan_in = match v1_rt::map_get(&new_fan_in, func_name.clone()) {
                         Some(v) => v.clone(),
-                        None => 0,
+                        std::option::Option::None => 0,
                     };
                     let final_table = if (self_fan_in.clone() <= 0) {
                         evict_summary(evicted_table.clone(), func_name.clone())
@@ -10606,7 +10626,7 @@ pub fn build_complexity_report(
                         processed: new_processed.clone(),
                     })
                 }
-                None => acc.clone(),
+                std::option::Option::None => acc.clone(),
             },
         );
         let structural_bounds = analyze_structural_bounds(func_entries.clone(), si.clone());

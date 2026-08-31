@@ -76,24 +76,24 @@ fn literal_source_kind_eq(a: LiteralSourceKind, b: LiteralSourceKind) -> Bool {
 // HOW A KERNEL VALUE IS UNFOLDED INTO A DESTINATION'S CONSTRUCTORS. Each arm names the destination's
 // own constructors by exact DeclarationRef -- the unfolding is a fact about the destination, so a
 // renamed variant is a changed row, never a stale spelling inside the compiler.
-//   PeanoUnfold   a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
-//                 n deep around the nullary `zero`.
-//   BooleanUnfold a kernel bool unfolds to the destination's nullary true or false constructor
-//                 (v2.std.logic Bool = True | False, declared structural on purpose).
+//   PeanoUnfold    a nonnegative integer n unfolds to succ^n(zero): `succ { prev_field: ... }` nested
+//                  n deep around the nullary `zero`.
+//   BooleanUnfold  a kernel bool unfolds to the destination's nullary true or false constructor
+//                  (v2.std.logic Bool = True | False, declared structural on purpose).
 //   UnicodeScalarSequenceUnfold
-//                 a kernel string literal unfolds to the sequence of its Unicode scalar values
-//                 (std.unicode.types, definition D76) -- the unique monoid homomorphism from the
-//                 kernel string into a free monoid over Char, where Char = Int where unicode_scalar
-//                 (std.types) realizes each element as the scalar Int itself. The image is carried
-//                 as the language's canonical FreeMonoid introduction (the list-literal node) with
-//                 one scalar Int literal per element, NOT as a cons^n(empty) constructor nesting:
-//                 the map is canonical (no constructor names to carry, hence no fields on this arm),
-//                 a per-element nesting is O(n^2) under a sequence-backed carrier where the flat
-//                 introduction is O(n) (DESIGN section 6, bare minimum cost), and a nesting n deep
-//                 exceeds the emitter's bounded recursion fuel on ordinary prose-length literals.
-//                 SCALARS, NEVER BYTES: the element values are code points read at the character
-//                 grain, so a non-ASCII literal's length and elements observe scalar count and
-//                 scalar values, not its UTF-8 encoding.
+//                  a kernel string literal unfolds to the sequence of its Unicode scalar values
+//                  (std.unicode.types, definition D76) -- the unique monoid homomorphism from the
+//                  kernel string into a free monoid over Char, where Char = Int where unicode_scalar
+//                  (std.types) realizes each element as the scalar Int itself. The image is carried
+//                  as the language's canonical FreeMonoid introduction (the list-literal node) with
+//                  one scalar Int literal per element, NOT as a cons^n(empty) constructor nesting:
+//                  the map is canonical (no constructor names to carry, hence no fields on this arm),
+//                  a per-element nesting is O(n^2) under a sequence-backed carrier where the flat
+//                  introduction is O(n) (DESIGN section 6, bare minimum cost), and a nesting n deep
+//                  exceeds the emitter's bounded recursion fuel on ordinary prose-length literals.
+//                  SCALARS, NEVER BYTES: the element values are code points read at the character
+//                  grain, so a non-ASCII literal's length and elements observe scalar count and
+//                  scalar values, not its UTF-8 encoding.
 type LiteralUnfolding
   = PeanoUnfold { zero: DeclarationRef, succ: DeclarationRef, prev_field: NonEmptyStr }
   | BooleanUnfold { true_variant: DeclarationRef, false_variant: DeclarationRef }
