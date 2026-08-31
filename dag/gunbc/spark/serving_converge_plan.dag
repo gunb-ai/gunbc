@@ -575,11 +575,11 @@ fn spark_serving_axis_for_observation(
   observation: SparkServingHostObservation,
 ) -> SparkServingAxisDisposition<FleetConvergeSparkServingTypedAction> {
   match observation.provenance {
-    SparkServingObservationTransactionRefused { host: h, fleet_attempt: _, phase: _, cause: why } =>
+    SparkServingObservationTransactionRefused { request: r, cause: why } =>
       SparkServingAxisRefused {
-        host: h,
+        host: r.host,
         cause: join([
-          "the observation transaction for host ", h as String,
+          "the observation transaction for host ", r.host as String,
           " refused, so there is no measured population to plan from: ", why as String,
         ], ""),
       }
