@@ -191,16 +191,13 @@ fn second_identity() -> RegenSurfaceIdentity {
 }
 
 test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool {
-  match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
-    planned: [one_identity(), second_identity()],
-    executed: [one_identity(), second_identity()],
-    input_generation_id: "g1",
-    observed_candidate_generation_id: "g0",
-    expected_candidate_digest: "candidate-g1",
-    observed_candidate_digest: "candidate-g0",
-    build_terminal: RegenStageBuildPassed
+  match regen_admit_candidate_generation(observation: RegenCandidateGenerationObservation {
+    planned_surfaces: [one_identity(), second_identity()],
+    current_seed_digest: "g1",
+    manifest_producer_seed_digest: "g0",
+    observed_candidate_digest: "candidate-g0"
   }) {
-    RegenStageExecutionRefused { refusal: CandidateStaleAfterProducerRebuild { planned_surfaces: surfaces, observed_generation_id: _, current_generation_id: _, observed_candidate_digest: _ } } =>
+    RegenCandidateGenerationRefused { refusal: CandidateStaleAfterProducerRebuild { planned_surfaces: surfaces, observed_generation_id: _, current_generation_id: _, observed_candidate_digest: _ } } =>
       count(surfaces) == 2
         && surfaces |> any(surface => surface.projected_path == "std_subject.rs")
         && surfaces |> any(surface => surface.projected_path == "std_dependent.rs")
@@ -212,8 +209,6 @@ test fn tampered_candidate_digest_refuses_before_admission() -> Bool {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity(), second_identity()],
     executed: [one_identity(), second_identity()],
-    input_generation_id: "g1",
-    observed_candidate_generation_id: "g1",
     expected_candidate_digest: "expected",
     observed_candidate_digest: "tampered",
     build_terminal: RegenStageBuildPassed
@@ -230,8 +225,6 @@ test fn stage_build_failure_is_a_typed_transaction_refusal() -> Bool {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity()],
-    input_generation_id: "g1",
-    observed_candidate_generation_id: "g1",
     expected_candidate_digest: "candidate",
     observed_candidate_digest: "candidate",
     build_terminal: RegenStageBuildFailed { reason: "old dependent rejects producer output" }
@@ -245,8 +238,6 @@ test fn matching_stage_population_digest_generation_and_build_are_admitted() -> 
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
     planned: [one_identity()],
     executed: [one_identity()],
-    input_generation_id: "g1",
-    observed_candidate_generation_id: "g1",
     expected_candidate_digest: "candidate",
     observed_candidate_digest: "candidate",
     build_terminal: RegenStageBuildPassed

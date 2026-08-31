@@ -622,11 +622,43 @@ fn regen_stage_receipt_all_passed(receipt: RegenStageReceipt) -> Bool {
 type RegenStageExecutionObservation {
   planned: List<RegenSurfaceIdentity>
   executed: List<RegenSurfaceIdentity>
-  input_generation_id: String
-  observed_candidate_generation_id: String
   expected_candidate_digest: String
   observed_candidate_digest: String
   build_terminal: RegenStageBuildTerminal
+}
+
+type RegenCandidateGenerationObservation {
+  planned_surfaces: List<RegenSurfaceIdentity>
+  current_seed_digest: String
+  manifest_producer_seed_digest: String
+  observed_candidate_digest: String
+}
+
+type RegenCandidateGenerationAdmission
+  = RegenCandidateGenerationAdmitted
+  | RegenCandidateGenerationRefused { refusal: RegenConvergenceRefusal }
+
+fn regen_admit_candidate_generation(observation: RegenCandidateGenerationObservation) -> RegenCandidateGenerationAdmission {
+  if observation.current_seed_digest == observation.manifest_producer_seed_digest {
+    RegenCandidateGenerationAdmitted
+  } else {
+    RegenCandidateGenerationRefused {
+      refusal: CandidateStaleAfterProducerRebuild {
+        planned_surfaces: observation.planned_surfaces,
+        observed_generation_id: observation.manifest_producer_seed_digest,
+        current_generation_id: observation.current_seed_digest,
+        observed_candidate_digest: observation.observed_candidate_digest
+      }
+    }
+  }
+}
+
+fn regen_candidate_generation_admission_label(admission: RegenCandidateGenerationAdmission) -> String {
+  match admission {
+    RegenCandidateGenerationAdmitted => "Admitted"
+    RegenCandidateGenerationRefused { refusal: CandidateStaleAfterProducerRebuild { planned_surfaces: _, observed_generation_id: _, current_generation_id: _, observed_candidate_digest: _ } } => "CandidateStaleAfterProducerRebuild"
+    RegenCandidateGenerationRefused { refusal: _ } => "Refused"
+  }
 }
 
 type RegenStageExecutionAdmission
@@ -645,15 +677,6 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
       refusal: StagePlannedExecutedMismatch {
         planned: observation.planned,
         executed: observation.executed
-      }
-    }
-  } else if observation.input_generation_id != observation.observed_candidate_generation_id {
-    RegenStageExecutionRefused {
-      refusal: CandidateStaleAfterProducerRebuild {
-        planned_surfaces: observation.planned,
-        observed_generation_id: observation.observed_candidate_generation_id,
-        current_generation_id: observation.input_generation_id,
-        observed_candidate_digest: observation.observed_candidate_digest
       }
     }
   } else if observation.expected_candidate_digest != observation.observed_candidate_digest {
@@ -677,6 +700,7 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
 fn regen_stage_execution_admission_label(admission: RegenStageExecutionAdmission) -> String {
   match admission {
     RegenStageExecutionAdmitted => "Admitted"
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: _, expected: _, observed: _ } } => "InstalledDigestMismatch"
     RegenStageExecutionRefused { refusal: _ } => "Refused"
   }
 }

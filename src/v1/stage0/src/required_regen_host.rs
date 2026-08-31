@@ -12,10 +12,15 @@ use std::time::Instant;
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
-use crate::v1_compiler_artifact::RenderTarget;
-use crate::v1_compiler_compile::{
-    compile_sources, stage0_self_compile_refusal_message, SourceFile,
+use crate::gunbc_stage0_emitted_population_manifest::{
+    emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
+    emitted_population_manifest_line_separator,
 };
+use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
+use crate::v1_compiler_compile::{
+    compile_sources_selected, stage0_self_compile_refusal_message, SourceFile,
+};
+use crate::v1_compiler_emit_rust::rust_module_emit_path;
 use crate::v1_rt;
 use bootstrap_stage0_crate_layout_generated::{
     EMITTER_PRODUCED_DIVERGENT_STAGE0_FILES, HAND_MAINTAINED_STAGE0_DIRS,
@@ -419,7 +424,18 @@ pub fn run_required_regen_scoped(
     // reward for agreeing with the committed tree. Authority for the ordering:
     // `v2.workflow.required_regen` `required_regen_run`, whose verdict arms cannot be spelled
     // without the tree they judged.
-    let (emitted, emitted_basenames) = match emit_generated_surface(&sources)? {
+    // THE EMISSION IS DENOMINATED IN THE CHANGE. `selected` is the intersection of the
+    // affected-set bound with the committed roster -- the exact derived closure of this edit, not
+    // "the module that changed" -- and it is what the emitter renders. Everything the emitter
+    // declares about the whole population (the crate module list, the manifest, the closure-stub
+    // decision) is derived from paths and from the resolved graph, so it is unchanged by this.
+    let render_selection = Rc::new(match scope {
+        RegenEmissionScope::WholePopulation => RustModuleRenderSelection::RenderEveryModule,
+        _ => RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: Rc::new(selected.iter().cloned().collect()),
+        },
+    });
+    let (emitted, emitted_basenames) = match emit_generated_surface(&sources, &render_selection)? {
         // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
         // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
         // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
@@ -667,12 +683,19 @@ pub fn run_required_regen_fixed_point(
     let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
-    let emitted = compile_stage0(&sources)?;
+    // WHOLE POPULATION, DELIBERATELY. The fixed-point pass asks whether a seed rebuilt from the
+    // installed mirrors regenerates them unchanged; it compares digests over the COMMITTED
+    // roster, so it must render every member of that roster. A selection here would compare a
+    // digest over one population against pass 1's over another.
+    let emitted = compile_stage0(
+        &sources,
+        &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )?;
     let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
     if emitted.is_empty() {
         return Err("refusal: fixed-point emit produced zero files".to_string());
     }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
     if let Some(reason) =
         validate_compared_populations(&committed_basenames, &emitted_basenames, &hand_dir_shadows)
@@ -851,14 +874,20 @@ fn scope_selection(
     }
 }
 
-fn emit_generated_surface(sources: &[(String, String)]) -> Result<GeneratedSurfaceEmit, String> {
-    let emitted = compile_stage0(sources)?;
+/// `selection` bounds which modules are RENDERED, and nothing else. The emitted-population
+/// roster below is read from the manifest, which the emitter derives from paths, so it stays
+/// whole under every selection -- see `generated_basenames_from_emit`.
+fn emit_generated_surface(
+    sources: &[(String, String)],
+    selection: &Rc<RustModuleRenderSelection>,
+) -> Result<GeneratedSurfaceEmit, String> {
+    let emitted = compile_stage0(sources, selection)?;
     if emitted.is_empty() {
         return Ok(GeneratedSurfaceEmit::EmitRefused {
             reason: "refusal: emit produced zero files".to_string(),
         });
     }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     Ok(GeneratedSurfaceEmit::Emitted {
         emitted,
         emitted_basenames,
@@ -904,7 +933,10 @@ fn measure_generated_surface(
     sources: &[(String, String)],
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
-    let (emitted, emitted_basenames) = match emit_generated_surface(sources)? {
+    let (emitted, emitted_basenames) = match emit_generated_surface(
+        sources,
+        &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )? {
         GeneratedSurfaceEmit::EmitRefused { reason } => {
             return Ok(GeneratedSurfaceMeasured::Refused { reason })
         }
@@ -1018,7 +1050,10 @@ fn is_declared_divergent(file_name: &str) -> bool {
 /// itself, so every regen read the corpus twice -- authority digest and here -- and the receipt
 /// priced the second walk at a quarter of the first phase (`regen.corpus_reload`, measured
 /// 2026-08-30: 24 s on srv1, 17 s on BuildBuddy). The caller reads once; both consumers share it.
-fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String>, String> {
+fn compile_stage0(
+    sources: &[(String, String)],
+    selection: &Rc<RustModuleRenderSelection>,
+) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
         .iter()
         .map(|(path, content)| {
@@ -1028,7 +1063,11 @@ fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String
             })
         })
         .collect();
-    let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
+    let result = compile_sources_selected(
+        Rc::new(source_files.into()),
+        RenderTarget::Rust,
+        selection.clone(),
+    );
     if let Some(message) =
         stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
     {
@@ -1061,19 +1100,61 @@ fn is_compared_generated_basename(basename: &str) -> bool {
     basename.ends_with(".rs")
 }
 
-fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<String> {
+/// THE EMITTED ROSTER IS READ FROM THE EMITTER'S DECLARATION, NOT FROM WHAT IT HANDED BACK.
+///
+/// This used to walk the keys of the returned map -- the files this emit RENDERED. That was the
+/// same population under the only emission that existed, and it stops being so the moment an
+/// emission is denominated in a change: under `RenderSelectedMirrors` the keys ARE the selection,
+/// so every unselected mirror would read as `committed_not_emitted` and the population identity
+/// join would be scoped by accident. That join is the one thing `v2.workflow.required_regen`
+/// says may never be scoped, because it reads no bytes and so has nothing to save and everything
+/// to hide.
+///
+/// `emit_emitted_population_manifest` (`v1.compiler.emit_rust`) declares every path the emit
+/// produced, derived from PATHS rather than from rendered content, so it is total under every
+/// selection and identical to the rendered set when there is none. Reading it here is the
+/// structural inverse of that write, taking both literals from the one authority the writer reads
+/// (`gunbc.stage0_emitted_population_manifest`); the same inverse is spelled in the model at
+/// `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`, over the
+/// committed artifact rather than an in-memory emission, and in `cssl_seed_linked_closure_assembly`
+/// `declared_emitted_paths`, over a file on disk. Neither is reachable from here: the first is not
+/// in the seed closure and the second lives in a separate binary's private module.
+///
+/// A manifest the emit did not produce, or one carrying no declared line, REFUSES. It cannot be
+/// silently replaced by the rendered keys: that fallback is exactly the widening this function
+/// exists to remove, and it would be invisible because the two agree whenever the selection is
+/// whole.
+fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Result<Vec<String>, String> {
+    let manifest_key = format!("src/{}", emitted_population_manifest_basename());
+    let manifest = emitted.get(&manifest_key).ok_or_else(|| {
+        format!(
+            "refusal: emit declared no population -- {manifest_key} is absent from the emitted              files, so the roster the population identity join needs does not exist"
+        )
+    })?;
+    let prefix = emitted_population_manifest_line_prefix();
+    let separator = emitted_population_manifest_line_separator();
     let mut names: BTreeSet<String> = BTreeSet::new();
-    for path in emitted.keys() {
+    let mut declared = 0usize;
+    for line in manifest.split(separator.as_str()) {
+        let Some(path) = line.strip_prefix(prefix.as_str()) else {
+            continue;
+        };
+        declared += 1;
+        // Basename, not the declared path: `committed_generated_basenames` keys on
+        // `file_name()`, and declared paths carry a `src/` prefix. Comparing the two
+        // key spaces made every file mismatch in both directions.
         if is_compared_generated_basename(emit_path_basename(path))
             && !is_hand_maintained_path(path)
         {
-            // Basename, not the emit key: `committed_generated_basenames` keys on
-            // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
-            // key spaces made every file mismatch in both directions.
             names.insert(emit_path_basename(path).to_string());
         }
     }
-    names.into_iter().collect()
+    if declared == 0 {
+        return Err(format!(
+            "refusal: {manifest_key} carries no declared path line -- the emitted population              cannot be read from it"
+        ));
+    }
+    Ok(names.into_iter().collect())
 }
 
 // Emit keys are the target-relative artifact path (e.g. "src/cli_run.rs" for
@@ -2254,6 +2335,212 @@ mod tests {
     /// accepted control and the refusal differ by a single row. `"rs"` — the corrupt row a
     /// merge produced on integration/namespace-cut — is inert without this wall, because the
     /// copy loop skipped a declared row naming nothing.
+    // ------------------------------------------------------------------------------------
+    // THE CHANGE-DENOMINATED EMISSION'S CONTROLS.
+    //
+    // Three modules, no imports, one selected. That is enough to discriminate every claim the
+    // scoped emission makes, and small enough to run in the required unit step rather than in a
+    // live-corpus lane -- the whole-tree version of the same comparison is the planted-edit
+    // control the regen round runs.
+    // ------------------------------------------------------------------------------------
+    fn selection_fixture() -> Vec<(String, String)> {
+        ["alpha", "beta", "gamma"]
+            .iter()
+            .map(|name| {
+                (
+                    format!("fx_{name}.dag"),
+                    format!("module fx.{name}\nfn {name}_add(a: Int, b: Int) -> Int {{ a + b }}\n"),
+                )
+            })
+            .collect()
+    }
+
+    /// `selected_basenames` is `None` for the whole-closure arm and `Some(list)` for a selection.
+    /// The `RustModuleRenderSelection` itself is built INSIDE the worker thread: the emitter's
+    /// values are `Rc`-shaped and therefore not `Send`, so the selection cannot cross the thread
+    /// boundary the deep-recursion stack requires. What crosses is owned, thread-safe data in and
+    /// the emitted map out.
+    fn emit_fixture(selected_basenames: Option<Vec<String>>) -> HashMap<String, String> {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let selection = Rc::new(match selected_basenames {
+                    None => RustModuleRenderSelection::RenderEveryModule,
+                    Some(names) => RustModuleRenderSelection::RenderSelectedMirrors {
+                        basenames: Rc::new(names.into_iter().collect()),
+                    },
+                });
+                compile_stage0(&selection_fixture(), &selection).expect("fixture emits clean")
+            })
+            .expect("spawn emit thread")
+            .join()
+            .expect("emit thread panicked")
+    }
+
+    fn beta_only() -> Option<Vec<String>> {
+        Some(vec!["fx_beta.rs".to_string()])
+    }
+
+    /// THE SELECTION IS THE RENDERED SET, and the rendered bytes are the whole round's bytes.
+    /// This is the unit-grain form of the planted-edit control: what a scoped round writes for a
+    /// selected mirror is byte-identical to what an unscoped round writes for it, and nothing
+    /// outside the selection is written at all.
+    #[test]
+    fn a_scoped_emission_renders_the_selection_and_nothing_else() {
+        let whole = emit_fixture(None);
+        let scoped = emit_fixture(beta_only());
+        assert!(
+            whole.contains_key("src/fx_alpha.rs"),
+            "positive control: the unscoped emission renders every module"
+        );
+        assert!(
+            !scoped.contains_key("src/fx_alpha.rs") && !scoped.contains_key("src/fx_gamma.rs"),
+            "a scoped emission must not render an unselected module"
+        );
+        assert_eq!(
+            scoped.get("src/fx_beta.rs"),
+            whole.get("src/fx_beta.rs"),
+            "a selected mirror must be byte-identical to what the unscoped emission produced"
+        );
+    }
+
+    /// CONTENT INDEPENDENCE, DEMONSTRATED RATHER THAN ASSERTED. `emit_lib_rs_from_paths` and
+    /// `emit_emitted_population_manifest` take `List<String>`, so no rendered byte can reach
+    /// them -- and this is what that buys: the two aggregates are the SAME BYTES under an
+    /// emission that rendered one module and one that rendered three.
+    ///
+    /// It is discriminating in both directions. Were either aggregate derived from the rendered
+    /// files, the scoped `lib.rs` would drop two `pub mod` lines and the manifest two paths, and
+    /// both halves below would go red -- which is exactly the E0583 a change-denominated
+    /// emission would otherwise ship silently, since the round never re-reads a mirror it did
+    /// not select.
+    #[test]
+    fn the_crate_module_list_and_the_manifest_are_content_independent() {
+        let whole = emit_fixture(None);
+        let scoped = emit_fixture(beta_only());
+        assert_eq!(
+            scoped.get("src/lib.rs"),
+            whole.get("src/lib.rs"),
+            "lib.rs is derived from paths, so a selection cannot move it"
+        );
+        assert_eq!(
+            scoped.get("src/emitted_population.rs"),
+            whole.get("src/emitted_population.rs"),
+            "the manifest is derived from paths, so a selection cannot move it"
+        );
+        let lib = scoped
+            .get("src/lib.rs")
+            .expect("scoped emission still writes lib.rs");
+        assert!(
+            lib.contains("pub mod fx_alpha;") && lib.contains("pub mod fx_gamma;"),
+            "the crate must declare modules this emission did not render: {lib}"
+        );
+        let manifest = scoped
+            .get("src/emitted_population.rs")
+            .expect("scoped emission still writes the manifest");
+        assert!(
+            manifest.contains("// src/fx_alpha.rs") && manifest.contains("// src/fx_gamma.rs"),
+            "the manifest must declare paths this emission did not render: {manifest}"
+        );
+    }
+
+    /// POPULATION IDENTITY IS NEVER SCOPED, read at the seam where a scope could have leaked into
+    /// it. `generated_basenames_from_emit` reads the emitter's declaration, so the roster a
+    /// scoped round hands the identity join is the roster an unscoped round hands it.
+    #[test]
+    fn the_emitted_roster_is_whole_under_a_scope() {
+        let whole = emit_fixture(None);
+        let scoped = emit_fixture(beta_only());
+        let whole_roster = generated_basenames_from_emit(&whole).expect("whole roster");
+        let scoped_roster = generated_basenames_from_emit(&scoped).expect("scoped roster");
+        assert!(
+            whole_roster.contains(&"fx_alpha.rs".to_string()),
+            "positive control: the roster names every emitted mirror"
+        );
+        assert_eq!(
+            scoped_roster, whole_roster,
+            "the roster the population identity join reads may not narrow with the selection"
+        );
+    }
+
+    /// AN EMPTY SELECTION RENDERS NOTHING AND STILL DECLARES EVERYTHING. It is an ordinary answer
+    /// -- an edit that touches no compared mirror -- and not a spelling of RenderEveryModule.
+    #[test]
+    fn an_empty_selection_renders_no_module_and_declares_them_all() {
+        let whole = emit_fixture(None);
+        let none = emit_fixture(Some(vec![]));
+        assert!(
+            !none.contains_key("src/fx_beta.rs"),
+            "an empty selection renders no module"
+        );
+        assert_eq!(
+            none.get("src/lib.rs"),
+            whole.get("src/lib.rs"),
+            "an empty selection still declares the whole crate"
+        );
+    }
+
+    /// THE PRECONDITION `import_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
+    ///
+    /// A scoped emission observes refusals only for the modules it rendered. That is exact rather
+    /// than partial because an emit carrying an error diagnostic returns NO FILES -- so a
+    /// committed mirror is a file some clean emit produced, and the modules a selection declined
+    /// to render had nothing to say. The construction is `final_files` in
+    /// `v1.compiler.compile` `emit_resolved_for_target_selected`; this is its discriminating red.
+    ///
+    /// WHAT IT COVERS, STATED NARROWLY: the refusing class here is a module-filename collision,
+    /// which `emit_rust` refuses by returning an empty file list of its own. It establishes the
+    /// implication for a refusal reachable from a fixture, not for every refusing class -- an
+    /// import refusal is authored by a cross-module export failure this fixture cannot express.
+    #[test]
+    fn an_emit_that_refuses_hands_back_no_files() {
+        let (refused, files_empty) = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let sources: Vec<Rc<SourceFile>> = [
+                    (
+                        "fx_a.dag",
+                        "module fx.alpha\nfn a_add(a: Int, b: Int) -> Int { a + b }\n",
+                    ),
+                    (
+                        "fx_b.dag",
+                        "module fx_alpha\nfn b_add(a: Int, b: Int) -> Int { a + b }\n",
+                    ),
+                ]
+                .iter()
+                .map(|(path, content)| {
+                    Rc::new(SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                })
+                .collect();
+                let result = compile_sources_selected(
+                    Rc::new(sources.into()),
+                    RenderTarget::Rust,
+                    Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                );
+                (
+                    result
+                        .diagnostics
+                        .iter()
+                        .any(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+                    result.files.is_empty(),
+                )
+            })
+            .expect("spawn refusal thread")
+            .join()
+            .expect("refusal thread panicked");
+        assert!(
+            refused,
+            "the fixture must actually refuse, or this control proves nothing"
+        );
+        assert!(
+            files_empty,
+            "an emit carrying an error diagnostic must hand back no files at all"
+        );
+    }
+
     #[test]
     fn declared_hand_maintained_row_must_name_an_existing_path() {
         let root = temp_dir("declared-row-wall");
@@ -2581,6 +2868,38 @@ struct RegenConvergenceCheckpointSubject {
     stage_plan_authority_digest: String,
 }
 
+struct RegenConvergenceModel {
+    graph: Rc<crate::v1_compiler_compile::ResolvedGraph>,
+    indices: Rc<im::HashMap<String, Rc<crate::v1_compiler_compile::NewlineIndex>>>,
+}
+
+impl RegenConvergenceModel {
+    fn load(source_roots: &[String]) -> Result<Self, String> {
+        let entry = source_roots
+            .iter()
+            .map(|root| Path::new(root).join("workflow/regen_convergence_transaction.dag"))
+            .find(|path| path.is_file())
+            .ok_or_else(|| {
+                "refusal: convergence transaction model is outside source roots".to_string()
+            })?;
+        let index = super::process_shared_index(source_roots);
+        let (graph, indices) =
+            super::resolve_entry_with_index_for_discovery_corpus(&index, &entry.to_string_lossy())
+                .map_err(|e| {
+                    format!("refusal: convergence transaction model did not resolve: {e}")
+                })?;
+        Ok(Self { graph, indices })
+    }
+
+    fn context(&self) -> crate::v1_interpreter::InterpContext {
+        super::make_eval_context(
+            &self.graph,
+            self.indices.clone(),
+            crate::v1_interpreter::ExecutionMode::Hermetic,
+        )
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct RegenConvergenceSurfaceReceipt {
     declaring_module: String,
@@ -2598,7 +2917,7 @@ enum RegenSurfaceExecutionStandingReceipt {
     TerminalPassed,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 enum RegenConvergenceStageKindReceipt {
     PromoteGenerationInputs,
     InstallSeedCompatibilityCut,
@@ -2742,17 +3061,86 @@ fn produce_candidate_manifest(
     })
 }
 
+fn admit_candidate_generation_from_model(
+    model: &RegenConvergenceModel,
+    manifest: &RegenCandidateManifest,
+    current_seed_digest: &str,
+) -> Result<(), String> {
+    use crate::v1_interpreter::{self, str_value, Value};
+    let ctx = model.context();
+    let identities = manifest
+        .surfaces
+        .iter()
+        .map(|surface| Value::Record {
+            type_name: ctx.sym("RegenSurfaceIdentity"),
+            fields: Rc::new(vec![
+                (
+                    ctx.sym("declaring_module"),
+                    str_value(&surface.declaring_module),
+                ),
+                (
+                    ctx.sym("projected_path"),
+                    str_value(&surface.projected_path),
+                ),
+            ]),
+        })
+        .collect::<Vec<_>>();
+    let observation = Value::Record {
+        type_name: ctx.sym("RegenCandidateGenerationObservation"),
+        fields: Rc::new(vec![
+            (
+                ctx.sym("planned_surfaces"),
+                Value::List(Rc::new(identities.into())),
+            ),
+            (
+                ctx.sym("current_seed_digest"),
+                str_value(current_seed_digest),
+            ),
+            (
+                ctx.sym("manifest_producer_seed_digest"),
+                str_value(&manifest.producer_seed_digest),
+            ),
+            (
+                ctx.sym("observed_candidate_digest"),
+                str_value(&manifest.aggregate_digest),
+            ),
+        ]),
+    };
+    let admission = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_admit_candidate_generation",
+            &[(Some("observation".to_string()), observation)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: candidate generation admission did not answer: {e}"))?;
+    let label = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_candidate_generation_admission_label",
+            &[(Some("admission".to_string()), admission)],
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: candidate generation admission label failed: {e}"))?;
+    match label {
+        Value::Str(label) if label.as_ref() == "Admitted" => Ok(()),
+        Value::Str(label) => Err(format!("candidate generation admission {label}")),
+        other => Err(format!(
+            "refusal: candidate generation admission label returned {}",
+            other.type_label_public()
+        )),
+    }
+}
+
 fn admit_candidate_manifest(
+    model: &RegenConvergenceModel,
     candidate_src: &Path,
     manifest: &RegenCandidateManifest,
     expected_seed_digest: &str,
 ) -> Result<HashMap<String, RegenCandidateManifestSurface>, String> {
-    if manifest.producer_seed_digest != expected_seed_digest {
-        return Err(format!(
-            "CandidateFromDifferentSeed: manifest seed {} != current {}",
-            manifest.producer_seed_digest, expected_seed_digest
-        ));
-    }
+    admit_candidate_generation_from_model(model, manifest, expected_seed_digest)?;
     let aggregate = candidate_manifest_aggregate(
         &manifest.producer_seed_digest,
         &manifest.generation_id,
@@ -3590,7 +3978,12 @@ fn convergence_surface_roles(
     // install, so derive the projection from the complete module index instead.
     let basename_to_module = modules
         .iter()
-        .map(|module| (format!("{}.rs", module.replace('.', "_")), module.clone()))
+        .map(|module| {
+            (
+                emit_path_basename(&rust_module_emit_path(module.clone())).to_string(),
+                module.clone(),
+            )
+        })
         .collect::<HashMap<_, _>>();
     let mut basename_to_module = basename_to_module;
     let (
@@ -3652,7 +4045,7 @@ fn assembled_seed_modules(
 }
 
 fn convergence_plan_from_model(
-    source_roots: &[String],
+    model: &RegenConvergenceModel,
     ordinal: usize,
     generation_id: &str,
     candidate_tree_id: &str,
@@ -3669,20 +4062,9 @@ fn convergence_plan_from_model(
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
-) -> Result<(String, Vec<String>, String), String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = source_roots
-        .iter()
-        .map(|root| Path::new(root).join("workflow/regen_convergence_transaction.dag"))
-        .find(|path| path.is_file())
-        .ok_or_else(|| {
-            "refusal: v2.workflow.regen_convergence_transaction is outside source roots".to_string()
-        })?;
-    let entry = entry.to_string_lossy().into_owned();
-    let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| format!("refusal: convergence planner did not resolve: {e}"))?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+) -> Result<(RegenConvergenceStageKindReceipt, Vec<String>, String), String> {
+    use crate::v1_interpreter::{self, str_value, Value};
+    let ctx = model.context();
     let progress_args = vec![
         (
             Some("seen_state_keys".to_string()),
@@ -3999,7 +4381,20 @@ fn convergence_plan_from_model(
     })
     .map_err(|e| format!("refusal: convergence kind projection failed: {e}"))?
     {
-        Value::Str(value) => value.to_string(),
+        Value::Str(value) if value.as_ref() == "PromoteGenerationInputs" => {
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs
+        }
+        Value::Str(value) if value.as_ref() == "InstallSeedCompatibilityCut" => {
+            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut
+        }
+        Value::Str(value) if value.as_ref() == "PublishNonSeedOutputs" => {
+            RegenConvergenceStageKindReceipt::PublishNonSeedOutputs
+        }
+        Value::Str(value) => {
+            return Err(format!(
+                "refusal: convergence kind projection returned unknown closed variant {value}"
+            ))
+        }
         other => {
             return Err(format!(
                 "refusal: convergence kind projection returned {}",
@@ -4034,11 +4429,6 @@ fn convergence_plan_from_model(
             ))
         }
     };
-    if kind == "Refused" || kind == "Terminal" {
-        return Err(format!(
-            "convergence planner returned {kind} for non-empty drift {drifted:?}"
-        ));
-    }
     let closure_id = match v1_interpreter::with_active_context(&ctx, || {
         v1_interpreter::run_in_context_with_args(
             &ctx,
@@ -4075,6 +4465,7 @@ fn convergence_plan_from_model(
 }
 
 fn install_convergence_stage(
+    model: &RegenConvergenceModel,
     source_roots: &[String],
     workspace: &Path,
     stage0_src: &Path,
@@ -4093,7 +4484,7 @@ fn install_convergence_stage(
     let subject = current_convergence_checkpoint_subject(workspace)?;
     let actuation = partition_rebuild_actuation(source_roots, basenames)?;
     install_convergence_stage_with_backend(
-        source_roots,
+        model,
         workspace,
         stage0_src,
         candidate_src,
@@ -4115,7 +4506,7 @@ fn install_convergence_stage(
 
 #[allow(clippy::too_many_arguments)]
 fn install_convergence_stage_with_backend<Build, SeedDigest>(
-    source_roots: &[String],
+    model: &RegenConvergenceModel,
     workspace: &Path,
     stage0_src: &Path,
     candidate_src: &Path,
@@ -4241,21 +4632,9 @@ where
     let mut observed_population = Vec::new();
     for surface in &surfaces {
         let observed_digest = path_digest(&workspace.join(&surface.projected_path))?;
-        if observed_digest != surface.candidate_digest {
-            return Err(format!(
-                "installed digest changed during the seed build for {}: planned {}, observed {}",
-                surface.projected_path, surface.candidate_digest, observed_digest
-            ));
-        }
         observed_population.push((surface.projected_path.clone(), observed_digest));
     }
-    admit_stage_execution_from_model(
-        source_roots,
-        &surfaces,
-        generation_id,
-        generation_id,
-        &observed_population,
-    )?;
+    admit_stage_execution_from_model(model, &surfaces, &observed_population)?;
     for surface in &mut surfaces {
         surface.standing = RegenSurfaceExecutionStandingReceipt::TerminalPassed;
     }
@@ -4282,25 +4661,12 @@ where
 }
 
 fn admit_stage_execution_from_model(
-    source_roots: &[String],
+    model: &RegenConvergenceModel,
     planned: &[RegenConvergenceSurfaceReceipt],
-    input_generation_id: &str,
-    observed_candidate_generation_id: &str,
     observed: &[(String, String)],
 ) -> Result<(), String> {
-    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
-    let entry = source_roots
-        .iter()
-        .map(|root| Path::new(root).join("workflow/regen_convergence_transaction.dag"))
-        .find(|path| path.is_file())
-        .ok_or_else(|| {
-            "refusal: convergence transaction model is outside source roots".to_string()
-        })?;
-    let entry = entry.to_string_lossy().into_owned();
-    let index = super::process_shared_index(source_roots);
-    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
-        .map_err(|e| format!("refusal: stage execution admission model did not resolve: {e}"))?;
-    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    use crate::v1_interpreter::{self, str_value, Value};
+    let ctx = model.context();
     let identities = planned
         .iter()
         .map(|surface| Value::Record {
@@ -4336,14 +4702,6 @@ fn admit_stage_execution_from_model(
         fields: Rc::new(vec![
             (ctx.sym("planned"), identity_list.clone()),
             (ctx.sym("executed"), identity_list),
-            (
-                ctx.sym("input_generation_id"),
-                str_value(input_generation_id),
-            ),
-            (
-                ctx.sym("observed_candidate_generation_id"),
-                str_value(observed_candidate_generation_id),
-            ),
             (
                 ctx.sym("expected_candidate_digest"),
                 str_value(expected_digest),
@@ -4450,6 +4808,7 @@ pub fn run_regen_round_cost(
     let mut seen_states = BTreeSet::new();
     let mut generation_ordinal = 0usize;
     let mut round_failures = Vec::new();
+    let convergence_model = RegenConvergenceModel::load(source_roots)?;
     if matches!(regen.receipt, RegenReceipt::Refused { .. }) {
         round_failures.extend(
             regen
@@ -4460,12 +4819,16 @@ pub fn run_regen_round_cost(
     }
 
     while !drifted.is_empty() {
-        let admitted_manifest =
-            admit_candidate_manifest(&candidate_src, &candidate_manifest, &current_seed_digest)?;
+        let admitted_manifest = admit_candidate_manifest(
+            &convergence_model,
+            &candidate_src,
+            &candidate_manifest,
+            &current_seed_digest,
+        )?;
         let state = format!("{current_seed_digest}:{candidate_digest}");
         let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
         let (kind, install_set, dependency_closure_id) = convergence_plan_from_model(
-            source_roots,
+            &convergence_model,
             generation_ordinal + 1,
             &candidate_manifest.generation_id,
             &candidate_tree_id,
@@ -4484,17 +4847,7 @@ pub fn run_regen_round_cost(
             &current_seed_digest,
         )?;
         seen_states.insert(state);
-        let stage_kind = match kind.as_str() {
-            "PromoteGenerationInputs" => RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
-            "InstallSeedCompatibilityCut" => {
-                RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut
-            }
-            "PublishNonSeedOutputs" => RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
-            other => {
-                restore_regen_convergence_journal(&workspace)?;
-                return Err(format!("stage planner returned unknown kind {other}"));
-            }
-        };
+        let stage_kind = kind;
         let install_population: BTreeSet<String> = install_set.iter().cloned().collect();
         let deferred_reason = match stage_kind {
             RegenConvergenceStageKindReceipt::PromoteGenerationInputs => {
@@ -4523,6 +4876,7 @@ pub fn run_regen_round_cost(
         }
         v1_rt::trace_mark("round.install.begin".to_string());
         let stage_result = install_convergence_stage(
+            &convergence_model,
             source_roots,
             &workspace,
             &stage0_src,
@@ -4694,7 +5048,7 @@ mod regen_round_cost_tests {
         assert!(assembled.contains("v1_rt"));
         assert!(assembled.contains("std_content_hash"));
         assert!(assembled.contains("std_measure"));
-        assert!(!assembled.contains("v1_compiler_infer_service"));
+        assert!(assembled.contains("v1_compiler_infer_service"));
     }
 
     /// THE SEED-TO-MODEL LOCKSTEP the .dag witness says it cannot hold: the host builds the
@@ -4875,7 +5229,8 @@ mod regen_convergence_host_instrument_tests {
             surfaces,
             aggregate_digest,
         };
-        let admitted = admit_candidate_manifest(candidate, &manifest, "seed-0").unwrap();
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        let admitted = admit_candidate_manifest(&model, candidate, &manifest, "seed-0").unwrap();
         (manifest, admitted)
     }
 
@@ -4897,6 +5252,7 @@ mod regen_convergence_host_instrument_tests {
     #[test]
     fn mutating_transaction_binds_candidates_restores_and_reaches_staged_fixed_point() {
         let roots = fixture_roots();
+        let model = RegenConvergenceModel::load(&roots).unwrap();
 
         // A candidate changed after its generation manifest is refused before a journal exists.
         let (workspace, stage0, candidate, subject) = fixture_workspace();
@@ -4926,13 +5282,13 @@ mod regen_convergence_host_instrument_tests {
             ..stale_manifest
         };
         assert!(
-            admit_candidate_manifest(&candidate, &stale_manifest, "seed-g1")
+            admit_candidate_manifest(&model, &candidate, &stale_manifest, "seed-g1")
                 .unwrap_err()
-                .contains("CandidateFromDifferentSeed")
+                .contains("CandidateStaleAfterProducerRebuild")
         );
         fs::write(candidate.join(rows[0].0), "// tampered\n").unwrap();
         let tampered = install_convergence_stage_with_backend(
-            &roots,
+            &model,
             &workspace,
             &stage0,
             &candidate,
@@ -4958,6 +5314,39 @@ mod regen_convergence_host_instrument_tests {
         .unwrap_err();
         assert!(tampered.contains("CandidateManifestSurfaceDigestMismatch"));
         assert!(!regen_convergence_journal_path(&workspace).exists());
+        fs::write(candidate.join(rows[0].0), "// new producer\n").unwrap();
+        let post_build_tamper = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "generation-input-cut",
+            &subject,
+            |root| {
+                fs::write(
+                    root.join("src/v1/stage0/src/fixture_producer.rs"),
+                    "// mutated during build\n",
+                )
+                .unwrap();
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap_err();
+        assert!(post_build_tamper.contains("InstalledDigestMismatch"));
+        restore_regen_convergence_journal_for_subject(&workspace, &subject).unwrap();
         fs::remove_dir_all(&workspace).unwrap();
 
         // A failed build crosses the real copy boundary, then the subject-bound journal restores
@@ -4966,7 +5355,7 @@ mod regen_convergence_host_instrument_tests {
         let rows = [("fixture_subject.rs", "fixture.subject", "// new subject\n")];
         let (_, admitted) = fixture_manifest(&candidate, &rows);
         let failed = install_convergence_stage_with_backend(
-            &roots,
+            &model,
             &workspace,
             &stage0,
             &candidate,
@@ -5000,7 +5389,7 @@ mod regen_convergence_host_instrument_tests {
         )];
         let (_, p_admitted) = fixture_manifest(&candidate, &p_rows);
         install_convergence_stage_with_backend(
-            &roots,
+            &model,
             &workspace,
             &stage0,
             &candidate,
@@ -5034,7 +5423,7 @@ mod regen_convergence_host_instrument_tests {
         ];
         let (_, s_admitted) = fixture_manifest(&candidate, &s_rows);
         let stage = install_convergence_stage_with_backend(
-            &roots,
+            &model,
             &workspace,
             &stage0,
             &candidate,
@@ -5121,7 +5510,7 @@ mod regen_convergence_host_instrument_tests {
         )];
         let (_, admitted) = fixture_manifest(&candidate, &rows);
         let unplanned = install_convergence_stage_with_backend(
-            &roots,
+            &model,
             &workspace,
             &stage0,
             &candidate,
@@ -5173,7 +5562,7 @@ mod regen_convergence_host_instrument_tests {
             .into_iter()
             .collect::<HashMap<_, _>>();
         let (publish_kind, publish_paths, publish_closure_id) = convergence_plan_from_model(
-            &roots,
+            &model,
             1,
             "generation-publish",
             "tree-publish",
@@ -5192,12 +5581,15 @@ mod regen_convergence_host_instrument_tests {
             "seed-publish",
         )
         .unwrap();
-        assert_eq!(publish_kind, "PublishNonSeedOutputs");
+        assert_eq!(
+            publish_kind,
+            RegenConvergenceStageKindReceipt::PublishNonSeedOutputs
+        );
         assert_eq!(publish_paths, vec![rows[0].0.to_string()]);
         assert_eq!(publish_closure_id, "non-seed-publish");
 
         let cycle = convergence_plan_from_model(
-            &roots,
+            &model,
             2,
             "generation-1",
             "tree-1",
@@ -5218,7 +5610,7 @@ mod regen_convergence_host_instrument_tests {
         .unwrap_err();
         assert!(cycle.contains("CycleRefused"), "{cycle}");
         let bound = convergence_plan_from_model(
-            &roots,
+            &model,
             REGEN_CONVERGENCE_BOUND + 1,
             "generation-bound",
             "tree-bound",
