@@ -1,0 +1,1263 @@
+module v2.compiler.effect_demand
+
+import std.decl_ref { DeclarationRef }
+import std.types { CommitSha }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_identity }
+import std.execution_mode { ExecutionMode, Wet, execution_mode_eq }
+import std.primitive_projection { PrimitiveIdentity, primitive_identity_slug }
+import v2.std.algebra { Cons, Empty, any, fold_list, length, list_reverse }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+// XL-1's first deliverable: the DERIVED EFFECT DEMAND population. One row per
+// (calling entry, effect operation identity, execution mode, producer origin), each
+// carrying exactly one disposition, so that "which host effects must this repository
+// realize, and which of them are realized" is a join rather than a recollection.
+//
+// WHY THIS IS A CENSUS AND NOT A ROSTER. The acceptance bar XL-1 states is that
+// Unrealized is empty and that every retained effectful test is native. A hand roster
+// answering that bar is satisfied by editing the roster, which is DESIGN section 5's
+// tell that a check was validation standing where construction was available. So the
+// disposition is not authored per row: a row may CLAIM NativeV2, and the census
+// refuses the claim unless the operation appears in the independently supplied
+// realization population. The row cannot lie about realization; it can only be wrong
+// about reachability, which the other two refusals catch.
+//
+// WHY THE OPERATION KEY IS PrimitiveIdentity AND NOT A NEW VOCABULARY. std.primitive_projection
+// already owns "which callable is this" at slug grain, and std.primitive_identity already
+// keys per-primitive facts (cost, traversal order, realization) on it. Minting an
+// effect-operation name beside it would be the second name for one concept DESIGN
+// section 3 forbids, and it would fork the join that PrimitiveRealization already performs.
+// This module therefore CONSTRUCTS identities through the shared constructor and adds no
+// row to the registry: which callable a slug names is XL-0's fact, and this module never
+// answers it.
+//
+// WHY THE MODE IS std.execution_mode AND NOT FOUR FLAT DISPOSITIONS. The two native
+// dispositions XL-1 names -- wet and hermetic-replay -- differ only along the axis
+// std.execution_mode already owns, and that axis has a third arm (Record) a flat
+// four-name enum has no spelling for. Mode is therefore part of the KEY, and the
+// disposition says only whether a realization exists. This is also what keeps the two
+// facts separate: the same operation reached in two modes is two demands with two
+// independently decidable answers, not one row with a widened claim.
+// THE SUBJECT IS WHAT THE DEMAND IS FOR, AND IT IS NOT THE INSTRUMENT THAT FOUND IT. This axis was
+// authored as an ORIGIN and described as which derivation produced the row, while its arms named use
+// cases; the producing instrument is a genuinely separate axis and is carried by DemandProducer. One
+// field wearing both meanings is the conflation this module spends its census on, appearing in the
+// module that defines it. The two are now named apart: a subject says which program the effect is
+// demanded BY, a producer says which instrument OBSERVED it, and one subject measured by two producers
+// is the agreement join rather than two subjects. NativeExecute exists as its own arm because the
+// execute route is not one of the minimal compile entrypoints and its demand is measurably different
+// from theirs; folding it into the compile-product arm would have made the one origin with a live host
+// boundary invisible inside a population of origins with none.
+type EffectDemandSubject
+  = CompilerCore
+  | NativeCompileProduct
+  | NativeTest
+  | NativeExecute
+  | BootstrapGeneration
+  | RequiredTest
+
+// The four key fields are exactly the four XL-1 names, at the grain each one's own authority already
+// carries: the operation is a std.primitive_projection identity; the mode is the std.execution_mode
+// axis; the origin is the deriving producer. THE ENTRY IS A MODULE PATH AND NOT A FILE PATH, which is
+// a deliberate choice and not an oversight -- the entry rosters in this repository spell file paths,
+// but the reachability the population is derived FROM is keyed on module paths
+// (v2.lens.witness_cost_locality witness_import_closure takes a module root), and a key field whose
+// spelling differed from the producer that fills it would need a conversion nobody owns. The field is
+// therefore named for what it carries. Nothing here is stamped: a demand row is produced BY a
+// derivation over reachability, and this type is what such a derivation emits.
+type EffectDemandKey {
+  calling_entry_module: String
+  operation: PrimitiveIdentity
+  mode: ExecutionMode
+  subject: EffectDemandSubject
+}
+
+// Three arms, not four, and the missing fourth is the point. NativeV2Wet and NativeV2HermeticReplay
+// are the SAME disposition asked of two different keys, so they are one arm here and the mode lives in
+// the key. RetiredWithConsumer carries the consumer that accounts for the retirement, because XL-1
+// requires every old effectful test identity to be accounted for even when replaced -- an unnamed
+// retirement is a deletion wearing a disposition. Unrealized carries a reason Symbol and no
+// realization, and it is the counted debt rather than a refusal arm: DESIGN section 4b(2) separates
+// cannot-climb from can-climb-now-but-unbuilt, and fabricating a plausible realization claim for an
+// unbuilt effect would be rung inflation in exactly the place the acceptance bar reads.
+type EffectDemandDisposition
+  = NativeV2
+  | RetiredWithConsumer { consumer: DeclarationRef }
+  | Unrealized { reason: Symbol }
+
+type EffectDemandRow {
+  key: EffectDemandKey
+  disposition: EffectDemandDisposition
+}
+
+fn effect_demand_key(
+  calling_entry_module: String,
+  operation: String,
+  mode: ExecutionMode,
+  subject: EffectDemandSubject
+) -> EffectDemandKey {
+  EffectDemandKey {
+    calling_entry_module: calling_entry_module,
+    operation: primitive_identity_slug(name: operation),
+    mode: mode,
+    subject: subject
+  }
+}
+
+fn effect_demand_subject_eq(left: EffectDemandSubject, right: EffectDemandSubject) -> Bool {
+  match left {
+    CompilerCore => match right {
+      CompilerCore => true
+      NativeCompileProduct => false
+      NativeTest => false
+      NativeExecute => false
+      BootstrapGeneration => false
+      RequiredTest => false
+    }
+    NativeCompileProduct => match right {
+      CompilerCore => false
+      NativeCompileProduct => true
+      NativeTest => false
+      NativeExecute => false
+      BootstrapGeneration => false
+      RequiredTest => false
+    }
+    NativeTest => match right {
+      CompilerCore => false
+      NativeCompileProduct => false
+      NativeTest => true
+      NativeExecute => false
+      BootstrapGeneration => false
+      RequiredTest => false
+    }
+    NativeExecute => match right {
+      CompilerCore => false
+      NativeCompileProduct => false
+      NativeTest => false
+      NativeExecute => true
+      BootstrapGeneration => false
+      RequiredTest => false
+    }
+    BootstrapGeneration => match right {
+      CompilerCore => false
+      NativeCompileProduct => false
+      NativeTest => false
+      NativeExecute => false
+      BootstrapGeneration => true
+      RequiredTest => false
+    }
+    RequiredTest => match right {
+      CompilerCore => false
+      NativeCompileProduct => false
+      NativeTest => false
+      NativeExecute => false
+      BootstrapGeneration => false
+      RequiredTest => true
+    }
+  }
+}
+
+// Equality is at FULL KEY IDENTITY, on all four fields. DESIGN section 5 rules that completeness is an
+// identity join and not a count equality, and a key comparison that dropped mode or origin would let a
+// hermetic realization answer for a wet demand -- the precise conflation this key exists to prevent.
+fn effect_demand_key_eq(left: EffectDemandKey, right: EffectDemandKey) -> Bool {
+  (left.calling_entry_module == right.calling_entry_module)
+    && (left.operation.slug == right.operation.slug)
+    && execution_mode_eq(left: left.mode, right: right.mode)
+    && effect_demand_subject_eq(left: left.subject, right: right.subject)
+}
+
+fn effect_demand_key_in(key: EffectDemandKey, keys: List<EffectDemandKey>) -> Bool {
+  any(xs: keys, predicate: fn(candidate) { effect_demand_key_eq(left: candidate, right: key) })
+}
+
+// EVERY accumulator in this module CONSES AND REVERSES ONCE rather than appending. Appending by
+// concatenating the accumulator with a one-item list copies the whole accumulator per item, which is
+// the quadratic fold DESIGN section 6's bare-minimum-cost rule says is always fixed regardless of the
+// realized n -- gunbc.repo_atlas_projection repo_atlas_cell_order_cost_note records the same idiom
+// costing a lane an OOM and then 900 seconds. list_reverse of a cons-accumulated fold is exactly the
+// append-accumulated order, so every population below is in observation order by construction and
+// nothing about the census changes.
+fn effect_demand_roster_keys(roster: List<EffectDemandRow>) -> List<EffectDemandKey> {
+  list_reverse(xs: fold_list(xs: roster, empty: Empty, cons: fn(acc, row) { Cons { head: row.key, tail: acc } }))
+}
+
+// A REALIZATION IS KEYED BY OPERATION x EXECUTION MODE x RUNTIME, NEVER BY OPERATION ALONE, and this
+// carrier replaces a join that got it wrong. The realization population was a bare List of operation
+// identities and the join compared only the slug, so a HERMETIC realization of an operation proved a
+// WET NativeV2 demand for it -- exactly the substitution the key's own note says is impossible,
+// committed one function below that note. The mode-in-the-key argument was made for the DEMAND side
+// and simply never carried across to the side it is checked against, which is the shape worth
+// remembering: an axis is only load-bearing on the side that compares it. The runtime identity is
+// carried because two runtimes may realize one operation at one mode and a demand is satisfied by a
+// realization the program actually links, not by one that exists somewhere.
+type EffectRealizationKey {
+  operation: PrimitiveIdentity
+  mode: ExecutionMode
+  runtime_identity: String
+}
+
+fn effect_demand_realization_key(
+  operation: String,
+  mode: ExecutionMode,
+  runtime_identity: String
+) -> EffectRealizationKey {
+  EffectRealizationKey {
+    operation: primitive_identity_slug(name: operation),
+    mode: mode,
+    runtime_identity: runtime_identity
+  }
+}
+
+fn effect_demand_realization_satisfies(
+  demand: EffectDemandKey,
+  realization: EffectRealizationKey
+) -> Bool {
+  (demand.operation.slug == realization.operation.slug)
+    && execution_mode_eq(left: demand.mode, right: realization.mode)
+}
+
+fn effect_demand_operation_realized(
+  demand: EffectDemandKey,
+  realized: List<EffectRealizationKey>
+) -> Bool {
+  any(xs: realized, predicate: fn(candidate) {
+    effect_demand_realization_satisfies(demand: demand, realization: candidate)
+  })
+}
+
+type EffectDemandCensusRow
+  = DemandDispositioned { key: EffectDemandKey }
+  | DemandWithoutRow { key: EffectDemandKey }
+  | RowWithoutDemand { key: EffectDemandKey }
+  | NativeClaimWithoutRealization { key: EffectDemandKey }
+
+type EffectDemandCensus {
+  dispositioned: List<EffectDemandCensusRow>
+  undispositioned: List<EffectDemandCensusRow>
+  stale_rows: List<EffectDemandCensusRow>
+  unproven_native_claims: List<EffectDemandCensusRow>
+}
+
+// THE ROSTER, THE OBSERVED POPULATION AND THE REALIZATION POPULATION ARE ALL PARAMETERS, which is what
+// makes the three refusals executable rather than specified. A census closed over the live roster
+// could only be probed with a fixture enumerating the current tree's reachable effects -- a
+// measurement copied from the same tree, which DESIGN section 5 rejects as an oracle, and which would
+// go red on every unrelated corpus edit. Parameterized, each discriminating RED is authored over a
+// small synthetic world: the probe supplies the demands, the roster and the realizations, plants
+// exactly one defect, and the assertion has a reachable opposite answer.
+// THREE REFUSALS IN THREE DIRECTIONS, because each catches a failure the other two are blind to.
+// UNDISPOSITIONED: a reachable effect no row accounts for -- a new host effect cannot enter the
+// closure invisibly. STALE: a row naming a demand nothing reaches -- a row cannot outlive the
+// reachability that justified it, EXCEPT where it is RetiredWithConsumer, which is precisely the row
+// whose subject is expected to be unreachable and which carries the consumer that accounts for it.
+// UNPROVEN NATIVE CLAIM: a row asserting NativeV2 for an operation absent from the realization
+// population -- this is the arm that makes 'Unrealized is empty' honest, because without it the
+// acceptance bar is satisfied by retyping a disposition.
+fn effect_demand_census(
+  roster: List<EffectDemandRow>,
+  observed: List<EffectDemandKey>,
+  realized: List<EffectRealizationKey>
+) -> EffectDemandCensus {
+  let rostered_keys = effect_demand_roster_keys(roster: roster)
+  EffectDemandCensus {
+    dispositioned: list_reverse(xs: fold_list(
+      xs: observed,
+      empty: Empty,
+      cons: fn(acc, key) {
+        if effect_demand_key_in(key: key, keys: rostered_keys) {
+          Cons { head: DemandDispositioned { key: key }, tail: acc }
+        } else { acc }
+      }
+    )),
+    undispositioned: list_reverse(xs: fold_list(
+      xs: observed,
+      empty: Empty,
+      cons: fn(acc, key) {
+        if effect_demand_key_in(key: key, keys: rostered_keys) {
+          acc
+        } else { Cons { head: DemandWithoutRow { key: key }, tail: acc } }
+      }
+    )),
+    stale_rows: list_reverse(xs: fold_list(
+      xs: roster,
+      empty: Empty,
+      cons: fn(acc, row) {
+        if effect_demand_key_in(key: row.key, keys: observed) {
+          acc
+        } else {
+          match row.disposition {
+            RetiredWithConsumer { consumer: _ } => acc,
+            NativeV2 => Cons { head: RowWithoutDemand { key: row.key }, tail: acc },
+            Unrealized { reason: _ } => Cons { head: RowWithoutDemand { key: row.key }, tail: acc }
+          }
+        }
+      }
+    )),
+    unproven_native_claims: list_reverse(xs: fold_list(
+      xs: roster,
+      empty: Empty,
+      cons: fn(acc, row) {
+        match row.disposition {
+          NativeV2 => if effect_demand_operation_realized(demand: row.key, realized: realized) {
+            acc
+          } else { Cons { head: NativeClaimWithoutRealization { key: row.key }, tail: acc } },
+          RetiredWithConsumer { consumer: _ } => acc,
+          Unrealized { reason: _ } => acc
+        }
+      }
+    ))
+  }
+}
+
+// The conjunct is the three refusal populations being EMPTY, never a count of the dispositioned ones.
+// A count equality would be satisfied by two errors cancelling -- one effect leaving the closure and
+// another entering it -- and DESIGN section 5 rules that completeness is an identity join. Every
+// disagreement here is at full key identity. NOTE what this predicate does NOT assert: it does not
+// require Unrealized to be empty. A correctly dispositioned Unrealized demand is an honest, counted
+// debt and passes here; XL-1's acceptance bar that the population be empty is a SEPARATE predicate,
+// because conflating 'the census is sound' with 'the work is finished' would make a true statement
+// about the instrument unavailable while any debt stood.
+fn effect_demand_census_total_holds(
+  roster: List<EffectDemandRow>,
+  observed: List<EffectDemandKey>,
+  realized: List<EffectRealizationKey>
+) -> Bool {
+  let census = effect_demand_census(roster: roster, observed: observed, realized: realized)
+  (length(xs: census.undispositioned) == 0)
+    && (length(xs: census.stale_rows) == 0)
+    && (length(xs: census.unproven_native_claims) == 0)
+}
+
+fn effect_demand_unrealized_rows(roster: List<EffectDemandRow>) -> List<EffectDemandRow> {
+  list_reverse(xs: fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.disposition {
+        Unrealized { reason: _ } => Cons { head: row, tail: acc },
+        NativeV2 => acc,
+        RetiredWithConsumer { consumer: _ } => acc
+      }
+    }
+  ))
+}
+
+// XL-1's acceptance bar, stated as its own predicate so that it is readable as UNMET rather than as a
+// broken instrument. It conjoins census soundness with the empty-Unrealized requirement. It is
+// deliberately NOT the gate this module offers today: the census is the deliverable, the bar is what
+// the census will eventually report, and a merge-blocking predicate that cannot pass yet is a red by
+// construction rather than a wall.
+fn effect_demand_acceptance_holds(
+  roster: List<EffectDemandRow>,
+  observed: List<EffectDemandKey>,
+  realized: List<EffectRealizationKey>
+) -> Bool {
+  effect_demand_census_total_holds(roster: roster, observed: observed, realized: realized)
+    && (length(xs: effect_demand_unrealized_rows(roster: roster)) == 0)
+}
+
+// OCCUPANCY, AND THE NAME IS THE CORRECTION. These seven operations are the host-reaching v1_rt bridge
+// callees PRESENT in the emitted closure of the compiler entry -- the symbol is in the tree. THAT IS
+// NOT DEMAND. Demand is call-reachability from the entry, and a reachability walk over the same
+// emitted tree reaches NONE of their call sites; this roster is therefore an occupancy population and
+// may not be read as, cited as, or joined into a compiler-entry demand claim. The earlier spelling of
+// this row said MEASURED AS REACHABLE and quoted an emitted-file count of 174; both were wrong -- the
+// first by conflating occupancy with reachability, the second by counting only .rs members of a
+// 175-member emission whose extra member is the Cargo manifest -- and they are DELETED rather than
+// corrected in place beside the truth, because a superseded claim standing next to its replacement is
+// two authorities for one fact. THE INSTRUMENT, named rather than transcribed: gunbc compile over the
+// compiler entry, then a census of the v1_rt bridge callees the emitted tree contains. WHY IT IS NOT
+// DERIVED FROM std.primitives builtin_registry_surface_names: that roster enumerates the whole builtin
+// dispatch surface and says nothing about which arms reach the host, and no authority in this
+// repository classifies them. WHAT IT IS A LOWER BOUND ON, stated because it is about to be widened:
+// it contains only operations that HAVE a runtime bridge, so a host seam with no bridge is invisible
+// to it by construction -- the whole-body self-call seams are exactly that population, and this roster
+// is incomplete until they are unioned in.
+data effect_demand_host_boundary_occupancy: List<String> = [
+  "filesystem_read",
+  "decl_facts",
+  "module_declaration_facts",
+  "layer_import_facts",
+  "import_resolution_facts",
+  "reference_resolution_facts",
+  "dependency_resolution_facts"
+]
+
+// A FOURTH REFUSAL, over the roster rather than over the census: every name above must appear in
+// std.primitives builtin_registry_surface_names, the enumeration of the callables the runtime actually
+// dispatches. Without it this roster could name an operation no runtime has -- a demand for an effect
+// nothing could ever perform, which would sit in the population forever as an Unrealized row that no
+// realization could retire. The join is at name identity and refuses by naming the ungrounded
+// operations, never by counting them.
+fn effect_demand_ungrounded_operations(
+  operations: List<String>,
+  dispatch_surface: List<String>
+) -> List<String> {
+  list_reverse(xs: fold_list(
+    xs: operations,
+    empty: Empty,
+    cons: fn(acc, name) {
+      if any(xs: dispatch_surface, predicate: fn(candidate) { candidate == name }) {
+        acc
+      } else { Cons { head: name, tail: acc } }
+    }
+  ))
+}
+
+fn effect_demand_operations_are_grounded(
+  operations: List<String>,
+  dispatch_surface: List<String>
+) -> Bool {
+  length(xs: effect_demand_ungrounded_operations(operations: operations, dispatch_surface: dispatch_surface)) == 0
+}
+
+// THE OBSERVED-POPULATION PRODUCER DOES NOT LIVE HERE, and the reason is a measured one rather than a
+// layering preference. A first revision of this module carried the producer, deriving the population
+// from v2.lens.effect_reach call_reachable_decls over witness_import_closure. Two facts retired it.
+// (a) IT CANNOT BE DRIVEN LIVE: the closure input is v2.lens.witness_cost_locality ModuleImportFact,
+// which v2.lens.live_read_classification g2_live_production_boundary_law declares FIXTURE-FACING with
+// no live producer in the corpus, on the ground that a shape nothing derives cannot be kept honest
+// against the tree. A producer whose only input is authorable by hand cannot measure the tree. (b) IT
+// COST TWENTY TIMES THE WITNESS BUDGET: importing the lens widened every witness in this module's test
+// closure from roughly one minute to roughly twenty, measured by running the same eight witnesses
+// before and after the import -- a cost this module has no reason to impose on a census that never
+// calls the producer. THE THIRD REASON IS THE AUTHORITY SPLIT, and it is the one that decides where
+// the producer belongs rather than merely where it does not: the modeled reachability walk and the
+// emitted-Rust bridge census are TWO INSTRUMENTS ANSWERING ONE QUESTION FROM OPPOSITE SIDES -- the
+// first is the semantic producer, the second is the target-realization falsifier -- and their value is
+// in AGREEING, which requires them to be separately derivable and then joined. Fusing the semantic
+// producer into the carrier that holds the census would leave the falsifier with nothing independent
+// to disagree with.
+// A POPULATION'S COMPLETENESS IS STRUCTURAL, NEVER AN EMPTY LIST PLUS PROSE. An unmeasured origin and
+// a measured-and-empty origin are different facts with opposite consequences -- the first must block a
+// promotion gate and the second must pass it -- and a bare List cannot tell them apart, so every
+// downstream consumer would have to re-read a note to know which it held. That is the state-space
+// conflation this repository names as a recurring class, and DESIGN section 5's construction-over-
+// validation rule says the fix is to make the undistinguished state unwritable rather than to document
+// it. PopulationMeasuredComplete carries the digest of the subject roster it was measured against, so
+// a completeness claim is bound to WHAT was enumerated and cannot silently outlive it;
+// PopulationMeasuredLowerBound carries the basis it is missing, so an incomplete measurement says what
+// would complete it; PopulationUnmeasured carries no rows at all, because a row in an unmeasured
+// population is a claim nobody took.
+type DemandPopulation
+  = PopulationMeasuredComplete { rows: List<EffectDemandRow>, subject_roster_identities: List<String> }
+  | PopulationMeasuredLowerBound { rows: List<EffectDemandRow>, missing_basis: String }
+  | PopulationUnmeasured { reason: Symbol }
+
+fn effect_demand_population_rows(population: DemandPopulation) -> List<EffectDemandRow> {
+  match population {
+    PopulationMeasuredComplete { rows: rows, subject_roster_identities: _ } => rows
+    PopulationMeasuredLowerBound { rows: rows, missing_basis: _ } => rows
+    PopulationUnmeasured { reason: _ } => Empty
+  }
+}
+
+// WHAT THE OPERATION DOES, kept strictly apart from what XL-1 intends to do about it. A boolean
+// effectful flag would have been the obvious carrier and is the wrong one: it conflates an operation
+// that must observe external state with one that merely happens to reach the host through its CURRENT
+// realization, and those two have opposite remedies -- the first earns a transport, the second earns
+// having its input bound or its consumer deleted. Pure and ReadsBoundInput are the arms that need no
+// host boundary at all; ObservesHost and ActuatesHost are separated because reading external state and
+// changing it carry different grants and different receipts, and a single arm would let an actuation
+// ride an observation's admission. ExecutionSemanticsUnknown is not a default -- it is the arm that
+// BLOCKS, and an operation sitting in it may not be implemented as a transport.
+type PrimitiveExecutionSemantics
+  = Pure
+  | ReadsBoundInput { input_identity: Symbol }
+  | ObservesHost { operation_identity: Symbol }
+  | ActuatesHost { operation_identity: Symbol }
+  | ExecutionSemanticsUnknown
+
+type PrimitiveExecutionSemanticsFact {
+  primitive: PrimitiveIdentity
+  semantics: PrimitiveExecutionSemantics
+}
+
+// WHAT XL-1 WILL DO, which is a different subject from what the operation does and therefore a
+// different carrier. An operation whose semantics is ObservesHost today may still be dispositioned
+// BoundCompilerInput, because the semantics describes the realization that exists and the disposition
+// describes the one that will. Collapsing them would make the classification unable to say the most
+// useful thing it has to say: that six of the seven operations reach the host because of how they are
+// realized and not because their answer requires external state. OperationDispositionUnclassified
+// BLOCKS -- an operation in this arm is not implemented as a transport, which is the point of
+// classifying before building.
+type EffectOperationDisposition
+  = BoundCompilerInput { input_identity: Symbol }
+  | NativeDerivedComputation { derived_from: Symbol }
+  | NativeHostObservation { operation_identity: Symbol }
+  | NativeHostActuation { operation_identity: Symbol }
+  | OperationRetired { consumer: DeclarationRef }
+  | OperationDispositionUnclassified { blocking_question: Symbol }
+
+type EffectOperationClassification {
+  operation: PrimitiveIdentity
+  semantics: PrimitiveExecutionSemantics
+  disposition: EffectOperationDisposition
+}
+
+fn effect_demand_operation_classification(
+  operation: String,
+  semantics: PrimitiveExecutionSemantics,
+  disposition: EffectOperationDisposition
+) -> EffectOperationClassification {
+  EffectOperationClassification {
+    operation: primitive_identity_slug(name: operation),
+    semantics: semantics,
+    disposition: disposition
+  }
+}
+
+fn effect_demand_blocked_operations(
+  classifications: List<EffectOperationClassification>
+) -> List<EffectOperationClassification> {
+  list_reverse(xs: fold_list(
+    xs: classifications,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.disposition {
+        OperationDispositionUnclassified { blocking_question: _ } => Cons { head: row, tail: acc },
+        BoundCompilerInput { input_identity: _ } => acc,
+        NativeDerivedComputation { derived_from: _ } => acc,
+        NativeHostObservation { operation_identity: _ } => acc,
+        NativeHostActuation { operation_identity: _ } => acc,
+        OperationRetired { consumer: _ } => acc
+      }
+    }
+  ))
+}
+
+// The roster of operations XL-1 may build a transport for is DERIVED from the classification, never
+// authored beside it. An operation is implementable exactly when its disposition is one of the two
+// native host arms; every other arm means the work is to bind an input, derive the answer, delete a
+// consumer, or answer a question -- and an unclassified operation is implementable by nobody until it
+// is classified.
+fn effect_demand_implementable_operations(
+  classifications: List<EffectOperationClassification>
+) -> List<EffectOperationClassification> {
+  list_reverse(xs: fold_list(
+    xs: classifications,
+    empty: Empty,
+    cons: fn(acc, row) {
+      match row.disposition {
+        NativeHostObservation { operation_identity: _ } => Cons { head: row, tail: acc },
+        NativeHostActuation { operation_identity: _ } => Cons { head: row, tail: acc },
+        BoundCompilerInput { input_identity: _ } => acc,
+        NativeDerivedComputation { derived_from: _ } => acc,
+        OperationRetired { consumer: _ } => acc,
+        OperationDispositionUnclassified { blocking_question: _ } => acc
+      }
+    }
+  ))
+}
+
+// A DEMAND MEASUREMENT IS A RECEIPT, AND A RECEIPT THAT DOES NOT NAME ITS SUBJECT IS A NUMBER. This
+// carrier binds what a later reader needs in order to decide whether a population still describes the
+// tree AND whether the walk that produced it was capable of an answer at all. The second half is the
+// one this module learned the hard way: a reachability walk seeded on an identity that resolves to
+// nothing returns a clean empty answer, which has the shape of a pass and the content of nothing, so a
+// receipt that carries only its CONCLUSION cannot be told apart from one whose instrument never ran.
+// Root identities and root-resolution standing are therefore carried, and an unresolved or empty root
+// set is a constructor rather than a note. Unresolved indirect edges are carried for the same reason
+// one axis over: a walk that could not follow a dispatch it knows it saw has a KNOWN hole, and a
+// receipt that omits it reports a smaller program than the one that runs. THERE IS NO STORED DIGEST
+// FIELD. It was there, was compared as a String, and could therefore be copied forward stale while the
+// membership underneath it changed; the canonical form is DERIVED from the carried identities, which
+// makes the stale-digest state unwritable instead of checked.
+type RootResolutionStanding
+  = RootsResolvedNonEmpty
+  | RootSetEmpty { attempted_identity: String }
+  | RootsUnresolved { reason: Symbol }
+
+type DemandProducer
+  = ModeledCallReachability
+  | EmittedRealizationCensus
+
+type DemandReceipt {
+  source_revision: CommitSha
+  source_tree: FloorDiscoveryTreeId
+  entry_identity: String
+  producer: DemandProducer
+  instrument_identity: String
+  root_identities: List<String>
+  root_resolution: RootResolutionStanding
+  reachable_function_identities: List<String>
+  unresolved_indirect_edge_identities: List<String>
+  emitted_member_identities: List<String>
+  call_site_identities: List<String>
+  operation_identities: List<PrimitiveIdentity>
+}
+
+fn effect_demand_receipt_member_count(receipt: DemandReceipt) -> Int {
+  length(xs: receipt.emitted_member_identities)
+}
+
+// THE CANONICAL FORM IS DERIVED FROM THE IDENTITIES, so it cannot disagree with them. The predecessor
+// of this function was a stored String compared for equality beside a derived count, and that pair
+// passes on an equal-count substitution -- one member swapped for another with the digest copied
+// forward -- which is the cancellation class this module elsewhere says completeness must not be
+// decided by. Membership agreement is now a two-way identity join and never a count or a summary:
+// every member of each side must be present in the other. The join is order-insensitive by
+// construction, so two instruments that walk a tree in different orders agree when they saw the same
+// tree and disagree exactly when they did not.
+fn effect_demand_string_in(needle: String, xs: List<String>) -> Bool {
+  any(xs: xs, predicate: fn(candidate) { candidate == needle })
+}
+
+fn effect_demand_strings_contained(left: List<String>, right: List<String>) -> Bool {
+  fold_list(xs: left, empty: true, cons: fn(acc, item) {
+    if acc { effect_demand_string_in(needle: item, xs: right) } else { false }
+  })
+}
+
+fn effect_demand_membership_identities_agree(left: List<String>, right: List<String>) -> Bool {
+  effect_demand_strings_contained(left: left, right: right)
+    && effect_demand_strings_contained(left: right, right: left)
+    && (length(xs: left) == length(xs: right))
+}
+
+fn effect_demand_receipt_canonical_membership(receipt: DemandReceipt) -> String {
+  fold_list(xs: receipt.emitted_member_identities, empty: "", cons: fn(acc, item) {
+    concat(acc, concat("\n", item))
+  })
+}
+
+fn effect_demand_receipts_agree_on_membership(left: DemandReceipt, right: DemandReceipt) -> Bool {
+  effect_demand_membership_identities_agree(
+    left: left.emitted_member_identities,
+    right: right.emitted_member_identities
+  )
+}
+
+fn effect_demand_receipt_roots_resolved(receipt: DemandReceipt) -> Bool {
+  match receipt.root_resolution {
+    RootsResolvedNonEmpty => length(xs: receipt.root_identities) > 0
+    RootSetEmpty { attempted_identity: _ } => false
+    RootsUnresolved { reason: _ } => false
+  }
+}
+
+fn effect_demand_producers_are_distinct(left: DemandReceipt, right: DemandReceipt) -> Bool {
+  match left.producer {
+    ModeledCallReachability => match right.producer {
+      ModeledCallReachability => false
+      EmittedRealizationCensus => true
+    }
+    EmittedRealizationCensus => match right.producer {
+      ModeledCallReachability => true
+      EmittedRealizationCensus => false
+    }
+  }
+}
+
+// THE TWO INSTRUMENTS ARE JOINED HERE RATHER THAN BLURRED. The modeled call-reachability walk is the
+// SEMANTIC producer: it answers what the source says is reachable. The emitted-realization census is
+// the FALSIFIER: it answers what the target the compiler actually produced reaches. Each alone has a
+// blind side, and the blind sides point opposite ways, which is why the disagreement populations are
+// kept apart instead of summed. MODELED-ONLY means the model predicts a demand the emitted realization
+// does not reach -- either the model over-approximates, which is harmless, or the emission DROPPED a
+// call, which is a lost subject and the quieter of the two failures. REALIZED-ONLY is the dangerous
+// direction: the emitted program reaches a host boundary the model never predicted, so a grant, a
+// refusal and a receipt were all designed for a smaller program than the one that runs. A single
+// agreed/disagreed flag would make those one number and lose the direction that decides which of them
+// is an emergency.
+type DemandAgreementRow
+  = AgreedDemand { key: EffectDemandKey }
+  | ModeledOnlyDemand { key: EffectDemandKey }
+  | RealizedOnlyDemand { key: EffectDemandKey }
+
+type DemandAgreement {
+  agreed: List<DemandAgreementRow>
+  modeled_only: List<DemandAgreementRow>
+  realized_only: List<DemandAgreementRow>
+}
+
+fn effect_demand_agreement(
+  modeled: List<EffectDemandKey>,
+  realized_observed: List<EffectDemandKey>
+) -> DemandAgreement {
+  DemandAgreement {
+    agreed: list_reverse(xs: fold_list(
+      xs: modeled,
+      empty: Empty,
+      cons: fn(acc, key) {
+        if effect_demand_key_in(key: key, keys: realized_observed) {
+          Cons { head: AgreedDemand { key: key }, tail: acc }
+        } else { acc }
+      }
+    )),
+    modeled_only: list_reverse(xs: fold_list(
+      xs: modeled,
+      empty: Empty,
+      cons: fn(acc, key) {
+        if effect_demand_key_in(key: key, keys: realized_observed) {
+          acc
+        } else { Cons { head: ModeledOnlyDemand { key: key }, tail: acc } }
+      }
+    )),
+    realized_only: list_reverse(xs: fold_list(
+      xs: realized_observed,
+      empty: Empty,
+      cons: fn(acc, key) {
+        if effect_demand_key_in(key: key, keys: modeled) {
+          acc
+        } else { Cons { head: RealizedOnlyDemand { key: key }, tail: acc } }
+      }
+    ))
+  }
+}
+
+// AGREEMENT IS THE LOCAL GATE'S BAR; REALIZED-ONLY IS THE REFUSAL. effect_demand_producers_agree
+// requires BOTH disagreement populations empty, because a population promoted while the two
+// instruments disagree is a population whose subject is in dispute.
+// effect_demand_unmodeled_host_boundary is the narrower and more urgent question and is a SEPARATE
+// predicate: it asks only whether the emitted program reaches an effect the model never predicted,
+// which is the state in which every grant and receipt was designed for the wrong program. Keeping it
+// separate means a lane can be blocked from promotion by benign over-approximation without that being
+// confused for an unmodeled boundary.
+fn effect_demand_producers_agree(
+  modeled: List<EffectDemandKey>,
+  realized_observed: List<EffectDemandKey>
+) -> Bool {
+  let agreement = effect_demand_agreement(modeled: modeled, realized_observed: realized_observed)
+  (length(xs: agreement.modeled_only) == 0) && (length(xs: agreement.realized_only) == 0)
+}
+
+fn effect_demand_unmodeled_host_boundary(
+  modeled: List<EffectDemandKey>,
+  realized_observed: List<EffectDemandKey>
+) -> Bool {
+  length(xs: effect_demand_agreement(modeled: modeled, realized_observed: realized_observed).realized_only) > 0
+}
+
+// THE MODULE IDENTITY IS READ FROM THE DECLARATION, NOT DERIVED FROM THE PATH, and this row carried
+// the path-derived spelling until it was measured wrong. src/v2/compiler/00_compile.dag declares
+// `module v2.compiler.compile` -- the numeric ordering prefix is a filename convention and is not part
+// of the module name -- so the path-derived v2.compiler.00_compile names nothing. The error was not
+// silent for want of a signal: the emitted file is v2_compiler_compile.rs, which was read and used to
+// seed a reachability walk in this same slice, and the row was still not corrected. A module identity
+// is exactly the class DESIGN section 3 rules on, a path being a discriminator and never gospel. THE
+// RESIDUAL IS THAT THIS IS STILL A COPIED NAME: nothing joins it to the declaration it quotes, so it
+// rots if the module is renamed. Next rung is a derived binding rather than a literal; until then the
+// discriminating check is that a reachability walk seeded on this identity has a non-empty root set,
+// an empty one being the vacuous pass this slice already hit once.
+data effect_demand_compiler_entry_module: String = "v2.compiler.compile"
+
+// NO HOST-EFFECT DEMAND WAS OBSERVED ON THE COMPILE PATH BY THIS PRODUCER, WHICH IS A LOWER BOUND AND
+// NOT A ZERO. The carrier below says so in its constructor -- PopulationMeasuredLowerBound with its
+// missing_basis -- and this block says it here too, because the earlier revision of this annotation
+// opened with THE COMPILE PATH'S HOST-EFFECT DEMAND IS ZERO while the carrier underneath it recorded a
+// bound, which is DESIGN section 4b rung inflation in the one place the module was written to prevent
+// it: an empty lower-bound population licenses `none observed by this instrument`, never `none exists`.
+// The excluded basis is named in the constructor and is not incidental -- the seam population omits
+// every whole-body self-call seam, which has no runtime bridge and so cannot appear in a bridge-callee
+// census at all. WHAT FOLLOWS IS THE INSTRUMENT AND ITS CONTROLS. THE FIRST MEASUREMENT THAT SAID SEVEN WAS
+// MEASURING THE WRONG THING. That measurement censused the v1_rt bridge callees PRESENT in the emitted
+// closure of the compiler entry, which is OCCUPANCY -- the symbol is in the tree -- and read it as
+// DEMAND, which is call-reachability from the entry. Those are different questions and this repository
+// already names the gap between them as a recurring class. THE CORRECTED INSTRUMENT is a call-graph
+// reachability walk over the same emitted tree, seeded from every function the compiler entry module
+// owns, asking which of the nine host call sites it reaches. IT REACHES NONE OF THEM, spanning 2376 of
+// 5159 emitted functions across 90 modules. THE WALK IS AN OVER-APPROXIMATION ON PURPOSE, because the
+// under-approximating version would have been unsound in exactly the mechanism under test: the compile
+// door dispatches its lens gates as STORED FUNCTION VALUES (a CompileLens record holding a gate),
+// which appear in the emitted Rust as bare identifiers with no call parentheses, so an extractor keyed
+// on call syntax would miss precisely the edge that could carry a lens into the compile path. The walk
+// therefore takes every bare identifier reference as an edge, including from file-level data
+// initializers, and its POSITIVE CONTROL is that it does reach all six enrolled lens gates through
+// that edge. Two further controls: every target is reachable from its own owning module, so the
+// extraction is not silently broken; and planting a target as a root does reach it, so the walk is
+// sensitive. THE FIRST ROOT SET WAS EMPTY and produced a vacuous NONE, which is recorded here rather
+// than quietly fixed -- the compiler entry module emits as v2_compiler_compile.rs and the walk had
+// been seeded on a filename that does not exist, so its answer was the shape of a pass and the content
+// of nothing. WHAT THE NINE SITES ACTUALLY BELONG TO: their only callers in the closure are lens,
+// census and test consumers -- v2_lens_module_graph, v2_lens_reference_deps,
+// v2_lens_enforcement_grammar_coverage, v2_std_decl_index and v2_std_layer -- which sit in the emitted
+// tree by import occupancy. This is the same class v2.compiler.00_compile door_roster_tree_grain_note
+// already records having de-enrolled a lens for: a corpus-scanning gate in the compile door made every
+// compile reach a live-read carrier. WHAT THIS DOES NOT ESTABLISH: nothing about the test, execute or
+// bootstrap origins, which remain unmeasured.
+data effect_demand_compiler_origin_population: DemandPopulation = PopulationMeasuredLowerBound {
+  rows: Empty,
+  missing_basis: "single-producer realization measurement only; the seam population excludes every whole-body self-call seam, which has no runtime bridge and is therefore invisible to a bridge-callee census by construction"
+}
+
+data effect_demand_compiler_origin_standing: EvidenceStanding = SingleProducerRealizationMeasurement {
+  producer: EmittedRealizationCensus
+}
+
+// The three remaining origins are UNMEASURED, and they now say so in their constructor rather than in
+// prose beside an empty list. Each blocks promotion until an instrument runs over it.
+data effect_demand_required_test_origin_population: DemandPopulation = PopulationUnmeasured {
+  reason: ^required_test_roster_effect_demand_not_yet_measured
+}
+
+data effect_demand_bootstrap_origin_population: DemandPopulation = PopulationUnmeasured {
+  reason: ^bootstrap_generation_effect_demand_not_yet_measured
+}
+
+data effect_demand_minimal_entrypoint_origin_population: DemandPopulation = PopulationUnmeasured {
+  reason: ^minimal_entrypoint_effect_demand_not_yet_measured
+}
+
+// THE SEVEN OPERATIONS THE OCCUPANCY CENSUS FOUND, CLASSIFIED BEFORE ANY OF THEM IS BUILT. Every one
+// has ObservesHost semantics, which is a statement about the realization that exists today and is not
+// in doubt: each reaches the host through a v1_rt bridge, measured in the emitted tree. THE
+// DISPOSITIONS DIVERGE, and that divergence is the finding. filesystem_read reads a named file and its
+// answer cannot come from anywhere but the filesystem, so it is NativeHostObservation and is the one
+// operation of the seven that earns a transport. THE SIX FACT PRODUCERS ARE UNCLASSIFIED, NOT
+// DISPOSITIONED, and the arm is chosen deliberately over the more flattering ones. Classifying them
+// BoundCompilerInput would assert that a bound input exists whose contents answer them, and none has
+// been shown: their live consumers are corpus-scanning lenses that pass repository scan roots, and
+// whether a corpus lens can be fed from a bound snapshot depends on a lens execution model that does
+// not exist yet. Classifying them NativeHostObservation would commit XL-1 to building six live-tree
+// transports for operations whose compile-path demand was just measured at zero. The honest state is
+// that the question is open, so the arm that BLOCKS is the correct one -- an unclassified operation is
+// implementable by nobody, which is exactly the outcome, and effect_demand_blocked_operations counts
+// them so the block is visible rather than tacit. WHAT WOULD CLASSIFY THEM: an answer to whether lens
+// execution binds a corpus snapshot. If it does, the six become BoundCompilerInput and no transport is
+// built for any of them; if it cannot, they become NativeHostObservation and are built once, shared.
+data effect_demand_operation_classifications: List<EffectOperationClassification> = [
+  effect_demand_operation_classification(
+    operation: "filesystem_read",
+    semantics: ObservesHost { operation_identity: ^read_named_file },
+    disposition: NativeHostObservation { operation_identity: ^read_named_file }
+  ),
+  effect_demand_operation_classification(
+    operation: "decl_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_declarations },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "module_declaration_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_module_declarations },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "layer_import_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_layer_imports },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "import_resolution_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_import_resolution },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "reference_resolution_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_reference_resolution },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  ),
+  effect_demand_operation_classification(
+    operation: "dependency_resolution_facts",
+    semantics: ObservesHost { operation_identity: ^scan_corpus_dependency_resolution },
+    disposition: OperationDispositionUnclassified { blocking_question: ^does_lens_execution_bind_a_corpus_snapshot }
+  )
+]
+
+// THE ONE SUBJECT WITH A MEASURED NON-ZERO HOST BOUNDARY, and it is one dispatch point. A reachability
+// walk from the emit-host entry reaches emit_host_run_transport and emit_host_run_transport_cached,
+// BOTH at the single call site run_host_process_admitted, which is the whole physical boundary of the
+// execute route as it stands. emit_host_native_cache_evict is OCCUPANCY only -- its site sits in the
+// emit-on-demand realization host and is not reached from this entry -- so it is not carried as
+// demand. THE PRODUCT DECISION THIS ENABLES, recorded because it is the reason the measurement was
+// worth taking: because the cached and uncached operations are two arms of ONE conditional site rather
+// than two boundaries, retaining the uncached transport and deleting the cached consumers is available
+// as an alternative to realizing both. That is a decision this row does not take. STANDING: lower
+// bound, single producer, and the same missing basis as every other subject here -- a bridge-callee
+// census cannot see a host seam that has no bridge.
+data effect_demand_execute_origin_population: DemandPopulation = PopulationMeasuredLowerBound {
+  rows: [
+    EffectDemandRow {
+      key: effect_demand_key(
+        calling_entry_module: "v2.compiler.emit_host",
+        operation: "emit_host_run_transport",
+        mode: Wet,
+        subject: NativeExecute
+      ),
+      disposition: Unrealized { reason: ^no_v2_owned_process_invocation_realization }
+    },
+    EffectDemandRow {
+      key: effect_demand_key(
+        calling_entry_module: "v2.compiler.emit_host",
+        operation: "emit_host_run_transport_cached",
+        mode: Wet,
+        subject: NativeExecute
+      ),
+      disposition: Unrealized { reason: ^cached_transport_consumer_deletion_not_yet_decided }
+    }
+  ],
+  missing_basis: "single-producer realization measurement; excludes whole-body self-call seams, which have no runtime bridge and are invisible to a bridge-callee census"
+}
+
+// The v2-owned realization population is EMPTY today, and it is a declaration rather than an omission:
+// XL-1 has realized no host operation yet, so every NativeV2 claim would be refused by the census's
+// third arm if any row made one. When the first realization lands this becomes the join's left side
+// and the row that claims it stops being refused -- which is the point, because it means the
+// acceptance bar moves only when a realization moves.
+data effect_demand_v2_realized_operations: List<PrimitiveIdentity> = []
+
+fn effect_demand_live_census(observed: List<EffectDemandKey>) -> EffectDemandCensus {
+  effect_demand_census(
+    roster: effect_demand_population_rows(population: effect_demand_compiler_origin_population),
+    observed: observed,
+    realized: effect_demand_v2_realized_operations
+  )
+}
+
+fn effect_demand_blocked_operation_count() -> Int {
+  length(xs: effect_demand_blocked_operations(classifications: effect_demand_operation_classifications))
+}
+
+fn effect_demand_implementable_operation_count() -> Int {
+  length(xs: effect_demand_implementable_operations(classifications: effect_demand_operation_classifications))
+}
+
+// WHAT A MEASUREMENT IS CURRENTLY STANDING ON, named so that a single-instrument result cannot be
+// quoted as agreement. Today's compiler-origin measurement is a call-graph walk over EMITTED RUST:
+// strong realization-side evidence, and not independent semantic evidence, because it observes the
+// artifact the compiler produced rather than what the source says. A genuine semantic producer
+// consumes resolved or inferred call-target facts BEFORE emission, and labelling a supplied list
+// ModeledCallReachability does not create one -- an attempt at a source-side walk in this slice over-
+// approximated so heavily (bare-name matching with no import scoping over a corpus whose names are
+// global) that it disagreed with the realization instrument on nearly every row, which is the honest
+// reason it is not carried. So the standing is SingleProducerRealizationMeasurement, and promotion is
+// unavailable until the second producer exists, rather than being granted on one instrument that
+// happens to be the only one built.
+type EvidenceStanding
+  = SingleProducerRealizationMeasurement { producer: DemandProducer }
+  | TwoProducerAgreement
+  | EvidenceStandingUnmeasured { reason: Symbol }
+
+// THIS IS A LOCAL EVIDENCE GATE, NOT PROMOTION. Compiler-generation promotion -- PromotionDecision,
+// ActiveCompiler, RecoveryGeneration, ChangedSuccessorReceipt -- is owned by one lane, and an earlier
+// revision of this function was named promotion_admitted and crossed that boundary by name and by
+// scope: a reader could have taken its true for a generation flip. It is demoted to what it actually
+// decides, which is whether XL-1's effect-demand EVIDENCE is admissible as ONE CONJUNCT of a promotion
+// that lane alone composes. The result is a typed standing rather than a Bool so a refusal names the
+// conjunct that failed instead of collapsing eleven distinct deficits into one false. Every conjunct
+// is a fact about a measurement rather than a property of a declaration, and each closes a way the
+// previous gate could be satisfied by writing something: BOTH ROOT SETS RESOLVE NON-EMPTY, because an
+// empty root set returns a clean NONE for every question and this module already shipped one; NO
+// UNRESOLVED INDIRECT EDGES on either side, because a walk that could not follow a dispatch it saw has
+// a known hole and its silence is not a zero; SAME REVISION AND SAME ENTRY, because two receipts about
+// different trees agree by coincidence; TWO DISTINCT PRODUCERS, because one instrument agreeing with
+// itself is not agreement; ZERO DISAGREEMENT IN BOTH DIRECTIONS, kept as two conjuncts because
+// realized-only is the emergency and modeled-only is not; THE SUBJECT DENOMINATOR COMPLETE, because a
+// lower bound cannot refuse what it did not look at; AND THE DISPOSITION CENSUS SOUND, because a
+// population every row of which is undispositioned is not admissible however well it was measured.
+// TWO IDENTITIES, ONE JOIN KEY. source_tree (v2.workflow.floor_discovery FloorDiscoveryTreeId over
+// GitObjectId) is the key another lane cross-checks against its generation, because a squash merge
+// rewrites every commit while leaving the tree it measured byte-identical -- so a gate keyed on the
+// commit would refuse the final receipt by construction, and the conjunct that once refused on
+// revision mismatch now refuses on TREE mismatch. source_revision (CommitSha) rides beside it as the
+// informational head. BOTH ARMS CARRY THE SOURCE REVISION AS std.types CommitSha, the one type every
+// Git-head consumer names, because a bare String here was a hollow-alias fork on the exact field
+// another lane joins against its generation revision. CommitSha names a COMMIT; a tree digest is a
+// different concept with its own authority (v2.workflow.floor_discovery FloorDiscoveryTreeId over
+// GitObjectId) and is not smuggled into this field. BOTH ARMS CARRY THE SOURCE REVISION, because the
+// consumer of this standing is another lane's generation receipt, which must cross-check the revision
+// this evidence was measured over against the revision of the compiler generation it is deciding.
+// Carrying the revision only on the input receipts would make the admitted arm a bare token a consumer
+// could pair with any generation -- an admission about revision A silently standing in for revision B.
+// The admitted arm names the one revision both receipts agreed on; the refused arm names the LEFT
+// receipt's revision as the subject the refusal is about, since on a revision mismatch there is no
+// single revision and the left receipt is the modeled side.
+type EffectDemandEvidenceStanding
+  = EffectDemandEvidenceAdmitted { source_revision: CommitSha, source_tree: FloorDiscoveryTreeId }
+  | EffectDemandEvidenceRefused { source_revision: CommitSha, source_tree: FloorDiscoveryTreeId, conjunct: Symbol }
+
+// SUBJECT COMPLETENESS IS ONE NECESSARY CONDITION FOR PROMOTION AND IS NOT PROMOTION, and it is the
+// last arm of this gate rather than a predicate beside it. It was once a population-to-Bool helper
+// named admits_promotion that answered true from the constructor alone, so promotion was grantable by
+// AUTHORING PopulationMeasuredComplete -- no resolved root, no edge walk, no second producer. The Bool
+// was also a second spelling of a fact DemandPopulation already carries, since the gate re-lifted it
+// into a typed refusal on the next line, so the gate now folds the coproduct itself.
+fn effect_demand_local_gate(
+  left: DemandReceipt,
+  right: DemandReceipt,
+  population: DemandPopulation,
+  agreement: DemandAgreement,
+  census_is_sound: Bool
+) -> EffectDemandEvidenceStanding {
+  if !effect_demand_receipt_roots_resolved(receipt: left) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_roots_unresolved } }
+  else if !effect_demand_receipt_roots_resolved(receipt: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_roots_unresolved } }
+  else if length(xs: left.unresolved_indirect_edge_identities) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_unresolved_indirect_edges } }
+  else if length(xs: right.unresolved_indirect_edge_identities) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_unresolved_indirect_edges } }
+  else if floor_discovery_tree_identity(tree: left.source_tree) != floor_discovery_tree_identity(tree: right.source_tree) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^tree_mismatch } }
+  else if left.entry_identity != right.entry_identity { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^entry_mismatch } }
+  else if !effect_demand_producers_are_distinct(left: left, right: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^one_producer_twice } }
+  else if !effect_demand_receipts_agree_on_membership(left: left, right: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^membership_disagreement } }
+  else if length(xs: agreement.modeled_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^modeled_only_nonempty } }
+  else if length(xs: agreement.realized_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^realized_only_nonempty } }
+  else {
+    match population {
+      PopulationMeasuredComplete { rows: _, subject_roster_identities: _ } =>
+        if !census_is_sound { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^census_unsound } }
+        else { EffectDemandEvidenceAdmitted { source_revision: left.source_revision, source_tree: left.source_tree } },
+      PopulationMeasuredLowerBound { rows: _, missing_basis: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^subject_incomplete },
+      PopulationUnmeasured { reason: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^subject_incomplete }
+    }
+  }
+}
+
+// THE SEAM DENOMINATOR, SETTLED BY IDENTITY RATHER THAN BY TOTAL. Two lanes independently derived the
+// whole-body self-call population and reported 14 and 36. The reconciliation was not a compromise and
+// not an average: the 36 was a union of two predicates reported as one population -- 5 rows from the
+// wall's own emitted refusals, which are authoritative because the mechanism is speaking about itself,
+// plus 31 rows from a regex matching any emitted function whose body is a single runtime-bridge call,
+// which never tested self-call at all. A superset check was read as a detector. The tell that made
+// this findable was structural rather than numeric: tightening the predicate left 14 unchanged with no
+// near-misses, and the next-looser predicate jumped to 698 ordinary recursions, so nothing in the
+// neighbourhood produced 36 and the disagreement had to be about SUBJECT rather than about rule. This
+// is the 174-versus-175 lesson at a larger grain, and it is why the rows below carry declaration,
+// projection, realization and emitted identity rather than a count.
+type SeamProjection
+  = ProjectedPrimitive { primitive: PrimitiveIdentity }
+  | SeamUnrostered
+
+// AMBIGUITY IS A FOURTH ARM, NOT A LOSING SIDE OF A BOOLEAN. Two registry rows naming one projected
+// primitive is a defect in the realization authority, and the tempting fold takes the last match and
+// returns a realized standing -- which answers confidently while the authority disagrees with itself,
+// and picks the winner by list order, a fact no authority states. That is the absorbing arm DESIGN
+// section 5 forbids: it cannot compute the answer, so it substitutes one. The arm therefore selects NO
+// bridge and constructs NO realized standing; it carries the primitive and every bridge that claimed
+// it, so the refusal is located and countable rather than silent. Realized and unrealized both remain
+// positive answers, and ambiguous is neither -- which is why every consumer folds this coproduct
+// directly instead of asking a realized/unrealized boolean whose negation would swallow the fourth arm.
+type SeamRealization
+  = SeamRealizedByBridge { bridge: String }
+  | SeamRuntimeBindingAmbiguous { primitive: PrimitiveIdentity, bridges: List<String> }
+  | SeamUnrealized
+
+// PER-SEAM EVIDENCE STANDING, because 11 unrealized seams do not carry one rung between them. Five of
+// them were refused by the wall inside the v2 compiler's own emitted closure: that is executing
+// evidence, the highest standing available here. The other six are derived from the same two
+// authorities -- the projection roster and the runtime registry -- but their declarations are not
+// emitted in that closure, so nothing has exercised them and no run has ever refused one. Collapsing
+// both into a single Unrealized would report the derived six at the executed five's rung, which is
+// rung inflation in the precise place XL-1's acceptance bar reads. The distinction is carried in the
+// row rather than in prose so a consumer cannot quote the strong arm for the weak population.
+type SeamEvidence
+  = SeamRefusalObservedInClosure { closure_entry: String }
+  | SeamEvidenceDerivedNotExercised { reason: Symbol }
+
+type SeamRuntimeBinding {
+  primitive: PrimitiveIdentity
+  bridge: String
+}
+
+// THIS BINDING CARRIES NO EXECUTION MODE, and reusing EffectRealizationKey here would have invented
+// one. A runtime registry row says which bridge realizes a projected primitive; it says nothing about
+// whether the call is wet or hermetically replayed, because that is a fact about a DEMAND rather than
+// about the binding. Borrowing the demand-side key would have forced every row to name a mode no
+// authority states, and a fabricated Hermetic would then have been available to satisfy a mode-
+// discriminating join -- the exact defect repaired on the demand side, reintroduced from the
+// realization side. Two types, because they answer two questions.
+// REALIZATION IS DERIVED HERE, NEVER AUTHORED ON THE ROW, and this is a repair rather than an original
+// design. The roster first carried a realization column beside the projection, which made one fact
+// writable in two places: a row could claim SeamRealizedByBridge while its projected primitive
+// resolved to nothing in the registry, and no witness could see the divergence because both sides were
+// authored. A mutation that made the derivation resolve an unrostered projection left the roster-level
+// law green, which is precisely the tell that a check was validating authored data rather than testing
+// a derivation. The column is therefore gone: SeamStanding carries the projection and the registry
+// answers, so a row disagreeing with the registry has no spelling. DESIGN section 5 prefers the single
+// authority from which the realization is derived over the check that flags the mismatch afterwards.
+type SeamStanding {
+  declaration: String
+  seam_module: String
+  projection: SeamProjection
+  emitted_rust_identity: String
+  evidence: SeamEvidence
+}
+
+// STANDING IS KEYED ON THE PROJECTED PRIMITIVE, NEVER ON THE DECLARATION NAME, and this function takes
+// no declaration argument so the wrong key has no spelling here. The distinction is not academic:
+// empty_map_primitive_delegate is realized only because its roster row names the empty_map primitive
+// whose bridge is rc_empty_map, and a census keyed on the declaration name reports it unrealized --
+// which is exactly the defect that made a wall refuse an already-realized seam for a day. Keying on
+// the declaration is therefore not a slightly worse join, it is a join over the wrong identity, and
+// DESIGN section 5 prefers a construction from which the realization is derived over a check that
+// flags the bad state after the fact. An unrostered seam has no projected primitive at all, so it
+// cannot be looked up rather than being looked up and missed.
+fn seam_realization_for(
+  projection: SeamProjection,
+  registry: List<SeamRuntimeBinding>
+) -> SeamRealization {
+  match projection {
+    SeamUnrostered => SeamUnrealized,
+    ProjectedPrimitive { primitive } => seam_realization_from_matches(
+      primitive: primitive,
+      matches: list_reverse(xs: fold_list(
+        xs: registry,
+        empty: Empty,
+        cons: fn(acc, row) { if row.primitive.slug == primitive.slug { Cons { head: row.bridge, tail: acc } } else { acc } }
+      ))
+    )
+  }
+}
+
+fn seam_realization_from_matches(primitive: PrimitiveIdentity, matches: List<String>) -> SeamRealization {
+  match matches {
+    Empty => SeamUnrealized,
+    Cons { head, tail } => match tail {
+      Empty => SeamRealizedByBridge { bridge: head },
+      Cons { head: second, tail: rest } => SeamRuntimeBindingAmbiguous { primitive: primitive, bridges: matches }
+    }
+  }
+}
+
+fn seam_realization(seam: SeamStanding, registry: List<SeamRuntimeBinding>) -> SeamRealization {
+  seam_realization_for(projection: seam.projection, registry: registry)
+}
+
+fn seam_unrealized_without_executed_evidence(
+  roster: List<SeamStanding>,
+  registry: List<SeamRuntimeBinding>
+) -> List<SeamStanding> {
+  list_reverse(xs: fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, seam) {
+      match seam_realization(seam: seam, registry: registry) {
+        SeamUnrealized => match seam.evidence {
+          SeamEvidenceDerivedNotExercised { reason } => Cons { head: seam, tail: acc },
+          SeamRefusalObservedInClosure { closure_entry } => acc
+        },
+        SeamRealizedByBridge { bridge } => acc,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => acc
+      }
+    }
+  ))
+}
+
+fn seam_unrostered_rows(roster: List<SeamStanding>) -> List<SeamStanding> {
+  list_reverse(xs: fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, seam) {
+      match seam.projection {
+        SeamUnrostered => Cons { head: seam, tail: acc },
+        ProjectedPrimitive { primitive } => acc
+      }
+    }
+  ))
+}
+
+// AN UNROSTERED SEAM IS NOT EVIDENCE THAT NOBODY LOOKED -- IT IS EVIDENCE THAT NOBODY HAS DISPOSED IT.
+// Six of the fourteen have no row in the projection roster, so their realization standing derives from
+// the runtime registry alone. The tempting reading is that the roster is the authority and an absence
+// from it means the seam is out of scope; the correct reading is that the roster is a DISPOSITION
+// record, so an absence is an open obligation rather than a closed one. These rows therefore land as
+// OperationDispositionUnclassified once reachability is known, and they are the population that would
+// silently vanish from a census keyed on the roster rather than on the derived seam population.
+data effect_demand_seam_runtime_registry: List<SeamRuntimeBinding> = [
+  SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "rc_empty_map" },
+  SeamRuntimeBinding { primitive: primitive_identity_slug(name: "symbol_lexeme"), bridge: "symbol_lexeme" },
+  SeamRuntimeBinding { primitive: primitive_identity_slug(name: "symbol_intern_lexeme"), bridge: "symbol_intern_lexeme" }
+]
+
+data effect_demand_seam_roster: List<SeamStanding> = [
+  SeamStanding {
+    declaration: "empty_map_primitive_delegate",
+    seam_module: "v2.std.collection",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "empty_map") },
+    emitted_rust_identity: "v2_std_collection.rs::empty_map_primitive_delegate",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "symbol_lexeme",
+    seam_module: "v2.std.compilers.lexing",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "symbol_lexeme") },
+    emitted_rust_identity: "v2_std_compilers_lexing.rs::symbol_lexeme",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "symbol_intern_lexeme",
+    seam_module: "v2.std.compilers.lexing",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "symbol_intern_lexeme") },
+    emitted_rust_identity: "v2_std_compilers_lexing.rs::symbol_intern_lexeme",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "decl_facts",
+    seam_module: "v2.std.decl_index",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "decl_facts") },
+    emitted_rust_identity: "v2_std_decl_index.rs::decl_facts",
+    evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
+  },
+  SeamStanding {
+    declaration: "export_signature_facts",
+    seam_module: "v2.std.decl_index",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "export_signature_facts") },
+    emitted_rust_identity: "v2_std_decl_index.rs::export_signature_facts",
+    evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
+  },
+  SeamStanding {
+    declaration: "data_decl_type_facts",
+    seam_module: "v2.std.decl_index",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "data_decl_type_facts") },
+    emitted_rust_identity: "v2_std_decl_index.rs::data_decl_type_facts",
+    evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
+  },
+  SeamStanding {
+    declaration: "resolve_type_node",
+    seam_module: "v2.std.node",
+    projection: SeamUnrostered,
+    emitted_rust_identity: "v2_std_node.rs::resolve_type_node",
+    evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
+  },
+  SeamStanding {
+    declaration: "coproduct_nullary_inhabitants",
+    seam_module: "v2.std.node_query",
+    projection: SeamUnrostered,
+    emitted_rust_identity: "v2_std_node_query.rs::coproduct_nullary_inhabitants",
+    evidence: SeamRefusalObservedInClosure { closure_entry: "v2.compiler.compile" }
+  },
+  SeamStanding {
+    declaration: "concept_decl_facts",
+    seam_module: "v2.std.concept_index",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "concept_decl_facts") },
+    emitted_rust_identity: "v2_std_concept_index.rs::concept_decl_facts",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "concept_decl_facts_live",
+    seam_module: "v2.std.concept_index",
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "concept_decl_facts_live") },
+    emitted_rust_identity: "v2_std_concept_index.rs::concept_decl_facts_live",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "data_init_decl_facts_live",
+    seam_module: "v2.std.data_index",
+    projection: SeamUnrostered,
+    emitted_rust_identity: "v2_std_data_index.rs::data_init_decl_facts_live",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "fn_arrow_decl_facts_live",
+    seam_module: "v2.std.fn_index",
+    projection: SeamUnrostered,
+    emitted_rust_identity: "v2_std_fn_index.rs::fn_arrow_decl_facts_live",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "fn_arrow_decl_substrate_is_whole_tree",
+    seam_module: "v2.std.fn_index",
+    projection: SeamUnrostered,
+    emitted_rust_identity: "v2_std_fn_index.rs::fn_arrow_decl_substrate_is_whole_tree",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  },
+  SeamStanding {
+    declaration: "corpus_dependency_view_per_pr_substrate_refuse",
+    seam_module: "v2.lens.affected_set.corpus_dependency_view",
+    projection: SeamUnrostered,
+    emitted_rust_identity: "v2_lens_affected_set_corpus_dependency_view.rs::corpus_dependency_view_per_pr_substrate_refuse",
+    evidence: SeamEvidenceDerivedNotExercised { reason: ^declaration_not_emitted_in_the_measured_closure }
+  }
+]
