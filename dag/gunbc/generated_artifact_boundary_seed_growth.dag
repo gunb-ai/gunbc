@@ -94,6 +94,19 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // roster: it is AUTHORED, not derived, so a later helper added to this same file escapes it
 // silently. That completeness join belongs to the honest-frontier lane. What is claimed here is
 // enumeration, not a denominator.
+//
+// REQUIRED-PHASE RESTORATION RECEIPT (2026-08-31). Re-enrolling the already-modeled boundary
+// modifies the existing `v1_compiler.bin.claim_executor` `run` item; it adds no Rust declaration,
+// so this is `ExistingSeedItemModified`, not a fabricated +1 item delta. It is nevertheless hand
+// Rust and therefore appears in the exact roster below. The authority consumed by that arm is
+// `gunbc.required_ci_phase_roster` `RequiredCiPhase`; Rust is still needed because the current
+// required runner and its lane dispatch are the bootstrap realization of that modeled roster.
+// DEFERRAL: owning lane `v1-hand-queue-drain`, the concrete active ROADMAP node declared by
+// `gunbc.roadmap.roadmap_authority` `v1-hand-queue-drain` ("Work through the remaining hand-written
+// files the products need"). It deletes this phase arm when required-run dispatch consumes the
+// modeled phase roster directly; the generated-artifact boundary's separate file-read trigger
+// still governs deletion of the host adjudicator. This is no retirement or generic dissolution
+// claim: it names the exact modified item, authority, owner, ROADMAP row, and terminal consumer.
 
 data generated_artifact_boundary_seed_growth_justification: SeedGrowthJustification = SeedGrowthJustification {
   hand_authored_declarations: [
@@ -196,10 +209,15 @@ data generated_artifact_boundary_seed_growth_justification: SeedGrowthJustificat
       module_path: "v1_compiler.generated_artifact_boundary_host",
       decl_name: "drift_is_reported_and_stops_the_line",
       field: WholeDeclaration
+    },
+    DeclarationRef {
+      module_path: "v1_compiler.bin.claim_executor",
+      decl_name: "run",
+      field: WholeDeclaration
     }
   ],
   reason: "The phase compares a modeled projection against BYTES ON DISK, and reading the committed file is a host effect the required floor's hermetic envelope refuses by construction -- so the leaf is Rust for the same reason ingestion is. The rejected alternative was running the existing tools.generated_artifact_gate main through the interpreter in Wet mode, refused because it makes the interpreter load-bearing for a NEW required phase while two lanes delete it, and because that gate body also reaches artifact_extra_valid's ci_yml_parses, so the required phase would acquire a second subject nobody asked it to check. What the growth buys is that a committed projection diverging from its authority stops the line at all: for the whole interval since the 2026-08-15 floor cut, DESIGN.md and ROADMAP.md were compared by nothing, and the first execution of this phase found four divergences, one of them wrong since #9394.",
   owning_dissolution_lane: "v1-hand-queue-drain" as RoadmapNodeId,
-  trigger: "Delete all 20 when the required run can execute a .dag adjudicator over this population -- that is, when a modeled operation can read a committed file's bytes inside the required envelope, at which point the whole comparison is gunbc.generated_artifact_emit plus one modeled read and this host has nothing left to do. A PARTIAL migration is admissible and is the expected shape: the four pure declarations here (AdjudicatedArtifact, ArtifactDisposition, artifact_disposition, artifact_disposition_name) are a fold over two strings and dissolve the moment anything models them, independently of the read. What does NOT dissolve them is moving them to another host file, and what does NOT dissolve them is a witness asserting this host agrees with the model -- that would raise the rung without removing the duplicate.",
-  current_boundary: "src/v1/stage0/src/generated_artifact_boundary_host.rs; src/v1/stage0/src/cli_run.rs (one #[path] mod line and one pub use, adding no declaration); src/v1/stage0/src/bin/claim_executor.rs (the phase body, and a NET LOSS of three declarations hoisted out of it); dag/gunbc/generated_artifact_boundary_seed_growth.dag"
+  trigger: "Delete the 20 generated_artifact_boundary_host declarations when the required run can execute a .dag adjudicator over this population -- that is, when a modeled operation can read a committed file's bytes inside the required envelope, at which point the whole comparison is gunbc.generated_artifact_emit plus one modeled read and this host has nothing left to do. Delete the separately rostered v1_compiler.bin.claim_executor run modification when required-run dispatch consumes gunbc.required_ci_phase_roster RequiredCiPhase directly under ROADMAP node v1-hand-queue-drain. A PARTIAL migration is admissible and is the expected shape: the four pure declarations here (AdjudicatedArtifact, ArtifactDisposition, artifact_disposition, artifact_disposition_name) are a fold over two strings and dissolve the moment anything models them, independently of the read. What does NOT dissolve them is moving them to another host file, and what does NOT dissolve them is a witness asserting this host agrees with the model -- that would raise the rung without removing the duplicate.",
+  current_boundary: "src/v1/stage0/src/generated_artifact_boundary_host.rs; src/v1/stage0/src/cli_run.rs (one #[path] mod line and one pub use, adding no declaration); src/v1/stage0/src/bin/claim_executor.rs run (ExistingSeedItemModified: the required generated-artifact phase body consumes gunbc.required_ci_phase_roster RequiredCiPhase; no new Rust declaration); dag/gunbc/generated_artifact_boundary_seed_growth.dag"
 }
