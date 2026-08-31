@@ -683,7 +683,7 @@ fn classify_existing_artifact(
     let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
     const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
     match version {
-        1 | 3 => {
+        1 | 3 | 4 => {
             if file_len < LEGACY_HEADER_LEN {
                 return Ok(ExistingArtifactDisposition::Unrecognized);
             }
@@ -739,7 +739,7 @@ fn read_cached_header(path: &Path, expected_subject: &str) -> CacheProbeResult {
     }
     let version = u32::from_le_bytes(prefix[MAGIC.len()..].try_into().unwrap());
     const LEGACY_HEADER_LEN: usize = MAGIC.len() + 4 + 16 + 16 + 8;
-    if version == 1 || version == 3 {
+    if version == 1 || version == 3 || version == 4 {
         if version == 1 {
             let mut legacy = vec![0u8; LEGACY_HEADER_LEN - prefix.len()];
             if file.read_exact(&mut legacy).is_err() {
@@ -1098,6 +1098,20 @@ pub fn prepare_resolved_graph_parts(
         let (graph_digest, graph_bytes) = digest_file(&paths[0])?;
         let (indices_digest, indices_bytes) = digest_file(&paths[1])?;
         let (union_digest, union_bytes) = digest_file(&paths[2])?;
+        let payload_bytes = graph_bytes
+            .checked_add(indices_bytes)
+            .and_then(|n| n.checked_add(union_bytes))
+            .ok_or_else(|| "cache payload length overflow".to_string())?;
+        let artifact_bytes = payload_bytes
+            .checked_add(V3_HEADER_LEN as u64)
+            .ok_or_else(|| "cache artifact length overflow".to_string())?;
+        if artifact_bytes > resolved_graph_cache_cap_bytes() {
+            return Err(format!(
+                "resolved-graph cache artifact exceeds modeled capacity: cap_bytes={} \
+                 observed_bytes={artifact_bytes}",
+                resolved_graph_cache_cap_bytes()
+            ));
+        }
         Ok(PreparedResolvedGraphParts {
             paths: paths.clone(),
             graph_digest,
@@ -1303,6 +1317,16 @@ pub fn write_encoded(
         .iter()
         .try_fold(0u64, |total, bytes| total.checked_add(bytes.len() as u64))
         .ok_or_else(|| "cache payload length overflow".to_string())?;
+    let artifact_len = payload_len
+        .checked_add(V3_HEADER_LEN as u64)
+        .ok_or_else(|| "cache artifact length overflow".to_string())?;
+    if artifact_len > resolved_graph_cache_cap_bytes() {
+        return Err(format!(
+            "resolved-graph cache artifact exceeds modeled capacity: cap_bytes={} \
+             observed_bytes={artifact_len}",
+            resolved_graph_cache_cap_bytes()
+        ));
+    }
     let payload_integrity_digest = bytes_identity_hash_parts(&payload_slices);
     let parts = [
         V3PartDescriptor {
