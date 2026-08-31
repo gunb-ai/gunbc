@@ -538,9 +538,17 @@ pub fn run_required_regen_scoped(
         convergence_surface_roles(&workspace, &convergence_roots)?;
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
+    // This is the writer's own exact artifact population, including non-Rust products such as
+    // the crate manifest.  It is deliberately distinct from `selected_basenames`, whose authority
+    // is the compared generated-Rust population and therefore cannot name these products.
+    let emitted_artifact_paths = emitted
+        .keys()
+        .map(|path| emit_path_basename(path).to_string())
+        .collect::<BTreeSet<_>>();
     let candidate_manifest = produce_candidate_manifest(
         &fresh_src,
         &selected_basenames,
+        &emitted_artifact_paths,
         &basename_to_module,
         &producer_seed_digest,
         &candidate_tree_id,
@@ -3124,6 +3132,7 @@ fn candidate_manifest_aggregate(
 fn produce_candidate_manifest(
     candidate_src: &Path,
     selected_basenames: &[String],
+    emitted_artifact_paths: &BTreeSet<String>,
     basename_to_module: &HashMap<String, String>,
     producer_seed_digest: &str,
     candidate_tree_id: &str,
@@ -3165,6 +3174,15 @@ fn produce_candidate_manifest(
                              declaring module"
                         )
                     })?,
+                    RegenCandidateManifestSurfaceRole::GeneratedSurface,
+                )
+            } else if emitted_artifact_paths.contains(basename) {
+                // Non-Rust aggregate products do not have a same-named DAG module. Their
+                // authority is the emitter transaction that returned this exact path and whose
+                // writer installed it into this candidate tree. A path merely observed on disk
+                // cannot enter this arm.
+                (
+                    "v1.compiler.emit_rust".to_string(),
                     RegenCandidateManifestSurfaceRole::GeneratedSurface,
                 )
             } else {
@@ -5400,6 +5418,32 @@ mod regen_convergence_host_instrument_tests {
         let roots = fixture_roots();
         let model = RegenConvergenceModel::load(&roots).unwrap();
 
+        // An emitted non-Rust artifact is admitted from the writer's exact output population,
+        // not from a basename exception. This is the crate-layout-product shape without naming
+        // any particular product path in the manifest authority.
+        let (_, _, emitted_artifact_candidate, _) = fixture_workspace();
+        fs::write(
+            emitted_artifact_candidate.join("fixture-layout.artifact"),
+            "emitted layout bytes\n",
+        )
+        .unwrap();
+        let emitted_artifact_manifest = produce_candidate_manifest(
+            &emitted_artifact_candidate,
+            &[],
+            &["fixture-layout.artifact".to_string()]
+                .into_iter()
+                .collect(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-emitted-artifact",
+        )
+        .unwrap();
+        assert_eq!(emitted_artifact_manifest.surfaces.len(), 1);
+        assert!(matches!(
+            emitted_artifact_manifest.surfaces[0].role,
+            RegenCandidateManifestSurfaceRole::GeneratedSurface
+        ));
+
         // Bootstrap-source mirrors inhabit the same immutable candidate artifact as generated
         // surfaces. Their role is bound by the manifest, and changing their bytes after
         // production refuses before any install journal exists.
@@ -5413,6 +5457,7 @@ mod regen_convergence_host_instrument_tests {
         let bootstrap_manifest = produce_candidate_manifest(
             &bootstrap_candidate,
             &[],
+            &BTreeSet::new(),
             &HashMap::new(),
             "seed-0",
             "tree-bootstrap",
