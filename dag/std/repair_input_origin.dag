@@ -1,6 +1,7 @@
 module std.repair_input_origin
 
 import std.types { String, List }
+import std.decl_ref { DeclarationRef }
 
 // XL-0A splits the emitter's six candidate-bearing inputs BEFORE their historical string union.
 // The source branch is deliberately named Candidate rather than DeclarationCarrier: XL-0B/C will
@@ -19,9 +20,23 @@ type SourceCarrierOrigin
 
 type RenderedTypeSurfaceOrigin {}
 
+type NonSourceValueReason
+  = RuntimePrimitiveValue
+  | ValueTargetUndetermined
+
 type SourceCarrierCandidateIdentity {
   emitting_module: String
   candidate_spelling: CandidateSpelling
+  producer_origin: SourceCarrierOrigin
+}
+
+// XL-0B's resolver/value channels arrive here only after the upstream authority has preserved
+// the declaration it selected.  Candidate spelling remains independent: aliases and re-exports
+// can make the authored qualifier differ from the declaring module.
+type SourceDeclarationCarrierIdentity {
+  emitting_module: String
+  candidate_spelling: CandidateSpelling
+  declaring_declaration: DeclarationRef
   producer_origin: SourceCarrierOrigin
 }
 
@@ -33,7 +48,39 @@ type RenderedTargetVocabularyIdentity {
 
 type RepairInputOriginCandidate
   = SourceCarrierCandidate { identity: SourceCarrierCandidateIdentity }
+  | SourceDeclarationCarrier { identity: SourceDeclarationCarrierIdentity }
+  | NonSourceValueCompatibilityCandidate {
+      emitting_module: String,
+      candidate_spelling: CandidateSpelling,
+      reason: NonSourceValueReason,
+    }
   | RenderedTargetVocabularyCarrier { identity: RenderedTargetVocabularyIdentity }
+
+fn source_declaration_carrier(
+  emitting_module: String,
+  candidate_spelling: CandidateSpelling,
+  declaring_declaration: DeclarationRef,
+  producer_origin: SourceCarrierOrigin,
+) -> RepairInputOriginCandidate {
+  SourceDeclarationCarrier { identity: SourceDeclarationCarrierIdentity {
+    emitting_module: emitting_module,
+    candidate_spelling: candidate_spelling,
+    declaring_declaration: declaring_declaration,
+    producer_origin: producer_origin,
+  } }
+}
+
+fn non_source_value_compatibility_candidate(
+  emitting_module: String,
+  candidate_spelling: CandidateSpelling,
+  reason: NonSourceValueReason,
+) -> RepairInputOriginCandidate {
+  NonSourceValueCompatibilityCandidate {
+    emitting_module: emitting_module,
+    candidate_spelling: candidate_spelling,
+    reason: reason,
+  }
+}
 
 fn candidate_spelling_from_text(name: String) -> CandidateSpelling {
   let segments = name |> split(delimiter: ".")
@@ -75,17 +122,17 @@ fn rendered_origin_candidates(
 // disposition is accepted here. The old name union is now only the compatibility projection below.
 fn repair_input_origin_candidates(
   emitting_module: String,
-  unlisted_type_names: List<String>,
-  value_reference_names: List<String>,
+  unlisted_type_candidates: List<RepairInputOriginCandidate>,
+  value_reference_candidates: List<RepairInputOriginCandidate>,
   item_emit_surface_names: List<String>,
   field_import_surface_names: List<String>,
   variant_payload_surface_names: List<String>,
   rendered_type_surface_names: List<String>,
 ) -> List<RepairInputOriginCandidate> {
   concat(
-    source_origin_candidates(emitting_module: emitting_module, names: unlisted_type_names, origin: UnlistedTypeResolutionOrigin),
+    unlisted_type_candidates,
     concat(
-      source_origin_candidates(emitting_module: emitting_module, names: value_reference_names, origin: ValueReferenceResolutionOrigin),
+      value_reference_candidates,
       concat(
         source_origin_candidates(emitting_module: emitting_module, names: item_emit_surface_names, origin: ItemEmitSurfaceOrigin),
         concat(
@@ -104,6 +151,16 @@ fn repair_input_origin_candidate_name(candidate: RepairInputOriginCandidate) -> 
   match candidate {
     SourceCarrierCandidate { identity } =>
       match identity.candidate_spelling {
+        BareCandidate { name } => name
+        QualifiedCandidate { authored_qualifier, member } => concat(authored_qualifier, ".", member)
+      }
+    SourceDeclarationCarrier { identity } =>
+      match identity.candidate_spelling {
+        BareCandidate { name } => name
+        QualifiedCandidate { authored_qualifier, member } => concat(authored_qualifier, ".", member)
+      }
+    NonSourceValueCompatibilityCandidate { emitting_module: _, candidate_spelling, reason: _ } =>
+      match candidate_spelling {
         BareCandidate { name } => name
         QualifiedCandidate { authored_qualifier, member } => concat(authored_qualifier, ".", member)
       }
@@ -135,6 +192,8 @@ fn qualified_item_emit_surface_compatibility_names(
           FieldImportSurfaceOrigin => []
           VariantPayloadSurfaceOrigin => []
         }
+      SourceDeclarationCarrier { identity: _ } => []
+      NonSourceValueCompatibilityCandidate { emitting_module: _, candidate_spelling: _, reason: _ } => []
       RenderedTargetVocabularyCarrier { identity: _ } => []
     }
   )

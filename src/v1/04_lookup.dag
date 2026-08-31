@@ -1,7 +1,7 @@
 module v1.compiler.infer_lookup
 
 import std.induction { SubValueRelation }
-import std.decl_ref { DeclarationRef, decl_ref }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_member_name, declaration_ref_qualified_key }
 import std.primitive_projection {
   PrimitiveProjection, PrimitiveIdentity, primitive_identity_runtime_name,
   ProjectionFidelity, HostRealizedSeam, ModeledProjection, DivergentProjection,
@@ -48,7 +48,7 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, authored_name,
   is_recursive_type, lookup_type, lookup_type_for,
-  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup,
+  GlobalBareLookupState, GlobalBareCandidate, borrowed_generic_param_names, global_bare_policy_candidate, lookup_binding_by_name, lookup_binding_by_name_local, qualified_all_but_last, qualify_borrowed_type_names, symbol_index_lookup, symbol_index_entry_lookup,
   listed_import_required_bare_call_blocked
 }
 
@@ -268,16 +268,16 @@ fn builtin_is_a_rival_authority(declared: List<CallableCandidate>) -> Bool {
 // honest lowering at all, so it carries nothing and reaches emission's refusal arm.
 fn resolved_declaration_call_target(declared: DeclaredCallableIdentity) -> CallTargetIdentity {
   match primitive_projection_row_for_declaration(
-    declaration: decl_ref(module_path: declared.owner_module_path, decl_name: declared.decl_name)
+    declaration: declared.declaration
   ) {
     Present { value: row } =>
       match row.fidelity {
         HostRealizedSeam => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: none }
         ModeledProjection => RuntimePrimitiveCall { primitive_name: primitive_identity_runtime_name(identity: row.primitive), projected_from: Present { value: declared } }
         DivergentProjection { divergence: _ } =>
-          SourceDeclarationCall { owner_module_path: declared.owner_module_path, decl_name: declared.decl_name }
+          SourceDeclarationCall { declaration: declared.declaration }
       }
-    Absent => SourceDeclarationCall { owner_module_path: declared.owner_module_path, decl_name: declared.decl_name }
+    Absent => SourceDeclarationCall { declaration: declared.declaration }
   }
 }
 
@@ -370,7 +370,7 @@ fn callable_lookup_over_candidates(
 ) -> FuncSigLookup {
   match map_get(func_env.local, name) {
     Present { value: sig } =>
-      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: qualified_last_segment(name: name) } }
+      FuncSigResolved { sig: sig, declared: DeclaredCallableIdentity { owner_module_path: func_env.name, decl_name: qualified_last_segment(name: name), declaration: decl_ref(module_path: func_env.name, decl_name: qualified_last_segment(name: name)) } }
     Absent =>
       let declared = parent_closure_callable_candidates(env: func_env, name: name)
       let builtin_admissible = match author_named_visibility(type_env: type_env, name: name) {
@@ -420,7 +420,7 @@ fn lookup_func_sig(func_env: ResolvedFuncEnv, type_env: TypeEnv, name: String) -
 }
 
 type BorrowedCensusDecl {
-  owner_module_path: String
+  declaring_declaration: DeclarationRef
   node: Node
 }
 
@@ -431,9 +431,12 @@ type BorrowedCensusDeclLookup
 
 fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLookup {
   if contains(name, ".") {
-    match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
-      Present { value: node } =>
-        BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
+    match symbol_index_entry_lookup(index: type_env.symbol_index, qualified_name: name) {
+      Present { value: entry } =>
+        BorrowedCensusDeclFound { declaration: BorrowedCensusDecl {
+          declaring_declaration: entry.declaring_declaration,
+          node: entry.binding.resolved
+        } }
       Absent => BorrowedCensusDeclNotFound
     }
   } else {
@@ -441,12 +444,12 @@ fn borrowed_census_decl(type_env: TypeEnv, name: String) -> BorrowedCensusDeclLo
       BorrowedCensusDeclNotFound
     } else {
       match map_get(type_env.symbol_index.global_bare, name) {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+        Present { value: GlobalBareUniqueBinding { module_path: _, entry: entry } } =>
+          BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: entry.declaring_declaration, node: entry.binding.resolved } }
         Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
           match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
             Present { value: cand } =>
-              BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+              BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: cand.entry.declaring_declaration, node: cand.entry.binding.resolved } }
             Absent => BorrowedCensusDeclAmbiguous { candidates: cands }
           }
         Absent => BorrowedCensusDeclNotFound
@@ -503,33 +506,25 @@ fn func_decl_owner_module(func_env: ResolvedFuncEnv, name: String) -> String? {
 // the outcome is typed three ways and an unrecoverable declaration REFUSES rather than
 // falling back to a provenance-losing node. Typing is unaffected: the value node remains the
 // fallback for inference, just never for reading admission facts.
-type ExactDeclarationIdentity {
-  owner_module_path: String
-  decl_name: String
-}
-
 type DeclarationLookupFailure
   = DeclarationNotIndexedAtQualifiedName { qualified_name: String }
 
 type ConstructorDeclarationLookup
-  = ExactConstructorDeclaration { identity: ExactDeclarationIdentity, declaration: Node }
+  = ExactConstructorDeclaration { declaration_ref: DeclarationRef, declaration: Node }
   | NotAdmissionBearingReference {}
-  | AdmissionBearingDeclarationUnavailable { identity: ExactDeclarationIdentity, cause: DeclarationLookupFailure }
+  | AdmissionBearingDeclarationUnavailable { declaration_ref: DeclarationRef, cause: DeclarationLookupFailure }
 
 fn constructor_declaration_for_admission(
   type_env: TypeEnv,
-  owner_module_path: String,
-  name: String
+  declaration_ref: DeclarationRef,
 ) -> ConstructorDeclarationLookup {
-  let decl_name = qualified_last_segment(name: name)
-  let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
-  let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
-  match symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
-    Present { value: node } =>
-      ExactConstructorDeclaration { identity: identity, declaration: node }
+  let qualified = declaration_ref_qualified_key(reference: declaration_ref)
+  match symbol_index_entry_lookup(index: type_env.symbol_index, qualified_name: qualified) {
+    Present { value: entry } =>
+      ExactConstructorDeclaration { declaration_ref: entry.declaring_declaration, declaration: entry.binding.resolved }
     Absent =>
       AdmissionBearingDeclarationUnavailable {
-        identity: identity,
+        declaration_ref: declaration_ref,
         cause: DeclarationNotIndexedAtQualifiedName { qualified_name: qualified }
       }
   }
@@ -548,16 +543,14 @@ fn func_decl_binding_for_call(
     Present { value: owner } =>
       constructor_declaration_for_admission(
         type_env: type_env,
-        owner_module_path: owner,
-        name: name
+        declaration_ref: decl_ref(module_path: owner, decl_name: qualified_last_segment(name: name))
       )
     Absent =>
       match borrowed_census_decl(type_env: type_env, name: name) {
         BorrowedCensusDeclFound { declaration: bd } =>
           constructor_declaration_for_admission(
             type_env: type_env,
-            owner_module_path: bd.owner_module_path,
-            name: name
+            declaration_ref: bd.declaring_declaration
           )
         BorrowedCensusDeclAmbiguous { candidates: _ } => NotAdmissionBearingReference {}
         BorrowedCensusDeclNotFound => NotAdmissionBearingReference {}
@@ -573,7 +566,7 @@ fn func_decl_binding_for_call(
 // the census fallback.
 
 fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate: GlobalBareCandidate) -> CallableCandidate {
-  let node = candidate.binding.resolved
+  let node = candidate.entry.binding.resolved
   let excluded = borrowed_generic_param_names(params: node.params, source_indices: type_env.source_indices)
   let raw_return = match node.inferred {
     Present { value: Resolved { node: inferred } } => inferred
@@ -589,7 +582,7 @@ fn borrowed_census_callable_candidate(type_env: TypeEnv, name: String, candidate
     excluded: excluded
   )
   CallableCandidate {
-    identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: candidate.module_path, decl_name: qualified_last_segment(name: name) } },
+    identity: DeclaredCallable { identity: DeclaredCallableIdentity { owner_module_path: candidate.entry.declaring_declaration.module_path, decl_name: declaration_ref_member_name(reference: candidate.entry.declaring_declaration), declaration: candidate.entry.declaring_declaration } },
     sig: ResolvedFuncSig {
       name: name,
       params: node.params,
@@ -609,7 +602,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
     Present { value: _ } => FuncSigUnresolved
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
-    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+    Present { value: binding } => BorrowedCensusDeclFound { declaration: BorrowedCensusDecl { declaring_declaration: decl_ref(module_path: type_env.module_path, decl_name: binding.name), node: binding.resolved } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {
@@ -626,7 +619,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             Absent => error_type
           }
         }
-        if bd.owner_module_path == type_env.module_path {
+        if bd.declaring_declaration.module_path == type_env.module_path {
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
@@ -634,9 +627,9 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
+          }, declared: DeclaredCallableIdentity { owner_module_path: bd.declaring_declaration.module_path, decl_name: declaration_ref_member_name(reference: bd.declaring_declaration), declaration: bd.declaring_declaration } }
         } else {
-          let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.owner_module_path, env: type_env, excluded: excluded)
+          let qualified_return = qualify_borrowed_type_names(n: raw_return, owner_module_path: bd.declaring_declaration.module_path, env: type_env, excluded: excluded)
           FuncSigResolved { sig: ResolvedFuncSig {
             name: name,
             params: node.params,
@@ -644,7 +637,7 @@ fn func_sig_from_global_bare(type_env: TypeEnv, name: String) -> FuncSigLookup {
             is_async: false,
             output_provenance: [],
             variant_provenance: empty_map()
-          }, declared: DeclaredCallableIdentity { owner_module_path: bd.owner_module_path, decl_name: qualified_last_segment(name: name) } }
+          }, declared: DeclaredCallableIdentity { owner_module_path: bd.declaring_declaration.module_path, decl_name: declaration_ref_member_name(reference: bd.declaring_declaration), declaration: bd.declaring_declaration } }
         }
       }
     BorrowedCensusDeclAmbiguous { candidates: cands } =>

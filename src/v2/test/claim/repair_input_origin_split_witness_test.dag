@@ -5,11 +5,19 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.repair_input_origin {
   RepairInputOriginCandidate,
   SourceCarrierCandidate,
+  SourceDeclarationCarrier,
+  NonSourceValueCompatibilityCandidate,
+  BareCandidate,
+  QualifiedCandidate,
+  UnlistedTypeResolutionOrigin,
+  ValueReferenceResolutionOrigin,
+  source_declaration_carrier,
   RenderedTargetVocabularyCarrier,
   repair_input_origin_candidates,
   repair_input_origin_compatibility_names,
   qualified_item_emit_surface_compatibility_names,
 }
+import std.decl_ref { decl_ref, DeclarationRef }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -17,6 +25,8 @@ fn is_rendered(candidate: RepairInputOriginCandidate, want: String) -> Bool {
   match candidate {
     RenderedTargetVocabularyCarrier { identity } => identity.rendered_identifier == want
     SourceCarrierCandidate { identity: _ } => false
+    SourceDeclarationCarrier { identity: _ } => false
+    NonSourceValueCompatibilityCandidate { emitting_module: _, candidate_spelling: _, reason: _ } => false
   }
 }
 
@@ -24,8 +34,53 @@ fn is_source(candidate: RepairInputOriginCandidate, want: String) -> Bool {
   match candidate {
     SourceCarrierCandidate { identity } =>
       repair_input_origin_compatibility_names(candidates: [SourceCarrierCandidate { identity: identity }]) |> any(name => name == want)
+    SourceDeclarationCarrier { identity } =>
+      repair_input_origin_compatibility_names(candidates: [SourceDeclarationCarrier { identity: identity }]) |> any(name => name == want)
+    NonSourceValueCompatibilityCandidate { emitting_module: _, candidate_spelling: _, reason: _ } => false
     RenderedTargetVocabularyCarrier { identity: _ } => false
   }
+}
+
+fn declaration(module_path: String, name: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: name)
+}
+
+// XL-0B RED: spelling compatibility is deliberately many-to-one, while declaring identity is not.
+test fn homonymous_source_declarations_remain_distinct() -> Bool {
+  let left = source_declaration_carrier(
+    emitting_module: "fixture.consumer",
+    candidate_spelling: BareCandidate { name: "Shared" },
+    declaring_declaration: declaration(module_path: "fixture.left", name: "Shared"),
+    producer_origin: UnlistedTypeResolutionOrigin,
+  )
+  let right = source_declaration_carrier(
+    emitting_module: "fixture.consumer",
+    candidate_spelling: BareCandidate { name: "Shared" },
+    declaring_declaration: declaration(module_path: "fixture.right", name: "Shared"),
+    producer_origin: UnlistedTypeResolutionOrigin,
+  )
+  left != right
+    && repair_input_origin_compatibility_names(candidates: [left, right]) == ["Shared", "Shared"]
+}
+
+// Authored routing and declaration provenance are conserved as different facts. Promoting the
+// qualifier into DeclarationRef changes the identity even though the compatibility text is stable.
+test fn reexport_qualifier_is_not_declaring_module() -> Bool {
+  let preserved = source_declaration_carrier(
+    emitting_module: "fixture.consumer",
+    candidate_spelling: QualifiedCandidate { authored_qualifier: "fixture.facade", member: "Thing" },
+    declaring_declaration: declaration(module_path: "fixture.owner", name: "Thing"),
+    producer_origin: ValueReferenceResolutionOrigin,
+  )
+  let substituted = source_declaration_carrier(
+    emitting_module: "fixture.consumer",
+    candidate_spelling: QualifiedCandidate { authored_qualifier: "fixture.facade", member: "Thing" },
+    declaring_declaration: declaration(module_path: "fixture.facade", name: "Thing"),
+    producer_origin: ValueReferenceResolutionOrigin,
+  )
+  preserved != substituted
+    && repair_input_origin_compatibility_names(candidates: [preserved]) == ["fixture.facade.Thing"]
+    && repair_input_origin_compatibility_names(candidates: [substituted]) == ["fixture.facade.Thing"]
 }
 
 // XL-0A RED 1: a target-only token is born in the rendered partition. A producer that unions
@@ -33,8 +88,8 @@ fn is_source(candidate: RepairInputOriginCandidate, want: String) -> Bool {
 test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bool {
   let candidates = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
-    unlisted_type_names: [],
-    value_reference_names: [],
+    unlisted_type_candidates: [],
+    value_reference_candidates: [],
     item_emit_surface_names: [],
     field_import_surface_names: [],
     variant_payload_surface_names: [],
@@ -50,8 +105,8 @@ test fn realized_only_token_has_one_rendered_origin_and_no_source_origin() -> Bo
 test fn emitted_text_only_token_is_not_an_origin() -> Bool {
   repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
-    unlisted_type_names: [],
-    value_reference_names: [],
+    unlisted_type_candidates: [],
+    value_reference_candidates: [],
     item_emit_surface_names: [],
     field_import_surface_names: [],
     variant_payload_surface_names: [],
@@ -65,8 +120,13 @@ test fn emitted_text_only_token_is_not_an_origin() -> Bool {
 test fn qualified_item_surface_route_is_origin_derived() -> Bool {
   let both = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
-    unlisted_type_names: [],
-    value_reference_names: ["authored.Member"],
+    unlisted_type_candidates: [],
+    value_reference_candidates: [source_declaration_carrier(
+      emitting_module: "fixture.consumer",
+      candidate_spelling: QualifiedCandidate { authored_qualifier: "authored", member: "Member" },
+      declaring_declaration: declaration(module_path: "declaring", name: "Member"),
+      producer_origin: ValueReferenceResolutionOrigin,
+    )],
     item_emit_surface_names: ["authored.Member"],
     field_import_surface_names: [],
     variant_payload_surface_names: [],
@@ -74,8 +134,13 @@ test fn qualified_item_surface_route_is_origin_derived() -> Bool {
   )
   let value_only = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
-    unlisted_type_names: [],
-    value_reference_names: ["authored.Member"],
+    unlisted_type_candidates: [],
+    value_reference_candidates: [source_declaration_carrier(
+      emitting_module: "fixture.consumer",
+      candidate_spelling: QualifiedCandidate { authored_qualifier: "authored", member: "Member" },
+      declaring_declaration: declaration(module_path: "declaring", name: "Member"),
+      producer_origin: ValueReferenceResolutionOrigin,
+    )],
     item_emit_surface_names: [],
     field_import_surface_names: [],
     variant_payload_surface_names: [],
@@ -97,8 +162,18 @@ fn unique_compatibility_names(names: List<String>) -> List<String> {
 test fn partition_conservation_keeps_six_origins_before_compatibility_dedup() -> Bool {
   let candidates = repair_input_origin_candidates(
     emitting_module: "fixture.consumer",
-    unlisted_type_names: ["Shared"],
-    value_reference_names: ["Shared"],
+    unlisted_type_candidates: [source_declaration_carrier(
+      emitting_module: "fixture.consumer",
+      candidate_spelling: BareCandidate { name: "Shared" },
+      declaring_declaration: declaration(module_path: "fixture.owner", name: "Shared"),
+      producer_origin: UnlistedTypeResolutionOrigin,
+    )],
+    value_reference_candidates: [source_declaration_carrier(
+      emitting_module: "fixture.consumer",
+      candidate_spelling: BareCandidate { name: "Shared" },
+      declaring_declaration: declaration(module_path: "fixture.owner", name: "Shared"),
+      producer_origin: ValueReferenceResolutionOrigin,
+    )],
     item_emit_surface_names: ["Shared"],
     field_import_surface_names: ["Shared"],
     variant_payload_surface_names: ["Shared"],

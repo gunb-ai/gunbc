@@ -11,6 +11,7 @@ import std.algebra { CollectionSizeEffect, CostShape, AlgebraFieldTemplate }
 import std.literal_elaboration { LiteralElaboration }
 import std.operator_realization { OperandDeclaration }
 import std.induction { SubValueRelation }
+import std.decl_ref { DeclarationRef }
 import std.occurrence_identity {
   NodeOccurrenceIdentity,
   OccurrenceSynthetic,
@@ -91,7 +92,7 @@ fn has_inferred(n: Node) -> Bool {
 
 type VarBindingKind
   = LocalValueBinding
-  | FunctionValueBinding
+  | FunctionValueBinding { target: CallTargetIdentity }
   | VariantValueBinding { parent_enum: String }
   | MatchBoundBinding
 
@@ -125,6 +126,7 @@ type VarBindingKind
 type DeclaredCallableIdentity {
   owner_module_path: String
   decl_name: String
+  declaration: DeclarationRef
 }
 
 // A PRIMITIVE'S IDENTITY AND ITS PER-TARGET REALIZATION ARE TWO FACTS, AND `projected_from`
@@ -149,7 +151,7 @@ type DeclaredCallableIdentity {
 // declaration answered and there is nothing to fall back to.
 type CallTargetIdentity
   = RuntimePrimitiveCall { primitive_name: String, projected_from: DeclaredCallableIdentity? }
-  | SourceDeclarationCall { owner_module_path: String, decl_name: String }
+  | SourceDeclarationCall { declaration: DeclarationRef }
   | CallableTargetUndetermined
 
 type CallSemantics
@@ -176,7 +178,7 @@ type ExprData
   | ExprMatch
   | ExprIf
   | ExprLet
-  | ExprRecordLit { parent_enum: String? }
+  | ExprRecordLit { parent_enum: String?, target: CallTargetIdentity }
   | ExprListLit
   | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration? }
   | ExprUnaryOp { op: UnaryOpKind }
@@ -272,7 +274,7 @@ type CompilerDiagnostic
   | AdmitCallersEntryNotDeclRef { constructor_decl_name: String, span: SourceSpan }
   | DeclaredTypeNotInhabited { position: String, expected: String, got: String, span: SourceSpan }
   | DeclaredTypeInhabitanceUndecided { position: String, reason: String, span: SourceSpan }
-  | UnlistedImportUse { name: String, span: SourceSpan }
+  | UnlistedImportUse { name: String, declaration: DeclarationRef, span: SourceSpan }
   | ReferenceDerivedImportProviderUnknown { name: String, referencing_module: String, span: SourceSpan }
   | ReferenceDerivedImportExportUnproven { name: String, referencing_module: String, provider_module: String, span: SourceSpan }
   | UnlistedVariantValueUse { name: String, span: SourceSpan }
@@ -455,7 +457,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
     AdmitCallersEntryNotDeclRef { constructor_decl_name: _, span: s } => s
     DeclaredTypeNotInhabited { position: _, expected: _, got: _, span: s } => s
     DeclaredTypeInhabitanceUndecided { position: _, reason: _, span: s } => s
-    UnlistedImportUse { name: _, span: s } => s
+    UnlistedImportUse { name: _, declaration: _, span: s } => s
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: s } => s
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: s } => s
     UnlistedVariantValueUse { name: _, span: s } => s
@@ -545,7 +547,7 @@ fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
       concat("value does not inhabit its declared type at the ", pos, ": declared '", e, "', produced '", g, "'")
     DeclaredTypeInhabitanceUndecided { position: pos, reason: r, span: _ } =>
       concat("declared-type inhabitance is undecidable at the ", pos, " (", r, "): the modeled facts do not settle whether the produced value inhabits its declared type, so no verdict is asserted in either direction")
-    UnlistedImportUse { name: n, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
+    UnlistedImportUse { name: n, declaration: _, span: _ } => concat("unlisted import use '", n, "' (referenced but not in any import's name list)")
     ReferenceDerivedImportProviderUnknown { name: n, referencing_module: rm, span: _ } =>
       concat("no provider is present for '", n, "', referenced by module '", rm, "': the compile closure carries no module that declares the name, so no use-line can be synthesized and the emitted Rust references a name it never imported. The remedy is to AUTHOR AN IMPORT -- closure membership is driven by imports, so a name the module never imported is a name the closure was never asked to supply")
     ReferenceDerivedImportExportUnproven { name: n, referencing_module: rm, provider_module: p, span: _ } =>
@@ -625,7 +627,7 @@ fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurren
 
 fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
-    UnlistedImportUse { name: _, span: _ } => false
+    UnlistedImportUse { name: _, declaration: _, span: _ } => false
     ReferenceDerivedImportProviderUnknown { name: _, referencing_module: _, span: _ } => false
     ReferenceDerivedImportExportUnproven { name: _, referencing_module: _, provider_module: _, span: _ } => false
     UnlistedVariantValueUse { name: _, span: _ } => false
@@ -776,7 +778,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
       !is_where_refinement_unenforced_advisory_reason(reason: r)
-    UnlistedImportUse { name: _, span: _ } => false
+    UnlistedImportUse { name: _, declaration: _, span: _ } => false
     UnlistedVariantValueUse { name: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
     ReceiverTypeUnestablished { method: _, span: _ } => false
@@ -790,7 +792,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
 
 fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
   match d {
-    UnlistedImportUse { name: _, span: _ } => true
+    UnlistedImportUse { name: _, declaration: _, span: _ } => true
     UnlistedVariantValueUse { name: _, span: _ } => true
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
     ReceiverTypeUnestablished { method: _, span: _ } => true
@@ -1712,7 +1714,7 @@ fn expr_is_any_literal(expr: Node) -> Bool {
 
 fn record_lit_expr_optional(expr: Node) -> Node? {
   match expr.expr_data {
-    ExprRecordLit { parent_enum: _ } => Present { value: expr }
+    ExprRecordLit { parent_enum: _, target: _ } => Present { value: expr }
     _ => none
   }
 }

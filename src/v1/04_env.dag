@@ -1,6 +1,8 @@
 module v1.compiler.infer_env
 
 import std.occurrence_identity { OccurrenceSynthetic }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.occurrence_identity { SourceDeclarationConstructor }
 
 import v1.std.core { Node, NewlineIndex, InternTable, Resolved, qualified_last_segment, empty_intern_table, merge_intern_tables, intern, intern_find, intern_str, source_text_at, authored_name_at, find_child_named, Cardinality, Connective, ExprData, InferredNode, kernel_span, module_path_segments, param_node_name_at, param_node_type_expr, CompilerDiagnostic, AmbiguousReference, UnresolvedType }
 import v1.compiler.type_head_exposure { TypeHeadExposure }
@@ -41,6 +43,11 @@ type TypeBinding {
   name: String
   resolved: Node
   provenance: SubValueRelation
+}
+
+type DeclaredTypeBinding {
+  binding: TypeBinding
+  declaration: DeclarationRef
 }
 
 // Precomputed phantom-variant relation over the env's VISIBLE bindings (locals shadowing
@@ -185,11 +192,11 @@ data global_bare_fallback_invariant: String = "Corpus-wide bare-name census, res
 
 type GlobalBareCandidate {
   module_path: String
-  binding: TypeBinding
+  entry: SymbolIndexEntry
 }
 
 type GlobalBareLookupState
-  = GlobalBareUniqueBinding { module_path: String, binding: TypeBinding }
+  = GlobalBareUniqueBinding { module_path: String, entry: SymbolIndexEntry }
   | GlobalBareAmbiguousBinding { candidates: List<GlobalBareCandidate> }
 
 type ImportBinding {
@@ -213,12 +220,51 @@ type ServiceCensusEntry {
 // built once, with the rest of this census, over the whole module population, and is read by
 // name at O(1) -- the judgment seams must never chase an alias chain per comparison. See
 // transparent_alias_identity_note (v1.compiler.infer) for what counts as transparent and why.
+type SymbolIndexEntryProvenance
+  = OwnSourceDeclaration { declaration: DeclarationRef, constructor: SourceDeclarationConstructor }
+  | VariantDeclarationBinding { declaration: DeclarationRef }
+  | ResolvedAliasBinding {
+      alias_declaration: DeclarationRef,
+      referent_key: String,
+      declaring_declaration: DeclarationRef,
+    }
+
+type SymbolIndexEntry {
+  declaring_declaration: DeclarationRef
+  provenance: SymbolIndexEntryProvenance
+  binding: TypeBinding
+}
+
+type SymbolIndexInsertRefusal
+  = DeclarationConstructorUnavailable { qualified_name: String }
+  | NamespaceAliasReferentUnresolved {
+      alias_qualified_name: String,
+      referent_qualified_name: String,
+    }
+  | NamespaceAliasReferentAmbiguous { alias_qualified_name: String, referent_name: String }
+  | NamespaceAliasReferentCycle { alias_qualified_name: String, cycle_at: String }
+  | TransparentTypeAliasTargetUnresolved { alias_qualified_name: String, target_name: String }
+  | TransparentTypeAliasTargetAmbiguous { alias_qualified_name: String, target_name: String }
+  | TransparentTypeAliasTargetCycle { alias_qualified_name: String, cycle_at: String }
+  | ConflictingIndexedIdentity {
+      qualified_name: String,
+      existing: DeclarationRef,
+      proposed: DeclarationRef,
+    }
+
+type SymbolIndexInsertDisposition
+  = Inserted { qualified_name: String, declaration: DeclarationRef }
+  | AlreadyPresentSameIdentity { qualified_name: String, declaration: DeclarationRef }
+
 type SymbolIndex {
-  entries: Map<String, Node>
+  entries: Map<String, SymbolIndexEntry>
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
   transparent_alias_rep: Map<String, String>
   type_head_exposures: Map<String, TypeHeadExposure>
+  insert_refusals: List<SymbolIndexInsertRefusal>
+  inserted_count: Int
+  already_present_same_identity_count: Int
 }
 
 type Scope {
@@ -226,7 +272,7 @@ type Scope {
 }
 
 fn empty_symbol_index() -> SymbolIndex {
-  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map() }
+  SymbolIndex { entries: empty_map(), global_bare: empty_map(), services: empty_map(), transparent_alias_rep: empty_map(), type_head_exposures: empty_map(), insert_refusals: [], inserted_count: 0, already_present_same_identity_count: 0 }
 }
 
 fn empty_type_env() -> TypeEnv {
@@ -248,59 +294,107 @@ fn empty_type_env() -> TypeEnv {
 }
 
 fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
+  match map_get(index.entries, qualified_name) {
+    Present { value: entry } => Present { value: entry.binding.resolved }
+    Absent => none
+  }
+}
+
+fn symbol_index_entry_lookup(index: SymbolIndex, qualified_name: String) -> SymbolIndexEntry? {
   map_get(index.entries, qualified_name)
 }
 
-fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: Node) -> Bool {
-  candidates |> any(c => c.binding.resolved == resolved)
+fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, declaration: DeclarationRef) -> Bool {
+  candidates |> any(c => declaration_ref_eq(a: c.entry.declaring_declaration, b: declaration))
 }
 
 fn symbol_index_track_global_bare(
   global_bare: Map<String, GlobalBareLookupState>,
   module_path: String,
-  binding: TypeBinding
+  binding: TypeBinding,
+  entry: SymbolIndexEntry,
 ) -> Map<String, GlobalBareLookupState> {
   match map_get(global_bare, binding.name) {
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-      if global_bare_candidates_contain(candidates: cands, resolved: binding.resolved) {
+      if global_bare_candidates_contain(candidates: cands, declaration: entry.declaring_declaration) {
         global_bare
       } else {
         map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding {
-          candidates: concat(cands, [GlobalBareCandidate { module_path: module_path, binding: binding }])
+          candidates: concat(cands, [GlobalBareCandidate { module_path: module_path, entry: entry }])
         })
       }
-    Present { value: GlobalBareUniqueBinding { module_path: existing_path, binding: existing } } =>
-      if existing.resolved == binding.resolved {
+    Present { value: GlobalBareUniqueBinding { module_path: existing_path, entry: existing_entry } } =>
+      if declaration_ref_eq(a: existing_entry.declaring_declaration, b: entry.declaring_declaration) {
         global_bare
       } else {
         map_insert(global_bare, binding.name, GlobalBareAmbiguousBinding {
           candidates: [
-            GlobalBareCandidate { module_path: existing_path, binding: existing },
-            GlobalBareCandidate { module_path: module_path, binding: binding }
+            GlobalBareCandidate { module_path: existing_path, entry: existing_entry },
+            GlobalBareCandidate { module_path: module_path, entry: entry }
           ]
         })
       }
-    Absent => map_insert(global_bare, binding.name, GlobalBareUniqueBinding { module_path: module_path, binding: binding })
+    Absent => map_insert(global_bare, binding.name, GlobalBareUniqueBinding { module_path: module_path, entry: entry })
   }
 }
 
-fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
-  SymbolIndex {
-    entries: map_insert(index.entries, qualified_name, resolved),
-    global_bare: index.global_bare,
-    services: index.services,
-    transparent_alias_rep: index.transparent_alias_rep,
-    type_head_exposures: index.type_head_exposures
+fn symbol_index_entry_for(binding_name: String, resolved: Node, provenance: SymbolIndexEntryProvenance) -> SymbolIndexEntry {
+  let declaring = match provenance {
+    OwnSourceDeclaration { declaration, constructor: _ } => declaration
+    VariantDeclarationBinding { declaration } => declaration
+    ResolvedAliasBinding { alias_declaration: _, referent_key: _, declaring_declaration } => declaring_declaration
+  }
+  SymbolIndexEntry { declaring_declaration: declaring, provenance: provenance, binding: TypeBinding { name: binding_name, resolved: resolved, provenance: SubValueUnknown } }
+}
+
+// The only writer of SymbolIndex.entries. Every caller supplies a closed identity provenance;
+// duplicate keys are adjudicated here rather than map_insert overwrite semantics.
+fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node, provenance: SymbolIndexEntryProvenance) -> SymbolIndex {
+  let proposed = symbol_index_entry_for(binding_name: qualified_last_segment(name: qualified_name), resolved: resolved, provenance: provenance)
+  match map_get(index.entries, qualified_name) {
+    Present { value: existing } =>
+      if declaration_ref_eq(a: existing.declaring_declaration, b: proposed.declaring_declaration)
+        && existing.provenance == proposed.provenance {
+        SymbolIndex {
+          entries: index.entries, global_bare: index.global_bare, services: index.services,
+          transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures,
+          insert_refusals: index.insert_refusals,
+          inserted_count: index.inserted_count,
+          already_present_same_identity_count: index.already_present_same_identity_count + 1
+        }
+      } else {
+        SymbolIndex {
+          entries: index.entries, global_bare: index.global_bare, services: index.services,
+          transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures,
+          insert_refusals: concat(index.insert_refusals, [ConflictingIndexedIdentity { qualified_name: qualified_name, existing: existing.declaring_declaration, proposed: proposed.declaring_declaration }]),
+          inserted_count: index.inserted_count,
+          already_present_same_identity_count: index.already_present_same_identity_count
+        }
+      }
+    Absent => SymbolIndex {
+      entries: map_insert(index.entries, qualified_name, proposed),
+      global_bare: index.global_bare, services: index.services,
+      transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures,
+      insert_refusals: index.insert_refusals,
+      inserted_count: index.inserted_count + 1,
+      already_present_same_identity_count: index.already_present_same_identity_count
+    }
   }
 }
 
-fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: TypeBinding) -> SymbolIndex {
-  SymbolIndex {
-    entries: map_insert(index.entries, concat(module_path, ".", binding.name), binding.resolved),
-    global_bare: symbol_index_track_global_bare(global_bare: index.global_bare, module_path: module_path, binding: binding),
-    services: index.services,
-    transparent_alias_rep: index.transparent_alias_rep,
-    type_head_exposures: index.type_head_exposures
+fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: TypeBinding, provenance: SymbolIndexEntryProvenance) -> SymbolIndex {
+  let qualified = concat(module_path, ".", binding.name)
+  let inserted = symbol_index_insert(index: index, qualified_name: qualified, resolved: binding.resolved, provenance: provenance)
+  match map_get(inserted.entries, qualified) {
+    Present { value: entry } => SymbolIndex {
+      entries: inserted.entries,
+      global_bare: symbol_index_track_global_bare(global_bare: inserted.global_bare, module_path: module_path, binding: binding, entry: entry),
+      services: inserted.services, transparent_alias_rep: inserted.transparent_alias_rep,
+      type_head_exposures: inserted.type_head_exposures, insert_refusals: inserted.insert_refusals,
+      inserted_count: inserted.inserted_count,
+      already_present_same_identity_count: inserted.already_present_same_identity_count
+    }
+    Absent => inserted
   }
 }
 
@@ -310,7 +404,23 @@ fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: St
     global_bare: index.global_bare,
     services: map_insert(index.services, name, ServiceCensusEntry { module_path: module_path, item: item }),
     transparent_alias_rep: index.transparent_alias_rep,
-    type_head_exposures: index.type_head_exposures
+    type_head_exposures: index.type_head_exposures,
+    insert_refusals: index.insert_refusals,
+    inserted_count: index.inserted_count,
+    already_present_same_identity_count: index.already_present_same_identity_count
+  }
+}
+
+fn symbol_index_with_insert_refusal(index: SymbolIndex, refusal: SymbolIndexInsertRefusal) -> SymbolIndex {
+  SymbolIndex {
+    entries: index.entries,
+    global_bare: index.global_bare,
+    services: index.services,
+    transparent_alias_rep: index.transparent_alias_rep,
+    type_head_exposures: index.type_head_exposures,
+    insert_refusals: concat(index.insert_refusals, [refusal]),
+    inserted_count: index.inserted_count,
+    already_present_same_identity_count: index.already_present_same_identity_count,
   }
 }
 
@@ -763,7 +873,7 @@ fn global_bare_nearest_ancestor_candidate(env_module_path: String, candidates: L
 
 fn global_bare_nearest_ancestor(env_module_path: String, candidates: List<GlobalBareCandidate>) -> TypeBinding? {
   match global_bare_nearest_ancestor_candidate(env_module_path: env_module_path, candidates: candidates) {
-    Present { value: cand } => Present { value: cand.binding }
+    Present { value: cand } => Present { value: cand.entry.binding }
     Absent => Absent
   }
 }
@@ -829,15 +939,15 @@ fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> Co
 
 fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: String) -> String? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-      match binding_declares_name(binding: b, name: name, source_indices: env.source_indices) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, entry } } =>
+      match binding_declares_name(binding: entry.binding, name: name, source_indices: env.source_indices) {
         true => Present { value: mp }
         false => Absent
       }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
       match global_bare_policy_candidate(env_module_path: owner_module_path, candidates: cands) {
         Present { value: cand } =>
-          match binding_declares_name(binding: cand.binding, name: name, source_indices: env.source_indices) {
+          match binding_declares_name(binding: cand.entry.binding, name: name, source_indices: env.source_indices) {
             true => Present { value: cand.module_path }
             false => Absent
           }
@@ -988,11 +1098,11 @@ fn record_global_bare_ambiguous_silent_pick(
 
 fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.symbol_index.global_bare, name) {
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } => Present { value: binding }
+    Present { value: GlobalBareUniqueBinding { module_path: _, entry } } => Present { value: entry.binding }
     Present { value: GlobalBareAmbiguousBinding { candidates: cands } } => {
       if name_resolution_policy_is_namespace_only() {
         match global_bare_unique_chain_candidate(env_module_path: env.module_path, candidates: cands) {
-          Present { value: cand } => Present { value: cand.binding }
+          Present { value: cand } => Present { value: cand.entry.binding }
           Absent => Absent
         }
       } else {
@@ -1003,6 +1113,37 @@ fn global_bare_lookup(env: TypeEnv, name: String) -> TypeBinding? {
       }
     }
     Absent => Absent
+  }
+}
+
+// Identity-bearing form used by the unlisted-type origin channel.  The ordinary lookup below is
+// still the compatibility projection; both answers are made by this same census decision.
+fn declared_type_binding_for_unlisted_reference(env: TypeEnv, name: String) -> DeclaredTypeBinding? {
+  if contains(name, ".") {
+    match symbol_index_entry_lookup(index: env.symbol_index, qualified_name: name) {
+      Present { value: entry } => Present { value: DeclaredTypeBinding {
+        binding: TypeBinding { name: name, resolved: entry.binding.resolved, provenance: SubValueUnknown },
+        declaration: entry.declaring_declaration
+      } }
+      Absent => none
+    }
+  } else {
+    match map_get(env.symbol_index.global_bare, name) {
+      Present { value: GlobalBareUniqueBinding { module_path: mp, entry: entry } } =>
+        Present { value: DeclaredTypeBinding {
+          binding: entry.binding,
+          declaration: entry.declaring_declaration
+        } }
+      Present { value: GlobalBareAmbiguousBinding { candidates: candidates } } =>
+        match global_bare_policy_candidate(env_module_path: env.module_path, candidates: candidates) {
+          Present { value: candidate } => Present { value: DeclaredTypeBinding {
+            binding: candidate.entry.binding,
+            declaration: candidate.entry.declaring_declaration
+          } }
+          Absent => none
+        }
+      Absent => none
+    }
   }
 }
 
@@ -1019,7 +1160,7 @@ fn global_bare_is_ambiguous(env: TypeEnv, name: String) -> Bool {
       } else {
         global_bare_nearest_ancestor(env_module_path: env.module_path, candidates: cands) == none
       }
-    Present { value: GlobalBareUniqueBinding { module_path: _, binding: _ } } => false
+    Present { value: GlobalBareUniqueBinding { module_path: _, entry: _ } } => false
     Absent => false
   }
 }

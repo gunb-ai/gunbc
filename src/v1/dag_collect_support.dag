@@ -64,7 +64,7 @@ fn expr_data_variant(data: ExprData) -> String {
     ExprMatch => "ExprMatch"
     ExprIf => "ExprIf"
     ExprLet => "ExprLet"
-    ExprRecordLit { parent_enum: _ } => "ExprRecordLit"
+    ExprRecordLit { parent_enum: _, target: _ } => "ExprRecordLit"
     ExprListLit => "ExprListLit"
     ExprBinOp { op: _, algebra_field: _ } => "ExprBinOp"
     ExprUnaryOp { op: _ } => "ExprUnaryOp"

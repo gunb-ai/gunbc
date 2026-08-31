@@ -1,6 +1,14 @@
 module v1.compiler.infer
 
-import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic }
+import std.occurrence_identity { NodeOccurrenceIdentity, OccurrenceSynthetic, OccurrenceMinted, OccurrenceProjected }
+import std.occurrence_identity {
+  SourceDeclarationConstructor,
+  FunctionDeclaration, DataDeclaration, ServiceDeclaration, ResourceDeclaration,
+  PatternDeclaration, InterfaceDeclaration,
+  NominalTypeDeclaration, ProductTypeDeclaration, CoproductTypeDeclaration,
+  TransparentTypeAlias, NamespaceAlias,
+  ParsedDeclarationConstructorRow,
+}
 import std.types { SourceSpan, NonEmptyStr, container_param_name, container_template_algebra, kernel_type_set, is_kernel_type }
 import std.content_hash {
   ContentHash,
@@ -121,8 +129,10 @@ import v1.compiler.infer_env {
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map,
   GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup,
-  qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
+  SymbolIndex, SymbolIndexEntry, OwnSourceDeclaration, VariantDeclarationBinding, ResolvedAliasBinding,
+  DeclarationConstructorUnavailable, NamespaceAliasReferentUnresolved, NamespaceAliasReferentAmbiguous, NamespaceAliasReferentCycle, TransparentTypeAliasTargetUnresolved, TransparentTypeAliasTargetAmbiguous, TransparentTypeAliasTargetCycle, ConflictingIndexedIdentity,
+  empty_symbol_index, symbol_index_insert, symbol_index_insert_decl, symbol_index_insert_service, symbol_index_lookup, symbol_index_entry_lookup, symbol_index_with_insert_refusal,
+  qualify_borrowed_type_names, qualify_borrowed_inferred,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
   lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration,
@@ -131,6 +141,7 @@ import v1.compiler.infer_env {
   build_unit_variant_index, UnitVariantContribution
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
+import std.decl_ref { DeclarationRef, decl_ref, decl_field_ref, declaration_ref_member_name, declaration_ref_qualified_key }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural, content_hash_combine_structural }
 import std.interface_summary {
   InterfaceSummary,
@@ -215,7 +226,7 @@ import v1.compiler.infer_lookup {
   global_bare_callable_node, func_decl_binding_for_call,
   ConstructorDeclarationLookup, ExactConstructorDeclaration,
   NotAdmissionBearingReference, AdmissionBearingDeclarationUnavailable,
-  ExactDeclarationIdentity, DeclarationLookupFailure, DeclarationNotIndexedAtQualifiedName
+  DeclarationLookupFailure, DeclarationNotIndexedAtQualifiedName
 }
 import v1.compiler.infer_access {
   AccessCheckResultNode,
@@ -743,7 +754,7 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
         Present { value: _ } =>
           if map_has(scope.match_bound_names, name) { MatchBoundBinding }
           else { LocalValueBinding }
-        Absent => FunctionValueBinding
+        Absent => FunctionValueBinding { target: CallableTargetUndetermined }
       }
   }
 }
@@ -829,7 +840,7 @@ fn constructor_call_admission_diags(
       type_env: scope.type_env,
       name: callee_name
     ) {
-      ExactConstructorDeclaration { identity: identity, declaration: declaration_node } =>
+      ExactConstructorDeclaration { declaration_ref: declaration_ref, declaration: declaration_node } =>
         match fn_admit_callers(n: declaration_node, source_indices: scope.type_env.source_indices) {
           Present { value: entries } =>
             let uninterpretable = admit_callers_entry_uninterpretable_spans(entries: entries)
@@ -837,7 +848,7 @@ fn constructor_call_admission_diags(
               uninterpretable |> map(entry_span =>
                 make_error_node(
                   diagnostic: AdmitCallersEntryNotDeclRef {
-                    constructor_decl_name: identity.decl_name,
+                    constructor_decl_name: declaration_ref.decl_name,
                     span: entry_span
                   },
                   module_name: scope.module_name
@@ -853,8 +864,8 @@ fn constructor_call_admission_diags(
                     [
                       make_error_node(
                         diagnostic: ConstructorCallAdmissionRefused {
-                          constructor_module_path: identity.owner_module_path,
-                          constructor_decl_name: identity.decl_name,
+                          constructor_module_path: declaration_ref.module_path,
+                          constructor_decl_name: declaration_ref.decl_name,
                           caller_module_path: caller.module_path,
                           caller_decl_name: caller.decl_name,
                           permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
@@ -868,8 +879,8 @@ fn constructor_call_admission_diags(
                   [
                     make_error_node(
                       diagnostic: ConstructorCallAdmissionRefused {
-                        constructor_module_path: identity.owner_module_path,
-                        constructor_decl_name: identity.decl_name,
+                        constructor_module_path: declaration_ref.module_path,
+                        constructor_decl_name: declaration_ref.decl_name,
                         caller_module_path: scope.module_name,
                         caller_decl_name: "<unknown>",
                         permitted_callers: permitted |> map(p => decl_ref_coords_label(coords: p)),
@@ -883,12 +894,12 @@ fn constructor_call_admission_diags(
           Absent => []
         }
       NotAdmissionBearingReference => []
-      AdmissionBearingDeclarationUnavailable { identity: identity, cause: cause } =>
+      AdmissionBearingDeclarationUnavailable { declaration_ref: declaration_ref, cause: cause } =>
         [
           inference_error(
             message: concat(
               "constructor reference admission cannot establish the declaration identity of '",
-              identity.decl_name, "' owned by '", identity.owner_module_path, "': ",
+              declaration_ref.decl_name, "' owned by '", declaration_ref.module_path, "': ",
               declaration_lookup_failure_label(cause: cause),
               " -- refusing rather than reading admission facts off a resolved value node"),
             span: span,
@@ -3517,7 +3528,7 @@ fn structured_application_site_type_mismatch(
   scope: InferScope
 ) -> Bool {
   match actual_expr.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       structured_application_site_type_mismatch_with_peeled(
         formal: formal,
         formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
@@ -3542,7 +3553,7 @@ fn structured_application_site_type_mismatch_with_peeled(
   scope: InferScope
 ) -> Bool {
   match actual_expr.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       let source_indices = scope.type_env.source_indices
       if type_node_is_callable(n: formal_peeled) {
         false
@@ -3652,7 +3663,7 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
   source_indices: Map<String, NewlineIndex>
 ) -> Bool {
   match actual_expr.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       let formal_peeled = peel_nominal_alias_identity(n: formal, env: type_env, module_name: module_name)
       let formal_name = authored_name_at(source_indices: source_indices, node: formal_peeled)
       match record_lit_type_name_at(texpr: actual_expr, source_indices: source_indices) {
@@ -4249,7 +4260,7 @@ fn direct_call_arg_mismatch_diags(
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
           if match actual_expr.expr_data {
-            ExprRecordLit { parent_enum: _ } => true
+            ExprRecordLit { parent_enum: _, target: _ } => true
             _ => false
           } {
             []
@@ -5166,9 +5177,10 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
       match spine_root_is_shadowed(scope: scope, root: spine.root) {
         true => none
         false =>
-          match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
+          match symbol_index_entry_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
             Absent => none
-            Present { value: decl } =>
+            Present { value: entry } =>
+              let decl = entry.binding.resolved
               let raw_value_type = match decl.inferred {
                 Present { value: Resolved { node: rt } } => rt
                 _ => match decl.type_annotation {
@@ -5178,13 +5190,13 @@ fn qualified_value_projection(texpr: Node, scope: InferScope, span: SourceSpan) 
               }
               let value_type = qualify_borrowed_type_names(
                 n: raw_value_type,
-                owner_module_path: qualified_all_but_last(name: spine.dotted),
+                owner_module_path: entry.declaring_declaration.module_path,
                 env: scope.type_env,
                 excluded: empty_map()
               )
               Present { value: ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                 name: spine.dotted,
-                expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+                expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding { target: SourceDeclarationCall { declaration: entry.declaring_declaration } } } },
                 children: [],
                 inferred: Present { value: Resolved { node: value_type } },
                 span: span,
@@ -5460,7 +5472,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                     false =>
                       ok_infer(texpr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity,
                         name: name,
-                        expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding } },
+                        expr_data: ExprVar { binding_kind: Present { value: FunctionValueBinding { target: resolved_declaration_call_target(declared: fsig_declared) } } },
                         children: [],
                         inferred: Present { value: Resolved { node: resolved_callable_type(func_params: fsig.params, ret: fsig.inferred) } },
                         span: span,
@@ -6414,7 +6426,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         }
       }
 
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       let span = texpr.span
       let field_inits = texpr.children
       infer_record_lit(occurrence_identity: texpr.occurrence_identity, type_name: record_lit_type_name_at(texpr: texpr, source_indices: scope.type_env.source_indices), field_inits: field_inits, span: span, name_span: node_name_span(n: texpr), scope: scope, expected: expected)
@@ -7311,7 +7323,7 @@ fn infer_map_literal(occurrence_identity: NodeOccurrenceIdentity, map_node: Node
   )
   InferResult {
     typed: make_expr_node(occurrence_identity: occurrence_identity,
-      expr_data: ExprRecordLit { parent_enum: none },
+      expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined },
       children: fi_results |> map(fir => fir.typed_field),
       inferred: Present { value: Resolved { node: map_node } },
       span: span
@@ -7581,7 +7593,7 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
       body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
     }
     let typed_field_nodes = typed_fields
-    let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
+    let texpr = make_expr_node(occurrence_identity: occurrence_identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: typed_field_nodes, inferred: Present { value: Resolved { node: anon_node } }, span: span)
     InferResult {
       typed: texpr,
       diagnostics: concat(fi_diags, alias_struct_diags)
@@ -7648,9 +7660,16 @@ fn infer_record_lit_structural(occurrence_identity: NodeOccurrenceIdentity, type
     let sole_ctor_diags = sole_constructor_construction_diags(type_name: type_name.value, span: span, scope: scope)
     let typed_field_nodes2 = typed_fields
     let rl_name = match type_name { Present { value: tn_val } => tn_val  Absent => "" }
+    let record_target = match func_decl_binding_for_call(func_env: scope.func_env, type_env: scope.type_env, name: rl_name) {
+      ExactConstructorDeclaration { declaration_ref: declaration_ref, declaration: _ } => SourceDeclarationCall {
+        declaration: declaration_ref,
+      }
+      NotAdmissionBearingReference {} => CallableTargetUndetermined
+      AdmissionBearingDeclarationUnavailable { declaration_ref: _, cause: _ } => CallableTargetUndetermined
+    }
     let texpr = make_named_expr_node(occurrence_identity: occurrence_identity,
       name: rl_name,
-      expr_data: ExprRecordLit { parent_enum: local_variant_parent },
+      expr_data: ExprRecordLit { parent_enum: local_variant_parent, target: record_target },
       children: typed_field_nodes2,
       inferred: Present { value: Resolved { node: resolved_node } },
       span: span,
@@ -9418,7 +9437,7 @@ fn classify_body_per_field(expr: Node, param_names: List<String>, param_types: M
 
 fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>) -> List<Map<String, SubValueRelation>> {
   match expr.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       expr.children |> map(fi =>
         classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: let_prov)
       )
@@ -9426,7 +9445,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
       let arm_results = match_arm_nodes(texpr: expr) |> map(arm =>
         let arm_unwrapped = unwrap_body_terminal(expr: arm_body(n: arm), let_prov: let_prov, type_env: type_env)
         match arm_unwrapped.expr.expr_data {
-          ExprRecordLit { parent_enum: _ } =>
+          ExprRecordLit { parent_enum: _, target: _ } =>
             arm_unwrapped.expr.children |> map(fi =>
               classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: arm_unwrapped.let_prov)
             )
@@ -9437,7 +9456,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
     ExprIf =>
       let then_unwrapped = unwrap_body_terminal(expr: if_then_branch(texpr: expr), let_prov: let_prov, type_env: type_env)
       let then_result = match then_unwrapped.expr.expr_data {
-        ExprRecordLit { parent_enum: _ } =>
+        ExprRecordLit { parent_enum: _, target: _ } =>
           then_unwrapped.expr.children |> map(fi =>
             classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: then_unwrapped.let_prov)
           )
@@ -9447,7 +9466,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
         Present { value: else_expr } =>
           let else_unwrapped = unwrap_body_terminal(expr: else_expr, let_prov: let_prov, type_env: type_env)
           let else_result = match else_unwrapped.expr.expr_data {
-            ExprRecordLit { parent_enum: _ } =>
+            ExprRecordLit { parent_enum: _, target: _ } =>
               else_unwrapped.expr.children |> map(fi =>
                 classify_body_provenance(expr: field_init_node_value(n: fi), param_names: param_names, param_types: param_types, type_env: type_env, func_env: func_env, let_prov: else_unwrapped.let_prov)
               )
@@ -9605,7 +9624,7 @@ fn compute_variant_provenance(body: Node, return_type: Node, params: List<Node>,
 
 fn collect_variant_constructors(body: Node, parent_enum: String, param_names: List<String>, param_types: Map<String, String>, type_env: TypeEnv, func_env: ResolvedFuncEnv, let_prov: Map<String, Map<String, SubValueRelation>>, acc: Map<String, Map<String, Map<String, SubValueRelation>>>) -> Map<String, Map<String, Map<String, SubValueRelation>>> {
   match body.expr_data {
-    ExprRecordLit { parent_enum: pe } =>
+    ExprRecordLit { parent_enum: pe, target: _ } =>
       match pe {
         Present { value: enum_name } =>
           if enum_name == parent_enum {
@@ -10743,36 +10762,27 @@ fn symbol_index_insert_item(
   index: SymbolIndex,
   module_path: String,
   item: Node,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, NewlineIndex>,
+  constructor_index: Map<Int, ParsedDeclarationConstructorRow>
 ) -> SymbolIndex {
-  let with_decl = if is_namespace_alias_item(item: item, source_indices: source_indices) {
-    match namespace_alias_target_path(item: item, source_indices: source_indices) {
-      Absent => index
-      Present { value: target_path } =>
-        match symbol_index_lookup(index: index, qualified_name: target_path) {
+  let qualified_name = concat(module_path, concat(".", authored_name_at(source_indices: source_indices, node: item)))
+  let with_decl = match declaration_constructor_row_for_item(index: constructor_index, item: item) {
+      Absent => symbol_index_with_insert_refusal(index: index, refusal: DeclarationConstructorUnavailable { qualified_name: qualified_name })
+      Present { value: constructor_row } => if source_constructor_is_namespace_alias(constructor: constructor_row.constructor) { index } else {
+        match local_binding_for_item(item: item, source_indices: source_indices) {
           Absent => index
-          Present { value: target_node } =>
+          Present { value: binding } =>
             symbol_index_insert_decl(
               index: index,
               module_path: module_path,
-              binding: namespace_alias_binding_for_target(
-                item: item,
-                target_node: target_node,
-                source_indices: source_indices
-              )
+              binding: binding,
+              provenance: OwnSourceDeclaration {
+                declaration: decl_ref(module_path: module_path, decl_name: binding.name),
+                constructor: constructor_row.constructor
+              }
             )
         }
-    }
-  } else {
-    match local_binding_for_item(item: item, source_indices: source_indices) {
-      Absent => index
-      Present { value: binding } =>
-        symbol_index_insert_decl(
-          index: index,
-          module_path: module_path,
-          binding: binding
-        )
-    }
+      }
   }
   if item.transport != none && item.children |> count > 0 {
     symbol_index_insert_service(
@@ -10870,7 +10880,8 @@ fn symbol_index_insert_unique_disj_variant_aliases(
           let a2_qualified = symbol_index_insert(
             index: a2,
             qualified_name: concat(concat(module_path, ".", tname), ".", vname),
-            resolved: item
+            resolved: item,
+            provenance: VariantDeclarationBinding { declaration: decl_field_ref(module_path: module_path, decl_name: tname, field_name: vname) }
           )
           match map_get(counts, vname) {
             Present { value: 1 } =>
@@ -10880,7 +10891,8 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                     symbol_index_insert(
                       index: a2_qualified,
                       qualified_name: concat(module_path, ".", vname),
-                      resolved: item
+                      resolved: item,
+                      provenance: VariantDeclarationBinding { declaration: decl_field_ref(module_path: module_path, decl_name: tname, field_name: vname) }
                     )
                   } else {
                   symbol_index_insert_decl(
@@ -10890,14 +10902,16 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                       name: vname,
                       resolved: item,
                       provenance: SubValueUnknown
-                    }
+                    },
+                    provenance: VariantDeclarationBinding { declaration: decl_field_ref(module_path: module_path, decl_name: tname, field_name: vname) }
                   )
                   }
                 _ =>
                   symbol_index_insert(
                     index: a2_qualified,
                     qualified_name: concat(module_path, ".", vname),
-                    resolved: item
+                    resolved: item,
+                    provenance: VariantDeclarationBinding { declaration: decl_field_ref(module_path: module_path, decl_name: tname, field_name: vname) }
                   )
               }
             _ => a2_qualified
@@ -10939,27 +10953,34 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 // can only weaken the relation (two names failing to agree), never strengthen it into a false
 // agreement.
 
-fn transparent_alias_target_name(item: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  let item_shape_admits = (item.params |> count) == 0 && item.connective == NoConnective && (item.children |> count) == 0 && (item.properties |> count) == 0 && item.type_annotation == none
-  if !item_shape_admits {
-    ""
-  } else {
-    match item.inferred {
-      Present { value: Resolved { node: target } } =>
-        let self_name = authored_name_at(source_indices: source_indices, node: item)
-        let target_name = authored_name_at(source_indices: source_indices, node: target)
-        let target_shape_admits = target.connective == NoConnective && (target.children |> count) == 0 && (target.params |> count) == 0 && target.type_annotation == none && target.return_cardinality == Required
-        if !target_shape_admits {
-          ""
-        } else if target_name == "" || target_name == self_name {
-          ""
-        } else if is_declared_container_alias_spelling(name: target_name) || is_container_type(name: qualified_last_segment(name: target_name)) {
-          ""
-        } else {
-          target_name
-        }
-      _ => ""
+fn declaration_constructor_occurrence_key(identity: NodeOccurrenceIdentity) -> Int? {
+  match identity {
+    OccurrenceMinted { id } => Present { value: id.value }
+    OccurrenceProjected { id, caused_by: _ } => Present { value: id.value }
+    OccurrenceSynthetic => none
+  }
+}
+
+fn parsed_declaration_constructor_index(rows: List<ParsedDeclarationConstructorRow>) -> Map<Int, ParsedDeclarationConstructorRow> {
+  fold(rows, init: empty_map(), f: (index, row) =>
+    match declaration_constructor_occurrence_key(identity: row.declaration_occurrence) {
+      Present { value: key } => map_insert(index, key, row)
+      Absent => index
     }
+  )
+}
+
+fn declaration_constructor_row_for_item(index: Map<Int, ParsedDeclarationConstructorRow>, item: Node) -> ParsedDeclarationConstructorRow? {
+  match declaration_constructor_occurrence_key(identity: item.occurrence_identity) {
+    Present { value: key } => map_get(index, key)
+    Absent => none
+  }
+}
+
+fn source_constructor_is_namespace_alias(constructor: SourceDeclarationConstructor) -> Bool {
+  match constructor {
+    NamespaceAlias { referent_key: _ } => true
+    _ => false
   }
 }
 
@@ -11002,11 +11023,14 @@ fn transparent_alias_qualified_name(decl_modules: Map<String, String>, name: Str
   }
 }
 
-fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>) -> Map<String, String> {
+fn namespace_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>, constructor_index: Map<Int, ParsedDeclarationConstructorRow>) -> Map<String, String> {
   fold(module_nodes, init: empty_map(), f: (edges, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     fold(module_items(n: module_node), init: edges, f: (acc, item) =>
-      let raw_target = transparent_alias_target_name(item: item, source_indices: source_indices)
+      let raw_target = match declaration_constructor_row_for_item(index: constructor_index, item: item) {
+        Present { value: row } => match row.constructor { NamespaceAlias { referent_key } => referent_key  _ => "" }
+        _ => ""
+      }
       if raw_target == "" {
         acc
       } else {
@@ -11022,29 +11046,225 @@ fn transparent_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<
   )
 }
 
-fn transparent_alias_chase(edges: Map<String, String>, name: String, fuel: Int) -> String {
-  if fuel <= 0 {
-    name
+fn transparent_type_alias_direct_edges(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, decl_modules: Map<String, String>, constructor_index: Map<Int, ParsedDeclarationConstructorRow>) -> Map<String, String> {
+  fold(module_nodes, init: empty_map(), f: (edges, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    fold(module_items(n: module_node), init: edges, f: (acc, item) =>
+      let raw_target = match declaration_constructor_row_for_item(index: constructor_index, item: item) {
+        Present { value: row } => match row.constructor { TransparentTypeAlias { representation_target } => representation_target.spelling  _ => "" }
+        _ => ""
+      }
+      if raw_target == "" {
+        acc
+      } else {
+        let target_name = if is_kernel_type(name: qualified_last_segment(name: raw_target)) {
+          qualified_last_segment(name: raw_target)
+        } else {
+          transparent_alias_qualified_name(decl_modules: decl_modules, name: raw_target)
+        }
+        let self_name = authored_name_at(source_indices: source_indices, node: item)
+        let qualified = map_insert(acc, concat(module_path, concat(".", self_name)), target_name)
+        match map_get(item_counts, self_name) {
+          Present { value: 1 } => map_insert(qualified, self_name, target_name)
+          _ => qualified
+        }
+      }
+    )
+  )
+}
+
+type AliasTerminalLookup
+  = AliasTerminalResolved { terminal_key: String }
+  | AliasTerminalCycle { cycle_at: String }
+
+fn transparent_alias_terminal(edges: Map<String, String>, name: String, seen: List<String>, fuel: Int) -> AliasTerminalLookup {
+  if fuel <= 0 || seen |> any(prior => prior == name) {
+    AliasTerminalCycle { cycle_at: name }
   } else {
     match map_get(edges, name) {
-      Present { value: next } =>
-        if next == name { name } else { transparent_alias_chase(edges: edges, name: next, fuel: fuel - 1) }
-      Absent =>
-        match map_get(edges, qualified_last_segment(name: name)) {
-          Present { value: next } =>
-            if next == name || qualified_last_segment(name: next) == qualified_last_segment(name: name) { name }
-            else { transparent_alias_chase(edges: edges, name: next, fuel: fuel - 1) }
-          Absent => name
-        }
+      Present { value: next } => transparent_alias_terminal(edges: edges, name: next, seen: concat(seen, [name]), fuel: fuel - 1)
+      Absent => AliasTerminalResolved { terminal_key: name }
     }
   }
 }
 
-fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>) -> Map<String, String> {
+fn transparent_alias_chase(edges: Map<String, String>, name: String, fuel: Int) -> String {
+  match transparent_alias_terminal(edges: edges, name: name, seen: [], fuel: fuel) {
+    AliasTerminalResolved { terminal_key } => terminal_key
+    AliasTerminalCycle { cycle_at: _ } => name
+  }
+}
+
+fn transparent_alias_representatives(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, item_counts: Map<String, Int>, constructor_index: Map<Int, ParsedDeclarationConstructorRow>) -> Map<String, String> {
   let decl_modules = corpus_decl_module_paths(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
-  let edges = transparent_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules)
+  let edges = transparent_type_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules, constructor_index: constructor_index)
   fold(sorted_map_keys(edges), init: empty_map(), f: (acc, k) =>
     map_insert(acc, k, transparent_alias_chase(edges: edges, name: k, fuel: 16))
+  )
+}
+
+fn finalized_alias_terminal_entry(index: SymbolIndex, terminal_key: String) -> SymbolIndexEntry? {
+  match symbol_index_entry_lookup(index: index, qualified_name: terminal_key) {
+    Present { value: entry } => Present { value: entry }
+    Absent =>
+      if contains(terminal_key, ".") { none } else {
+        match map_get(index.global_bare, terminal_key) {
+          Present { value: GlobalBareUniqueBinding { module_path: _, entry } } => Present { value: entry }
+          _ => none
+        }
+      }
+  }
+}
+
+fn alias_terminal_is_ambiguous(index: SymbolIndex, terminal_key: String) -> Bool {
+  if contains(terminal_key, ".") { false } else {
+    match map_get(index.global_bare, terminal_key) {
+      Present { value: GlobalBareAmbiguousBinding { candidates: _ } } => true
+      _ => false
+    }
+  }
+}
+
+fn finalize_symbol_index_alias_edge(
+  index: SymbolIndex,
+  edges: Map<String, String>,
+  alias_key: String,
+  alias_declaration: DeclarationRef,
+  referent_key: String
+) -> SymbolIndex {
+  match transparent_alias_terminal(edges: edges, name: alias_key, seen: [], fuel: (map_keys(edges) |> count) + 1) {
+    AliasTerminalCycle { cycle_at } => symbol_index_with_insert_refusal(
+      index: index,
+      refusal: NamespaceAliasReferentCycle { alias_qualified_name: alias_key, cycle_at: cycle_at }
+    )
+    AliasTerminalResolved { terminal_key } =>
+      match finalized_alias_terminal_entry(index: index, terminal_key: terminal_key) {
+        Absent =>
+          if alias_terminal_is_ambiguous(index: index, terminal_key: terminal_key) {
+            symbol_index_with_insert_refusal(index: index, refusal: NamespaceAliasReferentAmbiguous { alias_qualified_name: alias_key, referent_name: terminal_key })
+          } else {
+            symbol_index_with_insert_refusal(index: index, refusal: NamespaceAliasReferentUnresolved { alias_qualified_name: alias_key, referent_qualified_name: terminal_key })
+          }
+        Present { value: terminal_entry } =>
+          let alias_name = declaration_ref_member_name(reference: alias_declaration)
+          let binding = TypeBinding { name: alias_name, resolved: terminal_entry.binding.resolved, provenance: SubValueUnknown }
+          symbol_index_insert_decl(
+            index: index,
+            module_path: alias_declaration.module_path,
+            binding: binding,
+            provenance: ResolvedAliasBinding {
+              alias_declaration: alias_declaration,
+              referent_key: referent_key,
+              declaring_declaration: terminal_entry.declaring_declaration
+            }
+          )
+      }
+  }
+}
+
+fn finalize_symbol_index_alias_item(
+  index: SymbolIndex,
+  edges: Map<String, String>,
+  module_path: String,
+  item: Node,
+  source_indices: Map<String, NewlineIndex>,
+  constructor_index: Map<Int, ParsedDeclarationConstructorRow>,
+) -> SymbolIndex {
+  let alias_name = authored_name_at(source_indices: source_indices, node: item)
+  let alias_key = concat(module_path, ".", alias_name)
+  match declaration_constructor_row_for_item(index: constructor_index, item: item) {
+    Present { value: row } => match row.constructor {
+      NamespaceAlias { referent_key } =>
+      finalize_symbol_index_alias_edge(
+        index: index,
+        edges: edges,
+        alias_key: alias_key,
+        alias_declaration: decl_ref(module_path: module_path, decl_name: alias_name),
+        referent_key: referent_key
+      )
+      _ => index
+    }
+    _ => index
+  }
+}
+
+fn validate_transparent_type_alias_edges(index: SymbolIndex, edges: Map<String, String>) -> SymbolIndex {
+  fold(sorted_map_keys(edges) |> filter(key => contains(key, ".")), init: index, f: (acc, alias_key) =>
+    match transparent_alias_terminal(edges: edges, name: alias_key, seen: [], fuel: (map_keys(edges) |> count) + 1) {
+      AliasTerminalCycle { cycle_at } => symbol_index_with_insert_refusal(
+        index: acc,
+        refusal: TransparentTypeAliasTargetCycle { alias_qualified_name: alias_key, cycle_at: cycle_at }
+      )
+      AliasTerminalResolved { terminal_key } =>
+        if is_kernel_type(name: qualified_last_segment(name: terminal_key)) {
+          acc
+        } else if alias_terminal_is_ambiguous(index: acc, terminal_key: terminal_key) {
+          symbol_index_with_insert_refusal(index: acc, refusal: TransparentTypeAliasTargetAmbiguous { alias_qualified_name: alias_key, target_name: terminal_key })
+        } else {
+          match finalized_alias_terminal_entry(index: acc, terminal_key: terminal_key) {
+            Present { value: _ } => acc
+            Absent => symbol_index_with_insert_refusal(index: acc, refusal: TransparentTypeAliasTargetUnresolved { alias_qualified_name: alias_key, target_name: terminal_key })
+          }
+        }
+    }
+  )
+}
+
+fn symbol_index_finalize_aliases(
+  index: SymbolIndex,
+  module_nodes: List<Node>,
+  source_indices: Map<String, NewlineIndex>,
+  item_counts: Map<String, Int>,
+  constructor_index: Map<Int, ParsedDeclarationConstructorRow>,
+) -> SymbolIndex {
+  let decl_modules = corpus_decl_module_paths(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts)
+  let edges = namespace_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules, constructor_index: constructor_index)
+  let finalized = fold(module_nodes, init: index, f: (by_module, module_node) =>
+    let module_path = authored_name_at(source_indices: source_indices, node: module_node)
+    fold(module_items(n: module_node), init: by_module, f: (acc, item) =>
+      finalize_symbol_index_alias_item(index: acc, edges: edges, module_path: module_path, item: item, source_indices: source_indices, constructor_index: constructor_index)
+    )
+  )
+  let transparent_edges = transparent_type_alias_direct_edges(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, decl_modules: decl_modules, constructor_index: constructor_index)
+  let validated = validate_transparent_type_alias_edges(index: finalized, edges: transparent_edges)
+  SymbolIndex {
+    entries: validated.entries, global_bare: validated.global_bare, services: validated.services,
+    transparent_alias_rep: transparent_alias_representatives(module_nodes: module_nodes, source_indices: source_indices, item_counts: item_counts, constructor_index: constructor_index),
+    type_head_exposures: validated.type_head_exposures,
+    insert_refusals: validated.insert_refusals,
+    inserted_count: validated.inserted_count,
+    already_present_same_identity_count: validated.already_present_same_identity_count,
+  }
+}
+
+fn symbol_index_insert_refusal_diagnostics(index: SymbolIndex) -> List<ErrorNode> {
+  index.insert_refusals |> map(refusal =>
+    let message = match refusal {
+      DeclarationConstructorUnavailable { qualified_name } => concat("DeclarationConstructorUnavailable: ", qualified_name)
+      NamespaceAliasReferentUnresolved { alias_qualified_name, referent_qualified_name } =>
+        concat("NamespaceAliasReferentUnresolved: ", concat(alias_qualified_name, concat(" -> ", referent_qualified_name)))
+      NamespaceAliasReferentAmbiguous { alias_qualified_name, referent_name } =>
+        concat("NamespaceAliasReferentAmbiguous: ", concat(alias_qualified_name, concat(" -> ", referent_name)))
+      NamespaceAliasReferentCycle { alias_qualified_name, cycle_at } =>
+        concat("NamespaceAliasReferentCycle: ", concat(alias_qualified_name, concat(" at ", cycle_at)))
+      TransparentTypeAliasTargetUnresolved { alias_qualified_name, target_name } =>
+        concat("TransparentTypeAliasTargetUnresolved: ", concat(alias_qualified_name, concat(" -> ", target_name)))
+      TransparentTypeAliasTargetAmbiguous { alias_qualified_name, target_name } =>
+        concat("TransparentTypeAliasTargetAmbiguous: ", concat(alias_qualified_name, concat(" -> ", target_name)))
+      TransparentTypeAliasTargetCycle { alias_qualified_name, cycle_at } =>
+        concat("TransparentTypeAliasTargetCycle: ", concat(alias_qualified_name, concat(" at ", cycle_at)))
+      ConflictingIndexedIdentity { qualified_name, existing, proposed } =>
+        concat(
+          "ConflictingIndexedIdentity: ",
+          concat(qualified_name, concat(
+            " existing=", concat(declaration_ref_qualified_key(reference: existing), concat(" proposed=", declaration_ref_qualified_key(reference: proposed)))
+          ))
+        )
+    }
+    make_error_node(
+      diagnostic: InternalError { message: message, span: no_span() },
+      module_name: "<symbol-index>"
+    )
   )
 }
 
@@ -11171,7 +11391,8 @@ fn transparent_alias_identity_agrees(index: SymbolIndex, left: String, right: St
     }
 }
 
-fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, constructor_rows: List<ParsedDeclarationConstructorRow>) -> SymbolIndex {
+  let constructor_index = parsed_declaration_constructor_index(rows: constructor_rows)
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let folded = fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
@@ -11182,7 +11403,8 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
         index: acc,
         module_path: module_path,
         item: item,
-        source_indices: source_indices
+        source_indices: source_indices,
+        constructor_index: constructor_index
       )
     )
     symbol_index_insert_unique_disj_variant_aliases(
@@ -11194,18 +11416,25 @@ fn build_symbol_index_census_raw_nodes(module_nodes: List<Node>, source_indices:
       corpus_item_counts: corpus_item_counts
     )
   )
-  SymbolIndex {
+  let base = SymbolIndex {
     entries: folded.entries,
     global_bare: folded.global_bare,
     services: folded.services,
-    transparent_alias_rep: transparent_alias_representatives(
-      module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts),
-    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices)
+    transparent_alias_rep: empty_map(),
+    type_head_exposures: type_head_exposure_census(module_nodes: module_nodes, source_indices: source_indices),
+    insert_refusals: folded.insert_refusals,
+    inserted_count: folded.inserted_count,
+    already_present_same_identity_count: folded.already_present_same_identity_count,
   }
+  symbol_index_finalize_aliases(index: base, module_nodes: module_nodes, source_indices: source_indices, item_counts: corpus_item_counts, constructor_index: constructor_index)
 }
 
 fn build_symbol_index_census_raw(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  build_symbol_index_census_raw_nodes(module_nodes: census_module_nodes(modules: modules), source_indices: source_indices)
+  build_symbol_index_census_raw_nodes(
+    module_nodes: census_module_nodes(modules: modules),
+    source_indices: source_indices,
+    constructor_rows: modules |> flat_map(module => module.declaration_constructors)
+  )
 }
 
 // Borrowed-sig hoist (namespace lane): the census stores raw pre-typecheck fn nodes, so a borrowed
@@ -11395,27 +11624,34 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
   let entry_keys = sorted_map_keys(index.entries)
   let entries2 = fold(entry_keys, init: index.entries, f: (acc, k) =>
     match map_get(index.entries, k) {
-      Present { value: node } =>
+      Present { value: entry } =>
+        let node = entry.binding.resolved
         let upgraded = census_upgrade_binding(
           binding: TypeBinding { name: qualified_last_segment(name: k), resolved: node, provenance: SubValueUnknown },
-          module_path: qualified_all_but_last(name: k),
+          module_path: entry.declaring_declaration.module_path,
           census: index,
           source_indices: source_indices
         )
-        if upgraded.resolved == node { acc } else { map_insert(acc, k, upgraded.resolved) }
+        if upgraded.resolved == node { acc } else {
+          map_insert(acc, k, SymbolIndexEntry { declaring_declaration: entry.declaring_declaration, provenance: entry.provenance, binding: TypeBinding { name: entry.binding.name, resolved: upgraded.resolved, provenance: entry.binding.provenance } })
+        }
       Absent => acc
     }
   )
   let bare_keys = sorted_map_keys(index.global_bare)
   let global2 = fold(bare_keys, init: index.global_bare, f: (acc, k) =>
     match map_get(index.global_bare, k) {
-      Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        let b2 = census_upgrade_binding(binding: b, module_path: mp, census: index, source_indices: source_indices)
-        if b2.resolved == b.resolved { acc } else { map_insert(acc, k, GlobalBareUniqueBinding { module_path: mp, binding: b2 }) }
+      Present { value: GlobalBareUniqueBinding { module_path: mp, entry: entry } } =>
+        let b2 = census_upgrade_binding(binding: entry.binding, module_path: mp, census: index, source_indices: source_indices)
+        if b2.resolved == entry.binding.resolved { acc } else { map_insert(acc, k, GlobalBareUniqueBinding { module_path: mp, entry: SymbolIndexEntry { declaring_declaration: entry.declaring_declaration, provenance: entry.provenance, binding: b2 } }) }
       Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
         let cands2 = cands |> map(c => GlobalBareCandidate {
           module_path: c.module_path,
-          binding: census_upgrade_binding(binding: c.binding, module_path: c.module_path, census: index, source_indices: source_indices)
+          entry: SymbolIndexEntry {
+            declaring_declaration: c.entry.declaring_declaration,
+            provenance: c.entry.provenance,
+            binding: census_upgrade_binding(binding: c.entry.binding, module_path: c.entry.declaring_declaration.module_path, census: index, source_indices: source_indices)
+          }
         })
         map_insert(acc, k, GlobalBareAmbiguousBinding { candidates: cands2 })
       Absent => acc
@@ -11430,7 +11666,7 @@ fn census_with_resolved_fn_sigs(index: SymbolIndex, source_indices: Map<String, 
       Absent => acc
     }
   )
-  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures }
+  SymbolIndex { entries: entries2, global_bare: global2, services: services2, transparent_alias_rep: index.transparent_alias_rep, type_head_exposures: index.type_head_exposures, insert_refusals: index.insert_refusals, inserted_count: index.inserted_count, already_present_same_identity_count: index.already_present_same_identity_count }
 }
 
 fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
@@ -11452,8 +11688,8 @@ fn build_symbol_index_census(modules: List<ResolvedModule>, source_indices: Map<
 // import-reached pool modules — gate parity by construction: e.g. dag witnesses' bare
 // LiveTreeDisposition is declared only in v2.std.live_tree but import-reached from the dag tree).
 
-fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let raw = build_symbol_index_census_raw_nodes(module_nodes: module_nodes, source_indices: source_indices)
+fn build_symbol_index_census_nodes(module_nodes: List<Node>, source_indices: Map<String, NewlineIndex>, constructor_rows: List<ParsedDeclarationConstructorRow>) -> SymbolIndex {
+  let raw = build_symbol_index_census_raw_nodes(module_nodes: module_nodes, source_indices: source_indices, constructor_rows: constructor_rows)
   census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
 }
 
@@ -11470,46 +11706,93 @@ fn symbol_index_with_bare_fill(closure: SymbolIndex, tree: SymbolIndex) -> Symbo
   SymbolIndex {
     entries: closure.entries, global_bare: global2, services: services2,
     transparent_alias_rep: map_merge(tree.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(tree.type_head_exposures, closure.type_head_exposures),
+    insert_refusals: concat(tree.insert_refusals, closure.insert_refusals),
+    inserted_count: tree.inserted_count + closure.inserted_count,
+    already_present_same_identity_count: tree.already_present_same_identity_count + closure.already_present_same_identity_count
   }
 }
 
-fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
+fn build_symbol_index_qualified_fill(modules: List<Node>, source_indices: Map<String, NewlineIndex>, constructor_rows: List<ParsedDeclarationConstructorRow>) -> SymbolIndex {
+  let constructor_index = parsed_declaration_constructor_index(rows: constructor_rows)
   let raw = fold(modules, init: empty_symbol_index(), f: (index, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     let items = module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
-      match local_binding_for_item(item: item, source_indices: source_indices) {
-        Absent => acc
-        Present { value: binding } =>
-          symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
+      match declaration_constructor_row_for_item(index: constructor_index, item: item) {
+      Absent => symbol_index_with_insert_refusal(index: acc, refusal: DeclarationConstructorUnavailable { qualified_name: concat(module_path, concat(".", authored_name_at(source_indices: source_indices, node: item))) })
+      Present { value: constructor_row } => if source_constructor_is_namespace_alias(constructor: constructor_row.constructor) { acc } else {
+        match local_binding_for_item(item: item, source_indices: source_indices) {
+          Absent => acc
+          Present { value: binding } => symbol_index_insert(
+            index: acc,
+            qualified_name: concat(concat(module_path, "."), binding.name),
+            resolved: binding.resolved,
+            provenance: OwnSourceDeclaration { declaration: decl_ref(module_path: module_path, decl_name: binding.name), constructor: constructor_row.constructor }
+          )
+        }
+      }
       }
     )
     let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
     fold(items, init: with_items, f: (acc, item) =>
       match item.connective {
-        Disj =>
-          fold(item.children, init: acc, f: (a2, child) =>
-            let vname = authored_name_at(source_indices: source_indices, node: child)
-            match map_get(counts, vname) {
-              Present { value: 1 } =>
-                symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
-              _ => a2
-            }
-          )
+        Disj => fold(item.children, init: acc, f: (a2, child) =>
+          let vname = authored_name_at(source_indices: source_indices, node: child)
+          match map_get(counts, vname) {
+            Present { value: 1 } => symbol_index_insert(
+              index: a2,
+              qualified_name: concat(concat(module_path, "."), vname),
+              resolved: item,
+              provenance: VariantDeclarationBinding { declaration: decl_field_ref(
+                module_path: module_path,
+                decl_name: authored_name_at(source_indices: source_indices, node: item),
+                field_name: vname
+              ) }
+            )
+            _ => a2
+          }
+        )
         _ => acc
       }
     )
   )
-  census_with_resolved_fn_sigs(index: raw, source_indices: source_indices)
+  let complete = symbol_index_finalize_aliases(
+    index: raw,
+    module_nodes: modules,
+    source_indices: source_indices,
+    item_counts: corpus_item_name_counts_nodes(module_nodes: modules, source_indices: source_indices),
+    constructor_index: constructor_index
+  )
+  SymbolIndex {
+    entries: complete.entries, global_bare: empty_map(), services: empty_map(),
+    transparent_alias_rep: complete.transparent_alias_rep,
+    type_head_exposures: complete.type_head_exposures,
+    insert_refusals: complete.insert_refusals,
+    inserted_count: complete.inserted_count,
+    already_present_same_identity_count: complete.already_present_same_identity_count,
+  }
 }
 
 fn symbol_index_with_qualified_fill(closure: SymbolIndex, fill: SymbolIndex) -> SymbolIndex {
-  let entries2 = map_merge(fill.entries, closure.entries)
+  let merged = sorted_map_keys(closure.entries) |> fold(init: fill, f: (acc, key) =>
+    match map_get(closure.entries, key) {
+      Present { value: entry } => symbol_index_insert(
+        index: acc,
+        qualified_name: key,
+        resolved: entry.binding.resolved,
+        provenance: entry.provenance,
+      )
+      Absent => acc
+    }
+  )
   SymbolIndex {
-    entries: entries2, global_bare: closure.global_bare, services: closure.services,
+    entries: merged.entries, global_bare: closure.global_bare, services: closure.services,
     transparent_alias_rep: map_merge(fill.transparent_alias_rep, closure.transparent_alias_rep),
-    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures)
+    type_head_exposures: map_merge(fill.type_head_exposures, closure.type_head_exposures),
+    insert_refusals: concat(merged.insert_refusals, closure.insert_refusals),
+    inserted_count: merged.inserted_count + closure.inserted_count,
+    already_present_same_identity_count: merged.already_present_same_identity_count + closure.already_present_same_identity_count
   }
 }
 
@@ -12064,8 +12347,8 @@ fn build_global_bare_variant_locals(
 ) -> Map<String, TypeBinding> {
   fold(global_bare |> map_keys, init: empty_map(), f: (acc, name) =>
     match map_get(global_bare, name) {
-      Present { value: GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
-        let owner = binding.resolved
+      Present { value: GlobalBareUniqueBinding { module_path: _, entry } } =>
+        let owner = entry.binding.resolved
         if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
           map_insert(acc, name, TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown })
         } else {
@@ -12736,17 +13019,17 @@ type RealizeState {
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
-  typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
+  typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_fill_constructor_rows: [], census_si: source_indices)
 }
 
-fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> TypedGraph {
+fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_fill_constructor_rows: List<ParsedDeclarationConstructorRow>, census_si: Map<String, NewlineIndex>) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
   let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
   )
   let symbol_index = symbol_index_with_qualified_fill(
     closure: build_symbol_index_census(modules: graph.modules, source_indices: census_si),
-    fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si)
+    fill: build_symbol_index_qualified_fill(modules: census_fill_modules, source_indices: census_si, constructor_rows: census_fill_constructor_rows)
   )
   let global_variant_base = build_global_bare_variant_locals(global_bare: symbol_index.global_bare, source_indices: source_indices)
   let state = graph.modules |> fold(init: RealizeState {
@@ -12778,7 +13061,11 @@ fn typecheck_with_census_extra(graph: ModuleGraph, source_indices: Map<String, N
     }
   )
   let expanded_registry = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
-  TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
+  TypedGraph {
+    modules: modules,
+    item_registry: expanded_registry,
+    diagnostics: concat(symbol_index_insert_refusal_diagnostics(index: symbol_index), flat_map(diag_chunks, c => c))
+  }
 }
 
 fn realize_module(
@@ -13191,11 +13478,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
 }
 
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
-  reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_si: source_indices)
+  reconcile_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: [], census_fill_constructor_rows: [], census_si: source_indices)
 }
 
-fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
-  let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_si: census_si)
+fn reconcile_with_census_extra(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, census_fill_modules: List<Node>, census_fill_constructor_rows: List<ParsedDeclarationConstructorRow>, census_si: Map<String, NewlineIndex>) -> ResolvedGraph {
+  let typed = typecheck_with_census_extra(graph: graph, source_indices: source_indices, intern_table: intern_table, census_fill_modules: census_fill_modules, census_fill_constructor_rows: census_fill_constructor_rows, census_si: census_si)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)

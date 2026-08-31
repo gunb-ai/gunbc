@@ -5053,9 +5053,10 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
             eval_field_access(node, summary.as_deref(), env, ctx)
         }
 
-        ExprData::ExprRecordLit { parent_enum } => {
-            eval_record_lit(node, parent_enum.as_deref(), env, ctx)
-        }
+        ExprData::ExprRecordLit {
+            parent_enum,
+            target: _,
+        } => eval_record_lit(node, parent_enum.as_deref(), env, ctx),
 
         ExprData::ExprListLit => {
             let items: Vec<Value> = node
