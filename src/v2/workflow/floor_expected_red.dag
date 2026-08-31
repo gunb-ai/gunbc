@@ -1034,38 +1034,57 @@ fn floor_expected_red_chunk_23() -> List<String> {
 // the refusal is the admission fact.
 //
 // THE REPLACEMENT SPECIMENS IMPORT NOTHING AND THE ORACLE COUNTS BLOCKING ROWS, and with that the
-// matrix locates the cause rather than pointing at a direction:
+// matrix does not merely locate the defect -- it establishes that the defect is much larger than
+// the row this file used to carry. Measured, all executed:
 //
-//   w_a_wrong_type_argument_at_a_declared_return_is_refused     FAILED  <- this row
-//   w_a_wrong_type_argument_carried_in_a_field_is_refused       FAILED  <- this row
-//   w_a_matching_type_argument_at_a_declared_return_is_admitted passed  (positive control)
-//   w_a_wrong_constructor_head_at_a_declared_return_is_refused  passed  (the head IS compared)
-//   w_a_non_generic_call_result_mismatch_is_refused             passed  (call results ARE compared)
-//   w_the_census_refuses_a_blatant_non_generic_mismatch         passed  (liveness)
-//   w_the_census_admits_a_valid_source                          passed  (opposite control)
-//   w_a_coproduct_at_a_record_parameter_is_refused              passed  (refused, as it should be)
-//   w_a_matched_record_at_a_record_parameter_is_admitted        passed  (positive control)
+//   plain record vs plain record, different fields          ADMITTED  <- this row
+//   generic argument at position zero, phantom parameter    ADMITTED  <- this row
+//   generic argument at position zero, carried in a field   ADMITTED  <- this row
+//   generic argument at the MIDDLE of three                 ADMITTED  <- this row
+//   generic argument at the LAST of three                   ADMITTED  <- this row
+//   different application HEAD, same argument               ADMITTED  <- this row
+//   NESTED argument, at the middle position                 ADMITTED  <- this row
+//   matching application, each of the three forms           admitted  (positive controls)
+//   a PRIMITIVE where an application is declared            refused
+//   a primitive call-result mismatch                        refused
+//   a blatant primitive mismatch                            refused   (liveness)
+//   a valid source                                          admitted  (opposite control)
 //
-// So: in the declared-return expected-type path, a generic application's CONSTRUCTOR HEAD is
-// compared but its TYPE-ARGUMENT VECTOR is not. Field occupancy, aliases, coproducts and module
-// boundaries are each absent from a specimen that still reproduces, so none is a necessary cause.
-// TWO identities and not one because the phantom and field-carried specimens fail independently: a
-// repair that merely noticed arguments occurring in fields would close one and leave the other, and
-// a single enrolled row could not tell those apart.
+// SO THE HONEST STATEMENT IS NOT ABOUT GENERICS. In declared-return position two NOMINAL types are
+// not compared at all; refusal survives only where a PRIMITIVE is on one side. Every generic row is
+// an instance of that, which is why the plain-record row is enrolled in its own right.
 //
-// DISSOLVE-ON: the declared-return expected-type comparison deciding application identity on head,
-// arity, AND every type argument recursively, so that a wrong type argument is refused whether or
-// not the parameter occupies a field. THE TRIGGER NAMES THE CAPABILITY, NOT THE MATRIX THAT FOUND
-// IT: an earlier cut made the trigger "the matrix locating the judgment, and the repair landing",
-// and the matrix half is now DONE while both rows stay red -- which is exactly the grain mismatch
-// DESIGN 4b(3) warns about, a trigger satisfiable while the capability it should restore stays
-// dead. Locating a defect retires nothing; only the comparison does. This roster's
+// AN EARLIER REVISION OF THIS ROW CLAIMED THE CONSTRUCTOR HEAD WAS COMPARED and narrowed the defect
+// to the type-argument vector on that basis. Its only evidence was a PRIMITIVE returned where an
+// application was declared, which establishes nothing about comparing two applications. Two
+// different heads are admitted. The claim was a guess wearing a measurement's clothes, and it is
+// the same failure this file already records one paragraph above.
+//
+// SEVEN IDENTITIES, because each names a discrimination a partial repair could miss while greening
+// the others -- and greening them is not harmless, since this roster SELF-EMPTIES on pass. A repair
+// comparing only the first argument would retire the two position-zero rows while the production
+// Measure<Memory, Gibi, Nat> hole, which differs at the MIDDLE argument, stayed open. One comparing
+// heads and arguments pairwise could zip to the shorter vector and miss arity. One comparing only
+// the outermost argument would miss nesting. One confined to applications would miss plain records.
+// A single row could not tell any of those apart.
+//
+// DISSOLVE-ON: the declared-return expected-type comparison rejecting every enrolled mismatch --
+// the plain-record pair by nominal identity, and the same-head same-arity applications at argument
+// positions zero, one and two plus the enrolled nested argument-one case, together with the
+// distinct-head pair. Stated as the positions and shapes actually enrolled rather than as "every
+// argument recursively", because a trigger may not promise a generality no specimen exercises.
+// This roster's
 // self-emptying arm makes that event announce itself: when the wall arrives, this row PASSES,
 // which reds the build and names itself for removal. The witness itself is permanent under
 // DESIGN 4b(4) -- it flips to a regression control rather than retiring.
 fn floor_expected_red_chunk_24() -> List<String> {
   Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_at_a_declared_return_is_refused",
-  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_carried_in_a_field_is_refused", tail: Empty {} } }
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_type_argument_carried_in_a_field_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_middle_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_application_head_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_last_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_wrong_nested_type_argument_at_a_declared_return_is_refused",
+  tail: Cons { head: "test.claim.declared_type_expected_type_path_witness.w_a_different_plain_record_at_a_declared_return_is_refused", tail: Empty {} } } } } } } }
 }
 
 fn floor_expected_red_chunk_live_tree_admission() -> List<String> {
