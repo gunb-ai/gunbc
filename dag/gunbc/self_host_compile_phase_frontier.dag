@@ -201,15 +201,21 @@ type CensusIdentityDigest {
   digest: Fnv1a64Structural
 }
 
-// NEITHER SORT IS REDUNDANT, AND BOTH LOOK IT -- this is the one thing to read before deleting a
-// line here. deduplicate_identities canonicalizes on the LIVE path, so at the cargo_phase_board
-// call site raw_identities arrives already sorted and the sort below reads as a duplicated
-// canonicalization that a tidy-up would remove. It is not: the PERSISTED path calls this function
-// with receipt.raw_error_diagnostic_identities directly, and that list is stored in emission order
-// and never passes through deduplicate_identities. Delete either sort and the live path stays
-// correct while the persisted path silently returns to being order-contaminated -- the defect this
-// fold exists to close, reintroduced by a plausible cleanup. The falsifier is enrolled: removing a
-// sort must turn the_census_digest_is_invariant_under_reordering_of_either_population red.
+// NEITHER SORT MAY BE REMOVED ON THE GROUNDS THAT A CALLER ALREADY CANONICALIZES -- read this
+// before deleting a line here. The PERSISTED path calls this function with
+// receipt.raw_error_diagnostic_identities directly: that list is stored in emission order and
+// passes through no caller-side canonicalization, so no property of any caller can substitute for
+// these sorts. Delete either one and the live path stays correct while the persisted path silently
+// returns to being order-contaminated -- the defect this fold exists to close, reintroduced by a
+// plausible cleanup.
+//
+// The cleanup becomes tempting exactly when the LIVE path starts canonicalizing. As of this
+// writing deduplicate_identities dedups without sorting, so the sorts are visibly load-bearing on
+// both paths; a change making it sort would leave raw_identities already ordered at the
+// cargo_phase_board call site and make this look like duplicated work. It would not be.
+//
+// The falsifier is enrolled rather than described: removing a sort must turn
+// the_census_digest_is_invariant_under_reordering_of_either_population red.
 fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> CensusIdentityDigest {
   CensusIdentityDigest {
     algorithm: CanonicalIdentitySetV1,
