@@ -186,32 +186,42 @@ fn one_identity() -> RegenSurfaceIdentity {
   RegenSurfaceIdentity { declaring_module: "std.subject", projected_path: "std_subject.rs" }
 }
 
+fn second_identity() -> RegenSurfaceIdentity {
+  RegenSurfaceIdentity { declaring_module: "std.dependent", projected_path: "std_dependent.rs" }
+}
+
 test fn stale_candidate_from_g0_cannot_install_after_g1() -> Bool {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
-    planned: [one_identity()],
-    executed: [one_identity()],
+    planned: [one_identity(), second_identity()],
+    executed: [one_identity(), second_identity()],
     input_generation_id: "g1",
     observed_candidate_generation_id: "g0",
     expected_candidate_digest: "candidate-g1",
     observed_candidate_digest: "candidate-g0",
     build_terminal: RegenStageBuildPassed
   }) {
-    RegenStageExecutionRefused { refusal: CandidateStaleAfterProducerRebuild { candidate: _, current_generation_id: _ } } => true
+    RegenStageExecutionRefused { refusal: CandidateStaleAfterProducerRebuild { planned_surfaces: surfaces, observed_generation_id: _, current_generation_id: _, observed_candidate_digest: _ } } =>
+      count(surfaces) == 2
+        && surfaces |> any(surface => surface.projected_path == "std_subject.rs")
+        && surfaces |> any(surface => surface.projected_path == "std_dependent.rs")
     _ => false
   }
 }
 
 test fn tampered_candidate_digest_refuses_before_admission() -> Bool {
   match regen_admit_stage_execution(observation: RegenStageExecutionObservation {
-    planned: [one_identity()],
-    executed: [one_identity()],
+    planned: [one_identity(), second_identity()],
+    executed: [one_identity(), second_identity()],
     input_generation_id: "g1",
     observed_candidate_generation_id: "g1",
     expected_candidate_digest: "expected",
     observed_candidate_digest: "tampered",
     build_terminal: RegenStageBuildPassed
   }) {
-    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surface: _, expected: _, observed: _ } } => true
+    RegenStageExecutionRefused { refusal: InstalledDigestMismatch { surfaces: surfaces, expected: _, observed: _ } } =>
+      count(surfaces) == 2
+        && surfaces |> any(surface => surface.projected_path == "std_subject.rs")
+        && surfaces |> any(surface => surface.projected_path == "std_dependent.rs")
     _ => false
   }
 }

@@ -94,9 +94,14 @@ type RegenConvergenceRefusal
   | SurfaceInIncompatibleStageRoles { surfaces: List<RegenSurfaceIdentity> }
   | StageDependencyClosureIncomplete { closure_id: String, missing: List<RegenSurfaceIdentity> }
   | CandidateFromDifferentSeed { candidate: RegenCandidateIdentity, expected_generation_id: String }
-  | CandidateStaleAfterProducerRebuild { candidate: RegenCandidateIdentity, current_generation_id: String }
+  | CandidateStaleAfterProducerRebuild {
+      planned_surfaces: List<RegenSurfaceIdentity>
+      observed_generation_id: String
+      current_generation_id: String
+      observed_candidate_digest: String
+    }
   | PreInstallDigestMismatch { surface: RegenSurfaceIdentity, expected: String, observed: String }
-  | InstalledDigestMismatch { surface: RegenSurfaceIdentity, expected: String, observed: String }
+  | InstalledDigestMismatch { surfaces: List<RegenSurfaceIdentity>, expected: String, observed: String }
   | StagePlannedExecutedMismatch { planned: List<RegenSurfaceIdentity>, executed: List<RegenSurfaceIdentity> }
   | UnplannedPathMutated { path: String }
   | NoBuildableProducerCut { reason: String }
@@ -645,28 +650,16 @@ fn regen_admit_stage_execution(observation: RegenStageExecutionObservation) -> R
   } else if observation.input_generation_id != observation.observed_candidate_generation_id {
     RegenStageExecutionRefused {
       refusal: CandidateStaleAfterProducerRebuild {
-        candidate: RegenCandidateIdentity {
-          producer_generation_id: observation.observed_candidate_generation_id,
-          candidate_tree_id: "observed",
-          candidate_tree_digest: observation.observed_candidate_digest,
-          surface: fold(
-            observation.planned,
-            init: RegenSurfaceIdentity { declaring_module: "empty", projected_path: "empty" },
-            f: fn(acc, row) { row }
-          ),
-          candidate_digest: observation.observed_candidate_digest
-        },
-        current_generation_id: observation.input_generation_id
+        planned_surfaces: observation.planned,
+        observed_generation_id: observation.observed_candidate_generation_id,
+        current_generation_id: observation.input_generation_id,
+        observed_candidate_digest: observation.observed_candidate_digest
       }
     }
   } else if observation.expected_candidate_digest != observation.observed_candidate_digest {
     RegenStageExecutionRefused {
       refusal: InstalledDigestMismatch {
-        surface: fold(
-          observation.planned,
-          init: RegenSurfaceIdentity { declaring_module: "empty", projected_path: "empty" },
-          f: fn(acc, row) { row }
-        ),
+        surfaces: observation.planned,
         expected: observation.expected_candidate_digest,
         observed: observation.observed_candidate_digest
       }
