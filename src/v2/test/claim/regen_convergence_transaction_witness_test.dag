@@ -3,8 +3,8 @@ module v2.test.claim.regen_convergence_transaction_witness_test
 import std.types { Bool, List, String }
 import gunbc.regen_affected_set {
   regen_generation_role_modules,
-  regen_bootstrap_product_paths,
-  regen_bootstrap_product_source_modules
+  regen_generated_product_owner_paths,
+  regen_generated_product_source_modules
 }
 
 import v2.workflow.regen_convergence_transaction {
@@ -25,12 +25,14 @@ import v2.workflow.regen_convergence_transaction {
   RegenStageExecutionObservation,
   RegenConvergenceFixture,
   GenerationInput,
+  BootstrapSourceMirror,
   GenerationSubject,
   NonSeedGeneratedOutput,
   UnresolvedGenerationRole,
   GenerationRoleUnresolved,
   SeedEmbedded,
   OutsideSeed,
+  UnresolvedSeedMembership,
   PromoteGenerationInputs,
   InstallSeedCompatibilityCut,
   PublishNonSeedOutputs,
@@ -44,6 +46,8 @@ import v2.workflow.regen_convergence_transaction {
   CandidateStaleAfterProducerRebuild,
   InstalledDigestMismatch,
   StageSeedBuildRefused,
+  SurfaceInIncompatibleStageRoles,
+  StageDependencyClosureIncomplete,
   RegenFixtureReachedFixedPoint,
   RegenFixtureRefused,
   FinalRegenerationStillDrifts,
@@ -239,13 +243,19 @@ test fn matching_stage_population_digest_generation_and_build_are_admitted() -> 
   }
 }
 
-fn fixture_surface(module: String, path: String, role: RegenGenerationRole, seed: RegenSeedMembership) -> RegenChangedSurface {
+fn fixture_surface_in_closure(
+  module: String,
+  path: String,
+  role: RegenGenerationRole,
+  seed: RegenSeedMembership,
+  closure_id: String
+) -> RegenChangedSurface {
   let identity = RegenSurfaceIdentity { declaring_module: module, projected_path: path }
   RegenChangedSurface {
     identity: identity,
     generation_role: role,
     seed_membership: seed,
-    dependency_closure_id: "seed-closure-g0",
+    dependency_closure_id: closure_id,
     pre_stage_digest: "old",
     candidate: RegenCandidateIdentity {
       producer_generation_id: "g0",
@@ -255,6 +265,27 @@ fn fixture_surface(module: String, path: String, role: RegenGenerationRole, seed
       candidate_digest: "new"
     }
   }
+}
+
+fn fixture_surface(module: String, path: String, role: RegenGenerationRole, seed: RegenSeedMembership) -> RegenChangedSurface {
+  let closure_id = match role {
+    GenerationInput => "generation-input-cut"
+    GenerationSubject => match seed {
+      SeedEmbedded => "seed-compatibility-cut"
+      OutsideSeed => "non-seed-publish"
+      UnresolvedSeedMembership { reason: _ } => "unresolved-seed-membership"
+    }
+    NonSeedGeneratedOutput => "non-seed-publish"
+    UnresolvedGenerationRole { reason: _ } => "unresolved-generation-role"
+    BootstrapSourceMirror => "generation-input-cut"
+  }
+  fixture_surface_in_closure(
+    module: module,
+    path: path,
+    role: role,
+    seed: seed,
+    closure_id: closure_id
+  )
 }
 
 fn fixture_plan(kind: RegenStageKind, rows: List<RegenChangedSurface>) -> RegenStagePlanOutcome {
@@ -338,13 +369,40 @@ test fn non_seed_output_waits_for_publish_stage() -> Bool {
   let early = fixture_plan(kind: InstallSeedCompatibilityCut, rows: [output])
   let publish = fixture_plan(kind: PublishNonSeedOutputs, rows: [output])
   match early {
-    RegenConvergenceTerminal => match publish {
-      RegenStagePlanned { stage: stage } => count(stage.planned_surfaces) == 1
-      RegenStagePlanningRefused { refusal: _ } => false
-      RegenConvergenceTerminal => false
-    }
+    RegenStagePlanningRefused { refusal: SurfaceInIncompatibleStageRoles { surfaces: held } } =>
+      count(held) == 1 && match publish {
+        RegenStagePlanned { stage: stage } => count(stage.planned_surfaces) == 1
+        RegenStagePlanningRefused { refusal: _ } => false
+        RegenConvergenceTerminal => false
+      }
     RegenStagePlanned { stage: _ } => false
     RegenStagePlanningRefused { refusal: _ } => false
+    RegenConvergenceTerminal => false
+  }
+}
+
+test fn one_stage_cannot_claim_two_dependency_closures() -> Bool {
+  let lower = fixture_surface_in_closure(
+    module: "std.lower",
+    path: "std_lower.rs",
+    role: GenerationSubject,
+    seed: SeedEmbedded,
+    closure_id: "seed-core"
+  )
+  let foreign = fixture_surface_in_closure(
+    module: "std.foreign",
+    path: "std_foreign.rs",
+    role: GenerationSubject,
+    seed: SeedEmbedded,
+    closure_id: "seed-surface"
+  )
+  match fixture_plan(kind: InstallSeedCompatibilityCut, rows: [lower, foreign]) {
+    RegenStagePlanningRefused {
+      refusal: StageDependencyClosureIncomplete { closure_id: "seed-core", missing: missing }
+    } => count(missing) == 1
+    RegenStagePlanningRefused { refusal: _ } => false
+    RegenStagePlanned { stage: _ } => false
+    RegenConvergenceTerminal => false
   }
 }
 
@@ -365,7 +423,7 @@ test fn explicit_generation_role_roster_is_total_and_unique_for_generation_input
 // same-named DAG module. The product and source projections must join through the bootstrap-edge
 // authority; a host-side basename fallback would make this discriminator observational.
 test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
-  count(regen_bootstrap_product_paths() |> filter(path => path == "compiler_tests.rs")) == 1
-    && regen_bootstrap_product_source_modules(product: "compiler_tests.rs")
+  count(regen_generated_product_owner_paths() |> filter(path => path == "compiler_tests.rs")) == 1
+    && regen_generated_product_source_modules(product: "compiler_tests.rs")
       == ["v1.compiler.compiler_tests_rust"]
 }

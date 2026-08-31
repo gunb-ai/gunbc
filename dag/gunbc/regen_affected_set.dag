@@ -62,6 +62,12 @@ type BootstrapSourceMirror {
   reason: String
 }
 
+type GeneratedAggregateProductOwner {
+  source_module: String
+  product: String
+  reason: String
+}
+
 // Compiler substrate whose generated representation is itself an input to the next seed. These
 // are explicit bootstrap-source facts, not a std_ prefix: std.measure is seed-compiled and called
 // by the emitter but is not a compiler-transport mirror, which is the discriminator that forced
@@ -86,23 +92,29 @@ data regen_bootstrap_edges: List<BootstrapEdge> = [
     source_module: "v1.compiler.runtime_rust",
     product: "v1_rt.rs",
     reason: "the runtime shim is the template's product, emitted from the string the emitting seed carries; it is a compared mirror with no module and no import edge (measured drift on tree 0fe2c517: v1_compiler_runtime_rust.rs and v1_rt.rs)"
-  },
-  BootstrapEdge {
+  }
+]
+
+// Generated aggregates have declaration ownership but are not affected-set bootstrap edges:
+// their producer modules retain their ordinary generation roles. Keeping ownership separate
+// prevents naming an aggregate from demoting its emitter out of the generation-input roster.
+data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwner> = [
+  GeneratedAggregateProductOwner {
     source_module: "v1.compiler.compiler_tests_rust",
     product: "compiler_tests.rs",
     reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module; the generated product therefore has no module-line mirror identity of its own"
   },
-  BootstrapEdge {
+  GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "emitted_population.rs",
     reason: "emit_emitted_population_manifest derives this aggregate from the complete emitted file list; the manifest is deliberately not a Rust module and therefore has no same-named DAG module identity"
   },
-  BootstrapEdge {
+  GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "lib.rs",
     reason: "emit_lib_rs_from_files derives the crate module surface from the emitted module population; lib.rs is an aggregate product rather than a same-named DAG module mirror"
   },
-  BootstrapEdge {
+  GeneratedAggregateProductOwner {
     source_module: "v1.compiler.emit_rust",
     product: "main.rs",
     reason: "emit_main_rs derives the executable entry surface from the workflow population; main.rs is an aggregate product rather than a same-named DAG module mirror"
@@ -179,13 +191,25 @@ fn regen_bootstrap_product_paths() -> List<String> {
   regen_bootstrap_edges |> map(edge => edge.product)
 }
 
-// The host asks this projection for every member of regen_bootstrap_product_paths. Both answers
-// come from this sole row authority, so a generated product that is not a module mirror retains
-// the source module that declared its bytes; a synthesized basename-to-module fallback is refused.
-fn regen_bootstrap_product_source_modules(product: String) -> List<String> {
-  regen_bootstrap_edges
-    |> filter(edge => edge.product == product)
-    |> map(edge => edge.source_module)
+fn regen_generated_product_owner_paths() -> List<String> {
+  concat(
+    regen_bootstrap_edges |> map(edge => edge.product),
+    regen_generated_aggregate_product_owners |> map(row => row.product)
+  )
+}
+
+// The host asks this projection for every member of regen_generated_product_owner_paths. Both
+// answers come from the declared row authorities, so a non-module product retains its producer;
+// a synthesized basename-to-module fallback is refused.
+fn regen_generated_product_source_modules(product: String) -> List<String> {
+  concat(
+    regen_bootstrap_edges
+      |> filter(edge => edge.product == product)
+      |> map(edge => edge.source_module),
+    regen_generated_aggregate_product_owners
+      |> filter(row => row.product == product)
+      |> map(row => row.source_module)
+  )
 }
 
 fn regen_bootstrap_products(reached: List<String>) -> List<String> {

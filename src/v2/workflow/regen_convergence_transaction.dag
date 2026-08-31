@@ -49,6 +49,11 @@ type RegenAffectedBoundAdmission
   = RegenAffectedBoundAdmitted
   | RegenAffectedBoundRefused { refusal: RegenConvergenceRefusal }
 
+type RegenAffectedBoundPathDisposition
+  = AffectedBoundPathAdmitted
+  | AffectedBoundPathExcluded
+  | AffectedBoundPathRefused { reason: String }
+
 type RegenStageKind
   = PromoteGenerationInputs
   | InstallSeedCompatibilityCut
@@ -82,7 +87,7 @@ type RegenConvergenceRefusal
   | SurfaceOwnershipAmbiguous { path: String, modules: List<String> }
   | GenerationRoleUnresolved { surface: RegenSurfaceIdentity, reason: String }
   | SeedMembershipUnresolved { surface: RegenSurfaceIdentity, reason: String }
-  | SurfaceInIncompatibleStageRoles { surface: RegenSurfaceIdentity }
+  | SurfaceInIncompatibleStageRoles { surfaces: List<RegenSurfaceIdentity> }
   | StageDependencyClosureIncomplete { closure_id: String, missing: List<RegenSurfaceIdentity> }
   | CandidateFromDifferentSeed { candidate: RegenCandidateIdentity, expected_generation_id: String }
   | CandidateStaleAfterProducerRebuild { candidate: RegenCandidateIdentity, current_generation_id: String }
@@ -105,11 +110,23 @@ type RegenConvergenceRefusal
       outside_bound: List<RegenSurfaceIdentity>
     }
 
-fn regen_affected_bound_lists(bound: RegenAffectedBound, path: String) -> Bool {
+// The one query surface for bound membership. Consumers retain exclusion and refusal as typed
+// answers; no Bool predicate can turn an unlocatable bound into ordinary non-membership.
+fn regen_affected_bound_path_disposition(
+  bound: RegenAffectedBound,
+  path: String
+) -> RegenAffectedBoundPathDisposition {
   match bound {
-    CompleteCandidatePopulation => true
-    AffectedCandidatePopulation { projected_paths: paths } => paths |> any(p => p == path)
-    AffectedCandidatePopulationRefused { reason: _ } => false
+    CompleteCandidatePopulation => AffectedBoundPathAdmitted
+    AffectedCandidatePopulation { projected_paths: paths } => {
+      if paths |> any(p => p == path) {
+        AffectedBoundPathAdmitted
+      } else {
+        AffectedBoundPathExcluded
+      }
+    }
+    AffectedCandidatePopulationRefused { reason: reason } =>
+      AffectedBoundPathRefused { reason: reason }
   }
 }
 
@@ -123,9 +140,16 @@ fn regen_admit_affected_bound(
     CompleteCandidatePopulation => RegenAffectedBoundAdmitted
     AffectedCandidatePopulation { projected_paths: paths } => {
       let admitted = AffectedCandidatePopulation { projected_paths: paths }
-      let outside = changed
-        |> filter(row => !regen_affected_bound_lists(bound: admitted, path: row.identity.projected_path))
-        |> map(row => row.identity)
+      let outside = fold(changed, init: [], f: fn(acc, row) {
+        match regen_affected_bound_path_disposition(
+          bound: admitted,
+          path: row.identity.projected_path
+        ) {
+          AffectedBoundPathAdmitted => acc
+          AffectedBoundPathExcluded => list_push(acc, row.identity)
+          AffectedBoundPathRefused { reason: _ } => list_push(acc, row.identity)
+        }
+      })
       if count(outside) == 0 {
         RegenAffectedBoundAdmitted
       } else {
@@ -248,10 +272,100 @@ fn regen_first_unresolved(rows: List<RegenChangedSurface>) -> List<RegenConverge
   })
 }
 
-fn regen_stage_closure_id(rows: List<RegenChangedSurface>) -> String {
-  fold(rows, init: "", f: fn(acc, row) {
-    if acc == "" { row.dependency_closure_id } else { acc }
+type RegenStageClosureFold
+  = NoStageClosureRows
+  | ConsistentStageClosure { closure_id: String }
+  | InconsistentStageClosure {
+      closure_id: String
+      foreign_surfaces: List<RegenSurfaceIdentity>
+    }
+
+type RegenStageClosureAdmission
+  = RegenStageClosureAdmitted { closure_id: String }
+  | RegenStageClosureRefused { refusal: RegenConvergenceRefusal }
+
+type RegenSurfacePopulationMembership
+  = SurfacePopulationMember
+  | SurfacePopulationAbsent
+
+fn regen_surface_population_membership(
+  identity: RegenSurfaceIdentity,
+  rows: List<RegenChangedSurface>
+) -> RegenSurfacePopulationMembership {
+  if rows |> any(row => regen_surface_identity_eq(a: identity, b: row.identity)) {
+    SurfacePopulationMember
+  } else {
+    SurfacePopulationAbsent
+  }
+}
+
+// A stage receipt names one dependency closure only when every planned surface belongs to that
+// same closure. Taking the first row without validating the remainder would mint a plausible
+// closure receipt over an inconsistent population.
+fn regen_admit_stage_closure(
+  changed: List<RegenChangedSurface>,
+  planned: List<RegenChangedSurface>
+) -> RegenStageClosureAdmission {
+  let folded = fold(planned, init: NoStageClosureRows, f: fn(acc, row) {
+    match acc {
+      NoStageClosureRows => ConsistentStageClosure { closure_id: row.dependency_closure_id }
+      ConsistentStageClosure { closure_id: closure_id } => {
+        if closure_id == row.dependency_closure_id {
+          ConsistentStageClosure { closure_id: closure_id }
+        } else {
+          InconsistentStageClosure {
+            closure_id: closure_id,
+            foreign_surfaces: [row.identity]
+          }
+        }
+      }
+      InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign } => {
+        if closure_id == row.dependency_closure_id {
+          InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign }
+        } else {
+          InconsistentStageClosure {
+            closure_id: closure_id,
+            foreign_surfaces: list_push(foreign, row.identity)
+          }
+        }
+      }
+    }
   })
+  match folded {
+    NoStageClosureRows => RegenStageClosureRefused {
+      refusal: StageDependencyClosureIncomplete { closure_id: "", missing: [] }
+    }
+    ConsistentStageClosure { closure_id: closure_id } => {
+      let required = changed |> filter(row => row.dependency_closure_id == closure_id)
+      let missing = fold(required, init: [], f: fn(acc, row) {
+        match regen_surface_population_membership(identity: row.identity, rows: planned) {
+          SurfacePopulationMember => acc
+          SurfacePopulationAbsent => list_push(acc, row.identity)
+        }
+      })
+      if closure_id == "" || count(missing) > 0 {
+        RegenStageClosureRefused {
+          refusal: StageDependencyClosureIncomplete {
+            closure_id: closure_id,
+            missing: if closure_id == "" {
+              planned |> map(row => row.identity)
+            } else {
+              missing
+            }
+          }
+        }
+      } else {
+        RegenStageClosureAdmitted { closure_id: closure_id }
+      }
+    }
+    InconsistentStageClosure { closure_id: closure_id, foreign_surfaces: foreign } =>
+      RegenStageClosureRefused {
+        refusal: StageDependencyClosureIncomplete {
+          closure_id: closure_id,
+          missing: foreign
+        }
+      }
+  }
 }
 
 fn regen_plan_stage(
@@ -276,25 +390,42 @@ fn regen_plan_stage(
   } else {
     let partition = regen_partition_stage(rows: changed, kind: kind)
     if count(partition.planned) == 0 {
-      RegenConvergenceTerminal
+      if count(partition.deferred) == 0 {
+        RegenConvergenceTerminal
+      } else {
+        RegenStagePlanningRefused {
+          refusal: SurfaceInIncompatibleStageRoles {
+            surfaces: partition.deferred |> map(row => row.identity)
+          }
+        }
+      }
     } else {
-      RegenStagePlanned {
-        stage: RegenStagePlan {
-          ordinal: ordinal,
-          kind: kind,
-          producer_generation_id: producer_generation_id,
-          candidate_tree_id: candidate_tree_id,
-          candidate_tree_digest: candidate_tree_digest,
-          planned_surfaces: partition.planned,
-          deferred_surfaces: partition.deferred,
-          dependency_closure_id: regen_stage_closure_id(rows: partition.planned),
-          build_target: build_target,
-          build_invocation: build_invocation
+      match regen_admit_stage_closure(changed: changed, planned: partition.planned) {
+        RegenStageClosureRefused { refusal: refusal } =>
+          RegenStagePlanningRefused { refusal: refusal }
+        RegenStageClosureAdmitted { closure_id: closure_id } => RegenStagePlanned {
+          stage: RegenStagePlan {
+            ordinal: ordinal,
+            kind: kind,
+            producer_generation_id: producer_generation_id,
+            candidate_tree_id: candidate_tree_id,
+            candidate_tree_digest: candidate_tree_digest,
+            planned_surfaces: partition.planned,
+            deferred_surfaces: partition.deferred,
+            dependency_closure_id: closure_id,
+            build_target: build_target,
+            build_invocation: build_invocation
+          }
         }
       }
     }
   }
 }
+
+type RegenNextStageNeed
+  = NextStageNeedsProducer
+  | NextStageNeedsSeedCompatibility
+  | NextStageNeedsPublish
 
 fn regen_plan_next_stage(
   ordinal: Int,
@@ -305,30 +436,33 @@ fn regen_plan_next_stage(
   build_target: String,
   build_invocation: String
 ) -> RegenStagePlanOutcome {
-  let has_producer = changed |> any(row => match row.generation_role {
-    GenerationInput => true
-    BootstrapSourceMirror => true
-    GenerationSubject => false
-    NonSeedGeneratedOutput => false
-    UnresolvedGenerationRole { reason: _ } => false
-  })
-  let has_seed_subject = changed |> any(row => match row.generation_role {
-    GenerationSubject => match row.seed_membership {
-      SeedEmbedded => true
-      OutsideSeed => false
-      UnresolvedSeedMembership { reason: _ } => false
+  let need = fold(changed, init: NextStageNeedsPublish, f: fn(acc, row) {
+    match acc {
+      NextStageNeedsProducer => NextStageNeedsProducer
+      NextStageNeedsSeedCompatibility => match row.generation_role {
+        GenerationInput => NextStageNeedsProducer
+        BootstrapSourceMirror => NextStageNeedsProducer
+        GenerationSubject => NextStageNeedsSeedCompatibility
+        NonSeedGeneratedOutput => NextStageNeedsSeedCompatibility
+        UnresolvedGenerationRole { reason: _ } => NextStageNeedsSeedCompatibility
+      }
+      NextStageNeedsPublish => match row.generation_role {
+        GenerationInput => NextStageNeedsProducer
+        BootstrapSourceMirror => NextStageNeedsProducer
+        GenerationSubject => match row.seed_membership {
+          SeedEmbedded => NextStageNeedsSeedCompatibility
+          OutsideSeed => NextStageNeedsPublish
+          UnresolvedSeedMembership { reason: _ } => NextStageNeedsPublish
+        }
+        NonSeedGeneratedOutput => NextStageNeedsPublish
+        UnresolvedGenerationRole { reason: _ } => NextStageNeedsPublish
+      }
     }
-    GenerationInput => false
-    BootstrapSourceMirror => false
-    NonSeedGeneratedOutput => false
-    UnresolvedGenerationRole { reason: _ } => false
   })
-  let kind = if has_producer {
-    PromoteGenerationInputs
-  } else if has_seed_subject {
-    InstallSeedCompatibilityCut
-  } else {
-    PublishNonSeedOutputs
+  let kind = match need {
+    NextStageNeedsProducer => PromoteGenerationInputs
+    NextStageNeedsSeedCompatibility => InstallSeedCompatibilityCut
+    NextStageNeedsPublish => PublishNonSeedOutputs
   }
   regen_plan_stage(
     ordinal: ordinal,

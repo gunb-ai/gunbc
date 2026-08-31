@@ -3397,9 +3397,9 @@ fn convergence_surface_roles(
         .map(|module| (format!("{}.rs", module.replace('.', "_")), module.clone()))
         .collect::<HashMap<_, _>>();
     let mut basename_to_module = basename_to_module;
-    let (generation, bootstrap_sources, bootstrap_products, bootstrap_product_owners) =
+    let (generation, bootstrap_sources, bootstrap_products, generated_product_owners) =
         regen_generation_role_population(source_roots, &modules)?;
-    for (product, source_module) in bootstrap_product_owners {
+    for (product, source_module) in generated_product_owners {
         match basename_to_module.insert(product.clone(), source_module.clone()) {
             Some(existing) if existing != source_module => {
                 return Err(format!(
@@ -3551,6 +3551,13 @@ fn convergence_plan_from_model(
             } else {
                 "GenerationSubject"
             };
+            let seed_embedded = seed_embedded_basenames.contains(basename);
+            let dependency_closure_id = match role {
+                "GenerationInput" | "BootstrapSourceMirror" => "generation-input-cut",
+                "GenerationSubject" if seed_embedded => "seed-compatibility-cut",
+                "GenerationSubject" | "NonSeedGeneratedOutput" => "non-seed-publish",
+                _ => "unresolved-stage-role",
+            };
             let identity = Value::Record {
                 type_name: ctx.sym("RegenSurfaceIdentity"),
                 fields: Rc::new(vec![
@@ -3588,7 +3595,7 @@ fn convergence_plan_from_model(
                     ),
                     (
                         ctx.sym("seed_membership"),
-                        if seed_embedded_basenames.contains(basename) {
+                        if seed_embedded {
                             Value::Variant {
                                 type_name: ctx.sym("RegenSeedMembership"),
                                 variant_name: ctx.sym("SeedEmbedded"),
@@ -3609,7 +3616,7 @@ fn convergence_plan_from_model(
                     ),
                     (
                         ctx.sym("dependency_closure_id"),
-                        str_value("complete-seed-build"),
+                        str_value(dependency_closure_id),
                     ),
                     (
                         ctx.sym("pre_stage_digest"),
@@ -5076,10 +5083,11 @@ pub fn regen_generation_role_population(
     )?;
     let bootstrap_sources = list_result("regen_bootstrap_source_modules", vec![])?;
     let bootstrap_products = list_result("regen_bootstrap_product_paths", vec![])?;
-    let mut bootstrap_product_owners = HashMap::new();
-    for product in &bootstrap_products {
+    let owned_products = list_result("regen_generated_product_owner_paths", vec![])?;
+    let mut generated_product_owners = HashMap::new();
+    for product in &owned_products {
         let owners = list_result(
-            "regen_bootstrap_product_source_modules",
+            "regen_generated_product_source_modules",
             vec![(Some("product".to_string()), str_value(product))],
         )?;
         if owners.len() != 1 {
@@ -5088,13 +5096,13 @@ pub fn regen_generation_role_population(
                 owners.len()
             ));
         }
-        bootstrap_product_owners.insert(product.clone(), owners.into_iter().next().unwrap());
+        generated_product_owners.insert(product.clone(), owners.into_iter().next().unwrap());
     }
     Ok((
         generation,
         bootstrap_sources,
         bootstrap_products,
-        bootstrap_product_owners,
+        generated_product_owners,
     ))
 }
 
