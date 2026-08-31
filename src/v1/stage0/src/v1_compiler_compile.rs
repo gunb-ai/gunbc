@@ -30,9 +30,12 @@ use crate::std_termination::ProportionalDivisor::{DivideByTwo, StrictlyLarger};
 pub use crate::std_termination::{PositiveDescentAmount, ProportionalDivisor};
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_annotation_bind::admit_source_annotations;
-pub use crate::v1_compiler_artifact::default_artifact_plan;
 use crate::v1_compiler_artifact::RenderTarget::Dag;
-pub use crate::v1_compiler_artifact::{Artifact, ArtifactPlan, RenderTarget};
+use crate::v1_compiler_artifact::RustModuleRenderSelection::RenderEveryModule;
+pub use crate::v1_compiler_artifact::{default_artifact_plan, selected_artifact_plan};
+pub use crate::v1_compiler_artifact::{
+    Artifact, ArtifactPlan, RenderTarget, RustModuleRenderSelection,
+};
 pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexity_report};
 pub use crate::v1_compiler_complexity::{
     ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
@@ -45,7 +48,7 @@ pub use crate::v1_compiler_emit_core_support::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
 pub use crate::v1_compiler_emit_python::emit_python;
-pub use crate::v1_compiler_emit_rust::emit_rust;
+pub use crate::v1_compiler_emit_rust::emit_rust_selected;
 pub use crate::v1_compiler_infer::{reconcile, reconcile_with_census_extra};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 pub use crate::v1_compiler_infer_types::algebra_field_kind_name;
@@ -439,7 +442,10 @@ pub fn emit_artifact(typed: Rc<ResolvedGraph>, artifact: Rc<Artifact>) -> Rc<Emi
             });
         }
         match artifact.target.clone() {
-            RenderTarget::Rust => crate::v1_compiler_emit_rust::emit_rust(typed.clone()),
+            RenderTarget::Rust => crate::v1_compiler_emit_rust::emit_rust_selected(
+                typed.clone(),
+                artifact.module_selection.clone(),
+            ),
             RenderTarget::Python => crate::v1_compiler_emit_python::emit_python(typed.clone()),
             RenderTarget::Go => crate::v1_compiler_emit_go::emit_go(typed.clone()),
             RenderTarget::Dag => emit_dag_artifact(typed.clone()),
@@ -2754,6 +2760,18 @@ pub fn compile_sources(
     )
 }
 
+pub fn compile_sources_selected(
+    sources: Rc<Vec<Rc<SourceFile>>>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<PipelineResult> {
+    emit_resolved_for_target_selected(
+        compile_to_resolved_with_options(sources.clone(), default_compile_pipeline_options()),
+        target.clone(),
+        selection.clone(),
+    )
+}
+
 pub fn compile_sources_with_options(
     sources: Rc<Vec<Rc<SourceFile>>>,
     target: RenderTarget,
@@ -2954,6 +2972,18 @@ pub fn emit_resolved_for_target(
     resolved: Rc<ResolvedPipelineResult>,
     target: RenderTarget,
 ) -> Rc<PipelineResult> {
+    emit_resolved_for_target_selected(
+        resolved.clone(),
+        target.clone(),
+        Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )
+}
+
+pub fn emit_resolved_for_target_selected(
+    resolved: Rc<ResolvedPipelineResult>,
+    target: RenderTarget,
+    selection: Rc<RustModuleRenderSelection>,
+) -> Rc<PipelineResult> {
     match emittable_graph(resolved.clone()) {
         None => Rc::new(PipelineResult {
             files: Rc::new(vec![]),
@@ -2965,7 +2995,7 @@ pub fn emit_resolved_for_target(
         }),
         Some(emittable) => {
             let typed = emittable.graph();
-            let artifact_plan = crate::v1_compiler_artifact::default_artifact_plan(
+            let artifact_plan = crate::v1_compiler_artifact::selected_artifact_plan(
                 Rc::new({
                     let mut __result = Vec::new();
                     for m in typed.modules.clone().iter().cloned() {
@@ -2977,6 +3007,7 @@ pub fn emit_resolved_for_target(
                     __result
                 }),
                 target.clone(),
+                selection.clone(),
             );
             let _ = v1_rt::trace_mark("compile.emit.begin".to_string());
             let emit_result = emit_from_artifact_plan(emittable.clone(), artifact_plan.clone());

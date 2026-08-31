@@ -1,0 +1,127 @@
+module extdeps.github.org_admin_auth
+
+import std.types { NonEmptyStr, Timestamp }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+// GitHub's credential and endpoint documentation are the authority for these shapes. This module
+// describes the interface only: browser, device-flow, REST, and gh are realizations elsewhere.
+data credential_types_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/organizations/managing-programmatic-access-to-your-organization/github-credential-types" }
+}
+
+data runner_groups_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/rest/actions/self-hosted-runner-groups" }
+}
+
+data actions_permissions_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/rest/actions/permissions" }
+}
+
+data installation_token_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app" }
+}
+
+data oauth_flow_citation: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps" }
+}
+
+type OrgAdminCredentialKind
+  = FineGrainedPersonalAccessToken
+  | ClassicPersonalAccessToken
+  | GitHubAppInstallationAccessToken
+  | OAuthAppUserAccessToken
+
+type OrgActionsCapability
+  = RunnerGroupsRead
+  | RunnerGroupsWrite
+  | RunnerGroupRepositoriesRead
+  | RunnerGroupRepositoriesWrite
+  | OrganizationRunnerRegistrationTokenCreate
+  | OrganizationActionsPolicyRead
+  | OrganizationActionsPolicyWrite
+
+type OrgAdminPermissionGrant
+  = FineGrainedOrganizationSelfHostedRunnersRead
+  | FineGrainedOrganizationSelfHostedRunnersWrite
+  | FineGrainedOrganizationAdministrationRead
+  | FineGrainedOrganizationAdministrationWrite
+  | ClassicAdminOrg
+
+type CredentialAcquisition
+  = HumanWebAcquired
+  | OAuthWebOrDeviceAuthorization
+  | ProgrammaticallyMintedFromGitHubAppKey
+
+type CredentialLifetime
+  = ConfigurablePersonalTokenLifetime { expires_at: Timestamp? }
+  | LongLivedOAuthToken { expires_at: Timestamp? }
+  | RenewableOAuthToken { expires_at: Timestamp }
+  | OneHourInstallationToken { expires_at: Timestamp }
+
+type CredentialRevocationSurface
+  = PersonalTokenSettingsOrOrganizationPolicy
+  | OAuthAuthorizationOrApplication
+  | GitHubAppInstallationOrPrivateKey
+
+type OrgAdminCredentialShape {
+  kind: OrgAdminCredentialKind
+  grants: List<OrgAdminPermissionGrant>
+  acquisition: CredentialAcquisition
+  lifetime: CredentialLifetime
+  revocation: CredentialRevocationSurface
+}
+
+fn grant_supports(grant: OrgAdminPermissionGrant, capability: OrgActionsCapability) -> Bool {
+  match grant {
+    FineGrainedOrganizationSelfHostedRunnersRead =>
+      any([RunnerGroupsRead, RunnerGroupRepositoriesRead], c => c == capability)
+    FineGrainedOrganizationSelfHostedRunnersWrite => any([
+      RunnerGroupsRead,
+      RunnerGroupsWrite,
+      RunnerGroupRepositoriesRead,
+      RunnerGroupRepositoriesWrite,
+      OrganizationRunnerRegistrationTokenCreate
+    ], c => c == capability)
+    FineGrainedOrganizationAdministrationRead => capability == OrganizationActionsPolicyRead
+    FineGrainedOrganizationAdministrationWrite =>
+      any([OrganizationActionsPolicyRead, OrganizationActionsPolicyWrite], c => c == capability)
+    ClassicAdminOrg => true
+  }
+}
+
+fn credential_supports(shape: OrgAdminCredentialShape, capability: OrgActionsCapability) -> Bool {
+  any(shape.grants, g => grant_supports(grant: g, capability: capability))
+}
+
+data org_actions_converge_capabilities: List<OrgActionsCapability> = [
+  RunnerGroupsRead,
+  RunnerGroupsWrite,
+  RunnerGroupRepositoriesRead,
+  RunnerGroupRepositoriesWrite,
+  OrganizationRunnerRegistrationTokenCreate,
+  OrganizationActionsPolicyRead,
+  OrganizationActionsPolicyWrite
+]
+
+fn credential_supports_org_actions_converge(shape: OrgAdminCredentialShape) -> Bool {
+  all(org_actions_converge_capabilities, c => credential_supports(shape: shape, capability: c))
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.github.org_admin_auth",
+      decl_name: "OrgAdminCredentialShape",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.github.org_admin_auth.credential_types_citation,
+  further_citations: [
+    extdeps.github.org_admin_auth.runner_groups_citation,
+    extdeps.github.org_admin_auth.actions_permissions_citation,
+    extdeps.github.org_admin_auth.installation_token_citation,
+    extdeps.github.org_admin_auth.oauth_flow_citation
+  ]
+}

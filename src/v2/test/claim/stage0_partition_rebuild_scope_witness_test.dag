@@ -1,0 +1,279 @@
+module v2.test.claim.stage0_partition_rebuild_scope_witness
+
+import std.types { Bool, List, String }
+import gunbc.stage0_crate_partition_generated {
+  GeneratedFoundationCrate,
+  GeneratedPartitionCrateRow,
+  generated_partition_crate_rows
+}
+import gunbc.stage0_partition_rebuild_scope {
+  ChangedMirrorUnlocatable,
+  ExecutableAssemblyNotCovered,
+  MirrorHasMultipleOwningPackages,
+  MirrorHasNoOwningPackage,
+  ExecutableAssemblyUnavailable,
+  PackageDependencyClosureUnderivable,
+  PartitionAssembledExecutable,
+  PartitionGenerationAuthorityChanged,
+  PartitionRebuildDecision,
+  PartitionRebuildScopeDerived,
+  RebuildScopeRefused,
+  SharedCompilerBuildInputChanged,
+  WholeCompilerRebuildRequired,
+  rebuild_scope_excluded_packages,
+  stage0_partition_rebuild_is_actuatable,
+  stage0_partition_rebuild_decision,
+  stage0_partition_rebuild_decision_today,
+  stage0_next_pass_executable_assembly
+}
+
+// THE DISCRIMINATING REDS THIS FILE HOLDS OPEN, each one a state the selector must not enter.
+//
+// 1. A leaf edit that compiles a package it has no path to. witness_leaf_edit_excludes_unrelated
+//    names v1-stage0-runtime and v1-stage0-std-core as UNCOMPILED for a std-surface edit; a
+//    selector that widened on any deficit would compile them and this goes red. This is the
+//    control the whole module exists for -- the guarantee is the exclusion, not the closure.
+// 2. A closure hardcoded to the owner alone. witness_foundation_edit_widens_to_real_closure
+//    edits the foundation and requires MORE than one package, so "one mirror, one crate" fails.
+// 3. Silence on an input every package is built from. Two rosters, two arms.
+// 4/5. Ownership that cannot answer. A mirror with no owner and a mirror with two owners must
+//    refuse with DIFFERENT causes -- collapsing them would hide which way the roster is wrong.
+// 6. A derived scope spent as a rebuild. The live decision derives real packages while its
+//    executable assembly is unavailable, so the pair witness_today_derives_scope_with_unavailable
+//    _assembly / witness_today_scope_is_not_actuatable holds those two facts apart, against a
+//    positive actuatability control so the predicate cannot be a constant false.
+//
+// The fixture executable below is a PARTITION-ASSEMBLED one because the positive arm has no live
+// inhabitant yet (see rebuild_scope_executable_assembly_dissolve_on). It is a fixture handed to
+// the selector, not a claim that the tree builds it -- and the selector is the subject, so a
+// fixture is the right and only place its accepting arm can be exercised today.
+fn witness_fixture_executable() -> PartitionAssembledExecutable {
+  PartitionAssembledExecutable {
+    package_name: "v1-stage0-emit-core",
+    bin_name: "claim_executor"
+  }
+}
+
+fn witness_decide(changed: List<String>) -> PartitionRebuildDecision {
+  stage0_partition_rebuild_decision(
+    changed_mirrors: changed,
+    unlocatable: [],
+    rows: generated_partition_crate_rows,
+    executable: witness_fixture_executable()
+  )
+}
+
+fn witness_closure_of(changed: List<String>) -> List<String> {
+  match witness_decide(changed: changed) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: c, executable_assembly: _ } => c
+    WholeCompilerRebuildRequired { cause: _ } => []
+    RebuildScopeRefused { cause: _ } => []
+  }
+}
+
+fn witness_has(items: List<String>, item: String) -> Bool {
+  items |> any(x => x == item)
+}
+
+// CONTROL 1 -- leaf-partition edit: the owner, its real downstream closure, and the executable
+// relink; two named unrelated packages stay uncompiled.
+test fn witness_leaf_edit_compiles_owner_and_downstream_holds() -> Bool {
+  match witness_decide(changed: ["std_effects.rs"]) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
+      (count(o) == 1)
+        && witness_has(items: o, item: "v1-stage0-std-surface")
+        && witness_has(items: c, item: "v1-stage0-std-surface")
+        && witness_has(items: c, item: "v1-stage0-extdeps-languages")
+        && witness_has(items: c, item: "v1-stage0-v1-artifact")
+        && witness_has(items: c, item: "v1-stage0-v1-infer")
+        && witness_has(items: c, item: "v1-stage0-emit-core")
+        && (match assembly {
+              PartitionAssembledExecutable { package_name: p, bin_name: _ } => p == "v1-stage0-emit-core"
+              ExecutableAssemblyUnavailable { trigger: _, detail: _ } => false
+            })
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+test fn witness_leaf_edit_excludes_unrelated_packages_holds() -> Bool {
+  let closure = witness_closure_of(changed: ["std_effects.rs"])
+  let excluded = rebuild_scope_excluded_packages(closure: closure, rows: generated_partition_crate_rows)
+  (count(closure) > 0)
+    && witness_has(items: excluded, item: "v1-stage0-runtime")
+    && witness_has(items: excluded, item: "v1-stage0-std-core")
+    && !witness_has(items: closure, item: "v1-stage0-runtime")
+    && !witness_has(items: closure, item: "v1-stage0-std-core")
+}
+
+// CONTROL 2 -- foundation edit: the derived closure is wider than the owner, so the selector is
+// not hardcoded to one package.
+test fn witness_foundation_edit_widens_to_derived_closure_holds() -> Bool {
+  let closure = witness_closure_of(changed: ["v1_rt.rs"])
+  let excluded = rebuild_scope_excluded_packages(closure: closure, rows: generated_partition_crate_rows)
+  (count(closure) > 1)
+    && witness_has(items: closure, item: "v1-stage0-runtime")
+    && witness_has(items: closure, item: "v1-stage0-std-core")
+    && witness_has(items: closure, item: "v1-stage0-emit-core")
+    && (count(excluded) == 0)
+}
+
+// The two arms of control 2 are only meaningful against each other: the leaf closure must be a
+// strict subset of the foundation one, or "wider" is a word about nothing.
+test fn witness_leaf_closure_is_narrower_than_foundation_holds() -> Bool {
+  count(witness_closure_of(changed: ["std_effects.rs"])) < count(witness_closure_of(changed: ["v1_rt.rs"]))
+}
+
+// CONTROL 3 -- whole-build inputs, one arm per positively modeled class.
+test fn witness_partition_generation_edit_requires_whole_rebuild_holds() -> Bool {
+  match witness_decide(changed: ["gunbc_stage0_crate_partition_generated.rs"]) {
+    WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: ms } } => count(ms) == 1
+    WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: _ } } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+test fn witness_shared_build_input_edit_requires_whole_rebuild_holds() -> Bool {
+  match witness_decide(changed: ["v1_compiler_workspace_members.rs"]) {
+    WholeCompilerRebuildRequired { cause: SharedCompilerBuildInputChanged { mirrors: ms } } => count(ms) == 1
+    WholeCompilerRebuildRequired { cause: PartitionGenerationAuthorityChanged { mirrors: _ } } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+// CONTROL 4 -- a mirror the partition does not own refuses BEFORE any build, naming the mirror.
+// cli_run.rs is a real hand-authored host module in the compared population and is owned by no
+// partition row, so this is the live shape of the coverage hole, not an invented name.
+test fn witness_unowned_mirror_refuses_holds() -> Bool {
+  match witness_decide(changed: ["cli_run.rs"]) {
+    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: m } } => m == "cli_run.rs"
+    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
+    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
+    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+  }
+}
+
+// CONTROL 5 -- two owners for one mirror refuses with its own cause. Fixture rows, because the
+// live roster must never contain this state; a foundation kind is used so both rows' manifests
+// resolve without a crate-dir lookup and the refusal under test is the ownership one.
+fn witness_duplicate_owner_rows() -> List<GeneratedPartitionCrateRow> {
+  [
+    GeneratedPartitionCrateRow {
+      package_name: "witness-pkg-left",
+      crate_dir: "src/v1/witness_left",
+      kind: GeneratedFoundationCrate,
+      modules: ["witness_dup_module"],
+      reexport_packages: [],
+      carries_non_empty_wrappers: false
+    },
+    GeneratedPartitionCrateRow {
+      package_name: "witness-pkg-right",
+      crate_dir: "src/v1/witness_right",
+      kind: GeneratedFoundationCrate,
+      modules: ["witness_dup_module"],
+      reexport_packages: [],
+      carries_non_empty_wrappers: false
+    }
+  ]
+}
+
+test fn witness_duplicate_owner_refuses_holds() -> Bool {
+  match stage0_partition_rebuild_decision(
+    changed_mirrors: ["witness_dup_module.rs"],
+    unlocatable: [],
+    rows: witness_duplicate_owner_rows(),
+    executable: witness_fixture_executable()
+  ) {
+    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: m, packages: ps } } =>
+      (m == "witness_dup_module.rs") && (count(ps) == 2)
+    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
+    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
+    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+  }
+}
+
+// An unreadable changed path refuses, and refuses as ITS OWN cause: "the selection could not
+// answer" and "the whole compiler must rebuild" are different states.
+test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
+  match stage0_partition_rebuild_decision(
+    changed_mirrors: [],
+    unlocatable: ["src/v1/stage0/src/../unreadable"],
+    rows: generated_partition_crate_rows,
+    executable: witness_fixture_executable()
+  ) {
+    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: ms, reason: _ } } => count(ms) == 1
+    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
+    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
+    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+  }
+}
+
+// An executable package the changed bytes do not reach cannot be relinked into a next pass that
+// carries them, so it refuses rather than linking a stale binary.
+test fn witness_unreached_executable_package_refuses_holds() -> Bool {
+  match stage0_partition_rebuild_decision(
+    changed_mirrors: ["std_effects.rs"],
+    unlocatable: [],
+    rows: generated_partition_crate_rows,
+    executable: PartitionAssembledExecutable { package_name: "v1-stage0-runtime", bin_name: "claim_executor" }
+  ) {
+    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: p, detail: _ } } => p == "v1-stage0-runtime"
+    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
+    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
+    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+  }
+}
+
+// CONTROL 6 -- the rung-honesty pair, and the reason it is a PAIR. Today's live decision DERIVES
+// the scope (the packages are a real answer, and the round-cost projection reports them) while
+// carrying ExecutableAssemblyUnavailable, so one arm alone cannot separate "we derived a scope"
+// from "we rebuilt from it". The first test fixes the derived shape; the second fixes that the
+// same decision is NOT actuatable. Both go red the moment this module claims an assembly the tree
+// does not build -- which is exactly the inflation the acceptance bar forbids -- and both are
+// edited, not deleted, when the executable cut lands: the shape survives, the expected arm flips.
+test fn witness_today_derives_scope_with_unavailable_assembly_holds() -> Bool {
+  match stage0_partition_rebuild_decision_today(changed_mirrors: ["std_effects.rs"], unlocatable: []) {
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
+      witness_has(items: o, item: "v1-stage0-std-surface")
+        && (count(c) > 1)
+        && (match assembly {
+              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => true
+              PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
+            })
+    WholeCompilerRebuildRequired { cause: _ } => false
+    RebuildScopeRefused { cause: _ } => false
+  }
+}
+
+test fn witness_today_scope_is_not_actuatable_holds() -> Bool {
+  !stage0_partition_rebuild_is_actuatable(
+    decision: stage0_partition_rebuild_decision_today(changed_mirrors: ["std_effects.rs"], unlocatable: [])
+  )
+}
+
+// The positive control for actuatability: without it, the predicate above could be a constant
+// false and nothing would notice.
+test fn witness_assembled_executable_scope_is_actuatable_holds() -> Bool {
+  stage0_partition_rebuild_is_actuatable(decision: witness_decide(changed: ["std_effects.rs"]))
+}
+
+test fn witness_next_pass_executable_assembly_is_unavailable_holds() -> Bool {
+  match stage0_next_pass_executable_assembly() {
+    ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => true
+    PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
+  }
+}
