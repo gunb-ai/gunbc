@@ -12,12 +12,17 @@ import gunbc.machine_intake_mount_establishment {
   MountRequested,
   MountTimedOut,
   EstablishedThenAbsent,
+  EvaluationBoundaryBeforeLastObservation,
+  MountEvaluationBoundary,
   ObservationBeforeRequest,
   ObservationOutOfOrder,
+  ObservationTimestampCollision,
   RemoteMediaListingObservation,
+  RemoteMediaMountStanding,
   RemoteMediaMountWindow,
   TimedOutThenListed,
   mount_is_established,
+  mount_standing_as_of,
   remote_media_mount_standing,
 }
 
@@ -94,6 +99,8 @@ test fn a_listing_after_the_timeout_is_a_contradiction_not_a_late_success() -> B
         EstablishedThenAbsent { established_at: _, establishing_evidence: _, contradicted_at: _, contradicting_evidence: _ } => false
         ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
         ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
+        ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
+        EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -115,6 +122,8 @@ test fn an_absence_after_establishment_is_a_contradiction_not_a_regression() -> 
         TimedOutThenListed { deadline: _, listed_at: _, listing_evidence: _ } => false
         ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
         ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
+        ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
+        EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -147,6 +156,8 @@ test fn an_out_of_order_observation_is_a_defect() -> Bool {
         EstablishedThenAbsent { established_at: _, establishing_evidence: _, contradicted_at: _, contradicting_evidence: _ } => false
         TimedOutThenListed { deadline: _, listed_at: _, listing_evidence: _ } => false
         ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
+        ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
+        EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -164,10 +175,114 @@ test fn an_observation_before_the_request_is_a_defect() -> Bool {
         EstablishedThenAbsent { established_at: _, establishing_evidence: _, contradicted_at: _, contradicting_evidence: _ } => false
         TimedOutThenListed { deadline: _, listed_at: _, listing_evidence: _ } => false
         ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
+        ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
+        EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
     MountEstablished { established_at: _, establishing_evidence: _ } => false
     MountTimedOut { window: _, last_observed_at: _ } => false
   }
+}
+
+data clock_bytes: ContentHash = content_hash_of_value(value: "controller-clock-read")
+
+fn boundary_at(at: EpochMs) -> MountEvaluationBoundary {
+  MountEvaluationBoundary { observed_through: at, clock_evidence: clock_bytes }
+}
+
+// RED CONTROL — two observations sharing one millisecond used to be resolved by
+// the order the caller passed them, so the SAME clock produced Established one
+// way round and Contradictory the other. The clock proves no order, so both
+// orders must refuse. Byte-identical arguments are refused too: the defect is
+// that the ordering is unknown, not that the observations disagree.
+test fn two_observations_in_one_millisecond_are_refused_in_either_order() -> Bool {
+  let absent_then_listed = remote_media_mount_standing(window: window, observations: [absent_at(at: 2000), listed_at(at: 2000)])
+  let listed_then_absent = remote_media_mount_standing(window: window, observations: [listed_at(at: 2000), absent_at(at: 2000)])
+  collides_at(standing: absent_then_listed, at: 2000) && collides_at(standing: listed_then_absent, at: 2000)
+}
+
+fn collides_at(standing: RemoteMediaMountStanding, at: EpochMs) -> Bool {
+  match standing {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        ObservationTimestampCollision { previous_at: p, observed_at: o } => p == at && o == at
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// An observation exactly AT the deadline is OUTSIDE the half-open window, so a
+// listing there is a late success and refused as a contradiction. Without this
+// the declared budget would be spendable one observation past its own bound.
+test fn a_listing_exactly_at_the_deadline_is_outside_the_window() -> Bool {
+  match remote_media_mount_standing(window: window, observations: [listed_at(at: 6000)]) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        TimedOutThenListed { deadline: d, listed_at: at, listing_evidence: _ } => d == 6000 && at == 6000
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE CLOCK CLOSES THE WINDOW. A pending attempt that nobody polled again used
+// to stay pending forever, past its own deadline; the boundary finalizes it
+// with no further observation.
+test fn a_pending_attempt_times_out_at_the_boundary_without_another_poll() -> Bool {
+  let observations = [absent_at(at: 2000)]
+  let still_open = match mount_standing_as_of(window: window, observations: observations, boundary: boundary_at(at: 4000)) {
+    MountPending { window: _, last_observed_at: last, observations: _ } => last == 2000
+    _ => false
+  }
+  let closed = match mount_standing_as_of(window: window, observations: observations, boundary: boundary_at(at: 6000)) {
+    MountTimedOut { window: _, last_observed_at: last } => last == 2000
+    _ => false
+  }
+  still_open && closed
+}
+
+// An attempt nobody ever observed is still closed by its deadline, and is a
+// timeout rather than a success.
+test fn an_unobserved_attempt_times_out_at_its_deadline() -> Bool {
+  match mount_standing_as_of(window: window, observations: [], boundary: boundary_at(at: 6000)) {
+    MountTimedOut { window: _, last_observed_at: _ } => true
+    _ => false
+  }
+}
+
+// A boundary claiming to see less than what was already observed is a caller
+// defect, refused rather than clamped: clamping would silently reopen a window
+// the observations had already carried past.
+test fn a_boundary_before_the_last_observation_is_a_defect() -> Bool {
+  match mount_standing_as_of(window: window, observations: [absent_at(at: 3000)], boundary: boundary_at(at: 2000)) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EvaluationBoundaryBeforeLastObservation { observed_through: t, last_observed_at: last } => t == 2000 && last == 3000
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// TERMINAL MEANS NO REVIVAL, NOT IMMUTABILITY. A contradiction reached earlier
+// is preserved exactly by a later boundary, and an established mount is not
+// re-opened by one either.
+test fn the_boundary_preserves_terminal_standings() -> Bool {
+  let contradicted = mount_standing_as_of(window: window, observations: [listed_at(at: 2000), absent_at(at: 3000)], boundary: boundary_at(at: 9000))
+  let established = mount_standing_as_of(window: window, observations: [listed_at(at: 2000)], boundary: boundary_at(at: 9000))
+  let a = match contradicted {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EstablishedThenAbsent { established_at: at, establishing_evidence: _, contradicted_at: ct, contradicting_evidence: _ } => at == 2000 && ct == 3000
+        _ => false
+      }
+    _ => false
+  }
+  let b = match established {
+    MountEstablished { established_at: at, establishing_evidence: _ } => at == 2000
+    _ => false
+  }
+  a && b
 }

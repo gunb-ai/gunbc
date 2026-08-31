@@ -13,12 +13,25 @@ import std.content_hash { ContentHash }
 // prose and this module exists to make the difference structural.
 //
 // The distinction the type enforces: pending is only representable INSIDE a
-// declared bounded window, and every exit from that window is TERMINAL. Nothing
-// here can return to pending, and no later observation can overwrite a terminal
-// standing -- a green after a timeout is a CONTRADICTION, not a success, because
-// discarding an earlier terminal refusal because a later poll agreed is exactly
-// the instability this model refuses. Last-wins is unwritable: the fold has no
-// arm that replaces a terminal standing with a newer observation.
+// declared bounded window, and every exit from that window is TERMINAL. A green
+// after a timeout is a CONTRADICTION, not a success, because discarding an
+// earlier terminal refusal because a later poll agreed is exactly the
+// instability this model refuses.
+//
+// TERMINAL MEANS NO REVIVAL, NOT ABSOLUTE IMMUTABILITY -- the narrower statement
+// is the true one. A terminal operational answer may be REFINED INTO
+// CONTRADICTION by conflicting later evidence, and that refinement is correct:
+// evidence that the answer was wrong must not be discarded to protect the
+// answer. What no observation can do is revive a terminal standing back into
+// pending or into success. The law the fold implements:
+//
+//   Requested/Pending -> Pending | Established | TimedOut | Contradictory
+//   Established       -> Established | Contradictory
+//   TimedOut          -> TimedOut | Contradictory
+//   Contradictory     -> the identical Contradictory standing
+//
+// Last-wins is therefore unwritable in the direction that matters: no arm
+// replaces a terminal refusal with a later agreement.
 //
 // This is a workflow-layer carrier, not an extdeps one: an observation produced
 // by this repository is a receipt of OUR attempt, never a fact owned by the
@@ -37,10 +50,24 @@ type RemoteMediaListingObservation {
   raw_response: ContentHash
 }
 
-// THE BOUND IS DECLARED BEFORE THE FIRST POLL, not discovered by polling. A
-// window with no budget is unrepresentable, so "wait a bit longer" has nowhere
-// to live: the deadline is a function of the request, and every observation is
-// judged against it rather than against how patient the caller feels.
+// THE BOUND IS DECLARED BEFORE THE FIRST POLL, not discovered by polling. The
+// deadline is a function of the request, so "wait a bit longer" has nowhere to
+// live: every observation is judged against the declared bound rather than
+// against how patient the caller feels.
+//
+// THE WINDOW IS HALF-OPEN: requested_at <= observed_at < deadline. An
+// observation exactly AT the deadline is outside the establishment window, so
+// the bound means what a bound normally means and a budget cannot be spent
+// twice at its own boundary.
+//
+// A ZERO BUDGET IS REPRESENTABLE AND MEANS AN IMMEDIATELY-CLOSED WINDOW, which
+// is the honest reading of Milliseconds' range(min: 0) rather than a claim the
+// carrier does not support: half-open with a zero budget admits no observation
+// at all, so the first observation is judged past the deadline. An earlier
+// version of this annotation claimed a budgetless window was unrepresentable.
+// It was not — `where range` refinements are reported by the compiler as
+// deferred and enforce nothing — so the claim was rung inflation (§4b) and is
+// withdrawn rather than propped up with a second unenforced refinement.
 type RemoteMediaMountWindow {
   requested_at: EpochMs
   budget: Milliseconds
@@ -60,6 +87,8 @@ type MountContradiction
   | TimedOutThenListed { deadline: Int, listed_at: EpochMs, listing_evidence: ContentHash }
   | ObservationBeforeRequest { requested_at: EpochMs, observed_at: EpochMs }
   | ObservationOutOfOrder { previous_at: EpochMs, observed_at: EpochMs }
+  | ObservationTimestampCollision { previous_at: EpochMs, observed_at: EpochMs }
+  | EvaluationBoundaryBeforeLastObservation { observed_through: EpochMs, last_observed_at: EpochMs }
 
 type RemoteMediaMountStanding
   = MountRequested { window: RemoteMediaMountWindow }
@@ -80,9 +109,25 @@ fn mount_observation_is_out_of_order(previous_at: EpochMs?, observed_at: EpochMs
   }
 }
 
+// EQUAL TIMESTAMPS ARE UNORDERED, AND LIST POSITION IS NOT EVIDENCE. Two
+// observations sharing one millisecond were previously interpreted in the
+// order the caller happened to pass them, so absent-then-listed established the
+// mount while listed-then-absent contradicted it -- one clock, two verdicts,
+// decided by an argument's index. The clock proves no order between them, so
+// the pair is refused even when the two observations are byte-identical. A
+// producer that legitimately emits several observations inside one millisecond
+// needs a source-minted monotonic sequence number; until it has one, its
+// ordering is not a fact this model may read.
+fn mount_observation_collides(previous_at: EpochMs?, observed_at: EpochMs) -> Bool {
+  match previous_at {
+    Absent => false
+    Present { value: p } => observed_at == p
+  }
+}
+
 // The one transition. Every arm is decided by the standing it is IN plus the
-// observation, so there is no path that reaches a terminal standing and then
-// leaves it.
+// observation, so no path revives a terminal standing into pending or success;
+// the only onward move from a terminal answer is refinement into contradiction.
 fn advance_mount_standing(
   standing: RemoteMediaMountStanding,
   window: RemoteMediaMountWindow,
@@ -129,7 +174,7 @@ fn pending_or_terminal(
   observation: RemoteMediaListingObservation,
   observations: Int,
 ) -> RemoteMediaMountStanding {
-  if (observation.observed_at > mount_window_deadline(window: window)) {
+  if (observation.observed_at >= mount_window_deadline(window: window)) {
     match observation.listing {
       MediaImageAbsentFromListing => MountTimedOut { window: window, last_observed_at: observation.observed_at }
       MediaImageListed =>
@@ -170,6 +215,13 @@ fn mount_fold_step(
       },
       previous_at: Present { value: observation.observed_at },
     }
+  } else if mount_observation_collides(previous_at: acc.previous_at, observed_at: observation.observed_at) {
+    MountFold {
+      standing: MountObservationContradictory {
+        cause: ObservationTimestampCollision { previous_at: unwrap_previous(previous_at: acc.previous_at, fallback: observation.observed_at), observed_at: observation.observed_at },
+      },
+      previous_at: Present { value: observation.observed_at },
+    }
   } else if mount_observation_is_out_of_order(previous_at: acc.previous_at, observed_at: observation.observed_at) {
     MountFold {
       standing: MountObservationContradictory {
@@ -204,6 +256,80 @@ fn remote_media_mount_standing(
     init: MountFold { standing: MountRequested { window: window }, previous_at: none },
     f: fn(acc, o) { mount_fold_step(acc: acc, window: window, observation: o) },
   ).standing
+}
+
+// TIME CLOSES THE WINDOW; POLLING IS NOT WHAT MAKES A DEADLINE REAL. The fold
+// above answers over the observations that were actually taken, so with no
+// later poll a pending attempt stayed Pending and an unobserved one stayed
+// Requested -- indefinitely, past its own deadline. The passage of time never
+// finalized anything, which means the declared bound was only enforced against
+// callers that happened to keep looking.
+//
+// The boundary carries its own clock evidence rather than reading a clock,
+// because a workflow-layer verdict that silently consulted wall time would be
+// unreproducible: the same observations plus the same boundary must always give
+// the same standing. observed_through is how far this evaluation can honestly
+// speak, and it may not precede the last observation -- a boundary claiming to
+// see less than what was already observed is a defect in the caller, not a
+// shorter window, so it is refused rather than clamped.
+type MountEvaluationBoundary {
+  observed_through: EpochMs
+  clock_evidence: ContentHash
+}
+
+fn mount_last_observed_at(standing: RemoteMediaMountStanding) -> EpochMs? {
+  match standing {
+    MountPending { window: _, last_observed_at: last, observations: _ } => Present { value: last }
+    MountRequested { window: _ } => none
+    MountEstablished { established_at: _, establishing_evidence: _ } => none
+    MountTimedOut { window: _, last_observed_at: _ } => none
+    MountObservationContradictory { cause: _ } => none
+  }
+}
+
+fn boundary_precedes_last_observation(standing: RemoteMediaMountStanding, boundary: MountEvaluationBoundary) -> Bool {
+  match mount_last_observed_at(standing: standing) {
+    Absent => false
+    Present { value: last } => boundary.observed_through < last
+  }
+}
+
+// The standing of one mount attempt as of a declared moment. Terminal standings
+// are preserved exactly; only the nonterminal pair can be closed by the clock,
+// and only once the boundary has actually reached the deadline.
+fn mount_standing_as_of(
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+  boundary: MountEvaluationBoundary,
+) -> RemoteMediaMountStanding {
+  let standing = remote_media_mount_standing(window: window, observations: observations)
+  if boundary_precedes_last_observation(standing: standing, boundary: boundary) {
+    MountObservationContradictory {
+      cause: EvaluationBoundaryBeforeLastObservation {
+        observed_through: boundary.observed_through,
+        last_observed_at: unwrap_previous(previous_at: mount_last_observed_at(standing: standing), fallback: boundary.observed_through),
+      },
+    }
+  } else {
+    close_window_at_boundary(standing: standing, window: window, boundary: boundary)
+  }
+}
+
+fn close_window_at_boundary(
+  standing: RemoteMediaMountStanding,
+  window: RemoteMediaMountWindow,
+  boundary: MountEvaluationBoundary,
+) -> RemoteMediaMountStanding {
+  let reached = boundary.observed_through >= mount_window_deadline(window: window)
+  match standing {
+    MountRequested { window: w } =>
+      if reached { MountTimedOut { window: w, last_observed_at: window.requested_at } } else { MountRequested { window: w } }
+    MountPending { window: w, last_observed_at: last, observations: n } =>
+      if reached { MountTimedOut { window: w, last_observed_at: last } } else { MountPending { window: w, last_observed_at: last, observations: n } }
+    MountEstablished { established_at: at, establishing_evidence: ev } => MountEstablished { established_at: at, establishing_evidence: ev }
+    MountTimedOut { window: w, last_observed_at: last } => MountTimedOut { window: w, last_observed_at: last }
+    MountObservationContradictory { cause: c } => MountObservationContradictory { cause: c }
+  }
 }
 
 // The only standing a delivery phase may treat as established. Pending is not a
