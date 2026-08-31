@@ -13,6 +13,7 @@ import v2.std.text {
   host_string_text_value,
   string_head,
   string_is_empty,
+  string_replace,
   string_split
 }
 
@@ -177,4 +178,34 @@ test fn text_split_partial_delimiter_prefix_does_not_cut_holds() -> Bool {
     }
   )
   length(xs: fields) == 1
+}
+
+// The discriminating replace case: a needle occurrence must be CUT and the replacement
+// interleaved -- a replace that dropped the substitution, or left the needle in place, goes red.
+test fn text_replace_substitutes_at_the_occurrence_holds() -> Bool {
+  let out = string_replace(
+    source: Cons {
+      head: text_witness_char_a,
+      tail: text_pair(first: text_witness_char_d, second: text_witness_char_b)
+    },
+    needle: text_delimiter(c: text_witness_char_d),
+    replacement: text_single(c: text_witness_char_b)
+  )
+  length(xs: out) == 3
+    && text_field_is_char(fields: Cons { head: out, tail: Empty }, index: 0, expected: text_witness_char_a)
+    && match string_head(s: skip(xs: out, n: 1)) {
+      CharFound { value } => text_char_eq(a: value, b: text_witness_char_b)
+      CharAbsent => false
+    }
+}
+
+// No occurrence: the source survives byte-for-byte.
+test fn text_replace_without_occurrence_preserves_source_holds() -> Bool {
+  let out = string_replace(
+    source: text_single(c: text_witness_char_a),
+    needle: text_delimiter(c: text_witness_char_d),
+    replacement: text_single(c: text_witness_char_b)
+  )
+  length(xs: out) == 1
+    && text_field_is_char(fields: Cons { head: out, tail: Empty }, index: 0, expected: text_witness_char_a)
 }
