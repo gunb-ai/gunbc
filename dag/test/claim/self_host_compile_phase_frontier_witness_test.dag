@@ -21,6 +21,7 @@ import gunbc.self_host_compile_phase_frontier {
   OpenUnadmittedRegression,
   ClosedUnadmittedRegression,
   RegressionTransitionHeld,
+  RegressionTransitionMalformed,
   advance_open_unadmitted,
   complete_open_unadmitted_series,
   PhaseBoardSeriesRefused,
