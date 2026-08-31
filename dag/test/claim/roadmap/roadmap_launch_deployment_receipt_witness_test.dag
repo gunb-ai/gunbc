@@ -158,6 +158,7 @@ fn rlm_predecessor(run_id: String) -> PredecessorRunProvenance {
 
 fn rlm_provenance() -> RunProvenanceFact {
   RunProvenanceObserved {
+    receipt_repository: "gunb-ai/gunbc",
     plan: rlm_predecessor(run_id: "1001"),
     apply: rlm_predecessor(run_id: "1002"),
     dashboard: rlm_predecessor(run_id: "1003"),
@@ -248,6 +249,10 @@ fn with_principal(f: RoadmapLaunchDeploymentFacts, p: PrincipalFact) -> RoadmapL
 fn with_host(f: RoadmapLaunchDeploymentFacts, h: HostFact) -> RoadmapLaunchDeploymentFacts {
   RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: h, observation_window: f.observation_window, run_provenance: f.run_provenance }
 }
+fn with_release_binding(f: RoadmapLaunchDeploymentFacts, b: DeployedReleaseBinding) -> RoadmapLaunchDeploymentFacts {
+  RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: b, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: f.observation_window, run_provenance: f.run_provenance }
+}
+
 fn with_window(f: RoadmapLaunchDeploymentFacts, w: ObservationWindowFact) -> RoadmapLaunchDeploymentFacts {
   RoadmapLaunchDeploymentFacts { desired_revision: f.desired_revision, plan_receipt: f.plan_receipt, apply_receipt: f.apply_receipt, dashboard_receipt: f.dashboard_receipt, deployed_tree: f.deployed_tree, release_binding: f.release_binding, readiness: f.readiness, transition: f.transition, unit_standing: f.unit_standing, tick_standing: f.tick_standing, footprint: f.footprint, provider_preflight: f.provider_preflight, dispatch_preflight: f.dispatch_preflight, workflow_endpoint: f.workflow_endpoint, instance_endpoint: f.instance_endpoint, principal: f.principal, observed_host: f.observed_host, observation_window: w, run_provenance: f.run_provenance }
 }
@@ -474,7 +479,7 @@ test fn witness_apply_admitted_against_q_is_incomplete_at_apply_receipt() -> Boo
 
 // P1-4: each leg of the four-run provenance chain blocks on its own defect.
 fn rlm_provenance_with_plan(p: PredecessorRunProvenance) -> RunProvenanceFact {
-  RunProvenanceObserved { plan: p, apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: true }
+  RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: p, apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: true }
 }
 
 test fn witness_predecessor_non_success_conclusion_is_incomplete_at_run_provenance() -> Bool {
@@ -494,7 +499,7 @@ test fn witness_predecessor_run_id_substitution_is_incomplete_at_run_provenance(
 }
 
 test fn witness_receipt_workflow_ref_not_named_is_incomplete_at_run_provenance() -> Bool {
-  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: false }), member: "run_provenance")
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: false }), member: "run_provenance")
 }
 
 test fn witness_provenance_unobserved_is_incomplete_at_run_provenance() -> Bool {
@@ -577,4 +582,83 @@ test fn witness_receipt_document_facts_are_machine_readable() -> Bool {
             })
       }
   }
+}
+
+// Review 5062738052 B2: the receipt run itself must execute in the canonical repository -- a fork
+// spelling fork-owner/gunbc satisfies the workflow-ref prefix check, so this is its own blocker.
+test fn witness_receipt_run_in_another_repository_is_incomplete_at_run_provenance() -> Bool {
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "fork-owner/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: true }), member: "run_provenance")
+}
+
+// Review 5062738052 B1: the routed endpoint serving R under the WRONG surface refuses at the
+// release binding -- the mixed-locus counterexample (local green, routed wrong) is unwritable now
+// that the binding consumes the routed identity, and this is its discriminating fixture.
+test fn witness_routed_surface_mixed_is_incomplete_at_release_binding() -> Bool {
+  let b = match git_object_id_from_untagged_hex(hex: rlm_fixture_r) {
+    Absent => ReleaseBindingUnobserved { cause: "fixture revision undecodable" }
+    Present { value: oid } => ReleaseSurfaceMixed {
+      revision: oid,
+      expected_surface: Fnv1a64Structural { digest: rlm_fixture_surface as Fnv1a64StructuralDigestHex },
+      process_surface: Fnv1a64Structural { digest: "ffffffffffffffff" as Fnv1a64StructuralDigestHex },
+    }
+  }
+  incomplete_at(facts: with_release_binding(f: rlm_complete_facts(), b: b), member: "release_binding")
+}
+
+// Review 5062738052 B1: the routed running-release member of the observation window changes
+// between open and close -- a route flip during capture is a window change, not a stable window.
+test fn witness_route_change_during_window_is_incomplete_at_observation_window() -> Bool {
+  let closed = WindowSnapshot {
+    main_hex: rlm_fixture_r, desired_hex: rlm_fixture_r, deployed_revision_hex: rlm_fixture_r,
+    deployed_tree_hex: rlm_fixture_tree, running_release_hex: "0000000000000000000000000000000000000001",
+    transition: "permitted", active_instance: "srv1-live",
+  }
+  incomplete_at(facts: with_window(f: rlm_complete_facts(), w: WindowChanged { opened: rlm_snapshot(), closed: closed, changed: ["running_release_hex"] }), member: "observation_window")
+}
+
+// Review 5062738052 B3: tick freshness is a typed-arm object in the durable document -- the
+// observed age and the cadence-derived bound are recovered by JSON navigation, never from prose.
+test fn witness_receipt_document_freshness_is_machine_readable() -> Bool {
+  let fresh_doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(subject: rlm_subject(), facts: rlm_complete_facts()))
+  let stale_tick = rlm_tick(instance_id: "srv1-live", revision: rlm_fixture_r, mode: ManualReady, observed_at: rlm_fixture_tick_observed_at)
+  let stale_doc = roadmap_launch_deployment_receipt_document(v: roadmap_launch_deployment_verdict(
+    subject: rlm_subject(),
+    facts: with_tick(f: rlm_complete_facts(), t: TickObserved { receipt: stale_tick, freshness: TickStale { age_seconds: second(count: 540), bound_seconds: second(count: 180) } }),
+  ))
+  let fresh_ok = match parse_json_document(s: fresh_doc) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: root } =>
+      match rlm_doc_member(doc: root, key: "facts") {
+        Absent => false
+        Present { value: facts } =>
+          match rlm_doc_member(doc: facts, key: "tick_standing") {
+            Absent => false
+            Present { value: tick } =>
+              match rlm_doc_member(doc: tick, key: "freshness") {
+                Absent => false
+                Present { value: fr } => rlm_doc_string(doc: fr, key: "arm") == "fresh" && rlm_doc_string(doc: fr, key: "age_seconds") == "30"
+              }
+          }
+      }
+  }
+  let stale_ok = match parse_json_document(s: stale_doc) {
+    JsonDocumentUnreadable { gap: _ } => false
+    JsonDocumentParsed { value: root } =>
+      match rlm_doc_member(doc: root, key: "facts") {
+        Absent => false
+        Present { value: facts } =>
+          match rlm_doc_member(doc: facts, key: "tick_standing") {
+            Absent => false
+            Present { value: tick } =>
+              match rlm_doc_member(doc: tick, key: "freshness") {
+                Absent => false
+                Present { value: fr } =>
+                  rlm_doc_string(doc: fr, key: "arm") == "stale"
+                    && rlm_doc_string(doc: fr, key: "age_seconds") == "540"
+                    && rlm_doc_string(doc: fr, key: "bound_seconds") == "180"
+              }
+          }
+      }
+  }
+  fresh_ok && stale_ok
 }

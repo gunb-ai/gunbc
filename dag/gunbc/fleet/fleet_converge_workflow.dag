@@ -726,6 +726,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
 
 data fleet_converge_workflow: Workflow = Workflow {
   name: "fleet-converge",
+  run_name: Present { value: "fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}" },
   on: [
     WorkflowDispatch {
       inputs: [
@@ -781,6 +782,13 @@ data fleet_converge_workflow: Workflow = Workflow {
         DispatchInput {
           name: "dashboard_workflow_run_id",
           description: Present { value: "Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt" },
+          required: false,
+          default: none,
+          type: InputString,
+        },
+        DispatchInput {
+          name: "transaction_nonce",
+          description: Present { value: "Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step" },
           required: false,
           default: none,
           type: InputString,

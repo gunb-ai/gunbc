@@ -79,6 +79,7 @@ data workflow_run_activity_completed: String = "completed"
 
 type Workflow {
   name: String
+  run_name: String?
   on: List<WorkflowTrigger>
   concurrency: ConcurrencySpec?
   jobs: List<Job>

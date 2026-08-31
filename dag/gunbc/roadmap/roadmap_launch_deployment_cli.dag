@@ -213,25 +213,33 @@ fn deployed_tree_hexes(o: DeployedTreeObservation) -> List<String> {
   }
 }
 
-fn running_release_hex(port: Int) -> String {
-  match observe_healthz(port: port) {
-    HealthzRefused { detail: d } => join(["refused: ", d], "")
-    HealthzServed { body: _, identity: id } =>
-      match id {
-        RunningReleaseIdentified { observation: o } => o.revision as String
-        RunningReleaseUnidentified { cause: c } => join(["unidentified: ", running_release_unidentified_detail(cause: c)], "")
+fn running_release_hex_routed(base: String?) -> String {
+  match base {
+    Absent => "refused: tailnet route underivable"
+    Present { value: b } =>
+      match observe_healthz_routed(base_url: b) {
+        HealthzRefused { detail: d } => join(["refused: ", d], "")
+        HealthzServed { body: _, identity: id } =>
+          match id {
+            RunningReleaseIdentified { observation: o } => o.revision as String
+            RunningReleaseUnidentified { cause: c } => join(["unidentified: ", running_release_unidentified_detail(cause: c)], "")
+          }
       }
   }
 }
 
-fn active_instance_text(port: Int) -> String {
-  match observe_instance_document(port: port) {
-    InstanceDocumentServed { document: d } => d.instance_id
-    InstanceDocumentRefused { detail: d } => join(["refused: ", d], "")
+fn active_instance_text_routed(base: String?) -> String {
+  match base {
+    Absent => "refused: tailnet route underivable"
+    Present { value: b } =>
+      match observe_instance_document_routed(base_url: b) {
+        InstanceDocumentServed { document: d } => d.instance_id
+        InstanceDocumentRefused { detail: d } => join(["refused: ", d], "")
+      }
   }
 }
 
-func window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance) -> WindowSnapshot
+func window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardInstance, routed_base: String?) -> WindowSnapshot
   uses net: Network
 {
   let tree = observe_deployed_tree(locus: deployed_tree_locus(
@@ -245,9 +253,9 @@ func window_snapshot(context: FleetSshExecutionContext, instance: HostDashboardI
     desired_hex: remote_ref_text(r: read_desired_hex()),
     deployed_revision_hex: hexes.first(),
     deployed_tree_hex: hexes.last(),
-    running_release_hex: running_release_hex(port: instance.listen_port),
+    running_release_hex: running_release_hex_routed(base: routed_base),
     transition: transition_text(s: transition_actuation_standing(instance_root: instance.instance_root as String)),
-    active_instance: active_instance_text(port: instance.listen_port),
+    active_instance: active_instance_text_routed(base: routed_base),
   }
 }
 
@@ -388,7 +396,11 @@ func rlm_launch_deployment_receipt_wet() -> ProcessExit
             RunRevisionRefused { expected: e, observed: o } =>
               exit_failure(reason: join(["rlm_launch_deployment_receipt: RunRevisionNotExpected — this run executes ", o, " but R is ", e], ""))
             RunRevisionAdmitted { revision: r } =>
-              if launch_admission_contract_digest_hex() != rlm1_contract_digest_frozen {
+              if run.repository != gunbc_repository.full_name {
+                exit_failure(reason: join(["rlm_launch_deployment_receipt: RunRepositoryNotCanonical — this run executes in ", run.repository, ", not ", gunbc_repository.full_name], ""))
+              } else if !run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) {
+                exit_failure(reason: join(["rlm_launch_deployment_receipt: RunWorkflowRefNotNamed — GITHUB_WORKFLOW_REF ", run.workflow_ref, " does not name ", rlm_workflow_file_path()], ""))
+              } else if launch_admission_contract_digest_hex() != rlm1_contract_digest_frozen {
                 exit_failure(reason: join(["rlm_launch_deployment_receipt: Rlm1ContractDigestDrift — R computes launch admission contract ", launch_admission_contract_digest_hex(), ", the frozen RLM-1 join is ", rlm1_contract_digest_frozen], ""))
               } else {
                 match read_run_id_input(name: rlm_plan_run_id_env_name) {
@@ -461,6 +473,7 @@ func rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_
   uses net: Network
 {
   RunProvenanceObserved {
+    receipt_repository: run.repository,
     plan: rlm_predecessor_run(run_id: plan_run_id),
     apply: rlm_predecessor_run(run_id: apply_run_id),
     dashboard: rlm_predecessor_run(run_id: dashboard_run_id),
@@ -496,7 +509,8 @@ func rlm_launch_deployment_receipt_bound(
     dashboard_run_id: dashboard_run_id,
     receipt_run_id: run.run_id,
   }
-  let opened = window_snapshot(context: context, instance: instance)
+  let routed_base = rlm_routed_base_url()
+  let opened = window_snapshot(context: context, instance: instance, routed_base: routed_base)
   let main_hex = read_remote_main_hex()
   let desired_hex = read_desired_hex()
   let plan = match read_fleet_converge_plan_receipt_at(path: fleet_converge_plan_receipt_path) {
@@ -516,20 +530,18 @@ func rlm_launch_deployment_receipt_bound(
     target: fleet_locus_ssh_target(host: rlm_receipt_host as HostIdentity),
     repo: srv1_gunbc_repo_root as String as NonEmptyStr,
   ))
-  let routed_base = rlm_routed_base_url()
-  let healthz = observe_healthz(port: instance.listen_port)
   let healthz_routed = match routed_base {
     Absent => HealthzRefused { detail: "tailnet route underivable: the deployment spec declares no tailnet domain" }
     Present { value: base } => observe_healthz_routed(base_url: base)
   }
-  let binding = match healthz {
+  let binding = match healthz_routed {
     HealthzServed { body: _, identity: id } =>
       deployed_release_binding(
         observation: tree,
         identity: id,
         expected_surface: materialize_live_roadmap_site_surface_bundle().bundle_identity,
       )
-    HealthzRefused { detail: d } => ReleaseBindingUnobserved { cause: join(["healthz probe refused: ", d], "") }
+    HealthzRefused { detail: d } => ReleaseBindingUnobserved { cause: join(["routed healthz probe refused: ", d], "") }
   }
   let readiness = match healthz_routed {
     HealthzRefused { detail: d } => ReadinessRefused { detail: d }
@@ -583,7 +595,7 @@ func rlm_launch_deployment_receipt_bound(
     instance_endpoint: instance_doc,
     principal: principal_fact(),
     observed_host: host,
-    observation_window: observation_window_fact(opened: opened, closed: window_snapshot(context: context, instance: instance)),
+    observation_window: observation_window_fact(opened: opened, closed: window_snapshot(context: context, instance: instance, routed_base: routed_base)),
     run_provenance: rlm_run_provenance_fact(run: run, plan_run_id: plan_run_id, apply_run_id: apply_run_id, dashboard_run_id: dashboard_run_id),
   }
   let verdict = roadmap_launch_deployment_verdict(subject: subject, facts: facts)

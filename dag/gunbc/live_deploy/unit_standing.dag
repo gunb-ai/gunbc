@@ -33,7 +33,7 @@ import extdeps.systemd.unit_file {
 // note); UnitFileState carries the same fact through the show surface, which is the read that
 // already existed.
 // 
-// WHAT IS COMPARED EXACTLY AND WHAT IS COMPARED STRUCTURALLY, stated so the residue is visible.
+// WHAT IS COMPARED EXACTLY, member by member, stated so any residue would be visible.
 // ExecStart, User and WorkingDirectory are compared exactly against the directives of R's emitted
 // unit file (gunbc.live_deploy.emit live_deploy_serve_unit_file /
 // live_deploy_belt_service_unit_file), reading systemd's `{ path=... ; argv[]=... ; ... }`

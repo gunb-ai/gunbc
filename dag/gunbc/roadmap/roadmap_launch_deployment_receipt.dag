@@ -1,6 +1,7 @@
 module gunbc.roadmap_launch_deployment_receipt
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
+import std.measure { second_count }
 import std.content_hash { content_hash_atom, content_hash_tagged_structural }
 import extdeps.languages.json.emit { JsonValue, JsonKeyValue, json_kv, json_string, json_object, json_array, json_bool, serialize_json }
 import gunbc.actions_run_binding { ActionsRunBinding, run_binding_names_workflow_file }
@@ -179,6 +180,7 @@ type PredecessorRunProvenance {
 
 type RunProvenanceFact
   = RunProvenanceObserved {
+      receipt_repository: String,
       plan: PredecessorRunProvenance,
       apply: PredecessorRunProvenance,
       dashboard: PredecessorRunProvenance,
@@ -530,7 +532,7 @@ fn predecessor_run_blockers(which: String, s: RoadmapLaunchDeploymentSubject, ex
 fn run_provenance_blockers(s: RoadmapLaunchDeploymentSubject, f: RunProvenanceFact) -> List<RoadmapLaunchDeploymentBlocker> {
   match f {
     RunProvenanceUnobserved { detail: d } => blocker(member: "run_provenance", detail: join(["unobserved: ", d], ""))
-    RunProvenanceObserved { plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
+    RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
       concat(
         concat(
           predecessor_run_blockers(which: "plan", s: s, expected_run_id: s.plan_run_id, p: p),
@@ -538,7 +540,10 @@ fn run_provenance_blockers(s: RoadmapLaunchDeploymentSubject, f: RunProvenanceFa
         ),
         concat(
           predecessor_run_blockers(which: "dashboard", s: s, expected_run_id: s.dashboard_run_id, p: d),
-          if named { [] } else { blocker(member: "run_provenance", detail: "the receipt run's own GITHUB_WORKFLOW_REF does not name the generated workflow file") },
+          concat(
+            if rr != s.repository { blocker(member: "run_provenance", detail: join(["the receipt run executes in ", rr, ", not the canonical ", s.repository], "")) } else { [] },
+            if named { [] } else { blocker(member: "run_provenance", detail: "the receipt run's own GITHUB_WORKFLOW_REF does not name the generated workflow file") },
+          ),
         ),
       )
   }
@@ -755,8 +760,8 @@ fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
       HostUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
     join(["run_provenance: ", match f.run_provenance {
-      RunProvenanceObserved { plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
-        join(["plan=", p.run_id, ":", p.conclusion_wire, " apply=", a.run_id, ":", a.conclusion_wire, " dashboard=", d.run_id, ":", d.conclusion_wire, " receipt_workflow_ref_named=", if named { "true" } else { "false" }], "")
+      RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
+        join(["plan=", p.run_id, ":", p.conclusion_wire, " apply=", a.run_id, ":", a.conclusion_wire, " dashboard=", d.run_id, ":", d.conclusion_wire, " receipt_repository=", rr, " receipt_workflow_ref_named=", if named { "true" } else { "false" }], "")
       RunProvenanceUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
     join(["observation_window: ", match f.observation_window {
@@ -858,7 +863,13 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
             TickExecuted { instance_id: i, deployed_revision: rev, spawn_mode: m } => fact_arm(arm: "executed", members: [json_kv(key: "instance_id", value: json_string(s: i)), json_kv(key: "deployed_revision", value: json_string(s: rev)), json_kv(key: "spawn_mode", value: json_string(s: spawn_mode_label(m: m)))])
             TickExecutionWithheld { refusal: why } => fact_arm(arm: "withheld", members: [json_kv(key: "refusal", value: json_string(s: why))])
           }),
-          json_kv(key: "freshness", value: json_string(s: tick_freshness_text(f: fr))),
+          json_kv(key: "freshness", value: match fr {
+            TickFresh { age_seconds: ag } => fact_arm(arm: "fresh", members: [json_kv(key: "age_seconds", value: json_string(s: to_string(second_count(ag))))])
+            TickStale { age_seconds: ag, bound_seconds: bd } => fact_arm(arm: "stale", members: [json_kv(key: "age_seconds", value: json_string(s: to_string(second_count(ag)))), json_kv(key: "bound_seconds", value: json_string(s: to_string(second_count(bd))))])
+            TickBeforeDeploy { observed_at: ob, deploy_completed_at: dc } => fact_arm(arm: "before_deploy", members: [json_kv(key: "observed_at", value: json_string(s: ob)), json_kv(key: "deploy_completed_at", value: json_string(s: dc))])
+            TickInstantUnparseable { which: wh, text: tx } => fact_arm(arm: "instant_unparseable", members: [json_kv(key: "which", value: json_string(s: wh)), json_kv(key: "text", value: json_string(s: tx))])
+            TickCadenceUnnormalizable { text: tx } => fact_arm(arm: "cadence_unnormalizable", members: [json_kv(key: "text", value: json_string(s: tx))])
+          }),
         ])
       TickUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
@@ -896,8 +907,9 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
       WindowUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "run_provenance", value: match f.run_provenance {
-      RunProvenanceObserved { plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
+      RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
         fact_arm(arm: "observed", members: [
+          json_kv(key: "receipt_repository", value: json_string(s: rr)),
           json_kv(key: "plan", value: predecessor_run_json(p: p)),
           json_kv(key: "apply", value: predecessor_run_json(p: a)),
           json_kv(key: "dashboard", value: predecessor_run_json(p: d)),

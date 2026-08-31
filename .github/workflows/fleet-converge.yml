@@ -1,4 +1,5 @@
 name: fleet-converge
+run-name: fleet-converge ${{ inputs.mode }} ${{ inputs.host }} nonce=${{ inputs.transaction_nonce }}
 on:
   workflow_dispatch:
     inputs:
@@ -35,6 +36,10 @@ on:
         type: string
       dashboard_workflow_run_id:
         description: Workflow run id of the dashboard deploy — required for rlm_launch_deployment_receipt
+        required: false
+        type: string
+      transaction_nonce:
+        description: Operator-minted unique nonce for one RLM transaction; echoed into run-name so each dispatched run is API-selectable by its displayTitle, closing the run-id correlation gap (review 5062738052 B4). Not consumed by any step
         required: false
         type: string
 jobs:
