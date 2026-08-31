@@ -41,7 +41,7 @@ under the same `workflow_path`, because the identity holding the name constant h
 *which version of this contract*. That is exactly the §3 meaning fork: one name, two materially
 different meanings, silently. The gap is authorable and therefore testable.
 
-### The construction
+### The construction — an atomic root cut, not an additive shadow
 
 One canonical contract identity whose grain is the §3 triple:
 
@@ -54,9 +54,71 @@ The equality law is stated once, on the carrier, and is field equality over exac
 never over the contract's internals, preserving the fleet note's rule. Each component mismatch keeps
 its own refusal cause, and no arm projects to `Bool`.
 
-`RequiredCiContractIdentity` becomes an instance of that identity rather than a parallel authority.
-Its existing `workflow_path` and `repository_full_name` refusal arms survive as the surface and name
-components; the epoch is new.
+`RequiredCiContractIdentity` is a **specialization of that shape**, not a parallel authority — the
+generic triple and the Required CI inhabitant are one generic authority with a domain-specific
+inhabitant, so the public domain name may survive. Its **old two-field representation may not.**
+
+Cut A eliminates the old independently writable representation *in the same landing*. Acceptable
+terminal forms are the specialization itself, or a domain wrapper whose only identity-bearing value
+is the canonical triple. These are explicitly **not** acceptable, because each preserves two writable
+answers and an alignment obligation between them:
+
+- a record keeping `workflow_path` and `repository_full_name` *beside* a `canonical_identity`;
+- an old constructor, a new constructor and a converter;
+- the old path/repository checks plus a shadow generic comparator.
+
+The final Cut A tree has **one production identity path**: the old two-field constructor is gone;
+`required_ci_contract`, `RequiredCiSucceeded`, `AcceptedFleetRevision`, refusal rendering and every
+witness consume the specialization; and no fallback can return to the old representation. That is the
+root-level atomic transition the replacement doctrine requires — "atomic" governs the *authority
+transition*, not whether the public domain name survives.
+
+### Field classification, so contract identity does not widen into every admission prerequisite
+
+| field | classification |
+| --- | --- |
+| `event.repository_full_name` | contract **naming surface** |
+| `event.workflow_path` | contract **name** |
+| subject-bound declared epoch | contract **epoch** |
+| `head_repository_full_name` | provenance/trust check — *not* contract identity |
+| `activity` | execution state — *not* contract identity |
+| `conclusion` | outcome — *not* contract identity |
+| `head_sha` | execution subject — *not* contract epoch |
+| branch / originating event | default-branch proposition — *not* contract identity |
+
+This preserves the module's current proposition split rather than absorbing every prerequisite of
+fleet admission into the identity.
+
+### The observed epoch must be a real production observation
+
+**This is the load-bearing half, and the one an additive change would silently miss.** Today
+`WorkflowRunEvent` carries workflow name, workflow id, workflow path, repositories, run id and head
+sha — **no contract epoch** — and `required_ci_contract()` is constructed from the judge's *local*
+authority and stamped into `RequiredCiSucceeded`. So adding `epoch` to `required_ci_contract()` alone
+would stamp the *expected* epoch onto the accepted result and establish nothing about which epoch the
+triggering run executed. A hand-built cross-epoch unit test would prove the comparator while the live
+producer remained structurally incapable of observing a mismatch.
+
+**The route this plan takes: exact-commit observation of the declared epoch at `event.head_sha`.**
+The contract's name already resolves through the generated artifact identity
+(`required_ci_contract` uses `artifact_path(a: WitnessFloorYamlArtifact)` =
+`.github/workflows/witnesses.yml`). The declared epoch is emitted **into that same artifact** by its
+workflow authority, so the observed epoch is read from the exact bytes the triggering run executed,
+addressed explicitly at `event.head_sha` rather than from ambient checkout state. For a push-triggered
+run the executed workflow file *is* the artifact at `head_sha`, which is the binding that makes this
+the contract artifact the run actually executed.
+
+**Why not the typed completion receipt.** It is the stronger shape, and the census says it is not
+cheap here: `floor_component_receipt_document` already binds workflow name, run id and head sha, but
+it has **no production consumer at all** — only its own witness — so nothing emits it today. Choosing
+it would mean building the emission end to end before the epoch became observable, which is a larger
+contribution and a specification-without-execution risk. It remains the honest upgrade if the
+receipt lane is ever built.
+
+These routes are explicitly rejected, each because it observes the judge rather than the subject:
+reading the current checkout's epoch; calling `required_ci_contract()` for both sides; deriving the
+epoch from the admission binary; treating `workflow_id` as a semantic epoch; or stamping the required
+epoch after path equality has already succeeded.
 
 ### Consumer, and what makes the epoch load-bearing
 
@@ -64,6 +126,19 @@ The consumer is the existing production fold `required_ci_admission`. The epoch 
 because a cross-epoch composition **refuses with an exact contract-epoch mismatch cause before the
 outcome is interpreted**. An epoch carried into a receipt that no decision reads would not count,
 and is explicitly not what this cut lands.
+
+### The guarantee this cut does and does not establish
+
+Stated honestly, because the difference is what stops a later reader over-reading it:
+
+- **cross-epoch admission** — *mechanically prevented* by the production join;
+- **an unbumped material contract change** — governed by **declared-version diligence**, unless a
+  separate classifier or contract-surface digest is added.
+
+Whether a change is materially contract-changing is not derived by this construction, so forgetting
+to bump the epoch remains possible. Cut A does **not** make all same-name meaning forks structurally
+impossible. It gives the repository one place to declare a transition, and makes a declared
+transition load-bearing.
 
 ### Acceptance receipt for Cut A
 
@@ -73,9 +148,14 @@ and is explicitly not what this cut lands.
   **Cardinality: exactly 1 refusal, 0 admissions.**
 - **Paired control.** The same event at the matching epoch admits, through the same fold, with every
   other axis untouched. **Cardinality: exactly 1 admission, 0 refusals.**
-- **Oracle independence.** The control constructs its expected identity from the identity authority's
-  own constructor; the fold under test reaches its answer through `required_ci_admission`. Neither
-  reconstructs the other's answer through a shared helper.
+- **Oracle independence, stated at the grain that matters.** "Expected comes from the constructor,
+  the fold answers through admission" is *not* sufficient on its own. The executed one-axis control
+  must have: the **required** identity derived from the Required CI authority; the **observed**
+  identity decoded from the triggering-run subject at `event.head_sha`; the mutation applied to the
+  **observed epoch only**; and an oracle that pattern-matches the exact mismatch cause and both
+  epochs **without calling the identity equality/mismatch fold under test**. The RED must traverse
+  the same production join used by fleet desired admission — a direct call to a generic identity
+  comparator is a useful unit witness but does not discharge the live gap.
 
 ## 2. Cut B — the quality floor, instantiated for evaluation budget
 
@@ -117,6 +197,29 @@ disappears as an independently authored fact.
   text. A constructor taking arbitrary consequence text would make malformed contracts writable and
   relocate the invariant into callers.
 
+### One entry, projected from the identity — never duplicated beside it
+
+`EvaluationBudgetPolicy` today stores `entry`, `cpu_limit`, `wall_limit`, and
+`EvaluationBudgetExceeded` independently carries `entry`. Once the evaluation contract's canonical
+name **is** the entry identity, a policy carrying both a contract *and* a separate `entry` field
+would admit a policy about two different entries. That shape is invalid.
+
+The terminal construction is therefore:
+
+```
+EvaluationBudgetPolicy { contract, cpu_limit, wall_limit }
+entry(policy) = policy.contract.name
+```
+
+or an enclosing contract carrying the policy, with `entry` existing in exactly one place. The same
+rule binds the result: "the breach carries exact identity and exact entry" means the entry is
+**projected from the identity**, not supplied independently beside it. The machine response may
+render an `entry` member, but its value derives from the one canonical identity.
+
+Both sides of the grade decision stay identity-bound — an assessment carries the contract together
+with its `Within | Exceeded` verdict. A bare `EvaluationWithinBudget` value, detached from the
+contract it assessed, must not cross the production boundary to be joined by convention later.
+
 ### How production consumes the single authority
 
 Not a grep equality gate over two literals — that retains the fork and adds a wall around it. The
@@ -142,11 +245,30 @@ Paired controls, unrelated axes fixed: `elapsed == limit` admits, and `elapsed <
 through the same arm — equality already belongs to the admitted side in the existing model.
 **Cardinality: 2 admissions, 0 exceeded.**
 
-**(ii) Authority-wiring falsifier.** Perturb the one consequence-code authority. Required outcome:
-the production-emitted code moves with it, **or** generation/compilation refuses because the
-production projection is no longer exhaustive. A stale production string is RED. This is *not* the
-quality breach; it establishes that the named consequence consumed by production has one authority.
-**Cardinality: 1 perturbation, 1 refusal-or-moved-value; 0 stale greens.**
+**(ii) Authority-wiring falsifier — a moved value, not a refusal.** For a *value* perturbation,
+refusal is **not** an acceptable success: an emitter that always refuses would satisfy that test
+while proving no authority-to-production binding at all. The required falsifier changes only the
+`evaluation_budget_refusal_code` authority and then requires, in order:
+
+- **without regeneration** — generated-artifact drift is RED;
+- **after regeneration** — the generated Rust contains the perturbed value; the exact seed binary
+  rebuilds; the real budget-exceeded path executes; **exactly one** machine refusal carries the
+  perturbed code; and **zero** instances of the former code occur in that response.
+
+**Cardinality: 1 perturbation → 1 drift RED before regen, 1 moved value after; 0 stale greens, 0
+occurrences of the former code.**
+
+A separate exhaustiveness mutation — adding a new consequence arm and requiring compilation or
+generation to refuse until the fold handles it — is worth enrolling, but it is **not** a substitute
+for the value-propagation falsifier and is reported separately.
+
+### The generated projection's full enrollment chain
+
+The generated-artifact authority and emitter are closed dispatches over explicitly enumerated
+artifact variants, so a new committed Rust projection is not one file — it is a chain, and the plan
+names every link: **artifact identity**, **path**, **commit policy**, **generation arm**, **emitted
+file**, **crate enrollment**, **drift adjudication**, and **executing consumer**. A missing link
+anywhere leaves the projection unreachable from the mechanism that is supposed to keep it honest.
 
 The two are reported with separate cardinalities. "Some RED occurs" establishes nothing.
 
@@ -156,15 +278,16 @@ The two are reported with separate cardinalities. "Some RED occurs" establishes 
 | --- | --- |
 | authority (A) | the canonical contract identity carrier; `gunbc.fleet.fleet_revision_acceptance` `RequiredCiContractIdentity` becomes an instance |
 | consumer (A) | `required_ci_admission`, the existing production fold |
+| observation (A) | the declared epoch emitted into `WitnessFloorYamlArtifact`, plus the decoder and the exact-commit read at `event.head_sha` that makes the **observed** epoch real |
 | authority (B) | `std.evaluation_budget` — contract identity, bounded-clock policy, typed consequence |
 | consumer (B) | the serve refusal path in `cli_run`, and the required-floor budget check |
-| generated projection (B) | the emitted Rust carrying the consequence identity, regenerated by `main_wet` and drift-gated |
+| generated projection (B) | the emitted Rust carrying the consequence identity, regenerated by `main_wet` and drift-gated — enrolled as artifact identity, path, commit policy, generation arm, emitted file, crate enrollment, drift adjudication and executing consumer |
 | witnesses | the epoch control and its pair (A); the semantic breach RED and its two controls, and the wiring falsifier (B) |
 | dissolved by landing | this plan file, deleted by the second cut — its consumers are the two cuts, and a retained copy would be a second prose representation of a live authority |
 
 ## 4. Contribution boundary
 
-Cut A touches the identity authority, the fleet acceptance module, and the A witnesses. Cut B touches
+Cut A touches the identity authority, the fleet acceptance module, the epoch's emission into the workflow artifact and its exact-commit observation at `event.head_sha`, and the A witnesses. The observation is part of the boundary, not an implementation detail: without it the epoch is stamped rather than observed. Cut B touches
 `std.evaluation_budget`, its emitted projection, the seed consumer call site, and the B witnesses.
 Neither cut edits DESIGN.md or `gunbc.design_document`: this plan derives from §3 and §4b as they
 already stand, and adds no paragraph to either.
