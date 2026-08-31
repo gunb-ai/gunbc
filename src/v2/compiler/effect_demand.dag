@@ -84,8 +84,15 @@ type EffectDemandKey {
 // realization, and it is the counted debt rather than a refusal arm: DESIGN section 4b(2) separates
 // cannot-climb from can-climb-now-but-unbuilt, and fabricating a plausible realization claim for an
 // unbuilt effect would be rung inflation in exactly the place the acceptance bar reads.
+// THE NATIVE CLAIM NAMES THE RUNTIME IT CLAIMS, because the arm that checks it joins on that runtime.
+// The claim was a bare NativeV2 while EffectRealizationKey already carried a runtime_identity, so the
+// realization side had an axis the demand side never compared -- and the unproven-native-claim arm
+// therefore admitted a realization from ANY runtime as proof of a native claim, which is the same
+// axis-only-load-bearing-on-one-side defect the realization key's own note records having fixed for
+// execution mode, committed one axis over. A demand is satisfied by a realization THE PROGRAM ACTUALLY
+// LINKS, so the linked runtime is part of the claim rather than a field carried beside it.
 type EffectDemandDisposition
-  = NativeV2
+  = NativeV2 { runtime_identity: String }
   | RetiredWithConsumer { consumer: DeclarationRef }
   | Unrealized { reason: Symbol }
 
@@ -215,18 +222,21 @@ fn effect_demand_realization_key(
 
 fn effect_demand_realization_satisfies(
   demand: EffectDemandKey,
+  claimed_runtime: String,
   realization: EffectRealizationKey
 ) -> Bool {
   (demand.operation.slug == realization.operation.slug)
     && execution_mode_eq(left: demand.mode, right: realization.mode)
+    && (claimed_runtime == realization.runtime_identity)
 }
 
 fn effect_demand_operation_realized(
   demand: EffectDemandKey,
+  claimed_runtime: String,
   realized: List<EffectRealizationKey>
 ) -> Bool {
   any(xs: realized, predicate: fn(candidate) {
-    effect_demand_realization_satisfies(demand: demand, realization: candidate)
+    effect_demand_realization_satisfies(demand: demand, claimed_runtime: claimed_runtime, realization: candidate)
   })
 }
 
@@ -292,7 +302,7 @@ fn effect_demand_census(
         } else {
           match row.disposition {
             RetiredWithConsumer { consumer: _ } => acc,
-            NativeV2 => Cons { head: RowWithoutDemand { key: row.key }, tail: acc },
+            NativeV2 { runtime_identity: _ } => Cons { head: RowWithoutDemand { key: row.key }, tail: acc },
             Unrealized { reason: _ } => Cons { head: RowWithoutDemand { key: row.key }, tail: acc }
           }
         }
@@ -303,7 +313,7 @@ fn effect_demand_census(
       empty: Empty,
       cons: fn(acc, row) {
         match row.disposition {
-          NativeV2 => if effect_demand_operation_realized(demand: row.key, realized: realized) {
+          NativeV2 { runtime_identity } => if effect_demand_operation_realized(demand: row.key, claimed_runtime: runtime_identity, realized: realized) {
             acc
           } else { Cons { head: NativeClaimWithoutRealization { key: row.key }, tail: acc } },
           RetiredWithConsumer { consumer: _ } => acc,
@@ -340,7 +350,7 @@ fn effect_demand_unrealized_rows(roster: List<EffectDemandRow>) -> List<EffectDe
     cons: fn(acc, row) {
       match row.disposition {
         Unrealized { reason: _ } => Cons { head: row, tail: acc },
-        NativeV2 => acc,
+        NativeV2 { runtime_identity: _ } => acc,
         RetiredWithConsumer { consumer: _ } => acc
       }
     }
@@ -633,27 +643,6 @@ fn effect_demand_receipts_agree_on_membership(left: DemandReceipt, right: Demand
   )
 }
 
-fn effect_demand_receipt_roots_resolved(receipt: DemandReceipt) -> Bool {
-  match receipt.root_resolution {
-    RootsResolvedNonEmpty => length(xs: receipt.root_identities) > 0
-    RootSetEmpty { attempted_identity: _ } => false
-    RootsUnresolved { reason: _ } => false
-  }
-}
-
-fn effect_demand_producers_are_distinct(left: DemandReceipt, right: DemandReceipt) -> Bool {
-  match left.producer {
-    ModeledCallReachability => match right.producer {
-      ModeledCallReachability => false
-      EmittedRealizationCensus => true
-    }
-    EmittedRealizationCensus => match right.producer {
-      ModeledCallReachability => true
-      EmittedRealizationCensus => false
-    }
-  }
-}
-
 // THE TWO INSTRUMENTS ARE JOINED HERE RATHER THAN BLURRED. The modeled call-reachability walk is the
 // SEMANTIC producer: it answers what the source says is reachable. The emitted-realization census is
 // the FALSIFIER: it answers what the target the compiler actually produced reaches. Each alone has a
@@ -761,8 +750,16 @@ data effect_demand_compiler_entry_module: String = "v2.compiler.compile"
 // DEMAND, which is call-reachability from the entry. Those are different questions and this repository
 // already names the gap between them as a recurring class. THE CORRECTED INSTRUMENT is a call-graph
 // reachability walk over the same emitted tree, seeded from every function the compiler entry module
-// owns, asking which of the nine host call sites it reaches. IT REACHES NONE OF THEM, spanning 2376 of
-// 5159 emitted functions across 90 modules. THE WALK IS AN OVER-APPROXIMATION ON PURPOSE, because the
+// owns, asking which of the nine host call sites it reaches. IT REACHES NONE OF THEM. THE WALK'S SPAN
+// IS DELIBERATELY NOT TRANSCRIBED HERE: an earlier revision copied its reached-function, total-function
+// and module counts into this block, and DESIGN section 6 rules that a measurement is cited by naming
+// the producer that re-derives it, never by copying its numbers -- a transcribed figure is unreachable
+// from the thing that owns it, so it rots without either end being touched. The producer is the
+// modeled call-reachability walk, carried on a DemandReceipt as ModeledCallReachability with its root
+// identities and its unresolved indirect edges. THAT WALK HAS NO COMMITTED ENTRY POINT YET, which is
+// this row's next-rung trigger and is exactly why the population below is a lower bound rather than a
+// promotion: a measurement with no producer anyone can re-run is a one-off and not an instrument.
+// THE WALK IS AN OVER-APPROXIMATION ON PURPOSE, because the
 // under-approximating version would have been unsound in exactly the mechanism under test: the compile
 // door dispatches its lens gates as STORED FUNCTION VALUES (a CompileLens record holding a gate),
 // which appear in the emitted Rust as bare identifiers with no call parentheses, so an extractor keyed
@@ -815,7 +812,8 @@ data effect_demand_minimal_entrypoint_origin_population: DemandPopulation = Popu
 // been shown: their live consumers are corpus-scanning lenses that pass repository scan roots, and
 // whether a corpus lens can be fed from a bound snapshot depends on a lens execution model that does
 // not exist yet. Classifying them NativeHostObservation would commit XL-1 to building six live-tree
-// transports for operations whose compile-path demand was just measured at zero. The honest state is
+// transports for operations this instrument observed no compile-path demand for -- an observation that
+// is a lower bound and not a zero, so it is not a reason to decline a transport either. The honest state is
 // that the question is open, so the arm that BLOCKS is the correct one -- an unclassified operation is
 // implementable by nobody, which is exactly the outcome, and effect_demand_blocked_operations counts
 // them so the block is visible rather than tacit. WHAT WOULD CLASSIFY THEM: an answer to whether lens
@@ -984,13 +982,48 @@ fn effect_demand_local_gate(
   agreement: DemandAgreement,
   census_is_sound: Bool
 ) -> EffectDemandEvidenceStanding {
-  if !effect_demand_receipt_roots_resolved(receipt: left) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_roots_unresolved } }
-  else if !effect_demand_receipt_roots_resolved(receipt: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_roots_unresolved } }
-  else if length(xs: left.unresolved_indirect_edge_identities) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_unresolved_indirect_edges } }
+  match left.root_resolution {
+    RootSetEmpty { attempted_identity: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_roots_unresolved },
+    RootsUnresolved { reason: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_roots_unresolved },
+    RootsResolvedNonEmpty => if length(xs: left.root_identities) == 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_roots_unresolved } }
+      else {
+        match right.root_resolution {
+          RootSetEmpty { attempted_identity: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_roots_unresolved },
+          RootsUnresolved { reason: _ } => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_roots_unresolved },
+          RootsResolvedNonEmpty => if length(xs: right.root_identities) == 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_roots_unresolved } }
+            else {
+              match left.producer {
+                ModeledCallReachability => match right.producer {
+                  ModeledCallReachability => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^one_producer_twice },
+                  EmittedRealizationCensus => effect_demand_local_gate_remaining_conjuncts(left: left, right: right, population: population, agreement: agreement, census_is_sound: census_is_sound)
+                },
+                EmittedRealizationCensus => match right.producer {
+                  ModeledCallReachability => effect_demand_local_gate_remaining_conjuncts(left: left, right: right, population: population, agreement: agreement, census_is_sound: census_is_sound),
+                  EmittedRealizationCensus => EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^one_producer_twice }
+                }
+              }
+            }
+        }
+      }
+  }
+}
+
+// THE CONJUNCTS THAT ARE NOT COPRODUCT FOLDS, split out so the two that ARE can be folded at the gate
+// head rather than through a Bool. Root resolution and producer distinctness are decided by matching
+// RootResolutionStanding and DemandProducer directly above; everything here compares list lengths,
+// derived identities and membership, so an if-chain is the fold and there is no richer carrier being
+// flattened. The split is what lets the gate stay one expression per conjunct in both halves.
+fn effect_demand_local_gate_remaining_conjuncts(
+  left: DemandReceipt,
+  right: DemandReceipt,
+  population: DemandPopulation,
+  agreement: DemandAgreement,
+  census_is_sound: Bool
+) -> EffectDemandEvidenceStanding {
+  if length(xs: left.unresolved_indirect_edge_identities) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^left_unresolved_indirect_edges } }
   else if length(xs: right.unresolved_indirect_edge_identities) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^right_unresolved_indirect_edges } }
   else if floor_discovery_tree_identity(tree: left.source_tree) != floor_discovery_tree_identity(tree: right.source_tree) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^tree_mismatch } }
   else if left.entry_identity != right.entry_identity { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^entry_mismatch } }
-  else if !effect_demand_producers_are_distinct(left: left, right: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^one_producer_twice } }
   else if !effect_demand_receipts_agree_on_membership(left: left, right: right) { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^membership_disagreement } }
   else if length(xs: agreement.modeled_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^modeled_only_nonempty } }
   else if length(xs: agreement.realized_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^realized_only_nonempty } }

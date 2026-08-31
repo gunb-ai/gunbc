@@ -130,8 +130,8 @@ data effect_demand_probe_observed: List<EffectDemandKey> = [
 ]
 
 data effect_demand_probe_roster: List<EffectDemandRow> = [
-  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 },
-  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 },
+  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
+  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
   EffectDemandRow { key: effect_demand_probe_debt_key, disposition: Unrealized { reason: ^no_v2_http_transport } },
   EffectDemandRow {
     key: effect_demand_probe_retired_key,
@@ -208,10 +208,10 @@ test fn effect_demand_witness_undispositioned_demand_refuses() -> Bool {
 // A row cannot outlive the reachability that justified it, and the disposition is what separates this
 // from the retirement arm probed above.
 data effect_demand_probe_roster_with_stale: List<EffectDemandRow> = [
-  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 },
-  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 },
+  EffectDemandRow { key: effect_demand_probe_compile_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
+  EffectDemandRow { key: effect_demand_probe_test_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } },
   EffectDemandRow { key: effect_demand_probe_debt_key, disposition: Unrealized { reason: ^no_v2_http_transport } },
-  EffectDemandRow { key: effect_demand_probe_retired_key, disposition: NativeV2 }
+  EffectDemandRow { key: effect_demand_probe_retired_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } }
 ]
 
 data effect_demand_probe_realized_with_shell: List<EffectRealizationKey> = [
@@ -599,7 +599,7 @@ data effect_demand_probe_wet_realization: List<EffectRealizationKey> = [
 ]
 
 data effect_demand_probe_wet_native_roster: List<EffectDemandRow> = [
-  EffectDemandRow { key: effect_demand_probe_wet_demand_key, disposition: NativeV2 }
+  EffectDemandRow { key: effect_demand_probe_wet_demand_key, disposition: NativeV2 { runtime_identity: "probe-runtime" } }
 ]
 
 data effect_demand_probe_wet_observed: List<EffectDemandKey> = [effect_demand_probe_wet_demand_key]
@@ -617,6 +617,31 @@ test fn effect_demand_witness_hermetic_realization_cannot_prove_a_wet_demand() -
   )
   (length(xs: hermetic.unproven_native_claims) == 1)
     && (length(xs: wet.unproven_native_claims) == 0)
+}
+
+// THE RUNTIME AXIS OF THE REALIZATION JOIN, witnessed the way the mode axis already is. A NativeV2
+// claim names the runtime it claims, and a realization from a DIFFERENT runtime must not prove it --
+// the same operation at the same execution mode, realized by a runtime the claim does not name, is a
+// realization the program does not link. Before the runtime entered the join, the left census below
+// reported zero unproven claims: any runtime's realization satisfied any native claim, which is the
+// axis-only-load-bearing-on-one-side defect the realization key's own note records for execution mode.
+data effect_demand_probe_other_runtime_realization: List<EffectRealizationKey> = [
+  effect_demand_realization_key(operation: "process_invoke", mode: Wet, runtime_identity: "a-different-runtime")
+]
+
+test fn effect_demand_witness_a_foreign_runtime_cannot_prove_a_native_claim() -> Bool {
+  let foreign = effect_demand_census(
+    roster: effect_demand_probe_wet_native_roster,
+    observed: effect_demand_probe_wet_observed,
+    realized: effect_demand_probe_other_runtime_realization
+  )
+  let named = effect_demand_census(
+    roster: effect_demand_probe_wet_native_roster,
+    observed: effect_demand_probe_wet_observed,
+    realized: effect_demand_probe_wet_realization
+  )
+  (length(xs: foreign.unproven_native_claims) == 1)
+    && (length(xs: named.unproven_native_claims) == 0)
 }
 
 // THE FALSIFIER FOR THE COUNT-BASED MEMBERSHIP CHECK. The predecessor compared a stored digest String
@@ -703,6 +728,47 @@ test fn effect_demand_witness_local_gate_refuses_an_empty_root_set() -> Bool {
   ) {
     EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
     EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^right_roots_unresolved
+  }
+}
+
+// THE LEFT ROOT ARM AND THE MODELED-TWICE PRODUCER ARM, both added because a mutation battery proved
+// they were uncovered. The gate decides root resolution per SIDE and producer distinctness per PAIR,
+// and the pre-existing pair of witnesses exercised the RIGHT receipt's empty root set and the
+// census-twice producer pair only -- so planting a defect in the left root arm or in the
+// modeled-twice arm left every witness green. Neither arm is a mirror that some other arm covers:
+// they are separate constructors reached by separate inputs, which is exactly what a per-arm fold
+// makes individually mutable and therefore individually testable.
+data effect_demand_probe_receipt_modeled_empty_roots: DemandReceipt = effect_demand_probe_receipt(
+  producer: ModeledCallReachability,
+  members: effect_demand_probe_roster_members,
+  roots: Empty,
+  root_resolution: RootSetEmpty { attempted_identity: "v2.compiler.00_compile" },
+  unresolved: Empty
+)
+
+test fn effect_demand_witness_local_gate_refuses_an_empty_left_root_set() -> Bool {
+  match effect_demand_local_gate(
+    left: effect_demand_probe_receipt_modeled_empty_roots,
+    right: effect_demand_probe_receipt_realized,
+    population: effect_demand_probe_complete_population,
+    agreement: effect_demand_probe_empty_agreement,
+    census_is_sound: true
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^left_roots_unresolved
+  }
+}
+
+test fn effect_demand_witness_local_gate_refuses_the_modeled_producer_twice() -> Bool {
+  match effect_demand_local_gate(
+    left: effect_demand_probe_receipt_modeled,
+    right: effect_demand_probe_receipt_modeled,
+    population: effect_demand_probe_complete_population,
+    agreement: effect_demand_probe_empty_agreement,
+    census_is_sound: true
+  ) {
+    EffectDemandEvidenceAdmitted { source_revision, source_tree } => false,
+    EffectDemandEvidenceRefused { source_revision, source_tree, conjunct } => conjunct == ^one_producer_twice
   }
 }
 
