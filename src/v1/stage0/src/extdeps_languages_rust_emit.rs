@@ -116,12 +116,9 @@ pub fn rust_method_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, spec: _| {
-            v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, spec: _| {
+        v1_rt::rc_map_insert(acc, spec.method_name.clone(), true)
+    })
 }
 
 pub fn rust_reserved() -> Rc<Vec<String>> {
@@ -532,12 +529,12 @@ pub fn rt_function_registry() -> Rc<Vec<Rc<RuntimeFunction>>> {
 }
 
 pub fn rt_functions() -> Rc<HashMap<String, bool>> {
-    rt_function_registry().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
+    rt_function_registry()
+        .iter()
+        .cloned()
+        .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+        })
 }
 
 pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
@@ -552,12 +549,9 @@ pub fn rt_ref_map_functions() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
-            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+    })
 }
 
 pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
@@ -572,12 +566,9 @@ pub fn rt_wraps_result() -> Rc<HashMap<String, bool>> {
     })
     .iter()
     .cloned()
-    .fold(
-        v1_rt::rc_empty_map::<String, bool>(),
-        |acc: Rc<HashMap<String, bool>>, entry: Rc<RuntimeFunction>| {
-            v1_rt::rc_map_insert(acc, entry.name.clone(), true)
-        },
-    )
+    .fold(v1_rt::rc_empty_map::<String, bool>(), |acc: _, entry: _| {
+        v1_rt::rc_map_insert(acc, entry.name.clone(), true)
+    })
 }
 
 pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
@@ -594,7 +585,7 @@ pub fn rt_bridge_function_names() -> Rc<HashMap<String, String>> {
     .cloned()
     .fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, entry: Rc<RuntimeFunction>| {
+        |acc: Rc<HashMap<String, String>>, entry: _| {
             v1_rt::rc_map_insert(acc, entry.name.clone(), entry.bridge_name.clone())
         },
     )
@@ -607,7 +598,7 @@ pub fn is_rt_function(name: String) -> bool {
 pub fn rt_bridge_name(name: String) -> String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
         Some(bridge) => bridge.clone(),
-        None => name.clone(),
+        std::option::Option::None => name.clone(),
     }
 }
 
@@ -908,7 +899,7 @@ pub fn rust_pair_completion_impl_render(
     } else {
         "(self) -> Self::Output ".to_string()
     }), rust_pair_completion_body_render(row.body.clone())), "}\n".to_string()),
-    None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
+    std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("compile_error!(\"gunbc: a pair-completion row carries a capability key with no ".to_string(), "rust_pair_completion_spellings entry. The spelled keys are: ".to_string()), Rc::new({ let mut __result = Vec::new(); for sp in rust_pair_completion_spellings().iter().cloned() { __result.push(sp.method.clone()); } __result }).join(&", ".to_string())), ". std.trait_derive_shape.pair_completion_op_rows ".to_string()), "and the Rust spelling table have drifted; the operator impl cannot be rendered.\");\n".to_string()),
 }
 }
 

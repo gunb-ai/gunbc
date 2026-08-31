@@ -1,0 +1,526 @@
+module test.claim.self_host_compile_phase_frontier_witness
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { content_hash_atom }
+import extdeps.git.inspect { CommitSha }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
+import gunbc.self_host_compile_phase_frontier {
+  PhaseCount,
+  PhaseNotYetReached,
+  Observed,
+  DerivedFromRustcErrorIndex,
+  RustcPhaseBoardRow,
+  RustcPhaseBoard,
+  PhaseRatchetHeld,
+  PhaseRatchetRefused,
+  phase_ratchet,
+  phase_ratchet_with_dispositions,
+  phase_board_error_population_reconciles,
+  NewlyExposedDiagnostic,
+  OpenUnadmittedRegression,
+  ClosedUnadmittedRegression,
+  RegressionTransitionHeld,
+  RegressionTransitionMalformed,
+  RegressionComparisonAvailable,
+  RegressionComparisonUnavailable,
+  regression_comparison_predecessor,
+  advance_open_unadmitted,
+  complete_open_unadmitted_series,
+  PhaseBoardSeriesRefused,
+  ExposedByPhaseAdvance,
+  PhaseBoardSeriesHeld,
+  phase_board_series_ratchet,
+  self_host_compile_phase_frontier_receipts,
+  PersistedPhaseBoardFold,
+  phase_board_from_census_identities,
+  board_row,
+  CompilePhaseFrontierValidated,
+  compile_phase_frontier_standing,
+  genesis_5006ddc6_parse_observation,
+  genesis_5006ddc6_raw_error_diagnostic_identities,
+  phase_census_digest,
+  CensusIdentityDigest,
+  CanonicalIdentitySetV1,
+  EmissionOrderedV1,
+  census_identity_domain_separator,
+  census_population_is_duplicate_free,
+  render_phase_board
+}
+import extdeps.cargo_diagnostic {
+  RustcCodedDiagnostic,
+  RustcCoded,
+  RustcUncoded,
+  RustcSpan,
+  rustc_diagnostic_row
+}
+import tools.emission_entry_instrument { RustfmtParseObservation }
+
+test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regressions() -> Bool {
+  match regression_comparison_predecessor(
+    previous_epoch: "rustc-old" as NonEmptyStr,
+    current_epoch: "rustc-new" as NonEmptyStr,
+    previous_board: fixture_board(resolve_ids: [], typeck_ids: ["old-only"]),
+    reclassified_predecessor: none
+  ) {
+    RegressionComparisonUnavailable { reason: why } =>
+      string_contains(s: why as String, pattern: "requires a reclassified predecessor")
+    verdict => false
+  }
+}
+
+test fn an_epoch_change_compares_identity_transitions_to_the_reclassified_predecessor() -> Bool {
+  let raw_old = fixture_board(resolve_ids: [], typeck_ids: ["old-policy-spelling"])
+  let reclassified = fixture_board(resolve_ids: [], typeck_ids: ["new-policy-spelling"])
+  match regression_comparison_predecessor(
+    previous_epoch: "rustc-old" as NonEmptyStr,
+    current_epoch: "rustc-new" as NonEmptyStr,
+    previous_board: raw_old,
+    reclassified_predecessor: Present { value: reclassified }
+  ) {
+    RegressionComparisonAvailable { board: comparable } => comparable == reclassified
+    verdict => false
+  }
+}
+
+fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
+  RustcPhaseBoard {
+    rows: [
+      row_parse(n: 0, identities: []),
+      row_derived(phase: Expand, n: 0, identities: []),
+      row_derived(phase: Resolve, n: 0, identities: []),
+      row_derived(phase: Typeck, n: 0, identities: []),
+      row_derived(phase: Borrowck, n: count(borrow_ids), identities: borrow_ids)
+    ],
+    furthest_phase_reached: Borrowck,
+    furthest_phase_evidence: Observed,
+    census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "fixture-borrow-board" as NonEmptyStr) },
+    total_error_diagnostics: count(borrow_ids),
+    coded_error_diagnostics: count(borrow_ids),
+    codeless_error_diagnostics: 0,
+    partition_complete: true
+  }
+}
+
+test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool {
+  let malformed = RustcPhaseBoard {
+    rows: [
+      row_parse(n: 0, identities: []),
+      row_derived(phase: Expand, n: 0, identities: []),
+      row_derived(phase: Resolve, n: 0, identities: []),
+      row_derived(phase: Typeck, n: 1, identities: ["src/a.rs:1:1\tE0308\tmismatch"]),
+      RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] }
+    ],
+    furthest_phase_reached: Typeck,
+    furthest_phase_evidence: Observed,
+    census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "malformed-error-population" as NonEmptyStr) },
+    total_error_diagnostics: 1,
+    coded_error_diagnostics: 1,
+    codeless_error_diagnostics: 1,
+    partition_complete: false
+  }
+  !phase_board_error_population_reconciles(board: malformed)
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn row_parse(n: Int, identities: List<String>) -> RustcPhaseBoardRow {
+  RustcPhaseBoardRow { phase: Parse, standing: PhaseCount { count: n, evidence: Observed }, identities: identities }
+}
+
+fn row_derived(phase: RustcPhase, n: Int, identities: List<String>) -> RustcPhaseBoardRow {
+  RustcPhaseBoardRow { phase: phase, standing: PhaseCount { count: n, evidence: DerivedFromRustcErrorIndex }, identities: identities }
+}
+
+fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPhaseBoard {
+  RustcPhaseBoard {
+    rows: [
+      row_parse(n: 0, identities: []),
+      row_derived(phase: Expand, n: 0, identities: []),
+      row_derived(phase: Resolve, n: count(resolve_ids), identities: resolve_ids),
+      if count(resolve_ids) > 0 {
+        RustcPhaseBoardRow { phase: Typeck, standing: PhaseNotYetReached, identities: [] }
+      } else {
+        row_derived(phase: Typeck, n: count(typeck_ids), identities: typeck_ids)
+      },
+      RustcPhaseBoardRow { phase: Borrowck, standing: PhaseNotYetReached, identities: [] }
+    ],
+    furthest_phase_reached: if count(resolve_ids) > 0 { Resolve } else { Typeck },
+    furthest_phase_evidence: Observed,
+    census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "fixture-board" as NonEmptyStr) },
+    total_error_diagnostics: count(resolve_ids) + count(typeck_ids),
+    coded_error_diagnostics: count(resolve_ids) + count(typeck_ids),
+    codeless_error_diagnostics: 0,
+    partition_complete: true
+  }
+}
+
+// The required witness executes over the persisted series, not a fixture or a copied count. The
+// genesis is the only row today; once a successor is appended this same call validates the link and
+// applies the phase/identity ratchet to the latest validated pair.
+test fn current_persisted_compile_phase_frontier_holds() -> Bool {
+  match phase_board_series_ratchet(series: self_host_compile_phase_frontier_receipts) {
+    PhaseBoardSeriesHeld => true
+    verdict => false
+  }
+}
+
+test fn an_open_unadmitted_regression_keeps_the_series_red_and_names_the_identity() -> Bool {
+  match complete_open_unadmitted_series(open: [
+    OpenUnadmittedRegression {
+      identity: "src/a.rs:1:1\tE0308\tmismatched types",
+      introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+    }
+  ]) {
+    PhaseBoardSeriesRefused { invocation: _, reason: why } =>
+      string_contains(s: why as String, pattern: "src/a.rs:1:1\tE0308\tmismatched types")
+    verdict => false
+  }
+}
+
+test fn exact_identity_removal_with_repair_provenance_closes_an_open_regression() -> Bool {
+  let introduced = OpenUnadmittedRegression {
+    identity: "src/a.rs:1:1\tE0308\tmismatched types",
+    introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+  }
+  match advance_open_unadmitted(
+    open: [],
+    current_identities: [introduced.identity],
+    introduced: [introduced],
+    repairs: [],
+    revision: "1111111111111111111111111111111111111111" as CommitSha
+  ) {
+    RegressionTransitionHeld { open_unadmitted: opened } =>
+      match advance_open_unadmitted(
+        open: opened,
+        current_identities: [],
+        introduced: [],
+        repairs: [
+          ClosedUnadmittedRegression {
+            identity: introduced.identity,
+            repaired_by: "2222222222222222222222222222222222222222" as CommitSha,
+            observed_removed_at: "3333333333333333333333333333333333333333" as CommitSha
+          }
+        ],
+        revision: "3333333333333333333333333333333333333333" as CommitSha
+      ) {
+        RegressionTransitionHeld { open_unadmitted: closed } =>
+          match complete_open_unadmitted_series(open: closed) {
+            PhaseBoardSeriesHeld => true
+            verdict => false
+          }
+        verdict => false
+      }
+    verdict => false
+  }
+}
+
+test fn a_line_relocation_cannot_close_an_open_regression() -> Bool {
+  let opened = OpenUnadmittedRegression {
+    identity: "src/a.rs:1:1\tE0308\tmismatched types",
+    introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+  }
+  match advance_open_unadmitted(
+    open: [opened],
+    current_identities: ["src/a.rs:2:1\tE0308\tmismatched types"],
+    introduced: [],
+    repairs: [
+      ClosedUnadmittedRegression {
+        identity: opened.identity,
+        repaired_by: "2222222222222222222222222222222222222222" as CommitSha,
+        observed_removed_at: "3333333333333333333333333333333333333333" as CommitSha
+      }
+    ],
+    revision: "3333333333333333333333333333333333333333" as CommitSha
+  ) {
+    RegressionTransitionMalformed { reason: why } =>
+      string_contains(s: why as String, pattern: "exact-identity repair provenance")
+    verdict => false
+  }
+}
+
+// FALSIFIER 1: a phase already closed at zero cannot regain an identity. The refusal names both
+// the phase and the exact identity so a red never degrades into an unexplained Bool.
+test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["E0308\tsrc/a.rs:1:1\tmismatch"]),
+    current: fixture_board(resolve_ids: ["E0425\tsrc/a.rs:1:1\tmissing name"], typeck_ids: [])
+  ) {
+    PhaseRatchetRefused { phase: Resolve, identities: ids, reason: why } =>
+      ids == ["E0425\tsrc/a.rs:1:1\tmissing name"] && string_contains(s: why as String, pattern: "closed phase")
+    verdict => false
+  }
+}
+
+// FALSIFIER 2: new identities inside the currently reached phase are a regression even when no
+// earlier phase reopens.
+test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["a"]),
+    current: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"])
+  ) {
+    PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
+      ids == ["b"] && string_contains(s: why as String, pattern: "count increased")
+    verdict => false
+  }
+}
+
+test fn a_smaller_population_at_the_same_reached_phase_holds() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]),
+    current: fixture_board(resolve_ids: [], typeck_ids: ["b"])
+  ) {
+    PhaseRatchetHeld => true
+    verdict => false
+  }
+}
+
+// A count-only ratchet would accept this swap. Identity grain must refuse the newly introduced
+// diagnostic even though the reached-phase count did not change.
+test fn a_same_count_identity_swap_refuses_the_added_identity() -> Bool {
+  match phase_ratchet(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["a"]),
+    current: fixture_board(resolve_ids: [], typeck_ids: ["b"])
+  ) {
+    PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
+      ids == ["b"] && string_contains(s: why as String, pattern: "gained diagnostic identities")
+    verdict => false
+  }
+}
+
+test fn a_phase_advance_requires_and_accepts_a_typed_newly_exposed_disposition() -> Bool {
+  match phase_ratchet_with_dispositions(
+    previous: fixture_board(resolve_ids: [], typeck_ids: ["masking-typeck"]),
+    current: fixture_borrow_board(borrow_ids: ["new-borrowck"]),
+    dispositions: [
+      NewlyExposedDiagnostic {
+        identity: "new-borrowck",
+        cause: ExposedByPhaseAdvance { previous_phase: Typeck, reached_phase: Borrowck }
+      }
+    ]
+  ) {
+    PhaseRatchetHeld => true
+    verdict => false
+  }
+}
+
+test fn milestone_render_never_calls_an_unreached_phase_zero() -> Bool {
+  render_phase_board(board: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"]))
+    == "parse PASSES / expand PASSES / resolve PASSES / typeck 2 remaining / borrowck not yet reached"
+}
+
+
+// ---------------------------------------------------------------------------
+// The census fold, which is the path the published projection actually reads.
+//
+// Every test above builds its board by hand. That grain is real but it is not the grain the ledger
+// renders: a persisted receipt carries RAW IDENTITY ROWS and the board is re-derived from them by
+// `phase_board_from_census_identities`. That fold owned an unshared copy of the row layout and read
+// the wrong field, so every identity came back unattributable, every checked phase counted zero,
+// and the projection published "typeck PASSES / borrowck PASSES" over a census of typeck errors.
+// The rows below are produced by `rustc_diagnostic_row` itself, so the serializer and the census
+// reader are held to one layout by execution rather than by a comment.
+
+fn census_probe_row(code: String, message: String) -> String {
+  rustc_diagnostic_row(d: RustcCodedDiagnostic {
+    identity: RustcCoded { code: code },
+    level: "error",
+    location: RustcSpan { file: "src/probe.rs", line: 1, column: 1 },
+    message: message
+  })
+}
+
+fn clean_parse_observation() -> RustfmtParseObservation {
+  RustfmtParseObservation { producer: "fixture", files_observed: 1, refused_files: [] }
+}
+
+fn census_fold(raw: List<String>) -> PersistedPhaseBoardFold {
+  phase_board_from_census_identities(parse_observation: clean_parse_observation(), raw_identities: raw)
+}
+
+// THE DISCRIMINATING RED. A census carrying one typeck identity must attribute it to typeck, and
+// the rendered milestone line must not call that phase passed. Reading any other field of the row
+// as the error code makes this identity unattributable, which renders "typeck PASSES".
+test fn a_typeck_census_identity_is_attributed_to_typeck_and_never_renders_passes() -> Bool {
+  let fold = census_fold(raw: [census_probe_row(code: "E0308", message: "mismatched types")])
+  render_phase_board(board: fold.board)
+    == "parse PASSES / expand PASSES / resolve PASSES / typeck 1 remaining / borrowck not yet reached"
+    && fold.unplaced_identities == []
+    && fold.board.partition_complete
+}
+
+// The accepted positive control: a census with nothing in it is the one state in which every phase
+// may honestly say PASSES, so the wall above is not simply "never say PASSES".
+test fn an_empty_census_still_renders_every_phase_as_passing() -> Bool {
+  let fold = census_fold(raw: [])
+  render_phase_board(board: fold.board)
+    == "parse PASSES / expand PASSES / resolve PASSES / typeck PASSES / borrowck PASSES"
+    && fold.board.partition_complete
+}
+
+// The second arm of the same defect: an identity the error index does not place is not evidence
+// that the phases are clean. While any identity is unattributed, a zero count establishes nothing
+// about the phase and must not be rendered as a pass.
+test fn an_unattributed_census_identity_forbids_every_phase_from_claiming_passes() -> Bool {
+  let fold = census_fold(raw: [census_probe_row(code: "E9999", message: "not in the error index")])
+  !fold.board.partition_complete
+    && count(fold.unplaced_identities) == 1
+    && !string_contains(s: render_phase_board(board: fold.board), pattern: "PASSES")
+    && string_contains(s: render_phase_board(board: fold.board), pattern: "census partition incomplete")
+}
+
+// The published board itself, over the persisted genesis census rather than a fixture. Its whole
+// population is attributed, and the count is joined to the persisted identity list rather than
+// compared to a number copied out of a run.
+test fn the_persisted_genesis_census_is_fully_attributed_to_its_phases() -> Bool {
+  let fold = census_fold(raw: genesis_5006ddc6_raw_error_diagnostic_identities)
+  match board_row(board: fold.board, phase: Typeck) {
+    Present { value: typeck } => match typeck.standing {
+      PhaseCount { count: n, evidence: _ } =>
+        fold.board.partition_complete
+          && fold.unplaced_identities == []
+          && n == count(genesis_5006ddc6_raw_error_diagnostic_identities)
+          && fold.board.total_error_diagnostics == n
+      standing => false
+    }
+    Absent => false
+  }
+}
+
+// The end-to-end claim, asserted on the exact string the ledger projection publishes: the standing
+// the document renders may not say the emitted compiler clears typeck or borrowck while the latest
+// validated receipt's census says otherwise.
+test fn the_published_frontier_standing_does_not_claim_typeck_or_borrowck_passed() -> Bool {
+  match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
+    CompilePhaseFrontierValidated { latest: latest } => {
+      let rendered = render_phase_board(board: latest.board)
+      !string_contains(s: rendered, pattern: "typeck PASSES")
+        && !string_contains(s: rendered, pattern: "borrowck PASSES")
+        && string_contains(s: rendered, pattern: "borrowck not yet reached")
+    }
+    standing => false
+  }
+}
+
+// The digest is named an IDENTITY of the census, and a census is a set: cargo's diagnostic stream
+// and rustfmt's refusal list carry no ordering guarantee, so a reordered-but-identical census must
+// fold to the same digest or receipt_population_coherent refuses a receipt that in fact agrees.
+test fn the_census_digest_is_invariant_under_reordering_of_either_population() -> Bool {
+  let forward = phase_census_digest(
+    parse_refused_files: ["src/a.rs", "src/b.rs"],
+    raw_identities: ["src/a.rs:1:1\tE0308\tmismatch", "src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let reversed = phase_census_digest(
+    parse_refused_files: ["src/b.rs", "src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/a.rs:1:1\tE0308\tmismatch"]
+  )
+  forward == reversed
+}
+
+// Separation controls. A digest that separated on CARDINALITY alone would pass an added/removed
+// pair, so the load-bearing case is substitution at equal cardinality: one identity swapped, count
+// unchanged. Alongside it, a value moved between the two populations must still separate, which is
+// what makes the segments separate rather than one canonicalized pool.
+test fn the_census_digest_separates_added_removed_and_substituted_identities() -> Bool {
+  let base = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0433\tunresolved"]
+  )
+  let added = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0433\tunresolved", "src/d.rs:4:4\tE0599\tno method"]
+  )
+  let removed = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let substituted = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0308\tmismatched types"]
+  )
+  let populations_swapped = phase_census_digest(
+    parse_refused_files: ["src/b.rs:2:2\tE0425\tunresolved"],
+    raw_identities: ["src/a.rs", "src/c.rs:3:3\tE0433\tunresolved"]
+  )
+  base != added
+    && base != removed
+    && base != substituted
+    && base != populations_swapped
+    && added != removed
+}
+
+// Duplicate handling is EXPLICIT and the decision is typed refusal upstream, not silent set-dedup
+// inside the digest. Collapsing duplicates here would make a duplicated population indistinguishable
+// from a clean one, hiding a population defect behind a digest that still looked well-formed. The
+// digest therefore separates them, and phase_board_from_census_identities refuses the duplicated
+// population by folding a deduplicated total that no longer equals the raw count -- which is the
+// exact equality receipt_population_coherent checks.
+test fn a_duplicated_census_population_is_not_silently_collapsed_to_a_set() -> Bool {
+  let clean = phase_census_digest(
+    parse_refused_files: [],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let duplicated = phase_census_digest(
+    parse_refused_files: [],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let duplicated_fold = phase_board_from_census_identities(
+    parse_observation: clean_parse_observation(),
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  clean != duplicated && duplicated_fold.board.total_error_diagnostics != 2
+}
+
+// The digest carries its own algorithm identity, so a value folded under the retired emission-order
+// procedure and one folded over the canonical set can never be compared as bare hashes.
+test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
+  let produced = phase_census_digest(parse_refused_files: [], raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"])
+  produced.algorithm == CanonicalIdentitySetV1
+    && census_identity_domain_separator(algorithm: EmissionOrderedV1)
+       != census_identity_domain_separator(algorithm: CanonicalIdentitySetV1)
+}
+
+// The refused-file population had no duplicate wall at all until this predicate was wired into
+// receipt_population_coherent: rustfmt refusing one path twice would double-count the Parse row and
+// carry the repeat into the digest. This is the discriminating pair for that wall.
+test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
+  !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
+    && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
+    && census_population_is_duplicate_free(identities: [])
+}
+
+// Board identity is the phase-partitioned SET, not the order cargo or rustfmt emitted it. This is
+// stronger than digest invariance: the rows themselves compare equal, so receipt coherence and any
+// future structural board consumer cannot accidentally recover encounter order as semantics.
+test fn phase_boards_are_invariant_under_population_reordering() -> Bool {
+  let a = census_probe_row(code: "E0308", message: "alpha")
+  let b = census_probe_row(code: "E0599", message: "beta")
+  let parse_forward = phase_board_from_census_identities(
+    parse_observation: RustfmtParseObservation { producer: "fixture", files_observed: 2, refused_files: ["src/b.rs", "src/a.rs"] },
+    raw_identities: []
+  )
+  let parse_reversed = phase_board_from_census_identities(
+    parse_observation: RustfmtParseObservation { producer: "fixture", files_observed: 2, refused_files: ["src/a.rs", "src/b.rs"] },
+    raw_identities: []
+  )
+  let diagnostic_forward = phase_board_from_census_identities(
+    parse_observation: clean_parse_observation(),
+    raw_identities: [b, a]
+  )
+  let diagnostic_reversed = phase_board_from_census_identities(
+    parse_observation: clean_parse_observation(),
+    raw_identities: [a, b]
+  )
+  parse_forward.board.rows == parse_reversed.board.rows
+    && diagnostic_forward.board.rows == diagnostic_reversed.board.rows
+    && diagnostic_forward.unplaced_identities == diagnostic_reversed.unplaced_identities
+}
+
+// Positive control: canonicalization preserves identity content rather than reducing a board to
+// phase cardinalities. Substituting one identity at equal cardinality must still change the board.
+test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool {
+  let a = census_probe_row(code: "E0308", message: "alpha")
+  let b = census_probe_row(code: "E0599", message: "beta")
+  let substituted = census_probe_row(code: "E0308", message: "substituted")
+  census_fold(raw: [a, b]).board != census_fold(raw: [substituted, b]).board
+}

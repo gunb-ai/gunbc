@@ -139,7 +139,7 @@ pub fn non_empty_refusals_all(
 
 pub fn admit_annotations(result: Rc<AnnotationAttachmentResult>) -> Rc<AnnotationAdmission> {
     match result.refusals.clone().first().cloned() {
-        None => Rc::new(AnnotationAdmission::AnnotationsAdmitted {
+        std::option::Option::None => Rc::new(AnnotationAdmission::AnnotationsAdmitted {
             graph: result.graph.clone(),
         }),
         Some(head) => Rc::new(AnnotationAdmission::AnnotationsRefused {
@@ -178,7 +178,7 @@ pub fn advance_line_prefix_indent_only(previous: bool, code_points: Rc<Vec<i64>>
     code_points
         .iter()
         .cloned()
-        .fold(previous.clone(), |acc: bool, cp: i64| {
+        .fold(previous.clone(), |acc: _, cp: i64| {
             if code_point_is_line_feed(cp.clone()) {
                 true
             } else {
@@ -248,7 +248,7 @@ pub fn module_root_pick_step(
 ) -> Option<Rc<AnnotationSubject>> {
     if row.module_root.clone() {
         match acc.clone() {
-            None => Some(row.clone()),
+            std::option::Option::None => Some(row.clone()),
             Some(best) => {
                 if (row.span.clone().start.clone() < best.span.clone().start.clone()) {
                     Some(row.clone())
@@ -265,10 +265,12 @@ pub fn module_root_pick_step(
 pub fn module_root_subject(
     subjects: Rc<Vec<Rc<AnnotationSubject>>>,
 ) -> Option<Rc<AnnotationSubject>> {
-    subjects.iter().cloned().fold(
-        std::option::Option::None,
-        |acc: _, row: Rc<AnnotationSubject>| module_root_pick_step(acc.clone(), row.clone()),
-    )
+    subjects
+        .iter()
+        .cloned()
+        .fold(std::option::Option::None, |acc: _, row: _| {
+            module_root_pick_step(acc.clone(), row.clone())
+        })
 }
 
 pub fn earliest_member_start_after(
@@ -279,7 +281,7 @@ pub fn earliest_member_start_after(
     subjects
         .iter()
         .cloned()
-        .fold(fallback.clone(), |best: i64, row: Rc<AnnotationSubject>| {
+        .fold(fallback.clone(), |best: i64, row: _| {
             if ((row.span.clone().start.clone() > after.clone())
                 && (row.span.clone().start.clone() < best.clone()))
             {
@@ -300,7 +302,7 @@ pub fn module_header_gap_subject(
         std::option::Option::None
     } else {
         match module_root_subject(subjects.clone()) {
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
             Some(mod_subject) => {
                 let first_member_start = earliest_member_start_after(
                     subjects.clone(),
@@ -335,12 +337,12 @@ pub fn annotation_subject_pick(
             contained: false,
             following: Some(mod_subject.clone()),
         }),
-        None => subjects.iter().cloned().fold(
+        std::option::Option::None => subjects.iter().cloned().fold(
             Rc::new(AnnotationSubjectPick {
                 contained: false,
                 following: std::option::Option::None,
             }),
-            |acc: Rc<AnnotationSubjectPick>, subject: Rc<AnnotationSubject>| {
+            |acc: _, subject: _| {
                 if ((origin.start.clone() >= subject.span.clone().start.clone())
                     && (origin.end.clone() <= subject.span.clone().end.clone()))
                 {
@@ -353,7 +355,7 @@ pub fn annotation_subject_pick(
                         acc.clone()
                     } else {
                         match acc.following.clone() {
-                            None => Rc::new(AnnotationSubjectPick {
+                            std::option::Option::None => Rc::new(AnnotationSubjectPick {
                                 contained: acc.contained.clone(),
                                 following: Some(subject.clone()),
                             }),
@@ -399,13 +401,8 @@ pub fn keyed_annotation_rows_agree(
                 rest: right.clone(),
                 agreed: true,
             }),
-            |acc: Rc<KeyedAnnotationRowWalk>, row: Rc<KeyedAnnotationRow>| match acc
-                .rest
-                .clone()
-                .first()
-                .cloned()
-            {
-                None => Rc::new(KeyedAnnotationRowWalk {
+            |acc: _, row: Rc<KeyedAnnotationRow>| match acc.rest.clone().first().cloned() {
+                std::option::Option::None => Rc::new(KeyedAnnotationRowWalk {
                     rest: Rc::new(vec![]),
                     agreed: false,
                 }),
@@ -438,7 +435,7 @@ pub struct AnnotationAttachAcc {
 
 pub fn annotation_attach_flush(acc: Rc<AnnotationAttachAcc>) -> Rc<Vec<Rc<SourceAnnotationDebt>>> {
     match acc.pending.clone() {
-        None => acc.rows.clone(),
+        std::option::Option::None => acc.rows.clone(),
         Some(row) => v1_rt::rc_list_push(acc.rows.clone(), row.clone()),
     }
 }
@@ -503,7 +500,7 @@ pub fn annotation_attach_step(
                             })),
                             pending_adjacent: true,
                         }),
-                        None => {
+                        std::option::Option::None => {
                             annotation_attach_resolve(acc.clone(), capture.clone(), pick.clone())
                         }
                     }
@@ -521,7 +518,7 @@ pub fn annotation_attach_resolve(
     pick: Rc<AnnotationSubjectPick>,
 ) -> Rc<AnnotationAttachAcc> {
     match pick.following.clone() {
-        None => {
+        std::option::Option::None => {
             if (capture.text.clone() == "".to_string()) {
                 acc.clone()
             } else {
@@ -574,7 +571,7 @@ pub fn annotation_attach_resolve(
                     })
                 }
             }
-            None => Rc::new(AnnotationAttachAcc {
+            std::option::Option::None => Rc::new(AnnotationAttachAcc {
                 rows: acc.rows.clone(),
                 refusals: acc.refusals.clone(),
                 pending: Some(Rc::new(SourceAnnotationDebt {
@@ -600,9 +597,7 @@ pub fn attach_annotations(
                 pending: std::option::Option::None,
                 pending_adjacent: false,
             }),
-            |acc: Rc<AnnotationAttachAcc>, capture: Rc<NormalizedAnnotationCapture>| {
-                annotation_attach_step(acc, capture.clone(), subjects.clone())
-            },
+            |acc: _, capture: _| annotation_attach_step(acc, capture.clone(), subjects.clone()),
         );
         Rc::new(AnnotationAttachmentResult {
             graph: Rc::new(SourceAnnotationGraph {

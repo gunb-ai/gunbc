@@ -14,7 +14,13 @@ import v2.std.node {
   TypeNode,
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
-import v2.std.compilers.target_model { TargetModel, ProducedDeclUnwired, render_target_text }
+import v2.std.compilers.target_model {
+  EmitSpellingWrap,
+  ProducedDeclUnwired,
+  TargetModel,
+  TokenClassEmitTransform,
+  render_target_text
+}
 import v2.compiler.translate { target_serialize_relation_row_from_model_bounded }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.grammar {
@@ -904,40 +910,14 @@ fn verilog_module_declaration(name: Symbol, ports: Node, assignments: Node) -> N
   ])
 }
 
-fn verilog_emit_layout_transforms() -> Map<Symbol, fn(String) -> String> {
-  map_insert(
-    map_insert(
-      map_insert(
-        map_insert(
-          map_insert(
-            map_insert(
-              map_insert(
-                map_insert(
-                  map_insert(empty_map(), ^verilog_token_kw_module, fn(s) { concat(s, " ") }),
-                  ^verilog_token_kw_wire,
-                  fn(s) { concat(s, " ") }
-                ),
-                ^verilog_token_comma,
-                fn(s) { concat(s, "\n") }
-              ),
-              ^verilog_token_semicolon,
-              fn(s) { concat(s, "\n") }
-            ),
-            ^verilog_token_semicolon,
-            fn(s) { concat(s, "\n") }
-          ),
-          ^verilog_token_kw_wire,
-          fn(s) { concat(s, " ") }
-        ),
-        ^verilog_token_kw_assign,
-        fn(s) { concat("  ", concat(s, " ")) }
-      ),
-      ^verilog_token_equals,
-      fn(s) { concat(" ", concat(s, " ")) }
-    ),
-    ^verilog_token_kw_endmodule,
-    fn(s) { concat(s, "\n") }
-  )
+fn verilog_emit_layout_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  let m0 = map_insert(empty_map(), ^verilog_token_kw_module, EmitSpellingWrap { prefix: "", suffix: " " })
+  let m1 = map_insert(m0, ^verilog_token_kw_wire, EmitSpellingWrap { prefix: "", suffix: " " })
+  let m2 = map_insert(m1, ^verilog_token_comma, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  let m3 = map_insert(m2, ^verilog_token_semicolon, EmitSpellingWrap { prefix: "", suffix: "\n" })
+  let m4 = map_insert(m3, ^verilog_token_kw_assign, EmitSpellingWrap { prefix: "  ", suffix: " " })
+  let m5 = map_insert(m4, ^verilog_token_equals, EmitSpellingWrap { prefix: " ", suffix: " " })
+  map_insert(m5, ^verilog_token_kw_endmodule, EmitSpellingWrap { prefix: "", suffix: "\n" })
 }
 
 // THE INTERLOCK EXEMPLAR. The binding symbol in a derived row comes from the EMITTED atom
