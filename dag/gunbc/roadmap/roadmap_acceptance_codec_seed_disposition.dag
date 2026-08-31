@@ -7,8 +7,11 @@ import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedIt
 
 // THREE EXISTING SEED ITEMS WERE MODIFIED, AND NONE WAS ADDED. The SCM excision had to record five
 // withdrawn acceptances, and the one existing AcceptanceRevocationDisposition arm claims the node
-// REOPENS onto the active frontier -- false for a node whose rows and carriers the same change
-// deletes. Adding AcceptanceNodeWithdrawnFromProgram to the .dag model meant the seed's JSONL codec
+// REOPENS onto the active frontier -- false for a node the same change removes from the product
+// program, whose roadmap declaration is gone and which no further work is wanted on. (What the
+// withdrawal arm asserts is that the node is no longer DECLARED, not that every artifact once
+// associated with it is deleted: evidence a surviving authority independently needs stays live.
+// gunbc.roadmap_model states that boundary.) Adding AcceptanceNodeWithdrawnFromProgram to the .dag model meant the seed's JSONL codec
 // had to carry the new arm in both directions, because that codec is where JSONL and typed values
 // meet and there is no second route.
 //

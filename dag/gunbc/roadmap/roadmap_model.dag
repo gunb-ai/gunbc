@@ -190,8 +190,19 @@ type AcceptanceNodeReopensActiveFrontier {}
 // WITHDRAWAL IS NOT REOPENING, AND THE SECOND ARM EXISTS BECAUSE THE FIRST ONE LIED ABOUT IT.
 // AcceptanceNodeReopensActiveFrontier says the node returns to the active frontier because more
 // work is wanted on it. A node WITHDRAWN FROM PRODUCT SCOPE is the opposite disposition: the
-// acceptance stops being live, and the node does not come back -- its rows, carriers and
-// witnesses are deleted in the same transaction, so there is no frontier for it to reopen onto.
+// acceptance stops being live, and the node does not come back -- its roadmap declaration is
+// absent, so there is no frontier for it to reopen onto.
+//
+// WHAT THE ARM DOES NOT SAY, AND THE BOUNDARY IS LOAD-BEARING. It does NOT say every artifact once
+// associated with the node is deleted, and the enforcing relation below does not check that: the
+// law is that a withdrawn node identity must no longer be DECLARED. Artifacts reachable ONLY
+// through the withdrawn program are excised; artifacts and evidence independently reachable from a
+// SURVIVING authority stay live, and their retention does not reopen the node. Stating the wider
+// deletion claim here would make the arm assert something the check never establishes, and it was
+// briefly false in exactly that way: gunbc#9756 withdrew 2-scm-git-upstream-model while
+// dag/extdeps/git/object_store.dag and its two upstream witnesses correctly survived, because the
+// live extdeps.git authority cites the manual witness as its own independent receipt. Per DESIGN
+// section 4b evidence outlives the production it once served.
 // Recording a withdrawal as a reopening would leave the roadmap asserting that deleted work is
 // pending, which is the state DESIGN section 5 calls a fabricated plausible output rather than a
 // refusal. The prior AcceptanceRecorded lines are never edited: acceptance stays durable and the
