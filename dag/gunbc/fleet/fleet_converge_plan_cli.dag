@@ -88,7 +88,6 @@ import gunbc.fleet_converge_plan {
   FabricExecutionCellsOnly,
   FabricAllocationStoreOnly,
   fleet_converge_scope_of_wire,
-  FleetConvergeScope,
   LaunchEnvironment,
   fleet_converge_plan_artifact_of_request,
   ScopeDecoded,
