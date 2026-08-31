@@ -180,7 +180,6 @@ fn systemctl_disable_now_argv_for_deploy(unit: NonEmptyStr, privileged: Bool) ->
 // show/read failure therefore stops before the conditional, and a disable/stop failure remains
 // loud. This replaces the former `2>/dev/null || true` without smuggling command substitution or
 // control flow through a String leaf.
-
 fn systemctl_load_state_assignment_intent(unit: NonEmptyStr) -> Node {
   bash_build_assign(
     name: "_gunbc_load_state",
@@ -314,7 +313,6 @@ data emit_systemd_unit_serve_note: String = "The belt-B unit: ExecStart is `gunb
 // not in a witness — so the oracle lives in the test corpus against RevisionBoundAtEmission with a
 // fixture, and the artifact was simply dead (no execution consumer, and a HostReconciler consumer
 // row that named a reader which does not exist).
-
 type ReleaseRevisionBinding
   = RevisionBoundAtEmission { revision: CommitSha }
   | RevisionNotInstalled
@@ -341,11 +339,15 @@ fn release_revision_execstart_text(binding: ReleaseRevisionBinding) -> String {
   }
 }
 
-fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+// THE TYPED UNIT VALUE IS A NAMED PRODUCER, so a reader that compares the EFFECTIVE unit on a host
+// against what this revision would install (gunbc.live_deploy.unit_standing) consumes the same
+// directive list the emission serializes, rather than re-parsing the rendered text. The doc
+// producers below delegate here; behaviour is unchanged.
+fn live_deploy_serve_unit_file(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> SystemdUnitFile {
   let svc = spec.service
   let port = to_string(svc.listen.port)
   let host = svc.listen.host
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
       After { target: "network-online.target tailscaled.service" as NonEmptyStr },
@@ -368,16 +370,20 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
       Restart { policy: "on-failure" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
-  }))
+  }
+}
+
+fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_serve_unit_file(spec: spec, revision: revision)))
 }
 
 data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer than the cadence schedules its successor while it is still running and ticks pile up back-to-back — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real regardless of how long a tick takes and the belt can never outrun itself. systemd additionally refuses to start a Type=oneshot unit that is already active, so the two together make overlap unwritable rather than unlikely.\\n\\n60s is the operator's stated default for this lane and is deliberately not tuned against anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant wakeup window, which is the default behavior and would otherwise make the effective cadence unpredictable.\\n\\nOnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and tailscale are all converging, and a belt tick that spawns before the repo tree is in place produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs one cadence period and removes a class of self-inflicted refusals from the receipt."
 
 data belt_tick_cadence: String = "60s"
 
-fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
+fn live_deploy_belt_service_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
   let svc = spec.service
-  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+  ServiceUnitFile {
     unit: [
       Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
       After { target: "network-online.target" as NonEmptyStr },
@@ -398,7 +404,11 @@ fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
       ], "") as NonEmptyStr },
     ],
     install: NotInstallable,
-  }))
+  }
+}
+
+fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_service_unit_file(spec: spec)))
 }
 
 // THE PUBLICATION HELPER: THE ONLY UNIT IN THIS DEPLOYMENT THAT BINDS A CREDENTIAL, AND THE ONLY
@@ -525,8 +535,8 @@ fn apply_publication_spool_steps(spec: DeploymentSpec) -> List<PipelineStep> {
   ]
 }
 
-fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+fn live_deploy_belt_timer_unit_file(spec: DeploymentSpec) -> SystemdUnitFile {
+  TimerUnitFile {
     unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
     timer: [
       TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
@@ -535,7 +545,11 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
       AccuracySec { duration: "5s" as NonEmptyStr },
     ],
     install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
-  }))
+  }
+}
+
+fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
+  doc_text(text: serialize_systemd_unit_file(file: live_deploy_belt_timer_unit_file(spec: spec)))
 }
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
@@ -679,7 +693,6 @@ fn apply_belt_timer_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // future non-degenerate observed provider, exercised only by the synthetic spine witness. key_of
 // returns stable member IDENTITY (artifact path / dependency package); value_eq never fires in the
 // degenerate poles (no Modified — one side is always empty).
-
 type DeploymentStepMemberAt = NonEmptyStr
 
 fn deployment_step_key(step: DeploymentStep) -> NonEmptyStr {
@@ -729,7 +742,6 @@ fn deployment_retract_plan(spec: DeploymentSpec) -> MembershipPlan<DeploymentSte
 // fact. Parameterizing only the install side would have left the writer staging one name and the
 // installer copying another — a deploy that fails on a missing file, which is at least loud, or
 // worse installs a stale unit left in the stage directory from a previous run.
-
 fn apply_systemd_unit_write_step(spec: DeploymentSpec, revision: ReleaseRevisionBinding) -> PipelineStep {
   deploy_raw(command: deploy_stage_write_command(
     stage_name: spec.service.unit_name as String,
@@ -782,7 +794,6 @@ fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> P
 // gunbc.live_deploy.intent) the roadmap-unit capture already owns — no second diagnosis format. On
 // failure the tail is appended to stderr and the step still fails (exit 1): a diagnosis, never an
 // escape hatch (DESIGN 5 forbids proceeding as if the refusal had not fired).
-
 fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: join([
     systemctl_restart_command(unit: spec.names.tree_sync_unit_name, privileged: true),
@@ -804,7 +815,6 @@ fn tree_sync_restart_step_with_diagnosis(spec: DeploymentSpec) -> PipelineStep {
 // all.\n\nThe argv is built by extdeps.tailscale.serve rather than concatenated here, so the apply
 // and the teardown cannot disagree about the flags — which is the property the upstream `off` form
 // actually requires.
-
 fn tailscale_serve_apply_step(spec: DeploymentSpec) -> PipelineStep {
   deploy_raw(command: shell_privileged_command_text_of_argv(
     argv: concat(["tailscale"], tailscale_serve_enable_argv(endpoint: spec.names.tailscale_serve_endpoint)),
@@ -865,7 +875,6 @@ fn install_d_owned_command(spec: DeploymentSpec, path: String) -> String {
 // in the owned roster to begin with.\n\nprivileged is consumed only by the package arm because it
 // describes how apt is invoked; install -d is privileged in both contexts and takes the same form
 // either way.
-
 fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> List<PipelineStep> {
   match dep.subject {
     EnsuredPackage { package } => [ensure_apt_package_step(pkg: package, privileged: privileged)]
@@ -883,7 +892,6 @@ fn ensure_dependency_steps(dep: DeploymentDependencyStep, privileged: Bool) -> L
 // does not resolve, and the failure would look like a permissions bug rather than a modeling gap.
 // dissolve-on = PosixUser (or a PosixGroup beside it) carries the group name, at which point this
 // projects it instead of reusing the user's.
-
 fn install_d_managed_command(dir: ManagedDirectory) -> String {
   install_directory_owned_command(
     mode: managed_directory_mode_octal(d: dir) as NonEmptyStr,
@@ -1053,7 +1061,6 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
 // remove this store even by mistake -- the property the previous `rm -d` arm tried to approximate
 // by refusing on a non-empty directory is now structural, and the awkward consequence that arm
 // carried (a full retract could never complete once the store existed) simply does not arise.
-
 data belt_receipt_dir_bootstrap_note: String = "THE BELT MEMBER CARRIES THE install -d FOR THE DIRECTORY ITS TICK WRITES INTO, which is the orchestration-is-derived-from-the-member rule emit_deploy_member_effect_note already states (a ServerScript carries the install -d it writes into). The belt tick publishes its receipt to instance_receipts_dir(instance_root) and the workflow UI reads that receipt to answer whether a tick ran; with no directory owned by the service principal the write is EACCES, which is what every instance was in fact doing — belt-last-tick.json was absent from BOTH srv1 roots when read on 2026-08-19, so this receipt has never been written anywhere, not merely on the new slot.\n\nTHIS ALSO RESTORES A BOOTSTRAP THAT WENT DEAD RATHER THAN ADDING A NEW ONE. fleet_converge_receipt_atomic_publish_note FORMERLY named the deploy install-d on fleet_converge_receipt_dir as riding FleetConvergeTimerUnit apply (that clause is itself now corrected in gunbc.host_layout, so this sentence describes the prior revision rather than the current text), and that member is a retired refusal poison (the cadence moved to on-demand plan/apply, sleek-heron-218), so nothing has bootstrapped a receipts directory on any fresh instance root since. Green has no receipts directory at all; production's exists only because it predates the retirement. Riding the belt member is correct rather than convenient: the belt is the consumer that needs the directory on every instance it is installed on, so the bootstrap travels with a member that is unconditionally present wherever a receipt gets written.\n\nTHERE IS DELIBERATELY NO TEARDOWN ARM. Receipts are produced artifacts, and devboot_root_realization_note draws exactly this line — a deploy must never delete what it produced — so the directory is bootstrapped and never removed, and a retract that also destroyed the converge receipts sharing the directory would be the failure that note exists to prevent. install -d is idempotent, so converging an existing correctly-owned directory (production's) emits the same command and changes nothing.\n\nRESIDUE, NAMED: the belt writes its receipt in place rather than through the same-directory staging + rename that gunbc.fleet_converge_cli uses. In-place write is correct here because the directory is service-user-owned and the file is not a stale root-owned artifact, but it is NOT crash-safe — a tick interrupted mid-write leaves a truncated receipt, which renders as BeltPassOutcomeUnreadable rather than as a wrong verdict. Adopting the atomic publish is the strictly better construction and is not done here; it is stated so the weaker one is a decision on the record rather than an oversight."
 data teardown_worktree_rmdir_note: String = "DispatchWorktreeRoot teardown is rm -d (empty-directory removal via the granted rm — the unprivileged principal has no rmdir grant and no write on the root-owned parent), NEVER rm -rf: a non-empty worktree root means live agent worktrees exist, so the retract FAILS LOUDLY there instead of silently destroying sessions (DESIGN 5 — the refusal is the empty-dir precondition itself, identical to the former rmdir). GunbcSourceTree teardown runs AFTER the worktree rm -d succeeds, so the repo the worktrees are registered in is never deleted from under them."
 
@@ -1142,7 +1149,6 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
 // anything. That arm REFUSES loudly (emit_deploy_teardown_dependency_refusal — a typed/located
 // poison step), it does NOT fabricate a no-op (DESIGN §5: an unreachable arm refuses, never a
 // silent pass).
-
 data live_deploy_replace_unreachable_poison: String = "__GUNBC_DEPLOY_UNREACHABLE__ EffectReplace reached the deploy emit dispatch. Both deploy poles are degenerate — apply observes the empty set, retract desires the empty set — so no Modified hunk can arise and no replace can be emitted. Reaching this arm means a NON-degenerate observed provider landed without its realization being modeled: a replace on a host resource is an in-place update only if the address survived, and a STAGED replacement with declared intermediates otherwise (gunbc.change_realization). Emitting an unconditional overwrite here would be the srv4 failure exactly — a transition that believed it had nothing to retire. This marker is not valid deploy shell, so the golden drift gate reds. member="
 
 fn emit_deploy_replace_unreachable_refusal(step: DeploymentStep) -> List<PipelineStep> {
@@ -1219,7 +1225,6 @@ fn apply_intent_from_effects(
 // teardowns in the first place, and there is no ordering left to get right. Keeping the partition
 // would preserve the shape of a fix for a defect that no longer has a way to occur, which is
 // exactly the dead-scaffold class.
-
 fn retract_unsupported_client_poison(observed: String) -> String {
   concat(
     "__GUNBC_DEPLOY_REFUSED__ live-deploy retract NOT EMITTED: this target's tailscale client is ",
@@ -1367,7 +1372,6 @@ fn deployment_ensure_dependency_script(dep: DeploymentDependencyStep) -> String 
 // that introduces a hand-concatenated quote at any call site and goes red on the parse rather than
 // on a string shape. The shared authority itself stays independently witnessed at
 // shell_quote_escapes_an_embedded_apostrophe, which does not depend on this module having a caller.
-
 data live_deploy_emit_shell_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
@@ -1431,7 +1435,6 @@ data live_deploy_remote_mutation_service_op_realization_dissolution_trigger: Dis
 // digest read-back run on the DAG reconcile spine after mutation (live_deploy.readiness transport
 // curl poll, then live_deploy.apply digest read-back); the apply script ships mutation only (no
 // in-script curl read-back).
-
 data live_deploy_intent_dependency_graph_emit_dissolution_trigger: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
   bind: DeclarationRef {
