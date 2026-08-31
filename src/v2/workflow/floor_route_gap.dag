@@ -709,45 +709,8 @@ fn floor_route_gap_expectation_chunk_04() -> List<FloorRouteGapExpectation> {
   }
 }
 
-// CHUNK 05 -- THE TWELVE EMIT-COST-QUAL-0 WET IDENTITIES (PR #9781). Every one is a wet
-// transaction through the production emission door (build the gunbc binary, compile a generated
-// fixture, clippy, cargo build, run): the first host effect the hermetic route cannot answer is
-// the witness-binary readiness probe (shell Test IsExecutable, no mock_response), observed on
-// this branch's own floor run (route_gap_unenrolled=12), not enumerated from call sites. The
-// lane that runs the effect is authored in the same change -- the emit-copy-qualification-battery
-// job of gunbc.witness_floor_workflow -- and ships inert (if: false) per the ROOT-N division
-// ruling; its activation is the route that retires these rows.
-fn floor_route_gap_expectation_chunk_05() -> List<FloorRouteGapExpectation> {
-  Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_calibration_disconnected_counter_refuses_observation_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_calibration_hidden_deep_copy_reds_runtime_only_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_calibration_redundant_deep_clone_reds_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_calibration_redundant_share_clone_reds_static_only_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_emitted_prelude_grounds_structural_sequence_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_wet_shard_copy_scalar_qualifies_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_wet_shard_nested_record_qualifies_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_wet_shard_owned_string_qualifies_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_wet_shard_persistent_map_qualifies_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_wet_shard_persistent_sequence_qualifies_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Cons {
-    head: FloorRouteGapExpectation { identity: "test.claim.emit_copy_qualification_wet_test.ecq_wet_shard_shared_record_qualifies_holds", operation: "IsExecutable", ground: NoMockResponse {} },
-    tail: Empty {}
-  } } } } } } } } } } } }
-}
-
 fn floor_route_gap_expectation_chunks() -> List<List<FloorRouteGapExpectation>> {
-  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Cons { head: floor_route_gap_expectation_chunk_05(), tail: Empty {} } } } } } }
+  Cons { head: floor_route_gap_expectation_chunk_00(), tail: Cons { head: floor_route_gap_expectation_chunk_01(), tail: Cons { head: floor_route_gap_expectation_chunk_02(), tail: Cons { head: floor_route_gap_expectation_chunk_03(), tail: Cons { head: floor_route_gap_expectation_chunk_04(), tail: Empty {} } } } } }
 }
 
 fn floor_route_gap_expectations() -> List<FloorRouteGapExpectation> {

@@ -1365,7 +1365,7 @@ fn fabric_evidence_job() -> Job {
 
 // ── EMIT-COST-QUAL-0 battery job (AUTHORED INERT — activation is not this lane's to take) ────
 //
-// The wet copy/share qualification battery (test.claim.emit_copy_qualification_wet_test over
+// The wet copy/share qualification battery (gunbc.emit_copy_qualification_wet_battery over
 // tools.emit_copy_qualification_transport): per carrier shard, production `gunbc compile` of the
 // generated fixture, clippy with the clone lint armed machine-readably, one cargo build, one
 // serial runner with per-case allocator windows, the interpreted driver, and the typed
@@ -1379,6 +1379,12 @@ fn fabric_evidence_job() -> Job {
 // activation slot (held by ROOT-N for #9769 -> ROOT-1 -> DEMAND-0 -> DEMAND-1 -> ROOT-2).
 // Lifting the literal "false" IS the activation edit; nothing else changes. Until then the job
 // renders in the emitted workflow as permanently skipped — visible, costless, and not a gate.
+//
+// WHY THE BATTERY IS NOT A *_test.dag MODULE YET: v2.workflow.floor_changed_witness blocks any
+// changed witness identity without a terminal floor verdict, and these wet transactions
+// route-gap hermetically (IsExecutable, NoMockResponse) — so the battery lands as plain claim
+// functions named here explicitly, and the activation edit also converts the module to
+// floor-enrolled witnesses.
 data emit_copy_qualification_job_id: String = "emit-copy-qualification-battery"
 
 data emit_copy_qualification_inert_standing: DissolutionCondition = unbound_dissolution(description: "emit-copy-qualification-battery ships if_condition 'false' under the ROOT-N division ruling 2026-08-31 (model-ahead evidence; one activation token, held for the #9769 -> ROOT-1 -> DEMAND-0 -> DEMAND-1 -> ROOT-2 chain). DISSOLVES WHEN the operator allocates the activation slot to this battery: the closing edit deletes the 'false' condition (and this row) so the job becomes an ordinary always-on lane; its measured first-run receipt then prices any follow-up conditioning proposal.")
@@ -1399,7 +1405,7 @@ fn emit_copy_qualification_run_script() -> String {
     concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
     concat(
       "cd \"$ROOT\"\n",
-      "target/release/claim_batch --wet --roster-from-discovery --source-root dag --source-root src/v2 --entry dag/test/claim/emit_copy_qualification_wet_test.dag\n"
+      "target/release/claim_batch --wet --source-root dag --source-root src/v2 --entry dag/gunbc/emit_copy_qualification_wet_battery.dag --functions ecq_wet_shard_copy_scalar_qualifies_holds,ecq_wet_shard_owned_string_qualifies_holds,ecq_wet_shard_shared_record_qualifies_holds,ecq_wet_shard_persistent_sequence_qualifies_holds,ecq_wet_shard_persistent_map_qualifies_holds,ecq_wet_shard_nested_record_qualifies_holds,ecq_calibration_redundant_share_clone_reds_static_only_holds,ecq_calibration_hidden_deep_copy_reds_runtime_only_holds,ecq_calibration_redundant_deep_clone_reds_holds,ecq_calibration_disconnected_counter_refuses_observation_holds,ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds,ecq_emitted_prelude_grounds_structural_sequence_holds\n"
     )
   )
 }

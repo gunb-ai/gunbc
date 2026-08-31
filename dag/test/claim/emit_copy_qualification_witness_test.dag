@@ -409,6 +409,9 @@ test fn ecq_battery_job_is_emitted_inert_holds() -> Bool {
 test fn ecq_battery_job_runs_the_wet_entry_holds() -> Bool {
   string_contains_marker(
     haystack: emit_copy_qualification_run_script(),
-    marker: "dag/test/claim/emit_copy_qualification_wet_test.dag"
+    marker: "dag/gunbc/emit_copy_qualification_wet_battery.dag"
+  ) && string_contains_marker(
+    haystack: emit_copy_qualification_run_script(),
+    marker: "--functions ecq_wet_shard_copy_scalar_qualifies_holds"
   )
 }
