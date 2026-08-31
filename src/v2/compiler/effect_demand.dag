@@ -971,6 +971,12 @@ type EffectDemandEvidenceStanding
   = EffectDemandEvidenceAdmitted { source_revision: CommitSha, source_tree: FloorDiscoveryTreeId }
   | EffectDemandEvidenceRefused { source_revision: CommitSha, source_tree: FloorDiscoveryTreeId, conjunct: Symbol }
 
+// SUBJECT COMPLETENESS IS ONE NECESSARY CONDITION FOR PROMOTION AND IS NOT PROMOTION, and it is the
+// last arm of this gate rather than a predicate beside it. It was once a population-to-Bool helper
+// named admits_promotion that answered true from the constructor alone, so promotion was grantable by
+// AUTHORING PopulationMeasuredComplete -- no resolved root, no edge walk, no second producer. The Bool
+// was also a second spelling of a fact DemandPopulation already carries, since the gate re-lifted it
+// into a typed refusal on the next line, so the gate now folds the coproduct itself.
 fn effect_demand_local_gate(
   left: DemandReceipt,
   right: DemandReceipt,
@@ -989,12 +995,6 @@ fn effect_demand_local_gate(
   else if length(xs: agreement.modeled_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^modeled_only_nonempty } }
   else if length(xs: agreement.realized_only) != 0 { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^realized_only_nonempty } }
   else {
-    // SUBJECT COMPLETENESS IS ONE NECESSARY CONDITION FOR PROMOTION AND IS NOT PROMOTION. It was once a
-    // predicate named admits_promotion that answered true from the constructor alone, so promotion was
-    // grantable by AUTHORING PopulationMeasuredComplete -- no resolved root, no edge walk, no second
-    // producer. It is now one arm of this gate's own fold rather than a standalone population-to-Bool
-    // helper: DESIGN section 2 prices the Bool as a second spelling of a fact the coproduct carries,
-    // and the gate re-lifted it into a typed refusal on the next line anyway.
     match population {
       PopulationMeasuredComplete { rows: _, subject_roster_identities: _ } =>
         if !census_is_sound { EffectDemandEvidenceRefused { source_revision: left.source_revision, source_tree: left.source_tree, conjunct: ^census_unsound } }
