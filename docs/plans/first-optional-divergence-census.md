@@ -178,6 +178,64 @@ holds rather than a fact only the Rust emitter's static types happen to know. Th
 model-before-implement work in `std/` ahead of any further pipeline edit, and it is a routing
 decision, not something to improvise inside this repair.
 
+## Step 1 re-scoped: the signature carrier already exists, and the gap is its denominator
+
+The routing decision on this lane was to model builtin parameter signatures in `std/` first. Reading
+`std/` before authoring turned that into a different task, and the difference is worth recording
+because it is the second time on this class that the obvious repair was the wrong one.
+
+**`dag/std/primitive_identity.dag` already models it, and already executes.** It carries
+`PrimitiveSignatureGrounding`, `PrimitiveSemanticContract`, `PrimitiveSignatureResolution` (whose
+`SignatureResolved` arm is `{ parameters: List<AlgebraTypeTemplate>, result: AlgebraTypeTemplate }`),
+`primitive_signature`, and `primitive_arity`, green by execution in
+`dag/test/claim/primitive_signature_grounding_witness_test.dag`. Its own doc comment refuses the fork
+this lane was about to commit, in as many words: *the contract carries a KEY into the one authority,
+never its contents.* It even keys the lookup on `(canonical_name, profile)` rather than name alone,
+precisely because `get` is `[ReceiverSelf, NamedTemplate { name: "Int" }]` on the List profile and
+`[ReceiverSelf, ReceiverKey]` on the Map-shaped ones.
+
+So there is no new carrier to mint, and authoring one would have been exactly the §3 nickname.
+**What is missing is coverage, and it is measurable**: of `builtin_function_registry`'s 131 names,
+20 have an `AlgebraFieldTemplate` row and resolve through `primitive_signature`; the other 111
+answer `SignatureNotGrounded`. `parse_int` — the name that reds the corpus control — is one of the
+111.
+
+**The 111 are two populations, and nothing in the substrate separates them.** Some are language
+primitives that should carry a signature (`parse_int`, `char_at`, `code_point`, `chars_to_string`,
+`string_length`, `string_contains`, `scan_while`, `scan_to_eol`, `set_insert`, `set_union`,
+`sorted_map_keys`, `hash_combine`). Most are host or lens transports whose parameter shape is a
+Realization fact and not a language one (`doc_graph_orphan_count`, `fallback_arm_census_facts`,
+`emit_host_run_transport`, `non_fold_residue_count`, `witness_layer_roots_compile_clean_check`) —
+§3 puts those with their transport, not in the language's primitive surface.
+
+The obvious discriminator does not discriminate. `gunbc.v1_interpreter_primitive_surface` enumerates
+an arm for BOTH populations by construction, so joining on it classifies `doc_graph_orphan_count`
+and `parse_int` identically — measured, not assumed. Splitting them on a naming convention instead
+would be the smuggled heuristic §5 names, so this lane does not.
+
+**The step-1 modeling question is therefore not "what shape does a builtin signature have" — that is
+answered — but "what closes the language-primitive population", i.e. the denominator over which a
+signature is obligatory.** That is a routing decision, and this lane has raised it rather than
+picking one.
+
+## The registry and the algebra rows already disagree
+
+Independent of the `first` class, and worth its own row wherever primitive-surface debt is tracked:
+the 20 overlapping names are two authorities for one operation's type, and they do not agree today.
+`builtin_function_registry` is receiver-BLIND, so it collapses distinctions the algebra rows carry:
+
+- `reverse` — registry `List<collection_element>`; algebra `ReceiverSelf` on both a scalar and a
+  collection profile. On a `String` receiver the two answer with different types.
+- `map_keys` and `map_values` — registry gives both `List<collection_element>`, one type variable
+  for two different element positions; algebra gives `ContainerOf { .., element: ReceiverKey }` and
+  `.. ReceiverValue`. For any `Map<K, V>` with `K /= V` the registry cannot be right about both.
+- `concat` — registry `String`; algebra `ReceiverSelf`, so a list concat types as a String.
+- `get` — registry one `Optional<collection_element>`; algebra distinguishes the List reading from
+  the Map reading.
+
+Every one of these is the same §3 fork as the `first` divergence, one layer up: not two
+realizations of one declaration, but two declarations of one operation.
+
 ## Rung, ceiling, trigger
 
 - **Class**: `first_optional_representation_divergence` — a collection projection declared
