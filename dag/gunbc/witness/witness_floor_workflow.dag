@@ -255,7 +255,29 @@ type RunningSupersessionPolicy
   = NeverSupersedeRunning
   | SupersedeRunningForEvent { event: String }
 
-data witness_floor_running_supersession_policy: RunningSupersessionPolicy = NeverSupersedeRunning
+// THE QUEUE AXIS IS THE SECOND HALF OF THE SAME FACT, and omitting it left the classifier carrying
+// a hardcoded copy of today's regime. ConcurrencySpec already distinguishes QueueMax from
+// QueueNotMax: under the not-max regime a newly queued run REPLACES the existing pending member,
+// which is what makes a pending cancellation lawful whatever cancel-in-progress says. A classifier
+// that assumes replacement is universally lawful is asserting QueueNotMax without consulting it,
+// and would go on asserting it if this workflow ever moved to the retaining regime.
+type PendingReplacementPolicy
+  = ReplaceExistingPending
+  | RetainPendingQueue
+
+type WitnessFloorConcurrencyPolicy {
+  pending: PendingReplacementPolicy
+  running: RunningSupersessionPolicy
+}
+
+data witness_floor_concurrency_policy: WitnessFloorConcurrencyPolicy = WitnessFloorConcurrencyPolicy {
+  pending: ReplaceExistingPending,
+  running: NeverSupersedeRunning
+}
+
+data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witness_floor_concurrency_policy.running
+
+data witness_floor_pending_replacement_policy: PendingReplacementPolicy = witness_floor_concurrency_policy.pending
 
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
   match policy {

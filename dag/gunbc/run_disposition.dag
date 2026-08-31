@@ -21,6 +21,10 @@ import extdeps.github.actions_runs {
   workflow_run_settlement
 }
 import gunbc.witness_floor_workflow {
+  WitnessFloorConcurrencyPolicy,
+  PendingReplacementPolicy,
+  ReplaceExistingPending,
+  RetainPendingQueue,
   RunningSupersessionPolicy,
   NeverSupersedeRunning,
   SupersedeRunningForEvent,
@@ -209,19 +213,84 @@ type RunDisposition
 // a separate question and none of them is answered by a wildcard, so a new upstream conclusion
 // spelling lands in DispositionOtherSettlement carrying its own name rather than inheriting a
 // neighbour's remedy.
-fn classify_run(record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
-  classify_run_under(spec: witness_floor_running_supersession_policy, record: record, replacement: replacement)
+// WHICH POLICY GOVERNED A GIVEN RUN IS A FACT THE RECORD DOES NOT CARRY, and assuming today's is
+// how a lawful supersession becomes an apparent eviction.
+//
+// WorkflowRunRecord carries timestamps and identity, not the concurrency policy or workflow revision
+// in force when the run executed. An earlier cut injected the LIVE policy into every record, so
+// after containment A lands, a pull-request run that was lawfully superseded under the old
+// event-scoped policy would reclassify as an external cancellation merely because the report was
+// rerun. The run did not change; the classifier's assumption did. That is a fabricated judgement
+// about the past, and the report has no way to tell it from a real eviction.
+//
+// So provenance is typed and the live entry REFUSES rather than assuming. A caller that knows the
+// governing policy -- a fixture, or a future reader that resolves the workflow revision for a run --
+// passes it to classify_run_under and gets a full classification. The live entry answers every
+// non-cancellation exactly as before, because settlement and conclusion do not depend on the policy;
+// only the cancellation arm is unattributable, and that is the arm whose answer would have been
+// invented.
+//
+// NEXT-RUNG TRIGGER, a capability and not an artifact: resolving the workflow revision in force for
+// a given run -- from the run's own head SHA or an upstream field naming it -- so provenance is
+// DERIVED rather than refused. Until then this is a boundary obligation: the fact lives in the
+// relationship between a run and a repository revision, and this module observes neither.
+type GoverningPolicyProvenance
+  = PolicyKnownForRun { policy: WitnessFloorConcurrencyPolicy }
+  | PolicyProvenanceUnestablished { cause: String }
+
+data live_policy_provenance: GoverningPolicyProvenance = PolicyProvenanceUnestablished {
+  cause: "a WorkflowRunRecord does not carry the concurrency policy or workflow revision that governed it, and this classifier will not judge a cancellation under a policy that may postdate the run"
 }
 
-fn classify_run_under(spec: RunningSupersessionPolicy, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+fn classify_run(record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+  classify_run_with_provenance(provenance: live_policy_provenance, record: record, replacement: replacement)
+}
+
+fn classify_run_with_provenance(
+  provenance: GoverningPolicyProvenance,
+  record: WorkflowRunRecord,
+  replacement: ReplacementObservation
+) -> RunDisposition {
+  match provenance {
+    PolicyKnownForRun { policy: p } =>
+      classify_run_under(spec: p.running, pending: p.pending, record: record, replacement: replacement)
+    PolicyProvenanceUnestablished { cause: c } =>
+      classify_run_without_policy(cause: c, record: record, replacement: replacement)
+  }
+}
+
+// EVERY NON-CANCELLATION IS UNAFFECTED, because settlement and conclusion do not consult the policy.
+// Only the cancellation arm becomes attribution-unestablished, which is the honest answer and not a
+// degradation: the alternative was a confident answer derived from an assumption about the past.
+fn classify_run_without_policy(cause: String, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
   match workflow_run_settlement(record: record) {
     RunSettlementInFlight => DispositionInFlight
-    RunSettled { conclusion: c } => classify_settled(spec: spec, record: record, conclusion: c, replacement: replacement)
+    RunSettled { conclusion: c } =>
+      match c {
+        RunSuccess => DispositionVerdictGreen
+        RunFailure => DispositionVerdictRed
+        RunCancelled => DispositionCancelAttributionUnestablished { cause: cause }
+        RunSkipped => DispositionOtherSettlement { conclusion: c }
+        RunTimedOut => DispositionOtherSettlement { conclusion: c }
+        RunActionRequired => DispositionOtherSettlement { conclusion: c }
+        RunNeutral => DispositionOtherSettlement { conclusion: c }
+        RunStale => DispositionOtherSettlement { conclusion: c }
+        RunStartupFailure => DispositionOtherSettlement { conclusion: c }
+        RunConclusionUnknown { spelling: _ } => DispositionOtherSettlement { conclusion: c }
+      }
+  }
+}
+
+fn classify_run_under(spec: RunningSupersessionPolicy, pending: PendingReplacementPolicy, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+  match workflow_run_settlement(record: record) {
+    RunSettlementInFlight => DispositionInFlight
+    RunSettled { conclusion: c } => classify_settled(spec: spec, pending: pending, record: record, conclusion: c, replacement: replacement)
   }
 }
 
 fn classify_settled(
   spec: RunningSupersessionPolicy,
+  pending: PendingReplacementPolicy,
   record: WorkflowRunRecord,
   conclusion: RunConclusion,
   replacement: ReplacementObservation
@@ -229,7 +298,7 @@ fn classify_settled(
   match conclusion {
     RunSuccess => DispositionVerdictGreen
     RunFailure => DispositionVerdictRed
-    RunCancelled => classify_cancellation(spec: spec, record: record, replacement: replacement)
+    RunCancelled => classify_cancellation(spec: spec, pending: pending, record: record, replacement: replacement)
     RunSkipped => DispositionOtherSettlement { conclusion: conclusion }
     RunTimedOut => DispositionOtherSettlement { conclusion: conclusion }
     RunActionRequired => DispositionOtherSettlement { conclusion: conclusion }
@@ -247,9 +316,10 @@ fn classify_settled(
 // run report `supersession_was_available: false` -- a strictly stronger statement than "no
 // replacement was found", and the reason the two main-branch specimens in the measured window are
 // non-benign by construction rather than merely unexplained.
-fn classify_cancellation(spec: RunningSupersessionPolicy, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
+fn classify_cancellation(spec: RunningSupersessionPolicy, pending: PendingReplacementPolicy, record: WorkflowRunRecord, replacement: ReplacementObservation) -> RunDisposition {
   classify_cancellation_under(
     spec: spec,
+    pending: pending,
     standing: cancellation_execution_standing(record: record),
     record: record,
     replacement: replacement
@@ -275,19 +345,30 @@ fn classify_cancellation(spec: RunningSupersessionPolicy, record: WorkflowRunRec
 // the fact lives in GitHub's record, not in ours.
 fn classify_cancellation_under(
   spec: RunningSupersessionPolicy,
+  pending: PendingReplacementPolicy,
   standing: CancellationExecutionStanding,
   record: WorkflowRunRecord,
   replacement: ReplacementObservation
 ) -> RunDisposition {
   match standing {
     CancellationStandingUnobserved { cause: c } => DispositionCancelAttributionUnestablished { cause: c }
-    CancelledWhilePending => classify_cancellation_replacement(replacement: replacement)
+    CancelledWhilePending => classify_pending_cancellation(pending: pending, replacement: replacement)
     CancelledAfterExecutionStarted => classify_started_cancellation(spec: spec, record: record, replacement: replacement)
   }
 }
 
-// A PENDING RUN'S REPLACEMENT IS LAWFUL WITHOUT CONSULTING THE POLICY, because the queue replaces
-// pending runs regardless of it. The policy gates the RUNNING arm alone.
+// A PENDING RUN'S REPLACEMENT IS LAWFUL ONLY UNDER THE REPLACING QUEUE REGIME, which is a fact this
+// workflow's ConcurrencySpec already carries and which an earlier cut asserted without consulting.
+// Under QueueNotMax a newly queued run replaces the existing pending member, so a pending
+// cancellation with a causally prior replacement is lawful supersession whatever cancel-in-progress
+// says. Under a RETAINING queue no such replacement happens, so the same cancellation is external.
+fn classify_pending_cancellation(pending: PendingReplacementPolicy, replacement: ReplacementObservation) -> RunDisposition {
+  match pending {
+    RetainPendingQueue => DispositionExternallyCancelled { supersession_was_available: false }
+    ReplaceExistingPending => classify_cancellation_replacement(replacement: replacement)
+  }
+}
+
 fn classify_cancellation_replacement(replacement: ReplacementObservation) -> RunDisposition {
   match replacement {
     ReplacementUnobserved { cause: r } => DispositionCancelAttributionUnestablished { cause: r }
