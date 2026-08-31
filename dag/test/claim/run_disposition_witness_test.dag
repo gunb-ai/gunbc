@@ -90,9 +90,22 @@ test fn w_live_cancel_policy_supersedes_nothing() -> Bool {
 // UNDER THE LIVE POLICY A CANCELLED PULL-REQUEST RUN IS AN EVICTION, NOT A SUPERSESSION, and that
 // reclassification is the point rather than a side effect: while nothing may lawfully supersede,
 // every cancellation is unexplained and is counted as one.
+// THE EVICTION JUDGEMENT NOW REQUIRES KNOWN PROVENANCE, and this witness moved with it rather than
+// being deleted. It previously asked the LIVE entry and asserted eviction, which the provenance
+// repair deliberately made false: a WorkflowRunRecord does not carry the policy that governed it,
+// so the live entry refuses rather than judging a past run under the present. The eviction claim is
+// still the containment's substance -- under the live policy a started, cancelled pull-request run
+// IS an eviction -- so it is asserted where it can honestly be asserted, against a policy stated to
+// govern this record. Its live-entry counterpart is
+// w_the_live_entry_refuses_to_attribute_a_cancellation_it_cannot_date, and the two together say
+// what the classifier knows and what it declines to invent.
 test fn w_live_policy_makes_a_cancelled_pr_run_an_eviction() -> Bool {
   let pr = cancelled_run(event: "pull_request")
-  let d = classify_run(record: pr, replacement: ReplacementObserved { lag_seconds: 27 })
+  let d = classify_run_with_provenance(
+    provenance: PolicyKnownForRun { policy: witness_floor_concurrency_policy },
+    record: pr,
+    replacement: ReplacementObserved { lag_seconds: 27 }
+  )
   disposition_name(disposition: d) == disposition_externally_cancelled_name
 }
 
