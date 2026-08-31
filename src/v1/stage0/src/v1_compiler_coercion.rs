@@ -225,6 +225,10 @@ pub fn numeric_realization_declaring_modules() -> Rc<Vec<String>> {
     ])
 }
 
+pub fn is_kernel_minted_file(file: String) -> bool {
+    v1_rt::contains(file.clone(), "<kernel:".to_string())
+}
+
 pub fn decl_file_realizes_natively(decl_file: String) -> bool {
     if (decl_file.clone() == "".to_string()) {
         false
@@ -372,6 +376,22 @@ pub fn rust_exact_realization_decision(
     cause: c.clone(),
 }),
 }
+}
+
+pub fn declaration_realizes_natively_on_rust(
+    declaration: Rc<DeclarationRef>,
+    decl_file: String,
+) -> bool {
+    match (*rust_exact_realization_decision(Some(declaration.clone()))).clone() {
+        TypeRealizationDecision::Realized { checkpoint: _, .. } => true,
+        _ => {
+            (lookup_checkpoint(
+                RenderTarget::Rust,
+                declaration.decl_name.clone(),
+                decl_file.clone(),
+            ) != std::option::Option::None)
+        }
+    }
 }
 
 pub fn rust_checkpoint_row_keeps_bare_row(dag_name: String) -> bool {

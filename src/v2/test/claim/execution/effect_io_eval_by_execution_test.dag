@@ -238,12 +238,7 @@ test fn effect_io_eval_roundtrip_holds() -> Bool {
     context: effect_io_eval_context_bound(),
     inputs: inputs_root_only(root: effect_io_eval_roundtrip_node)
   ) {
-    Accepted { value: v, diagnostics: None } =>
-      match runtime_value_equality(a: v, b: effect_io_eval_literal_value()) {
-        RuntimeValuesEqual => true
-        RuntimeValuesDiffer => false
-        RuntimeValueEqualityUnavailable { reason: _ } => false
-      }
+    Accepted { value: v, diagnostics: None } => v == effect_io_eval_literal_value()
     _ => false
   }
 }

@@ -1,0 +1,46 @@
+module gunbc.fabric_allocation_store_substrate
+
+import std.types { NonEmptyStr }
+import gunbc.fabric_control_plane { fabric_control_plane_store_root }
+import gunbc.fabric_cell_effect { FabricCellSubstrateOwner, CellSubstrateRootOwned }
+
+// The store root is durable control-plane substrate, not an incidental directory created by a
+// reservation. The CAS realization explicitly refuses a missing root and never removes one.
+//
+// OWNER DERIVATION, bounded to the writer population that exists today. The only live non-test
+// reservation caller is tools.fabric_control_plane_live_probe, whose instrument requires EUID 0;
+// no persistent executor exists yet. Root ownership therefore describes the present production
+// writer rather than guessing the future executor principal. Re-derive this standing when a
+// non-root production reservation caller is modeled (expected at FCI-3). EnsureOwnedDirectory is
+// re-convergent, so that event changes this desired state rather than requiring a teardown.
+type AllocationStoreWriterStanding
+  = AllocationStoreRootWriterOnly {
+      live_caller: NonEmptyStr
+      rederive_trigger: NonEmptyStr
+    }
+
+type AllocationStoreSubstrateSpec {
+  path: NonEmptyStr
+  owner: FabricCellSubstrateOwner
+  mode: NonEmptyStr
+  writer_standing: AllocationStoreWriterStanding
+}
+
+fn fabric_allocation_store_substrate_spec() -> AllocationStoreSubstrateSpec {
+  AllocationStoreSubstrateSpec {
+    path: fabric_control_plane_store_root(),
+    owner: CellSubstrateRootOwned,
+    mode: "0700" as NonEmptyStr,
+    writer_standing: AllocationStoreRootWriterOnly {
+      live_caller: "tools.fabric_control_plane_live_probe under EUID 0" as NonEmptyStr,
+      rederive_trigger: "a non-root production reservation caller is modeled" as NonEmptyStr,
+    },
+  }
+}
+
+type AllocationStoreEffect
+  = AllocationStoreDirectoryEnsure { spec: AllocationStoreSubstrateSpec }
+
+fn fabric_allocation_store_ensure_effect() -> AllocationStoreEffect {
+  AllocationStoreDirectoryEnsure { spec: fabric_allocation_store_substrate_spec() }
+}

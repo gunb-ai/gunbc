@@ -8,8 +8,9 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::ExprData::{
-    ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
-    ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
+    ExprBlock, ExprCall, ExprElaboratedLiteral, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
+    ExprLambda, ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn,
+    ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
@@ -311,6 +312,7 @@ pub fn walk_expr(
                 }
             }
             ExprData::ExprLiteral { value: _, .. } => accum.clone(),
+            ExprData::ExprElaboratedLiteral { .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
                 let base_node = crate::v1_std_core::field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
@@ -856,6 +858,7 @@ pub fn collect_callable_refs(
                 _ => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLiteral { value: _, .. } => v1_rt::rc_empty_set::<String>(),
+            ExprData::ExprElaboratedLiteral { .. } => v1_rt::rc_empty_set::<String>(),
             ExprData::ExprFieldAccess { .. } => collect_callable_refs(
                 crate::v1_std_core::field_access_base(texpr.clone()),
                 si.clone(),

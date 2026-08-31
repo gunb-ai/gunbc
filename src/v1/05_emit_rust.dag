@@ -95,8 +95,10 @@ import v1.compiler.closure_stub_v2_std_integer_rust { closure_stub_v2_std_intege
 import v1.compiler.closure_stub_v2_std_text_rust { closure_stub_v2_std_text_source }
 import v1.compiler.coercion {
   coerce_primitive_type, is_copy, lookup_checkpoint, type_reference_decl_file, decl_identity_file,
-  rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding
+  rust_seed_host_numeric_alias, target_callable, rust_lookup_exact_binding,
+  declaration_realizes_natively_on_rust, is_kernel_minted_file
 }
+import v1.compiler.dag_collect_support { connective_name }
 import v1.compiler.trait_derive_emit {
   v1_emit_enum_derives,
   v1_emit_struct_from_capability_table, v1_emit_enum_supplemental_impls,
@@ -119,7 +121,16 @@ import v1.compiler.trait_bound_witness {
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
+import std.operator_realization {
+  OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
+  OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
+  HostRealizedOperand, KernelMintedType, GenericTypeParameter, HostContainer, UnnamedSynthesizedType,
+  OperandShapeFacts, OperandDeclaration,
+  StructuralOrderingBinding, OrderingTest, OrderingIs, OrderingIsNot,
+  operator_realization_for, operator_realization_refusal_message
+}
+import gunbc.structural_realization_bindings { structural_ordering_rows }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -292,6 +303,14 @@ fn render_rust_arrow_type_in_scope(n: Node, generic_param_names: List<String>, s
 // bare, so a second peel arm ahead of it answered nothing the route did not (measured on the XL-0A
 // falsifier batch: deleting it changed no emitted byte of the compiler closure, and
 // w_zero_param_alias_in_an_arrow_return_renders_without_its_rhs_arguments stayed green).
+// Two 4h facts about this renderer, at module grain (in-body annotations refuse regen, DESIGN 4c):
+// its keyed- and element-collection branches keep a raw Arrow child, because child_type_node
+// projects the RESOLVED type and an arrow's resolved type is its return (Map<Symbol,
+// fn(String) -> String> rendered HashMap<Symbol, String>, E0277 x2); and its leaf arm consults the
+// native-alias row (env-resolved declaring module) BEFORE render_node_type, whose shared wrap
+// otherwise renders `predecessor: Nat` as `Rc<Nat>` at a variant record field while the
+// constructor passes i64 -- a layer below the field-carrier decision
+// rust_field_carrier_final_type projects (E0308 x2, E0369 x1).
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, emit_info: EmitGraphInfo) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if is_host_optional_carrier_type(n: n, source_indices: source_indices) {
@@ -323,9 +342,6 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     match n.children |> first {
       Present { value: key_child } =>
         let key_node = child_type_node(ch: key_child)
-        // child_type_node projects the RESOLVED type, and an arrow's resolved type is its return:
-        // Map<Symbol, fn(String) -> String> rendered HashMap<Symbol, String>. The authored arrow
-        // child is the type; it must reach the arrow renderer intact.
         let val_node = match n.children |> skip(1) |> first {
           Present { value: val_child } => if rust_type_node_is_arrow(n: val_child) { val_child } else { child_type_node(ch: val_child) }
           Absent => type_variable_node(id: "map_value")
@@ -354,11 +370,6 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
     } else if is_host_text_carrier_type(n: n, source_indices: source_indices) {
       rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
     } else {
-      // The native-alias row is consulted BEFORE the target-generic renderer: render_node_type
-      // shared-wraps any leaf in the sharing set, so `predecessor: Nat` at a variant record field
-      // rendered `Rc<Nat>` in the full closure (Nat is shared there) while its constructor passed
-      // i64 -- the wrap was already inside the rendered string, a layer below the field-carrier
-      // decision rust_field_carrier_final_type projects.
       match rust_seed_host_numeric_alias(name: qualified_last_segment(name: tn), decl_file: type_reference_decl_file_in_env(n: n, env: emit_info.fn_type_env, source_indices: source_indices)) {
         Present { value: host } => rust_carrier_optional_wrap(n: n, rendered: host)
         Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
@@ -713,35 +724,9 @@ fn rust_render_checkpoint_scalar_bare(n: Node, source_indices: Map<String, Newli
 // kernel mint, a variant alias, an unresolved reference) is absent, and absent identity is the
 // ExactSourceIdentityUnavailable arm of the resolver: the spelling-keyed path answers or refuses
 // for it exactly as before, which is the residue v1.compiler.coercion type_realization_decision declares for an empty decl_file.
-fn binding_declares_span(binding: TypeBinding, sp: SourceSpan) -> Bool {
-  match binding.resolved.ident_span {
-    Present { value: s } => s.file == sp.file && s.start == sp.start
-    Absent => false
-  }
-}
-
-fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
-  let rt = match n.inferred {
-    Present { value: Resolved { node: r } } => r
-    _ => n
-  }
-  let decl_name = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: rt))
-  if decl_name == "" { return none }
-  match rt.ident_span {
-    Absent => none
-    Present { value: sp } =>
-      match map_get(env.symbol_index.global_bare, decl_name) {
-        Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-          if binding_declares_span(binding: b, sp: sp) { Present { value: decl_ref(module_path: mp, decl_name: decl_name) } } else { none }
-        Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
-          match cands |> filter(c => binding_declares_span(binding: c.binding, sp: sp)) |> first {
-            Present { value: c } => Present { value: decl_ref(module_path: c.module_path, decl_name: decl_name) }
-            Absent => none
-          }
-        Absent => none
-      }
-  }
-}
+// binding_declares_span and type_reference_declaration_ref are RELOCATED to v1.compiler.infer_env
+// (XL-0N, adhoc-aec65f93-b00): inference now asks the same exact-identity question at every literal
+// boundary, and infer_env is the module both stages already import -- one reader, two consumers.
 
 // The four arms of the exact resolver, rendered. Two answer a spelling; two are LOUD in the emitted
 // bytes -- a declaration bound to a representation with no realization row, and two rows for one
@@ -9950,8 +9935,8 @@ fn emit_rust_expr_slice(expr: Node, registry: Map<String, ItemInfo>, scope: Infe
 
 fn emit_rust_expr_bin_op(expr: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   match expr.expr_data {
-    ExprBinOp { op: op, algebra_field: algebra } =>
-      emit_typed_bin_op(op: op, algebra_field: algebra, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+    ExprBinOp { op: op, algebra_field: algebra, operand: od } =>
+      emit_typed_bin_op(op: op, algebra_field: algebra, operand: od, left: binop_left(texpr: expr), right: binop_right(texpr: expr), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
     _ => emit_error_expr(message: "emit_rust_expr_bin_op expected ExprBinOp", target: Rust)
   }
 }
@@ -12089,7 +12074,8 @@ fn emit_field_value_with_context(field_value: Node, struct_node: Node, outer_typ
               } else { pe }
             Absent => pe
           }
-          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: resolved_type(n: field_value), registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let nested_rt = expand_type_for_field_access(n: resolved_type(n: field_value), env: scope.type_env, module_name: scope.module_name).resolved
+          let raw = emit_typed_record_lit(type_name: tn, fields: inner_fields, parent_enum: corrected_parent, resolved_type: nested_rt, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let rc_name = match corrected_parent {
             Present { value: en } => en
             Absent => variant_name
@@ -12473,12 +12459,130 @@ fn rust_zero_value(type_name: String) -> String? {
   else { none }
 }
 
-fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
+fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, operand: OperandDeclaration?, left: Node, right: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let l_str = emit_typed_expr(texpr: left, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   let r_str = emit_typed_expr(texpr: right, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
   if is_null_coalesce(op: op) {
     emit_null_coalesce(l_str: l_str, r_str: r_str, target: Rust)
   } else {
+    match binop_operator_realization(op: op, operand: operand, left: left, scope: scope) {
+      OperatorRealizationRefused { cause: c } =>
+        emit_rust_compile_error_expr(message: operator_realization_refusal_message(cause: c))
+      StructuralComparison { declaration: _, binding: b, test: t } =>
+        emit_rust_structural_comparison(l_str: l_str, r_str: r_str, binding: b, test: t)
+      StructuralEquality { declaration: _ } =>
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+      HostOperator =>
+        emit_rust_host_bin_op(op: op, algebra_field: algebra_field, left: left, right: right, l_str: l_str, r_str: r_str, scope: scope)
+    }
+  }
+}
+
+// OPERATOR REALIZATION BY EXACT OPERAND STRUCTURE (std.operator_realization). The operand's
+// declaration is read by identity (v1.compiler.infer_env type_reference_declaration_ref) and its
+// native realization asked of the same authority the type renderer asks (v1.compiler.coercion):
+// a host numeric keeps the host token; a structural declaration renders equality structurally
+// (the emitted enum derives PartialEq over its own constructors) and an ordering as a call to its
+// declared comparison tested against std.algebra Ordering; arithmetic on a structural operand
+// refuses, typed and located, instead of emitting a token rustc refuses under E0369 later.
+fn rust_operand_realization(operand: Node, scope: InferScope) -> OperandRealization {
+  rust_operand_realization_of_type(rt: resolved_type(n: operand), scope: scope, fuel: 8)
+}
+
+// AN ALIAS OR REFINEMENT DECLARATION REALIZES AS ITS TARGET. `type NonEmptyStr = String where
+// non_empty`, `type Char = Int where unicode_scalar, brand("Char")` and their like are alias items
+// (is_type_alias_item: a bare-leaf item whose resolved type is a type-alias return node) whose Rust
+// realization IS the right-hand side's -- the type renderer already renders them that way -- so the
+// operand decision hops to the right-hand side (resolved_type of the declaration) before judging,
+// exactly as the derive lane's alias hop does (v1.compiler.trait_derive_emit
+// v1_item_alias_hop_type_exprs). The seed's own semver and unicode modules compare NonEmptyStr and
+// add to Char; without the hop those were refused as structural. Fuel bounds an alias chain; a
+// chain longer than it is judged at its last declaration.
+// A `where`-refined declaration resolves to the parser's refinement wrapper -- a one-child Conj
+// carrying the predicate as its type_annotation (v1.compiler.parse try_where_clause), which is what
+// the operand's resolved node IS at these sites (measured under regen: Conj, one child, no inferred),
+// never an alias item. The type renderer already realizes such a node as its base
+// (render_rust_alias_rhs_type hops is_where_refinement_type to the first child), so the operand
+// decision hops the same way, resolving the base through the env as where_refinement_chain does.
+fn rust_operand_realization_of_type(rt: Node, scope: InferScope, fuel: Int) -> OperandRealization {
+  let decl_file = type_reference_decl_file(n: rt)
+  let authored = authored_name_at(source_indices: scope.type_env.source_indices, node: rt)
+  let rt_is_type_var = match rt.inferred { Present { value: i } => is_type_variable(inferred: i)  Absent => false }
+  if is_kernel_minted_file(file: decl_file) {
+    HostRealizedOperand { reason: KernelMintedType }
+  } else if rt_is_type_var {
+    HostRealizedOperand { reason: GenericTypeParameter }
+  } else if is_container_type(name: qualified_last_segment(name: authored)) {
+    HostRealizedOperand { reason: HostContainer }
+  } else if authored == "" {
+    HostRealizedOperand { reason: UnnamedSynthesizedType }
+  } else {
+  match type_reference_declaration_ref(n: rt, source_indices: scope.type_env.source_indices, env: scope.type_env) {
+    Absent => OperandIdentityUnavailable { facts: OperandShapeFacts {
+      authored_name: authored,
+      connective: connective_name(value: rt.connective),
+      child_count: rt.children |> count,
+      resolved: rt.inferred != none,
+      decl_file: decl_file
+    } }
+    Present { value: d } =>
+      if declaration_realizes_natively_on_rust(declaration: d, decl_file: type_reference_decl_file(n: rt)) {
+        HostNumericOperand
+      } else {
+        let decl = match rt.inferred {
+          Present { value: Resolved { node: r } } => r
+          _ => rt
+        }
+        if fuel > 0 && is_where_refinement_type(ty: rt) {
+          match rt.children |> first {
+            Present { value: base } =>
+              let base_resolved = match lookup_type_for(env: scope.type_env, node: base) {
+                Present { value: r } => r
+                Absent => base
+              }
+              rust_operand_realization_of_type(rt: base_resolved, scope: scope, fuel: fuel - 1)
+            Absent => StructuralOperand { declaration: d }
+          }
+        } else if fuel > 0 && is_type_alias_item(item: decl, source_indices: scope.type_env.source_indices) {
+          rust_operand_realization_of_type(rt: resolved_type(n: decl), scope: scope, fuel: fuel - 1)
+        } else {
+          StructuralOperand { declaration: d }
+        }
+      }
+  }
+  }
+}
+
+
+// The operand's declaration is the one inference stamped on the node (std.operator_realization
+// OperandDeclaration); the rt-shape read below is the residue for a node that carries none.
+fn binop_operator_realization(op: BinOp, operand: OperandDeclaration?, left: Node, scope: InferScope) -> OperatorRealization {
+  let realization = match operand {
+    Present { value: od } =>
+      if declaration_realizes_natively_on_rust(declaration: od.declaration, decl_file: od.decl_file) {
+        HostNumericOperand
+      } else {
+        StructuralOperand { declaration: od.declaration }
+      }
+    Absent => rust_operand_realization(operand: left, scope: scope)
+  }
+  operator_realization_for(op: op, operand: realization, ordering_rows: structural_ordering_rows)
+}
+
+fn rust_declaration_path(module_path: String, decl_name: String) -> String {
+  concat("crate::", module_to_filename(name: module_path), "::", emit_ident(name: decl_name, target: Rust))
+}
+
+fn emit_rust_structural_comparison(l_str: String, r_str: String, binding: StructuralOrderingBinding, test: OrderingTest) -> String {
+  let call = concat(rust_declaration_path(module_path: binding.compare.module_path as String, decl_name: binding.compare.decl_name as String), "(", l_str, ", ", r_str, ")")
+  let ordering = concat("crate::", module_to_filename(name: binding.ordering.module_path as String), "::", binding.ordering.decl_name as String)
+  match test {
+    OrderingIs { variant: v } => concat("(", call, " == ", ordering, "::", v as String, ")")
+    OrderingIsNot { variant: v } => concat("(", call, " != ", ordering, "::", v as String, ")")
+  }
+}
+
+fn emit_rust_host_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, right: Node, l_str: String, r_str: String, scope: InferScope) -> String {
     let op_str = emit_bin_op_symbol(op: op, target: Rust, algebra_field: algebra_field)
     if is_string_comparison(op: op, left: left, right: right, source_indices: scope.type_env.source_indices) {
       let l_optional = is_optional_typed_expr(e: left)
@@ -12499,7 +12603,6 @@ fn emit_typed_bin_op(op: BinOp, algebra_field: AlgebraFieldKind?, left: Node, ri
         concat("(", l_str, " ", op_str, " ", r_str, ")")
       }
     }
-  }
 }
 
 fn is_optional_typed_expr(e: Node) -> Bool {

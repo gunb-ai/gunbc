@@ -39,6 +39,13 @@ fn eq_census_clean(source: String) -> Bool {
   }
 }
 
+fn eq_admitted(source: String) -> Bool {
+  match eq_census_of(source: source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows)) == 0
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
 data interpretation_algebra_eq_red_source: String = "module eq_probe_interpretation_algebra\nimport v2.std.runtime { InterpretationAlgebra }\nfn same(a: InterpretationAlgebra, b: InterpretationAlgebra) -> Bool { a == b }\n"
 
 data runtime_value_eq_model_derived_source: String = "module eq_probe_runtime_value\nimport v2.std.runtime { RuntimeValue }\nfn same(a: RuntimeValue, b: RuntimeValue) -> Bool { a == b }\n"
@@ -64,7 +71,7 @@ test fn interpretation_algebra_equality_refuses_blocking() -> Bool {
 }
 
 test fn runtime_value_equality_admits_on_the_finite_map_model() -> Bool {
-  eq_census_clean(source: runtime_value_eq_model_derived_source)
+  eq_admitted(source: runtime_value_eq_model_derived_source)
 }
 
 test fn fn_member_record_equality_refuses_blocking() -> Bool {
@@ -80,7 +87,7 @@ test fn partial_function_equality_refuses_blocking() -> Bool {
 }
 
 test fn peano_nat_equality_stays_admitted() -> Bool {
-  eq_census_clean(source: peano_nat_eq_green_source)
+  eq_admitted(source: peano_nat_eq_green_source)
 }
 
 test fn local_recursive_coproduct_equality_stays_admitted() -> Bool {
@@ -88,7 +95,7 @@ test fn local_recursive_coproduct_equality_stays_admitted() -> Bool {
 }
 
 test fn structural_record_equality_stays_admitted() -> Bool {
-  eq_census_clean(source: structural_record_eq_green_source)
+  eq_admitted(source: structural_record_eq_green_source)
 }
 
 test fn presence_test_stays_admitted() -> Bool {

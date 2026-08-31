@@ -94,9 +94,10 @@ use crate::v1_std_core::Cardinality::CardOptional;
 use crate::v1_std_core::CompilerDiagnostic::TransportEmissionNotModeled;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
-    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::FieldAccessStyle::{TupleFirst, TupleSecond};
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
@@ -2825,6 +2826,7 @@ pub enum ExprCategory {
 pub fn classify_expr(texpr: Rc<Node>) -> ExprCategory {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprLiteral { value: _, .. } => ExprCategory::ExprCatLeaf,
+        ExprData::ExprElaboratedLiteral { .. } => ExprCategory::ExprCatLeaf,
         ExprData::ExprError { .. } => ExprCategory::ExprCatLeaf,
         ExprData::ExprVar {
             binding_kind: _, ..
@@ -5413,6 +5415,14 @@ pub fn emit_shared_expr(
         ExprData::ExprLiteral { value: v, .. } => {
             wrap_result(emit_literal(v.clone(), target.clone()))
         }
+        ExprData::ExprElaboratedLiteral { .. } => match texpr.children.clone().first().cloned() {
+            Some(image) => recurse(image.clone()),
+            std::option::Option::None => wrap_result(emit_error_expr(
+                "elaborated literal carries no image (v1.compiler.infer unfold_literal_image)"
+                    .to_string(),
+                target.clone(),
+            )),
+        },
         ExprData::ExprError { message, .. } => {
             wrap_result(emit_error_expr(message.clone(), target.clone()))
         }

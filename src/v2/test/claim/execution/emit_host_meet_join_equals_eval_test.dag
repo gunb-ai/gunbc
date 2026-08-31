@@ -140,19 +140,11 @@ fn meet_join_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
 }
 
 fn meet_join_eval_bool_true(value: RuntimeValue) -> Bool {
-  match runtime_value_equality(a: value, b: meet_join_eval_octet_value(n: 1)) {
-    RuntimeValuesEqual => true
-    RuntimeValuesDiffer => false
-    RuntimeValueEqualityUnavailable { reason: _ } => false
-  }
+  value == meet_join_eval_octet_value(n: 1)
 }
 
 fn meet_join_eval_bool_false(value: RuntimeValue) -> Bool {
-  match runtime_value_equality(a: value, b: meet_join_eval_octet_value(n: 0)) {
-    RuntimeValuesEqual => true
-    RuntimeValuesDiffer => false
-    RuntimeValueEqualityUnavailable { reason: _ } => false
-  }
+  value == meet_join_eval_octet_value(n: 0)
 }
 
 fn meet_join_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {

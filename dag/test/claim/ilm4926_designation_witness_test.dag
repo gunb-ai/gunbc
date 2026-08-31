@@ -55,10 +55,15 @@ import extdeps.cpu_attachment.ilm4926 {
   ocp_mt_jade_specification_authority,
   azifa072_drawing_authority,
   lga4926_footprint_may_release,
+  azif0222_retention_drawing_request,
+  lotes_azif0222_product_authority,
 }
 import extdeps.cpu_attachment.lotes_azifa072 {
   azifa072_footprint_may_emit,
   land_pattern_gap_count,
+  azifa072_held_copies,
+  azifa072_drawing_held_copy,
+  azifa072_step_held_copy,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -347,4 +352,24 @@ test fn w_the_gated_route_is_retained_beside_the_public_one() -> Bool {
       a == ampere_customer_reference_boards_authority
     PublicSocketVendorDrawing { vendor_authority: _, what_to_request: _ } => false
   }
+}
+
+// THE HELD COPIES ARE CONVENIENCES BESIDE THE CITATION, NOT THE CITATION. Two documents were
+// delivered on one date, each held copy names a different file, and neither held-copy locator is
+// the publisher route the module cites as authority -- if a later edit collapsed the held copy
+// into the citation, the last conjunct goes red.
+test fn w_two_held_copies_are_recorded_beside_the_vendor_route() -> Bool {
+  list_length(items: azifa072_held_copies) == 2
+    && azifa072_drawing_held_copy.received_on == azifa072_step_held_copy.received_on
+    && azifa072_drawing_held_copy.file_name != azifa072_step_held_copy.file_name
+    && azifa072_drawing_held_copy.locator != azifa072_drawing_authority
+    && azifa072_step_held_copy.locator != azifa072_drawing_authority
+}
+
+// THE RETENTION ASSEMBLY IS ASKED FOR ON THE SAME VENDOR ROUTE THE SOCKET BODY RESOLVED ON, and the
+// request names the retention part, not the socket body -- a request that named AZIFA072 again
+// would be a duplicate of the resolved ask wearing the outstanding one's row.
+test fn w_the_retention_drawing_request_names_azif0222_on_the_lotes_route() -> Bool {
+  azif0222_retention_drawing_request.part_number == "AZIF0222"
+    && azif0222_retention_drawing_request.vendor_authority == lotes_azif0222_product_authority
 }

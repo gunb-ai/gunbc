@@ -643,6 +643,8 @@ fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex
     NoExprData => "{\"kind\": \"NoExprData\"}"
     ExprLiteral { value: value } =>
       concat("{\"kind\": \"ExprLiteral\", \"value\": ", serialize_literal(value: value), "}")
+    ExprElaboratedLiteral { value: value, elaboration: _ } =>
+      concat("{\"kind\": \"ExprElaboratedLiteral\", \"value\": ", serialize_literal(value: value), "}")
     ExprError { kind: kind, message: message } =>
       concat(
         "{\"kind\": \"ExprError\", \"error_kind\": ", json_quote(s: expr_error_kind_name(value: kind)),
