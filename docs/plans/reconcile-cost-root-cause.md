@@ -163,14 +163,15 @@ from 7,725ms to 7,736ms: **+11ms, 0.14%**. The same-arm run before the padded ar
 warming from being attributed to population size. A corpus-sized variant population is therefore
 not the mechanism behind the historical 259s.
 
-The population and time are smaller than the 2026-08-16/17 receipt, and that difference is itself
-material: current `--required-floor` no longer recreates the old subject. It indexed 4,436 modules
-but reconciled a 99-module gate closure, never reaching `gunbc.host_effect_realize`; spelling the
-old command again would measure a different population. The explicit importer above was used so
-the target's presence was observed rather than inferred from the CLI flag. On current main the
-historical 246–253s target cost is no longer present in that real closure; it is 7.7s. This
-measurement refutes candidate #3. It does not assign the improvement to a particular intervening
-change.
+The population and time are smaller than the 2026-08-16/17 receipt, so the 7.7s target time is
+scoped to this 720-module closure and says nothing about whether the historical full-population
+outlier remains. Current `--required-floor` no longer recreates the old subject: it indexed 4,436
+modules but reconciled a 99-module gate closure, never reaching `gunbc.host_effect_realize`;
+spelling the old command again would measure a different population. The explicit importer above
+was used so the target's presence was observed rather than inferred from the CLI flag. This
+measurement refutes candidate #3 because it varies that candidate within one fixed subject; it
+does **not** establish a current full-population target cost or assign any change in cost to an
+intervening revision.
 
 **The two apparent per-module copied-accumulator repairs are obsolete on current main.** Reading
 `merge_global_bare_variant_locals` and the immediately following
