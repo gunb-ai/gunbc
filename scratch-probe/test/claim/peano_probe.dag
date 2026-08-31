@@ -1,0 +1,12 @@
+module test.claim.peano_probe
+import std.types { Int, Bool }
+import v2.std.nat { Nat, Zero, Succ, nat_add }
+fn arg_boundary(n: Nat) -> Nat { nat_add(a: n, b: 2) }
+fn return_boundary() -> Nat { 2 }
+fn ordering(a: Nat, b: Nat) -> Bool { a < b }
+fn ordering_le(a: Nat, b: Nat) -> Bool { a <= b }
+fn equality(a: Nat, b: Nat) -> Bool { a == b }
+fn literal_equality(a: Nat) -> Bool { a == 3 }
+fn arithmetic(a: Nat, b: Nat) -> Nat { a / b }
+fn host_ordering(a: Int, b: Int) -> Bool { a < b }
+fn host_literal(a: Int) -> Int { a + 2 }

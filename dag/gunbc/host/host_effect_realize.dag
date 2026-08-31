@@ -70,11 +70,14 @@ import extdeps.tools.id { id_uid_argv, id_gid_argv, id_binary_path }
 import extdeps.tools.mkdir { mkdir_parents_argv }
 import extdeps.tools.chown { chown_argv }
 import extdeps.tools.chmod { chmod_add_executable_argv }
-import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
 import extdeps.posix.path_ownership {
   PathOwnershipObservation,
   PathOwnerObserved,
   PathOwnerUnobserved,
+  PathModeObservation,
+  PathModeObserved,
+  PathModeUnobserved,
   PathOwnershipDecision,
   OwnershipAlreadySatisfied,
   OwnershipMutationRequired,
@@ -1728,6 +1731,7 @@ type Srv3TokenSubject
   | Srv3EffectiveGroupId
   | Srv3PathOwnerUser { path: String }
   | Srv3PathOwnerGroup { path: String }
+  | Srv3PathMode { path: String }
 
 // The single public token read. The argv never crosses this boundary in either direction: callers
 // hand in a subject and receive a typed observation.
@@ -1753,6 +1757,7 @@ fn srv3_token_argv(subject: Srv3TokenSubject) -> List<String>
     Srv3EffectiveGroupId => id_gid_argv_absolute()
     Srv3PathOwnerUser { path: p } => stat_owner_user_argv(path: p)
     Srv3PathOwnerGroup { path: p } => stat_owner_group_argv(path: p)
+    Srv3PathMode { path: p } => stat_mode_argv(path: p)
   }
 }
 
@@ -1885,6 +1890,14 @@ fn srv3_observe_path_owner(path: String, transport: HostEffectTransport) -> Path
         Srv3TokenObserved { value: gid_text } =>
           srv3_path_owner_from_texts(uid_text: uid_text, gid_text: gid_text, path: path)
       }
+  }
+}
+
+fn srv3_observe_path_mode(path: String, transport: HostEffectTransport) -> PathModeObservation {
+  match srv3_read_token(subject: Srv3PathMode { path: path }, transport: transport) {
+    Srv3TokenUnobserved { reason: why } => PathModeUnobserved { reason: why }
+    Srv3TokenAbsent => PathModeUnobserved { reason: concat("srv3 mode: `stat -c %a` produced no output for ", path) }
+    Srv3TokenObserved { value: mode_text } => PathModeObserved { mode: mode_text as NonEmptyStr }
   }
 }
 

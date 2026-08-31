@@ -412,6 +412,15 @@ data operation_argv_binding_wall_stall: GuaranteeStall = GuaranteeStall {
   next_rung_trigger: "node://adhoc-a3b0e05f-374 lands: the operation-argv binding wall materializes the controlled previously-unbindable operation"
 }
 
+data variant_owner_identity_stall: GuaranteeStall = GuaranteeStall {
+  subject: "runtime variant equality and native-representation selection derive from exact owner-module plus declaration identity, never parent/arm lexemes",
+  current: OutsideTheLadder,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1_interpreter::cross_claim_memo_tests::same_spelled_variants_from_distinct_owners_reproduce_identity_residual", tail: Cons { head: "v1_interpreter::cross_claim_memo_tests::typed_bool_literals_do_not_need_lexeme_shorthands_but_zero_still_does", tail: Empty {} } } },
+  next_rung_trigger: "NS-0B threads its exact owner-module plus declaration-name identity through VariantValueBinding, Value::Variant, hashing, and PortableValue::Variant; the same-spelled-owner residual changes from reproducing equality to requiring inequality, and the intentional Nat Zero native representation is selected by that identity rather than by the raw Zero lexeme"
+}
+
 // REQUIRED-FLOOR RUN 32942047138 first executed this ReadsLiveTree carrier after #9284 landed.
 // The direct byte-equality witness and its aggregate both returned false: one underlying fact,
 // namely that the committed .gitattributes no longer equals its emitting authority. This is real
@@ -498,6 +507,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   self_host_candidate_generation_add_slice_stall,
   non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
+  variant_owner_identity_stall,
   gitattributes_committed_emit_drift_stall,
   wall_deadline_shared_fill_attribution_stall
 ]
@@ -534,3 +544,4 @@ fn stall_roster_size(ss: List<GuaranteeStall>) -> Int {
     cons: fn(acc, s) { acc + 1 },
   )
 }
+

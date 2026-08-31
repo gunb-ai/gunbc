@@ -116,6 +116,6 @@ pub fn compiler_recursive_types() -> Rc<HashMap<String, bool>> {
 pub fn is_compiler_recursive_type(name: String) -> bool {
     match v1_rt::map_get(&compiler_recursive_types(), name.clone()) {
         Some(_) => true,
-        None => false,
+        std::option::Option::None => false,
     }
 }

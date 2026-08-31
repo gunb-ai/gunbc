@@ -118,7 +118,7 @@ fn local_determinism_axis(n: Node) -> std.determinism.Determinism {
   }
 }
 
-fn determinism_axis_fold_step(acc: std.determinism.Determinism, _: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
+fn determinism_axis_fold_step(acc: std.determinism.Determinism, _e: Edge, child: std.determinism.Determinism) -> std.determinism.Determinism {
   std.determinism.determinism_compose(outer: acc, inner: child)
 }
 
