@@ -22,8 +22,8 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifactReady,
   FleetConvergePlanArtifactRefused,
 }
-import gunbc.fabric.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
-import gunbc.runner.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
+import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_shaped_observation }
 import gunbc.spark.serving_execution_schedule {
   scheduled_rows_empty,

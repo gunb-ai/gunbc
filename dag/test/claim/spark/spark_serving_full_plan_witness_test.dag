@@ -5,7 +5,6 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
   SparkServingPlanObservation,
-  spark_serving_observation_attempt_of,
   spark_serving_provenance_host,
   spark_serving_provenance_observation_attempt,
 }
@@ -1470,11 +1469,7 @@ test fn a_planned_axis_carries_the_acquired_provenance_of_its_observation() -> B
         && match spark_serving_provenance_observation_attempt(p: p.provenance) {
           Absent => false
           Present { value: a } =>
-            a == spark_serving_observation_attempt_of(
-              fleet_attempt: hermetic_fleet_attempt_raw as NonEmptyStr,
-              host: subject_host,
-              phase: SparkServingPlanObservation,
-            )
+            (a as String) == concat(hermetic_fleet_attempt_raw, "/srv5/plan")
         }
     SparkServingAxisNotApplicable { host: _ } => false
     SparkServingAxisUnobserved { host: _ } => false
@@ -1501,7 +1496,6 @@ test fn a_hermetic_observation_cannot_produce_a_bound_plan() -> Bool {
         activity: UnitActivityRunning,
       },
       linger: LingerObservedEnabled,
-      provenance: hermetic_fixture_provenance(host: subject_host),
     ),
   ) {
     SparkServingAxisRefused { host: h, cause: why } =>
