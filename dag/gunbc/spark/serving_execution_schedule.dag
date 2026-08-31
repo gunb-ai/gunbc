@@ -26,6 +26,7 @@ import gunbc.spark.serving_membership {
   SparkServingUserUnitAddress,
   SparkServingUserUnitRegistrationAddress,
   SparkServingUserUnitEnablementAddress,
+  SparkServingUserUnitActivityAddress,
   SparkServingModelSlotAddress,
   SparkServingLingerAddress,
   spark_serving_resource_address_wire,
