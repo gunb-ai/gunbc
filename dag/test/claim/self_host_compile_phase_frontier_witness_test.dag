@@ -40,6 +40,11 @@ import gunbc.self_host_compile_phase_frontier {
   genesis_5006ddc6_parse_observation,
   genesis_5006ddc6_raw_error_diagnostic_identities,
   phase_census_digest,
+  CensusIdentityDigest,
+  CanonicalIdentitySetV1,
+  EmissionOrderedV1,
+  census_identity_domain_separator,
+  census_population_is_duplicate_free,
   render_phase_board
 }
 import extdeps.cargo_diagnostic {
@@ -89,7 +94,7 @@ fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
     ],
     furthest_phase_reached: Borrowck,
     furthest_phase_evidence: Observed,
-    census_identity_digest: content_hash_atom(value: "fixture-borrow-board" as NonEmptyStr),
+    census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "fixture-borrow-board" as NonEmptyStr) },
     total_error_diagnostics: count(borrow_ids),
     coded_error_diagnostics: count(borrow_ids),
     codeless_error_diagnostics: 0,
@@ -108,7 +113,7 @@ test fn coded_and_codeless_error_identities_must_reconcile_to_total() -> Bool {
     ],
     furthest_phase_reached: Typeck,
     furthest_phase_evidence: Observed,
-    census_identity_digest: content_hash_atom(value: "malformed-error-population" as NonEmptyStr),
+    census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "malformed-error-population" as NonEmptyStr) },
     total_error_diagnostics: 1,
     coded_error_diagnostics: 1,
     codeless_error_diagnostics: 1,
@@ -142,7 +147,7 @@ fn fixture_board(resolve_ids: List<String>, typeck_ids: List<String>) -> RustcPh
     ],
     furthest_phase_reached: if count(resolve_ids) > 0 { Resolve } else { Typeck },
     furthest_phase_evidence: Observed,
-    census_identity_digest: content_hash_atom(value: "fixture-board" as NonEmptyStr),
+    census_identity_digest: CensusIdentityDigest { algorithm: CanonicalIdentitySetV1, digest: content_hash_atom(value: "fixture-board" as NonEmptyStr) },
     total_error_diagnostics: count(resolve_ids) + count(typeck_ids),
     coded_error_diagnostics: count(resolve_ids) + count(typeck_ids),
     codeless_error_diagnostics: 0,
@@ -412,20 +417,74 @@ test fn the_census_digest_is_invariant_under_reordering_of_either_population() -
   forward == reversed
 }
 
-// Positive control: canonicalizing the order must not be achieved by discarding content. A census
-// that genuinely differs, and a value that moves between the two populations, both still separate.
-test fn the_census_digest_still_separates_genuinely_different_censuses() -> Bool {
+// Separation controls. A digest that separated on CARDINALITY alone would pass an added/removed
+// pair, so the load-bearing case is substitution at equal cardinality: one identity swapped, count
+// unchanged. Alongside it, a value moved between the two populations must still separate, which is
+// what makes the segments separate rather than one canonicalized pool.
+test fn the_census_digest_separates_added_removed_and_substituted_identities() -> Bool {
   let base = phase_census_digest(
-    parse_refused_files: ["src/a.rs"],
-    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
-  )
-  let extra_identity = phase_census_digest(
     parse_refused_files: ["src/a.rs"],
     raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0433\tunresolved"]
   )
+  let added = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0433\tunresolved", "src/d.rs:4:4\tE0599\tno method"]
+  )
+  let removed = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let substituted = phase_census_digest(
+    parse_refused_files: ["src/a.rs"],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/c.rs:3:3\tE0308\tmismatched types"]
+  )
   let populations_swapped = phase_census_digest(
     parse_refused_files: ["src/b.rs:2:2\tE0425\tunresolved"],
-    raw_identities: ["src/a.rs"]
+    raw_identities: ["src/a.rs", "src/c.rs:3:3\tE0433\tunresolved"]
   )
-  base != extra_identity && base != populations_swapped && extra_identity != populations_swapped
+  base != added
+    && base != removed
+    && base != substituted
+    && base != populations_swapped
+    && added != removed
+}
+
+// Duplicate handling is EXPLICIT and the decision is typed refusal upstream, not silent set-dedup
+// inside the digest. Collapsing duplicates here would make a duplicated population indistinguishable
+// from a clean one, hiding a population defect behind a digest that still looked well-formed. The
+// digest therefore separates them, and phase_board_from_census_identities refuses the duplicated
+// population by folding a deduplicated total that no longer equals the raw count -- which is the
+// exact equality receipt_population_coherent checks.
+test fn a_duplicated_census_population_is_not_silently_collapsed_to_a_set() -> Bool {
+  let clean = phase_census_digest(
+    parse_refused_files: [],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let duplicated = phase_census_digest(
+    parse_refused_files: [],
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  let duplicated_fold = phase_board_from_census_identities(
+    parse_observation: clean_parse_observation(),
+    raw_identities: ["src/b.rs:2:2\tE0425\tunresolved", "src/b.rs:2:2\tE0425\tunresolved"]
+  )
+  clean != duplicated && duplicated_fold.board.total_error_diagnostics != 2
+}
+
+// The digest carries its own algorithm identity, so a value folded under the retired emission-order
+// procedure and one folded over the canonical set can never be compared as bare hashes.
+test fn the_census_digest_carries_the_algorithm_that_produced_it() -> Bool {
+  let produced = phase_census_digest(parse_refused_files: [], raw_identities: ["src/b.rs:2:2\tE0425\tunresolved"])
+  produced.algorithm == CanonicalIdentitySetV1
+    && census_identity_domain_separator(algorithm: EmissionOrderedV1)
+       != census_identity_domain_separator(algorithm: CanonicalIdentitySetV1)
+}
+
+// The refused-file population had no duplicate wall at all until this predicate was wired into
+// receipt_population_coherent: rustfmt refusing one path twice would double-count the Parse row and
+// carry the repeat into the digest. This is the discriminating pair for that wall.
+test fn a_repeated_population_entry_is_refused_rather_than_collapsed() -> Bool {
+  !census_population_is_duplicate_free(identities: ["src/a.rs", "src/a.rs"])
+    && census_population_is_duplicate_free(identities: ["src/a.rs", "src/b.rs"])
+    && census_population_is_duplicate_free(identities: [])
 }
