@@ -13,14 +13,26 @@ import std.types { Bool, List, String }
 
 // ONE CLASS, NAMED EXACTLY, BECAUSE IT WOULD OTHERWISE BE READ AS THE CLASS NEXT TO IT.
 //
-// WHAT THIS CATCHES: a derived-partition crate roster naming a stage0 file that lib.rs does
-// NOT declare -- specifically a file the crate-layout authority registers as seed-retained
-// with has_pub_mod false. Such a row makes the partition crates compile a module the monolith
-// does not, through the `#[path = "../../stage0/src/<name>.rs"] pub mod <name>;` include the
-// partition emitter renders, so one file acquires two compilation stories and only one of them
-// is reachable from the authority that says which modules stage0 has. main carried exactly one
-// such row -- std_lens_verdict, whose source module std.lens_verdict no longer exists -- and
-// this witness was RED on main until the row was dropped from v2.workflow.rust_crate_partition.
+// WHAT THIS CATCHES: a derived-partition crate roster naming a stage0 file the crate-layout
+// authority registers as SEED-RETAINED -- hand-authored host source with a retention row. Such a
+// row makes a partition crate compile a hand-authored module through the
+// `#[path = "../../stage0/src/<name>.rs"] pub mod <name>;` include the partition emitter renders,
+// while the host shell declares the same file itself, so one file acquires two compilation
+// stories. main carried exactly one such row -- std_lens_verdict, whose source module
+// std.lens_verdict no longer exists -- and this witness was RED on main until the row was
+// dropped from v2.workflow.rust_crate_partition.
+//
+// RE-GROUNDED BY THE PARTITION EXECUTABLE CUT, and the sentence that changed is the premise, not
+// the rule. This check used to be read as "a partition may not own a module absent from the
+// monolith's pub mod surface", which was a usable proxy for unique compilation only while the
+// monolith was the crate root and declared every emitted mirror. It no longer is: a
+// partition-owned module is now DELIBERATELY absent from the host shell's declarations, and
+// reading the old sentence literally would make the intended architecture refuse. What survives
+// -- and what the fold below actually computes -- is the narrower and still-valid direction: a
+// partition row may not name a SEED-RETAINED file. The general question the proxy stood in for
+// is asked at module grain by v2.compiler.self_host.stage0_executable_assembly, whose census
+// refuses a module owned by two surfaces or by none, with its discriminating REDs executing in
+// v2.test.claim.self_host.stage0_executable_assembly_test.
 //
 // WHAT THIS DOES NOT CATCH, stated so nobody cites it for the defect that motivated the file.
 // #9689 left main's whole-workspace build red because three modules were in lib.rs and in NO
@@ -62,8 +74,8 @@ fn stage0_file_has_pub_mod(basename: String, pub_mod_basenames: List<String>) ->
 }
 
 // A rostered module is admissible when the crate-layout authority does not register it as a
-// seed-retained file at all (it is emitter-produced, and stage0 lib.rs declares the emitted
-// population), or registers it AND declares a pub mod for it. The refused state is the third
+// seed-retained file at all -- it is emitter-produced, so its single owner is the partition crate
+// naming it -- or registers it AND declares a pub mod for it. The refused state is the third
 // combination, and it is returned by name rather than counted so the failure locates itself.
 fn roster_entry_violates_pub_mod_join(
   basename: String,

@@ -1,6 +1,11 @@
 module gunbc.stage0_partition_package_graph
 
 import std.types { String, List, Bool }
+import gunbc.stage0_executable_assembly_generated {
+  generated_host_shell_package_name,
+  generated_host_shell_partition_dependencies,
+  generated_next_pass_bin_name
+}
 import gunbc.stage0_crate_partition_generated {
   GeneratedEmitCoreCrate,
   GeneratedFoundationCrate,
@@ -52,4 +57,26 @@ fn stage0_partition_package_dependency_names(row: GeneratedPartitionCrateRow) ->
     GeneratedLayeredCoreCrate => row.reexport_packages
     GeneratedEmitCoreCrate => stage0_partition_module_bearing_package_names()
   }
+}
+
+// THE NODE ABOVE THE PARTITION. The host shell package is not a partition crate -- it owns no
+// emitted mirror the partition owns, and it is never rendered by v1.compiler.stage0_crates -- but
+// it IS a node of the same package graph: it depends on the top module-bearing package, so cargo
+// relinks it whenever any package below it recompiles, and the executable the second generation
+// runs is its binary target. Leaving it out of this module would force the rebuild selector to
+// carry its own edge for the one package that matters most, which is the parallel-authority
+// failure the header above rejects for every other edge.
+//
+// The identities come from gunbc.stage0_executable_assembly_generated, the projection of
+// v2.compiler.self_host.stage0_executable_assembly; nothing about the shell is decided here.
+fn stage0_host_shell_package_name() -> String {
+  generated_host_shell_package_name
+}
+
+fn stage0_host_shell_dependency_names() -> List<String> {
+  generated_host_shell_partition_dependencies
+}
+
+fn stage0_next_pass_executable_bin_name() -> String {
+  generated_next_pass_bin_name
 }
