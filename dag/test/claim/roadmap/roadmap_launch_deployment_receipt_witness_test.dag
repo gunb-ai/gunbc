@@ -162,7 +162,7 @@ fn rlm_provenance() -> RunProvenanceFact {
     plan: rlm_predecessor(run_id: "1001"),
     apply: rlm_predecessor(run_id: "1002"),
     dashboard: rlm_predecessor(run_id: "1003"),
-    receipt_workflow_ref_names_path: true,
+    receipt_workflow_ref: ReceiptWorkflowRefNamesFile,
   }
 }
 
@@ -479,7 +479,7 @@ test fn witness_apply_admitted_against_q_is_incomplete_at_apply_receipt() -> Boo
 
 // P1-4: each leg of the four-run provenance chain blocks on its own defect.
 fn rlm_provenance_with_plan(p: PredecessorRunProvenance) -> RunProvenanceFact {
-  RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: p, apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: true }
+  RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: p, apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref: ReceiptWorkflowRefNamesFile }
 }
 
 test fn witness_predecessor_non_success_conclusion_is_incomplete_at_run_provenance() -> Bool {
@@ -499,7 +499,7 @@ test fn witness_predecessor_run_id_substitution_is_incomplete_at_run_provenance(
 }
 
 test fn witness_receipt_workflow_ref_not_named_is_incomplete_at_run_provenance() -> Bool {
-  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: false }), member: "run_provenance")
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "gunb-ai/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref: ReceiptWorkflowRefForeign { workflow_ref: "fork-owner/gunbc/.github/workflows/other.yml@refs/heads/main" } }), member: "run_provenance")
 }
 
 test fn witness_provenance_unobserved_is_incomplete_at_run_provenance() -> Bool {
@@ -587,7 +587,7 @@ test fn witness_receipt_document_facts_are_machine_readable() -> Bool {
 // Review 5062738052 B2: the receipt run itself must execute in the canonical repository -- a fork
 // spelling fork-owner/gunbc satisfies the workflow-ref prefix check, so this is its own blocker.
 test fn witness_receipt_run_in_another_repository_is_incomplete_at_run_provenance() -> Bool {
-  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "fork-owner/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref_names_path: true }), member: "run_provenance")
+  incomplete_at(facts: with_run_provenance(f: rlm_complete_facts(), rp: RunProvenanceObserved { receipt_repository: "fork-owner/gunbc", plan: rlm_predecessor(run_id: "1001"), apply: rlm_predecessor(run_id: "1002"), dashboard: rlm_predecessor(run_id: "1003"), receipt_workflow_ref: ReceiptWorkflowRefNamesFile }), member: "run_provenance")
 }
 
 // Review 5062738052 B1: the routed endpoint serving R under the WRONG surface refuses at the

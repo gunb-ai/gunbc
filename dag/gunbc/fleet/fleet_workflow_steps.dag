@@ -533,11 +533,18 @@ data gunbc_ci_live_deploy_step_timeout_minutes: Duration = 30
 // dispatch input, not a constant of the workflow.
 data fleet_host_mutation_concurrency_group_expression: String = "gunbc-host-mutation-${{ github.event.inputs.host }}"
 
-fn gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes() -> Int {
+// The Int->Nat crossing is admitted at a function RETURN position (std.checked_arithmetic's own
+// note), so the sum of the positive per-step allowances crosses here and the public fn carries the
+// std.measure Minute duration rather than a bare scalar (review 57760 finding 1).
+fn gunbc_ci_rlm_launch_deployment_receipt_job_backstop_minute_count() -> Nat {
   gunbc_ci_prelude_allowance_minutes
     + (4 * gunbc_ci_artifact_transfer_step_timeout_minutes)
     + (5 * gunbc_ci_aux_step_timeout_minutes)
     + gunbc_ci_artifact_transfer_step_timeout_minutes
+}
+
+fn gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout() -> Minute {
+  minute(count: gunbc_ci_rlm_launch_deployment_receipt_job_backstop_minute_count())
 }
 
 fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {

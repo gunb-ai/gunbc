@@ -281,7 +281,7 @@ fn days_from_civil(y: Int, m: Int, d: Int) -> Int {
   era * 146097 + doe - 719468
 }
 
-fn iso8601_utc_epoch_seconds(text: String) -> Int? {
+fn iso8601_utc_epoch_seconds(text: String) -> Second? {
   let t = trim(s: text)
   if string_length(s: t) != 20 {
     none
@@ -311,7 +311,17 @@ fn iso8601_utc_epoch_seconds(text: String) -> Int? {
                             if m < 1 || m > 12 || d < 1 || d > 31 || hh > 23 || mm > 59 || ss > 60 {
                               none
                             } else {
-                              Present { value: days_from_civil(y: y, m: m, d: d) * 86400 + hh * 3600 + mm * 60 + ss }
+                              {
+                                let epoch = days_from_civil(y: y, m: m, d: d) * 86400 + hh * 3600 + mm * 60 + ss
+                                if epoch < 0 {
+                                  none
+                                } else {
+                                  match checked_int_magnitude(a: epoch) {
+                                    CheckedNatOverflow { cause: _ } => none
+                                    CheckedNatReady { value: n } => Present { value: second(count: n) }
+                                  }
+                                }
+                              }
                             }
                         }
                     }
@@ -370,13 +380,13 @@ fn belt_tick_freshness(observed_at: String, deploy_completed_at: String, now: St
           match iso8601_utc_epoch_seconds(text: now) {
             Absent => TickInstantUnparseable { which: "receipt run now", text: now }
             Present { value: now_s } =>
-              if tick_s < deploy_s {
+              if second_count(tick_s) < second_count(deploy_s) {
                 TickBeforeDeploy { observed_at: observed_at, deploy_completed_at: deploy_completed_at }
               } else {
                 match belt_tick_freshness_bound_seconds() {
                   Absent => TickCadenceUnnormalizable { text: belt_tick_cadence }
                   Present { value: bound } => {
-                    let age = now_s - tick_s
+                    let age = second_count(now_s) - second_count(tick_s)
                     if age < 0 {
                       TickInstantUnparseable { which: "receipt run now (earlier than the tick observed_at)", text: now }
                     } else {

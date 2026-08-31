@@ -185,13 +185,20 @@ type PredecessorRunProvenance {
 // terminal conclusion: a run cannot observe its own conclusion from inside itself, and representing
 // one here would be a fabricated observation. That conclusion is an explicit POST-RUN manager
 // verification (the RLM-2b sequence's final step) or a later attestation, never an internal claim.
+// The receipt run's workflow-ref standing, typed rather than a Bool discriminator (review 57760
+// finding 2): the refusing arm carries the OBSERVED ref, so a foreign workflow is named in the
+// blocker instead of collapsing to false.
+type ReceiptWorkflowRefStanding
+  = ReceiptWorkflowRefNamesFile
+  | ReceiptWorkflowRefForeign { workflow_ref: String }
+
 type RunProvenanceFact
   = RunProvenanceObserved {
       receipt_repository: String,
       plan: PredecessorRunProvenance,
       apply: PredecessorRunProvenance,
       dashboard: PredecessorRunProvenance,
-      receipt_workflow_ref_names_path: Bool,
+      receipt_workflow_ref: ReceiptWorkflowRefStanding,
     }
   | RunProvenanceUnobserved { detail: String }
 
@@ -539,7 +546,7 @@ fn predecessor_run_blockers(which: String, s: RoadmapLaunchDeploymentSubject, ex
 fn run_provenance_blockers(s: RoadmapLaunchDeploymentSubject, f: RunProvenanceFact) -> List<RoadmapLaunchDeploymentBlocker> {
   match f {
     RunProvenanceUnobserved { detail: d } => blocker(member: "run_provenance", detail: join(["unobserved: ", d], ""))
-    RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
+    RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref: named } =>
       concat(
         concat(
           predecessor_run_blockers(which: "plan", s: s, expected_run_id: s.plan_run_id, p: p),
@@ -549,7 +556,10 @@ fn run_provenance_blockers(s: RoadmapLaunchDeploymentSubject, f: RunProvenanceFa
           predecessor_run_blockers(which: "dashboard", s: s, expected_run_id: s.dashboard_run_id, p: d),
           concat(
             if rr != s.repository { blocker(member: "run_provenance", detail: join(["the receipt run executes in ", rr, ", not the canonical ", s.repository], "")) } else { [] },
-            if named { [] } else { blocker(member: "run_provenance", detail: "the receipt run's own GITHUB_WORKFLOW_REF does not name the generated workflow file") },
+            match named {
+              ReceiptWorkflowRefNamesFile => []
+              ReceiptWorkflowRefForeign { workflow_ref: wref } => blocker(member: "run_provenance", detail: join(["the receipt run's own GITHUB_WORKFLOW_REF ", wref, " does not name the generated workflow file"], ""))
+            },
           ),
         ),
       )
@@ -767,8 +777,8 @@ fn facts_lines(f: RoadmapLaunchDeploymentFacts) -> List<String> {
       HostUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
     join(["run_provenance: ", match f.run_provenance {
-      RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
-        join(["plan=", p.run_id, ":", p.conclusion_wire, " apply=", a.run_id, ":", a.conclusion_wire, " dashboard=", d.run_id, ":", d.conclusion_wire, " receipt_repository=", rr, " receipt_workflow_ref_named=", if named { "true" } else { "false" }], "")
+      RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref: named } =>
+        join(["plan=", p.run_id, ":", p.conclusion_wire, " apply=", a.run_id, ":", a.conclusion_wire, " dashboard=", d.run_id, ":", d.conclusion_wire, " receipt_repository=", rr, " receipt_workflow_ref=", match named { ReceiptWorkflowRefNamesFile => "names-file"  ReceiptWorkflowRefForeign { workflow_ref: wref } => join(["foreign:", wref], "") }], "")
       RunProvenanceUnobserved { detail: d } => join(["unobserved: ", d], "")
     }], ""),
     join(["observation_window: ", match f.observation_window {
@@ -914,13 +924,13 @@ fn facts_json(f: RoadmapLaunchDeploymentFacts) -> JsonValue {
       WindowUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),
     json_kv(key: "run_provenance", value: match f.run_provenance {
-      RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref_names_path: named } =>
+      RunProvenanceObserved { receipt_repository: rr, plan: p, apply: a, dashboard: d, receipt_workflow_ref: named } =>
         fact_arm(arm: "observed", members: [
           json_kv(key: "receipt_repository", value: json_string(s: rr)),
           json_kv(key: "plan", value: predecessor_run_json(p: p)),
           json_kv(key: "apply", value: predecessor_run_json(p: a)),
           json_kv(key: "dashboard", value: predecessor_run_json(p: d)),
-          json_kv(key: "receipt_workflow_ref_names_path", value: json_bool(b: named)),
+          json_kv(key: "receipt_workflow_ref", value: match named { ReceiptWorkflowRefNamesFile => fact_arm(arm: "names_file", members: [])  ReceiptWorkflowRefForeign { workflow_ref: wref } => fact_arm(arm: "foreign", members: [json_kv(key: "workflow_ref", value: json_string(s: wref))]) }),
         ])
       RunProvenanceUnobserved { detail: d } => fact_arm(arm: "unobserved", members: [json_kv(key: "detail", value: json_string(s: d))])
     }),

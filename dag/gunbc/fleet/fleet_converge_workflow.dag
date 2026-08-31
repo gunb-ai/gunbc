@@ -1,5 +1,7 @@
 module gunbc.fleet_converge_workflow
 
+import std.measure { minute_count }
+
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
@@ -44,7 +46,7 @@ import gunbc.fleet_workflow_steps {
   gunbc_ci_prelude_allowance_minutes,
   gunbc_ci_live_deploy_step_timeout_minutes,
   gunbc_ci_dashboard_deploy_job_backstop_timeout_minutes,
-  gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes,
+  gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout,
   fleet_host_mutation_concurrency_group_expression,
   checked_job_timeout_minutes,
   JobTimeoutWithinCeiling,
@@ -703,7 +705,7 @@ fn fleet_converge_rlm_launch_deployment_receipt_job() -> Job {
     env: none,
     outputs: none,
     if_condition: Present { value: fleet_converge_rlm_receipt_step_if },
-    timeout_minutes: Present { value: gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: minute_count(gunbc_ci_rlm_launch_deployment_receipt_job_backstop_timeout()) },
     continue_on_error: none,
     concurrency: Present {
       value: ConcurrencyMappingQueueNotMax {

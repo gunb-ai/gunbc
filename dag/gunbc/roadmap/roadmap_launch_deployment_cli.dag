@@ -82,6 +82,7 @@ import gunbc.roadmap_launch_deployment_observe {
   observe_workflow_document_routed,
 }
 import gunbc.roadmap_launch_deployment_receipt {
+  ReceiptWorkflowRefStanding, ReceiptWorkflowRefNamesFile, ReceiptWorkflowRefForeign,
   RoadmapLaunchDeploymentSubject, RoadmapLaunchDeploymentFacts, RoadmapLaunchDeploymentVerdict,
   DesiredRevisionObserved, DesiredRevisionUnobserved,
   PlanReceiptRead, PlanReceiptUnreadable, ApplyReceiptRead, ApplyReceiptUnreadable,
@@ -477,7 +478,7 @@ func rlm_run_provenance_fact(run: ActionsRunBinding, plan_run_id: String, apply_
     plan: rlm_predecessor_run(run_id: plan_run_id),
     apply: rlm_predecessor_run(run_id: apply_run_id),
     dashboard: rlm_predecessor_run(run_id: dashboard_run_id),
-    receipt_workflow_ref_names_path: run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()),
+    receipt_workflow_ref: (if run_binding_names_workflow_file(binding: run, workflow_path: rlm_workflow_file_path()) { ReceiptWorkflowRefNamesFile } else { ReceiptWorkflowRefForeign { workflow_ref: run.workflow_ref } }),
   }
 }
 

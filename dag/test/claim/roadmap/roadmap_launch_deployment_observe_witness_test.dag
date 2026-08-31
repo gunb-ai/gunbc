@@ -20,9 +20,9 @@ data fixture_v3_tick_wire: String = "{\"schema\":\"roadmap-belt-tick-receipt/v3\
 
 // (1) ISO-8601 UTC instants decode to epoch seconds on known values (Python datetime as the oracle).
 test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
-  (match iso8601_utc_epoch_seconds(text: "2026-08-30T12:00:00Z") { Present { value: s } => s == 1788091200  Absent => false })
-    && (match iso8601_utc_epoch_seconds(text: "2000-03-01T00:00:00Z") { Present { value: s } => s == 951868800  Absent => false })
-    && (match iso8601_utc_epoch_seconds(text: "1970-01-01T00:00:00Z") { Present { value: s } => s == 0  Absent => false })
+  (match iso8601_utc_epoch_seconds(text: "2026-08-30T12:00:00Z") { Present { value: s } => second_count(s) == 1788091200  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: "2000-03-01T00:00:00Z") { Present { value: s } => second_count(s) == 951868800  Absent => false })
+    && (match iso8601_utc_epoch_seconds(text: "1970-01-01T00:00:00Z") { Present { value: s } => second_count(s) == 0  Absent => false })
     && (match iso8601_utc_epoch_seconds(text: "2026-08-30 12:00:00") { Present { value: _ } => false  Absent => true })
     && (match iso8601_utc_epoch_seconds(text: "clock-unreadable") { Present { value: _ } => false  Absent => true })
 }
