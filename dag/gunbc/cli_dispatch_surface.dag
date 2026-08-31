@@ -14,6 +14,16 @@ data cli_dispatch_executor_name_construction_note: String = "The generated CLI d
 
 data cli_dispatch_executor_binding_collision_rung: String = "Class: generated dispatch executor binding collision. Current rung: structurally guaranteed — the N+1 allocator cannot return a blocked name and its unreachable Absent arm refuses rather than fabricating. Ceiling: a total signature backed by a substrate nonempty-list carrier whose first returns the element type. When that capability exists, make fresh_cli_dispatch_executor_name total and delete the Absent arm and this row together."
 
+// `first` currently has two runtime meanings: the interpreter returns the raw element or Null,
+// while emitted Rust returns Optional<T>. That is silent wrongness, outside the ladder: the
+// consumer typechecks and computes a false answer without a diagnostic. The executing known-red
+// `interpreter_first_returns_the_modeled_optional` is the confirmed specimen. A source census
+// found 187 terminal `|> first` sites across 82 files; that is a lower bound on candidate
+// consumers, not a claim that every site is harmed. The ceiling is structural: derive both the
+// interpreter and emitted realizations from one authority for `first`. When that capability lands,
+// the known-red turns green and becomes an ordinary regression control; this row then deletes.
+data interpreter_first_optional_semantic_divergence_rung: String = "Class: interpreter/emitted terminal first semantic divergence. Invalid state: interpreted first yields a raw element or Null while emitted first yields Optional. Harm: silent wrongness outside the ladder. Found at: one executing known-red specimen; 187 candidate sites measured across 82 files, with the affected intersection unknown. Ceiling: structural. Trigger: one authority derives both realizations of first so they cannot disagree."
+
 // THE gunbc CLI'S OWN DISPATCH SURFACE, AS ROWS.
 //
 // This is a PRODUCT fact -- which verbs gunbc offers, which options each takes, and what each
@@ -244,10 +254,37 @@ fn cli_dispatch_executor_candidate(index: Int) -> String {
   concat("__gunbc_dispatch_executor_", to_string(index))
 }
 
+fn cli_dispatch_executor_name_absent() -> String? {
+  Absent
+}
+
+fn cli_dispatch_executor_name_present(candidate: String) -> String? {
+  Present { value: candidate }
+}
+
+fn cli_dispatch_executor_choose_unblocked(
+  found: String?,
+  candidate: String,
+  blocked: List<String>
+) -> String? {
+  match found {
+    Present { value: _ } => found
+    Absent => if blocked |> any(local => local == candidate) {
+      cli_dispatch_executor_name_absent()
+    } else {
+      cli_dispatch_executor_name_present(candidate: candidate)
+    }
+  }
+}
+
+// Do not use terminal `first` here: interpreter_first_optional_semantic_divergence_rung
+// enrolls the substrate split that makes its interpreted result disagree with emitted Rust.
 fn fresh_cli_dispatch_executor_name(blocked: List<String>) -> String? {
   let first_n = enumerate(blocked) |> map(pair => cli_dispatch_executor_candidate(index: pair.first))
   let candidates = concat(first_n, [cli_dispatch_executor_candidate(index: count(blocked))])
-  candidates |> filter(name => !(blocked |> any(local => local == name))) |> first
+  fold(candidates, init: Absent, f: fn(found, candidate) {
+    cli_dispatch_executor_choose_unblocked(found: found, candidate: candidate, blocked: blocked)
+  })
 }
 
 fn gunbc_cli_binary_name() -> String {

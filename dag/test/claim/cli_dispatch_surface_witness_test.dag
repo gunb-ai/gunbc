@@ -116,6 +116,13 @@ test fn generated_dispatch_executor_name_is_bounded_deterministic_and_duplicate_
     && fresh_cli_dispatch_executor_name(blocked: [next, base]) == Present { value: third }
 }
 
+// KNOWN RED: the interpreter returns the raw element or Null for terminal `first`, while emitted
+// Rust returns Optional<T>. Keep this exact discriminator enrolled when the primitive is repaired;
+// its transition to green removes the expected-red roster row, not the executing evidence.
+test fn interpreter_first_returns_the_modeled_optional() -> Bool {
+  (["x"] |> filter(n => true) |> first) == Present { value: "x" }
+}
+
 // The bootstrap execution class is not an author-selectable tag over an arbitrary
 // DeclarationRef. Its sole admitted identity projects to the whole product-build declaration;
 // ordinary target producers have no constructor in this closed population.
