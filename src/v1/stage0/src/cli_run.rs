@@ -36259,6 +36259,37 @@ pub fn prepare_repository_closure(
 /// CONSTRUCTION IS PROJECTION ONLY: no source read, no parse, no resolve, no typecheck. The
 /// module population is selected from what preparation already resolved and the item registry
 /// is filtered by `ItemInfo.module_name` to the same population.
+/// The three constructions inside one `claim_scope_for`, timed separately.
+///
+/// Summed over the fold by the required floor runner and reported as `[floor-scope-split]`
+/// beside `[floor-scope-cost]`. Nanoseconds, per construction; the caller accumulates.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScopeBuildSplit {
+    /// The precedence ORDER: the entry module's flat import closure from `func_env.parents`,
+    /// then the transitive reference closure. This is the part that is scope-specific by
+    /// definition — the order IS the scope's identity — so a view can memoize it but never
+    /// share one across scopes.
+    pub order_nanos: u128,
+    /// The item-registry UNION over the ordered module population, first write wins.
+    pub registry_nanos: u128,
+    /// `build_scope_indexes_with_module_order` — the interpreter's `fn_nodes` /
+    /// import-binding / service-op maps, rebuilt per scope by re-reading every item of every
+    /// module in the order.
+    pub indexes_nanos: u128,
+}
+
+impl ScopeBuildSplit {
+    pub fn accumulate(&mut self, other: &ScopeBuildSplit) {
+        self.order_nanos += other.order_nanos;
+        self.registry_nanos += other.registry_nanos;
+        self.indexes_nanos += other.indexes_nanos;
+    }
+
+    pub fn total_nanos(&self) -> u128 {
+        self.order_nanos + self.registry_nanos + self.indexes_nanos
+    }
+}
+
 pub struct PreparedClaimScope {
     /// THE IMMUTABLE INTERPRETER INDEXES FOR THIS SCOPE, built ONCE here rather than once per
     /// claim. `InterpContext::with_runtime_options` walks every module and every item to build
@@ -36298,6 +36329,14 @@ pub struct PreparedClaimScope {
     /// declares nor imports, and a name reached through a wildcard import, claimed by two or more
     /// modules it reached.
     pub ambiguous_bare_names: usize,
+    /// WHERE THE ~120ms OF ONE SCOPE CONSTRUCTION ACTUALLY GOES, split three ways at the
+    /// grain the terminal correction has to choose between. The floor already reports what a
+    /// scope COSTS in resident bytes (`[floor-scope-cost]`) and how many it built, and neither
+    /// says whether the cost is the closure ORDER WALK, the item-registry UNION, or the
+    /// interpreter INDEX rebuild — three different constructions with three different views
+    /// replacing them. Deciding the view's shape from the resident-byte delta would be picking
+    /// a remedy from a quantity that cannot distinguish the candidates.
+    pub build_split: ScopeBuildSplit,
 }
 
 /// Project the exact scope for one entry file out of the prepared repository.
@@ -36593,6 +36632,7 @@ pub fn claim_scope_for(
     // the direction that
     // silently narrows: the old closure also admitted modules reached by bare reference, which
     // no scan of import lines can see.
+    let order_started = std::time::Instant::now();
     let entry_module = prepared
         .graph
         .modules
@@ -36662,6 +36702,8 @@ pub fn claim_scope_for(
             }
         }
     }
+    let order_nanos = order_started.elapsed().as_nanos();
+    let registry_started = std::time::Instant::now();
     let in_scope: HashSet<&str> = order.iter().map(|s| s.as_str()).collect();
     // Module selection keys on `func_env.name` too, so the population and the closure that
     // produced it are read off ONE field. Deriving the population from the authored module node
@@ -36762,15 +36804,24 @@ pub fn claim_scope_for(
         diagnostics: prepared.graph.diagnostics.clone(),
         emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
+    let registry_nanos = registry_started.elapsed().as_nanos();
+    let indexes_started = std::time::Instant::now();
+    let indexes = v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
+        &scoped_graph,
+        prepared.source_indices.clone(),
+        Some(&order),
+    );
+    let indexes_nanos = indexes_started.elapsed().as_nanos();
     Ok(PreparedClaimScope {
-        indexes: v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
-            &scoped_graph,
-            prepared.source_indices.clone(),
-            Some(&order),
-        ),
+        indexes,
         module_count,
         scope_identity,
         ambiguous_bare_names: ambiguous.len(),
+        build_split: ScopeBuildSplit {
+            order_nanos,
+            registry_nanos,
+            indexes_nanos,
+        },
     })
 }
 

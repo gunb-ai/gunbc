@@ -4650,6 +4650,7 @@ pub fn run_required_floor(
     let mut scope_kb_max_module = String::new();
     let mut scope_kb_max_modules: usize = 0;
     let mut scopes_with_ambiguity: usize = 0;
+    let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
     let mut final_symbol_retention = None;
@@ -4680,6 +4681,7 @@ pub fn run_required_floor(
             }
             scope_kb_total += scope_kb;
             scope_constructions += 1;
+            scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
             if built.ambiguous_bare_names > 0 {
@@ -5392,6 +5394,27 @@ pub fn run_required_floor(
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
     // quantity the terminal one-corpus-index correction removes entirely — a scope that is a
     // view rather than a rebuild costs nothing to enter.
+    // WHICH OF THE THREE CONSTRUCTIONS THE SCOPE TIME IS. `[floor-scope-cost]` above prices a
+    // scope in resident bytes and cannot distinguish an order walk from a registry union from
+    // an index rebuild; those are three different constructions and the view that replaces
+    // each is a different change. Reported per fold, summed over every construction, with the
+    // mean per construction so the line is comparable across runs with different populations.
+    {
+        let n = scope_constructions.max(1) as f64;
+        eprintln!(
+            "[floor-scope-split] constructions={} total_ms={} order_ms={} registry_ms={} \
+             indexes_ms={} mean_ms_per_scope={:.1} (order={:.1} registry={:.1} indexes={:.1})",
+            scope_constructions,
+            scope_build_split.total_nanos() / 1_000_000,
+            scope_build_split.order_nanos / 1_000_000,
+            scope_build_split.registry_nanos / 1_000_000,
+            scope_build_split.indexes_nanos / 1_000_000,
+            scope_build_split.total_nanos() as f64 / 1_000_000.0 / n,
+            scope_build_split.order_nanos as f64 / 1_000_000.0 / n,
+            scope_build_split.registry_nanos as f64 / 1_000_000.0 / n,
+            scope_build_split.indexes_nanos as f64 / 1_000_000.0 / n,
+        );
+    }
     eprintln!(
         "[floor-scope-cost] max={:.2}GB at={} ({} modules) total_built={:.2}GB over {} construction(s)",
         scope_kb_max as f64 / 1048576.0,
