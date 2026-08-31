@@ -2,6 +2,7 @@ module test.claim.self_host_compile_phase_frontier_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { content_hash_atom }
+import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
 import gunbc.self_host_compile_phase_frontier {
@@ -17,11 +18,48 @@ import gunbc.self_host_compile_phase_frontier {
   phase_ratchet_with_dispositions,
   phase_board_error_population_reconciles,
   NewlyExposedDiagnostic,
+  OpenUnadmittedRegression,
+  ClosedUnadmittedRegression,
+  RegressionTransitionHeld,
+  RegressionTransitionMalformed,
+  RegressionComparisonAvailable,
+  RegressionComparisonUnavailable,
+  regression_comparison_predecessor,
+  advance_open_unadmitted,
+  complete_open_unadmitted_series,
+  PhaseBoardSeriesRefused,
   ExposedByPhaseAdvance,
   PhaseBoardSeriesHeld,
   phase_board_series_ratchet,
   self_host_compile_phase_frontier_receipts,
   render_phase_board
+}
+
+test fn an_epoch_change_without_reclassification_cannot_fabricate_identity_regressions() -> Bool {
+  match regression_comparison_predecessor(
+    previous_epoch: "rustc-old" as NonEmptyStr,
+    current_epoch: "rustc-new" as NonEmptyStr,
+    previous_board: fixture_board(resolve_ids: [], typeck_ids: ["old-only"]),
+    reclassified_predecessor: none
+  ) {
+    RegressionComparisonUnavailable { reason: why } =>
+      string_contains(s: why as String, pattern: "requires a reclassified predecessor")
+    verdict => false
+  }
+}
+
+test fn an_epoch_change_compares_identity_transitions_to_the_reclassified_predecessor() -> Bool {
+  let raw_old = fixture_board(resolve_ids: [], typeck_ids: ["old-policy-spelling"])
+  let reclassified = fixture_board(resolve_ids: [], typeck_ids: ["new-policy-spelling"])
+  match regression_comparison_predecessor(
+    previous_epoch: "rustc-old" as NonEmptyStr,
+    current_epoch: "rustc-new" as NonEmptyStr,
+    previous_board: raw_old,
+    reclassified_predecessor: Present { value: reclassified }
+  ) {
+    RegressionComparisonAvailable { board: comparable } => comparable == reclassified
+    verdict => false
+  }
 }
 
 fn fixture_borrow_board(borrow_ids: List<String>) -> RustcPhaseBoard {
@@ -106,6 +144,80 @@ test fn current_persisted_compile_phase_frontier_holds() -> Bool {
   }
 }
 
+test fn an_open_unadmitted_regression_keeps_the_series_red_and_names_the_identity() -> Bool {
+  match complete_open_unadmitted_series(open: [
+    OpenUnadmittedRegression {
+      identity: "src/a.rs:1:1\tE0308\tmismatched types",
+      introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+    }
+  ]) {
+    PhaseBoardSeriesRefused { invocation: _, reason: why } =>
+      string_contains(s: why as String, pattern: "src/a.rs:1:1\tE0308\tmismatched types")
+    verdict => false
+  }
+}
+
+test fn exact_identity_removal_with_repair_provenance_closes_an_open_regression() -> Bool {
+  let introduced = OpenUnadmittedRegression {
+    identity: "src/a.rs:1:1\tE0308\tmismatched types",
+    introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+  }
+  match advance_open_unadmitted(
+    open: [],
+    current_identities: [introduced.identity],
+    introduced: [introduced],
+    repairs: [],
+    revision: "1111111111111111111111111111111111111111" as CommitSha
+  ) {
+    RegressionTransitionHeld { open_unadmitted: opened } =>
+      match advance_open_unadmitted(
+        open: opened,
+        current_identities: [],
+        introduced: [],
+        repairs: [
+          ClosedUnadmittedRegression {
+            identity: introduced.identity,
+            repaired_by: "2222222222222222222222222222222222222222" as CommitSha,
+            observed_removed_at: "3333333333333333333333333333333333333333" as CommitSha
+          }
+        ],
+        revision: "3333333333333333333333333333333333333333" as CommitSha
+      ) {
+        RegressionTransitionHeld { open_unadmitted: closed } =>
+          match complete_open_unadmitted_series(open: closed) {
+            PhaseBoardSeriesHeld => true
+            verdict => false
+          }
+        verdict => false
+      }
+    verdict => false
+  }
+}
+
+test fn a_line_relocation_cannot_close_an_open_regression() -> Bool {
+  let opened = OpenUnadmittedRegression {
+    identity: "src/a.rs:1:1\tE0308\tmismatched types",
+    introduced_by: "1111111111111111111111111111111111111111" as CommitSha
+  }
+  match advance_open_unadmitted(
+    open: [opened],
+    current_identities: ["src/a.rs:2:1\tE0308\tmismatched types"],
+    introduced: [],
+    repairs: [
+      ClosedUnadmittedRegression {
+        identity: opened.identity,
+        repaired_by: "2222222222222222222222222222222222222222" as CommitSha,
+        observed_removed_at: "3333333333333333333333333333333333333333" as CommitSha
+      }
+    ],
+    revision: "3333333333333333333333333333333333333333" as CommitSha
+  ) {
+    RegressionTransitionMalformed { reason: why } =>
+      string_contains(s: why as String, pattern: "exact-identity repair provenance")
+    verdict => false
+  }
+}
+
 // FALSIFIER 1: a phase already closed at zero cannot regain an identity. The refusal names both
 // the phase and the exact identity so a red never degrades into an unexplained Bool.
 test fn a_planted_regression_in_a_closed_phase_refuses_and_names_it() -> Bool {
@@ -127,7 +239,7 @@ test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> 
     current: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"])
   ) {
     PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
-      ids == ["a", "b"] && string_contains(s: why as String, pattern: "count increased")
+      ids == ["b"] && string_contains(s: why as String, pattern: "count increased")
     verdict => false
   }
 }
