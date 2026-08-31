@@ -3,7 +3,7 @@ module v1.compiler.dag_collect_support
 import v1.std.core {
   Node,
   InferredNode, Resolved, CompilerError, TypeVariable,
-  ExprData,
+  ExprData, ExprElaboratedLiteral,
   Connective, NoConnective, Arrow,
   MatchPattern, Bind, LitPattern, VariantPattern, Wildcard,
   SourceSpan, ErrorNode, make_error_node, InternalError
@@ -55,6 +55,7 @@ fn expr_data_variant(data: ExprData) -> String {
   match data {
     NoExprData => "NoExprData"
     ExprLiteral { value: _ } => "ExprLiteral"
+    ExprElaboratedLiteral { value: _, elaboration: _ } => "ExprElaboratedLiteral"
     ExprError { kind: _, message: _ } => "ExprError"
     ExprVar { binding_kind: _ } => "ExprVar"
     ExprFieldAccess { summary: _ } => "ExprFieldAccess"
