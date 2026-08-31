@@ -1,0 +1,545 @@
+module gunbc.live_deploy.unit_standing
+
+import std.types { String, Bool, NonEmptyStr, Int, List, list_length }
+import std.algebra { trim }
+import std.measure { Microsecond, microsecond_count }
+import extdeps.systemd.systemctl
+import extdeps.systemd {
+  SystemdUnitProperty, systemd_duration_usec, AccuracyUSec,
+  LoadState, UnitFileState, ActiveState, SubState, Result, ExecMainStatus, ExecStartProperty, User, WorkingDirectoryProperty, Unit, TimersMonotonic,
+  systemd_unit_property_wire,
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile, SliceUnitFile,
+  SystemdServiceDirective, SystemdTimerDirective,
+  OnBootSec,
+  OnUnitInactiveSec,
+  AccuracySec,
+}
+
+// EXACT SYSTEMD SERVICE AND TIMER STANDING, MODELED ON WHAT THE EMITTED UNITS ACTUALLY ARE.
+// Readiness plus a fresh tick receipt cannot prove the belt timer is enabled now: a service can be
+// invoked by hand, write one fresh receipt, and sit behind a disabled timer. The RLM-2 ruling
+// (section 7) therefore keeps unit standing in scope and rejects the naive 'service and timer both
+// enabled and active', because gunbc.live_deploy.emit deliberately gives the three units different
+// semantics -- the dashboard serve service is Type=simple, the belt service is Type=oneshot with no
+// [Install] section, and the belt timer is what is enabled under timers.target. The positive
+// standing is one row per unit, and the discriminating POSITIVE control is that a correctly
+// completed, currently INACTIVE oneshot stays green.
+// 
+// THE OBSERVER IS `systemctl show --property=X --value` (extdeps.systemd.systemctl ShowProperty),
+// system scope, which this module widened with the properties it needs rather than adding a second
+// show surface. There is still no modeled system-scope `is-enabled` operation (systemctl.dag's own
+// note); UnitFileState carries the same fact through the show surface, which is the read that
+// already existed.
+// 
+// WHAT IS COMPARED EXACTLY, member by member, stated so any residue would be visible.
+// ExecStart, User and WorkingDirectory are compared exactly against the directives of R's emitted
+// unit file (gunbc.live_deploy.emit live_deploy_serve_unit_file /
+// live_deploy_belt_service_unit_file), reading systemd's `{ path=... ; argv[]=... ; ... }`
+// rendering by its `argv[]=` segment. The timer's target unit is compared exactly through the Unit
+// property. The timer's cadence VALUES are compared exactly too: OnBootUSec and OnUnitInactiveUSec
+// from TimersMonotonic and the AccuracyUSec property are each normalized through
+// extdeps.systemd systemd_duration_usec (systemd.time(7), microsecond resolution) and compared
+// against the Microsecond expectations derived from R's emitted timer unit -- '60s' and '1min'
+// are one value, and a spelling that stops normalizing refuses rather than passing structurally.
+// This dissolves the former declared residue (cadence compared by entry presence only), whose
+// trigger -- an extdeps.systemd duration model -- is the mechanism that landed beside this text.
+// 
+// EVERY REFUSAL NAMES THE UNIT AND THE PROPERTY that disagreed; an unreadable property is a
+// refusal, never a pass by vacancy.
+type UnitPropertyRead
+  = UnitPropertyValue { value: String }
+  | UnitPropertyUnreadable { unit: String, property: String }
+
+fn read_unit_property(unit: NonEmptyStr, property: SystemdUnitProperty) -> UnitPropertyRead {
+  let got = systemd.Systemctl.ShowProperty(unit: unit, property: property)
+  if got.success {
+    UnitPropertyValue { value: trim(s: got.value) }
+  } else {
+    UnitPropertyUnreadable { unit: unit as String, property: systemd_unit_property_wire(property: property) as String }
+  }
+}
+
+type ServiceUnitObserved {
+  load_state: String
+  unit_file_state: String
+  active_state: String
+  sub_state: String
+  result: String
+  exec_main_status: String
+  exec_start: String
+  user: String
+  working_directory: String
+}
+
+type TimerUnitObserved {
+  load_state: String
+  unit_file_state: String
+  active_state: String
+  sub_state: String
+  unit: String
+  timers_monotonic: String
+  accuracy_usec_value: String
+}
+
+type ServiceUnitObservation
+  = ServiceUnitObservedOk { observed: ServiceUnitObserved }
+  | ServiceUnitUnobservable { unit: String, property: String }
+
+type TimerUnitObservation
+  = TimerUnitObservedOk { observed: TimerUnitObserved }
+  | TimerUnitUnobservable { unit: String, property: String }
+
+fn observe_service_unit(unit: NonEmptyStr) -> ServiceUnitObservation {
+  match read_unit_property(unit: unit, property: LoadState) {
+    UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+    UnitPropertyValue { value: load_state } =>
+      match read_unit_property(unit: unit, property: UnitFileState) {
+        UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+        UnitPropertyValue { value: unit_file_state } =>
+          match read_unit_property(unit: unit, property: ActiveState) {
+            UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+            UnitPropertyValue { value: active_state } =>
+              match read_unit_property(unit: unit, property: SubState) {
+                UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                UnitPropertyValue { value: sub_state } =>
+                  match read_unit_property(unit: unit, property: Result) {
+                    UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                    UnitPropertyValue { value: result } =>
+                      match read_unit_property(unit: unit, property: ExecMainStatus) {
+                        UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                        UnitPropertyValue { value: exec_main_status } =>
+                          match read_unit_property(unit: unit, property: ExecStartProperty) {
+                            UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                            UnitPropertyValue { value: exec_start } =>
+                              match read_unit_property(unit: unit, property: User) {
+                                UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                                UnitPropertyValue { value: user } =>
+                                  match read_unit_property(unit: unit, property: WorkingDirectoryProperty) {
+                                    UnitPropertyUnreadable { unit: u, property: p } => ServiceUnitUnobservable { unit: u, property: p }
+                                    UnitPropertyValue { value: wd } =>
+                                      ServiceUnitObservedOk {
+                                        observed: ServiceUnitObserved {
+                                          load_state: load_state,
+                                          unit_file_state: unit_file_state,
+                                          active_state: active_state,
+                                          sub_state: sub_state,
+                                          result: result,
+                                          exec_main_status: exec_main_status,
+                                          exec_start: exec_start,
+                                          user: user,
+                                          working_directory: wd,
+                                        },
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn observe_timer_unit(unit: NonEmptyStr) -> TimerUnitObservation {
+  match read_unit_property(unit: unit, property: LoadState) {
+    UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+    UnitPropertyValue { value: load_state } =>
+      match read_unit_property(unit: unit, property: UnitFileState) {
+        UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+        UnitPropertyValue { value: unit_file_state } =>
+          match read_unit_property(unit: unit, property: ActiveState) {
+            UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+            UnitPropertyValue { value: active_state } =>
+              match read_unit_property(unit: unit, property: SubState) {
+                UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+                UnitPropertyValue { value: sub_state } =>
+                  match read_unit_property(unit: unit, property: Unit) {
+                    UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+                    UnitPropertyValue { value: target } =>
+                      match read_unit_property(unit: unit, property: TimersMonotonic) {
+                        UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+                        UnitPropertyValue { value: timers } =>
+                          match read_unit_property(unit: unit, property: AccuracyUSec) {
+                            UnitPropertyUnreadable { unit: u, property: p } => TimerUnitUnobservable { unit: u, property: p }
+                            UnitPropertyValue { value: accuracy } =>
+                              TimerUnitObservedOk {
+                                observed: TimerUnitObserved {
+                                  load_state: load_state,
+                                  unit_file_state: unit_file_state,
+                                  active_state: active_state,
+                                  sub_state: sub_state,
+                                  unit: target,
+                                  timers_monotonic: timers,
+                                  accuracy_usec_value: accuracy,
+                                },
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+// THE EXPECTATION IS DERIVED FROM R'S EMITTED UNIT FILE, never typed beside it.
+type ServiceUnitExpectation {
+  exec_start: String
+  user: String
+  working_directory: String
+}
+
+type ServiceUnitExpectationDerivation
+  = ServiceExpectationDerived { expectation: ServiceUnitExpectation }
+  | ServiceExpectationUnderivable { detail: String }
+
+fn service_directive_exec_start(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ExecStart { command: c } => Present { value: c as String }
+      _ => none
+    }
+  })
+}
+
+fn service_directive_user(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      ServiceUser { name: n } => Present { value: n as String }
+      _ => none
+    }
+  })
+}
+
+fn service_directive_working_directory(directives: List<SystemdServiceDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      WorkingDirectory { path: p } => Present { value: p as String }
+      _ => none
+    }
+  })
+}
+
+fn service_unit_expectation_of(file: SystemdUnitFile) -> ServiceUnitExpectationDerivation {
+  match file {
+    ServiceUnitFile { unit: _, service: directives, install: _ } =>
+      match service_directive_exec_start(directives: directives) {
+        Absent => ServiceExpectationUnderivable { detail: "emitted service unit carries no ExecStart" }
+        Present { value: exec_start } =>
+          match service_directive_user(directives: directives) {
+            Absent => ServiceExpectationUnderivable { detail: "emitted service unit carries no User" }
+            Present { value: user } =>
+              match service_directive_working_directory(directives: directives) {
+                Absent => ServiceExpectationUnderivable { detail: "emitted service unit carries no WorkingDirectory" }
+                Present { value: wd } =>
+                  ServiceExpectationDerived { expectation: ServiceUnitExpectation { exec_start: exec_start, user: user, working_directory: wd } }
+              }
+          }
+      }
+    TimerUnitFile { unit: _, timer: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a timer" }
+    SliceUnitFile { unit: _, slice: _, install: _ } => ServiceExpectationUnderivable { detail: "expected a service unit file, got a slice" }
+  }
+}
+
+type TimerUnitExpectation {
+  target_unit: String
+  on_boot_usec: Microsecond
+  on_unit_inactive_usec: Microsecond
+  accuracy_usec: Microsecond
+}
+
+// The value rendered after `Name=` in a systemctl show composite like
+// `{ OnBootUSec=2min ; next_elapse=... }, { OnUnitInactiveUSec=1min ; ... }`: the token between
+// the prefix and the next ` ;`, `,` or `}` boundary, normalized through systemd.time(7).
+fn show_rendered_duration_usec(rendering: String, prefix: String) -> Microsecond? {
+  let parts = split(s: rendering, delimiter: prefix)
+  if list_length(items: parts) < 2 {
+    none
+  } else {
+    let tail = fold(parts, init: "", f: (a, seg) => seg)
+    let token = fold(split(s: tail, delimiter: " ; "), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    systemd_duration_usec(text: trim(s: fold(split(s: token, delimiter: "}"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })))
+  }
+}
+
+fn timer_on_boot_duration(directives: List<SystemdTimerDirective>) -> Microsecond? {
+  fold(directives, init: none, f: (acc, d) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => match d { OnBootSec { duration: t } => systemd_duration_usec(text: t as String)  _ => none }
+    })
+}
+
+fn timer_on_unit_inactive_duration(directives: List<SystemdTimerDirective>) -> Microsecond? {
+  fold(directives, init: none, f: (acc, d) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => match d { OnUnitInactiveSec { duration: t } => systemd_duration_usec(text: t as String)  _ => none }
+    })
+}
+
+fn timer_accuracy_duration(directives: List<SystemdTimerDirective>) -> Microsecond? {
+  fold(directives, init: none, f: (acc, d) =>
+    match acc {
+      Present { value: v } => Present { value: v }
+      Absent => match d { AccuracySec { duration: t } => systemd_duration_usec(text: t as String)  _ => none }
+    })
+}
+
+type TimerUnitExpectationDerivation
+  = TimerExpectationDerived { expectation: TimerUnitExpectation }
+  | TimerExpectationUnderivable { detail: String }
+
+fn timer_directive_target(directives: List<SystemdTimerDirective>) -> String? {
+  fold(directives, init: none, f: (acc, d) => match acc {
+    Present { value: v } => Present { value: v }
+    Absent => match d {
+      TimerUnit { target: t } => Present { value: t as String }
+      _ => none
+    }
+  })
+}
+
+fn timer_unit_expectation_of(file: SystemdUnitFile) -> TimerUnitExpectationDerivation {
+  match file {
+    TimerUnitFile { unit: _, timer: directives, install: _ } =>
+      match timer_directive_target(directives: directives) {
+        Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no Unit= target" }
+        Present { value: t } =>
+          match timer_on_boot_duration(directives: directives) {
+            Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable OnBootSec" }
+            Present { value: boot } =>
+              match timer_on_unit_inactive_duration(directives: directives) {
+                Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable OnUnitInactiveSec" }
+                Present { value: inactive } =>
+                  match timer_accuracy_duration(directives: directives) {
+                    Absent => TimerExpectationUnderivable { detail: "emitted timer unit carries no normalizable AccuracySec" }
+                    Present { value: accuracy } =>
+                      TimerExpectationDerived { expectation: TimerUnitExpectation {
+                        target_unit: t, on_boot_usec: boot, on_unit_inactive_usec: inactive, accuracy_usec: accuracy,
+                      } }
+                  }
+              }
+          }
+      }
+    ServiceUnitFile { unit: _, service: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a service" }
+    SliceUnitFile { unit: _, slice: _, install: _ } => TimerExpectationUnderivable { detail: "expected a timer unit file, got a slice" }
+  }
+}
+
+// systemctl show renders ExecStart as `{ path=P ; argv[]=A B C ; ignore_errors=no ; ... }`. The
+// argv[] segment is the command line the unit file declared, which is what the emitted ExecStart
+// directive is, so that segment is the exact comparand.
+type ExecStartRead
+  = ExecStartArgv { argv_text: String }
+  | ExecStartUnparseable { value: String }
+
+fn exec_start_argv_of_show_value(value: String) -> ExecStartRead {
+  let parts = split(s: value, delimiter: "argv[]=")
+  if list_length(items: parts) < 2 {
+    ExecStartUnparseable { value: value }
+  } else {
+    let tail = fold(parts, init: "", f: fn(_, seg) { seg })
+    let argv_text = fold(split(s: tail, delimiter: " ; "), init: "", f: fn(acc, seg) { if acc == "" { seg } else { acc } })
+    if argv_text == "" { ExecStartUnparseable { value: value } } else { ExecStartArgv { argv_text: trim(s: argv_text) } }
+  }
+}
+
+type DashboardServiceStanding
+  = DashboardServiceConverged { unit: String }
+  | DashboardServiceRefused { unit: String, property: String, expected: String, observed: String }
+
+type BeltTimerStanding
+  = BeltTimerConverged { unit: String }
+  | BeltTimerRefused { unit: String, property: String, expected: String, observed: String }
+
+type BeltOneshotStanding
+  = BeltOneshotConverged { unit: String, active_state: String }
+  | BeltOneshotRefused { unit: String, property: String, expected: String, observed: String }
+
+fn judge_exec_start(unit: String, expected: String, observed_show: String) -> DashboardServiceStanding? {
+  match exec_start_argv_of_show_value(value: observed_show) {
+    ExecStartUnparseable { value: v } =>
+      Present { value: DashboardServiceRefused { unit: unit, property: "ExecStart", expected: expected, observed: v } }
+    ExecStartArgv { argv_text: a } =>
+      if a == expected { none } else {
+        Present { value: DashboardServiceRefused { unit: unit, property: "ExecStart", expected: expected, observed: a } }
+      }
+  }
+}
+
+fn judge_dashboard_service(unit: String, expect: ServiceUnitExpectation, o: ServiceUnitObserved) -> DashboardServiceStanding {
+  if o.load_state != "loaded" {
+    DashboardServiceRefused { unit: unit, property: "LoadState", expected: "loaded", observed: o.load_state }
+  } else if o.unit_file_state != "enabled" {
+    DashboardServiceRefused { unit: unit, property: "UnitFileState", expected: "enabled", observed: o.unit_file_state }
+  } else if o.active_state != "active" {
+    DashboardServiceRefused { unit: unit, property: "ActiveState", expected: "active", observed: o.active_state }
+  } else if o.user != expect.user {
+    DashboardServiceRefused { unit: unit, property: "User", expected: expect.user, observed: o.user }
+  } else if o.working_directory != expect.working_directory {
+    DashboardServiceRefused { unit: unit, property: "WorkingDirectory", expected: expect.working_directory, observed: o.working_directory }
+  } else {
+    match judge_exec_start(unit: unit, expected: expect.exec_start, observed_show: o.exec_start) {
+      Present { value: refused } => refused
+      Absent => DashboardServiceConverged { unit: unit }
+    }
+  }
+}
+
+fn judge_belt_timer(unit: String, expect: TimerUnitExpectation, o: TimerUnitObserved) -> BeltTimerStanding {
+  if o.load_state != "loaded" {
+    BeltTimerRefused { unit: unit, property: "LoadState", expected: "loaded", observed: o.load_state }
+  } else if o.unit_file_state != "enabled" {
+    BeltTimerRefused { unit: unit, property: "UnitFileState", expected: "enabled", observed: o.unit_file_state }
+  } else if o.active_state != "active" {
+    BeltTimerRefused { unit: unit, property: "ActiveState", expected: "active", observed: o.active_state }
+  } else if o.sub_state != "waiting" && o.sub_state != "running" {
+    BeltTimerRefused { unit: unit, property: "SubState", expected: "waiting|running", observed: o.sub_state }
+  } else if o.unit != expect.target_unit {
+    BeltTimerRefused { unit: unit, property: "Unit", expected: expect.target_unit, observed: o.unit }
+  } else {
+    match show_rendered_duration_usec(rendering: o.timers_monotonic, prefix: "OnBootUSec=") {
+      Absent => BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "a normalizable OnBootUSec entry", observed: o.timers_monotonic }
+      Present { value: boot } =>
+        if microsecond_count(boot) != microsecond_count(expect.on_boot_usec) {
+          BeltTimerRefused { unit: unit, property: "OnBootUSec", expected: to_string(microsecond_count(expect.on_boot_usec)), observed: to_string(microsecond_count(boot)) }
+        } else {
+          match show_rendered_duration_usec(rendering: o.timers_monotonic, prefix: "OnUnitInactiveUSec=") {
+            Absent => BeltTimerRefused { unit: unit, property: "TimersMonotonic", expected: "a normalizable OnUnitInactiveUSec entry", observed: o.timers_monotonic }
+            Present { value: inactive } =>
+              if microsecond_count(inactive) != microsecond_count(expect.on_unit_inactive_usec) {
+                BeltTimerRefused { unit: unit, property: "OnUnitInactiveUSec", expected: to_string(microsecond_count(expect.on_unit_inactive_usec)), observed: to_string(microsecond_count(inactive)) }
+              } else {
+                match systemd_duration_usec(text: trim(s: o.accuracy_usec_value)) {
+                  Absent => BeltTimerRefused { unit: unit, property: "AccuracyUSec", expected: "a normalizable duration", observed: o.accuracy_usec_value }
+                  Present { value: accuracy } =>
+                    if microsecond_count(accuracy) != microsecond_count(expect.accuracy_usec) {
+                      BeltTimerRefused { unit: unit, property: "AccuracyUSec", expected: to_string(microsecond_count(expect.accuracy_usec)), observed: to_string(microsecond_count(accuracy)) }
+                    } else {
+                      BeltTimerConverged { unit: unit }
+                    }
+                }
+              }
+          }
+        }
+    }
+  }
+}
+
+// THE ONESHOT IS NOT SEPARATELY ENABLED (it has no [Install] section, so its UnitFileState is
+// `static`), and it is normally INACTIVE between ticks. Both are the correct state and both are
+// accepted; what is required is that its last run SUCCEEDED and that what it runs is exactly what R
+// emitted.
+fn judge_belt_oneshot(unit: String, expect: ServiceUnitExpectation, o: ServiceUnitObserved) -> BeltOneshotStanding {
+  if o.load_state != "loaded" {
+    BeltOneshotRefused { unit: unit, property: "LoadState", expected: "loaded", observed: o.load_state }
+  } else if o.unit_file_state != "static" {
+    BeltOneshotRefused { unit: unit, property: "UnitFileState", expected: "static", observed: o.unit_file_state }
+  } else if o.active_state != "inactive" && o.active_state != "active" && o.active_state != "activating" {
+    BeltOneshotRefused { unit: unit, property: "ActiveState", expected: "inactive|active|activating", observed: o.active_state }
+  } else if o.result != "success" {
+    BeltOneshotRefused { unit: unit, property: "Result", expected: "success", observed: o.result }
+  } else if o.exec_main_status != "0" {
+    BeltOneshotRefused { unit: unit, property: "ExecMainStatus", expected: "0", observed: o.exec_main_status }
+  } else if o.user != expect.user {
+    BeltOneshotRefused { unit: unit, property: "User", expected: expect.user, observed: o.user }
+  } else if o.working_directory != expect.working_directory {
+    BeltOneshotRefused { unit: unit, property: "WorkingDirectory", expected: expect.working_directory, observed: o.working_directory }
+  } else {
+    match exec_start_argv_of_show_value(value: o.exec_start) {
+      ExecStartUnparseable { value: v } =>
+        BeltOneshotRefused { unit: unit, property: "ExecStart", expected: expect.exec_start, observed: v }
+      ExecStartArgv { argv_text: a } =>
+        if a == expect.exec_start {
+          BeltOneshotConverged { unit: unit, active_state: o.active_state }
+        } else {
+          BeltOneshotRefused { unit: unit, property: "ExecStart", expected: expect.exec_start, observed: a }
+        }
+    }
+  }
+}
+
+type LaunchUnitStanding {
+  dashboard: DashboardServiceStanding
+  timer: BeltTimerStanding
+  oneshot: BeltOneshotStanding
+}
+
+fn dashboard_service_standing_text(s: DashboardServiceStanding) -> String {
+  match s {
+    DashboardServiceConverged { unit: u } => join(["dashboard service ", u, " converged"], "")
+    DashboardServiceRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["dashboard service ", u, " ", p, " expected ", e, " observed ", o], "")
+  }
+}
+
+fn belt_timer_standing_text(s: BeltTimerStanding) -> String {
+  match s {
+    BeltTimerConverged { unit: u } => join(["belt timer ", u, " converged"], "")
+    BeltTimerRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["belt timer ", u, " ", p, " expected ", e, " observed ", o], "")
+  }
+}
+
+fn belt_oneshot_standing_text(s: BeltOneshotStanding) -> String {
+  match s {
+    BeltOneshotConverged { unit: u, active_state: a } => join(["belt service ", u, " converged (", a, ")"], "")
+    BeltOneshotRefused { unit: u, property: p, expected: e, observed: o } =>
+      join(["belt service ", u, " ", p, " expected ", e, " observed ", o], "")
+  }
+}
+
+fn launch_unit_standing_text(s: LaunchUnitStanding) -> String {
+  join([
+    dashboard_service_standing_text(s: s.dashboard), "; ",
+    belt_timer_standing_text(s: s.timer), "; ",
+    belt_oneshot_standing_text(s: s.oneshot),
+  ], "")
+}
+
+// THE LIVE READ, one per unit, each judged against the expectation derived from R's emission.
+fn observe_dashboard_service_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> DashboardServiceStanding {
+  match service_unit_expectation_of(file: file) {
+    ServiceExpectationUnderivable { detail: d } =>
+      DashboardServiceRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: d }
+    ServiceExpectationDerived { expectation: e } =>
+      match observe_service_unit(unit: unit) {
+        ServiceUnitUnobservable { unit: u, property: p } =>
+          DashboardServiceRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        ServiceUnitObservedOk { observed: o } => judge_dashboard_service(unit: unit as String, expect: e, o: o)
+      }
+  }
+}
+
+fn observe_belt_timer_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> BeltTimerStanding {
+  match timer_unit_expectation_of(file: file) {
+    TimerExpectationUnderivable { detail: d } =>
+      BeltTimerRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: d }
+    TimerExpectationDerived { expectation: e } =>
+      match observe_timer_unit(unit: unit) {
+        TimerUnitUnobservable { unit: u, property: p } =>
+          BeltTimerRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        TimerUnitObservedOk { observed: o } => judge_belt_timer(unit: unit as String, expect: e, o: o)
+      }
+  }
+}
+
+fn observe_belt_oneshot_standing(unit: NonEmptyStr, file: SystemdUnitFile) -> BeltOneshotStanding {
+  match service_unit_expectation_of(file: file) {
+    ServiceExpectationUnderivable { detail: d } =>
+      BeltOneshotRefused { unit: unit as String, property: "expectation", expected: "derivable from emitted unit", observed: d }
+    ServiceExpectationDerived { expectation: e } =>
+      match observe_service_unit(unit: unit) {
+        ServiceUnitUnobservable { unit: u, property: p } =>
+          BeltOneshotRefused { unit: u, property: p, expected: "readable", observed: "systemctl show refused" }
+        ServiceUnitObservedOk { observed: o } => judge_belt_oneshot(unit: unit as String, expect: e, o: o)
+      }
+  }
+}

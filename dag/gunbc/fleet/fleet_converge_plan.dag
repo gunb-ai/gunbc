@@ -1127,6 +1127,34 @@ fn fleet_converge_apply_terminal_line(terminal: FleetConvergeApplyTerminal) -> S
   }
 }
 
+// The terminal's wire spelling, carried by the plan artifact and both fleet receipts so the RLM-2
+// join can require FullyApplied without re-deriving refusal counts it cannot observe.
+fn fleet_converge_apply_terminal_wire(terminal: FleetConvergeApplyTerminal) -> String {
+  match terminal {
+    FullyApplied => "fully_applied"
+    PartiallyApplied { refused_axis_count: n, detail: d } => join(["partially_applied|", to_string(n), "|", d], "")
+  }
+}
+
+fn fleet_converge_apply_terminal_of_wire(text: String) -> FleetConvergeApplyTerminal? {
+  if text == "fully_applied" {
+    Present { value: FullyApplied }
+  } else if starts_with(s: text, prefix: "partially_applied|") {
+    let rest = substring(s: text, start: 18, end: string_length(s: text))
+    let n_text = fold(split(s: rest, delimiter: "|"), init: "", f: (acc, seg) => if acc == "" { seg } else { acc })
+    match parse_int(s: n_text) {
+      Absent => none
+      Present { value: n } =>
+        Present { value: PartiallyApplied {
+          refused_axis_count: n,
+          detail: substring(s: rest, start: string_length(s: n_text) + 1, end: string_length(s: rest)),
+        } }
+    }
+  } else {
+    none
+  }
+}
+
 fn fleet_converge_activation_declaration_lines() -> List<String> {
   [
     concat("# activation-reachability: ", runner_activation_reachability_report()),
@@ -1576,6 +1604,7 @@ type FleetConvergePlanArtifact {
   subject: FleetConvergePlanSubject
   prior_generation: Int
   plan_lease: HeldLease
+  apply_terminal: FleetConvergeApplyTerminal
   observed_baseline_hex: Fnv1a64StructuralDigestHex
   plan_body: String
   apply_shell: String
@@ -2555,30 +2584,38 @@ fn fleet_converge_plan_artifact_assembled(
     prior_generation: prior_generation,
     owner_fingerprint: owner_fp,
   )
+  let planned_terminal = fleet_converge_apply_terminal(
+    host: host,
+    observed_slots: observed_slots,
+    observed_caps: observed_caps,
+    timer_plan: timer_plan,
+    cap_plan: cap_plan,
+    observed_fabric_cells: observed_fabric_cells,
+    observed_activation_readiness: observed_activation_readiness,
+  )
   let apply_shell = fleet_converge_apply_shell(
     timer_plan: timer_plan,
     host: host,
     observed_slots: observed_slots,
     observed_fabric_cells: observed_fabric_cells,
     observed_activation_readiness: observed_activation_readiness,
-    terminal: fleet_converge_apply_terminal(
-      host: host,
-      observed_slots: observed_slots,
-      observed_caps: observed_caps,
-      timer_plan: timer_plan,
-      cap_plan: cap_plan,
-      observed_fabric_cells: observed_fabric_cells,
-      observed_activation_readiness: observed_activation_readiness,
-    ),
+    terminal: planned_terminal,
   )
-  FleetConvergePlanArtifact {
-    subject: subject,
-    prior_generation: prior_generation,
-    plan_lease: lease,
-    observed_baseline_hex: content_hash_atom(value: baseline as NonEmptyStr).digest,
-    plan_body: body,
-    apply_shell: apply_shell,
-    spark_serving_typed_actions: spark_rows,
+  match content_hash_of_value(value: baseline as NonEmptyStr) {
+    Fnv1a64(structural) =>
+      Present {
+        value: FleetConvergePlanArtifact {
+          subject: subject,
+          prior_generation: prior_generation,
+          plan_lease: lease,
+          apply_terminal: planned_terminal,
+          observed_baseline_hex: structural.digest,
+          plan_body: body,
+          apply_shell: apply_shell,
+          spark_serving_typed_actions: spark_rows,
+        },
+      }
+    _ => Absent
   }
 }
 
@@ -2642,6 +2679,7 @@ fn fleet_converge_allocation_store_plan_artifact(
           subject: subject,
           prior_generation: prior_generation,
           plan_lease: lease,
+          apply_terminal: FullyApplied,
           observed_baseline_hex: structural.digest,
           plan_body: body,
           apply_shell: apply_shell,

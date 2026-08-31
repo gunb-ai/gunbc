@@ -448,16 +448,11 @@ pub struct TransitionAdmission {
 /// trigger, in the shrink this roster's rule requires — not left standing to refuse unrelated
 /// changes, which is the cost the first 53 rows recorded above.
 ///
-/// FOURTH SHRINK, SAME RULE (2026-08-31). The XL-0N row for `type_reference_declaration_ref`
-/// relocating to `v1.compiler.infer_env` (gunbc#9719) was authored with "DISSOLVE-ON: this pull
-/// request merging". It merged, so this branch's merge commit and its base both carry the
-/// relocation, no run can produce that delta, and the required run on 05c0dddaac reported
-/// `0 unadjudicated delta(s), 1 stale admission(s)`. Removed by the trigger it was authored with.
-/// It reached this branch only because integrating main put main's row and this lane's live rows in
-/// one array; keeping it was the inherit-and-refuse shape the first 53 rows recorded, not a second
-/// opinion about its subject.
+/// SEVENTH DISSOLUTION (2026-08-31). XL-0N (#9719) merged, so base and head both carry the
+/// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
+/// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
+/// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
-
     TransitionAdmission {
         label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
         subject: AdmissionSubject::Binding {
