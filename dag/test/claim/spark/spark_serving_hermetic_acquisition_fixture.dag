@@ -558,9 +558,7 @@ fn hermetic_runtime_complete_captures() -> List<SparkServingProbeLegCapture> {
     hermetic_leg(
       request: RuntimeReceiptRequest,
       exit_code: 0,
-      out: serialize_content_hash(
-        hash: ollama_runtime_materialization_identity_for_required_release().digest,
-      ) as String,
+      out: ollama_runtime_materialization_identity_for_required_release().digest as String,
       err: "",
     ),
   ]
