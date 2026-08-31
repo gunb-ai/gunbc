@@ -69,6 +69,7 @@ import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.systemd { systemd_unit_load_state_not_found_wire }
 import gunbc.clock_read { clock_now_probed_at, probed_at_word }
 import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
   FleetSshExecutionContext,
   fleet_ssh_execution_context_of,
   materialize_fleet_known_hosts_anchor,
@@ -649,15 +650,8 @@ fn spark_serving_host_observation(
 
 fn spark_serving_transaction_provenance(
   txn: SparkServingObservationTransaction,
-  fleet_attempt: NonEmptyStr,
-  phase: SparkServingObservationPhase,
 ) -> SparkServingObservationProvenance {
-  spark_serving_acquired_provenance_of(
-    txn: txn,
-    fleet_attempt: fleet_attempt,
-    phase: phase,
-    credential: txn.locus,
-  )
+  spark_serving_acquired_provenance_of(txn: txn)
 }
 
 // THE LINGER PROBE WORDS LIVE HERE NOW, and serving_converge_slice_wet imports them rather than
@@ -774,12 +768,9 @@ fn spark_serving_acquire_observation_transaction(
   )
   spark_serving_observation_transaction_of(
     host: host,
-    attempt: spark_serving_observation_attempt_of(
-      fleet_attempt: context.attempt as NonEmptyStr,
-      host: host,
-      phase: phase,
-    ),
-    locus: fleet_locus_label(context: context) as NonEmptyStr,
+    fleet_attempt: context.attempt,
+    phase: phase,
+    credential: context.credential,
     captures: concat(
       [
         spark_serving_captured_leg(context: context, host: host, request: LoadStateRequest),
@@ -985,16 +976,12 @@ fn spark_serving_observe_host_via_locus(
     SparkServingTransactionRefused { cause: why } =>
       spark_serving_host_observation_from_refused_transaction(
         host: host,
-        fleet_attempt: context.attempt as NonEmptyStr,
+        fleet_attempt: context.attempt,
         phase: SparkServingReportObservation,
         cause: why,
       )
     SparkServingTransactionAdmitted { txn: txn } =>
-      spark_serving_host_observation_from_transaction(
-        txn: txn,
-        fleet_attempt: context.attempt as NonEmptyStr,
-        phase: SparkServingReportObservation,
-      )
+      spark_serving_host_observation_from_transaction(txn: txn)
   }
 }
 
@@ -1040,11 +1027,7 @@ fn spark_serving_observed_facts_via_locus(
         linger: spark_serving_observed_linger_from_probe(
           result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
         ),
-        provenance: spark_serving_transaction_provenance(
-          txn: txn,
-          fleet_attempt: context.attempt as NonEmptyStr,
-          phase: phase,
-        ),
+        provenance: spark_serving_transaction_provenance(txn: txn),
       }
   }
 }
@@ -1056,7 +1039,7 @@ fn spark_serving_observed_facts_via_locus(
 // unobserved arms downstream. The readback carries the cause so the refusal is located.
 fn spark_serving_host_observation_from_refused_transaction(
   host: HostIdentity,
-  fleet_attempt: NonEmptyStr,
+  fleet_attempt: FleetSshAttemptIdentity,
   phase: SparkServingObservationPhase,
   cause: NonEmptyStr,
 ) -> SparkServingHostObservation {
@@ -1087,8 +1070,6 @@ fn spark_serving_host_observation_from_refused_transaction(
 
 fn spark_serving_host_observation_from_transaction(
   txn: SparkServingObservationTransaction,
-  fleet_attempt: NonEmptyStr,
-  phase: SparkServingObservationPhase,
 ) -> SparkServingHostObservation {
   spark_serving_host_observation(
     readback: spark_serving_readback_from_probe_results(
@@ -1114,7 +1095,7 @@ fn spark_serving_host_observation_from_transaction(
     linger: spark_serving_observed_linger_from_probe(
       result: spark_serving_transaction_result(txn: txn, leg: ProbeLinger),
     ),
-    provenance: spark_serving_transaction_provenance(txn: txn, fleet_attempt: fleet_attempt, phase: phase),
+    provenance: spark_serving_transaction_provenance(txn: txn),
   )
 }
 
