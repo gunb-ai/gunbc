@@ -115,7 +115,8 @@ import gunbc.membership_reconcile {
   MemberRemovalRefused,
   MemberRosterDuplicateKeyRefused,
 }
-import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_shaped_observation }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }
+import gunbc.spark.serving_observed_members { LingerObservedEnabled }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 
@@ -537,7 +538,7 @@ test fn w_the_planner_refuses_a_host_with_no_spark_role() -> Bool {
 // the others -- which is the whole point of the cut: there is no Spark-shaped door into the artifact
 // that the converge actuator does not also walk through.
 fn w_artifact(host: HostIdentity) -> FleetConvergePlanArtifactOutcome {
-  match hermetic_shaped_observation(host: host, unit_present: true, linger_enabled: true) {
+  match hermetic_converged_observation(host: host, linger: LingerObservedEnabled) {
     Absent =>
       FleetConvergePlanArtifactRefused {
         refusal: SparkAxisPlanningRefused {

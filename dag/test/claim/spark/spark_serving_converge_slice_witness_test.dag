@@ -24,7 +24,7 @@ import gunbc.fleet_converge_plan {
 }
 import gunbc.fabric_cell_observation_admission { fabric_cell_observation_unobserved }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
-import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_shaped_observation }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }
 import gunbc.spark.serving_execution_schedule {
   scheduled_rows_empty,
   scheduled_rows_list,
@@ -195,10 +195,9 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
 // observation comes from capture results the production projectors read, and the artifact comes from
 // the same generic route production uses, so the axis they exercise is the one that ships.
 fn slice_artifact(linger_enabled: Bool) -> FleetConvergePlanArtifact? {
-  match hermetic_shaped_observation(
+  match hermetic_converged_observation(
     host: witness_host_srv5 as HostIdentity,
-    unit_present: true,
-    linger_enabled: linger_enabled,
+    linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
   ) {
     Absent => none
     Present { value: o } =>
