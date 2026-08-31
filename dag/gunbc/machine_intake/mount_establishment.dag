@@ -146,10 +146,19 @@ fn advance_frontier(frontier_at: EpochMs?, observed_at: EpochMs) -> EpochMs? {
   }
 }
 
+// EXHAUSTIVE, NOT WILDCARDED, BECAUSE A NEW STANDING MUST STOP THE LINE HERE.
+// This guard decides whether the fold preserves what it already concluded, so a
+// wildcard would silently classify any future standing as "not contradictory"
+// and let the temporal prechecks overwrite it -- the exact defect this guard was
+// added to close, reintroduced by the next person to extend the coproduct. Listed
+// arms make that a compile error instead of a wrong answer.
 fn standing_is_contradictory(standing: RemoteMediaMountStanding) -> Bool {
   match standing {
     MountObservationContradictory { cause: _ } => true
-    _ => false
+    MountRequested { window: _ } => false
+    MountPending { window: _, last_observed_at: _, observations: _ } => false
+    MountEstablished { established_at: _, establishing_evidence: _ } => false
+    MountTimedOut { window: _, basis: _ } => false
   }
 }
 
