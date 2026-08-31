@@ -4696,6 +4696,7 @@ pub fn run_required_floor(
     let mut scope_kb_max_module = String::new();
     let mut scope_kb_max_modules: usize = 0;
     let mut scopes_with_ambiguity: usize = 0;
+    let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
     let mut final_symbol_retention = None;
@@ -4728,6 +4729,7 @@ pub fn run_required_floor(
             }
             scope_kb_total += scope_kb;
             scope_constructions += 1;
+            scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
             if built.ambiguous_bare_names > 0 {
@@ -5469,6 +5471,27 @@ pub fn run_required_floor(
             frame_build_nanos as f64 / frame_constructions as f64 / 1_000_000.0
         }
     );
+    // AND WHICH OF THE THREE CONSTRUCTIONS INSIDE A SCOPE BUILD THAT TIME IS. This line is the
+    // DECOMPOSITION of `[floor-fold-time]`'s `scope_build` term, not a second measurement of
+    // it: `[floor-scope-cost]` prices a scope in resident bytes and cannot distinguish an
+    // order walk from a registry union from an index rebuild, and those are three different
+    // constructions whose replacements are three different changes. It deliberately carries NO
+    // total and NO overall mean — the total is `scope_build` one line up, and printing a second
+    // nearly-equal figure beside it would be two spellings of one number, differing only by the
+    // few instructions between the timer around the call and the timers inside it.
+    {
+        let n = scope_constructions.max(1) as f64;
+        eprintln!(
+            "[floor-scope-split] order_ms={} registry_ms={} indexes_ms={} \
+             per_scope_ms(order={:.1} registry={:.1} indexes={:.1})",
+            scope_build_split.order_nanos / 1_000_000,
+            scope_build_split.registry_nanos / 1_000_000,
+            scope_build_split.indexes_nanos / 1_000_000,
+            scope_build_split.order_nanos as f64 / 1_000_000.0 / n,
+            scope_build_split.registry_nanos as f64 / 1_000_000.0 / n,
+            scope_build_split.indexes_nanos as f64 / 1_000_000.0 / n,
+        );
+    }
     eprintln!(
         "[floor-scope-cost] max={:.2}GB at={} ({} modules) total_built={:.2}GB over {} construction(s)",
         scope_kb_max as f64 / 1048576.0,
@@ -6203,6 +6226,180 @@ mod pure_producer_share_tests {
             "refusal must name the cause: {err}"
         );
         v1_interpreter::clear_cross_claim_pure_memos();
+    }
+}
+
+#[cfg(test)]
+mod scope_fragment_memo_equivalence {
+    use super::*;
+    use std::rc::Rc;
+
+    /// A minimal `PreparedRepository` over in-memory sources — the same shape the floor
+    /// prepares, without the corpus.
+    fn prepared_from(sources: &[(&str, &str)]) -> PreparedRepository {
+        let files: Vec<Rc<crate::v1_compiler_compile::SourceFile>> = sources
+            .iter()
+            .map(|(path, content)| {
+                Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: path.to_string(),
+                    content: content.to_string(),
+                })
+            })
+            .collect();
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        let graph = result.graph.as_ref().expect("fixture graph").clone();
+        PreparedRepository {
+            graph,
+            source_indices: result.source_indices.clone(),
+            // A DISTINCT DIGEST PER FIXTURE, because the fragment memo is keyed by it: a shared
+            // spelling would let one fixture's fragments answer another's scopes, which is the
+            // cross-subject leak the key exists to prevent — and a test that shared it would be
+            // measuring the leak instead of the memo.
+            subject_digest: format!("fixture-{}", sources.len()),
+            modules_resolved: sources.len(),
+            modules_excluded: 0,
+            full_inventory: Vec::new(),
+            discovery_exclusions: HashMap::new(),
+        }
+    }
+
+    /// TWO MODULES CLAIMING ONE BARE NAME, reached from two different entries — so the two
+    /// scopes over this corpus have DIFFERENT precedence orders over the SAME modules, and the
+    /// colliding name must resolve to a different declaration in each. That is the property a
+    /// per-module memo could destroy if it ever cached anything order-dependent: the second
+    /// scope would be served the first scope's winner and the fingerprints would diverge.
+    fn colliding_corpus() -> PreparedRepository {
+        prepared_from(&[
+            (
+                "workspace/src/alpha.dag",
+                "module fixture.alpha\n\
+                 import fixture.shared { helper }\n\
+                 fn shared_name() -> Bool { true }\n\
+                 fn alpha_entry() -> Bool { shared_name() }\n",
+            ),
+            (
+                "workspace/src/beta.dag",
+                "module fixture.beta\n\
+                 import fixture.shared { helper }\n\
+                 fn shared_name() -> Bool { false }\n\
+                 fn beta_entry() -> Bool { shared_name() }\n",
+            ),
+            (
+                "workspace/src/shared.dag",
+                "module fixture.shared\n\
+                 fn helper() -> Bool { true }\n\
+                 data shared_datum: Bool = true\n",
+            ),
+        ])
+    }
+
+    /// THE EQUIVALENCE WITNESS. Every scope of the corpus, built with the per-module fragment
+    /// memo and built without it, must answer identically at identity grain — same fn_nodes
+    /// down to WHICH declaration node each name resolves to, same ambiguity set, same
+    /// file/import binding tiers, same service ops, same item registry, same precedence
+    /// identity and module count.
+    #[test]
+    fn a_memoized_scope_answers_exactly_as_an_unmemoized_one() {
+        let prepared = colliding_corpus();
+        for entry in ["fixture.alpha", "fixture.beta", "fixture.shared"] {
+            let memoized = claim_scope_for(&prepared, entry).expect("memoized scope");
+            let control = claim_scope_for_without_memos(&prepared, entry).expect("control scope");
+            assert_eq!(
+                memoized.scope_identity, control.scope_identity,
+                "{entry}: precedence identity diverged"
+            );
+            assert_eq!(
+                memoized.module_count, control.module_count,
+                "{entry}: module population diverged"
+            );
+            assert_eq!(
+                memoized.ambiguous_bare_names, control.ambiguous_bare_names,
+                "{entry}: ambiguity population diverged"
+            );
+            assert_eq!(
+                memoized.resolution_fingerprint(),
+                control.resolution_fingerprint(),
+                "{entry}: scope answers diverged between the memoized and unmemoized folds"
+            );
+        }
+    }
+
+    /// THE DISCRIMINATING RED'S SUBJECT, asserted rather than assumed: the two entries really
+    /// do resolve the colliding bare name to DIFFERENT declarations. Without this the
+    /// equivalence assertion above could pass over a corpus where order never decided
+    /// anything, which is the absence-evidence trap — a clean comparison on a sample that
+    /// lacks the discriminating case.
+    #[test]
+    fn the_two_scopes_really_do_disagree_about_the_colliding_name() {
+        let prepared = colliding_corpus();
+        let alpha = claim_scope_for(&prepared, "fixture.alpha").expect("alpha scope");
+        let beta = claim_scope_for(&prepared, "fixture.beta").expect("beta scope");
+        let bare_line = |scope: &PreparedClaimScope| -> String {
+            scope
+                .resolution_fingerprint()
+                .into_iter()
+                .find(|line| line.starts_with("fn\tshared_name\t"))
+                .expect("both scopes bind the colliding bare name")
+        };
+        assert_ne!(
+            bare_line(&alpha),
+            bare_line(&beta),
+            "the fixture must exercise order-dependent resolution, or the equivalence \
+             witness proves nothing about precedence"
+        );
+    }
+
+    /// THE MEMOS ARE ACTUALLY REUSED ACROSS SCOPES, asserted rather than assumed. Without this
+    /// the equivalence test above could be green because the "memoized" path memoized nothing:
+    /// a per-scope cache would answer identically to the control and prove only that two
+    /// unmemoized folds agree.
+    #[test]
+    fn a_second_scope_of_one_subject_reuses_the_first_scopes_memos() {
+        let prepared = colliding_corpus();
+        claim_scope_for(&prepared, "fixture.alpha").expect("first scope");
+        let filled = crate::cli_run::scope_memo_population_for_test(&prepared);
+        assert!(
+            filled.0 > 0 && filled.1 > 0,
+            "the first scope must leave fragments and reached-lists behind: {filled:?}"
+        );
+        claim_scope_for(&prepared, "fixture.beta").expect("second scope");
+        let after = crate::cli_run::scope_memo_population_for_test(&prepared);
+        assert!(
+            after.0 >= filled.0 && after.1 >= filled.1,
+            "the second scope must add to the SAME memos, not start new ones: \
+             {filled:?} then {after:?}"
+        );
+    }
+
+    /// The memo is keyed inside one prepared subject. Two subjects sharing a module NAME must
+    /// not share its fragment: the declarations are different nodes, and serving one for the
+    /// other is a silently wrong resolution rather than a slow one.
+    #[test]
+    fn a_second_subject_does_not_inherit_the_first_subjects_fragments() {
+        let first = colliding_corpus();
+        let second = prepared_from(&[
+            (
+                "workspace/src/alpha.dag",
+                "module fixture.alpha\nfn shared_name() -> Bool { false }\n",
+            ),
+            (
+                "workspace/src/second_only.dag",
+                "module fixture.second_only\nfn only_here() -> Bool { true }\n",
+            ),
+        ]);
+        let from_first = claim_scope_for(&first, "fixture.alpha").expect("first subject scope");
+        let from_second = claim_scope_for(&second, "fixture.alpha").expect("second subject scope");
+        let control = claim_scope_for_without_memos(&second, "fixture.alpha").expect("control");
+        assert_eq!(
+            from_second.resolution_fingerprint(),
+            control.resolution_fingerprint(),
+            "the second subject's scope must answer from its OWN modules"
+        );
+        assert_ne!(
+            from_first.resolution_fingerprint(),
+            from_second.resolution_fingerprint(),
+            "two subjects declaring the same module name must not produce one answer"
+        );
     }
 }
 
