@@ -1129,6 +1129,12 @@ type FleetConvergeApplyTerminal
 // Taking the request removes the choice rather than documenting it: each arm reads exactly the
 // populations that arm carries, and an axis the arm has no field for cannot be counted, excused, or
 // defaulted, because there is nothing to read. Adding a scope makes this match non-exhaustive.
+//
+// THE ALLOCATION-STORE ARM IS FullyApplied BY THE SHAPE OF ITS ARM AND NOT BY A COUNT. That
+// transaction plans two idempotent ensure-directory effects and models no refusal axis at all, so a
+// count there could only ever be zero and would read as a measurement nobody took. This is where
+// fleet_converge_allocation_store_plan_artifact used to write the literal; it now asks here, so
+// there is one authority for what a terminal means.
 fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConvergeApplyTerminal {
   match request {
     FullHostConverge {
@@ -1201,9 +1207,6 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
         }
       }
     }
-    // The allocation-store transaction plans two idempotent ensure-directory effects and models no
-    // refusal axis at all, so its terminal is FullyApplied by the shape of the arm rather than by a
-    // count that could only ever be zero. This is where its artifact fold used to write the literal.
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FullyApplied
   }
 }

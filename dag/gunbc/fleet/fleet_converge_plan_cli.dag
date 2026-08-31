@@ -214,6 +214,11 @@ type FleetConvergeRequestObservation
   = FleetConvergeRequestObserved { request: FleetConvergeRequest }
   | FleetConvergeRequestUnobserved { reason: String }
 
+// THE LAUNCH-ENVIRONMENT ARM DOES NOT CALL THE SLOT OBSERVER, and that is the construction rather
+// than a saved probe: the arm it builds has no slot field to put the answer in, so observing runner
+// slots here would produce a value with nowhere to go. The refusal an unreadable slot roster raises
+// for a full-host plan is therefore not suppressed for this scope -- it is not reachable, because
+// this scope never took on that obligation.
 func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
@@ -238,11 +243,6 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
         observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
       },
     }
-    // THE LAUNCH-ENVIRONMENT ARM DOES NOT CALL THE SLOT OBSERVER, and that is the construction
-    // rather than a saved probe: the arm it builds has no slot field to put the answer in, so
-    // observing runner slots here would produce a value with nowhere to go. The refusal an
-    // unreadable slot roster raises for a full-host plan is therefore not suppressed for this
-    // scope -- it is not reachable, because this scope never took on that obligation.
     ScopeDecoded { scope: LaunchEnvironment } => FleetConvergeRequestObserved {
       request: LaunchEnvironmentConverge {
         host: host,
@@ -510,6 +510,10 @@ func fleet_converge_scoped_plan_wet(scope: FleetConvergeScope) -> ProcessExit
   }
 }
 
+// ONE OBSERVER, SELECTED BY THE SCOPE. This branch used to inline the timer, cap and slot probes
+// beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
+// that a scope could only widen. Routing plan through the same observer means the population the
+// plan hashes and the population apply re-observes come from one authority.
 func fleet_converge_plan_scoped_bound_wet(
   run: ActionsRunBinding,
   expected_host: String,
@@ -528,10 +532,6 @@ func fleet_converge_plan_scoped_bound_wet(
   match observe_generation_store_wet() {
     GenerationAdmissionRefused { reason: why } => exit_failure(reason: why)
     GenerationAdmitted { generation: prior_generation } => {
-  // ONE OBSERVER, SELECTED BY THE SCOPE. This branch used to inline the timer, cap and slot probes
-  // beside observe_fleet_converge_request_wet, which apply already used -- two readings of one host
-  // that a scope could only widen. Routing plan through the same observer means the population the
-  // plan hashes and the population apply re-observes come from one authority.
   match observe_fleet_converge_request_wet(scope_wire: fleet_converge_scope_wire(scope: scope), host: host) {
     FleetConvergeRequestUnobserved { reason: why } =>
       exit_failure(reason: concat("fleet_converge_plan: RequestUnobserved — ", why))
