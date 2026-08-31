@@ -300,7 +300,7 @@ fn static_arm_debug_text(stdout: String) -> String {
     concat(acc, concat("\nclone_finding file=", concat(f.file, concat(" line=", to_string(f.line))))))
   concat("findings_total=", concat(to_string(findings |> count),
   concat(" clone_findings=", concat(to_string(clones |> count),
-  concat(" stdout_bytes=", concat(to_string(string_length(stdout)), files))))))
+  concat(" stdout_bytes=", concat(to_string(string_length(s: stdout)), files))))))
 }
 
 fn finding_is_clone_lint(f: ClippyFinding) -> Bool {
