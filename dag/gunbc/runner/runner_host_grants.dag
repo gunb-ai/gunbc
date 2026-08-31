@@ -38,6 +38,11 @@ import gunbc.fabric_cell_effect {
   CellAttemptWriterOwned,
   fabric_cell_slice_desired_directives,
 }
+import gunbc.fabric_allocation_store_substrate {
+  AllocationStoreEffect,
+  AllocationStoreDirectoryChainEnsure,
+  fabric_allocation_store_ensure_effect,
+}
 import gunbc.runner_host_deploy { RunnerHostDeploy }
 import gunbc.runner_slot_provision { desired_runner_slot_members }
 import gunbc.runner_unit { runner_unit_name_of_registration }
@@ -214,12 +219,43 @@ fn fabric_cell_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorP
   }
 }
 
+// The allocation store is host-scoped substrate, not a cell action. Its grant is present on a
+// host that carries a fabric slot even when every cell member is already converged, so the empty
+// cell-action case cannot erase the control-plane prerequisite.
+fn fabric_allocation_store_effect_operations(
+  effect: AllocationStoreEffect,
+  job_user: NonEmptyStr,
+) -> List<ExecutorPrivilegedOperation> {
+  match effect {
+    AllocationStoreDirectoryChainEnsure { spec: s } => {
+      let namespace_principal = fabric_cell_substrate_owner_principal(owner: s.namespace_owner, job_user: job_user)
+      let store_principal = fabric_cell_substrate_owner_principal(owner: s.owner, job_user: job_user)
+      [
+        EnsureOwnedDirectory { path: s.namespace_path, owner: namespace_principal, group: namespace_principal, mode: s.namespace_mode },
+        EnsureOwnedDirectory { path: s.path, owner: store_principal, group: store_principal, mode: s.mode },
+      ]
+    }
+  }
+}
+
+fn fabric_allocation_store_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
+  if list_length(items: fabric_cell_host_slots(deploy: deploy)) == 0 {
+    []
+  } else {
+    fabric_allocation_store_effect_operations(
+      effect: fabric_allocation_store_ensure_effect(),
+      job_user: deploy.job_user,
+    )
+  }
+}
+
 fn runner_host_privileged_operations(deploy: RunnerHostDeploy) -> List<ExecutorPrivilegedOperation> {
   let job = deploy.job_user
   let slot_dirs = map(desired_runner_slot_members(deploy: deploy), m => m.slot_dir)
   runner_slot_privileged_operations(slot_dirs: slot_dirs, slot_owner: job)
     + runner_slot_activation_operations(deploy: deploy)
     + fabric_cell_privileged_operations(deploy: deploy)
+    + fabric_allocation_store_privileged_operations(deploy: deploy)
     + [
       EnsureOwnedDirectory {
         path: gunbc_fleet_converge_state_dir,

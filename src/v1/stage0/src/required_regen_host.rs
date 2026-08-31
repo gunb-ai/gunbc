@@ -12,9 +12,13 @@ use std::time::Instant;
 #[path = "bootstrap_stage0_crate_layout_generated.rs"]
 mod bootstrap_stage0_crate_layout_generated;
 use super::workspace_root;
-use crate::v1_compiler_artifact::RenderTarget;
+use crate::gunbc_stage0_emitted_population_manifest::{
+    emitted_population_manifest_basename, emitted_population_manifest_line_prefix,
+    emitted_population_manifest_line_separator,
+};
+use crate::v1_compiler_artifact::{RenderTarget, RustModuleRenderSelection};
 use crate::v1_compiler_compile::{
-    compile_sources, stage0_self_compile_refusal_message, SourceFile,
+    compile_sources_selected, stage0_self_compile_refusal_message, SourceFile,
 };
 use crate::v1_rt;
 use bootstrap_stage0_crate_layout_generated::{
@@ -112,6 +116,29 @@ pub enum RegenReceipt {
         reason: String,
         candidate_artifact: String,
     },
+    /// THE EDIT AFFECTS NO COMPARED MIRROR, so this round adjudicated nothing.
+    ///
+    /// Reached only under an affected scope whose selection is empty -- an edit confined to `.dag`
+    /// modules that no mirror is emitted from, which is an ordinary state and not a defect. This
+    /// PR's own edit set is one: `v2.workflow.required_regen` and `gunbc.regen_round_cost` are read
+    /// through the interpreter and have no mirror in `src/v1/stage0/src`.
+    ///
+    /// IT CARRIES NO DIGESTS, for exactly the reason `Refused` carries none: nothing was compared,
+    /// so there is no first generation to have a digest of. Routing this through `FirstGeneration`
+    /// would have put an empty-population digest in a field a fixed-point pass reads as evidence.
+    /// The three empty-population refusals in this file (`verify_candidate_tree`,
+    /// `tree_digest_for_basenames`, `tree_digest_from_map`) are RIGHT and stay: a digest over
+    /// nothing is not evidence of anything, and for the whole-population round an empty population
+    /// means the tree is broken. This variant is how the scoped round avoids asking them a
+    /// question they correctly refuse, rather than weakening them so they answer it.
+    #[serde(rename = "no_affected_mirrors")]
+    NoAffectedMirrors {
+        schema: String,
+        commit_sha: String,
+        authority_digest: String,
+        /// The scope line that selected nothing, so the receipt says WHY it adjudicated nothing.
+        scope: String,
+    },
     #[serde(rename = "fixed_point")]
     FixedPoint {
         schema: String,
@@ -129,6 +156,7 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { commit_sha, .. } => commit_sha,
             RegenReceipt::Refused { commit_sha, .. } => commit_sha,
+            RegenReceipt::NoAffectedMirrors { commit_sha, .. } => commit_sha,
             RegenReceipt::FixedPoint { commit_sha, .. } => commit_sha,
         }
     }
@@ -143,6 +171,9 @@ impl RegenReceipt {
                 ..
             } => Some(*first_generation_equal),
             RegenReceipt::Refused { .. } => None,
+            // Nothing was compared, so there is no answer -- not `Some(true)`, which would report a
+            // clean comparison that never happened.
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -152,6 +183,7 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
             RegenReceipt::Refused { .. } => None,
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint {
                 fixed_point_equal, ..
             } => Some(*fixed_point_equal),
@@ -167,6 +199,8 @@ impl RegenReceipt {
             RegenReceipt::Refused {
                 candidate_artifact, ..
             } => Some(candidate_artifact),
+            // No candidate tree was written, because no emit was run.
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -190,6 +224,7 @@ impl RegenReceipt {
                 ..
             } => Some(candidate_generated_digest),
             RegenReceipt::Refused { .. } => None,
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint {
                 candidate_generated_digest,
                 ..
@@ -203,6 +238,8 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
             RegenReceipt::Refused { reason, .. } => Some(reason),
+            // Not a refusal: the round ran and correctly had nothing to do.
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { .. } => None,
         }
     }
@@ -211,6 +248,7 @@ impl RegenReceipt {
         match self {
             RegenReceipt::FirstGeneration { .. } => None,
             RegenReceipt::Refused { .. } => None,
+            RegenReceipt::NoAffectedMirrors { .. } => None,
             RegenReceipt::FixedPoint { prior, .. } => Some(prior),
         }
     }
@@ -251,9 +289,26 @@ pub fn pass1_digest_for_fixed_point(outcome: &RequiredRegenOutcome) -> Option<&s
     }
 }
 
+/// THE UNSCOPED ROUND, unchanged: every committed mirror's bytes adjudicated, written and
+/// digested. This is what the required CI phase and `--required-regen` run, and it is the
+/// measurement that establishes the fixed-point precondition a scoped round relies on.
 pub fn run_required_regen(
     candidate_dir_rel: &str,
     receipt_rel: &str,
+) -> Result<RequiredRegenOutcome, String> {
+    run_required_regen_scoped(
+        candidate_dir_rel,
+        receipt_rel,
+        &RegenEmissionScope::WholePopulation,
+    )
+}
+
+/// The same round with the affected-set bound consumed. See `RegenEmissionScope` and, for the
+/// reasoning, `v2.workflow.required_regen` `RegenEmissionScope`.
+pub fn run_required_regen_scoped(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    scope: &RegenEmissionScope,
 ) -> Result<RequiredRegenOutcome, String> {
     let workspace = workspace_root();
     let candidate_dir = workspace.join(candidate_dir_rel);
@@ -266,6 +321,17 @@ pub fn run_required_regen(
     // spawn, ~50 minutes in.
     let formatter = ResolvedFormatter::admit()?;
 
+    // THE SCOPE ANSWERS BEFORE THE EMIT IS PAID FOR, for the same reason the formatter is
+    // admitted here: a round that cannot say which mirrors it is regenerating has nothing to do
+    // with the ~7 minutes it is about to spend. `scope_selection` over the committed roster is
+    // the refusal arm; it is the one call that can fail, and it fails loudly rather than
+    // widening to the population.
+    let selected: BTreeSet<String> =
+        scope_selection(scope, &committed_generated_basenames(&stage0_src)?)?
+            .into_iter()
+            .collect();
+    eprintln!("{}", scope.line());
+
     let commit_sha = git_head_sha(&workspace)?;
     // PHASE MARKS. Every boundary below is stamped through `v1_rt::trace_mark`, the instrument
     // compile.dag uses for its stages, so `--regen-round-cost` reads one ledger for the round.
@@ -275,6 +341,49 @@ pub fn run_required_regen(
     v1_rt::trace_mark("regen.corpus_load.done".to_string());
     let authority_digest = authority_digest_from_sources(&sources)?;
     let formatter = formatter.with_normalize_cache(&workspace)?;
+
+    // AN EMPTY SELECTION ENDS THE ROUND HERE, SUCCESSFULLY, BEFORE THE EMIT.
+    //
+    // Finding from codex/gpt-5.6-sol on review 57625, and it was right: the scoped round drove an
+    // empty selection into `verify_candidate_tree` and both digest functions, all three of which
+    // correctly refuse an empty population -- so the state `v2.workflow.required_regen`
+    // `regen_scope_line` documents as an ordinary answer ("an edit that touches no module in the
+    // compared population ... adjudicates nothing and installs nothing") was a hard refusal in the
+    // host. The model said one thing and the realization did another, which is the fork this whole
+    // file exists to catch, sitting inside it.
+    //
+    // The repair is not to relax those three refusals. They are right: a digest over nothing is
+    // evidence of nothing, and for a whole-population round an empty population means the tree is
+    // broken. The repair is for the scoped round not to ask them a question they should refuse.
+    //
+    // ENDING BEFORE THE EMIT IS THE POINT, not an optimization detail. An edit that can change no
+    // mirror has no reason to pay the emit (163 s) or the rebuild (230 s) that follow, so this is
+    // the one place in the round where the affected-set bound removes work proportional to the
+    // corpus rather than to the change. The whole-population arm cannot reach it -- an empty
+    // committed population there is `EmptyCommittedPopulation`, a different refusal about a
+    // different subject.
+    if selected.is_empty() && !matches!(scope, RegenEmissionScope::WholePopulation) {
+        let receipt = RegenReceipt::NoAffectedMirrors {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: git_head_sha(&workspace)?,
+            authority_digest,
+            scope: scope.line(),
+        };
+        write_receipt(&receipt_path, &receipt)?;
+        eprintln!(
+            "required-regen: the affected-set bound selects no compared mirror for this edit; \
+             nothing adjudicated, nothing installed, no emit run ({})",
+            scope.line()
+        );
+        return Ok(RequiredRegenOutcome {
+            receipt,
+            failures: Vec::new(),
+            first_generation: FirstGeneration::NotMeasured(
+                "the affected-set bound selected no compared mirror, so no generation was emitted"
+                    .to_string(),
+            ),
+        });
+    }
 
     // PRODUCTION, THEN ADJUDICATION -- and the order is the whole repair.
     //
@@ -296,7 +405,18 @@ pub fn run_required_regen(
     // reward for agreeing with the committed tree. Authority for the ordering:
     // `v2.workflow.required_regen` `required_regen_run`, whose verdict arms cannot be spelled
     // without the tree they judged.
-    let (emitted, emitted_basenames) = match emit_generated_surface(&sources)? {
+    // THE EMISSION IS DENOMINATED IN THE CHANGE. `selected` is the intersection of the
+    // affected-set bound with the committed roster -- the exact derived closure of this edit, not
+    // "the module that changed" -- and it is what the emitter renders. Everything the emitter
+    // declares about the whole population (the crate module list, the manifest, the closure-stub
+    // decision) is derived from paths and from the resolved graph, so it is unchanged by this.
+    let render_selection = Rc::new(match scope {
+        RegenEmissionScope::WholePopulation => RustModuleRenderSelection::RenderEveryModule,
+        _ => RustModuleRenderSelection::RenderSelectedMirrors {
+            basenames: Rc::new(selected.iter().cloned().collect()),
+        },
+    });
+    let (emitted, emitted_basenames) = match emit_generated_surface(&sources, &render_selection)? {
         // EMIT PRODUCED NOTHING IS NOT A VERDICT ABOUT A TREE. A receipt here would name a
         // `candidate_artifact` no pass wrote -- the impersonation the receipt split ends, one field
         // over. `CandidateTreeUnproduced` in `v2.workflow.required_regen` is the modeled arm and
@@ -318,7 +438,11 @@ pub fn run_required_regen(
     }
     let fresh_src = candidate_dir.join("src");
     v1_rt::trace_mark("regen.mirror_write.begin".to_string());
-    write_emitted_tree(&formatter, &fresh_src, &emitted)?;
+    let restrict = match scope {
+        RegenEmissionScope::WholePopulation => None,
+        _ => Some(&selected),
+    };
+    write_emitted_tree(&formatter, &fresh_src, &emitted, restrict)?;
     copy_hand_maintained_support(&stage0_src, &fresh_src)?;
     v1_rt::trace_mark("regen.mirror_write.done".to_string());
     // Verified against what EMIT produced, not what is committed: the two populations are equal on
@@ -326,14 +450,21 @@ pub fn run_required_regen(
     // population here would re-impose the refusal one line after the write. A producer owes only
     // that its own product landed whole.
     v1_rt::trace_mark("regen.candidate_verify.begin".to_string());
-    verify_candidate_tree(&fresh_src, &emitted_basenames)?;
+    // Verified against what THIS round wrote: the whole emitted population when unscoped, the
+    // selection when scoped. Checking the emitted roster under a scope would refuse the round for
+    // the absence of files it deliberately did not write.
+    let written: Vec<String> = match scope {
+        RegenEmissionScope::WholePopulation => emitted_basenames.clone(),
+        _ => selected.iter().cloned().collect(),
+    };
+    verify_candidate_tree(&fresh_src, &written)?;
     v1_rt::trace_mark("regen.candidate_verify.done".to_string());
 
     v1_rt::trace_mark("regen.adjudicate.begin".to_string());
     let adjudicated =
-        adjudicate_generated_surface(&formatter, &stage0_src, &emitted, &emitted_basenames)?;
+        adjudicate_generated_surface(&formatter, &stage0_src, &emitted, &emitted_basenames, scope)?;
     v1_rt::trace_mark("regen.adjudicate.done".to_string());
-    let (committed_basenames, sync) = match adjudicated {
+    let (committed_basenames, selected_basenames, sync) = match adjudicated {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             return regen_refusal_outcome(
                 &workspace,
@@ -347,7 +478,11 @@ pub fn run_required_regen(
                 ),
             );
         }
-        GeneratedSurfaceAdjudicated::Measured { committed, sync } => (committed, sync),
+        GeneratedSurfaceAdjudicated::Measured {
+            committed,
+            selected,
+            sync,
+        } => (committed, selected, sync),
     };
 
     v1_rt::trace_mark("regen.hand_verify.begin".to_string());
@@ -355,9 +490,16 @@ pub fn run_required_regen(
     v1_rt::trace_mark("regen.hand_verify.done".to_string());
 
     v1_rt::trace_mark("regen.digest.begin".to_string());
+    // BOTH DIGESTS ARE DENOMINATED IN THE SELECTION, and equal to the old whole-population
+    // digests when unscoped, because the selection IS the whole population there.
+    //
+    // A digest over a scoped population is not comparable to one over another population, and
+    // that is fail-closed rather than a hazard: the payload interleaves each member's NAME with
+    // its content digest, so two different selections produce two different digests and a
+    // fixed-point comparison across them goes red. It cannot quietly agree.
     let committed_digest =
-        tree_digest_for_basenames(&formatter, &stage0_src, &committed_basenames, "committed")?;
-    let candidate_digest = tree_digest_from_map(&formatter, &emitted, &committed_basenames)?;
+        tree_digest_for_basenames(&formatter, &stage0_src, &selected_basenames, "committed")?;
+    let candidate_digest = tree_digest_from_map(&formatter, &emitted, &selected_basenames)?;
     v1_rt::trace_mark("regen.digest.done".to_string());
 
     let first_generation_equal = sync.matches && hand.unverifiable.is_empty();
@@ -416,13 +558,17 @@ pub fn run_required_regen(
         ));
     }
 
+    // `planned`/`executed` stay the WHOLE rosters: they are the population identity join's two
+    // sides, and that join is never scoped. `adjudicated` is the scoped count beside them, so a
+    // reader can see both without either standing in for the other.
     eprintln!(
         "required-regen: elapsed_ms={} first_generation_equal={} planned={} executed={} \
-         declared_divergent={} [{}]",
+         adjudicated={} declared_divergent={} [{}]",
         run_started.elapsed().as_millis(),
         first_generation_equal,
         committed_basenames.len(),
         emitted_basenames.len(),
+        selected_basenames.len(),
         hand.declared_divergent.len(),
         hand.declared_divergent.join(", ")
     );
@@ -501,12 +647,19 @@ pub fn run_required_regen_fixed_point(
     let formatter = ResolvedFormatter::admit()?.with_normalize_cache(&workspace)?;
     let sources = super::regen_input_sources(&workspace)?;
     let authority_digest = authority_digest_from_sources(&sources)?;
-    let emitted = compile_stage0(&sources)?;
+    // WHOLE POPULATION, DELIBERATELY. The fixed-point pass asks whether a seed rebuilt from the
+    // installed mirrors regenerates them unchanged; it compares digests over the COMMITTED
+    // roster, so it must render every member of that roster. A selection here would compare a
+    // digest over one population against pass 1's over another.
+    let emitted = compile_stage0(
+        &sources,
+        &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )?;
     let committed_basenames = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
     if emitted.is_empty() {
         return Err("refusal: fixed-point emit produced zero files".to_string());
     }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(&workspace.join("src/v1/stage0/src"))?;
     if let Some(reason) =
         validate_compared_populations(&committed_basenames, &emitted_basenames, &hand_dir_shadows)
@@ -603,21 +756,102 @@ enum GeneratedSurfaceEmit {
 /// The verdict half: what the committed tree says about a candidate that already exists.
 enum GeneratedSurfaceAdjudicated {
     Measured {
+        /// The WHOLE committed roster, which the population identity join ran over.
         committed: Vec<String>,
+        /// The subset whose BYTES were compared — equal to `committed` under
+        /// `RegenEmissionScope::WholePopulation`, and the affected-set bound's intersection with
+        /// it otherwise. Both digests and the candidate write are denominated in this.
+        selected: Vec<String>,
         sync: SyncReport,
     },
     /// Ignorance, never "no drift" -- same refusal semantics as `GeneratedSurfaceMeasured`.
     Refused { reason: String },
 }
 
-fn emit_generated_surface(sources: &[(String, String)]) -> Result<GeneratedSurfaceEmit, String> {
-    let emitted = compile_stage0(sources)?;
+/// WHICH MIRRORS' BYTES THIS ROUND ADJUDICATES — the host side of
+/// `v2.workflow.required_regen` `RegenEmissionScope`, whose note carries the reasoning this
+/// realization must not restate.
+///
+/// The one thing worth repeating at the seam, because it is what the code below has to keep true:
+/// a scope bounds which mirrors' BYTES are read, normalized, compared, digested and written. It
+/// never bounds which mirrors EXIST — `validate_compared_populations` runs over the whole
+/// emitted and committed rosters under every scope, so a newly emitted surface and a committed
+/// mirror the emitter has stopped producing are found exactly as they were before.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RegenEmissionScope {
+    /// Every committed mirror. The required CI phase runs this and only this, and it is what
+    /// establishes the fixed-point precondition a later scoped author round relies on.
+    WholePopulation,
+    /// The affected-set bound's members, by committed basename (mirrors plus declared bootstrap
+    /// products). Over-approximate by construction; never under-approximate.
+    Affected { members: Vec<String> },
+    /// The bound refused: an edited path could not be named as a module. The round refuses with
+    /// it. It does NOT widen to `WholePopulation` — see the model's note.
+    Unlocatable { paths: Vec<String>, reason: String },
+}
+
+impl RegenEmissionScope {
+    /// The receipt line, matching `regen_scope_line` in the model.
+    pub fn line(&self) -> String {
+        match self {
+            RegenEmissionScope::WholePopulation => "regen-scope: WholePopulationScope".to_string(),
+            RegenEmissionScope::Affected { members } => {
+                format!("regen-scope: AffectedScope members={}", members.len())
+            }
+            RegenEmissionScope::Unlocatable { paths, reason } => format!(
+                "regen-scope: ScopeUnlocatable paths={} reason={reason}",
+                paths.len()
+            ),
+        }
+    }
+}
+
+/// THE ONE PRODUCER OF THE SELECTION, read by the write, the comparison and both digests.
+///
+/// An affected scope selects by INTERSECTION with the committed population rather than by taking
+/// the bound's list as the population: the bound names mirrors derived from the module graph and
+/// the declared bootstrap edges, and a member the tree does not carry would otherwise enter the
+/// compared set, where it reads as a missing file instead of as what it is.
+///
+/// The refusal arm returns `Err`, which is this file's spelling of "the round does not run".
+fn scope_selection(
+    scope: &RegenEmissionScope,
+    committed: &[String],
+) -> Result<Vec<String>, String> {
+    match scope {
+        RegenEmissionScope::WholePopulation => Ok(committed.to_vec()),
+        RegenEmissionScope::Unlocatable { paths, reason } => Err(format!(
+            "refusal: the affected-set bound could not locate {} edited path(s) as modules, so \
+             this round has no selection and does not widen to the whole population: {reason} \
+             [{}]",
+            paths.len(),
+            paths.join(", ")
+        )),
+        RegenEmissionScope::Affected { members } => {
+            let member_set: BTreeSet<&str> = members.iter().map(String::as_str).collect();
+            Ok(committed
+                .iter()
+                .filter(|name| member_set.contains(name.as_str()))
+                .cloned()
+                .collect())
+        }
+    }
+}
+
+/// `selection` bounds which modules are RENDERED, and nothing else. The emitted-population
+/// roster below is read from the manifest, which the emitter derives from paths, so it stays
+/// whole under every selection -- see `generated_basenames_from_emit`.
+fn emit_generated_surface(
+    sources: &[(String, String)],
+    selection: &Rc<RustModuleRenderSelection>,
+) -> Result<GeneratedSurfaceEmit, String> {
+    let emitted = compile_stage0(sources, selection)?;
     if emitted.is_empty() {
         return Ok(GeneratedSurfaceEmit::EmitRefused {
             reason: "refusal: emit produced zero files".to_string(),
         });
     }
-    let emitted_basenames = generated_basenames_from_emit(&emitted);
+    let emitted_basenames = generated_basenames_from_emit(&emitted)?;
     Ok(GeneratedSurfaceEmit::Emitted {
         emitted,
         emitted_basenames,
@@ -629,16 +863,28 @@ fn adjudicate_generated_surface(
     stage0_src: &Path,
     emitted: &HashMap<String, String>,
     emitted_basenames: &[String],
+    scope: &RegenEmissionScope,
 ) -> Result<GeneratedSurfaceAdjudicated, String> {
     let committed = committed_generated_basenames(stage0_src)?;
     let hand_dir_shadows = hand_maintained_dir_shadows(stage0_src)?;
+    // POPULATION IDENTITY IS NEVER SCOPED. Both rosters, whole, under every scope: this is the
+    // join that finds a surface the emitter produces and the tree does not carry, and a mirror
+    // the tree carries and the emitter no longer produces. It reads no bytes, so there is
+    // nothing here for a selection to save and everything for one to hide.
     if let Some(reason) =
         validate_compared_populations(&committed, emitted_basenames, &hand_dir_shadows)
     {
         return Ok(GeneratedSurfaceAdjudicated::Refused { reason });
     }
-    let sync = compare_generated_surfaces(formatter, stage0_src, emitted, &committed)?;
-    Ok(GeneratedSurfaceAdjudicated::Measured { committed, sync })
+    // BYTE ADJUDICATION IS SCOPED. This is the expensive half — a read, a normalization and a
+    // comparison per member — and it is the half the affected-set bound is a bound ON.
+    let selected = scope_selection(scope, &committed)?;
+    let sync = compare_generated_surfaces(formatter, stage0_src, emitted, &selected)?;
+    Ok(GeneratedSurfaceAdjudicated::Measured {
+        committed,
+        selected,
+        sync,
+    })
 }
 
 /// THE COMPOSITION, and still the single entry for every caller that wants the whole answer.
@@ -651,7 +897,10 @@ fn measure_generated_surface(
     sources: &[(String, String)],
     stage0_src: &Path,
 ) -> Result<GeneratedSurfaceMeasured, String> {
-    let (emitted, emitted_basenames) = match emit_generated_surface(sources)? {
+    let (emitted, emitted_basenames) = match emit_generated_surface(
+        sources,
+        &Rc::new(RustModuleRenderSelection::RenderEveryModule),
+    )? {
         GeneratedSurfaceEmit::EmitRefused { reason } => {
             return Ok(GeneratedSurfaceMeasured::Refused { reason })
         }
@@ -660,18 +909,29 @@ fn measure_generated_surface(
             emitted_basenames,
         } => (emitted, emitted_basenames),
     };
-    match adjudicate_generated_surface(formatter, stage0_src, &emitted, &emitted_basenames)? {
+    // THE DRIFT GATE IS NEVER SCOPED. Its callers are the required CI phase and the behavioural
+    // receipt, and a scoped answer there would be a gate that stopped looking at most of the tree.
+    // The selection exists for the AUTHOR'S round, over a tree this gate has already verified.
+    match adjudicate_generated_surface(
+        formatter,
+        stage0_src,
+        &emitted,
+        &emitted_basenames,
+        &RegenEmissionScope::WholePopulation,
+    )? {
         GeneratedSurfaceAdjudicated::Refused { reason } => {
             Ok(GeneratedSurfaceMeasured::Refused { reason })
         }
-        GeneratedSurfaceAdjudicated::Measured { committed, sync } => {
-            Ok(GeneratedSurfaceMeasured::Measured {
-                emitted,
-                committed,
-                emitted_basenames,
-                sync,
-            })
-        }
+        GeneratedSurfaceAdjudicated::Measured {
+            committed,
+            selected: _,
+            sync,
+        } => Ok(GeneratedSurfaceMeasured::Measured {
+            emitted,
+            committed,
+            emitted_basenames,
+            sync,
+        }),
     }
 }
 
@@ -754,7 +1014,10 @@ fn is_declared_divergent(file_name: &str) -> bool {
 /// itself, so every regen read the corpus twice -- authority digest and here -- and the receipt
 /// priced the second walk at a quarter of the first phase (`regen.corpus_reload`, measured
 /// 2026-08-30: 24 s on srv1, 17 s on BuildBuddy). The caller reads once; both consumers share it.
-fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String>, String> {
+fn compile_stage0(
+    sources: &[(String, String)],
+    selection: &Rc<RustModuleRenderSelection>,
+) -> Result<HashMap<String, String>, String> {
     let source_files: Vec<Rc<SourceFile>> = sources
         .iter()
         .map(|(path, content)| {
@@ -764,7 +1027,11 @@ fn compile_stage0(sources: &[(String, String)]) -> Result<HashMap<String, String
             })
         })
         .collect();
-    let result = compile_sources(Rc::new(source_files.into()), RenderTarget::Rust);
+    let result = compile_sources_selected(
+        Rc::new(source_files.into()),
+        RenderTarget::Rust,
+        selection.clone(),
+    );
     if let Some(message) =
         stage0_self_compile_refusal_message("v2 self-compile".to_string(), result.clone())
     {
@@ -797,19 +1064,61 @@ fn is_compared_generated_basename(basename: &str) -> bool {
     basename.ends_with(".rs")
 }
 
-fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Vec<String> {
+/// THE EMITTED ROSTER IS READ FROM THE EMITTER'S DECLARATION, NOT FROM WHAT IT HANDED BACK.
+///
+/// This used to walk the keys of the returned map -- the files this emit RENDERED. That was the
+/// same population under the only emission that existed, and it stops being so the moment an
+/// emission is denominated in a change: under `RenderSelectedMirrors` the keys ARE the selection,
+/// so every unselected mirror would read as `committed_not_emitted` and the population identity
+/// join would be scoped by accident. That join is the one thing `v2.workflow.required_regen`
+/// says may never be scoped, because it reads no bytes and so has nothing to save and everything
+/// to hide.
+///
+/// `emit_emitted_population_manifest` (`v1.compiler.emit_rust`) declares every path the emit
+/// produced, derived from PATHS rather than from rendered content, so it is total under every
+/// selection and identical to the rendered set when there is none. Reading it here is the
+/// structural inverse of that write, taking both literals from the one authority the writer reads
+/// (`gunbc.stage0_emitted_population_manifest`); the same inverse is spelled in the model at
+/// `gunbc.stage0_rust_host_observation` `emitted_population_paths_from_manifest`, over the
+/// committed artifact rather than an in-memory emission, and in `cssl_seed_linked_closure_assembly`
+/// `declared_emitted_paths`, over a file on disk. Neither is reachable from here: the first is not
+/// in the seed closure and the second lives in a separate binary's private module.
+///
+/// A manifest the emit did not produce, or one carrying no declared line, REFUSES. It cannot be
+/// silently replaced by the rendered keys: that fallback is exactly the widening this function
+/// exists to remove, and it would be invisible because the two agree whenever the selection is
+/// whole.
+fn generated_basenames_from_emit(emitted: &HashMap<String, String>) -> Result<Vec<String>, String> {
+    let manifest_key = format!("src/{}", emitted_population_manifest_basename());
+    let manifest = emitted.get(&manifest_key).ok_or_else(|| {
+        format!(
+            "refusal: emit declared no population -- {manifest_key} is absent from the emitted              files, so the roster the population identity join needs does not exist"
+        )
+    })?;
+    let prefix = emitted_population_manifest_line_prefix();
+    let separator = emitted_population_manifest_line_separator();
     let mut names: BTreeSet<String> = BTreeSet::new();
-    for path in emitted.keys() {
+    let mut declared = 0usize;
+    for line in manifest.split(separator.as_str()) {
+        let Some(path) = line.strip_prefix(prefix.as_str()) else {
+            continue;
+        };
+        declared += 1;
+        // Basename, not the declared path: `committed_generated_basenames` keys on
+        // `file_name()`, and declared paths carry a `src/` prefix. Comparing the two
+        // key spaces made every file mismatch in both directions.
         if is_compared_generated_basename(emit_path_basename(path))
             && !is_hand_maintained_path(path)
         {
-            // Basename, not the emit key: `committed_generated_basenames` keys on
-            // `file_name()`, and emit keys carry a `src/` prefix. Comparing the two
-            // key spaces made every file mismatch in both directions.
             names.insert(emit_path_basename(path).to_string());
         }
     }
-    names.into_iter().collect()
+    if declared == 0 {
+        return Err(format!(
+            "refusal: {manifest_key} carries no declared path line -- the emitted population              cannot be read from it"
+        ));
+    }
+    Ok(names.into_iter().collect())
 }
 
 // Emit keys are the target-relative artifact path (e.g. "src/cli_run.rs" for
@@ -1164,16 +1473,31 @@ fn verify_hand_maintained(
     })
 }
 
+/// `restrict` is the scoped round's selection: `None` writes the whole emitted population (the
+/// unscoped round, byte for byte what it always wrote), `Some(set)` writes only those basenames.
+///
+/// A SCOPED CANDIDATE TREE IS A PARTIAL TREE, AND THAT IS WHAT IT IS FOR. The unscoped tree is a
+/// usable crate — every emitted surface plus the copied hand-maintained support — and an author
+/// can build it. A scoped tree holds only the mirrors the bound selected, because the one thing
+/// the round does with it is install the drifted ones, and the drifted set is a subset of the
+/// selection by construction (`compare_generated_surfaces` is run over exactly this set). It is
+/// not a crate and is not offered as one.
 fn write_emitted_tree(
     formatter: &ResolvedFormatter,
     dest_src: &Path,
     emitted: &HashMap<String, String>,
+    restrict: Option<&BTreeSet<String>>,
 ) -> Result<(), String> {
     if dest_src.exists() {
         fs::remove_dir_all(dest_src).map_err(|e| format!("remove {}: {e}", dest_src.display()))?;
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
     for (path, content) in emitted {
+        if let Some(selected) = restrict {
+            if !selected.contains(emit_path_basename(path)) {
+                continue;
+            }
+        }
         let out_path = dest_src.join(emit_path_basename(path));
         // Only `.rs` surfaces are the generated-Rust population this comparator reasons
         // about (see committed_generated_basenames / generated_basenames_from_emit); a
@@ -1762,6 +2086,19 @@ fn read_receipt(path: &Path) -> Result<PriorMeasurement, String> {
              point. Receipt: {}",
             path.display()
         )),
+        // A SCOPED ROUND THAT SELECTED NOTHING EMITTED NOTHING, so there is no first generation
+        // here either -- and the remedy is different from the refusal above, which is why it is
+        // its own arm rather than folded into one. Nothing is broken; the fixed-point pass is
+        // simply being asked to build on a round that had no work to do. The operator either
+        // wants the WHOLE-population round (drop `--regen-affected-scope`) or does not need a
+        // fixed point for this edit at all.
+        RegenReceipt::NoAffectedMirrors { scope, .. } => Err(format!(
+            "refusal: the first-generation pass at this commit selected no compared mirror \
+             ({scope}), so it emitted nothing and there is no first-generation measurement for \
+             the fixed-point pass to reference. Re-run without `--regen-affected-scope` if you \
+             need a whole-population fixed point. Receipt: {}",
+            path.display()
+        )),
         RegenReceipt::FixedPoint { .. } => Err(format!(
             "refusal: prior receipt {} is a fixed-point receipt, not a first-generation \
              measurement -- the fixed-point pass cannot build on another fixed-point pass. \
@@ -1942,6 +2279,212 @@ mod tests {
     /// accepted control and the refusal differ by a single row. `"rs"` — the corrupt row a
     /// merge produced on integration/namespace-cut — is inert without this wall, because the
     /// copy loop skipped a declared row naming nothing.
+    // ------------------------------------------------------------------------------------
+    // THE CHANGE-DENOMINATED EMISSION'S CONTROLS.
+    //
+    // Three modules, no imports, one selected. That is enough to discriminate every claim the
+    // scoped emission makes, and small enough to run in the required unit step rather than in a
+    // live-corpus lane -- the whole-tree version of the same comparison is the planted-edit
+    // control the regen round runs.
+    // ------------------------------------------------------------------------------------
+    fn selection_fixture() -> Vec<(String, String)> {
+        ["alpha", "beta", "gamma"]
+            .iter()
+            .map(|name| {
+                (
+                    format!("fx_{name}.dag"),
+                    format!("module fx.{name}\nfn {name}_add(a: Int, b: Int) -> Int {{ a + b }}\n"),
+                )
+            })
+            .collect()
+    }
+
+    /// `selected_basenames` is `None` for the whole-closure arm and `Some(list)` for a selection.
+    /// The `RustModuleRenderSelection` itself is built INSIDE the worker thread: the emitter's
+    /// values are `Rc`-shaped and therefore not `Send`, so the selection cannot cross the thread
+    /// boundary the deep-recursion stack requires. What crosses is owned, thread-safe data in and
+    /// the emitted map out.
+    fn emit_fixture(selected_basenames: Option<Vec<String>>) -> HashMap<String, String> {
+        std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(move || {
+                let selection = Rc::new(match selected_basenames {
+                    None => RustModuleRenderSelection::RenderEveryModule,
+                    Some(names) => RustModuleRenderSelection::RenderSelectedMirrors {
+                        basenames: Rc::new(names.into_iter().collect()),
+                    },
+                });
+                compile_stage0(&selection_fixture(), &selection).expect("fixture emits clean")
+            })
+            .expect("spawn emit thread")
+            .join()
+            .expect("emit thread panicked")
+    }
+
+    fn beta_only() -> Option<Vec<String>> {
+        Some(vec!["fx_beta.rs".to_string()])
+    }
+
+    /// THE SELECTION IS THE RENDERED SET, and the rendered bytes are the whole round's bytes.
+    /// This is the unit-grain form of the planted-edit control: what a scoped round writes for a
+    /// selected mirror is byte-identical to what an unscoped round writes for it, and nothing
+    /// outside the selection is written at all.
+    #[test]
+    fn a_scoped_emission_renders_the_selection_and_nothing_else() {
+        let whole = emit_fixture(None);
+        let scoped = emit_fixture(beta_only());
+        assert!(
+            whole.contains_key("src/fx_alpha.rs"),
+            "positive control: the unscoped emission renders every module"
+        );
+        assert!(
+            !scoped.contains_key("src/fx_alpha.rs") && !scoped.contains_key("src/fx_gamma.rs"),
+            "a scoped emission must not render an unselected module"
+        );
+        assert_eq!(
+            scoped.get("src/fx_beta.rs"),
+            whole.get("src/fx_beta.rs"),
+            "a selected mirror must be byte-identical to what the unscoped emission produced"
+        );
+    }
+
+    /// CONTENT INDEPENDENCE, DEMONSTRATED RATHER THAN ASSERTED. `emit_lib_rs_from_paths` and
+    /// `emit_emitted_population_manifest` take `List<String>`, so no rendered byte can reach
+    /// them -- and this is what that buys: the two aggregates are the SAME BYTES under an
+    /// emission that rendered one module and one that rendered three.
+    ///
+    /// It is discriminating in both directions. Were either aggregate derived from the rendered
+    /// files, the scoped `lib.rs` would drop two `pub mod` lines and the manifest two paths, and
+    /// both halves below would go red -- which is exactly the E0583 a change-denominated
+    /// emission would otherwise ship silently, since the round never re-reads a mirror it did
+    /// not select.
+    #[test]
+    fn the_crate_module_list_and_the_manifest_are_content_independent() {
+        let whole = emit_fixture(None);
+        let scoped = emit_fixture(beta_only());
+        assert_eq!(
+            scoped.get("src/lib.rs"),
+            whole.get("src/lib.rs"),
+            "lib.rs is derived from paths, so a selection cannot move it"
+        );
+        assert_eq!(
+            scoped.get("src/emitted_population.rs"),
+            whole.get("src/emitted_population.rs"),
+            "the manifest is derived from paths, so a selection cannot move it"
+        );
+        let lib = scoped
+            .get("src/lib.rs")
+            .expect("scoped emission still writes lib.rs");
+        assert!(
+            lib.contains("pub mod fx_alpha;") && lib.contains("pub mod fx_gamma;"),
+            "the crate must declare modules this emission did not render: {lib}"
+        );
+        let manifest = scoped
+            .get("src/emitted_population.rs")
+            .expect("scoped emission still writes the manifest");
+        assert!(
+            manifest.contains("// src/fx_alpha.rs") && manifest.contains("// src/fx_gamma.rs"),
+            "the manifest must declare paths this emission did not render: {manifest}"
+        );
+    }
+
+    /// POPULATION IDENTITY IS NEVER SCOPED, read at the seam where a scope could have leaked into
+    /// it. `generated_basenames_from_emit` reads the emitter's declaration, so the roster a
+    /// scoped round hands the identity join is the roster an unscoped round hands it.
+    #[test]
+    fn the_emitted_roster_is_whole_under_a_scope() {
+        let whole = emit_fixture(None);
+        let scoped = emit_fixture(beta_only());
+        let whole_roster = generated_basenames_from_emit(&whole).expect("whole roster");
+        let scoped_roster = generated_basenames_from_emit(&scoped).expect("scoped roster");
+        assert!(
+            whole_roster.contains(&"fx_alpha.rs".to_string()),
+            "positive control: the roster names every emitted mirror"
+        );
+        assert_eq!(
+            scoped_roster, whole_roster,
+            "the roster the population identity join reads may not narrow with the selection"
+        );
+    }
+
+    /// AN EMPTY SELECTION RENDERS NOTHING AND STILL DECLARES EVERYTHING. It is an ordinary answer
+    /// -- an edit that touches no compared mirror -- and not a spelling of RenderEveryModule.
+    #[test]
+    fn an_empty_selection_renders_no_module_and_declares_them_all() {
+        let whole = emit_fixture(None);
+        let none = emit_fixture(Some(vec![]));
+        assert!(
+            !none.contains_key("src/fx_beta.rs"),
+            "an empty selection renders no module"
+        );
+        assert_eq!(
+            none.get("src/lib.rs"),
+            whole.get("src/lib.rs"),
+            "an empty selection still declares the whole crate"
+        );
+    }
+
+    /// THE PRECONDITION `import_refusals` EXACTNESS RESTS ON, PUT ON THE EXECUTED PATH.
+    ///
+    /// A scoped emission observes refusals only for the modules it rendered. That is exact rather
+    /// than partial because an emit carrying an error diagnostic returns NO FILES -- so a
+    /// committed mirror is a file some clean emit produced, and the modules a selection declined
+    /// to render had nothing to say. The construction is `final_files` in
+    /// `v1.compiler.compile` `emit_resolved_for_target_selected`; this is its discriminating red.
+    ///
+    /// WHAT IT COVERS, STATED NARROWLY: the refusing class here is a module-filename collision,
+    /// which `emit_rust` refuses by returning an empty file list of its own. It establishes the
+    /// implication for a refusal reachable from a fixture, not for every refusing class -- an
+    /// import refusal is authored by a cross-module export failure this fixture cannot express.
+    #[test]
+    fn an_emit_that_refuses_hands_back_no_files() {
+        let (refused, files_empty) = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let sources: Vec<Rc<SourceFile>> = [
+                    (
+                        "fx_a.dag",
+                        "module fx.alpha\nfn a_add(a: Int, b: Int) -> Int { a + b }\n",
+                    ),
+                    (
+                        "fx_b.dag",
+                        "module fx_alpha\nfn b_add(a: Int, b: Int) -> Int { a + b }\n",
+                    ),
+                ]
+                .iter()
+                .map(|(path, content)| {
+                    Rc::new(SourceFile {
+                        path: path.to_string(),
+                        content: content.to_string(),
+                    })
+                })
+                .collect();
+                let result = compile_sources_selected(
+                    Rc::new(sources.into()),
+                    RenderTarget::Rust,
+                    Rc::new(RustModuleRenderSelection::RenderEveryModule),
+                );
+                (
+                    result
+                        .diagnostics
+                        .iter()
+                        .any(|d| crate::v1_std_core::is_error_diagnostic(d.diagnostic.clone())),
+                    result.files.is_empty(),
+                )
+            })
+            .expect("spawn refusal thread")
+            .join()
+            .expect("refusal thread panicked");
+        assert!(
+            refused,
+            "the fixture must actually refuse, or this control proves nothing"
+        );
+        assert!(
+            files_empty,
+            "an emit carrying an error diagnostic must hand back no files at all"
+        );
+    }
+
     #[test]
     fn declared_hand_maintained_row_must_name_an_existing_path() {
         let root = temp_dir("declared-row-wall");
@@ -2465,10 +3008,15 @@ fn render_round_cost_receipt(
     }
 }
 
+/// `affected_scope` consumes the affected-set bound for this round: the selection is derived
+/// from the SAME edited population `--regen-affected-set` reports (the floor's own diff range),
+/// so the report and the round read one edit rather than two. `false` is the whole-population
+/// round, byte for byte what it was.
 pub fn run_regen_round_cost(
     candidate_dir_rel: &str,
     receipt_rel: &str,
     source_roots: &[String],
+    affected_scope: bool,
 ) -> Result<RegenRoundCostOutcome, String> {
     let workspace = workspace_root();
     let stage0_src = workspace.join("src/v1/stage0/src");
@@ -2491,7 +3039,12 @@ pub fn run_regen_round_cost(
     }
 
     let mut round_failures = Vec::new();
-    let regen = run_required_regen(candidate_dir_rel, receipt_rel)?;
+    let scope = if affected_scope {
+        regen_emission_scope_for_diff(&workspace, source_roots)?
+    } else {
+        RegenEmissionScope::WholePopulation
+    };
+    let regen = run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)?;
     for failure in &regen.failures {
         round_failures.push(format!("regen: {failure}"));
     }
@@ -2500,6 +3053,16 @@ pub fn run_regen_round_cost(
     // at the emit: no install, no rebuild, no diff, and the receipt says which phases ran.
     let drifted: Option<Vec<String>> = match &regen.receipt {
         RegenReceipt::FirstGeneration { changed_paths, .. } => Some(changed_paths.clone()),
+        // NOT a failure and NOT a refusal: the round ran, the bound selected no compared mirror,
+        // and the honest install set is empty. Distinguished from `Some(vec![])` because there is
+        // also no rebuild to do -- nothing was installed, so nothing can have changed under cargo.
+        RegenReceipt::NoAffectedMirrors { scope, .. } => {
+            eprintln!(
+                "regen-round-cost: no affected mirror for this edit ({scope}); no install, no \
+                 rebuild, no diff"
+            );
+            None
+        }
         RegenReceipt::Refused { reason, .. } => {
             round_failures.push(format!("regen refused, round stopped at emit: {reason}"));
             None
@@ -2996,6 +3559,165 @@ pub fn affected_set_bound_for(
     render_affected_set_bound(source_roots, edited, unlocatable, &edges, &compared)
 }
 
+/// The model's own answer for one scope, over one committed roster.
+///
+/// `v2.workflow.required_regen` `regen_scope_select` is the authority for what a scope selects;
+/// this runs it and returns the members it names, so the host's `scope_selection` can be held to
+/// it. Neither side is trusted over the other: agreement is the evidence, and disagreement stops
+/// the line rather than electing a winner.
+pub fn render_scope_selection(
+    source_roots: &[String],
+    scope: &RegenEmissionScope,
+    committed: &[String],
+) -> Result<Vec<String>, String> {
+    use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
+    let entry = required_regen_scope_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the scope cannot answer: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let strs = |items: &[String]| {
+        let values: Vec<Value> = items.iter().map(str_value).collect();
+        Value::List(Rc::new(values.into()))
+    };
+    let scope_value = match scope {
+        RegenEmissionScope::WholePopulation => Value::Variant {
+            type_name: ctx.sym("RegenEmissionScope"),
+            variant_name: ctx.sym("WholePopulationScope"),
+            fields: Rc::new(vec![]),
+        },
+        RegenEmissionScope::Affected { members } => Value::Variant {
+            type_name: ctx.sym("RegenEmissionScope"),
+            variant_name: ctx.sym("AffectedScope"),
+            fields: Rc::new(vec![(ctx.sym("members"), strs(members))]),
+        },
+        RegenEmissionScope::Unlocatable { paths, reason } => Value::Variant {
+            type_name: ctx.sym("RegenEmissionScope"),
+            variant_name: ctx.sym("ScopeUnlocatable"),
+            fields: Rc::new(vec![
+                (ctx.sym("paths"), strs(paths)),
+                (ctx.sym("reason"), str_value(reason.clone())),
+            ]),
+        },
+    };
+    let args = vec![
+        (Some("scope".to_string()), scope_value),
+        (Some("committed".to_string()), strs(committed)),
+    ];
+    let selection = v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(&ctx, "regen_scope_select", &args, false)
+    })
+    .map_err(|e| format!("refusal: regen_scope_select did not answer: {e}"))?;
+    let selection_arg = vec![(Some("sel".to_string()), selection)];
+    match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_scope_selection_members",
+            &selection_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: regen_scope_selection_members did not answer: {e}"))?
+    {
+        Value::List(items) => items
+            .iter()
+            .map(|item| match item {
+                Value::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "refusal: regen_scope_selection_members holds a {} where a String was \
+                     expected",
+                    other.type_label_public()
+                )),
+            })
+            .collect::<Result<Vec<_>, _>>(),
+        other => Err(format!(
+            "refusal: regen_scope_selection_members returned {} where a List was expected",
+            other.type_label_public()
+        )),
+    }
+}
+
+/// Where `v2.workflow.required_regen` lives under the declared source roots.
+fn required_regen_scope_entry(source_roots: &[String]) -> Result<String, String> {
+    source_roots
+        .iter()
+        .map(|root| Path::new(root).join("workflow/required_regen.dag"))
+        .find(|candidate| candidate.is_file())
+        .map(|found| found.to_string_lossy().into_owned())
+        .ok_or_else(|| {
+            format!(
+                "refusal: workflow/required_regen.dag is not under any declared source root \
+                 {source_roots:?}, so the scope has no authority"
+            )
+        })
+}
+
+/// THE BOUND AS A SCOPE, derived from the same edited population `run_regen_affected_set`
+/// reports — one producer of the selection, read by the report and by the round.
+///
+/// The three arms map one to one onto the model's, and the third is the point: `EditedSetUnlocatable`
+/// becomes `RegenEmissionScope::Unlocatable`, which REFUSES the round. It does not become
+/// `WholePopulation`. "Regenerate everything" and "the selection could not answer" are different
+/// states, and a fallback that widened here would be denominated in the corpus rather than in the
+/// change — the absorbing fallback DESIGN section 5 forbids, in the one place where its cost is
+/// unbounded.
+pub fn regen_emission_scope_for_diff(
+    workspace: &Path,
+    source_roots: &[String],
+) -> Result<RegenEmissionScope, String> {
+    let diff_text = super::required_floor_runner::floor_git_diff_range()?;
+    let population = edited_population_from_diff(workspace, &diff_text);
+    let bound = affected_set_bound_for(
+        workspace,
+        source_roots,
+        &population.edited_modules,
+        &population.unlocatable,
+    )?;
+    let scope = match bound.arm.as_str() {
+        "AffectedMirrors" => RegenEmissionScope::Affected {
+            members: bound.members,
+        },
+        "WholePopulation" => RegenEmissionScope::WholePopulation,
+        "EditedSetUnlocatable" => RegenEmissionScope::Unlocatable {
+            paths: population.unlocatable.clone(),
+            reason: bound.line.clone(),
+        },
+        // An arm this host does not know is not a scope it may guess at. The model owns the
+        // vocabulary; a new arm arriving here refuses rather than picking the nearest neighbour.
+        other => {
+            return Err(format!(
+                "refusal: the affected-set bound answered an arm this round cannot consume: \
+                 {other} ({}). Teach `regen_emission_scope_for_diff` the arm or fix the model.",
+                bound.line
+            ))
+        }
+    };
+    // LOCKSTEP, ON EVERY SCOPED ROUND, over the real committed roster this round will use. The
+    // model's fold and the host's filter answer the same question, and a round runs only when
+    // they answer it the same way.
+    let committed = committed_generated_basenames(&workspace.join("src/v1/stage0/src"))?;
+    if !matches!(scope, RegenEmissionScope::Unlocatable { .. }) {
+        let host: BTreeSet<String> = scope_selection(&scope, &committed)?.into_iter().collect();
+        let model: BTreeSet<String> = render_scope_selection(source_roots, &scope, &committed)?
+            .into_iter()
+            .collect();
+        if host != model {
+            return Err(format!(
+                "refusal: scope lockstep disagreement -- the host selects {} mirror(s), \
+                 v2.workflow.required_regen regen_scope_select selects {}; host-only {:?}, \
+                 model-only {:?}",
+                host.len(),
+                model.len(),
+                host.difference(&model).take(8).collect::<Vec<_>>(),
+                model.difference(&host).take(8).collect::<Vec<_>>()
+            ));
+        }
+    }
+    Ok(scope)
+}
+
 /// `claim_executor --regen-affected-set`: the edited population is the floor's own diff range
 /// (the same "what changed" the required floor selects witnesses from), so the selection and the
 /// gate read one edit.
@@ -3035,6 +3757,170 @@ pub fn run_regen_affected_set(source_roots: &[String]) -> Result<RegenAffectedSe
         arm: bound.arm,
         members: bound.members,
     })
+}
+
+/// THE SCOPE'S OWN EVIDENCE. Each of these has a discriminating RED: the selection is wrong if
+/// it selects too much, selects something the tree does not carry, or answers at all on the
+/// refusal arm.
+#[cfg(test)]
+mod regen_emission_scope_tests {
+    use super::*;
+
+    fn roots() -> Vec<String> {
+        ["dag", "src/v2"]
+            .iter()
+            .map(|r| workspace_root().join(r).to_string_lossy().into_owned())
+            .collect()
+    }
+
+    fn s(x: &str) -> String {
+        x.to_string()
+    }
+
+    fn committed() -> Vec<String> {
+        ["std_a.rs", "std_b.rs", "gunbc_c.rs", "v1_rt.rs"]
+            .iter()
+            .map(|n| s(n))
+            .collect()
+    }
+
+    #[test]
+    fn the_whole_population_scope_selects_the_whole_population() {
+        assert_eq!(
+            scope_selection(&RegenEmissionScope::WholePopulation, &committed()).unwrap(),
+            committed()
+        );
+    }
+
+    /// The selection is the INTERSECTION with the committed roster, not the bound's list. The red
+    /// this discriminates: `not_in_the_tree.rs` is named by the bound and absent from the tree, and
+    /// a selection that took the bound verbatim would carry it into the compared set, where it
+    /// reads as a missing file rather than as a member outside the tree.
+    #[test]
+    fn an_affected_scope_selects_the_intersection_with_the_committed_population() {
+        let scope = RegenEmissionScope::Affected {
+            members: vec![s("std_b.rs"), s("v1_rt.rs"), s("not_in_the_tree.rs")],
+        };
+        assert_eq!(
+            scope_selection(&scope, &committed()).unwrap(),
+            vec![s("std_b.rs"), s("v1_rt.rs")]
+        );
+    }
+
+    /// An edit touching no mirror selects nothing, and that is an answer rather than a refusal:
+    /// the honest round for it adjudicates nothing and installs nothing.
+    #[test]
+    fn an_affected_scope_naming_no_committed_mirror_selects_nothing() {
+        let scope = RegenEmissionScope::Affected {
+            members: vec![s("not_in_the_tree.rs")],
+        };
+        assert!(scope_selection(&scope, &committed()).unwrap().is_empty());
+    }
+
+    /// THE REFUSAL, AND THE DIRECTION THAT MATTERS. The failure arm must refuse, never widen: an
+    /// unlocatable scope produces an `Err`, and the assertion below is that it did NOT produce the
+    /// committed population. A regression to `WholePopulation` here would be green on every other
+    /// check in this file -- the round would run, converge and pass -- while the only signal that
+    /// the module locator has a deficit was gone (DESIGN section 5, the absorbing fallback).
+    #[test]
+    fn an_unlocatable_scope_refuses_and_does_not_widen_to_the_population() {
+        let scope = RegenEmissionScope::Unlocatable {
+            paths: vec![s("dag/std/departed.dag")],
+            reason: s("regen-affected-set: EditedSetUnlocatable unlocatable=1"),
+        };
+        let answer = scope_selection(&scope, &committed());
+        let message = answer.expect_err("an unlocatable scope has no selection");
+        assert!(
+            message.contains("does not widen") && message.contains("dag/std/departed.dag"),
+            "the refusal names the unlocatable path and its direction: {message}"
+        );
+    }
+
+    /// THE ARM `review 57625` FOUND, and the red it discriminates.
+    ///
+    /// An empty affected selection is an ordinary answer, and the round for it must END, not
+    /// refuse. Before the repair the host drove the empty selection into `verify_candidate_tree`
+    /// and both digest functions, all three of which correctly refuse an empty population, so the
+    /// documented no-op was a hard error. The three assertions below are the three properties that
+    /// were false: the empty selection is not an `Err`; the round's receipt carries no digest to
+    /// have fabricated; and the receipt is NOT a refusal, so a caller cannot read "nothing to do"
+    /// as "something is wrong".
+    ///
+    /// The empty-population refusals themselves are asserted to still stand, because the wrong
+    /// repair here is to relax them -- that would let a whole-population round with a broken tree
+    /// digest nothing and report a fixed point.
+    #[test]
+    fn an_empty_affected_selection_is_an_answer_and_the_empty_population_walls_still_stand() {
+        let scope = RegenEmissionScope::Affected {
+            members: vec![s("not_in_the_tree.rs")],
+        };
+        let selection = scope_selection(&scope, &committed()).expect("an answer, not a refusal");
+        assert!(selection.is_empty());
+
+        let receipt = RegenReceipt::NoAffectedMirrors {
+            schema: RECEIPT_SCHEMA.to_string(),
+            commit_sha: s("0000000000000000000000000000000000000000"),
+            authority_digest: s("sha256:test"),
+            scope: scope.line(),
+        };
+        assert_eq!(receipt.candidate_generated_digest(), None);
+        assert_eq!(receipt.first_generation_equal(), None);
+        assert_eq!(receipt.candidate_artifact(), None);
+        assert_eq!(
+            receipt.refusal_reason(),
+            None,
+            "an empty selection is not a refusal; reporting one would make an ordinary edit look \
+             like a broken tree"
+        );
+
+        // The walls the repair deliberately did NOT touch.
+        let tmp = std::env::temp_dir();
+        assert!(verify_candidate_tree(&tmp, &[]).is_err());
+        let formatter = match ResolvedFormatter::admit() {
+            Ok(f) => f,
+            // The formatter is a boundary fact; where it is absent this half of the control is
+            // unobservable and says so rather than passing vacuously.
+            Err(_) => return,
+        };
+        assert!(tree_digest_from_map(&formatter, &HashMap::new(), &[]).is_err());
+        assert!(tree_digest_for_basenames(&formatter, &tmp, &[], "committed").is_err());
+    }
+
+    /// LOCKSTEP with `v2.workflow.required_regen` `regen_scope_select`, on the same rosters, for
+    /// both selecting arms. A rename or a changed fold on either side reds here rather than in a
+    /// forty-minute round.
+    #[test]
+    fn host_selection_and_model_selection_agree() {
+        for scope in [
+            RegenEmissionScope::WholePopulation,
+            RegenEmissionScope::Affected {
+                members: vec![s("std_b.rs"), s("v1_rt.rs"), s("not_in_the_tree.rs")],
+            },
+        ] {
+            let host: BTreeSet<String> = scope_selection(&scope, &committed())
+                .expect("the host selects")
+                .into_iter()
+                .collect();
+            let model: BTreeSet<String> = render_scope_selection(&roots(), &scope, &committed())
+                .expect("the model selects")
+                .into_iter()
+                .collect();
+            assert_eq!(host, model, "scope {scope:?}");
+        }
+    }
+
+    /// The model's refusal arm is REACHABLE and carries no members -- the same fact the host's
+    /// `Err` carries, asserted on the side that owns the vocabulary.
+    #[test]
+    fn the_model_selects_nothing_on_the_unlocatable_arm() {
+        let scope = RegenEmissionScope::Unlocatable {
+            paths: vec![s("dag/std/departed.dag")],
+            reason: s("regen-affected-set: EditedSetUnlocatable unlocatable=1"),
+        };
+        assert!(render_scope_selection(&roots(), &scope, &committed())
+            .expect("the model answers")
+            .is_empty());
+    }
 }
 
 #[cfg(test)]

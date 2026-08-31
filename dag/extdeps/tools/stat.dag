@@ -45,6 +45,13 @@ fn stat_owner_group_argv(path: String) -> List<String> {
   [stat_binary_path as String, "-c", "%g", path]
 }
 
+// %a is the access-mode bits in octal without an invented policy interpretation. Ownership and
+// mode stay as separate token reads because either half can refuse independently and a joined
+// "uid:gid:mode" wire would mint a second delimiter grammar beside the typed consumers.
+fn stat_mode_argv(path: String) -> List<String> {
+  [stat_binary_path as String, "-c", "%a", "--", path]
+}
+
 // %U IS THE OWNER'S NAME, %u IS THE OWNER'S NUMERIC UID, and the pair above answers the numeric
 // question. They are not two spellings of one probe: a receipt line naming "briansrls" and a
 // comparison against uid 1000 need different tokens, and a caller that reached for the wrong one
