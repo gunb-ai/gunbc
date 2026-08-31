@@ -23,6 +23,9 @@ generation_root=
 subject="$repo_root/dag/gunbc/fabric/fabric_required_build_cell.dag"
 allocation_before=
 positive_before=
+cell_before=
+canonical_authority_path=
+generation_authority_path=
 
 receipt_path() {
   printf '%s/%s.txt' "$receipt_root" "$1"
@@ -31,7 +34,7 @@ receipt_path() {
 checkpoint_if_selected() {
   local phase=$1
   [[ $checkpoint == "$phase" ]] || return 0
-  fabric_ci_run_assertion fci1_checkpoint_reached --arg token="$checkpoint" --arg phase="$phase"
+  fabric_ci_run_assertion fci1_checkpoint_reached --arg token="$checkpoint" --arg phase="$phase" --arg path="$(receipt_path checkpoint)"
   echo "CheckpointReached: checkpoint=$checkpoint phase=$phase status=$injected_failure_status" | tee -a "$FABRIC_CI_LOG" >&2
   exit "$injected_failure_status"
 }
@@ -73,7 +76,8 @@ cleanup() {
     cleanup_disposition_path=$(receipt_path canonical-cleanup)
     "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
       --entry "$FABRIC_CI_ENTRY" --function fci1_write_canonical_cleanup_receipt \
-      --arg root="$canonical_root" --arg before_wire="$allocation_before" --arg path="$cleanup_disposition_path"
+      --arg root="$canonical_root" --arg before_wire="$allocation_before" \
+      --arg authority_path="$canonical_authority_path" --arg path="$cleanup_disposition_path"
     cleanup_status=$?
   fi
   if [[ -n $generation_root ]]; then
@@ -81,7 +85,7 @@ cleanup() {
     generation_disposition_path=$(receipt_path generation-cleanup)
     "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
       --entry "$FABRIC_CI_ENTRY" --function fci1_write_disposable_cleanup_receipt \
-      --arg root="$generation_root" --arg path="$generation_disposition_path"
+      --arg root="$generation_root" --arg authority_path="$generation_authority_path" --arg path="$generation_disposition_path"
     local generation_cleanup_status=$?
     (( cleanup_status != 0 )) || cleanup_status=$generation_cleanup_status
     if (( generation_cleanup_status == 0 )); then
@@ -89,18 +93,32 @@ cleanup() {
     fi
   fi
   if [[ -e $mutation_root || -L $mutation_root ]]; then
+    printf 'RuntimeDirectoryObserved|path=%s|standing=present\n' "$mutation_root" >"$(receipt_path runtime-directory)"
     echo 'InstrumentRefused: dependent RuntimeDirectory remains after cleanup' >&2
     cleanup_status=1
   else
+    printf 'RuntimeDirectoryObserved|path=%s|standing=absent\n' "$mutation_root" >"$(receipt_path runtime-directory)"
     echo "runtime-directory-observed: path=$mutation_root standing=absent" >&2
   fi
   local cleanup_unit
   for cleanup_unit in fci1-positive-submitter.service fci1-generation-submitter.service fci1-dependent-submitter.service; do
-    if ! unit_terminal_observed "$cleanup_unit"; then
+    local unit_receipt
+    unit_receipt=$(receipt_path "unit-terminal-${cleanup_unit%.service}")
+    if unit_terminal_observed "$cleanup_unit" >"$unit_receipt" 2>&1; then
+      :
+    else
+      systemctl show "$cleanup_unit" --property=LoadState --property=ActiveState >"$unit_receipt" 2>&1 || true
       echo "InstrumentRefused: transient unit terminal state unestablished: $cleanup_unit" >&2
       cleanup_status=1
     fi
   done
+  if [[ -n $cell_before ]]; then
+    "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
+      --entry "$FABRIC_CI_ENTRY" --function fci1_grade_and_write_cell_receipt \
+      --arg before_wire="$cell_before" --arg phase="terminal" --arg path="$(receipt_path cell-terminal)"
+    local cell_terminal_status=$?
+    (( cleanup_status != 0 )) || cleanup_status=$cell_terminal_status
+  fi
   local terminal_zero_work
   terminal_zero_work=$(receipt_path zero-work-terminal)
   "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
@@ -108,7 +126,35 @@ cleanup() {
     --arg phase="terminal" --arg path="$terminal_zero_work"
   local zero_work_status=$?
   (( cleanup_status != 0 )) || cleanup_status=$zero_work_status
-  local head tree provenance manifest
+  if [[ ! -f $(receipt_path checkpoint) ]]; then
+    "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
+      --entry "$FABRIC_CI_ENTRY" --function fci1_write_checkpoint_terminal_receipt \
+      --arg token="$checkpoint" --arg path="$(receipt_path checkpoint)"
+    local checkpoint_receipt_status=$?
+    (( cleanup_status != 0 )) || cleanup_status=$checkpoint_receipt_status
+  fi
+  local required_receipt
+  local -a required_receipts=(
+    checkpoint.txt canonical-cleanup.txt generation-cleanup.txt generation-verdict.txt
+    dependent-lifetime.txt canonical-release.txt canonical-allocation.txt generation-terminal.txt
+    cell-after-canonical.txt cell-after-dependent.txt cell-terminal.txt
+    zero-work-before-canonical.txt zero-work-after-canonical.txt zero-work-after-dependent.txt zero-work-terminal.txt
+    runtime-directory.txt unit-terminal-fci1-positive-submitter.txt
+    unit-terminal-fci1-generation-submitter.txt unit-terminal-fci1-dependent-submitter.txt
+  )
+  for required_receipt in "${required_receipts[@]}"; do
+    if [[ ! -f $receipt_root/$required_receipt ]]; then
+      printf 'ReceiptCoordinateNotReached|file=%s|checkpoint=%s\n' "$required_receipt" "$checkpoint" >"$receipt_root/$required_receipt" || cleanup_status=1
+    fi
+  done
+  local observed_roster expected_roster
+  observed_roster=$(find "$receipt_root" -maxdepth 1 -type f ! -name manifest.txt -printf '%f\n' | sort) || cleanup_status=1
+  expected_roster=$(printf '%s\n' "${required_receipts[@]}" | sort) || cleanup_status=1
+  if [[ $observed_roster != "$expected_roster" ]]; then
+    echo 'InstrumentRefused: receipt bundle member roster mismatch' >&2
+    cleanup_status=1
+  fi
+  local head tree provenance manifest manifest_digest
   head=$(git -C "$repo_root" rev-parse HEAD) || cleanup_status=1
   tree=$(git -C "$repo_root" rev-parse 'HEAD^{tree}') || cleanup_status=1
   provenance=$($FABRIC_CI_GUNBC_BIN --version 2>&1) || cleanup_status=1
@@ -116,8 +162,10 @@ cleanup() {
   {
     printf 'head=%s\ntree=%s\nbinary_provenance=%s\ncheckpoint=%s\noriginal_exit_status=%s\ncleanup_verdict=%s\n' \
       "$head" "$tree" "$provenance" "$checkpoint" "$original_status" "$cleanup_status"
-    find "$receipt_root" -maxdepth 1 -type f ! -name manifest.txt -print0 | sort -z | xargs -0 -r sha256sum
+    for required_receipt in "${required_receipts[@]}"; do sha256sum "$receipt_root/$required_receipt"; done
   } >"$manifest" || cleanup_status=1
+  manifest_digest=$(sha256sum "$manifest" | awk '{print $1}') || cleanup_status=1
+  echo "FCI1EvidenceIdentity: receipt_root=$receipt_root manifest_sha256=$manifest_digest" >&2
   rm -f "$FABRIC_CI_LOG"
   rm -rf "$FABRIC_CI_VALUE_ROOT"
   if (( cleanup_status != 0 )); then
@@ -160,22 +208,20 @@ zero_work_receipt before-canonical
 checkpoint_if_selected before-canonical-commit
 
 capture_submitter_transport() {
-  local unit=$1 function_name=$2 coordinate=$3 root=$4
-  shift 4
+  local unit=$1 function_name=$2 coordinate=$3 root=$4 authority_path=$5
+  shift 5
   local value_path="$FABRIC_CI_VALUE_ROOT/$coordinate.wire"
   rm -f -- "$value_path"
   local run_status=0
   if systemd-run --quiet --wait --collect --unit="$unit" "$@" \
     "$FABRIC_CI_GUNBC_BIN" run --source-root "$repo_root/dag" --source-root "$repo_root/src/v2" \
-    --entry "$FABRIC_CI_ENTRY" --function "$function_name" --arg root="$root" --arg path="$value_path"; then
+    --entry "$FABRIC_CI_ENTRY" --function "$function_name" --arg root="$root" --arg path="$value_path" \
+    --arg cleanup_path="$authority_path" --arg checkpoint="$checkpoint" --arg checkpoint_path="$(receipt_path checkpoint)"; then
     run_status=0
   else
     run_status=$?
   fi
   (( run_status == 0 )) || return "$run_status"
-  if [[ $unit == fci1-positive-submitter.service ]]; then
-    checkpoint_if_selected after-canonical-commit-before-transport
-  fi
   [[ -f $value_path && ! -L $value_path ]] || return 1
   local value
   value=$(<"$value_path")
@@ -183,7 +229,8 @@ capture_submitter_transport() {
   printf '%s' "$value"
 }
 
-positive_before=$(capture_submitter_transport fci1-positive-submitter.service fci1_live_reserve_and_observe_available positive-before "$canonical_root")
+canonical_authority_path="$FABRIC_CI_VALUE_ROOT/canonical-cleanup-authority.wire"
+positive_before=$(capture_submitter_transport fci1-positive-submitter.service fci1_live_reserve_and_observe_available positive-before "$canonical_root" "$canonical_authority_path")
 unit_terminal_observed fci1-positive-submitter.service || {
   echo 'InstrumentRefused: submitting control process terminal state unestablished' >&2
   exit 1
@@ -205,24 +252,25 @@ checkpoint_if_selected canonical-restored-later
 # run-unique disposable store uses the production reservation/CAS entries and is removed afterward;
 # the canonical root sees only reserve, independent observation, and release.
 generation_root=$(mktemp -d /run/fci1-generation-mutation.XXXXXX)
-generation_before=$(capture_submitter_transport fci1-generation-submitter.service fci1_live_reserve_and_observe_available generation-before "$generation_root")
+generation_authority_path="$FABRIC_CI_VALUE_ROOT/generation-cleanup-authority.wire"
+generation_before=$(capture_submitter_transport fci1-generation-submitter.service fci1_live_reserve_and_observe_available generation-before "$generation_root" "$generation_authority_path")
 checkpoint_if_selected generation-held-one
 fabric_ci_run_assertion fci1_assert_replace_held --arg root="$generation_root"
 checkpoint_if_selected generation-held-two
-fabric_ci_run_assertion fci1_assert_generation_changed --arg root="$generation_root" --arg before_wire="$generation_before"
+fabric_ci_run_assertion fci1_write_generation_changed_receipt --arg root="$generation_root" --arg before_wire="$generation_before" --arg path="$(receipt_path generation-verdict)"
 checkpoint_if_selected generation-changed-observed
 fabric_ci_run_assertion fci1_live_release --arg root="$generation_root"
 checkpoint_if_selected generation-free-before-removal
 generation_terminal_receipt=$(receipt_path generation-terminal)
-fabric_ci_run_assertion fci1_write_disposable_cleanup_receipt --arg root="$generation_root" --arg path="$generation_terminal_receipt"
+fabric_ci_run_assertion fci1_write_disposable_cleanup_receipt --arg root="$generation_root" --arg authority_path="$generation_authority_path" --arg path="$generation_terminal_receipt"
 rm -rf -- "$generation_root"
 generation_root=
 
-dependent_before=$(capture_submitter_transport fci1-dependent-submitter.service fci1_live_reserve_and_observe_available dependent-before "$mutation_root" --property=RuntimeDirectory="$mutation_runtime")
+dependent_before=$(capture_submitter_transport fci1-dependent-submitter.service fci1_live_reserve_and_observe_available dependent-before "$mutation_root" "$FABRIC_CI_VALUE_ROOT/dependent-cleanup-authority.wire" --property=RuntimeDirectory="$mutation_runtime")
 [[ ! -e $mutation_root && ! -L $mutation_root ]] || { echo 'ExpectedOutcomeNotObserved: submitter runtime directory removal' >&2; exit 1; }
 echo "runtime-directory-observed: path=$mutation_root standing=absent" >&2
 unit_terminal_observed fci1-dependent-submitter.service || { echo 'InstrumentRefused: dependent submitter terminal state unestablished' >&2; exit 1; }
-fabric_ci_run_assertion fci1_assert_lifetime_dependent --arg root="$mutation_root" --arg before_wire="$dependent_before"
+fabric_ci_run_assertion fci1_write_lifetime_dependent_receipt --arg root="$mutation_root" --arg before_wire="$dependent_before" --arg path="$(receipt_path dependent-lifetime)"
 checkpoint_if_selected runtime-directory-terminal
 cell_receipt=$(receipt_path cell-after-dependent)
 fabric_ci_run_assertion fci1_grade_and_write_cell_receipt --arg before_wire="$cell_before" --arg phase="after-dependent" --arg path="$cell_receipt"
