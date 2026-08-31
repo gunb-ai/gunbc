@@ -50,6 +50,7 @@ import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
 }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_fixture_provenance }
 
 data subject_host: HostIdentity = "srv6" as HostIdentity
 

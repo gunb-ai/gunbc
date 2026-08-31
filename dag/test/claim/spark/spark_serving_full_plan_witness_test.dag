@@ -4,6 +4,8 @@ import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationProvenance,
+  SparkServingPlanObservation,
+  spark_serving_observation_attempt_of,
   spark_serving_provenance_host,
   spark_serving_provenance_observation_attempt,
 }
@@ -120,6 +122,18 @@ import gunbc.spark.serving_desired {
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
   spark_serving_occurrence,
+}
+import gunbc.spark.serving_observe {
+  SparkServingHostObservation,
+  SparkServingObservedUnit,
+  ManagedAccountProbeRefused,
+}
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
+  hermetic_fleet_attempt_raw,
+  hermetic_plan_observation,
+  hermetic_host_observation,
+  hermetic_readback,
+  hermetic_fixture_provenance,
 }
 
 // THE SERVING SUBJECT IS THE SERVING CELL, AND AFTER SPARK-PAIR-0 THAT IS NO LONGER SRV6.

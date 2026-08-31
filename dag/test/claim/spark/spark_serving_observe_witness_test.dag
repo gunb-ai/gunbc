@@ -81,6 +81,10 @@ import gunbc.spark.serving_runtime_receipt {
   spark_serving_runtime_receipt_probe_words,
   spark_serving_materialization_receipt_field_from_probe,
 }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
+  hermetic_host_observation,
+  hermetic_fixture_provenance,
+}
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 

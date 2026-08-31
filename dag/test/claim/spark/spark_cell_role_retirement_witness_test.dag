@@ -130,6 +130,7 @@ import gunbc.membership_reconcile {
   MemberRemovalRefused,
   MemberRosterDuplicateKeyRefused,
 }
+import test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_fixture_provenance }
 
 // SPARK-PAIR-0 P0. The discriminating evidence for role separation and real serving retirement.
 // Every claim here is written so that reverting the role assignment, or restoring the empty removal
