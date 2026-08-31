@@ -1897,6 +1897,9 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
 }
 
+// Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
+// §6–§7)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
+// reason, dissolve-on trigger and census. Read it there; it is not restated here.
 pub(crate) fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,

@@ -22353,6 +22353,19 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // rename+modify would fail-closed on its unavoidable line-1 change. An in-place
     // modify (`diff --git a/PATH b/PATH`, no `rename to`) still touches line 1 with no
     // added-side entry, so it stays fail-closed as before.
+    //
+    // DECLARED GAP (DESIGN §4b(3)) — copy destinations are NOT enrolled. A `copy to NEW`
+    // destination is new-at-path by the same argument as `rename to`: every declaration at
+    // NEW is a newly qualified identity that has never executed under that spelling. It is
+    // not matched here, so such a file would enroll only the declarations the copy's own
+    // edited lines reach. POPULATION: empty — the floor's observation is
+    // `extdeps.git`'s `git.Core.DiffUnified0` (`git diff -U0 <range>`), and git detects copies
+    // only under `-C`/`--find-copies` or `diff.renames=copies`, neither of which this
+    // argv nor the repo config sets. TRIGGER: copy detection becoming reachable — the argv
+    // gaining `-C`, or `diff.renames` being set to `copies` at any config scope — at which
+    // point the copy destination must be admitted here alongside `rename to`. No branch is
+    // written for it today: an arm no diff can reach is permanently untested and would be
+    // cited as coverage it does not provide.
     let mut added = HashSet::new();
     let mut minus_is_null = false;
     for line in diff_text.lines() {
