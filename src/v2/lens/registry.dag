@@ -54,6 +54,7 @@ type LensIdV0
   | Subsumption
   | Synthesis
   | TestMigrationDebt
+  | UndecidableVerdictCollapse
   | UnitModeling
   | Vacuity
   | Visibility
@@ -275,6 +276,11 @@ data lens_registry_v0_machine_shape: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.machine_shape" }
 }
 
+data lens_registry_v0_undecidable_verdict_collapse: LensRegistryEntryV0 = {
+  lens_id: UndecidableVerdictCollapse
+  module_path: Bound { path: "v2.lens.undecidable_verdict_collapse" }
+}
+
 data lens_registry_v0_meta_exec_confinement: LensRegistryEntryV0 = {
   lens_id: MetaExecConfinement
   module_path: Bound { path: "v2.lens.meta_exec_confinement" }
@@ -405,6 +411,7 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_leaf_model_verification,
   lens_registry_v0_live_read_classification,
   lens_registry_v0_machine_shape,
+  lens_registry_v0_undecidable_verdict_collapse,
   lens_registry_v0_meta_exec_confinement,
   lens_registry_v0_mock_totality,
   lens_registry_v0_mutation_adequacy,
