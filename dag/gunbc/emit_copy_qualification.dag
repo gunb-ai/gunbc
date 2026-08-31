@@ -677,7 +677,7 @@ type EmitCopyQualification
   | QualificationRefusedCostOracleUnavailable { case: EmitCopyQualificationCaseId, unresolved_fact: String }
   | QualificationRefusedObservationUnavailable { case: EmitCopyQualificationCaseId, cause: String }
   | QualificationRefusedExcessCopy { case: EmitCopyQualificationCaseId, cardinality: Int, observed_bytes: Int, allowed_bytes: Int }
-  | QualificationRefusedRedundantClone { case: EmitCopyQualificationCaseId, lint: String, line: Int }
+  | QualificationRefusedRedundantClone { case: EmitCopyQualificationCaseId, lint: String, emitted_item: String, line: Int }
 
 fn qualification_is_qualified(q: EmitCopyQualification) -> Bool {
   match q {
@@ -687,7 +687,7 @@ fn qualification_is_qualified(q: EmitCopyQualification) -> Bool {
     QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => false
     QualificationRefusedObservationUnavailable { case: _, cause: _ } => false
     QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
-    QualificationRefusedRedundantClone { case: _, lint: _, line: _ } => false
+    QualificationRefusedRedundantClone { case: _, lint: _, emitted_item: _, line: _ } => false
   }
 }
 
@@ -699,7 +699,7 @@ fn qualification_case(q: EmitCopyQualification) -> EmitCopyQualificationCaseId {
     QualificationRefusedCostOracleUnavailable { case: id, unresolved_fact: _ } => id
     QualificationRefusedObservationUnavailable { case: id, cause: _ } => id
     QualificationRefusedExcessCopy { case: id, cardinality: _, observed_bytes: _, allowed_bytes: _ } => id
-    QualificationRefusedRedundantClone { case: id, lint: _, line: _ } => id
+    QualificationRefusedRedundantClone { case: id, lint: _, emitted_item: _, line: _ } => id
   }
 }
 
@@ -711,7 +711,7 @@ fn qualification_slug(q: EmitCopyQualification) -> String {
     QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => "refused_cost_oracle_unavailable"
     QualificationRefusedObservationUnavailable { case: _, cause: _ } => "refused_observation_unavailable"
     QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => "refused_excess_copy"
-    QualificationRefusedRedundantClone { case: _, lint: _, line: _ } => "refused_redundant_clone"
+    QualificationRefusedRedundantClone { case: _, lint: _, emitted_item: _, line: _ } => "refused_redundant_clone"
   }
 }
 
@@ -806,8 +806,8 @@ fn judge_case(
               QualificationRefusedObservationUnavailable { case: id, cause: c }
             RuntimeRowsObserved { rows: rows } =>
               match static_obs {
-                RedundantCloneReported { lint: l, emitted_item: _, line: ln, message: _ } =>
-                  QualificationRefusedRedundantClone { case: id, lint: l, line: ln }
+                RedundantCloneReported { lint: l, emitted_item: item, line: ln, message: _ } =>
+                  QualificationRefusedRedundantClone { case: id, lint: l, emitted_item: item, line: ln }
                 NoRedundantCloneReported =>
                   judge_growth_arm(id: id, expected: expected, rows: rows, static_obs: static_obs)
                 StaticObservationUnavailable { cause: _ } =>

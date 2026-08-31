@@ -631,8 +631,8 @@ fn verdict_receipt_line(q: EmitCopyQualification) -> String {
       concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_observation_unavailable cause=", cz)))
     QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab } =>
       concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_excess_copy n=", concat(to_string(n), concat(" observed_bytes=", concat(to_string(ob), concat(" allowed_bytes=", to_string(ab))))))))
-    QualificationRefusedRedundantClone { case: id, lint: l, line: n } =>
-      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_redundant_clone lint=", concat(l, concat(" line=", to_string(n))))))
+    QualificationRefusedRedundantClone { case: id, lint: l, emitted_item: item, line: n } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_redundant_clone lint=", concat(l, concat(" item=", concat(item, concat(" line=", to_string(n))))))))
   }
 }
 

@@ -3,7 +3,10 @@ module gunbc.emit_copy_qualification_wet_battery
 import gunbc.emit_copy_qualification {
   CopyScalarControl, OwnedStringCarrier, SharedRecordCarrier, PersistentSequenceCarrier,
   PersistentMapCarrier, NestedCheapDeepRecordCarrier,
-  EmitCopyQualification, qualification_is_qualified, qualification_slug
+  EmitCopyQualification, Qualified, QualificationRefusedBehaviorMismatch, QualificationRefusedCaseNotExecutable,
+  QualificationRefusedCostOracleUnavailable, QualificationRefusedObservationUnavailable,
+  QualificationRefusedExcessCopy, QualificationRefusedRedundantClone,
+  qualification_is_qualified, qualification_slug
 }
 import gunbc.emit_copy_qualification_fixture_gen {
   CleanSubject, PlantRedundantShareClone, PlantHiddenDeepCopy, PlantRedundantDeepClone,
@@ -64,12 +67,31 @@ fn refusal_count(verdicts: List<EmitCopyQualification>, slug_expected: String) -
   verdicts |> filter(q => qualification_slug(q: q) == slug_expected) |> count
 }
 
+// The clean baseline is NOT clone-free — the emitter's own output refuses redundant-clone
+// broadly (the battery's flagship static finding), so a planted RUNNER clone must be found by
+// its FILE: emitter findings live in the emitted module, planted ones in src/bin/.
+fn runner_file_redundant_clone_count(verdicts: List<EmitCopyQualification>) -> Int {
+  verdicts |> filter(q =>
+    match q {
+      QualificationRefusedRedundantClone { case: _, lint: _, emitted_item: item, line: _ } =>
+        (split(s: item, delimiter: "src/bin/") |> count) > 1
+      Qualified { case: _, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => false
+      QualificationRefusedBehaviorMismatch { case: _, expected_line: _, observed_line: _ } => false
+      QualificationRefusedCaseNotExecutable { case: _, phase: _, detail: _ } => false
+      QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => false
+      QualificationRefusedObservationUnavailable { case: _, cause: _ } => false
+      QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+    }
+  ) |> count
+}
+
 // Redundant SHARE clone: the planted pre-call Rc clone adds redundant-clone refusals and no
 // excess-copy refusals relative to clean.
 fn ecq_calibration_redundant_share_clone_reds_static_only_holds() -> Bool {
   let clean = run_shard_with_receipt(c: SharedRecordCarrier, mutant: CleanSubject)
   let mutant = run_shard_with_receipt(c: SharedRecordCarrier, mutant: PlantRedundantShareClone)
-  refusal_count(verdicts: mutant, slug_expected: "refused_redundant_clone") > refusal_count(verdicts: clean, slug_expected: "refused_redundant_clone")
+  runner_file_redundant_clone_count(verdicts: mutant) > 0
+    && runner_file_redundant_clone_count(verdicts: clean) == 0
     && refusal_count(verdicts: mutant, slug_expected: "refused_excess_copy") == refusal_count(verdicts: clean, slug_expected: "refused_excess_copy")
 }
 
@@ -87,7 +109,8 @@ fn ecq_calibration_hidden_deep_copy_reds_runtime_only_holds() -> Bool {
 fn ecq_calibration_redundant_deep_clone_reds_holds() -> Bool {
   let clean = run_shard_with_receipt(c: OwnedStringCarrier, mutant: CleanSubject)
   let mutant = run_shard_with_receipt(c: OwnedStringCarrier, mutant: PlantRedundantDeepClone)
-  refusal_count(verdicts: mutant, slug_expected: "refused_redundant_clone") > refusal_count(verdicts: clean, slug_expected: "refused_redundant_clone")
+  runner_file_redundant_clone_count(verdicts: mutant) > 0
+    && runner_file_redundant_clone_count(verdicts: clean) == 0
 }
 
 // Disconnected counter: every case refuses observation-unavailable — the dead-counter

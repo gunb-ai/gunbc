@@ -370,7 +370,7 @@ test fn ecq_join_redundant_clone_refuses_holds() -> Bool {
     runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
   )
   match v {
-    QualificationRefusedRedundantClone { case: _, lint: l, line: n } => l == "clippy::redundant_clone" && n == 12
+    QualificationRefusedRedundantClone { case: _, lint: l, emitted_item: item, line: n } => l == "clippy::redundant_clone" && item == "ecq_subject_x" && n == 12
     _ => false
   }
 }
