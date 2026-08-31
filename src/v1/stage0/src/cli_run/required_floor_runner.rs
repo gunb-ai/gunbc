@@ -752,16 +752,25 @@ pub(crate) fn wet_seed_bootstrap_lease_declared(
 
 /// The standing fold, mirroring the .dag decision order exactly: unreadable-contract facts
 /// before subject facts, subject before roster, roster before time, time before verdict.
-/// `evaluated_tree_commit_secs` is `None` only on a local run with no observable commit time
-/// — CI refuses upstream — and there the two time comparisons are reported NOT EVALUATED by
-/// the caller rather than decided here.
+///
+/// `evaluated_tree_commit_secs` IS REQUIRED, exactly as the authority declares it
+/// (`v2.workflow.floor_wet_route.wet_lane_receipt_standing` takes
+/// `evaluated_tree_commit_unix_secs: EpochSecs`, not an `Optional`). It was an `Option<u64>`
+/// here until review 57856, and the `None` arm skipped BOTH time comparisons and then fell
+/// through to `FreshExactSubject { age_secs: 0 }` — reporting a receipt whose age could not be
+/// computed as a receipt that is fresh. That is ⊤-as-ignorance rendered as ⊤-as-answer, the
+/// absorbing fallback DESIGN §5 names, and it was a §3 defect besides: the Rust widened a
+/// parameter the .dag declares total, so the two authorities disagreed about whether the fact
+/// is optional at all. The repair is not a new standing arm — inventing one here would fork the
+/// coproduct away from its authority — it is that the CALLER refuses when the commit time is
+/// unobservable, so this fold is only ever reached with the fact it requires.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn wet_lane_receipt_standing(
     envelope: Option<&WetReceiptEnvelope>,
     computed_subject_digest: &str,
     computed_executor_contract_digest: &str,
     roster: &BTreeSet<String>,
-    evaluated_tree_commit_secs: Option<u64>,
+    evaluated_tree_commit_secs: u64,
     schema_version: u64,
     staleness_budget_secs: u64,
     publication_skew_secs: u64,
@@ -782,16 +791,14 @@ pub(crate) fn wet_lane_receipt_standing(
             detail: "executed_at exceeds published_at".to_string(),
         };
     }
-    if let Some(tree_secs) = evaluated_tree_commit_secs {
-        if e.published_at_unix_secs > tree_secs + publication_skew_secs {
-            return WetLaneReceiptStanding::ContractMismatch {
-                detail: format!(
-                    "published_at {} exceeds the evaluated tree's commit time {} beyond the \
-                     declared {}s skew",
-                    e.published_at_unix_secs, tree_secs, publication_skew_secs
-                ),
-            };
-        }
+    if e.published_at_unix_secs > evaluated_tree_commit_secs + publication_skew_secs {
+        return WetLaneReceiptStanding::ContractMismatch {
+            detail: format!(
+                "published_at {} exceeds the evaluated tree's commit time {} beyond the \
+                 declared {}s skew",
+                e.published_at_unix_secs, evaluated_tree_commit_secs, publication_skew_secs
+            ),
+        };
     }
     if e.subject_digest != computed_subject_digest {
         return WetLaneReceiptStanding::SubjectMismatch {
@@ -838,15 +845,10 @@ pub(crate) fn wet_lane_receipt_standing(
             };
         }
     }
-    if let Some(tree_secs) = evaluated_tree_commit_secs {
-        let age_secs = tree_secs.saturating_sub(e.executed_at_unix_secs);
-        if age_secs > staleness_budget_secs {
-            return WetLaneReceiptStanding::Expired { age_secs };
-        }
+    let age_secs = evaluated_tree_commit_secs.saturating_sub(e.executed_at_unix_secs);
+    if age_secs > staleness_budget_secs {
+        return WetLaneReceiptStanding::Expired { age_secs };
     }
-    let age_secs = evaluated_tree_commit_secs
-        .map(|t| t.saturating_sub(e.executed_at_unix_secs))
-        .unwrap_or(0);
     WetLaneReceiptStanding::FreshExactSubject { age_secs }
 }
 
@@ -1302,16 +1304,8 @@ mod wet_lane_receipt_tests {
     #[test]
     fn standing_fresh_exact_subject_is_the_one_clean_arm() {
         let e = fixture_envelope();
-        let standing = wet_lane_receipt_standing(
-            Some(&e),
-            "subject-d",
-            "exec-d",
-            &roster(),
-            Some(1001),
-            1,
-            100,
-            10,
-        );
+        let standing =
+            wet_lane_receipt_standing(Some(&e), "subject-d", "exec-d", &roster(), 1001, 1, 100, 10);
         assert_eq!(
             standing,
             WetLaneReceiptStanding::FreshExactSubject { age_secs: 1 }
@@ -1321,18 +1315,10 @@ mod wet_lane_receipt_tests {
 
     #[test]
     fn standing_missing_and_subject_mismatch_and_failed_block() {
-        assert!(wet_lane_receipt_standing(None, "d", "e", &roster(), Some(1), 1, 100, 10).blocks());
+        assert!(wet_lane_receipt_standing(None, "d", "e", &roster(), 1, 1, 100, 10).blocks());
         let e = fixture_envelope();
-        let mismatch = wet_lane_receipt_standing(
-            Some(&e),
-            "other-d",
-            "exec-d",
-            &roster(),
-            Some(1001),
-            1,
-            100,
-            10,
-        );
+        let mismatch =
+            wet_lane_receipt_standing(Some(&e), "other-d", "exec-d", &roster(), 1001, 1, 100, 10);
         assert!(matches!(
             mismatch,
             WetLaneReceiptStanding::SubjectMismatch {
@@ -1345,7 +1331,7 @@ mod wet_lane_receipt_tests {
             "subject-d",
             "other-exec",
             &roster(),
-            Some(1001),
+            1001,
             1,
             100,
             10,
@@ -1440,7 +1426,7 @@ mod wet_lane_receipt_tests {
             "subject-d",
             "exec-d",
             &roster(),
-            Some(1001),
+            1001,
             1,
             100,
             10,
@@ -7247,28 +7233,34 @@ pub fn run_required_floor(
             .filter(|o| o.status.success())
             .and_then(|o| String::from_utf8(o.stdout).ok())
             .and_then(|t| t.trim().parse::<u64>().ok());
-        let on_ci = std::env::var("GITHUB_ACTIONS").as_deref() == Ok("true");
-        let evaluated_tree_commit_secs = match (evaluated_tree_commit_secs, on_ci) {
-            (Some(t), _) => Some(t),
-            (None, true) if !wet_route_seen.is_empty() => {
-                return Err(
-                    "REQUIRED-FLOOR REFUSAL cause=WetRouteCommitTimeUnobservable — the wet-route \
-                     freshness join needs the evaluated tree's commit time (git log -1 \
-                     --format=%ct) and could not observe it on CI. A routed population with an \
-                     unevaluable freshness join must refuse, not skip."
-                        .to_string(),
-                );
-            }
-            (None, _) => {
+        // THE REFUSAL IS UNCONDITIONAL, NOT CI-CONDITIONAL (review 57856). It was gated on
+        // `GITHUB_ACTIONS` until then: CI refused, and a local run printed a NOT EVALUATED line
+        // and carried on with `None`, which the standing fold below turned into
+        // `FreshExactSubject { age_secs: 0 }`. So the value a local operator read said FRESH
+        // about a receipt whose age had not been computed — a typed lie mitigated by a println
+        // beside it, which is exactly the diagnostic-names-it/mechanism-stays-silent shape.
+        //
+        // An environment-conditional wall is not a wall: `GITHUB_ACTIONS` is an env var, so the
+        // arm that fabricated freshness was reachable by unsetting it. The freshness join needs
+        // this fact, the authority declares it total, and a routed population whose freshness
+        // cannot be evaluated must refuse WHEREVER it runs. A local run losing the ability to
+        // proceed here is the correct loss: it never had a verdict to proceed on.
+        let evaluated_tree_commit_secs = match evaluated_tree_commit_secs {
+            Some(t) => t,
+            None => {
                 if !wet_route_seen.is_empty() {
-                    eprintln!(
-                        "[floor-wet-route] freshness NOT EVALUATED — no git commit time \
-                         observable in this environment; the tree-derived standing arms still \
-                         execute, the two time comparisons do not. CI refuses in this state; a \
-                         local run only says so."
+                    return Err(
+                        "REQUIRED-FLOOR REFUSAL cause=WetRouteCommitTimeUnobservable — the \
+                         wet-route freshness join needs the evaluated tree's commit time (git \
+                         log -1 --format=%ct) and could not observe it. A routed population \
+                         with an unevaluable freshness join must refuse, not skip, and must \
+                         not render as fresh."
+                            .to_string(),
                     );
                 }
-                None
+                // No routed population: the freshness join has no subject, so there is nothing
+                // to refuse about. The standing fold is not reached on this path.
+                0
             }
         };
         if !wet_route_seen.is_empty() {
@@ -7314,18 +7306,15 @@ pub fn run_required_floor(
                     let joined = roster_sorted.iter().cloned().collect::<Vec<_>>().join("\n");
                     format!("{:x}", sha2::Sha256::digest(joined.as_bytes()))
                 };
-                match evaluated_tree_commit_secs {
-                    Some(tree_secs) => wet_seed_bootstrap_admission(
-                        lease.as_ref(),
-                        window_secs,
-                        &envelope_digest,
-                        envelope.attempt_seq,
-                        &computed_digest,
-                        &roster_digest,
-                        tree_secs,
-                    ),
-                    None => WetSeedBootstrapAdmission::NotApplicable,
-                }
+                wet_seed_bootstrap_admission(
+                    lease.as_ref(),
+                    window_secs,
+                    &envelope_digest,
+                    envelope.attempt_seq,
+                    &computed_digest,
+                    &roster_digest,
+                    evaluated_tree_commit_secs,
+                )
             } else {
                 WetSeedBootstrapAdmission::NotApplicable
             };

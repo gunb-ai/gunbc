@@ -8,7 +8,7 @@ import v2.workflow.floor_wet_route {
   ReceiptFreshExactSubject, ReceiptMissing, ReceiptExpired, ReceiptSubjectMismatch,
   ReceiptContractMismatch, ReceiptRosterInexact, ReceiptExecutorSnapshotDifferent,
   BootstrapExecutorSnapshotReceipt,
-  WetSeedBootstrapAdmission, BootstrapLeaseAdmitted, BootstrapLeaseExpired,
+  WetSeedBootstrapAdmission, BootstrapExecutorSnapshotLeaseAdmitted, BootstrapLeaseExpired,
   BootstrapLeaseNotApplicable,
   wet_seed_bootstrap_admission, wet_seed_bootstrap_lease_window_secs,
   WetFloorGateDisposition, WetFloorAdmittedFresh, WetFloorAdmittedUnderBootstrapLease,
@@ -377,7 +377,7 @@ test fn wet_lease_beyond_its_fixed_window_is_expired_and_blocks() -> Bool {
   let admission = fixture_admission_at(tree_secs: 1000001 + wet_seed_bootstrap_lease_window_secs())
   let expired = match admission {
     BootstrapLeaseExpired { detail: _ } => true
-    BootstrapLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapExecutorSnapshotLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
     BootstrapLeaseNotApplicable => false
   }
   expired
@@ -397,7 +397,7 @@ test fn wet_lease_naming_a_different_envelope_is_not_applicable_and_blocks() -> 
   )
   let not_applicable = match admission {
     BootstrapLeaseNotApplicable => true
-    BootstrapLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapExecutorSnapshotLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
     BootstrapLeaseExpired { detail: _ } => false
   }
   not_applicable
@@ -445,7 +445,7 @@ test fn wet_lease_with_slid_window_is_not_applicable() -> Bool {
   )
   match admission {
     BootstrapLeaseNotApplicable => true
-    BootstrapLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
+    BootstrapExecutorSnapshotLeaseAdmitted { exact_envelope_digest: _, exact_attempt_seq: _, exact_semantic_subject_digest: _, exact_roster_digest: _, executed_at_unix_secs: _, not_after_unix_secs: _ } => false
     BootstrapLeaseExpired { detail: _ } => false
   }
 }

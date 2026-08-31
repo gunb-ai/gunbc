@@ -10,8 +10,15 @@ import v2.std.optional { Optional, Absent, Present }
 // the route authority (downward edge only — no routed witness closure imports this module),
 // so flipping this row, like a receipt-pair refresh, moves neither digest.
 //
-// Absent is the standing state. A Present row is authored ONLY in the same push as the
-// envelope it names, beside its `gunbc.rung_drop` `wet_executor_bootstrap_lease` row. The
+// Absent is the standing state, and IT IS THE STATE TODAY: no lease is declared, so nothing
+// here is currently waived. NO `gunbc.rung_drop` ROW EXISTS FOR THIS MECHANISM YET, and none
+// is owed while the row is Absent — an unexercised mechanism regresses no rung. An earlier
+// revision of this comment named `gunbc.rung_drop` `wet_executor_bootstrap_lease` as though it
+// were a live citation (review 57856); it was a forward obligation wearing the grammar of a
+// reference, which §3 refuses because a reader cannot tell the two apart by reading. Stated as
+// the obligation it is: flipping this row to Present is admissible ONLY in a push that also
+// authors the matching `gunbc.rung_drop` row, naming the envelope it admits, and only under an
+// operator grant — the flip and the drop row are one transaction, and neither exists yet. The
 // admission semantics — exact envelope-digest/attempt-seq/subject/roster join, the fixed
 // executed_at + 28,800s window with `not_after` derived and checked — are owned by
 // `v2.workflow.floor_wet_route.wet_seed_bootstrap_admission`, which takes this row as a
