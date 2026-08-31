@@ -766,6 +766,41 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                 }
             }
         }
+        // A PATH WHOSE DECLARATION SET IS ESTABLISHED FRESH CONTRIBUTES EVERY DECLARATION IT
+        // CARRIES, and the line ranges do not establish that set — they only report which lines
+        // the diff happened to print.
+        //
+        // `parse_unified_diff_added_paths` already rules that both wholly-added files and RENAME
+        // DESTINATIONS are new-at-path ("its declaration set is established fresh at NEW"), and
+        // for a `/dev/null` add the two agree by accident: every line is a `+` line, so line
+        // attribution reaches every declaration anyway. For a rename destination they do not.
+        // Git detects the rename and prints only the hunks that differ, so a moved file's
+        // declarations are attributed by WHICH LINES THE MOVE HAPPENED TO EDIT — while every
+        // identity at the new path is a NEW qualified identity (`<authored module>.<function>`)
+        // that has never executed under that spelling, because the authored module name moved
+        // with the file.
+        //
+        // MEASURED, NOT ANTICIPATED (2026-08-31, `git rev-list HEAD` = 90 commits): 8 of 8
+        // rename-destination `.dag` files carrying test decls were under-enrolled, 87 of their
+        // 103 identities missed. gunbc#9823 is the receipt-confirmed instance — it renamed
+        // `machine_shape_construction_wall_test.dag` into `v2.test.` with two `test fn`s, git
+        // printed the module line and the removed trailing blank line at EOF, the EOF hunk fell
+        // inside the LAST declaration, and exactly one of the two siblings was selected. The
+        // wall's DISCRIMINATING RED (`gate_red_synthetic_machine_shape_call`) was the one missed.
+        // It executed anyway there, via the ordinary `Planned` arm — but changed-witness
+        // membership is precisely what OVERRIDES the cost-debt withhold and the outside-gate
+        // suppression below, so the same miss on a rostered identity is a silent decline of a
+        // witness whose author is present. That is the state
+        // `v2.workflow.floor_changed_witness` was written for.
+        //
+        // THIS NARROWS NOTHING AND WIDENS NOTHING BEYOND THE PATH'S OWN DECLARATIONS: the
+        // universe is this file's parsed decl list, not the corpus, so it is the precise answer
+        // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
+        if added_paths.contains(&file_norm) {
+            for (line, _, _) in &decls {
+                changed.insert(*line);
+            }
+        }
         // Module-line edits (line 1) stay fail-closed for modifies — renaming can
         // change entry identity. Wholly-added files necessarily touch line 1.
         if changed.contains(&1) && !added_paths.contains(&file_norm) {

@@ -477,7 +477,7 @@ pub fn occurrence_id_list_is_prefix_of(
     prefix.iter().cloned().fold(Rc::new(OccurrenceIdListPrefixAcc {
     path_remaining: path.clone(),
     ok: true,
-}), |acc: Rc<OccurrenceIdListPrefixAcc>, expected: OccurrenceId| if !acc.ok.clone() {
+}), |acc: _, expected: OccurrenceId| if !acc.ok.clone() {
         acc.clone()
     } else {
         if ((acc.path_remaining.clone().len() as i64) == 0) {
