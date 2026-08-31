@@ -1032,7 +1032,9 @@ pub const WET_OUTCOME_WIRES: [&str; 12] = [
 /// committed at `json_path` (1 on first publication); a committed envelope that exists but
 /// cannot be parsed REFUSES rather than silently restarting the sequence. `run_id` and
 /// `head_sha` come from the producing run's environment (GITHUB_RUN_ID / GITHUB_SHA on the
-/// lane; "local" otherwise) — a citation of the run, never fabricated here.
+/// lane; "local" only when GITHUB_ACTIONS is unset, where it is a truthful provenance
+/// statement). On CI a missing citation var REFUSES rather than mislabeling the publication
+/// as local, and a pre-epoch clock refuses rather than publishing timestamp 0 (review 57955).
 pub fn write_wet_receipt_envelope(
     json_path: &str,
     tsv_path: &str,
@@ -1055,12 +1057,37 @@ pub fn write_wet_receipt_envelope(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
         Err(e) => return Err(format!("write_wet_receipt_envelope: read {json_path}: {e}")),
     };
-    let run_id = std::env::var("GITHUB_RUN_ID").unwrap_or_else(|_| "local".to_string());
-    let head_sha = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
+    let on_ci = std::env::var("GITHUB_ACTIONS").is_ok();
+    let run_id =
+        match std::env::var("GITHUB_RUN_ID") {
+            Ok(v) => v,
+            Err(_) if !on_ci => "local".to_string(),
+            Err(_) => return Err(
+                "write_wet_receipt_envelope: GITHUB_ACTIONS is set but GITHUB_RUN_ID is absent \
+                 — refusing to publish a CI envelope with a fabricated run citation"
+                    .to_string(),
+            ),
+        };
+    let head_sha = match std::env::var("GITHUB_SHA") {
+        Ok(v) => v,
+        Err(_) if !on_ci => "local".to_string(),
+        Err(_) => {
+            return Err(
+                "write_wet_receipt_envelope: GITHUB_ACTIONS is set but GITHUB_SHA is absent — \
+                 refusing to publish a CI envelope with a fabricated head citation"
+                    .to_string(),
+            )
+        }
+    };
     let published_at_unix_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
-        .unwrap_or(0);
+        .map_err(|e| {
+            format!(
+                "write_wet_receipt_envelope: system clock is before the unix epoch ({e}) — \
+                 refusing to publish a fabricated publication timestamp"
+            )
+        })?;
     let mut sorted: Vec<&WetLaneExecutedReceipt> = rows.iter().collect();
     sorted.sort_by(|a, b| a.identity.cmp(&b.identity));
     let envelope = WetReceiptEnvelope {
