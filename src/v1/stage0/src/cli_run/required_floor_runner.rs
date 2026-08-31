@@ -2890,6 +2890,15 @@ pub(crate) fn run_discovery_rows(
     if let Some(prev) = schedule_prev_entry.take() {
         index_schedule_entry_completed(index, &prev, current_closure_subject.as_deref())?;
     }
+    if let Some(ctx) = ctx.as_ref() {
+        let stats = ctx.interner_stats_snapshot();
+        eprintln!(
+            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+            stats.canonical_entries,
+            stats.canonical_retained_spelling_bytes,
+            stats.canonical_spelling_cap_bytes,
+        );
+    }
     summary.roster_closure_nodes = closure_modules.len();
     Ok(summary)
 }
@@ -5775,6 +5784,7 @@ pub fn run_required_floor(
     let mut scopes_with_ambiguity: usize = 0;
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
+    let mut final_symbol_retention = None;
     for (index, claim) in claims.iter().enumerate() {
         if index % 1000 == 0 {
             eprintln!("floor: evaluating {index} / {claims_planned}");
@@ -5868,6 +5878,7 @@ pub fn run_required_floor(
         let claim_rss_before = current_rss_bytes().unwrap_or(0) / 1024;
         let (result, receipt) =
             run_claim_measured(&frame, &prepared.subject_digest, &claim.qualified);
+        final_symbol_retention = Some(frame.interner_stats_snapshot());
         let claim_rss_after = current_rss_bytes().unwrap_or(0) / 1024;
         let claim_rss_kb = claim_rss_after.saturating_sub(claim_rss_before);
         if claim_rss_kb > claim_rss_kb_max {
@@ -6466,6 +6477,14 @@ pub fn run_required_floor(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
     );
+    if let Some(stats) = final_symbol_retention {
+        eprintln!(
+            "[floor-symbol-retention] canonical_entries={} retained_spelling_bytes={} spelling_cap_bytes={}",
+            stats.canonical_entries,
+            stats.canonical_retained_spelling_bytes,
+            stats.canonical_spelling_cap_bytes,
+        );
+    }
     // WHAT THE PER-ROW NUMBERS ABOVE DO NOT SAY. Each line names one shared computation, what
     // its fill cost, which claim paid it, and how many claims and modules read that same fill
     // for free. A `shared` fill does not go away when its payer is removed from the floor — the
