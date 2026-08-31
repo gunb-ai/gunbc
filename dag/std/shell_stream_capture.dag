@@ -17,7 +17,7 @@ data seed_host_shell_stream_bounded_drain_dissolve_on: DissolutionCondition = un
 // the entire stream or refuses at the active GUNBC_MEMORY_BUDGET_BYTES authority;
 // it never denotes an unmarked truncation.
 type WitnessStderrCapturePolicy
-  = BoundedTail { bytes: Int }
+  = BoundedTail { bytes: ByteSize }
   | Complete
 
 fn seed_host_stderr_tail_within_bound(

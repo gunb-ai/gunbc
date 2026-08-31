@@ -11204,11 +11204,18 @@ fn dispatch_shell(
                 .iter()
                 .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
                 .and_then(|(_, value)| match value {
-                    Value::Int(n) => Some(*n),
+                    Value::Record { fields: mfields, .. } => {
+                        mfields.iter().find(|(mname, _)| ctx.resolve(*mname).as_str() == "count").and_then(
+                            |(_, mv)| match mv {
+                                Value::Int(n) => Some(*n),
+                                _ => None,
+                            },
+                        )
+                    }
                     _ => None,
                 })
                 .ok_or_else(|| InterpError::TypeError {
-                    msg: "WitnessStderrCapturePolicy.BoundedTail requires an integer bytes field"
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with an integer count)"
                         .to_string(),
                 })?;
             if bytes < 0 {
@@ -11226,11 +11233,18 @@ fn dispatch_shell(
                 .iter()
                 .find(|(name, _)| ctx.resolve(*name).as_str() == "bytes")
                 .and_then(|(_, value)| match value {
-                    Value::Int(n) => Some(*n),
+                    Value::Record { fields: mfields, .. } => {
+                        mfields.iter().find(|(mname, _)| ctx.resolve(*mname).as_str() == "count").and_then(
+                            |(_, mv)| match mv {
+                                Value::Int(n) => Some(*n),
+                                _ => None,
+                            },
+                        )
+                    }
                     _ => None,
                 })
                 .ok_or_else(|| InterpError::TypeError {
-                    msg: "WitnessStderrCapturePolicy.BoundedTail requires an integer bytes field"
+                    msg: "WitnessStderrCapturePolicy.BoundedTail requires a ByteSize bytes field (Measure record with an integer count)"
                         .to_string(),
                 })?;
             if bytes < 0 {
