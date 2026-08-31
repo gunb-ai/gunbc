@@ -440,7 +440,33 @@ type CopyCostClass
 type CloneMinimality
   = CloneNecessary
   | CloneRedundant
-  | CloneNecessityUnjudgeable
+  | CloneNecessityUnjudgeable { ground: CloneUnjudgeableGround }
+
+// Unjudgeability has TWO grounds and they are not the same fact. Either the static observation
+// did not run at all, or it ran and could not discriminate: on a Copy-eligible receiver rustc
+// performs the same bitwise copy whether or not the clone is written, so redundant_clone's
+// delete-and-rebuild arm returns the SAME answer for a necessary clone and a redundant one.
+// Collapsing the second into CloneNecessary would read a silent lint on the Copy-scalar control
+// as an ESTABLISHED necessary clone -- the one cell where nothing was established.
+type CloneUnjudgeableGround
+  = StaticObservationDidNotRun { cause: String }
+  | StaticObservationNonDiscriminating { reason: String }
+
+// Whether a clean redundant_clone report carries information about THIS carrier.
+type CloneLintDiscrimination
+  = LintDiscriminates
+  | LintNonDiscriminating { reason: String }
+
+fn clone_lint_discrimination(c: CarrierRealization) -> CloneLintDiscrimination {
+  match carrier_clone_realization(c: c) {
+    BitCopyRealization =>
+      LintNonDiscriminating { reason: "receiver is Copy-eligible: the realized copy is a bitwise move performed with or without the written clone, so a clean redundant_clone report is the same report a redundant clone would produce" }
+    CloneRealizationUnknown { unresolved_fact: uf } => LintNonDiscriminating { reason: uf }
+    DeepBytesRealization => LintDiscriminates
+    ShareBumpRealization => LintDiscriminates
+    StructuralShareRealization => LintDiscriminates
+  }
+}
 
 fn copy_cost_class_slug(c: CopyCostClass) -> String {
   match c {
@@ -854,8 +880,14 @@ fn judge_growth_arm(
       QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab }
     GrowthWithinExpectation =>
       let minimality = match static_obs {
-        NoRedundantCloneReported => CloneNecessary
-        StaticObservationUnavailable { cause: _ } => CloneNecessityUnjudgeable
+        NoRedundantCloneReported =>
+          match clone_lint_discrimination(c: id.carrier_realization) {
+            LintDiscriminates => CloneNecessary
+            LintNonDiscriminating { reason: r } =>
+              CloneNecessityUnjudgeable { ground: StaticObservationNonDiscriminating { reason: r } }
+          }
+        StaticObservationUnavailable { cause: c } =>
+          CloneNecessityUnjudgeable { ground: StaticObservationDidNotRun { cause: c } }
         RedundantCloneReported { lint: _, emitted_item: _, line: _, message: _ } => CloneRedundant
       }
       Qualified {

@@ -1,0 +1,87 @@
+module v2.test.claim.gpt_oss_120b_resolution
+
+import std.types { Bool, NonEmptyStr, String }
+import extdeps.ollama.capability { ollama_model_support_catalog }
+import gunbc.ollama_model_resolution {
+  gpt_oss_120b_manifest,
+  gpt_oss_20b_manifest,
+  ollama_resolved_manifest_reference,
+  ollama_resolved_manifest_identity,
+  ollama_resolved_manifest_closure,
+  ollama_resolved_manifest_evidence,
+  ollama_resolved_manifest_names_blob,
+  ollama_resolved_manifest_evidence_is_unanimous,
+}
+
+test fn w_the_120b_manifest_reference_is_gpt_oss_120b() -> Bool {
+  let r = ollama_resolved_manifest_reference(m: gpt_oss_120b_manifest)
+  (r.name as String == "gpt-oss") && (r.tag as String == "120b")
+}
+
+test fn w_the_120b_manifest_resolved_to_the_digest_three_authorities_read() -> Bool {
+  ollama_resolved_manifest_identity(m: gpt_oss_120b_manifest)
+    == "sha256:a951a23b46a1f6093dafee2ea481d634b4e31ac720a8a16f3f91e04f5a40ecd9"
+}
+
+test fn w_the_two_gpt_oss_sizes_resolve_to_different_identities() -> Bool {
+  !(ollama_resolved_manifest_identity(m: gpt_oss_120b_manifest)
+    == ollama_resolved_manifest_identity(m: gpt_oss_20b_manifest))
+}
+
+test fn w_three_authorities_stand_behind_the_120b_identity() -> Bool {
+  (ollama_resolved_manifest_evidence(m: gpt_oss_120b_manifest) |> count) == 3
+}
+
+test fn w_every_reading_behind_the_120b_manifest_agrees_with_its_identity() -> Bool {
+  ollama_resolved_manifest_evidence_is_unanimous(m: gpt_oss_120b_manifest)
+}
+
+test fn w_the_120b_manifest_names_the_config_blob_it_resolved_to() -> Bool {
+  ollama_resolved_manifest_names_blob(
+    m: gpt_oss_120b_manifest,
+    hex: "0b3eaefc220f88ee3875909c1306654b2fbda9e31dae0133d6cdf488b37f9402" as NonEmptyStr)
+}
+
+test fn w_the_120b_manifest_names_its_own_model_layer() -> Bool {
+  ollama_resolved_manifest_names_blob(
+    m: gpt_oss_120b_manifest,
+    hex: "6be6d66a3f546d8c19b130dc41dc24b2fc159f84ffbc76a0ee0676205083cf5a" as NonEmptyStr)
+}
+
+test fn w_the_120b_manifest_does_not_name_the_20b_model_layer() -> Bool {
+  !ollama_resolved_manifest_names_blob(
+    m: gpt_oss_120b_manifest,
+    hex: "e7b273f9636059a689e3ddcab3716e4f65abe0143ac978e46673ad0e52d09efb" as NonEmptyStr)
+}
+
+test fn w_the_20b_manifest_does_not_name_the_120b_model_layer() -> Bool {
+  !ollama_resolved_manifest_names_blob(
+    m: gpt_oss_20b_manifest,
+    hex: "6be6d66a3f546d8c19b130dc41dc24b2fc159f84ffbc76a0ee0676205083cf5a" as NonEmptyStr)
+}
+
+test fn w_both_manifests_name_the_same_template_blob() -> Bool {
+  ollama_resolved_manifest_names_blob(
+    m: gpt_oss_120b_manifest,
+    hex: "fa6710a93d78da62641e192361344be7a8c0a1c3737f139cf89f20ce1626b99c" as NonEmptyStr)
+    && ollama_resolved_manifest_names_blob(
+      m: gpt_oss_20b_manifest,
+      hex: "fa6710a93d78da62641e192361344be7a8c0a1c3737f139cf89f20ce1626b99c" as NonEmptyStr)
+}
+
+test fn w_both_manifests_name_the_same_params_blob() -> Bool {
+  ollama_resolved_manifest_names_blob(
+    m: gpt_oss_120b_manifest,
+    hex: "d8ba2f9a17b3bbdeb5690efaa409b3fcb0b56296a777c7a69c78aa33bbddf182" as NonEmptyStr)
+    && ollama_resolved_manifest_names_blob(
+      m: gpt_oss_20b_manifest,
+      hex: "d8ba2f9a17b3bbdeb5690efaa409b3fcb0b56296a777c7a69c78aa33bbddf182" as NonEmptyStr)
+}
+
+test fn w_the_120b_closure_holds_exactly_the_five_blobs_the_manifest_named() -> Bool {
+  (ollama_resolved_manifest_closure(m: gpt_oss_120b_manifest) |> count) == 5
+}
+
+test fn w_the_support_catalogue_carries_both_sizes() -> Bool {
+  (ollama_model_support_catalog |> count) == 2
+}

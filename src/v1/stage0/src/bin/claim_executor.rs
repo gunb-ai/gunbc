@@ -906,10 +906,16 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     if required_regen_mode {
-        return match v1_compiler::cli_run::run_required_regen(
-            &regen_candidate_dir,
-            &regen_receipt_path,
-        ) {
+        let regen = if regen_affected_scope {
+            v1_compiler::cli_run::run_required_regen_scoped(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+                &source_roots,
+            )
+        } else {
+            v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path)
+        };
+        return match regen {
             Ok(outcome) => {
                 // Both values here ARE measured by this pass, so they print unqualified. Read
                 // through accessors rather than by matching the variant: the
@@ -1259,7 +1265,12 @@ fn report_wave_admission_outcome(
             eprintln!("required-ci: namespace-wave-admission NotEvaluated — {reason}");
             Some("namespace-wave-admission (NotEvaluated)".to_string())
         }
-        nwa::WaveAdmissionOutcome::Adjudicated { base, head, report } => {
+        nwa::WaveAdmissionOutcome::Adjudicated {
+            base,
+            head,
+            report,
+            roster_touched,
+        } => {
             let p = &report.population;
             eprintln!(
                 "required-ci: namespace-wave-admission base={base} head={head} \
@@ -1283,11 +1294,23 @@ fn report_wave_admission_outcome(
             for stale in &report.stale_admissions {
                 eprintln!("required-ci: namespace-wave-admission STALE ADMISSION {stale}");
             }
+            for consumed in &report.consumed_admissions {
+                eprintln!("required-ci: namespace-wave-admission CONSUMED ADMISSION {consumed}");
+            }
             let unadjudicated = nwa::report_unadjudicated(report);
-            // A STALE ADMISSION REFUSES TOO. A row that matches no delta is a permission
-            // standing over nothing, and leaving it means the roster stops being a fact about
-            // the corpus and becomes a list someone forgot to prune.
-            if unadjudicated.is_empty() && report.stale_admissions.is_empty() {
+            // AN UNMATCHED ADMISSION REFUSES. A row provable against neither side is a
+            // permission standing over nothing — author error, and leaving it means the roster
+            // stops being a fact about the corpus.
+            //
+            // A CONSUMED ADMISSION REFUSES ONLY THE ROSTER'S OWN PATH. Its relocation already
+            // holds at the base (a positive proof, printed above), so for an unrelated run it is
+            // an inert typed receipt; billing its cleanup to that run was the externalized
+            // degradation eight dissolution PRs paid for. The deletion is due — and enforced —
+            // on the first change that touches the roster file itself, which every future
+            // relocation PR does by construction. The window is honest: consumed rows persist,
+            // visible in every run's receipts, until the roster's next touch.
+            let consumed_due = *roster_touched && !report.consumed_admissions.is_empty();
+            if unadjudicated.is_empty() && report.stale_admissions.is_empty() && !consumed_due {
                 eprintln!(
                     "required-ci: namespace-wave-admission ADMITTED — every delta is \
                      auto-admitted or named by a transition admission"
@@ -1295,9 +1318,16 @@ fn report_wave_admission_outcome(
                 return None;
             }
             Some(format!(
-                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s))",
+                "namespace-wave-admission ({} unadjudicated delta(s), {} stale admission(s), {} \
+                 consumed admission(s){})",
                 unadjudicated.len(),
-                report.stale_admissions.len()
+                report.stale_admissions.len(),
+                report.consumed_admissions.len(),
+                if consumed_due {
+                    " due for deletion on this roster-touching change"
+                } else {
+                    ""
+                }
             ))
         }
     }

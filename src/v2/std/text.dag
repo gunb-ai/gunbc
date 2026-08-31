@@ -1,7 +1,7 @@
 module v2.std.text
 
 import std.algebra { Cons, Empty, FreeMonoid, FreeSemigroup }
-import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, length, list_head, list_reverse, list_starts_with, list_tail, skip }
+import v2.std.algebra { HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, length, list_append, list_head, list_reverse, list_starts_with, list_tail, skip }
 import v2.std.logic { Bool }
 import std.types { Char }
 type String = FreeMonoid<Char>
@@ -118,4 +118,26 @@ fn string_split(source: String, delimiter: FreeSemigroup<Char>) -> FreeMonoid<St
       tail: final_state.fields_reversed
     }
   )
+}
+
+fn string_join(fields: FreeMonoid<String>, separator: String) -> String {
+  match fields {
+    Empty => Empty
+    Cons { head: first, tail: rest } =>
+      fold_list(
+        xs: rest,
+        empty: first,
+        cons: fn(acc, field) {
+          list_append(left: list_append(left: acc, right: separator), right: field)
+        }
+      )
+  }
+}
+
+// Replacement is split-then-join over the same nonempty-needle carrier string_split uses: every
+// occurrence of the needle becomes a cut, and the replacement is interleaved at each cut. Purely
+// structural (list folds only) -- no host string builtin, so the emitted mirror carries it at the
+// same types as every other text fold.
+fn string_replace(source: String, needle: FreeSemigroup<Char>, replacement: String) -> String {
+  string_join(fields: string_split(source: source, delimiter: needle), separator: replacement)
 }

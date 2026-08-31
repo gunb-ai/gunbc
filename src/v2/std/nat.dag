@@ -116,8 +116,18 @@ fn nat_lte(a: Nat, b: Nat) -> Bool {
   }
 }
 
-data nat_max_two_nat_authorities_note: String = "This is NOT a duplicate of std.nat nat_max, and the distinction is worth stating because the name alone suggests otherwise. std.nat Nat is CommutativeSemiring<Magnitude> - an algebra alias whose max is written with the host comparison operators - while v2.std.nat Nat is the Peano coproduct Zero | Succ, and the two are different types that no single function can serve. So this sits beside nat_add and nat_mul, which are forked for exactly the same reason and were not remarked on. What IS a real defect is that two Nat authorities exist at all; it predates this declaration and is the numeric-tower grounding thread's subject, not something a max function can close. Because v1-seed function names are not module-scoped, a bare nat_max reference in any closure containing both modules is ambiguous and must be qualified - v2.lens.cost.valuation does exactly that. Dissolve-on: one Nat authority, at which point one of the two nat_max declarations goes with it."
-
+// NOT A DUPLICATE OF std.nat nat_max, and worth saying because the name alone suggests otherwise.
+// std.nat Nat is CommutativeSemiring<Magnitude> -- an algebra alias whose max is written with the
+// host comparison operators -- while v2.std.nat Nat is the Peano coproduct Zero | Succ. They are
+// different types that no single function can serve, so this sits beside nat_add and nat_mul, which
+// are forked for the same reason. Because v1-seed function names are not module-scoped, a bare
+// nat_max reference in any closure containing both modules is ambiguous and must be qualified --
+// v2.lens.cost.valuation does exactly that.
+//
+// That two Nat authorities exist at all is the real defect, and it is tracked as a guarantee stall
+// rather than narrated here: gunbc.guarantee_rung_drop two_nat_authorities_stall carries the rung,
+// ceiling and next-rung trigger. This annotation records only why the fork is not closable from a
+// max function.
 fn nat_max(a: Nat, b: Nat) -> Nat {
   match nat_compare(a: a, b: b) {
     Less => b

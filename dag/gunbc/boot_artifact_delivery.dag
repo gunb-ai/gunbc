@@ -71,6 +71,24 @@ import gunbc.machine_intake_access {
   BoundBmcAccessContextStanding,
   same_boot_delivery_target,
 }
+import gunbc.boot_artifact {
+  BootArtifact,
+  BootArtifactFormat,
+  BootPurpose,
+  EfiApplication,
+  FastMemoryDiagnostic,
+  FirmwareCapsule,
+  FirmwareUtility,
+  IntakeArtifactNoneForArchitecture,
+  IntakeArtifactSelected,
+  IntakeArtifactSelection,
+  IntakeArtifactSet,
+  IntakeLinuxEnvironment,
+  IsoImage,
+  KernelInitrdPair,
+  OperatingSystemInstaller,
+  intake_artifact_for,
+}
 import gunbc.machine_intake_subject { MachineIntakeSubject, content_hash_equal }
 import gunbc.machine_intake_receipt { EvidenceRef, same_intake_subject }
 import gunbc.install_transport_qualification {
@@ -116,56 +134,6 @@ import gunbc.network_boot_delivery {
 // URI serves digest B while the request names digest A' is a typed refusal.
 // gunbc.os_install_mechanism is a frozen compatibility projection that never binds an access
 // context and therefore always refuses at AccessContextProfileLookupNotRun.
-// What the artifact is FOR is data the same delivery mechanism accepts, never
-// a reason to fork the mechanism.
-type BootPurpose
-  = FastMemoryDiagnostic
-  | IntakeLinuxEnvironment
-  | OperatingSystemInstaller
-  | FirmwareUtility
-
-type BootArtifactFormat
-  = IsoImage
-  | EfiApplication
-  | KernelInitrdPair
-  | FirmwareCapsule
-
-type BootArtifact {
-  purpose: BootPurpose
-  architecture: Architecture
-  digest: ContentHash
-  format: BootArtifactFormat
-  entrypoint: NonEmptyStr
-  build_identity: NonEmptyStr
-}
-
-// 'The same ISO serves both architectures' is NOT an invariant. The set names
-// one artifact per architecture; the two may resolve to one digest when that is
-// genuinely true, and otherwise the per-architecture selection stays explicit.
-type IntakeArtifactSet {
-  x86_64: BootArtifact
-  aarch64: BootArtifact
-}
-
-type IntakeArtifactSelection
-  = IntakeArtifactSelected { artifact: BootArtifact }
-  | IntakeArtifactNoneForArchitecture { architecture: Architecture }
-
-fn intake_artifact_for(set: IntakeArtifactSet, architecture: Architecture) -> IntakeArtifactSelection {
-  match architecture {
-    X86_64 => IntakeArtifactSelected { artifact: set.x86_64 }
-    Aarch64 => IntakeArtifactSelected { artifact: set.aarch64 }
-    X86 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Arm => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Armv7 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mips => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mipsel => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mips64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Mips64el => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Riscv64 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-    Wasm32 => IntakeArtifactNoneForArchitecture { architecture: architecture }
-  }
-}
 
 type BootControlObligation
   = SetOneShotTarget
@@ -289,7 +257,7 @@ type BootArtifactStagingBinding {
 }
 
 // The staging binding of a path that staged nothing. Every offer Absent, so a
-// caller that has no staging service refuses at CandidateStagingAbsent rather
+// caller that has no staging service refuses at CandidateIneligible { cause: CandidateStagingAbsent } rather
 // than fabricating an offer.
 data boot_artifact_staging_unbound: BootArtifactStagingBinding = BootArtifactStagingBinding {
   redfish_image: none,
@@ -352,9 +320,15 @@ fn boot_delivery_preference_order(preference: BootDeliveryPreference) -> List<Bo
 
 // Every way a candidate can fail to be eligible, named per candidate, so a
 // refusal reports the whole considered set rather than the first miss.
-type BootDeliveryCandidateStanding
-  = CandidateEligible
-  | CandidateCapabilityAbsent
+//
+// INELIGIBILITY IS ITS OWN COPRODUCT, WITH NO ELIGIBLE INHABITANT. A plan's
+// PlanCandidateIneligible arm carries this type, so `an ineligible candidate
+// whose cause is CandidateEligible` — a contradictory row asserting a spare
+// available transport inside a plan, the exact state NO-FALLBACK-0 exists to
+// forbid — has no constructor rather than merely no producer. Standing is then
+// the two-arm sum: eligible, or ineligible for one of these named causes.
+type BootDeliveryCandidateIneligibility
+  = CandidateCapabilityAbsent
   | CandidateSurfaceAbsentFromProfile { surface: BmcAccessSurface }
   | CandidateLiveSurfaceAbsent { surface: BmcAccessSurface }
   | CandidateProfileObservationIdentityMismatch { surface: BmcAccessSurface }
@@ -372,9 +346,71 @@ type BootDeliveryCandidateStanding
   | CandidateUefiHttpUnestablished { missing: List<UefiHttpRequirement> }
   | CandidateNetworkBootUnestablished { missing: List<NetworkBootRequirement> }
 
+type BootDeliveryCandidateStanding
+  = CandidateEligible
+  | CandidateIneligible { cause: BootDeliveryCandidateIneligibility }
+
 type BootDeliveryCandidateVerdict {
   candidate: BootDeliveryCandidate
   standing: BootDeliveryCandidateStanding
+}
+
+// WHAT A CANDIDATE IS *IN A PLAN*, WHICH IS NOT WHAT IT WAS DURING SOLVING
+// (NO-FALLBACK-0). Solving asks "is this eligible"; a plan answers "this is the
+// transport, and here is why every other candidate is NOT one". Those are
+// different questions and they had one type, so a plan carried a second
+// CandidateEligible verdict beside the selected one -- an executor holding the
+// plan could read it as the next thing to attempt when the first failed, which
+// is the ordered-fallback workflow this model refuses.
+//
+// After selection no candidate in a plan reads as available. A candidate the
+// policy outranked is recorded as OUTRANKED BY the transport that was chosen,
+// naming it, so the row states a completed decision rather than an offer; there
+// is deliberately no arm meaning "eligible and not selected". The raw standing
+// survives on the refusal path, where nothing was selected and the whole
+// considered set is the evidence.
+type BootDeliveryPlanCandidateDisposition
+  = PlanCandidateSelected
+  | PlanCandidateOutrankedBy { selected: BootDeliveryCandidate }
+  | PlanCandidateIneligible { cause: BootDeliveryCandidateIneligibility }
+
+type BootDeliveryPlanCandidateVerdict {
+  candidate: BootDeliveryCandidate
+  disposition: BootDeliveryPlanCandidateDisposition
+}
+
+// The one place a solving verdict becomes a plan verdict. CandidateEligible is
+// the only standing that can become either arm, and which one it becomes is
+// decided by identity against the selected candidate -- never by list position.
+fn plan_candidate_disposition(
+  verdict: BootDeliveryCandidateVerdict,
+  selected: BootDeliveryCandidate,
+) -> BootDeliveryPlanCandidateDisposition {
+  if verdict.candidate == selected {
+    PlanCandidateSelected
+  } else {
+    match verdict.standing {
+      CandidateEligible => PlanCandidateOutrankedBy { selected: selected }
+      CandidateIneligible { cause: c } => PlanCandidateIneligible { cause: c }
+    }
+  }
+}
+
+fn plan_candidate_verdict(
+  verdict: BootDeliveryCandidateVerdict,
+  selected: BootDeliveryCandidate,
+) -> BootDeliveryPlanCandidateVerdict {
+  BootDeliveryPlanCandidateVerdict {
+    candidate: verdict.candidate,
+    disposition: plan_candidate_disposition(verdict: verdict, selected: selected),
+  }
+}
+
+fn plan_candidate_verdicts(
+  verdicts: List<BootDeliveryCandidateVerdict>,
+  selected: BootDeliveryCandidate,
+) -> List<BootDeliveryPlanCandidateVerdict> {
+  verdicts |> map(v => plan_candidate_verdict(verdict: v, selected: selected))
 }
 
 // The evidence particular to the SELECTED candidate (ruling 4 §1): a
@@ -395,7 +431,7 @@ type BootDeliveryEligibilityProvenance {
   profile_provenance: BmcAccessProfileProvenance
   evidence_manifest: List<EvidenceRef>
   selected: SelectedCandidateEvidence
-  considered: List<BootDeliveryCandidateVerdict>
+  considered: List<BootDeliveryPlanCandidateVerdict>
 }
 
 // PLANNED, NOT ESTABLISHED. A plan is a candidate the bound profile and the
@@ -458,9 +494,9 @@ fn bind_boot_delivery_target(target: BootDeliveryTarget, access: BoundBmcAccessC
 fn surface_candidate_standing(ctx: BoundBmcAccessContext, surface: BmcAccessSurface) -> BootDeliveryCandidateStanding {
   match bmc_surface_eligibility(profile: ctx.profile, observation: ctx.observation, surface: surface) {
     SurfaceEligible => CandidateEligible
-    SurfaceAbsentFromProfile => CandidateSurfaceAbsentFromProfile { surface: surface }
-    SurfaceAbsentFromLiveObservation => CandidateLiveSurfaceAbsent { surface: surface }
-    SurfaceProfileObservationIdentityMismatch { profile: _, observed: _ } => CandidateProfileObservationIdentityMismatch { surface: surface }
+    SurfaceAbsentFromProfile => CandidateIneligible { cause: CandidateSurfaceAbsentFromProfile { surface: surface } }
+    SurfaceAbsentFromLiveObservation => CandidateIneligible { cause: CandidateLiveSurfaceAbsent { surface: surface } }
+    SurfaceProfileObservationIdentityMismatch { profile: _, observed: _ } => CandidateIneligible { cause: CandidateProfileObservationIdentityMismatch { surface: surface } }
   }
 }
 
@@ -468,7 +504,7 @@ fn staged_digest_standing(offered: ContentHash, requested: ContentHash) -> BootD
   if content_hash_equal(left: offered, right: requested) {
     CandidateEligible
   } else {
-    CandidateStagedArtifactMismatch { offered: offered, requested: requested }
+    CandidateIneligible { cause: CandidateStagedArtifactMismatch { offered: offered, requested: requested } }
   }
 }
 
@@ -480,23 +516,23 @@ fn staged_digest_standing(offered: ContentHash, requested: ContentHash) -> BootD
 fn redfish_probe_standing(receipt: RedfishVirtualMediaProbeReceipt, offered: RedfishVirtualMediaTransferProtocol) -> BootDeliveryCandidateStanding {
   match redfish_probe_receipt_coherence(receipt: receipt) {
     ProbeReceiptProtocolsWithoutFloor { progress: progress, admitted: admitted } =>
-      CandidateRedfishProbeContradictory { progress: progress, admitted: admitted }
+      CandidateIneligible { cause: CandidateRedfishProbeContradictory { progress: progress, admitted: admitted } }
     ProbeReceiptFloorWithoutProtocols { progress: progress } =>
-      CandidateRedfishProbeContradictory { progress: progress, admitted: receipt.admitted_protocols }
+      CandidateIneligible { cause: CandidateRedfishProbeContradictory { progress: progress, admitted: receipt.admitted_protocols } }
     ProbeReceiptBelowFloor { progress: progress } =>
-      CandidateRedfishProbeBelowPlanFloor { progress: progress }
+      CandidateIneligible { cause: CandidateRedfishProbeBelowPlanFloor { progress: progress } }
     ProbeReceiptAtFloor { admitted: admitted } =>
       if redfish_transfer_protocol_in(protocols: admitted, protocol: offered) {
         CandidateEligible
       } else {
-        CandidateRedfishProtocolNotAdmitted { offered: offered, admitted: admitted }
+        CandidateIneligible { cause: CandidateRedfishProtocolNotAdmitted { offered: offered, admitted: admitted } }
       }
   }
 }
 
 fn redfish_virtual_media_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   if release_row_has_capability(row: ctx.capability_row, cap: CapabilityVirtualMedia) == false {
-    CandidateCapabilityAbsent
+    CandidateIneligible { cause: CandidateCapabilityAbsent }
   } else {
     let standing = surface_candidate_standing(ctx: ctx, surface: SurfaceRedfishVirtualMedia)
     let surface_ok = standing == CandidateEligible
@@ -504,10 +540,10 @@ fn redfish_virtual_media_candidate(ctx: BoundBmcAccessContext, request: BootDeli
       standing
     } else {
       match ctx.observation.redfish_virtual_media_probe {
-        Absent => CandidateRedfishProbeAbsent
+        Absent => CandidateIneligible { cause: CandidateRedfishProbeAbsent }
         Present { value: receipt } =>
           match request.staging.redfish_image {
-            Absent => CandidateStagingAbsent
+            Absent => CandidateIneligible { cause: CandidateStagingAbsent }
             Present { value: offer } => {
               let digest = staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
               let digest_ok = digest == CandidateEligible
@@ -525,7 +561,7 @@ fn redfish_virtual_media_candidate(ctx: BoundBmcAccessContext, request: BootDeli
 
 fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   if release_row_has_capability(row: ctx.capability_row, cap: CapabilityNbdProxyVirtualMedia) == false {
-    CandidateCapabilityAbsent
+    CandidateIneligible { cause: CandidateCapabilityAbsent }
   } else {
     let standing = surface_candidate_standing(ctx: ctx, surface: SurfaceOemNbdWebsocket)
     let surface_ok = standing == CandidateEligible
@@ -533,10 +569,10 @@ fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDelive
       standing
     } else {
       match bmc_profile_nbd_websocket_path(profile: ctx.profile) {
-        Absent => CandidateRouteAbsent { surface: SurfaceOemNbdWebsocket }
+        Absent => CandidateIneligible { cause: CandidateRouteAbsent { surface: SurfaceOemNbdWebsocket } }
         Present { value: _ } =>
           match request.staging.nbd_export {
-            Absent => CandidateStagingAbsent
+            Absent => CandidateIneligible { cause: CandidateStagingAbsent }
             Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
           }
       }
@@ -550,7 +586,7 @@ fn nbd_proxy_websocket_candidate(ctx: BoundBmcAccessContext, request: BootDelive
 // the executed refusal (opaque codes 13410/13460) modeled as a standing.
 fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   if release_row_has_capability(row: ctx.capability_row, cap: CapabilityOemRemoteMedia) == false {
-    CandidateCapabilityAbsent
+    CandidateIneligible { cause: CandidateCapabilityAbsent }
   } else {
     let standing = surface_candidate_standing(ctx: ctx, surface: SurfaceOemRestRemoteMedia)
     let surface_ok = standing == CandidateEligible
@@ -558,13 +594,13 @@ fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: Boot
       standing
     } else {
       match bmc_profile_megarac_image_redirection(profile: ctx.profile) {
-        Absent => CandidateRouteAbsent { surface: SurfaceOemRestRemoteMedia }
+        Absent => CandidateIneligible { cause: CandidateRouteAbsent { surface: SurfaceOemRestRemoteMedia } }
         Present { value: redirection } =>
           match redirection {
-            MegaRacImageRedirectionUnset => CandidateOemParameterUnset { surface: SurfaceOemRestRemoteMedia }
+            MegaRacImageRedirectionUnset => CandidateIneligible { cause: CandidateOemParameterUnset { surface: SurfaceOemRestRemoteMedia } }
             MegaRacImageRedirectionEnabled =>
               match request.staging.megarac_share {
-                Absent => CandidateStagingAbsent
+                Absent => CandidateIneligible { cause: CandidateStagingAbsent }
                 Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
               }
           }
@@ -579,19 +615,19 @@ fn megarac_rest_remote_media_candidate(ctx: BoundBmcAccessContext, request: Boot
 // THIS request's target, plus a staged export naming the requested digest.
 fn configfs_usb_gadget_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryRequest) -> BootDeliveryCandidateStanding {
   match ev.configfs {
-    ReinstallPathObservationForOtherTarget { requested: _, found: f } => CandidateEvidenceForOtherTarget { evidence_target: f }
+    ReinstallPathObservationForOtherTarget { requested: _, found: f } => CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: f } }
     TargetBoundReinstallPath { target: t, standing: s, observations: _ } =>
       if same_boot_delivery_target(left: t, right: request.target) == false {
-        CandidateEvidenceForOtherTarget { evidence_target: t }
+        CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: t } }
       } else {
         match s {
           ReinstallPathEstablished { qualified_by: _ } =>
             match request.staging.configfs_gadget {
-              Absent => CandidateStagingAbsent
+              Absent => CandidateIneligible { cause: CandidateStagingAbsent }
               Present { value: offer } => staged_digest_standing(offered: offer.artifact_digest, requested: request.artifact.digest)
             }
-          ReinstallPathUnestablished { missing_probes: m } => CandidateConfigfsUnestablished { missing: m }
-          ReinstallPathRefused { observed_absent: a } => CandidateConfigfsRefused { observed_absent: a }
+          ReinstallPathUnestablished { missing_probes: m } => CandidateIneligible { cause: CandidateConfigfsUnestablished { missing: m } }
+          ReinstallPathRefused { observed_absent: a } => CandidateIneligible { cause: CandidateConfigfsRefused { observed_absent: a } }
         }
       }
   }
@@ -601,11 +637,11 @@ fn uefi_http_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
   match ev.uefi_http {
     UefiHttpDeliveryEstablished { target: t, params: p, evidence: _ } =>
       if same_boot_delivery_target(left: t, right: request.target) == false {
-        CandidateEvidenceForOtherTarget { evidence_target: t }
+        CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: t } }
       } else {
         staged_digest_standing(offered: p.artifact_digest, requested: request.artifact.digest)
       }
-    UefiHttpDeliveryUnestablished { missing: m } => CandidateUefiHttpUnestablished { missing: m }
+    UefiHttpDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateUefiHttpUnestablished { missing: m } }
   }
 }
 
@@ -613,17 +649,22 @@ fn pxe_chain_candidate(ev: BoundBootDeliveryEvidence, request: BootDeliveryReque
   match ev.network_boot {
     NetworkBootDeliveryEstablished { evidence: e } =>
       if same_boot_delivery_target(left: e.target, right: request.target) == false {
-        CandidateEvidenceForOtherTarget { evidence_target: e.target }
+        CandidateIneligible { cause: CandidateEvidenceForOtherTarget { evidence_target: e.target } }
       } else {
         staged_digest_standing(offered: e.artifact_digest, requested: request.artifact.digest)
       }
-    NetworkBootDeliveryUnestablished { missing: m } => CandidateNetworkBootUnestablished { missing: m }
+    NetworkBootDeliveryUnestablished { missing: m } => CandidateIneligible { cause: CandidateNetworkBootUnestablished { missing: m } }
   }
 }
 
 // A built delivery together with the evidence that made its candidate
 // eligible, so the plan's provenance is read off the same selection.
+// The candidate identity travels WITH the built delivery (NO-FALLBACK-0). The
+// plan's per-candidate dispositions are decided by identity against this field,
+// so "which one was selected" is read off the construction rather than
+// re-derived from the preference list's position.
 type BuiltBootArtifactDelivery {
+  candidate: BootDeliveryCandidate
   delivery: BootArtifactDelivery
   selected: SelectedCandidateEvidence
 }
@@ -671,6 +712,7 @@ fn build_boot_artifact_delivery(
             Present { value: offer } =>
               Present {
                 value: BuiltBootArtifactDelivery {
+                  candidate: candidate,
                   delivery: RedfishVirtualMediaPull {
                     params: RedfishVirtualMediaParams { media: receipt.locator, image: offer.image, transfer_protocol: offer.transfer_protocol },
                   },
@@ -685,6 +727,7 @@ fn build_boot_artifact_delivery(
         Present { value: offer } =>
           Present {
             value: BuiltBootArtifactDelivery {
+              candidate: candidate,
               delivery: MegaRacRestRemoteMedia {
                 params: MegaRacRemoteMediaParams {
                   share_type: offer.share_type,
@@ -707,6 +750,7 @@ fn build_boot_artifact_delivery(
             Present { value: offer } =>
               Present {
                 value: BuiltBootArtifactDelivery {
+                  candidate: candidate,
                   delivery: OpenBmcNbdProxyWebsocket {
                     params: NbdProxyWebsocatParams { session_token: offer.session_token, ws_path: ws_path, local_nbd_port: offer.local_nbd_port },
                   },
@@ -726,6 +770,7 @@ fn build_boot_artifact_delivery(
             Present { value: offer } =>
               Present {
                 value: BuiltBootArtifactDelivery {
+                  candidate: candidate,
                   delivery: OpenBmcConfigfsUsbGadget {
                     params: ConfigfsGadgetParams {
                       nbd_server_host: offer.nbd_server_host,
@@ -746,20 +791,25 @@ fn build_boot_artifact_delivery(
     CandidateUefiHttpBoot =>
       match ev.uefi_http {
         UefiHttpDeliveryEstablished { target: _, params: p, evidence: evs } =>
-          Present { value: BuiltBootArtifactDelivery { delivery: UefiHttpBoot { params: p }, selected: SelectedFromUefiHttpEvidence { evidence: evs } } }
+          Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: UefiHttpBoot { params: p }, selected: SelectedFromUefiHttpEvidence { evidence: evs } } }
         UefiHttpDeliveryUnestablished { missing: _ } => none
       }
     CandidatePxeChainBoot =>
       match ev.network_boot {
         NetworkBootDeliveryEstablished { evidence: e } =>
-          Present { value: BuiltBootArtifactDelivery { delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
+          Present { value: BuiltBootArtifactDelivery { candidate: candidate, delivery: PxeChainBoot { evidence: e }, selected: SelectedFromNetworkBootEstablishment { establishment: e } } }
         NetworkBootDeliveryUnestablished { missing: _ } => none
       }
   }
 }
 
-// The first candidate in the POLICY's order that is eligible, built.
-fn first_eligible_boot_artifact_delivery(
+// THE ONE TRANSPORT THE POLICY SELECTS, built. The policy's order is a total
+// ranking over a set already decided by evidence, so this walk RANKS -- it does
+// not search, and it never attempts. Every candidate's eligibility is settled
+// before this runs; taking the highest-ranked eligible one is a completed
+// decision, and the plan records the rest as outranked rather than as
+// alternatives (NO-FALLBACK-0).
+fn selected_boot_artifact_delivery(
   ctx: BoundBmcAccessContext,
   ev: BoundBootDeliveryEvidence,
   request: BootDeliveryRequest,
@@ -789,7 +839,7 @@ fn select_boot_artifact_delivery(
   control_route: BmcBootControlRouteObservation,
   verdicts: List<BootDeliveryCandidateVerdict>,
 ) -> BootDeliverySolution {
-  match first_eligible_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
+  match selected_boot_artifact_delivery(ctx: ctx, ev: ev, request: request, policy: policy, verdicts: verdicts) {
     Present { value: built } =>
       BootDeliveryPlanned {
         plan: BootDeliveryPlan {
@@ -802,7 +852,7 @@ fn select_boot_artifact_delivery(
             profile_provenance: ctx.profile_provenance,
             evidence_manifest: ctx.evidence_manifest,
             selected: built.selected,
-            considered: verdicts,
+            considered: plan_candidate_verdicts(verdicts: verdicts, selected: built.candidate),
           },
         },
       }
@@ -953,7 +1003,7 @@ fn boot_delivery_candidate_standing_of(
 ) -> BootDeliveryCandidateStanding {
   fold(
     verdicts,
-    init: CandidateCapabilityAbsent,
+    init: CandidateIneligible { cause: CandidateCapabilityAbsent },
     f: (acc, v) => if v.candidate == candidate { v.standing } else { acc },
   )
 }

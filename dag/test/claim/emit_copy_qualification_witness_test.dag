@@ -22,7 +22,9 @@ import gunbc.emit_copy_qualification {
   Qualified, QualificationRefusedBehaviorMismatch, QualificationRefusedCaseNotExecutable,
   QualificationRefusedCostOracleUnavailable, QualificationRefusedObservationUnavailable,
   QualificationRefusedExcessCopy, QualificationRefusedRedundantClone,
-  CloneNecessary, CloneNecessityUnjudgeable
+  CloneNecessary, CloneNecessityUnjudgeable,
+  StaticObservationDidNotRun, StaticObservationNonDiscriminating,
+  clone_lint_discrimination, LintDiscriminates, LintNonDiscriminating
 }
 import gunbc.witness_floor_workflow {
   emit_copy_qualification_capability_closure_holds,
@@ -384,9 +386,57 @@ test fn ecq_join_static_unavailable_is_unjudgeable_not_refusal_holds() -> Bool {
     runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
   )
   match v {
-    Qualified { case: _, behavior_agreement: _, clone_minimality: CloneNecessityUnjudgeable, expected: _, observed_rows: _, lint_observation: _ } => true
+    Qualified { case: _, behavior_agreement: _, clone_minimality: CloneNecessityUnjudgeable { ground: StaticObservationDidNotRun { cause: c } }, expected: _, observed_rows: _, lint_observation: _ } =>
+      c == "clippy did not run"
     _ => false
   }
+}
+
+// The second unjudgeability ground: the observation RAN and cannot discriminate. A clean
+// redundant_clone report on a Copy-eligible receiver must NOT read as an established necessary
+// clone -- rustc emits the same bitwise copy either way, so the report carries no information.
+fn copy_scalar_case_id() -> EmitCopyQualificationCaseId {
+  EmitCopyQualificationCaseId {
+    ownership_pattern: ConsumedOnce,
+    carrier_realization: CopyScalarControl,
+    control_shape: StraightLine,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: ScalarUnitBasis
+  }
+}
+
+test fn ecq_clean_lint_on_copy_carrier_is_unjudgeable_not_necessary_holds() -> Bool {
+  let v = judge_case(
+    id: copy_scalar_case_id(),
+    behavior: BehaviorAgreed,
+    static_obs: NoRedundantCloneReported,
+    runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
+  )
+  match v {
+    Qualified { case: _, behavior_agreement: _, clone_minimality: CloneNecessityUnjudgeable { ground: StaticObservationNonDiscriminating { reason: r } }, expected: _, observed_rows: _, lint_observation: _ } =>
+      (split(s: r, delimiter: "Copy-eligible") |> count) > 1
+    _ => false
+  }
+}
+
+// Discrimination is carrier-derived, and the two grounds are distinct constructors: the same
+// clean report that is uninformative on the Copy control DOES establish necessity on a carrier
+// whose clone is a real operation.
+test fn ecq_lint_discrimination_splits_the_carriers_holds() -> Bool {
+  let non = all_carrier_realizations |> filter(c =>
+    match clone_lint_discrimination(c: c) {
+      LintNonDiscriminating { reason: _ } => true
+      LintDiscriminates => false
+    })
+  let disc = all_carrier_realizations |> filter(c =>
+    match clone_lint_discrimination(c: c) {
+      LintDiscriminates => true
+      LintNonDiscriminating { reason: _ } => false
+    })
+  (non |> count) > 0 && (disc |> count) > 0
+    && (non |> count) + (disc |> count) == (all_carrier_realizations |> count)
+    && (non |> filter(c => c == CopyScalarControl) |> count) == 1
+    && (disc |> filter(c => c == SharedRecordCarrier) |> count) == 1
 }
 
 // ── Generation-grain mutant discrimination ───────────────────────────────────────────────────
