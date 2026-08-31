@@ -47,7 +47,6 @@ type RunnerSlotDesired {
 type HostRunnerSlotAllocation {
   host: HostIdentity
   slots_per_host: Int
-  cores_per_slot: HardwareThreadCount
   runner_slice_cap: ByteSize
   per_slot: RunnerSlotDesired
 }
@@ -188,7 +187,8 @@ fn host_disk_admitted_width(host: HostIdentity) -> HostDiskWidthConstraint {
 // CPU IS AN ADMISSION AXIS AND UNTIL THIS ROW IT WAS NOT ONE AT ALL. gunbc_runner_slots_per_host
 // took a minimum over memory and disk and never asked how many cores the host had, so
 // cores_per_slot existed only as a field reported in HostRunnerSlotAllocation -- a number carried
-// to consumers and constraining nothing. That was harmless while memory was the tight axis on every
+// to consumers and constraining nothing. That field is now DELETED: with CPU a real admission axis
+// the figure constrains through host_cpu_admitted_width, and nothing read the reported copy. That was harmless while memory was the tight axis on every
 // host and it stopped being harmless the moment it was not: the 2026-08-22 DIMM upgrade took srv3
 // and srv4 from 125 GiB of usable RAM to about 502 GiB, memory admission moved from 6 to 29, and
 // with disk DiskWidthUnconstrained on both the minimum would have degenerated to memory alone and
@@ -418,6 +418,21 @@ fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
   }
 }
 
+// UNKNOWN AND ZERO ARE DIFFERENT ANSWERS, AND THIS FUNCTION STILL CONFLATES THEM.
+//
+// gunbc_runner_slots_per_host returns Int, so the unresolved arm has nowhere to put its cause and
+// answers 0. gunbc.ci_runner_placement no longer depends on that -- it consults the ratio directly
+// and refuses with RunnerCoreRatioUnresolved, carrying the reason -- so the live refusal path is
+// honest. What remains is that any OTHER caller of this function receives a 0 it cannot distinguish
+// from a host whose axes genuinely admit nothing.
+//
+// DECLARED GAP, NOT AN ACCIDENT, and the trigger is the CAPABILITY rather than an artifact: the arm
+// dissolves when the canonical width answer is a RunnerWidthResolution -- derived, held, or
+// unresolved-with-cause -- and every one of the sixteen production call sites carries or refuses
+// that cause instead of reading an Int. That is a fail-closed cascade through nine modules,
+// including `data` rows whose declared shape has no arm to match on, so it is the whole subject of
+// its own change rather than a rider on this one. Landing half of it would mean minting sixteen new
+// silent defaults, which is the defect this branch exists to remove.
 fn gunbc_runner_slots_per_host(host: HostIdentity) -> Int {
   match runner_slot_shape_standing(d: gunbc_runner_slot_desired()) {
     RunnerSlotShapeRefusedZeroMemoryMax => 0
@@ -573,7 +588,6 @@ fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunner
   HostRunnerSlotAllocation {
     host: host,
     slots_per_host: slots,
-    cores_per_slot: gunbc_runner_cores_per_slot(),
     runner_slice_cap: gunbc_runner_slice_cap_declared(host: host),
     per_slot: per_slot
   }
@@ -925,10 +939,40 @@ fn gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(obs: R
 // gunbc_runner_slot_oversubscription_within_slice survives as the general relation for callers
 // holding two independent numbers.
 
+// THE FIRST CONJUNCT CONSUMES THE RESOLUTIONS AND REFUSES ON EITHER UNRESOLVED ARM. It previously
+// passed gunbc_runner_cores_per_slot() to hardware_thread_count_value and gunbc_runner_memory_per_core()
+// to byte_size_count after both had become resolution coproducts, and the corpus accepted it: a
+// two-variant coproduct reached a parameter declared as a one-field measure at a CALL-argument
+// position, and the required floor stayed green over 3,136 witnesses. It is recorded here rather
+// than quietly repaired because it is a floor-level compiler admission -- DESIGN's "values inhabit
+// declared types" baseline.
+//
+// THE SPECIMEN IS RECORDED, NOT YET ENROLLED, and the distinction is stated plainly because an
+// annotation is not evidence (DESIGN 4c). test.claim.declared_type_inhabitance_direct_call_witness
+// already refuses distinct unapplied constructors passed through a call, so this admission is NOT
+// the general call-argument case and the discriminator is unmeasured: the candidates are a
+// coproduct producer, an alias-expanded generic application at the parameter, and cross-module
+// resolution. Asserting one of them here without the matrix would be the same guess that produced
+// the unit bug above. The trigger is the capability: a probe matrix over producer kind x judgment
+// position (return, call argument, record field, typed let) with one-axis REDs and matching
+// positive controls, enrolled where the floor folds it -- after which this comment is redundant and
+// goes.
+fn runner_slot_core_memory_relation_holds(want: ByteSize) -> Bool {
+  match gunbc_runner_cores_per_slot() {
+    CoresPerSlotUnresolved { cause: _ } => false
+    CoresPerSlotResolved { threads: t } =>
+      match gunbc_runner_memory_per_core() {
+        MemoryPerCoreUnresolved { cause: _ } => false
+        MemoryPerCoreResolved { bytes: per_core } =>
+          hardware_thread_count_value(t: t) * byte_size_count(b: per_core) >= byte_size_count(b: want)
+      }
+  }
+}
+
 fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let per_slot = gunbc_runner_slot_desired()
   let gibibyte_bytes = 1073741824
-  (hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) * byte_size_count(b: gunbc_runner_memory_per_core()) >= byte_size_count(b: per_slot.memory_max))
+  runner_slot_core_memory_relation_holds(want: per_slot.memory_max)
     && (byte_size_count(b: per_slot.memory_high) + gibibyte_bytes == byte_size_count(b: per_slot.memory_max))
     && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_minimum_viable_armed_budget))
     && (byte_size_count(b: per_slot.memory_high) >= byte_size_count(b: gunbc_floor_measured_peak_observation))
