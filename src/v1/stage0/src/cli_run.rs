@@ -156,10 +156,7 @@ pub use materialization_provider_consumer::{
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, faithful_probe_unavailable_gap,
-    lookup_verified_probe as cross_process_lookup_verified_probe, probe as cross_process_probe,
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, supports_faithful_probe,
-    transform_content_digest, write as cross_process_write, CacheLookupResult, CacheProbeResult,
+    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
     CacheRejectReason, CachedResolvedGraph,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
