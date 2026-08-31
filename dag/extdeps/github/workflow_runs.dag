@@ -50,6 +50,7 @@ data conclusion_authority_consolidation_frontier_rows: List<FrontierRow> = [
 type WorkflowRun {
   id: Int
   name: String?
+  path: String?
   head_sha: CommitSha
   status: WorkflowRunStatus
   conclusion: WorkflowRunConclusion?
@@ -126,6 +127,30 @@ service github.WorkflowRuns {
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
 
     rate_limit: { requests: 5000, per: hour, scope: core }
+  }
+
+  operation GetRun {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      run_id: String
+    }
+    output {
+      run: WorkflowRun
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs/\{run_id\}"
+    }
+    response {
+      200 => WorkflowRun
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
   }
 
   operation ListForRef {
