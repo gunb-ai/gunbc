@@ -6,6 +6,12 @@ import gunbc.fabric_required_build_cell {
   AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   fci1_allocation_slot_available, fci1_exact_allocation_restoration,
 }
+import tools.fabric_control_plane_live_probe {
+  Fci1CheckpointAfterCanonicalCommitBeforeTransport,
+  Fci1CheckpointAfterReleaseBeforeGrading,
+  Fci1CheckpointGenerationHeldTwo,
+  fci1_checkpoint_token,
+}
 
 test fn witness_fci1_absent_slot_is_available_but_held_slot_is_not() -> Bool {
   fci1_allocation_slot_available(prestate: AllocationSlotAbsent { path: "/fixture/store" })
@@ -60,4 +66,18 @@ test fn witness_fci1_wrong_held_generation_refuses() -> Bool {
     AllocationStoreRestorationRefused { path: p } => p == "/fixture/store"
     _ => false
   }
+}
+
+test fn witness_fci1_missing_transport_checkpoint_has_closed_identity() -> Bool {
+  fci1_checkpoint_token(checkpoint: Fci1CheckpointAfterCanonicalCommitBeforeTransport)
+    == "after-canonical-commit-before-transport"
+}
+
+test fn witness_fci1_already_free_checkpoint_is_distinct_from_held() -> Bool {
+  fci1_checkpoint_token(checkpoint: Fci1CheckpointAfterReleaseBeforeGrading)
+    != fci1_checkpoint_token(checkpoint: Fci1CheckpointAfterCanonicalCommitBeforeTransport)
+}
+
+test fn witness_fci1_disposable_replacement_checkpoint_is_separate() -> Bool {
+  fci1_checkpoint_token(checkpoint: Fci1CheckpointGenerationHeldTwo) == "generation-held-two"
 }
