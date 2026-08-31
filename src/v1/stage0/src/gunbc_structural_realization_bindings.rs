@@ -3,8 +3,12 @@
 
 pub use crate::std_decl_ref::decl_ref;
 pub use crate::std_decl_ref::DeclarationRef;
-use crate::std_literal_elaboration::LiteralSourceKind::{KernelBoolLiteral, KernelIntLiteral};
-use crate::std_literal_elaboration::LiteralUnfolding::{BooleanUnfold, PeanoUnfold};
+use crate::std_literal_elaboration::LiteralSourceKind::{
+    KernelBoolLiteral, KernelIntLiteral, KernelStringLiteral,
+};
+use crate::std_literal_elaboration::LiteralUnfolding::{
+    BooleanUnfold, PeanoUnfold, UnicodeScalarSequenceUnfold,
+};
 pub use crate::std_literal_elaboration::{
     LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
@@ -57,10 +61,14 @@ pub fn boolean_literal_homomorphism(
 
 pub fn literal_homomorphism_rows() -> Rc<Vec<Rc<LiteralHomomorphism>>> {
     thread_local! {
-        static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
-            Rc::new(vec![peano_literal_homomorphism("v2.std.nat".to_string(), "Nat".to_string(), "Zero".to_string(), "Succ".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string())])
-        };
-    }
+            static CACHED: Rc<Vec<Rc<LiteralHomomorphism>>> = {
+                Rc::new(vec![peano_literal_homomorphism("v2.std.nat".to_string(), "Nat".to_string(), "Zero".to_string(), "Succ".to_string(), "prev".to_string()), boolean_literal_homomorphism("v2.std.logic".to_string(), "Bool".to_string(), "True".to_string(), "False".to_string()), Rc::new(LiteralHomomorphism {
+        source_kind: LiteralSourceKind::KernelStringLiteral,
+        destination: crate::std_decl_ref::decl_ref("v2.std.text".to_string(), "String".to_string()),
+        producer: Rc::new(LiteralUnfolding::UnicodeScalarSequenceUnfold),
+    })])
+            };
+        }
     CACHED.with(|c: &Rc<Vec<Rc<LiteralHomomorphism>>>| c.clone())
 }
 

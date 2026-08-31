@@ -70,6 +70,7 @@ pub enum LiteralUnfolding {
         true_variant: Rc<DeclarationRef>,
         false_variant: Rc<DeclarationRef>,
     },
+    UnicodeScalarSequenceUnfold,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
