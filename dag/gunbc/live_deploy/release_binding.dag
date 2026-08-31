@@ -112,7 +112,7 @@ fn deployed_release_binding(
           deployed_tree_unobservable_text(cause: c),
         ], ""),
       }
-    DeployedTreeObserved { revision: tree_revision, content: _ } =>
+    DeployedTreeObserved { revision: tree_revision, tree: _, content: _ } =>
       match identity {
         RunningReleaseUnidentified { cause: _ } =>
           ReleaseBindingUnobserved {
