@@ -444,15 +444,18 @@ pub struct TransitionAdmission {
 /// DISSOLVE-ON: this pull request merging. Base and head then both carry the relocation, no run can
 /// produce this delta, the row reports stale on every build, and it is removed by that trigger
 /// exactly as all six shrinks above were -- a stale row here refuses every unrelated PR.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[TransitionAdmission {
-    label: "type_reference_declaration_ref relocated to v1.compiler.infer_env (XL-0N, gunbc#9719)",
-    subject: AdmissionSubject::Binding {
-        module: "v1.compiler.emit_rust",
-        in_declaration: "rust_exact_reference_spelling",
-        spelling: "type_reference_declaration_ref",
-    },
-    disposition: NamespaceDeltaDisposition::TargetChanged,
-}];
+/// SEVENTH DISSOLUTION -- TRIGGER FIRED (2026-08-31). XL-0N's relocation reached main;
+/// `type_reference_declaration_ref` is declared in `v1.compiler.infer_env` (`src/v1/04_env.dag`) on
+/// both sides of every comparison and
+/// `v1.compiler.emit_rust` only calls it, so no run can produce the delta the row named. Left
+/// standing it did exactly what the paragraph above predicts: the required run on every pull request
+/// based on 6ef73334e reported `0 unadjudicated delta(s), 1 stale admission(s)` and failed the
+/// `namespace-wave-admission` phase for changes that never touched either module. Removed by its own
+/// trigger, restoring the empty roster this ledger describes -- and empty is still not permissive.
+/// Same shape as the sixth dissolution (gunbc#9748), which retired 58 A1-R relocation rows on the
+/// same evidence -- stale on every open PR, green on every main push -- and left the roster empty.
+/// One row instead of 58 is the only difference; the rule and the trigger are identical.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
