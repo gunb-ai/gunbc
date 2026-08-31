@@ -576,8 +576,7 @@ type ObservedCopyWork {
   copy_on_write_materializations: CopyWorkDimension
 }
 
-data copy_work_dimension_unavailable_cause: String =
-  "no test-workspace transport for this dimension: the counting allocator observes allocation operations and bytes only, and planting per-clone counters would require hooks in production carriers"
+data copy_work_dimension_unavailable_cause: String = "no test-workspace transport for this dimension: the counting allocator observes allocation operations and bytes only, and planting per-clone counters would require hooks in production carriers"
 
 fn observed_copy_work_from_allocator(alloc_ops: Int, alloc_bytes: Int) -> ObservedCopyWork {
   ObservedCopyWork {

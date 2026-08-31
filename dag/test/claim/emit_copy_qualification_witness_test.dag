@@ -23,6 +23,11 @@ import gunbc.emit_copy_qualification {
   QualificationRefusedExcessCopy, QualificationRefusedRedundantClone,
   CloneNecessary, CloneNecessityUnjudgeable
 }
+import gunbc.witness_floor_workflow {
+  emit_copy_qualification_capability_closure_holds,
+  emit_copy_qualification_battery_job,
+  emit_copy_qualification_run_script
+}
 import gunbc.emit_copy_qualification_fixture_gen {
   CleanSubject, PlantCopiedAccumulator, DisconnectCounter, PlantHiddenDeepCopy,
   PlantRedundantShareClone, PlantRedundantDeepClone,
@@ -393,4 +398,25 @@ test fn ecq_shard_driver_names_every_shard_case_holds() -> Bool {
 // more than one piece.
 fn string_contains_marker(haystack: String, marker: String) -> Bool {
   (split(s: haystack, delimiter: marker) |> count) > 1
+}
+
+// ── The inert workflow job (authored emission; activation is ROOT-N's, not this lane's) ──────
+
+test fn ecq_battery_job_capability_closure_holds() -> Bool {
+  emit_copy_qualification_capability_closure_holds()
+}
+
+test fn ecq_battery_job_is_emitted_inert_holds() -> Bool {
+  let job = emit_copy_qualification_battery_job()
+  match job.if_condition {
+    Present { value: cond } => cond == "false" && job.id == "emit-copy-qualification-battery"
+    Absent => false
+  }
+}
+
+test fn ecq_battery_job_runs_the_wet_entry_holds() -> Bool {
+  string_contains_marker(
+    haystack: emit_copy_qualification_run_script(),
+    marker: "dag/test/claim/emit_copy_qualification_wet_test.dag"
+  )
 }

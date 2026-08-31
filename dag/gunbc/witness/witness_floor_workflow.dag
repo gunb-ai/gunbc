@@ -1363,6 +1363,102 @@ fn fabric_evidence_job() -> Job {
   }
 }
 
+// ── EMIT-COST-QUAL-0 battery job (AUTHORED INERT — activation is not this lane's to take) ────
+//
+// The wet copy/share qualification battery (test.claim.emit_copy_qualification_wet_test over
+// tools.emit_copy_qualification_transport): per carrier shard, production `gunbc compile` of the
+// generated fixture, clippy with the clone lint armed machine-readably, one cargo build, one
+// serial runner with per-case allocator windows, the interpreted driver, and the typed
+// qualification join — plus the five instrument-falsifier mutants. This job is the battery's
+// executing consumer once activated; it reruns on every push/PR like the other lanes
+// (UNCONDITIONED by design: change-conditioning without the floor's own selection machinery
+// would be a hand-rolled second path — a follow-up proposal, not an if-expression here).
+//
+// WHY if_condition IS "false": ROOT-N division ruling 2026-08-31 — EMIT-COST-QUAL-0 is
+// model-ahead evidence; enrollment/activation happens only when the operator allocates the one
+// activation slot (held by ROOT-N for #9769 -> ROOT-1 -> DEMAND-0 -> DEMAND-1 -> ROOT-2).
+// Lifting the literal "false" IS the activation edit; nothing else changes. Until then the job
+// renders in the emitted workflow as permanently skipped — visible, costless, and not a gate.
+data emit_copy_qualification_job_id: String = "emit-copy-qualification-battery"
+
+data emit_copy_qualification_inert_standing: DissolutionCondition = unbound_dissolution(description: "emit-copy-qualification-battery ships if_condition 'false' under the ROOT-N division ruling 2026-08-31 (model-ahead evidence; one activation token, held for the #9769 -> ROOT-1 -> DEMAND-0 -> DEMAND-1 -> ROOT-2 chain). DISSOLVES WHEN the operator allocates the activation slot to this battery: the closing edit deletes the 'false' condition (and this row) so the job becomes an ordinary always-on lane; its measured first-run receipt then prices any follow-up conditioning proposal.")
+
+// Declared budget for the whole job, minutes. The shard transactions share the repo target dir,
+// so the first shard pays the fixture-crate dependency build and later shards are incremental;
+// the bound is provisional until the first activated run's own receipt replaces it.
+data emit_copy_qualification_timeout_minutes: Int = 60
+
+data emit_copy_qualification_required_bins: List<String> = ["gunbc", "claim_batch"]
+
+fn emit_copy_qualification_build_script() -> String {
+  repo_self_build_command(bins: emit_copy_qualification_required_bins)
+}
+
+fn emit_copy_qualification_run_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "cd \"$ROOT\"\n",
+      "target/release/claim_batch --wet --roster-from-discovery --source-root dag --source-root src/v2 --entry dag/test/claim/emit_copy_qualification_wet_test.dag\n"
+    )
+  )
+}
+
+fn emit_copy_qualification_run_step() -> Step {
+  RunStep {
+    name: Present { value: "EMIT-COST-QUAL-0: wet copy/share qualification battery" },
+    id: none,
+    run: emit_copy_qualification_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn emit_copy_qualification_bound_steps() -> List<WitnessFloorBoundStep> {
+  append(
+    prepared_bound_steps(build_script: emit_copy_qualification_build_script()),
+    items: [
+      WitnessFloorBoundStep {
+        step: emit_copy_qualification_run_step(),
+        role: consumes_only(capabilities: [CargoCapability]),
+        step_name: "EMIT-COST-QUAL-0: wet copy/share qualification battery",
+      },
+    ],
+  )
+}
+
+fn emit_copy_qualification_capability_closure_holds() -> Bool {
+  capability_closure_is_closed(
+    v: workflow_job_capability_closure(
+      steps: list_map(
+        xs: emit_copy_qualification_bound_steps(),
+        f: fn(b) { CapabilityAnnotatedStep { step_name: b.step_name, role: b.role } },
+      )
+    ),
+  )
+}
+
+fn emit_copy_qualification_battery_job() -> Job {
+  Job {
+    id: emit_copy_qualification_job_id,
+    name: none,
+    runner: gunbc_ci_selected_runner_spec(),
+    steps: list_map(xs: emit_copy_qualification_bound_steps(), f: fn(b) { b.step }),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: Present { value: "false" },
+    timeout_minutes: emit_copy_qualification_timeout_minutes,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
 fn build_lane_job() -> Job {
   Job {
     id: build_lane_job_id,
@@ -1739,7 +1835,7 @@ data witness_floor_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), fabric_evidence_job(), required_lanes_aggregate_job()]
+  jobs: [build_lane_job(), witness_floor_job(), rust_unit_tests_job(), fabric_evidence_job(), emit_copy_qualification_battery_job(), required_lanes_aggregate_job()]
 }
 
 // THE CLOSURE HAS A PRODUCTION CONSUMER, which is the difference between a check and a claim. A

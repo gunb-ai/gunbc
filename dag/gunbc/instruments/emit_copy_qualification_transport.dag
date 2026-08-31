@@ -1,0 +1,635 @@
+module tools.emit_copy_qualification_transport
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io
+import extdeps.cargo_build
+import extdeps.git
+import extdeps.git.inspect
+import extdeps.gunbc
+import extdeps.languages.json.parse {
+  parse_json_document, JsonDocumentParsed, JsonDocumentUnreadable,
+  json_object_unique_member, JsonMemberFound, JsonMemberAbsent, JsonMemberDuplicated,
+  JsonMemberNotAnObject
+}
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject
+}
+import std.types { Bool, Int, List, String }
+import tools.host_prelude { WitnessBin, witness_bin, witness_bin_ensure_built_typed, WitnessBinReady, WitnessBinRefused, witness_bin_release_path }
+import gunbc.emit_copy_qualification {
+  CarrierRealization, PersistentSequenceCarrier, EmitCopyQualificationCaseId, EmitCopyQualificationCaseRow,
+  case_slug, carrier_realization_slug,
+  BehaviorAgreement, BehaviorAgreed, BehaviorDisagreed, BehaviorUnavailable,
+  StaticCloneObservation, NoRedundantCloneReported, RedundantCloneReported, StaticObservationUnavailable,
+  RuntimeObservation, RuntimeRowsObserved, RuntimeObservationUnavailable,
+  AllocObservationRow, EmitCopyQualification, judge_case, qualification_is_qualified,
+  qualification_slug
+}
+import gunbc.emit_copy_qualification_fixture_gen {
+  MutantPlan, CleanSubject, DisconnectCounter, mutant_plan_slug,
+  fixture_module_text, fixture_module_name, runner_main_text,
+  shard_case_rows, shard_cardinalities, shard_runner_bin_name
+}
+
+// EMIT-COST-QUAL-0 wet transport: the one transaction that takes a carrier shard from generated
+// .dag source through the PRODUCTION emission door (the real `gunbc compile` binary — never a
+// fixture-side emitter) into a temp crate under target/, arms clippy's clone lint
+// machine-readably, builds once, executes every case identity in one serial runner with per-case
+// counter windows, runs the same driver interpreted, and joins the observations into the typed
+// EmitCopyQualification verdict per case. Every failure arm maps to per-case typed refusals
+// (CaseNotExecutable / ObservationUnavailable) — an execution-blocked case is a refusal row,
+// never an expected-red and never a silent drop from the denominator.
+//
+// The fixture root lives UNDER the workspace root (target/emit_copy_qual/...): the compile door
+// refuses entry paths outside the workspace by design (entry-admission), and its own diagnostic
+// names this pattern — write the fixture under a root, delete it afterwards.
+
+data ecq_lint_name: String = "clippy::redundant_clone"
+
+type ShardArtifacts {
+  base: String
+  src_dag_dir: String
+  fixture_path: String
+  crate_dir: String
+  manifest_path: String
+  emitted_module_path: String
+  runner_source_path: String
+}
+
+fn shard_slug(c: CarrierRealization, mutant: MutantPlan) -> String {
+  concat(carrier_realization_slug(c: c), concat("_", mutant_plan_slug(m: mutant)))
+}
+
+fn shard_artifacts(root: String, c: CarrierRealization, mutant: MutantPlan) -> ShardArtifacts {
+  let base = concat(root, concat("/target/emit_copy_qual/", shard_slug(c: c, mutant: mutant)))
+  ShardArtifacts {
+    base: base,
+    src_dag_dir: concat(base, "/src_dag"),
+    fixture_path: concat(base, concat("/src_dag/emit_copy_", concat(carrier_realization_slug(c: c), ".dag"))),
+    crate_dir: concat(base, "/crate"),
+    manifest_path: concat(base, "/crate/Cargo.toml"),
+    emitted_module_path: concat(base, concat("/crate/src/test_fixture_emit_copy_", concat(carrier_realization_slug(c: c), ".rs"))),
+    runner_source_path: concat(base, concat("/crate/src/bin/", concat(shard_runner_bin_name(c: c, mutant: mutant), ".rs")))
+  }
+}
+
+// The compile door emits a COMPLETE crate (its own Cargo.toml, lib.rs, main.rs, v1_rt.rs and the
+// module file) — the transport adds only the runner bin and a `[workspace]` isolation line, so
+// the clippy subject stays the pristine emitted fixture plus the declared test transport. The
+// crate name is read from the emitted manifest, never predicted.
+fn manifest_crate_name(manifest: String) -> String? {
+  let name_line = split(s: manifest, delimiter: "\n")
+    |> filter(l => starts_with(s: l.trim(), prefix: "name"))
+    |> first
+  match name_line {
+    Absent => none
+    Present { value: l } =>
+      match split(s: l, delimiter: "\"") |> skip(1) |> first {
+        Absent => none
+        Present { value: raw } =>
+          Present { value: split(s: raw, delimiter: "-") |> fold(init: "", f: (acc, piece) =>
+            if acc == "" { piece } else { concat(acc, concat("_", piece)) }) }
+      }
+  }
+}
+
+fn manifest_isolated(manifest: String) -> String {
+  if (split(s: manifest, delimiter: "[workspace]") |> count) > 1 { manifest }
+  else { concat(manifest, "\n[workspace]\n") }
+}
+
+// ── Line parsing (runner + interpreted driver share one grammar) ─────────────────────────────
+
+type CaseLineParse
+  = CaseResultLine { slug: String, cardinality: Int, result: Int }
+  | CaseObservationLine { slug: String, cardinality: Int, result: Int, alloc_ops: Int, alloc_bytes: Int }
+  | CaseNondeterministicLine { slug: String, cardinality: Int }
+  | NotACaseLine
+
+fn field_after(line: String, key: String) -> String? {
+  let pieces = split(s: line, delimiter: concat(key, "="))
+  match pieces |> skip(1) |> first {
+    Present { value: rest } =>
+      match split(s: rest, delimiter: " ") |> first {
+        Present { value: word } => Present { value: word }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn parse_case_line(line: String) -> CaseLineParse {
+  if !starts_with(s: line, prefix: "case=") {
+    NotACaseLine
+  } else {
+    match field_after(line: line, key: "case") {
+      Absent => NotACaseLine
+      Present { value: slug } =>
+        match field_after(line: line, key: "n") {
+          Absent => NotACaseLine
+          Present { value: n_text } =>
+            match parse_int(s: n_text) {
+              Absent => NotACaseLine
+              Present { value: n } =>
+                if (split(s: line, delimiter: "observation=nondeterministic") |> count) > 1 {
+                  CaseNondeterministicLine { slug: slug, cardinality: n }
+                } else {
+                  match field_after(line: line, key: "result") {
+                    Absent => NotACaseLine
+                    Present { value: r_text } =>
+                      match parse_int(s: r_text) {
+                        Absent => NotACaseLine
+                        Present { value: r } =>
+                          match field_after(line: line, key: "alloc_ops") {
+                            Absent => CaseResultLine { slug: slug, cardinality: n, result: r }
+                            Present { value: o_text } =>
+                              match parse_int(s: o_text) {
+                                Absent => NotACaseLine
+                                Present { value: o } =>
+                                  match field_after(line: line, key: "alloc_bytes") {
+                                    Absent => NotACaseLine
+                                    Present { value: b_text } =>
+                                      match parse_int(s: b_text) {
+                                        Absent => NotACaseLine
+                                        Present { value: b } =>
+                                          CaseObservationLine { slug: slug, cardinality: n, result: r, alloc_ops: o, alloc_bytes: b }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+                }
+            }
+        }
+    }
+  }
+}
+
+fn parsed_case_lines(stdout: String) -> List<CaseLineParse> {
+  split(s: stdout, delimiter: "\n")
+    |> map(l => parse_case_line(line: l))
+    |> filter(p => match p { NotACaseLine => false, _ => true })
+}
+
+fn lines_for_slug(lines: List<CaseLineParse>, slug: String) -> List<CaseLineParse> {
+  lines |> filter(p => match p {
+    CaseResultLine { slug: s, cardinality: _, result: _ } => s == slug
+    CaseObservationLine { slug: s, cardinality: _, result: _, alloc_ops: _, alloc_bytes: _ } => s == slug
+    CaseNondeterministicLine { slug: s, cardinality: _ } => s == slug
+    NotACaseLine => false
+  })
+}
+
+fn result_at(lines: List<CaseLineParse>, cardinality: Int) -> Int? {
+  let hit = lines |> filter(p => match p {
+    CaseResultLine { slug: _, cardinality: n, result: _ } => n == cardinality
+    CaseObservationLine { slug: _, cardinality: n, result: _, alloc_ops: _, alloc_bytes: _ } => n == cardinality
+    _ => false
+  }) |> first
+  match hit {
+    Present { value: CaseResultLine { slug: _, cardinality: _, result: r } } => Present { value: r }
+    Present { value: CaseObservationLine { slug: _, cardinality: _, result: r, alloc_ops: _, alloc_bytes: _ } } => Present { value: r }
+    _ => none
+  }
+}
+
+fn observation_at(lines: List<CaseLineParse>, cardinality: Int) -> CaseLineParse {
+  let hit = lines |> filter(p => match p {
+    CaseObservationLine { slug: _, cardinality: n, result: _, alloc_ops: _, alloc_bytes: _ } => n == cardinality
+    CaseNondeterministicLine { slug: _, cardinality: n } => n == cardinality
+    _ => false
+  }) |> first
+  match hit {
+    Present { value: p } => p
+    Absent => NotACaseLine
+  }
+}
+
+// ── Clippy JSON reading (machine-readable static arm; identity never requires an E-code) ─────
+
+type ClippyFinding {
+  file: String
+  line: Int
+  code: String
+  message: String
+}
+
+fn json_member(v: JsonValue, key: String) -> JsonValue {
+  match json_object_unique_member(v: v, key: key) {
+    JsonMemberFound { value: m } => m
+    _ => JsonNull
+  }
+}
+
+fn json_string_of(v: JsonValue) -> String {
+  match v {
+    JsonString { value: s } => s
+    _ => ""
+  }
+}
+
+fn json_int_of(v: JsonValue) -> Int {
+  match v {
+    JsonNumber { lexeme: l } =>
+      match parse_int(s: l as String) {
+        Present { value: n } => n
+        Absent => 0 - 1
+      }
+    _ => 0 - 1
+  }
+}
+
+// A diagnostic's lint identity: the code member when present (clippy lints carry
+// "clippy::<name>"), else the message text itself — codeless diagnostics stay in the
+// denominator rather than being filtered on code presence.
+fn clippy_findings_from_stdout(stdout: String) -> List<ClippyFinding> {
+  split(s: stdout, delimiter: "\n")
+    |> filter(l => (split(s: l, delimiter: "\"compiler-message\"") |> count) > 1)
+    |> flat_map(l =>
+      match parse_json_document(s: l) {
+        JsonDocumentUnreadable { gap: _ } => []
+        JsonDocumentParsed { value: doc } =>
+          let message = json_member(v: doc, key: "message")
+          let level = json_string_of(v: json_member(v: message, key: "level"))
+          if level != "warning" && level != "error" {
+            []
+          } else {
+            let code_obj = json_member(v: message, key: "code")
+            let code = json_string_of(v: json_member(v: code_obj, key: "code"))
+            let text = json_string_of(v: json_member(v: message, key: "message"))
+            let identity = if code == "" { text } else { code }
+            let spans = json_member(v: message, key: "spans")
+            match spans {
+              JsonArray { elements: es } =>
+                match es |> first {
+                  Present { value: sp } =>
+                    [ClippyFinding {
+                      file: json_string_of(v: json_member(v: sp, key: "file_name")),
+                      line: json_int_of(v: json_member(v: sp, key: "line_start")),
+                      code: identity,
+                      message: text
+                    }]
+                  Absent => []
+                }
+              _ => []
+            }
+          }
+      }
+    )
+}
+
+fn finding_is_clone_lint(f: ClippyFinding) -> Bool {
+  (split(s: f.code, delimiter: "redundant_clone") |> count) > 1
+    || (split(s: f.message, delimiter: "redundant clone") |> count) > 1
+}
+
+// Attribute a finding to a case by anchoring on the generated sources: a finding lands on the
+// case whose subject-fn anchor is the closest one at or above the finding's line, in whichever
+// generated file the span names.
+type CaseAnchor {
+  line: Int
+  slug: String
+}
+
+fn anchors_in_text(text: String, marker_prefix: String, rows: List<EmitCopyQualificationCaseRow>) -> List<CaseAnchor> {
+  let lines = split(s: text, delimiter: "\n")
+  let numbered = lines |> enumerate
+  numbered |> flat_map(p =>
+    rows |> flat_map(r =>
+      let slug = case_slug(id: r.id)
+      if (split(s: p.second, delimiter: concat(marker_prefix, slug)) |> count) > 1 {
+        [CaseAnchor { line: p.first + 1, slug: slug }]
+      } else {
+        []
+      }
+    )
+  )
+}
+
+fn anchor_slug_for_line(anchors: List<CaseAnchor>, line: Int) -> String? {
+  let best = anchors
+    |> filter(a => a.line <= line)
+    |> fold(init: none, f: (acc, a) =>
+      match acc {
+        Absent => Present { value: a }
+        Present { value: b } => if a.line > b.line { Present { value: a } } else { acc }
+      }
+    )
+  match best {
+    Present { value: a } => Present { value: a.slug }
+    Absent => none
+  }
+}
+
+fn path_ends_with(path: String, suffix: String) -> Bool {
+  let pieces = split(s: path, delimiter: suffix)
+  let n = pieces |> count
+  if n < 2 { false } else {
+    match pieces |> skip(n - 1) |> first {
+      Present { value: tail } => tail == ""
+      Absent => false
+    }
+  }
+}
+
+fn static_observation_for_case(
+  findings: List<ClippyFinding>,
+  emitted_anchors: List<CaseAnchor>,
+  runner_anchors: List<CaseAnchor>,
+  emitted_module_suffix: String,
+  runner_suffix: String,
+  slug: String
+) -> StaticCloneObservation {
+  let hit = findings
+    |> filter(f => finding_is_clone_lint(f: f))
+    |> filter(f =>
+      let anchors = if path_ends_with(path: f.file, suffix: emitted_module_suffix) { emitted_anchors }
+        else { if path_ends_with(path: f.file, suffix: runner_suffix) { runner_anchors } else { [] } }
+      match anchor_slug_for_line(anchors: anchors, line: f.line) {
+        Present { value: s } => s == slug
+        Absent => false
+      }
+    )
+    |> first
+  match hit {
+    Present { value: f } =>
+      RedundantCloneReported { lint: f.code, emitted_item: f.file, line: f.line, message: f.message }
+    Absent => NoRedundantCloneReported
+  }
+}
+
+// ── Per-case join inputs from the two executions ─────────────────────────────────────────────
+
+fn behavior_for_case(
+  interp_lines: List<CaseLineParse>,
+  native_lines: List<CaseLineParse>,
+  id: EmitCopyQualificationCaseId
+) -> BehaviorAgreement {
+  let slug = case_slug(id: id)
+  let i_lines = lines_for_slug(lines: interp_lines, slug: slug)
+  let n_lines = lines_for_slug(lines: native_lines, slug: slug)
+  shard_cardinalities(id: id) |> fold(init: BehaviorAgreed, f: (acc, n) =>
+    match acc {
+      BehaviorAgreed =>
+        match result_at(lines: i_lines, cardinality: n) {
+          Absent => BehaviorUnavailable { phase: "interpreted_driver", detail: concat("no interpreted result line for cardinality ", to_string(n)) }
+          Present { value: iv } =>
+            match result_at(lines: n_lines, cardinality: n) {
+              Absent => BehaviorUnavailable { phase: "native_runner", detail: concat("no native result line for cardinality ", to_string(n)) }
+              Present { value: nv } =>
+                if iv == nv { BehaviorAgreed }
+                else {
+                  BehaviorDisagreed {
+                    expected_line: concat("interpreted result=", to_string(iv)),
+                    observed_line: concat("native result=", to_string(nv))
+                  }
+                }
+            }
+        }
+      _ => acc
+    }
+  )
+}
+
+fn runtime_for_case(native_lines: List<CaseLineParse>, id: EmitCopyQualificationCaseId) -> RuntimeObservation {
+  let slug = case_slug(id: id)
+  let n_lines = lines_for_slug(lines: native_lines, slug: slug)
+  let gathered = shard_cardinalities(id: id) |> fold(
+    init: RuntimeRowsObserved { rows: [] },
+    f: (acc, n) =>
+      match acc {
+        RuntimeObservationUnavailable { cause: _ } => acc
+        RuntimeRowsObserved { rows: rows } =>
+          match observation_at(lines: n_lines, cardinality: n) {
+            CaseObservationLine { slug: _, cardinality: k, result: _, alloc_ops: o, alloc_bytes: b } =>
+              RuntimeRowsObserved { rows: list_push(rows, AllocObservationRow { cardinality: k, allocation_operations: o, allocated_bytes: b }) }
+            CaseNondeterministicLine { slug: _, cardinality: k } =>
+              RuntimeObservationUnavailable { cause: concat("nondeterministic repeats at cardinality ", to_string(k)) }
+            _ =>
+              RuntimeObservationUnavailable { cause: concat("no native observation line for cardinality ", to_string(n)) }
+          }
+      }
+  )
+  gathered
+}
+
+// ── The shard transaction ────────────────────────────────────────────────────────────────────
+
+type ShardRefusal {
+  phase: String
+  detail: String
+}
+
+fn refuse_all(rows: List<EmitCopyQualificationCaseRow>, r: ShardRefusal) -> List<EmitCopyQualification> {
+  rows |> map(row => judge_case(
+    id: row.id,
+    behavior: BehaviorUnavailable { phase: r.phase, detail: r.detail },
+    static_obs: StaticObservationUnavailable { cause: r.phase },
+    runtime_obs: RuntimeObservationUnavailable { cause: r.phase }
+  ))
+}
+
+fn stderr_tail(s: String) -> String {
+  let lines = split(s: s, delimiter: "\n")
+  let n = lines |> count
+  let tail = if n > 8 { lines |> skip(n - 8) } else { lines }
+  tail |> fold(init: "", f: (acc, l) => if acc == "" { l } else { concat(acc, concat(" | ", l)) })
+}
+
+fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) -> List<EmitCopyQualification> {
+  let rows = shard_case_rows(carrier: c)
+  let top = git.Inspect.Toplevel()
+  let root = top.path.trim()
+  match witness_bin_ensure_built_typed(root: root, bin: witness_bin(var_name: "GUNBC_BIN", bin_name: "gunbc")) {
+    WitnessBinRefused { bin_name: _, path: p, reason: _ } =>
+      refuse_all(rows: rows, r: ShardRefusal { phase: "toolchain", detail: concat("gunbc binary not ready at ", p) })
+    WitnessBinReady { path: gunbc_path } =>
+      let a = shard_artifacts(root: root, c: c, mutant: mutant)
+      let cleaned = shell.Remove.RecursiveForce(path: a.base)
+      let mk1 = shell.Mkdir.Parents(path: a.src_dag_dir)
+      let mk2 = shell.Mkdir.Parents(path: concat(a.crate_dir, "/src/bin"))
+      if !(cleaned.success && mk1.success && mk2.success) {
+        refuse_all(rows: rows, r: ShardRefusal { phase: "workspace_setup", detail: a.base })
+      } else {
+        let wrote_fixture = Filesystem.Write(path: a.fixture_path, content: fixture_module_text(c: c, mutant: mutant))
+        if !wrote_fixture.success {
+          refuse_all(rows: rows, r: ShardRefusal { phase: "fixture_write", detail: a.base })
+        } else {
+          let emitted = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
+            "compile", "--source-root", a.src_dag_dir, "--entry", a.fixture_path,
+            "--output-dir", a.crate_dir, "--target", "rust"
+          ])
+          let emitted_manifest = Filesystem.Read(path: a.manifest_path)
+          if !(emitted.success && emitted_manifest.success) {
+            refuse_all(rows: rows, r: ShardRefusal { phase: "emission", detail: stderr_tail(s: emitted.stderr) })
+          } else {
+            match manifest_crate_name(manifest: emitted_manifest.content) {
+              Absent =>
+                refuse_all(rows: rows, r: ShardRefusal { phase: "emission", detail: "emitted Cargo.toml carries no readable package name" })
+              Present { value: crate_name } =>
+                let runner_text = runner_main_text(
+                  module_path: concat(crate_name, concat("::test_fixture_emit_copy_", carrier_realization_slug(c: c))),
+                  c: c, mutant: mutant, result_is_shared: false)
+                let isolated = Filesystem.Write(path: a.manifest_path, content: manifest_isolated(manifest: emitted_manifest.content))
+                let wrote_runner = Filesystem.Write(path: a.runner_source_path, content: runner_text)
+                if !(isolated.success && wrote_runner.success) {
+                  refuse_all(rows: rows, r: ShardRefusal { phase: "fixture_write", detail: a.runner_source_path })
+                } else {
+                  let clippy = cargo.Build.Clippy(
+                    extra_args: ["--release", "--manifest-path", a.manifest_path, "--target-dir", concat(root, "/target"), "--message-format=json"],
+                    lint_args: ["-W", ecq_lint_name]
+                  )
+                  let build = cargo.Build.BuildManifest(
+                    workdir: root,
+                    manifest_path: a.manifest_path,
+                    target_dir: concat(root, "/target"),
+                    extra_args: ["--release", "--bin", shard_runner_bin_name(c: c, mutant: mutant)]
+                  )
+                  if !build.success {
+                    refuse_all(rows: rows, r: ShardRefusal { phase: "cargo_build", detail: stderr_tail(s: build.stderr) })
+                  } else {
+                    let runner_bin = concat(root, concat("/target/release/", shard_runner_bin_name(c: c, mutant: mutant)))
+                    let native = gunbc.WitnessBin.Run(workdir: root, bin_path: runner_bin, args: [])
+                    let interp = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
+                      "run", "--source-root", a.src_dag_dir, "--entry", a.fixture_path, "--function", "ecq_driver"
+                    ])
+                    let emitted_module = Filesystem.Read(path: a.emitted_module_path)
+                    let verdicts = judge_shard(
+                      rows: rows,
+                      runner_suffix: concat("/src/bin/", concat(shard_runner_bin_name(c: c, mutant: mutant), ".rs")),
+                      native_success: native.success, native_stdout: native.stdout,
+                      interp_success: interp.success, interp_stdout: interp.stdout, interp_stderr: interp.stderr,
+                      clippy_success: clippy.success, clippy_stdout: clippy.stdout,
+                      emitted_module_text: emitted_module.content,
+                      runner_text: runner_text
+                    )
+                    let swept = shell.Remove.RecursiveForce(path: a.base)
+                    if swept.success { verdicts } else { verdicts }
+                  }
+                }
+            }
+          }
+        }
+      }
+  }
+}
+
+fn judge_shard(
+  rows: List<EmitCopyQualificationCaseRow>,
+  runner_suffix: String,
+  native_success: Bool,
+  native_stdout: String,
+  interp_success: Bool,
+  interp_stdout: String,
+  interp_stderr: String,
+  clippy_success: Bool,
+  clippy_stdout: String,
+  emitted_module_text: String,
+  runner_text: String
+) -> List<EmitCopyQualification> {
+  let counter_disconnected = (split(s: native_stdout, delimiter: "counter=disconnected") |> count) > 1
+  let native_lines = parsed_case_lines(stdout: native_stdout)
+  let interp_lines = parsed_case_lines(stdout: interp_stdout)
+  let findings = clippy_findings_from_stdout(stdout: clippy_stdout)
+  let emitted_anchors = anchors_in_text(text: emitted_module_text, marker_prefix: "ecq_subject_", rows: rows)
+  let runner_anchors = anchors_in_text(text: runner_text, marker_prefix: "case=", rows: rows)
+  rows |> map(row =>
+    let slug = case_slug(id: row.id)
+    let static_obs = if !clippy_success {
+      StaticObservationUnavailable { cause: "clippy invocation refused" }
+    } else {
+      static_observation_for_case(
+        findings: findings,
+        emitted_anchors: emitted_anchors,
+        runner_anchors: runner_anchors,
+        emitted_module_suffix: ".rs",
+        runner_suffix: runner_suffix,
+        slug: slug
+      )
+    }
+    let behavior = if !interp_success {
+      BehaviorUnavailable { phase: "interpreted_driver", detail: stderr_tail(s: interp_stderr) }
+    } else {
+      behavior_for_case(interp_lines: interp_lines, native_lines: native_lines, id: row.id)
+    }
+    let runtime_obs = if counter_disconnected {
+      RuntimeObservationUnavailable { cause: "counter=disconnected" }
+    } else {
+      if !native_success {
+        RuntimeObservationUnavailable { cause: "native runner exited nonzero" }
+      } else {
+        runtime_for_case(native_lines: native_lines, id: row.id)
+      }
+    }
+    judge_case(id: row.id, behavior: behavior, static_obs: static_obs, runtime_obs: runtime_obs)
+  )
+}
+
+// ── Receipt rendering (instrument-named lines; numbers live in the run, not in prose) ────────
+
+fn verdict_receipt_line(q: EmitCopyQualification) -> String {
+  match q {
+    Qualified { case: id, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } =>
+      concat("ecq case=", concat(case_slug(id: id), " verdict=qualified"))
+    QualificationRefusedBehaviorMismatch { case: id, expected_line: e, observed_line: o } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_behavior_mismatch ", concat(e, concat(" ", o)))))
+    QualificationRefusedCaseNotExecutable { case: id, phase: p, detail: d } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_case_not_executable phase=", concat(p, concat(" detail=", d)))))
+    QualificationRefusedCostOracleUnavailable { case: id, unresolved_fact: f } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_cost_oracle_unavailable fact=", f)))
+    QualificationRefusedObservationUnavailable { case: id, cause: cz } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_observation_unavailable cause=", cz)))
+    QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_excess_copy n=", concat(to_string(n), concat(" observed_bytes=", concat(to_string(ob), concat(" allowed_bytes=", to_string(ab))))))))
+    QualificationRefusedRedundantClone { case: id, lint: l, line: n } =>
+      concat("ecq case=", concat(case_slug(id: id), concat(" verdict=refused_redundant_clone lint=", concat(l, concat(" line=", to_string(n))))))
+  }
+}
+
+fn shard_receipt(c: CarrierRealization, mutant: MutantPlan) -> String {
+  let verdicts = run_emit_copy_qualification_shard(c: c, mutant: mutant)
+  let body = verdicts |> fold(init: "", f: (acc, q) =>
+    let line = verdict_receipt_line(q: q)
+    if acc == "" { line } else { concat(acc, concat("\n", line)) }
+  )
+  let qualified = verdicts |> filter(q => qualification_is_qualified(q: q)) |> count
+  let total = verdicts |> count
+  concat("ecq shard=", concat(shard_slug(c: c, mutant: mutant),
+  concat(" qualified=", concat(to_string(qualified),
+  concat(" total=", concat(to_string(total), concat("\n", body)))))))
+}
+
+// Emission-only grounding receipt for the DeepCloningSequence inapplicability derivation: emit
+// the persistent-sequence shard fixture through the production door and read the emitted crate
+// root for the structural-sharing sequence alias. No cargo runs here — the receipt is about
+// what the emitter WROTE, so reading the written bytes is the whole observation.
+fn emitted_prelude_grounds_structural_sequence() -> Bool {
+  let top = git.Inspect.Toplevel()
+  let root = top.path.trim()
+  match witness_bin_ensure_built_typed(root: root, bin: witness_bin(var_name: "GUNBC_BIN", bin_name: "gunbc")) {
+    WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
+    WitnessBinReady { path: gunbc_path } =>
+      let base = concat(root, "/target/emit_copy_qual/prelude_grounding")
+      let cleaned = shell.Remove.RecursiveForce(path: base)
+      let mk = shell.Mkdir.Parents(path: concat(base, "/src_dag"))
+      let fixture_path = concat(base, "/src_dag/emit_copy_persistent_sequence.dag")
+      let wrote = Filesystem.Write(path: fixture_path, content: fixture_module_text(c: PersistentSequenceCarrier, mutant: CleanSubject))
+      let emitted = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
+        "compile", "--source-root", concat(base, "/src_dag"), "--entry", fixture_path,
+        "--output-dir", concat(base, "/out"), "--target", "rust"
+      ])
+      let lib = Filesystem.Read(path: concat(base, "/out/lib.rs"))
+      let swept = shell.Remove.RecursiveForce(path: base)
+      cleaned.success && mk.success && wrote.success && emitted.success && lib.success && swept.success
+        && (split(s: lib.content, delimiter: "im::") |> count) > 1
+  }
+}
+
+fn shard_all_qualified(verdicts: List<EmitCopyQualification>) -> Bool {
+  (verdicts |> count) > 0 && verdicts |> all(q => qualification_is_qualified(q: q))
+}
+
+fn verdicts_all_refuse_with(verdicts: List<EmitCopyQualification>, slug_expected: String) -> Bool {
+  (verdicts |> count) > 0 && verdicts |> all(q => qualification_slug(q: q) == slug_expected)
+}

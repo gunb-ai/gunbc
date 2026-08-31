@@ -400,11 +400,11 @@ fn fixture_module_text(c: CarrierRealization, mutant: MutantPlan) -> String {
 // `counter=disconnected` marker (the dead-counter precedent, applied as a control).
 data runner_repeat_count: Int = 3
 
-data runner_prelude_text: String = "use std::alloc::{GlobalAlloc, Layout, System};\nuse std::sync::atomic::{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n#[global_allocator]\nstatic ECQ_A: EcqCounting = EcqCounting;\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
+data runner_prelude_text: String = "use std::alloc::\{GlobalAlloc, Layout, System};\nuse std::sync::atomic::\{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n#[global_allocator]\nstatic ECQ_A: EcqCounting = EcqCounting;\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
 
 // The DisconnectCounter mutant omits the #[global_allocator] registration line — the named
 // transformation is this substitution, applied at generation.
-data runner_prelude_disconnected_text: String = "use std::alloc::{GlobalAlloc, Layout, System};\nuse std::sync::atomic::{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
+data runner_prelude_disconnected_text: String = "use std::alloc::\{GlobalAlloc, Layout, System};\nuse std::sync::atomic::\{AtomicU64, Ordering};\n\nstruct EcqCounting;\nstatic ECQ_ALLOC_OPS: AtomicU64 = AtomicU64::new(0);\nstatic ECQ_ALLOC_BYTES: AtomicU64 = AtomicU64::new(0);\nunsafe impl GlobalAlloc for EcqCounting {\n    unsafe fn alloc(&self, l: Layout) -> *mut u8 {\n        ECQ_ALLOC_OPS.fetch_add(1, Ordering::Relaxed);\n        ECQ_ALLOC_BYTES.fetch_add(l.size() as u64, Ordering::Relaxed);\n        System.alloc(l)\n    }\n    unsafe fn dealloc(&self, p: *mut u8, l: Layout) {\n        System.dealloc(p, l)\n    }\n}\n\nfn ecq_window<R, F: FnOnce() -> R>(f: F) -> (R, u64, u64) {\n    let o0 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b0 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    let r = f();\n    let o1 = ECQ_ALLOC_OPS.load(Ordering::Relaxed);\n    let b1 = ECQ_ALLOC_BYTES.load(Ordering::Relaxed);\n    (r, o1 - o0, b1 - b0)\n}\n"
 
 data runner_connectivity_control_text: String = "    let (_probe, co, cb) = ecq_window(|| {\n        let v = std::hint::black_box(vec![1u8; 4096]);\n        v.len() as i64\n    });\n    if co == 0 || cb < 4096 {\n        println!(\"counter=disconnected\");\n        std::process::exit(3);\n    }\n    println!(\"counter=connected\");\n"
 
@@ -451,8 +451,25 @@ fn runner_main_text(module_path: String, c: CarrierRealization, mutant: MutantPl
 // ── Shard crate manifest (path dependency on the seed crate for v1_rt, per the
 //    emitted-closure probe precedent; features forwarded so -D warnings stays green) ──────────
 
-fn shard_manifest_text(workspace_root: String, c: CarrierRealization) -> String {
-  concat("[package]\nname = \"emit_copy_qual_", concat(carrier_realization_slug(c: c),
-  concat("\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[[bin]]\nname = \"ecq_runner\"\npath = \"src/bin/ecq_runner.rs\"\n\n[dependencies]\nv1-compiler = { path = \"", concat(workspace_root,
-  "/src/v1/stage0\" }\n\n[features]\ntext_lookup_work_counter = []\ninterp_test_witness = []\ntest_hooks = []\n"))))
+fn shard_runner_bin_name(c: CarrierRealization, mutant: MutantPlan) -> String {
+  concat("ecq_runner_", concat(carrier_realization_slug(c: c), concat("_", mutant_plan_slug(m: mutant))))
+}
+
+fn shard_crate_name(c: CarrierRealization, mutant: MutantPlan) -> String {
+  concat("emit_copy_qual_", concat(carrier_realization_slug(c: c), concat("_", mutant_plan_slug(m: mutant))))
+}
+
+// The emitted fixture module's Rust module path inside the shard crate: the emitter renders
+// module dots as underscores. Confirmed against the production emission probe before enrollment;
+// the wet transport refuses (CaseNotExecutable at cargo_build) if the spelling drifts, so this
+// is a checked derivation, not a hope.
+fn shard_fixture_rust_module_path(c: CarrierRealization, mutant: MutantPlan) -> String {
+  concat(shard_crate_name(c: c, mutant: mutant), concat("::test_fixture_emit_copy_", carrier_realization_slug(c: c)))
+}
+
+fn shard_manifest_text(workspace_root: String, c: CarrierRealization, mutant: MutantPlan) -> String {
+  concat("[package]\nname = \"", concat(shard_crate_name(c: c, mutant: mutant),
+  concat("\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[lib]\npath = \"src/lib.rs\"\n\n[[bin]]\nname = \"", concat(shard_runner_bin_name(c: c, mutant: mutant),
+  concat("\"\npath = \"src/bin/ecq_runner.rs\"\n\n[dependencies]\nv1-compiler = { path = \"", concat(workspace_root,
+  "/src/v1/stage0\" }\n\n[features]\ntext_lookup_work_counter = []\ninterp_test_witness = []\ntest_hooks = []\n"))))))
 }
