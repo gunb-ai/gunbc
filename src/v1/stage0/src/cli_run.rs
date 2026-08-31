@@ -156,12 +156,8 @@ pub use materialization_provider_consumer::{
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
 use crate::resolved_graph_cache::{
-    closure_content_digest, faithful_probe_unavailable_gap,
-    lookup_verified_probe as cross_process_lookup_verified_probe,
-    prepare_resolved_graph_parts as cross_process_prepare, probe as cross_process_probe,
-    resolved_graph_cache_root_from_env, subject_digest_for_closure, supports_faithful_probe,
-    transform_content_digest, write_prepared as cross_process_write_prepared, CacheLookupResult,
-    CacheProbeResult, CacheRejectReason, CachedResolvedGraph,
+    resolved_graph_cache_root_from_env, subject_digest_for_closure, transform_content_digest,
+    CacheRejectReason, CachedResolvedGraph,
 };
 use crate::std_content_hash::fnv1a64_structural_hex_digest;
 use crate::std_interface_summary::{module_key, typed_module_key};
@@ -38326,6 +38322,18 @@ pub fn run_required_regen(
     receipt_rel: &str,
 ) -> Result<required_regen_host::RequiredRegenOutcome, String> {
     required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
+}
+
+/// The required regeneration producer narrowed by the affected-set authority. This is the same
+/// producer as `run_required_regen`; only its admitted comparison population differs.
+pub fn run_required_regen_scoped(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    let workspace = workspace_root();
+    let scope = required_regen_host::regen_emission_scope_for_diff(&workspace, source_roots)?;
+    required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
 }
 
 pub fn run_required_regen_fixed_point(
