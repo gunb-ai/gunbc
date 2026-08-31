@@ -14,6 +14,7 @@ import std.content_hash {
   serialize_content_hash,
 }
 import extdeps.toolchain.types { Architecture }
+import gunbc.boot_artifact { BootArtifact }
 import gunbc.machine_intake_subject { IntakeAttemptId, MachineIntakeSubject, QualificationSubject, UnitKey, content_hash_equal }
 import gunbc.machine_intake_phase { IntakePhase, QualificationRefusalOwner, intake_phase_label, intake_phase_rank, refusal_owner_label }
 
@@ -340,10 +341,24 @@ fn validate_intake_receipt_ledger(receipts: List<IntakeReceiptEnvelope>) -> Inta
 // handed where the secret token is expected, or vice versa.
 type IntakeAttemptNonce = NonEmptyStr where brand("IntakeAttemptNonce")
 
+// THE ISSUANCE CARRIES THE EXACT ARTIFACT, NOT A DESCRIPTION OF ONE. An earlier
+// cut carried artifact_digest and artifact_architecture as sibling fields, which
+// checked the receipt's architecture but left the pair independently authorable:
+// an issuance could name an AArch64 artifact's digest beside X86_64, and an x86
+// agent repeating that digest then passed BOTH checks while the artifact the
+// digest names is AArch64. The field was checked; its relationship to the
+// artifact was not constructed.
+//
+// Carrying the BootArtifact makes digest and architecture two projections of one
+// authority, so they cannot disagree — there is nowhere to write the mismatched
+// pair. gunbc.boot_artifact was extracted for exactly this: delivery already
+// imports this module, so the artifact could not be reached from there without a
+// cycle, and copying its two fields here would have been the fork DESIGN §3
+// forbids.
 type IssuedAttemptNonce {
   attempt_id: IntakeAttemptId
   nonce: IntakeAttemptNonce
-  artifact_digest: ContentHash
+  artifact: BootArtifact
   issued_at: EpochMs
 }
 
@@ -371,38 +386,234 @@ type SupportingBootObservation
   | KvmPixels
   | BootOverrideConsumed
 
+// AgentReceiptAbsent IS GONE, AND ITS ABSENCE IS THE POINT. An empty callback
+// list was being reported as "the agent did not call back", which is a claim
+// about the WORLD; what this module actually observes is that the population it
+// was handed contained nothing. Those coincide only if the population is known
+// complete, and nothing here establishes that. The variant returns with the
+// endpoint producer that can close an acquisition -- as a refusal derived from a
+// closed population, not as a reading of a list's length.
+// TWO NONCE FAILURES, TWO CAUSES. One constructor was answering for both a
+// population presented against an issuance it was not observed for -- an
+// acquisition or binding splice, whose producer is whoever assembled the input --
+// and a callback INSIDE a correctly bound population returning the wrong nonce,
+// which is an agent-content failure. Different producers, different evidence
+// locations, different remedies; one name loses exactly the information the
+// refusal exists to preserve. Neither carries the nonce: it is a secret with no
+// place in durable output, so the cause names WHICH comparison failed and the
+// wrapper's population_evidence locates where to look.
 type BootAttestationRefusal
-  = AgentReceiptAbsent { supporting: List<SupportingBootObservation> }
-  | NonceMismatch
+  = CallbackPopulationForOtherIssuance
+  | AgentCallbackNonceMismatch
   | ArtifactDigestMismatch { expected: ContentHash, received: ContentHash }
+  | ArchitectureMismatch { expected: Architecture, received: Architecture }
   | BoardSerialMismatch { expected: NonEmptyStr, received: NonEmptyStr }
+  | DuplicateAgentCallback { received: Int }
 
+// NAMED FOR WHAT IT IS, NOT FOR WHAT WE WANT IT TO BE. This was called a sealed
+// delivery batch, and the name was doing work the type does not do.
+// sole_constructor stops a caller from writing the record literal; it does not
+// constrain WHO calls the mint, where they got the callbacks, or whether the
+// evidence they pass beside the list actually describes that list. Both of these
+// stayed authorable under the old name:
+//
+//   the acquirer received [r1, r2]; the caller passes [r1] with the evidence for
+//   [r1, r2] -- a real duplicate presented as a singleton;
+//   the caller passes [r1] with evidence from an unrelated acquisition entirely.
+//
+// A name that asserts a property the construction does not hold is a hollow
+// alias, and it is worse than a weak type because every downstream reader
+// inherits the assertion. So the carrier says only what is true: this is a
+// population somebody OBSERVED, with a pointer to the record they observed it
+// in. Callbacks and evidence being independently authorable is exactly why
+// completeness is not established here -- see the trigger on attest_diagnostic_boot.
+//
+// It names the issuance it was observed for, so a population observed under one
+// nonce cannot be presented against another attempt's issuance.
+type ObservedAgentCallbackPopulation sole_constructor {
+  issuance_nonce: IntakeAttemptNonce
+  callbacks: List<IntakeAgentBootReceipt>
+  acquisition_evidence: EvidenceRef
+}
+
+// THE MINT. It records an observation and claims nothing about its completeness;
+// what the reading of that observation may and may not conclude is decided at
+// attest_diagnostic_boot, where the population is actually adjudicated.
+fn observed_agent_callback_population(
+  issuance_nonce: IntakeAttemptNonce,
+  callbacks: List<IntakeAgentBootReceipt>,
+  acquisition_evidence: EvidenceRef,
+) -> ObservedAgentCallbackPopulation {
+  ObservedAgentCallbackPopulation {
+    issuance_nonce: issuance_nonce,
+    callbacks: callbacks,
+    acquisition_evidence: acquisition_evidence,
+  }
+}
+
+// THREE OUTCOMES, BECAUSE THERE ARE THREE, and the third is not a refusal
+// wearing a softer name. A refusal says the boot did not happen; Unestablished
+// says this repository cannot yet tell, and says exactly what it saw and where.
+// Collapsing the third into either of the other two is the state_space_conflation
+// failure: into refusal it would report a boot as failed on a caller's filtering
+// decision, and into attestation it would report a boot as proven on the same.
+//
+// NOTHING IN THIS REPOSITORY CONSTRUCTS DiagnosticBootAttested TODAY. That is not
+// an oversight and it is not a dead variant: it is the terminal the intake
+// transaction requires, held at its honest arity until the acquisition producer
+// named on attest_diagnostic_boot exists to close a population. It is declared
+// here so that producer has one authority to satisfy rather than a shape invented
+// later, and population_evidence is on it because durable provenance is the part
+// of the design that is already settled.
 type DiagnosticBootAttestation
-  = DiagnosticBootAttested { attempt_id: IntakeAttemptId, receipt: IntakeAgentBootReceipt }
-  | DiagnosticBootNotAttested { cause: BootAttestationRefusal }
+  = DiagnosticBootAttested {
+      attempt_id: IntakeAttemptId,
+      receipt: IntakeAgentBootReceipt,
+      population_evidence: EvidenceRef,
+    }
+  | DiagnosticBootNotAttested {
+      cause: BootAttestationRefusal,
+      population_evidence: EvidenceRef,
+    }
+  | DiagnosticBootCompletenessUnestablished {
+      observed_callbacks: Int,
+      population_evidence: EvidenceRef,
+      supporting: List<SupportingBootObservation>,
+    }
 
-// The boot is established when — and only when — the agent's receipt returns
-// the issued nonce, names the issued artifact digest, and repeats the unit's
-// board serial. Supporting observations ride along in the refusal so a
-// delivery session plus power activity WITHOUT a callback is reported as
-// exactly that, never as a boot.
+// WHAT THIS FUNCTION CAN AND CANNOT CONCLUDE FROM A POPULATION IT DID NOT CLOSE.
+// The input is a population somebody OBSERVED, not one anybody closed, so the
+// three readings of its cardinality are not equally sound and it is a §4b rung
+// error to treat them as if they were:
+//
+//   more than one  -- DEFINITE. Hidden extra callbacks can only make a duplicate
+//                     more true, so this refusal is monotone under incompleteness.
+//   exactly one, and it mismatches -- DEFINITE. A mismatching callback is refused
+//                     on its own contents, and any hidden sibling would be a
+//                     duplicate, which is also a refusal. Every completion of the
+//                     population refuses, so the refusal stands.
+//   exactly one, and it matches -- NOT DEFINITE. It proves a matching callback was
+//                     SEEN, never that it was the ONLY one.
+//   none            -- NOT DEFINITE. It proves nothing was seen, never that
+//                     nothing arrived. A caller can prefilter a real singleton to
+//                     zero exactly as easily as a duplicate to one.
+//
+// So the two indefinite readings do not produce a verdict at all: they produce
+// DiagnosticBootCompletenessUnestablished, which reports what was observed and
+// points at the record it was observed in. Reporting either of them as a verdict
+// would be the fabricated-plausible-output failure of §5 -- a caller's filtering
+// decision arriving downstream wearing the compiler's authority.
+//
+// CARDINALITY IS CHECKED BEFORE ANY CALLBACK IS INSPECTED. A replay is a fact
+// about the population, not about any one receipt, so reading a receipt first
+// would let a well-formed one speak for a population that should have been
+// refused outright. A duplicate is refused even when the two callbacks are
+// byte-identical: choosing one of two to honour would be an absorbing fallback
+// (§5) -- widening on ambiguity instead of stopping the line.
+//
+// THE REFUSAL POINTS AT THE ACQUIRER'S OWN RECORD rather than inventing an
+// identity per callback. IntakeAgentBootReceipt carries no transport identity,
+// and the fields it does carry are identical across legitimate duplicates -- the
+// artifact digest especially -- so listing them would be a nickname for a fact
+// this model does not hold. The nonce itself is never carried: it is a secret
+// with no place in durable output.
+//
+// RUNG, HONESTLY. Duplicate refusal and mismatch refusal are real and executed.
+// Attestation is NOT: no path in this repository constructs DiagnosticBootAttested,
+// because none can establish completeness. Next-rung trigger: an acquisition
+// producer that closes a population -- exact issuance identity, the exact
+// callbacks, evidence derived from that same acquisition rather than passed
+// beside it, and a declared closure boundary or one-shot nonce consumption after
+// which no further callback can be accepted unrecorded. Producer identity alone
+// is insufficient: without the closure boundary a producer can mint a singleton
+// after the first callback and receive a second afterwards.
 fn attest_diagnostic_boot(
   issued: IssuedAttemptNonce,
   unit_key: UnitKey,
-  receipt: IntakeAgentBootReceipt?,
+  observed: ObservedAgentCallbackPopulation,
   supporting: List<SupportingBootObservation>,
 ) -> DiagnosticBootAttestation {
-  match receipt {
-    Absent => DiagnosticBootNotAttested { cause: AgentReceiptAbsent { supporting: supporting } }
-    Present { value: r } =>
-      if (r.attempt_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
-        DiagnosticBootNotAttested { cause: NonceMismatch }
-      } else if content_hash_equal(left: issued.artifact_digest, right: r.artifact_digest) == false {
-        DiagnosticBootNotAttested { cause: ArtifactDigestMismatch { expected: issued.artifact_digest, received: r.artifact_digest } }
-      } else if r.board_serial != (unit_key as NonEmptyStr) {
-        DiagnosticBootNotAttested { cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial } }
-      } else {
-        DiagnosticBootAttested { attempt_id: issued.attempt_id, receipt: r }
-      }
+  if (observed.issuance_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
+    DiagnosticBootNotAttested {
+      cause: CallbackPopulationForOtherIssuance,
+      population_evidence: observed.acquisition_evidence,
+    }
+  } else {
+    adjudicate_observed_population(issued: issued, unit_key: unit_key, observed: observed, supporting: supporting)
+  }
+}
+
+fn adjudicate_observed_population(
+  issued: IssuedAttemptNonce,
+  unit_key: UnitKey,
+  observed: ObservedAgentCallbackPopulation,
+  supporting: List<SupportingBootObservation>,
+) -> DiagnosticBootAttestation {
+  let received = list_length(items: observed.callbacks)
+  if received > 1 {
+    DiagnosticBootNotAttested {
+      cause: DuplicateAgentCallback { received: received },
+      population_evidence: observed.acquisition_evidence,
+    }
+  } else {
+    match observed.callbacks.first() {
+      Absent =>
+        DiagnosticBootCompletenessUnestablished {
+          observed_callbacks: 0,
+          population_evidence: observed.acquisition_evidence,
+          supporting: supporting,
+        }
+      Present { value: r } =>
+        adjudicate_single_callback(
+          issued: issued,
+          unit_key: unit_key,
+          r: r,
+          population_evidence: observed.acquisition_evidence,
+          supporting: supporting,
+        )
+    }
+  }
+}
+
+// THE PROVENANCE IS ON THE WRAPPER, SO THE CLAIM IS TRUE BY CONSTRUCTION. An
+// earlier cut put the acquisition record on DuplicateAgentCallback and on the
+// non-refusing arm, and annotated that as "every outcome names the population it
+// was read from" -- which was FALSE for the four field mismatches, and the
+// control greened anyway because it only exercised the unestablished path. That
+// is this repository's own §5 trap: a claim in prose with an oracle that cannot
+// see the paths it is about. Every outcome now takes population_evidence at the
+// same grain, so no adjudication path can return without it, and the cause
+// carries only what distinguishes it -- DuplicateAgentCallback keeps the count
+// and no longer carries a second copy of the record.
+fn adjudicate_single_callback(
+  issued: IssuedAttemptNonce,
+  unit_key: UnitKey,
+  r: IntakeAgentBootReceipt,
+  population_evidence: EvidenceRef,
+  supporting: List<SupportingBootObservation>,
+) -> DiagnosticBootAttestation {
+  if (r.attempt_nonce as NonEmptyStr) != (issued.nonce as NonEmptyStr) {
+    DiagnosticBootNotAttested { cause: AgentCallbackNonceMismatch, population_evidence: population_evidence }
+  } else if content_hash_equal(left: issued.artifact.digest, right: r.artifact_digest) == false {
+    DiagnosticBootNotAttested {
+      cause: ArtifactDigestMismatch { expected: issued.artifact.digest, received: r.artifact_digest },
+      population_evidence: population_evidence,
+    }
+  } else if (r.architecture == issued.artifact.architecture) == false {
+    DiagnosticBootNotAttested {
+      cause: ArchitectureMismatch { expected: issued.artifact.architecture, received: r.architecture },
+      population_evidence: population_evidence,
+    }
+  } else if r.board_serial != (unit_key as NonEmptyStr) {
+    DiagnosticBootNotAttested {
+      cause: BoardSerialMismatch { expected: unit_key as NonEmptyStr, received: r.board_serial },
+      population_evidence: population_evidence,
+    }
+  } else {
+    DiagnosticBootCompletenessUnestablished {
+      observed_callbacks: 1,
+      population_evidence: population_evidence,
+      supporting: supporting,
+    }
   }
 }

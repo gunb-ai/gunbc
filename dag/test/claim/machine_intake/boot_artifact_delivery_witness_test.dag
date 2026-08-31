@@ -131,8 +131,8 @@ import gunbc.network_boot_delivery {
   NetworkBootServingInfrastructure,
   network_boot_requirements_all,
 }
+import gunbc.boot_artifact { BootArtifact, IntakeLinuxEnvironment, IsoImage }
 import gunbc.boot_artifact_delivery {
-  BootArtifact,
   BootArtifactStagingBinding,
   BootDeliveryPlan,
   BootDeliveryPlanned,
@@ -166,8 +166,6 @@ import gunbc.boot_artifact_delivery {
   DeliveryNoEligibleTransport,
   DeliveryTargetControllerMismatch,
   DeliveryTargetSubjectMismatch,
-  IntakeLinuxEnvironment,
-  IsoImage,
   MegaRacRestRemoteMedia,
   MegaRacShareOffer,
   OpenBmcConfigfsUsbGadget,
