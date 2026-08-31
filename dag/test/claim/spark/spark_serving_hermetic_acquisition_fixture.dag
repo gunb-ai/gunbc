@@ -74,6 +74,7 @@ import gunbc.spark.serving_observation_transaction {
   RuntimeExecutableBitRequest,
   RuntimeRootListingRequest,
   spark_serving_probe_leg_capture_of,
+  spark_serving_observation_request,
   spark_serving_observation_transaction_of,
   spark_serving_hermetic_provenance_of,
 }
@@ -183,9 +184,11 @@ fn hermetic_transaction_of(
   captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingTransactionAdmission {
   spark_serving_observation_transaction_of(
-    host: host,
-    fleet_attempt: fleet_attempt,
-    phase: phase,
+    request: spark_serving_observation_request(
+      host: host,
+      fleet_attempt: fleet_attempt,
+      phase: phase,
+    ),
     credential: credential,
     captures: captures,
   )

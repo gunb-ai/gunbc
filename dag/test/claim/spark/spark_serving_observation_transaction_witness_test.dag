@@ -291,9 +291,9 @@ test fn the_transaction_carries_its_full_acquisition_identity() -> Bool {
   match txn_of(captures: complete_captures()) {
     Absent => false
     Present { value: t } =>
-      t.host == subject_host
-        && (t.fleet_attempt as String) == hermetic_fleet_attempt_raw
-        && (match t.phase {
+      t.request.host == subject_host
+        && (t.request.fleet_attempt as String) == hermetic_fleet_attempt_raw
+        && (match t.request.phase {
              SparkServingPlanObservation => true
              SparkServingPostApplyObservation => false
              SparkServingReportObservation => false
@@ -322,7 +322,7 @@ test fn the_minted_phase_travels_into_the_transaction_identity() -> Bool {
   match admission_at(phase: SparkServingPostApplyObservation, captures: complete_captures()) {
     SparkServingTransactionRefused { cause: _ } => false
     SparkServingTransactionAdmitted { txn: t } =>
-      (match t.phase {
+      (match t.request.phase {
         SparkServingPostApplyObservation => true
         SparkServingPlanObservation => false
         SparkServingReportObservation => false
