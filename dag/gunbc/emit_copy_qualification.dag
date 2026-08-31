@@ -17,14 +17,12 @@ import std.types { Bool, Int, List, String }
 // shape); where a fact is missing the derivation REFUSES (ExpectationUnderivable), never
 // assumes zero. Constant-time is not zero-cost (DESIGN §6 bare-minimum-cost): a redundant
 // Rc::clone fails clone minimality even though its realized cost is a refcount bump.
-
 // ── Axis-mapping documentation (operator-approved dedup, 2026-08-31) ─────────────────────────
 // The ruling's §4 names ten "control shapes" that overlap its ownership-pattern list almost 1:1.
 // A Cartesian product of both lists would double-count one distinction and flood
 // CaseNotApplicable, making the denominator lie. Approved resolution: control_shape is the
 // four-member axis below, and each ruling-named shape is assigned to EXACTLY ONE axis, as data
 // rows a witness counts — the ruling's roster is covered by construction, not by prose.
-
 type GridAxis
   = OwnershipPatternAxis
   | CarrierRealizationAxis
@@ -52,7 +50,6 @@ data ruling_shape_assignments: List<RulingShapeAssignment> = [
 ]
 
 // ── The five axes ────────────────────────────────────────────────────────────────────────────
-
 type OwnershipPattern
   = ConsumedOnce
   | BorrowedReadOnly
@@ -104,7 +101,6 @@ type EmitCopyQualificationCaseId {
 }
 
 // ── Slugs (receipt/fixture identity rendering; one authority for the spelling) ───────────────
-
 fn ownership_pattern_slug(p: OwnershipPattern) -> String {
   match p {
     ConsumedOnce => "consumed_once"
@@ -164,7 +160,6 @@ fn case_slug(id: EmitCopyQualificationCaseId) -> String {
 }
 
 // ── Closed axis rosters (witness-counted; the Cartesian denominator derives from these) ──────
-
 data all_ownership_patterns: List<OwnershipPattern> = [
   ConsumedOnce, BorrowedReadOnly, ByValueThenReused, BranchExclusive, ReuseAcrossJoin,
   AliasThenMutate, MoveIntoClosure, BorrowIntoClosure, LoopCarriedAccumulator,
@@ -184,7 +179,6 @@ data all_input_size_bases: List<InputSizeBasis> = [ScalarUnitBasis, SizedCardina
 
 // ── Applicability: every Cartesian member is CaseApplicable or CaseNotApplicable with a
 //    STRUCTURAL, typed reason. No silent filter, no hand-maintained exclusion list. ────────────
-
 // DeepCloningSequenceCarrier is declared on the axis because the ruling names it, and derived
 // inapplicable because the production realization has no .dag surface type that realizes to a
 // deep-cloning Rust sequence: List realizes to the structurally-sharing im vector (the emitted
@@ -341,7 +335,6 @@ fn case_applicability(id: EmitCopyQualificationCaseId) -> CaseApplicability {
 }
 
 // ── The roster: the full Cartesian product, each member with its derived applicability ───────
-
 type EmitCopyQualificationCaseRow {
   id: EmitCopyQualificationCaseId
   applicability: CaseApplicability
@@ -388,7 +381,6 @@ fn applicable_case_count() -> Int {
 }
 
 // ── Expectation derivation (from axis relations + carrier realization facts) ─────────────────
-
 // The two independent judgment axes the ruling fixes. CopyCostClass is the expected/observed
 // realization-cost class; CloneMinimality judges whether every clone present is necessary.
 type CopyCostClass
@@ -504,6 +496,12 @@ fn materialization_alloc_growth(f: CloneRealizationFact) -> AllocGrowthClass {
   }
 }
 
+// derive_expectation: the LoopCarriedAccumulator arm expects LINEAR growth whatever the
+// carrier's clone realization — the accumulator BUILDS a size-n result inside the window, and
+// the violation class is the copied accumulator's quadratic shape
+// (v2.lens.complexity_accumulator_copy Poly2Suspect), which the linear bound refuses. For
+// AliasThenMutate, structurally-sharing carriers diverge with bounded per-update node work
+// (constant at the declared cardinalities), so growth stays the realization's own class.
 fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation {
   match carrier_clone_realization(c: id.carrier_realization) {
     CloneRealizationUnknown { unresolved_fact: uf } =>
@@ -511,10 +509,6 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
     realization =>
       match id.ownership_pattern {
         LoopCarriedAccumulator =>
-          // The accumulator BUILDS a size-n result inside the window, so the minimal expected
-          // allocation growth is linear in n whatever the carrier's clone realization — the
-          // violation class is the copied accumulator's quadratic shape
-          // (v2.lens.complexity_accumulator_copy Poly2Suspect), which the linear bound refuses.
           DerivedExpectation { expected: ExpectedCopyCost {
             cost_class: NoCopyWork,
             alloc_growth: LinearAllocGrowth,
@@ -529,9 +523,6 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
               whole_value_materializations: 0
             } }
           } else {
-            // AliasThenMutate diverges one version: for structurally-sharing carriers the
-            // divergence is bounded per-update node work (constant at the declared
-            // cardinalities), so growth stays the realization's own class.
             DerivedExpectation { expected: ExpectedCopyCost {
               cost_class: materialization_cost_class(f: realization),
               alloc_growth: materialization_alloc_growth(f: realization),
@@ -552,7 +543,6 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
 data linear_alloc_growth_bound_bytes_per_element: Int = 64
 
 // ── Observations (two independent arms; typed unavailability, never fabricated zeros) ────────
-
 type StaticCloneObservation
   = NoRedundantCloneReported
   | RedundantCloneReported { lint: String, emitted_item: String, line: Int, message: String }
@@ -603,7 +593,6 @@ type RuntimeObservation
   | RuntimeObservationUnavailable { cause: String }
 
 // ── The verdict family (ruling §6) ───────────────────────────────────────────────────────────
-
 type EmitCopyQualification
   = Qualified {
       case: EmitCopyQualificationCaseId
@@ -641,7 +630,6 @@ fn qualification_slug(q: EmitCopyQualification) -> String {
 
 // ── Growth judgment: observed allocator rows against the derived class, at the declared
 //    cardinalities, with the declared linear bound. Refusal carries the violating row. ────────
-
 type GrowthJudgment
   = GrowthWithinExpectation
   | GrowthExceeds { cardinality: Int, observed_bytes: Int, allowed_bytes: Int }
@@ -653,6 +641,8 @@ type ConsecutivePairScan {
   verdict: GrowthJudgment
 }
 
+// Constant class: every row's bytes must equal the boundary row's (exact counters, no noise).
+// Linear class: consecutive-pair deltas within the declared per-element bound.
 fn judge_alloc_growth(expected: AllocGrowthClass, rows: List<AllocObservationRow>) -> GrowthJudgment {
   match expected {
     ConstantAllocGrowth =>
@@ -689,7 +679,6 @@ fn judge_alloc_growth(expected: AllocGrowthClass, rows: List<AllocObservationRow
 }
 
 // ── The qualification join: one total decision per applicable case ───────────────────────────
-
 // Prerequisite order is the ruling's: executability, then behavior, then cost. The static arm
 // is an observation, not the cost oracle — a redundant-clone report refuses on the MINIMALITY
 // axis; a clean report proves nothing about copy-on-write or accumulator cost, which the

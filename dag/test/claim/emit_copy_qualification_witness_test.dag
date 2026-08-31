@@ -39,9 +39,7 @@ import gunbc.emit_copy_qualification_fixture_gen {
 // and join-arm discrimination, and generation-grain mutant discrimination. The wet transaction
 // (emission, clippy, build, execution) has its own transport and witnesses; nothing here runs
 // a process.
-
 // ── Roster and denominator ───────────────────────────────────────────────────────────────────
-
 test fn ecq_denominator_is_axis_product_holds() -> Bool {
   let p = all_ownership_patterns |> count
   let c = all_carrier_realizations |> count
@@ -87,7 +85,6 @@ test fn ecq_every_realized_carrier_has_applicable_cases_holds() -> Bool {
 }
 
 // ── Ruling-shape assignment coverage (the approved dedup, checked by construction) ───────────
-
 test fn ecq_ruling_shapes_count_holds() -> Bool {
   (ruling_shape_assignments |> count) == 10
 }
@@ -112,7 +109,6 @@ test fn ecq_ruling_shape_members_resolve_on_their_axis_holds() -> Bool {
 }
 
 // ── Expectation derivation ───────────────────────────────────────────────────────────────────
-
 test fn ecq_every_applicable_case_derives_expectation_holds() -> Bool {
   full_case_roster()
     |> filter(r => row_is_applicable(r: r))
@@ -184,7 +180,6 @@ test fn ecq_accumulator_expectation_is_linear_holds() -> Bool {
 }
 
 // ── Growth judgment discrimination ───────────────────────────────────────────────────────────
-
 fn rows_constant() -> List<AllocObservationRow> {
   [
     AllocObservationRow { cardinality: 0, allocation_operations: 1, allocated_bytes: 32 },
@@ -241,7 +236,6 @@ test fn ecq_growth_linear_refuses_quadratic_rows_holds() -> Bool {
 }
 
 // ── Join-arm discrimination (every verdict arm reachable and typed) ──────────────────────────
-
 fn clean_case_id() -> EmitCopyQualificationCaseId {
   EmitCopyQualificationCaseId {
     ownership_pattern: ConsumedOnce,
@@ -364,7 +358,6 @@ test fn ecq_join_static_unavailable_is_unjudgeable_not_refusal_holds() -> Bool {
 }
 
 // ── Generation-grain mutant discrimination ───────────────────────────────────────────────────
-
 test fn ecq_copied_accumulator_mutant_changes_fixture_holds() -> Bool {
   fixture_module_text(c: OwnedStringCarrier, mutant: CleanSubject)
     != fixture_module_text(c: OwnedStringCarrier, mutant: PlantCopiedAccumulator)
@@ -401,7 +394,6 @@ fn string_contains_marker(haystack: String, marker: String) -> Bool {
 }
 
 // ── The inert workflow job (authored emission; activation is ROOT-N's, not this lane's) ──────
-
 test fn ecq_battery_job_capability_closure_holds() -> Bool {
   emit_copy_qualification_capability_closure_holds()
 }

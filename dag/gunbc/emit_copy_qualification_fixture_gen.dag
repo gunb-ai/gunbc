@@ -36,7 +36,6 @@ import gunbc.emit_copy_qualification {
 // copied-accumulator mutant transforms the .dag fixture itself and travels the full emission
 // path — it falsifies the end-to-end battery on an emitter-side cost-shape regression while
 // preserving behavior.
-
 type MutantPlan
   = CleanSubject
   | PlantRedundantShareClone
@@ -57,7 +56,6 @@ fn mutant_plan_slug(m: MutantPlan) -> String {
 }
 
 // ── Shard roster: applicable cases of one carrier ────────────────────────────────────────────
-
 fn shard_case_rows(carrier: CarrierRealization) -> List<EmitCopyQualificationCaseRow> {
   full_case_roster()
     |> filter(r => row_is_applicable(r: r))
@@ -72,7 +70,6 @@ fn shard_cardinalities(id: EmitCopyQualificationCaseId) -> List<Int> {
 }
 
 // ── Per-carrier .dag snippets ────────────────────────────────────────────────────────────────
-
 fn carrier_type_text(c: CarrierRealization) -> String {
   match c {
     CopyScalarControl => "Int"
@@ -162,6 +159,10 @@ fn carrier_update_expr(c: CarrierRealization) -> String {
 
 // Loop-carried accumulator body per carrier: fold over the seed list building a size-n result
 // of the carrier's own kind. The clean shape mentions the accumulator exactly once per step.
+// PlantCopiedAccumulator is the named modeled transformation: it defeats single-use accumulator
+// threading by re-mentioning the accumulator on a value-preserving guard (always-false branch),
+// so the emitter's fold-accumulator disposition sees a multi-use accumulator. Behavior is
+// unchanged; only the cost shape may change — exactly what the battery must detect end-to-end.
 fn carrier_accumulator_expr(c: CarrierRealization, mutant: MutantPlan) -> String {
   let step = match c {
     CopyScalarControl => "acc + e"
@@ -172,11 +173,6 @@ fn carrier_accumulator_expr(c: CarrierRealization, mutant: MutantPlan) -> String
     PersistentMapCarrier => "map_insert(acc, to_string(e), e)"
     NestedCheapDeepRecordCarrier => "EcqNestedRec { tag: acc.tag + e, name: acc.name, items: list_push(acc.items, e) }"
   }
-  // PlantCopiedAccumulator: the named modeled transformation defeats single-use accumulator
-  // threading by re-mentioning the accumulator on a value-preserving guard, so the emitter's
-  // fold-accumulator disposition sees a multi-use accumulator. Behavior is unchanged (the guard
-  // is always false); only the cost shape may change — which is exactly what the battery must
-  // detect end-to-end.
   let guarded_step = match mutant {
     PlantCopiedAccumulator =>
       match c {
@@ -207,7 +203,6 @@ fn carrier_accumulator_expr(c: CarrierRealization, mutant: MutantPlan) -> String
 }
 
 // ── Case body templates ──────────────────────────────────────────────────────────────────────
-
 fn contract_callee_name(carrier: CarrierRealization, k: ConsumerContract) -> String {
   match k {
     ConsumesByValue => concat("ecq_consume_", carrier_realization_slug(c: carrier))
@@ -318,7 +313,6 @@ fn case_fn_text(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
 }
 
 // ── Shared helper text per shard ─────────────────────────────────────────────────────────────
-
 fn shard_prelude_text(c: CarrierRealization) -> String {
   let slug = carrier_realization_slug(c: c)
   let builders = concat(
@@ -353,7 +347,6 @@ fn carrier_is_record_gen(c: CarrierRealization) -> Bool {
 }
 
 // ── Interpreted shard driver: one line per case x cardinality, same grammar as the runner ────
-
 fn driver_line_expr(id: EmitCopyQualificationCaseId, n: Int) -> String {
   let slug = case_slug(id: id)
   concat("concat(\"case=", concat(slug, concat(" n=", concat(to_string(n),
@@ -398,7 +391,6 @@ fn driver_module_text(c: CarrierRealization) -> String {
 }
 
 // ── The fixture module per (carrier, mutant) ─────────────────────────────────────────────────
-
 fn fixture_module_name(c: CarrierRealization) -> String {
   concat("test.fixture.emit_copy_", carrier_realization_slug(c: c))
 }
@@ -412,7 +404,6 @@ fn fixture_module_text(c: CarrierRealization, mutant: MutantPlan) -> String {
 }
 
 // ── Runner (test-workspace observation transport, generated Rust text) ───────────────────────
-
 // The runner is the ONLY holder of counters: a counting global allocator wrapping System.
 // Window discipline per the ruling: input is built before the window opens; exactly one case
 // activates per window; execution is serial; the counter is read before result formatting.
@@ -473,7 +464,6 @@ fn runner_main_text(module_path: String, c: CarrierRealization, mutant: MutantPl
 
 // ── Shard crate manifest (path dependency on the seed crate for v1_rt, per the
 //    emitted-closure probe precedent; features forwarded so -D warnings stays green) ──────────
-
 fn shard_runner_bin_name(c: CarrierRealization, mutant: MutantPlan) -> String {
   concat("ecq_runner_", concat(carrier_realization_slug(c: c), concat("_", mutant_plan_slug(m: mutant))))
 }
