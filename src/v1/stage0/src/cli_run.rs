@@ -38341,6 +38341,18 @@ pub fn run_required_regen(
     required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
 }
 
+/// The required regeneration producer narrowed by the affected-set authority. This is the same
+/// producer as `run_required_regen`; only its admitted comparison population differs.
+pub fn run_required_regen_scoped(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+    source_roots: &[String],
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    let workspace = workspace_root();
+    let scope = required_regen_host::regen_emission_scope_for_diff(&workspace, source_roots)?;
+    required_regen_host::run_required_regen_scoped(candidate_dir_rel, receipt_rel, &scope)
+}
+
 pub fn run_required_regen_fixed_point(
     receipt_rel: &str,
     pass1_digest: Option<String>,
