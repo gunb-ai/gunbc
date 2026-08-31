@@ -201,9 +201,9 @@ fn rows_linear() -> List<AllocObservationRow> {
 fn rows_quadratic() -> List<AllocObservationRow> {
   [
     AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
-    AllocObservationRow { cardinality: 4, allocation_operations: 4, allocated_bytes: 16 },
-    AllocObservationRow { cardinality: 16, allocation_operations: 16, allocated_bytes: 256 },
-    AllocObservationRow { cardinality: 64, allocation_operations: 64, allocated_bytes: 4096 }
+    AllocObservationRow { cardinality: 4, allocation_operations: 4, allocated_bytes: 64 },
+    AllocObservationRow { cardinality: 16, allocation_operations: 16, allocated_bytes: 1024 },
+    AllocObservationRow { cardinality: 64, allocation_operations: 64, allocated_bytes: 16384 }
   ]
 }
 
