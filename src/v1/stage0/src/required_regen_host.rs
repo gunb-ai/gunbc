@@ -2587,10 +2587,14 @@ struct RegenConvergenceSurfaceReceipt {
     pre_stage_state: RegenPreStageState,
     candidate_digest: String,
     installed_digest: String,
-    planned: bool,
-    executed: bool,
-    terminal: bool,
-    passed: bool,
+    standing: RegenSurfaceExecutionStandingReceipt,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+enum RegenSurfaceExecutionStandingReceipt {
+    Planned,
+    Executed,
+    TerminalPassed,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -4026,10 +4030,7 @@ where
             pre_stage_state,
             candidate_digest,
             installed_digest: installed,
-            planned: true,
-            executed: true,
-            terminal: false,
-            passed: false,
+            standing: RegenSurfaceExecutionStandingReceipt::Executed,
         });
     }
     let build = build_seed(workspace)?;
@@ -4072,8 +4073,7 @@ where
         &observed_population,
     )?;
     for surface in &mut surfaces {
-        surface.terminal = true;
-        surface.passed = true;
+        surface.standing = RegenSurfaceExecutionStandingReceipt::TerminalPassed;
     }
     Ok(RegenConvergenceStageReceipt {
         receipt_id: format!("stage-{ordinal}"),
@@ -4835,10 +4835,9 @@ mod regen_convergence_host_instrument_tests {
             || Ok("seed-2".to_string()),
         )
         .unwrap();
-        assert!(stage.surfaces.iter().all(|surface| surface.planned
-            && surface.executed
-            && surface.terminal
-            && surface.passed));
+        assert!(stage.surfaces.iter().all(
+            |surface| surface.standing == RegenSurfaceExecutionStandingReceipt::TerminalPassed
+        ));
         assert_eq!(stage.output_seed_digest, "seed-2");
         assert_eq!(stage.dependency_closure_id, "seed-compatibility-cut");
 

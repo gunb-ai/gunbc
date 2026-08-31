@@ -556,11 +556,13 @@ type RegenSurfaceExecutionReceipt {
   pre_stage_state: RegenPreStageState
   candidate_digest: String
   installed_digest: String
-  planned: Bool
-  executed: Bool
-  terminal: Bool
-  passed: Bool
+  standing: RegenSurfaceExecutionStanding
 }
+
+type RegenSurfaceExecutionStanding
+  = SurfacePlanned
+  | SurfaceExecuted
+  | SurfaceTerminalPassed
 
 type RegenStageBuildTerminal
   = RegenStageBuildPassed
@@ -605,7 +607,11 @@ type RegenConvergenceTransactionReceipt {
 }
 
 fn regen_stage_receipt_all_passed(receipt: RegenStageReceipt) -> Bool {
-  receipt.surfaces |> all(row => row.planned && row.executed && row.terminal && row.passed)
+  receipt.surfaces |> all(row => match row.standing {
+    SurfaceTerminalPassed => true
+    SurfacePlanned => false
+    SurfaceExecuted => false
+  })
 }
 
 type RegenStageExecutionObservation {
