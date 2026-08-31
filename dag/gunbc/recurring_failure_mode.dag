@@ -168,6 +168,12 @@ data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMod
   evidence: [],
 }
 
+data coarser_parallel_authority: RecurringFailureMode = RecurringFailureMode {
+  identity: "coarser_parallel_authority" as NonEmptyStr,
+  authored: "**coarser parallel authority** (two carriers are AUTHORED for one fact and one of them is LOSSIER, so the fork never presents as duplication — it presents as abstraction. §3 already forbids two authorities for one fact; what this row adds is the reason that rule keeps being read past, because the second carrier does not look like a copy. A coarse answer and a fine answer never contradict each other in the way two copies do: the coarse one reads as *less specific*, which a reviewer accepts as a summary, so the disagreement is invisible until an input distinguishes the collapsed cases. RECEIPT (measured on main while censusing the `first` interpreter/emitted divergence, gunbc#9785): `v1.compiler.infer_method` `builtin_function_registry` maps a primitive name to a RETURN TYPE, and `std.algebra` `AlgebraFieldTemplate` carries `param_types` and `return_type` for the same operations. 20 of the registry's names also have algebra rows, and the two already answer differently, because the registry is RECEIVER-BLIND where the algebra rows are receiver-relative: `reverse` is `List<collection_element>` against `ReceiverSelf`, so on a `String` receiver the two carriers name different types; `map_keys` and `map_values` share ONE element type variable where algebra distinguishes `ReceiverKey` from `ReceiverValue`, so for any `Map<K, V>` with `K` /= `V` the registry cannot be right about both; `concat` is `String` against `ReceiverSelf`, so a list concat types as a String; `get` collapses the List reading and the Map reading the algebra rows keep apart. None of these is a stale copy that drifted — the registry was authored coarse and has been coarse the whole time. **WHAT MAKES THE COARSE CARRIER LOOK LEGITIMATE is that its coarseness is usually true of the QUESTION ITS FIRST CONSUMER ASKED.** A caller that only wants \"is this name a builtin\" is well served by a name-to-return-type map, and the carrier is correct for that consumer on the day it lands. It becomes an authority for a fact it never modelled the moment a second consumer asks a finer question of it, and it answers, because a map is total over its keys. **RECOGNITION RULE: when two carriers answer about one operation and one is coarser, ask whether the coarse answer is DERIVED from the fine one or AUTHORED beside it. A derived projection cannot disagree; an authored one is a fork whose disagreements are silent by construction, since \"less specific\" and \"different\" are indistinguishable at the call site.** The repair is never to reconcile the two rosters — that is a second synchronisation obligation, and §5 calls a check standing where construction was available validation. The repair is RELOCATION: the coarse carrier stops being an authority and becomes a projection of the fine one, or its rows leave for the layer that actually owns them. Here the same relocation dissolves a second class: once the registry is no longer a signature authority for anything `std.algebra` owns, there is no second declaration left to disagree, and the population that remains — primitives with no algebra row — is a closeable gap rather than an open denominator.)",
+  evidence: [],
+}
+
 data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   hollow_alias,
   state_space_conflation,
@@ -189,4 +195,5 @@ data recurring_failure_mode_roster: List<RecurringFailureMode> = [
   remediation_mutated_view,
   diagnostic_name_mechanism_silent,
   identity_absent_graph_traversal,
+  coarser_parallel_authority,
 ]

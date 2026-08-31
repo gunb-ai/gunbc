@@ -74,11 +74,19 @@ the shape that dominates the corpus is the one shape the compensation covers.
 **`Propagates` resolves the same way, one level out.** Following all 36 functions to their call
 sites: 72 callers eliminate by `match` (unharmed), 2 tail-propagate into another `T?`
 (`mercurial_first_changeset_cycle` / `_file_revision_cycle`), and 4 compare `== none`
-(`rust_representation_realization_for` in `self_host_symbol_identity_binding_witness_test`) — which
-AGREES, because a miss is `Null` on one side and `Absent` on the other and both compare equal to
-`none`. It agrees by the representation happening to line up on that one constructor: the same site
-spelled `== Present { value: .. }` is the parent lane's discriminator and diverges. **Zero harmed
-today, and the margin is one constructor wide.**
+(`rust_representation_realization_for` in `self_host_symbol_identity_binding_witness_test`). **Zero
+harmed today** — but the reason is not the one an earlier revision of this document gave, and the
+correction matters more than the verdict did.
+
+That revision said the `== none` sites agree "because a miss is `Null` on one side and `Absent` on
+the other and both compare equal to `none`". **That mechanism is wrong.** In the interpreter `none`
+EVALUATES TO `Value::Null` — `v1_interpreter`'s variable evaluation returns `Value::Null` for the
+symbols `none` and `None` before any binding is consulted. So the raw side compares equal because it
+*is* `Null`; a constructed `Optional::Absent` variant does not compare equal to it at all. These
+sites therefore agree **before** the construction lands and BREAK after it, and two of them are
+among the six assertion failures the floor reports on this branch. The verdict "zero harmed today"
+was right about the pre-change state and was reached by the wrong route — and the wrong route is
+exactly what hid the `none`-literal migration (Phase D below) from this census's first draft.
 
 `HarmedNow`, in full — this is the whole victim list for the pipeline spelling:
 
@@ -235,6 +243,94 @@ the 20 overlapping names are two authorities for one operation's type, and they 
 
 Every one of these is the same §3 fork as the `first` divergence, one layer up: not two
 realizations of one declaration, but two declarations of one operation.
+
+## Measured blast radius, and the class already has an authored program
+
+**The floor, enumerated from the artifact rather than the log.** The required-witnesses-floor run on
+this branch reports `planned=3141 passed=2630 known_red_held=15 failed=442`. The job log prints only
+six per-claim failure lines, which reads as a truncated log and is not: the
+`required-floor-disposition` artifact separates the outcomes the summary's `failed` folds together.
+
+| outcome | count |
+|---|---|
+| `runtime-errored-before-verdict` | 442 |
+| `failed` (assertion) | 6 |
+| `budget-refused-before-verdict` | 1 |
+| `route-gap-before-verdict` | 47 |
+| `known-red-held` | 15 |
+
+So the 442 **errored before reaching a verdict**; they did not assert and fail. All 442 are
+`v2.test.*` — 157 `v2.test.claim`, 132 `v2.test.manual`, 71 `v2.test.emit`, 52 `v2.test.execution`
+— and **none** is a `dag/test/claim` witness. That is the self-host coupling: the v2 compiler is
+`.dag` interpreted by the v1 seed, so changing the interpreter's projections changes v2's own
+behaviour as it runs. The blast radius is the interpreted v2 compiler, not the corpus witnesses.
+
+**A note on how this document's first draft got its number wrong.** It reported the partial repair
+as flipping one witness, `bmc_capability_solve firmware_wire_version_is_parsed_before_track_matching`.
+That claim's disposition is `declined_outside_gate_closure` / `not_executed` — the floor does not run
+it. The sample was not merely small; it was drawn from outside the population the floor measures.
+
+**The class is Phase B of an already-open lane.** `gunbc.plans.value_null_split` (lane
+keen-ferret-250) models this whole class: `Value::Null` overloads four meanings — the `none`/`None`
+literal, `Optional::Absent`, `Witness::Violates` on map miss, and untyped lookup miss — and it lays
+out a phase order:
+
+| phase | content | state |
+|---|---|---|
+| A | discriminating witnesses pinning the carriers | landed |
+| B | stop PRODUCING `Null` where the return type is `Optional<T>` | **what the repair on this branch is** |
+| C | delete the `match_pattern` `Null` bridges | the compensating arms this branch leaves in place |
+| D | type-directed `none` → `optional_absent`; migrate ~218 `== None` sites over 66 files | not started — the third gate |
+| E | cross-representation equality; remove the straddle row | not started |
+
+**The Phase-A witness predicted this branch's failure by name, in writing.**
+`v2.test.manual.value_null_split_witness` carries the comment: *"`raw_get_miss_differs_from_optional_absent`
+stays GREEN while raw get miss is untyped and `optional_absent()` is `Optional::Absent`; it flips
+RED in Phase B when get+Optional routes through `map_lookup_as_optional`."* It is one of the six
+assertion failures. That is not a defect in the repair — it is the enrolled signal that Phase B
+landed, and updating its disposition is part of Phase B.
+
+`value_null_split` §0 also pre-refutes the fix this census would otherwise have reached for: a
+blanket cross-representation equality guard **cannot** close the straddle, because `present == None
+→ false` is legitimate at those ~218 sites. The remedy is splitting the carriers, not grounding them
+onto one sentinel.
+
+**So the completion has three gates, not one**: the optional-into-required argument coercion (needs
+a closed language-primitive denominator → [partition census](builtin-registry-population-partition.md)),
+Phase D's `none`-literal migration, and Phase C's bridge deletion. None is optional and none is
+this branch's alone.
+
+## The scheduling hold is not the dissolution trigger
+
+These are two different objects and this document keeps them apart, because conflating them is how
+a trigger rots.
+
+**The hold is procedural and belongs to this moment.** PR #9775 enrols this divergence as a
+known-red with an expected-red roster row, and the floor counts `known_red_now_passing` as its own
+outcome, so repairing the primitive while that row still stands breaks BT-0's floor. That is an
+ordering constraint on when a repair may land. It is a note to the authors involved, not a claim
+about the defect.
+
+**The trigger is semantic and belongs to any future reader**: *when the interpreted and emitted
+realizations of `first` agree on the optional result shape*. A trigger phrased "after PR #9775"
+would name a merge event, and merge events rot — a PR is renumbered, superseded, split, or lands
+with the row removed, at which point the trigger is either unsatisfiable or vacuously satisfied
+while nothing about the defect has changed. Nothing in this document, in
+`gunbc.recurring_failure_mode`, or on the witness carries a PR number as a trigger; the one PR
+number below is a population reconciliation, not a condition.
+
+**The transition, in order, when the repair lands** — this is §4b(4) dissolution-on-climb, and the
+middle pair is the whole rule:
+
+1. repair the interpreter's `first` semantics;
+2. REMOVE the discriminator from the expected-red roster — the production disposition goes;
+3. RETAIN the discriminator as ordinary passing evidence — the evidence stays, and becomes the
+   permanent regression control proving the two arms still agree;
+4. observe `known_red_now_passing = 0`.
+
+Step 4 is not a formality. That channel exists precisely to catch someone repairing the primitive
+and leaving a stale expected-red disposition behind, so a nonzero value there is a defect in the
+repairing transaction, never noise.
 
 ## Rung, ceiling, trigger
 
