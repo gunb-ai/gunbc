@@ -97,6 +97,7 @@ import gunbc.devboot.program {
 }
 import extdeps.git.object_store { git_object_id_from_untagged_hex }
 import extdeps.toolchain.types { ToolchainRequirement, TargetTriple }
+import gunbc.build_identity { materialized_tree_build_identity_text }
 
 // GUNBC BUILD RETURNS ONE EXACT EXECUTABLE TO A REMOTE AGENT.
 //
@@ -131,27 +132,38 @@ fn produced_ref_of(token: String) -> String {
 }
 
 // THE ARTIFACT NEVER TRAVELS THROUGH A PIPE. An earlier shape of this read the built binary with cat-file and carried it as a string: the transport strips a trailing newline and a string is not a byte sequence, so a 24-megabyte executable arriving that way is silently truncated or re-encoded and the digest check then fails for a reason that has nothing to do with the store. Every blob that is bytes rather than text is materialized by checkout-index straight to a file, and only the small text entries -- a digest, a rendered subject, a refusal sentence -- are ever read as strings.
-fn exchange_out_dir(work_root: String, token: String) -> String {
-  join([work_root, "/", token, "/exchange"], "")
+type ExchangeMaterializationCoordinate {
+  repo_relative_dir: String
+  caller_visible_dir: String
+  repo_relative_index: String
 }
 
-fn exchange_index_path(work_root: String, token: String) -> String {
-  join([work_root, "/", token, "/exchange.index"], "")
+// ONE COORDINATE FOR THE GIT WRITER AND FILESYSTEM READERS. CheckoutIndexToPrefix resolves a
+// relative prefix against the repository it is handed. The former code passed it a path relative
+// to the caller root while handing it the scratch exchange repository, so Git successfully wrote
+// beneath exchange.git/<caller path> and the reader correctly found nothing at <caller path>.
+// Deriving the repository-relative spelling and its caller-visible projection together makes the
+// two-root fact carried data rather than adjacent prose.
+fn exchange_materialization_coordinate(exchange_repo: String, token: String) -> ExchangeMaterializationCoordinate {
+  let relative = join(["answers/", token], "")
+  ExchangeMaterializationCoordinate {
+    repo_relative_dir: relative,
+    caller_visible_dir: join([exchange_repo, "/", relative], ""),
+    repo_relative_index: join(["answers/", token, ".index"], ""),
+  }
 }
 
-fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref_name: String) -> Bool {
-  let out_dir = exchange_out_dir(work_root: work_root, token: token)
-  let index_path = exchange_index_path(work_root: work_root, token: token)
+fn materialize_ref_tree(repo_root: String, coordinate: ExchangeMaterializationCoordinate, ref_name: String) -> Bool {
   let fresh = devboot_witness_run(
     site: retained_devboot_rm_rf,
     workdir: repo_root,
     bin_path: "rm",
-    args: ["-rf", out_dir, index_path],
+    args: ["-rf", coordinate.repo_relative_dir, coordinate.repo_relative_index],
   )
-  let made = devboot_ensure_directory(repo_root: repo_root, path: out_dir)
+  let made = devboot_ensure_directory(repo_root: repo_root, path: coordinate.repo_relative_dir)
   let loaded = git.Plumbing.ReadTreeIntoIndex(
     address: devboot_repo_address(repo_root: repo_root),
-    index: index_path as FilePath,
+    index: coordinate.repo_relative_index as FilePath,
     treeish: join([ref_name, "^\{tree}"], ""),
   )
   if !(loaded.exit_code == 0) {
@@ -159,8 +171,8 @@ fn materialize_ref_tree(repo_root: String, work_root: String, token: String, ref
   } else {
     git.Plumbing.CheckoutIndexToPrefix(
       address: devboot_repo_address(repo_root: repo_root),
-      index: index_path as FilePath,
-      prefix: join([out_dir, "/"], ""),
+      index: coordinate.repo_relative_index as FilePath,
+      prefix: join([coordinate.repo_relative_dir, "/"], ""),
     ).exit_code == 0
   }
 }
@@ -624,34 +636,53 @@ fn devboot_build_admitted(
   if !prepared {
     BuildRefused { cause: ProducerUnreachable { detail: "could not prepare the local exchange repository" } }
   } else {
-    match publish_request(
-      repo_root: repo_root,
-      work_root: work_root,
+    match poll_once(
+      repo_root: exchange_repo,
       endpoint: endpoint,
-      token: token,
-      tree_hex: tree_hex,
-      subject_text: subject_text,
-      program: program,
+      ref_name: produced_ref_of(token: token),
     ) {
-      RequestPublicationRefused { detail } =>
-        BuildRefused { cause: ProducerUnreachable { detail: detail } }
-      RequestPublished { token: published } =>
-        match poll_for_answer(
-          repo_root: exchange_repo,
+      PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
+      PollAnswered { ref_name } =>
+        devboot_receive_answer(
+          caller_repo_root: repo_root,
+          exchange_repo: exchange_repo,
+          out_path: out_path,
+          token: token,
+          ref_name: ref_name,
+          subject_text: subject_text,
+          reused: true,
+        )
+      PollWaiting =>
+        match publish_request(
+          repo_root: repo_root,
+          work_root: work_root,
           endpoint: endpoint,
-          ref_name: produced_ref_of(token: published),
+          token: token,
+          tree_hex: tree_hex,
+          subject_text: subject_text,
+          program: program,
         ) {
-          PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
-          PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited: poll_budget() } }
-          PollAnswered { ref_name } =>
-            devboot_receive_answer(
-              exchange_repo: exchange_repo,
-              work_root: work_root,
-              out_path: out_path,
-              token: published,
-              ref_name: ref_name,
-              subject_text: subject_text,
-            )
+          RequestPublicationRefused { detail } =>
+            BuildRefused { cause: ProducerUnreachable { detail: detail } }
+          RequestPublished { token: published } =>
+            match poll_for_answer(
+              repo_root: exchange_repo,
+              endpoint: endpoint,
+              ref_name: produced_ref_of(token: published),
+            ) {
+              PollUnreachable { detail } => BuildRefused { cause: ProducerUnreachable { detail: detail } }
+              PollWaiting => BuildRefused { cause: ProducerDidNotAnswer { waited: poll_budget() } }
+              PollAnswered { ref_name } =>
+                devboot_receive_answer(
+                  caller_repo_root: repo_root,
+                  exchange_repo: exchange_repo,
+                  out_path: out_path,
+                  token: published,
+                  ref_name: ref_name,
+                  subject_text: subject_text,
+                  reused: false,
+                )
+            }
         }
     }
   }
@@ -659,17 +690,19 @@ fn devboot_build_admitted(
 
 // THE ANSWER IS CHECKED BEFORE IT IS BELIEVED, in the order that makes each check meaningful. The producer's refusal is read first, because a refusal has no artifact and treating a missing artifact as a retrieval failure would report the wrong cause. The subject is compared next and EXACTLY -- not by prefix, which is how a caller asking for less once received a binary carrying configuration it never named -- because a digest that matches proves the bytes are the bytes that were stored, never that the right thing was stored. Only then are the bytes bound to their digest.
 fn devboot_receive_answer(
+  caller_repo_root: String,
   exchange_repo: String,
-  work_root: String,
   out_path: String,
   token: String,
   ref_name: String,
   subject_text: String,
+  reused: Bool,
 ) -> BuildOutcome {
-  if !materialize_ref_tree(repo_root: exchange_repo, work_root: work_root, token: token, ref_name: ref_name) {
+  let coordinate = exchange_materialization_coordinate(exchange_repo: exchange_repo, token: token)
+  if !materialize_ref_tree(repo_root: exchange_repo, coordinate: coordinate, ref_name: ref_name) {
     BuildRefused { cause: ArtifactNotRetrievable { detail: "the producer's answer could not be materialized" } }
   } else {
-    let out_dir = exchange_out_dir(work_root: work_root, token: token)
+    let out_dir = coordinate.caller_visible_dir
     match read_text_file(dir: out_dir, name: produced_refusal_entry) {
       TextFileReadFailed { error } =>
         BuildRefused { cause: ArtifactNotRetrievable { detail: join(["could not read the producer refusal: ", error], "") } }
@@ -681,11 +714,12 @@ fn devboot_receive_answer(
             BuildRefused { cause: ArtifactNotRetrievable { detail: "the produced subject entry is absent" } }
           TextFilePresent { text: produced_subject } =>
             devboot_receive_answer_subject(
-              exchange_repo: exchange_repo,
+              caller_repo_root: caller_repo_root,
               out_path: out_path,
               out_dir: out_dir,
               produced_subject: produced_subject,
               subject_text: subject_text,
+              reused: reused,
             )
         }
       TextFilePresent { text: refusal_text } =>
@@ -699,11 +733,12 @@ fn devboot_receive_answer(
               BuildRefused { cause: ArtifactNotRetrievable { detail: "the produced subject entry is absent" } }
             TextFilePresent { text: produced_subject } =>
               devboot_receive_answer_subject(
-                exchange_repo: exchange_repo,
+                caller_repo_root: caller_repo_root,
                 out_path: out_path,
                 out_dir: out_dir,
                 produced_subject: produced_subject,
                 subject_text: subject_text,
+                reused: reused,
               )
           }
         }
@@ -712,11 +747,12 @@ fn devboot_receive_answer(
 }
 
 fn devboot_receive_answer_subject(
-  exchange_repo: String,
+  caller_repo_root: String,
   out_path: String,
   out_dir: String,
   produced_subject: String,
   subject_text: String,
+  reused: Bool,
 ) -> BuildOutcome {
   if !(produced_subject == trim(s: subject_text)) {
     BuildRefused { cause: SubjectMismatch { requested: trim(s: subject_text), produced: produced_subject } }
@@ -732,7 +768,7 @@ fn devboot_receive_answer_subject(
           Absent =>
             BuildRefused { cause: ArtifactNotRetrievable { detail: join(["the expected digest is invalid: ", expected_hex], "") } }
           Present { value: expected } =>
-            match file_sha256(repo_root: exchange_repo, path: artifact_path) {
+            match file_sha256(repo_root: caller_repo_root, path: artifact_path) {
               FileSha256CommandFailed { exit_code, stderr } =>
                 BuildRefused {
                   cause: ArtifactNotRetrievable {
@@ -747,13 +783,13 @@ fn devboot_receive_answer_subject(
                 } else {
                   let installed = devboot_witness_run(
                     site: retained_devboot_cp,
-                    workdir: exchange_repo,
+                    workdir: caller_repo_root,
                     bin_path: "cp",
                     args: [artifact_path, out_path],
                   )
                   let executable = devboot_witness_run(
                     site: retained_devboot_chmod,
-                    workdir: exchange_repo,
+                    workdir: caller_repo_root,
                     bin_path: "chmod",
                     args: ["+x", out_path],
                   )
@@ -774,7 +810,7 @@ fn devboot_receive_answer_subject(
                           receipt: BuildReceipt {
                             invocation: join(["devboot_build -> ", out_path], ""),
                             producer_host: producer_host,
-                            reused: false,
+                            reused: reused,
                           },
                         }
                     }
@@ -1125,6 +1161,7 @@ fn devboot_serve_admitted(
           home: home,
           token: token,
           produced_subject: produced_subject,
+          build_subject: subject,
           source_dir: source_dir,
           package: package,
           bin_name: bin_name,
@@ -1139,6 +1176,7 @@ fn devboot_serve_built(
   home: ProducerHome,
   token: String,
   produced_subject: String,
+  build_subject: BuildSubject,
   source_dir: String,
   package: String,
   bin_name: String,
@@ -1150,6 +1188,10 @@ fn devboot_serve_built(
     bin_path: env_path_resolved_program as String,
     args: env_prefixed_args(
       bindings: [
+        EnvSet {
+          name: "GUNBC_MATERIALIZED_TREE_IDENTITY",
+          value: materialized_tree_build_identity_text(tree: build_subject.tree_oid),
+        },
         EnvSet { name: rustup_home_env_name as String, value: home.rustup_home },
         EnvSet { name: cargo_environment_variable_name(variable: CargoHomeEnv) as String, value: home.cargo_home },
         EnvSet { name: cargo_environment_variable_name(variable: CargoTargetDirEnv) as String, value: target_dir },
@@ -1231,6 +1273,7 @@ fn render_build_outcome(outcome: BuildOutcome) -> String {
         "BUILT\npath: ", artifact.path,
         "\nsha256: ", render_sha256_digest(digest: artifact.sha256),
         "\nproducer_host: ", receipt.producer_host,
+        "\nreused: ", to_string(receipt.reused),
         "\nsubject:\n", program_subject,
       ], "")
   }
