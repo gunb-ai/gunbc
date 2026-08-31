@@ -1,7 +1,11 @@
 module v2.test.claim.regen_convergence_transaction_witness_test
 
 import std.types { Bool, List, String }
-import gunbc.regen_affected_set { regen_generation_role_modules }
+import gunbc.regen_affected_set {
+  regen_generation_role_modules,
+  regen_bootstrap_product_paths,
+  regen_bootstrap_product_source_modules
+}
 
 import v2.workflow.regen_convergence_transaction {
   RegenSurfaceIdentity,
@@ -355,4 +359,13 @@ test fn explicit_generation_role_roster_is_total_and_unique_for_generation_input
   count(roles |> filter(module => module == "v1.compiler.emit_rust")) == 1
     && count(roles |> filter(module => module == "v1.compiler.required_regen_host")) == 1
     && count(roles |> filter(module => module == "std.ordinary_subject")) == 0
+}
+
+// Aggregate generated surfaces have producer ownership even though they deliberately have no
+// same-named DAG module. The product and source projections must join through the bootstrap-edge
+// authority; a host-side basename fallback would make this discriminator observational.
+test fn compiler_tests_aggregate_has_one_declared_product_owner() -> Bool {
+  count(regen_bootstrap_product_paths() |> filter(path => path == "compiler_tests.rs")) == 1
+    && regen_bootstrap_product_source_modules(product: "compiler_tests.rs")
+      == ["v1.compiler.compiler_tests_rust"]
 }

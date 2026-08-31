@@ -3395,9 +3395,20 @@ fn convergence_surface_roles(
     let basename_to_module = modules
         .iter()
         .map(|module| (format!("{}.rs", module.replace('.', "_")), module.clone()))
-        .collect();
-    let (generation, bootstrap_sources, bootstrap_products) =
+        .collect::<HashMap<_, _>>();
+    let mut basename_to_module = basename_to_module;
+    let (generation, bootstrap_sources, bootstrap_products, bootstrap_product_owners) =
         regen_generation_role_population(source_roots, &modules)?;
+    for (product, source_module) in bootstrap_product_owners {
+        match basename_to_module.insert(product.clone(), source_module.clone()) {
+            Some(existing) if existing != source_module => {
+                return Err(format!(
+                    "SurfaceOwnershipAmbiguous: bootstrap product {product} is owned by both {existing} and {source_module}"
+                ));
+            }
+            _ => {}
+        }
+    }
     let seed_modules = super::emitted_closure_compile_host::closure_modules(
         &workspace.join("src/v1/stage0/src/lib.rs"),
     )?
@@ -5017,7 +5028,15 @@ pub fn compared_mirror_rows(
 pub fn regen_generation_role_population(
     source_roots: &[String],
     modules: &[String],
-) -> Result<(BTreeSet<String>, BTreeSet<String>, BTreeSet<String>), String> {
+) -> Result<
+    (
+        BTreeSet<String>,
+        BTreeSet<String>,
+        BTreeSet<String>,
+        HashMap<String, String>,
+    ),
+    String,
+> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = affected_set_entry(source_roots)?;
     let index = super::process_shared_index(source_roots);
@@ -5057,7 +5076,26 @@ pub fn regen_generation_role_population(
     )?;
     let bootstrap_sources = list_result("regen_bootstrap_source_modules", vec![])?;
     let bootstrap_products = list_result("regen_bootstrap_product_paths", vec![])?;
-    Ok((generation, bootstrap_sources, bootstrap_products))
+    let mut bootstrap_product_owners = HashMap::new();
+    for product in &bootstrap_products {
+        let owners = list_result(
+            "regen_bootstrap_product_source_modules",
+            vec![(Some("product".to_string()), str_value(product))],
+        )?;
+        if owners.len() != 1 {
+            return Err(format!(
+                "SurfaceOwnershipUnresolved: bootstrap product {product} has {} declared source modules",
+                owners.len()
+            ));
+        }
+        bootstrap_product_owners.insert(product.clone(), owners.into_iter().next().unwrap());
+    }
+    Ok((
+        generation,
+        bootstrap_sources,
+        bootstrap_products,
+        bootstrap_product_owners,
+    ))
 }
 
 fn affected_set_entry(source_roots: &[String]) -> Result<String, String> {
