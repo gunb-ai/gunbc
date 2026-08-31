@@ -1,6 +1,6 @@
 module extdeps.posix.path_ownership
 
-import std.types { String, Bool }
+import std.types { String, Bool, NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.uri { Uri, Https }
@@ -51,6 +51,10 @@ type PathOwnershipIntent {
 type PathOwnershipObservation
   = PathOwnerObserved { owner: PosixOwnerSpec }
   | PathOwnerUnobserved { reason: String }
+
+type PathModeObservation
+  = PathModeObserved { mode: NonEmptyStr }
+  | PathModeUnobserved { reason: String }
 
 // THE PRE-MUTATION DECISION. Separated from the ensure itself so it is decidable without a host:
 // the whole point of the readback design is that the interesting logic is pure and the effects are

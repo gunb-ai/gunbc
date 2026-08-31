@@ -1,0 +1,283 @@
+module test.claim.fabric_allocation_store_substrate_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.content_hash { serialize_content_hash }
+import v2.std.optional { Optional, Present, Absent }
+import extdeps.filesystem.filesystem_io {
+  filesystem_listing_observation,
+  filesystem_entry_presence,
+  FilesystemEntryAbsent,
+  FilesystemEntryListed,
+  FilesystemEntryPresenceIndeterminate,
+}
+import extdeps.posix.identity { PosixOwnerSpec, PosixUserId, PosixGroupId }
+import gunbc.fabric_allocation_store_substrate {
+  fabric_allocation_store_substrate_spec,
+  AllocationStoreRootWriterOnly,
+  AllocationStoreDirectoryAbsent,
+  AllocationStoreDirectoryPrestate,
+  AllocationStoreSubstratePrestate,
+  AllocationStoreNamespaceAbsent,
+  AllocationStoreNamespacePresent,
+  AllocationStoreDirectoryPresentExpected,
+  AllocationStoreDirectoryPresentUnexpected,
+  allocation_store_directory_present,
+  allocation_store_directory_absent,
+}
+import gunbc.fabric_cell_effect { CellSubstrateRootOwned, CellAttemptWriterOwned }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_converge_plan {
+  fleet_converge_allocation_store_plan_artifact,
+  FabricAllocationStoreOnly,
+  fleet_converge_scope_matches,
+  fleet_converge_scope_wire,
+  fleet_converge_apply_artifact_admits,
+  FabricAllocationStoreConverge,
+  FleetConvergePlanArtifact,
+  ApplyAdmitted,
+  ApplySubjectHostMismatch,
+  ApplyScopeUndecodable,
+  ApplyScopeMismatch,
+  ApplyMemberSetMismatch,
+  ApplyAllocationStorePrestateMismatch,
+}
+
+fn string_contains(s: String, pattern: String) -> Bool {
+  s.contains(pattern)
+}
+
+fn allocation_store_absent_fixture() -> Optional<AllocationStoreSubstratePrestate> {
+  let spec = fabric_allocation_store_substrate_spec()
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: spec.presence_ancestor as String,
+      success: true,
+      entries: "fleet-converge\n",
+      error: "",
+    ),
+    name: spec.presence_parent_entry as String,
+  ) {
+    FilesystemEntryAbsent(established) => Present {
+      value: AllocationStoreNamespaceAbsent {
+        namespace: allocation_store_directory_absent(path: spec.namespace_path, evidence: established),
+        store_path: spec.path,
+      },
+    }
+    FilesystemEntryListed { directory: _, name: _ } => Absent
+    FilesystemEntryPresenceIndeterminate { cause: _ } => Absent
+  }
+}
+
+test fn witness_allocation_store_substrate_is_exact_root_only_desired_state() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  spec.path as String == "/var/lib/gunbc/fabric/allocation"
+    && spec.namespace_path as String == "/var/lib/gunbc/fabric"
+    && spec.mode as String == "0700"
+    && spec.namespace_mode as String == "0700"
+    && match spec.owner { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
+    && match spec.namespace_owner { CellSubstrateRootOwned => true CellAttemptWriterOwned => false }
+    && match spec.writer_standing {
+      AllocationStoreRootWriterOnly { live_caller: caller, rederive_trigger: trigger } =>
+        caller as String != "" && trigger as String != ""
+    }
+}
+
+test fn witness_allocation_store_scope_is_distinct() -> Bool {
+  fleet_converge_scope_matches(planned: FabricAllocationStoreOnly, observed: FabricAllocationStoreOnly)
+}
+
+// Rendering regression net: positive exact content is required before absence checks, so a
+// renderer vocabulary change refuses rather than making the negative checks vacuously green.
+test fn witness_allocation_store_plan_names_exact_substrate_without_cell_or_host_families() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  match allocation_store_absent_fixture() {
+    Absent => false
+    Present { value: absent } =>
+      match fleet_converge_allocation_store_plan_artifact(
+        host: operator_host_srv3,
+        prior_generation: 0,
+        observed_allocation_store: absent,
+      ) {
+        Absent => false
+        Present { value: artifact } =>
+            fleet_converge_scope_matches(planned: artifact.subject.scope, observed: FabricAllocationStoreOnly)
+            && string_contains(s: artifact.plan_body, pattern: "subject_scope:scope:fabric-allocation-store-only")
+            && string_contains(s: artifact.plan_body, pattern: "# allocation-store")
+            && string_contains(s: artifact.plan_body, pattern: "allocation-store:absent:path=/var/lib/gunbc/fabric")
+            && string_contains(s: artifact.plan_body, pattern: "allocation-store:absent-because-namespace-absent:path=/var/lib/gunbc/fabric/allocation")
+            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:path=/var/lib/gunbc/fabric")
+            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:path=/var/lib/gunbc/fabric/allocation")
+            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:mode=0700")
+            && string_contains(s: artifact.plan_body, pattern: "ensure-directory:owner=CellSubstrateRootOwned")
+            && string_contains(s: artifact.plan_body, pattern: "# allocation-store-refusals=0")
+            && string_contains(s: artifact.plan_body, pattern: "apply-admission:ready")
+            && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
+            && !string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
+            && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
+            && !string_contains(s: artifact.plan_body, pattern: "# runner-slot")
+      }
+  }
+}
+
+test fn witness_allocation_store_present_wrong_attributes_are_typed_and_located() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  match allocation_store_directory_present(
+    path: spec.path,
+    owner: PosixOwnerSpec { user: PosixUserId { value: 1000 }, group: PosixGroupId { value: 1000 } },
+    mode: "777" as NonEmptyStr,
+    desired_mode: "700" as NonEmptyStr,
+  ) {
+    AllocationStoreDirectoryPresentUnexpected {
+      path: p,
+      observed_owner: o,
+      observed_mode: m,
+      desired_owner: d,
+      desired_mode: dm,
+    } =>
+      p == spec.path
+        && o.user.value == 1000
+        && o.group.value == 1000
+        && m as String == "777"
+        && d.user.value == 0
+        && d.group.value == 0
+        && dm as String == "700"
+    AllocationStoreDirectoryAbsent { path: _, evidence: _ } => false
+    AllocationStoreDirectoryPresentExpected { path: _, owner: _, mode: _ } => false
+  }
+}
+
+test fn witness_allocation_store_prestate_drift_refuses_with_typed_location() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  match allocation_store_absent_fixture() {
+    Absent => false
+    Present { value: absent } => match fleet_converge_allocation_store_plan_artifact(
+      host: operator_host_srv3,
+      prior_generation: 0,
+      observed_allocation_store: absent,
+    ) {
+      Absent => false
+      Present { value: artifact } => {
+        let namespace_appeared = allocation_store_directory_present(
+          path: spec.namespace_path,
+          owner: PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } },
+          mode: "700" as NonEmptyStr,
+          desired_mode: "700" as NonEmptyStr,
+        )
+        let namespace_changed = allocation_store_directory_present(
+          path: spec.namespace_path,
+          owner: PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } },
+          mode: "777" as NonEmptyStr,
+          desired_mode: "700" as NonEmptyStr,
+        )
+        match allocation_store_target_absent_fixture() {
+          Absent => false
+          Present { value: target_absent } => {
+            let appeared_refuses = allocation_store_changed_admission_is_located(
+              artifact: artifact,
+              observed: AllocationStoreNamespacePresent { namespace: namespace_appeared, store: target_absent },
+              expected_tag: "present-expected",
+              expected_mode: "mode=700",
+            )
+            let changed_refuses = allocation_store_changed_admission_is_located(
+              artifact: artifact,
+              observed: AllocationStoreNamespacePresent { namespace: namespace_changed, store: target_absent },
+              expected_tag: "present-unexpected",
+              expected_mode: "mode=777",
+            )
+            appeared_refuses && changed_refuses
+          }
+        }
+      }
+    }
+  }
+}
+
+test fn witness_allocation_store_target_prestate_drift_remains_refusing() -> Bool {
+  let spec = fabric_allocation_store_substrate_spec()
+  let namespace = allocation_store_directory_present(
+    path: spec.namespace_path,
+    owner: PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } },
+    mode: "700" as NonEmptyStr,
+    desired_mode: "700" as NonEmptyStr,
+  )
+  match allocation_store_target_absent_fixture() {
+    Absent => false
+    Present { value: absent } => match fleet_converge_allocation_store_plan_artifact(
+      host: operator_host_srv3,
+      prior_generation: 0,
+      observed_allocation_store: AllocationStoreNamespacePresent { namespace: namespace, store: absent },
+    ) {
+      Absent => false
+      Present { value: artifact } => {
+        let appeared = allocation_store_directory_present(
+          path: spec.path,
+          owner: PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } },
+          mode: "700" as NonEmptyStr,
+          desired_mode: "700" as NonEmptyStr,
+        )
+        let changed = allocation_store_directory_present(
+          path: spec.path,
+          owner: PosixOwnerSpec { user: PosixUserId { value: 0 }, group: PosixGroupId { value: 0 } },
+          mode: "777" as NonEmptyStr,
+          desired_mode: "700" as NonEmptyStr,
+        )
+        allocation_store_changed_admission_is_located(
+          artifact: artifact,
+          observed: AllocationStoreNamespacePresent { namespace: namespace, store: appeared },
+          expected_tag: "present-expected",
+          expected_mode: "mode=700",
+        ) && allocation_store_changed_admission_is_located(
+          artifact: artifact,
+          observed: AllocationStoreNamespacePresent { namespace: namespace, store: changed },
+          expected_tag: "present-unexpected",
+          expected_mode: "mode=777",
+        )
+      }
+    }
+  }
+}
+
+fn allocation_store_changed_admission_is_located(
+  artifact: FleetConvergePlanArtifact,
+  observed: AllocationStoreSubstratePrestate,
+  expected_tag: String,
+  expected_mode: String,
+) -> Bool {
+  match fleet_converge_apply_artifact_admits(
+    planned_host_text: operator_host_srv3 as String,
+    planned_scope_wire: fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+    planned_fingerprint_text: serialize_content_hash(hash: artifact.subject.member_set_fingerprint) as String,
+    observed: FabricAllocationStoreConverge {
+      host: operator_host_srv3,
+      observed_allocation_store: observed,
+    },
+  ) {
+    ApplyAllocationStorePrestateMismatch { namespace_path: n, store_path: p, observed: o } =>
+      n == fabric_allocation_store_substrate_spec().namespace_path
+        && p == fabric_allocation_store_substrate_spec().path
+        && string_contains(s: o, pattern: expected_tag)
+        && string_contains(s: o, pattern: expected_mode)
+    ApplyAdmitted => false
+    ApplySubjectHostMismatch { planned: _, observed: _ } => false
+    ApplyScopeUndecodable { cause: _ } => false
+    ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+    ApplyMemberSetMismatch => false
+  }
+}
+
+fn allocation_store_target_absent_fixture() -> Optional<AllocationStoreDirectoryPrestate> {
+  let spec = fabric_allocation_store_substrate_spec()
+  match filesystem_entry_presence(
+    listing: filesystem_listing_observation(
+      directory: spec.namespace_path as String,
+      success: true,
+      entries: "",
+      error: "",
+    ),
+    name: spec.presence_target_entry as String,
+  ) {
+    FilesystemEntryAbsent(established) => Present { value: allocation_store_directory_absent(path: spec.path, evidence: established) }
+    FilesystemEntryListed { directory: _, name: _ } => Absent
+    FilesystemEntryPresenceIndeterminate { cause: _ } => Absent
+  }
+}
