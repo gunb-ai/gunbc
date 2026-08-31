@@ -173,6 +173,32 @@ measurement refutes candidate #3 because it varies that candidate within one fix
 does **not** establish a current full-population target cost or assign any change in cost to an
 intervening revision.
 
+Producer invocation (the subject, not a retained timing implementation): `gunbc compile` over
+source roots `src/v1`, `dag`, and `src/v2`, entry
+`dag/test/claim/typed_argv_exec_realization_witness_test.dag`, target `dag`. A throwaway timer at
+`v1.compiler.infer::typecheck_module` around the `infer_items` call produced the three-arm line and
+was removed after structural equality was checked. This is therefore a one-off receipt under the
+same method as the 2026-08-16/17 study, not a permanently enrolled instrument; the named command
+re-derives the subject and the named symbol locates the timing seam.
+
+**The full-population outlier transformed (current-main measurement, 2026-08-31).** The current
+equivalent of the old whole-floor subject is `gunbc compile` with `dag` as the first source root,
+followed by `src/v1` and `src/v2`, no entry, target `dag`; the first root is semantic because
+no-entry compilation selects the primary-root population. It resolved 3,317 modules. Two complete
+runs put `gunbc.host_effect_realize` inference at 11.3s and 8.1s, not the historical 246–253s,
+while total reconciliation remained six to seven minutes. A second throwaway timer at the same
+`typecheck_module`/`infer_items` seam printed every module at or above 500ms. The largest was
+`v2.std.compilers.target_model` at 13.5s; `v2.compiler.translate` was 8.6s and
+`gunbc.host_effect_realize` 8.1s. All 20 printed modules together accounted for about 57s. There is
+no longer one inference module holding most reconciliation cost on this population; most of the
+remaining six-minute reconcile is outside these slow `infer_items` calls.
+
+This is the transformed outcome, not a declaration that reconciliation is cheap. The next
+measurement is a current-main phase partition of reconciliation on this exact `dag`-primary
+population: time `build_type_env`, `build_module_context`, `infer_items`, and the three rewire
+passes separately before proposing candidate #4. The old partition cannot be carried forward:
+both the population and the runtime map carrier changed after it was measured.
+
 **The two apparent per-module copied-accumulator repairs are obsolete on current main.** Reading
 `merge_global_bare_variant_locals` and the immediately following
 `merge_kernel_variant_locals_low_priority` against the old flat-map realization suggests that
