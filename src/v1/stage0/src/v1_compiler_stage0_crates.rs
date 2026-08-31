@@ -323,16 +323,16 @@ pub fn stage0_lookup_package_crate_dir(package_name: String) -> Rc<Stage0Package
             }
             __result
         });
-        let crate_dir = matches.iter().cloned().fold(
-            "".to_string(),
-            |acc: String, row: Rc<GeneratedPartitionCrateRow>| {
+        let crate_dir = matches
+            .iter()
+            .cloned()
+            .fold("".to_string(), |acc: String, row: _| {
                 if (acc.clone() == "".to_string()) {
                     row.crate_dir.clone()
                 } else {
                     acc.clone()
                 }
-            },
-        );
+            });
         if (crate_dir.clone() == "".to_string()) {
             Rc::new(Stage0PackageCrateDirLookup::Stage0PackageCrateDirRefused {
                 cause: Rc::new(
@@ -909,8 +909,7 @@ pub fn stage0_crate_plan_outcome() -> Rc<Stage0CratePlanOutcome> {
                 crates: Rc::new(vec![]),
             }),
         }),
-        |acc: Rc<Stage0CratePlanOutcome>, row: Rc<GeneratedPartitionCrateRow>| match (*acc).clone()
-        {
+        |acc: _, row: _| match (*acc).clone() {
             Stage0CratePlanOutcome::Stage0CratePlanRefused { cause: cause, .. } => {
                 Rc::new(Stage0CratePlanOutcome::Stage0CratePlanRefused {
                     cause: cause.clone(),
@@ -944,7 +943,7 @@ pub fn emit_stage0_crate_boundary_files_outcome(
         Rc::new(Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitOk {
             files: Rc::new(vec![]),
         }),
-        |acc: Rc<Stage0CrateBoundaryEmitOutcome>, spec: Rc<Stage0CrateSpec>| match (*acc).clone() {
+        |acc: Rc<Stage0CrateBoundaryEmitOutcome>, spec: _| match (*acc).clone() {
             Stage0CrateBoundaryEmitOutcome::Stage0CrateBoundaryEmitRefused {
                 cause: cause, ..
             } => Rc::new(
