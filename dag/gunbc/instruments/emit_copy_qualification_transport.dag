@@ -339,6 +339,13 @@ fn anchor_slug_for_line(anchors: List<CaseAnchor>, line: Int) -> String? {
   eligible |> filter(a => a.line == best_line) |> map(a => a.slug) |> first
 }
 
+// clippy's message spans print crate-relative file names ("src/..."); an absolute path can
+// appear when the compiland sits outside the manifest directory. Identity therefore matches
+// either the exact relative spelling or a "/"-anchored suffix of an absolute one.
+fn finding_file_matches(path: String, relative: String) -> Bool {
+  path == relative || path_ends_with(path: path, suffix: concat("/", relative))
+}
+
 fn path_ends_with(path: String, suffix: String) -> Bool {
   let pieces = split(s: path, delimiter: suffix)
   let n = pieces |> count
@@ -361,8 +368,8 @@ fn static_observation_for_case(
   let hit = findings
     |> filter(f => finding_is_clone_lint(f: f))
     |> filter(f =>
-      let anchors = if path_ends_with(path: f.file, suffix: emitted_module_suffix) { emitted_anchors }
-        else { if path_ends_with(path: f.file, suffix: runner_suffix) { runner_anchors } else { [] } }
+      let anchors = if finding_file_matches(path: f.file, relative: emitted_module_suffix) { emitted_anchors }
+        else { if finding_file_matches(path: f.file, relative: runner_suffix) { runner_anchors } else { [] } }
       match anchor_slug_for_line(anchors: anchors, line: f.line) {
         Present { value: s } => s == slug
         Absent => false
@@ -502,8 +509,10 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                     extra_args: ["--release", "--all-targets", "--manifest-path", a.manifest_path, "--target-dir", concat(a.base, "/target"), "--message-format=json"],
                     lint_args: ["-W", ecq_lint_name]
                   )
+                  let receipts_dir_made = shell.Mkdir.Parents(path: concat(root, "/target/emit_copy_qual/receipts"))
+                  let static_debug_path = concat(root, concat("/target/emit_copy_qual/receipts/", concat(shard_slug(c: c, mutant: mutant), "_static_arm.txt")))
                   let static_debug = Filesystem.Write(
-                    path: concat(root, concat("/target/emit_copy_qual/receipts/", concat(shard_slug(c: c, mutant: mutant), "_static_arm.txt"))),
+                    path: static_debug_path,
                     content: static_arm_debug_text(ok: clippy.success, stdout: clippy.stdout, stderr: clippy.stderr))
                   let build = cargo.Build.BuildManifest(
                     workdir: root,
@@ -511,8 +520,8 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                     target_dir: concat(a.base, "/target"),
                     extra_args: ["--release", "--bin", shard_runner_bin_name(c: c, mutant: mutant)]
                   )
-                  if !static_debug.success {
-                    refuse_all(rows: rows, r: ShardRefusal { phase: "static_debug_write", detail: concat(a.base, "/static_arm.txt") })
+                  if !(receipts_dir_made.success && static_debug.success) {
+                    refuse_all(rows: rows, r: ShardRefusal { phase: "static_debug_write", detail: static_debug_path })
                   } else if !build.success {
                     refuse_all(rows: rows, r: ShardRefusal { phase: "cargo_build", detail: stderr_tail(s: build.stderr) })
                   } else {
@@ -527,8 +536,8 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                     let emitted_module = Filesystem.Read(path: a.emitted_module_path)
                     let verdicts = judge_shard(
                       rows: rows,
-                      emitted_module_suffix: concat("/src/test_fixture_emit_copy_", concat(carrier_realization_slug(c: c), ".rs")),
-                      runner_suffix: concat("/src/bin/", concat(shard_runner_bin_name(c: c, mutant: mutant), ".rs")),
+                      emitted_module_suffix: concat("src/test_fixture_emit_copy_", concat(carrier_realization_slug(c: c), ".rs")),
+                      runner_suffix: concat("src/bin/", concat(shard_runner_bin_name(c: c, mutant: mutant), ".rs")),
                       native_success: native.success, native_stdout: native.stdout,
                       interp_success: interp.success && interp_report.success,
                       interp_stdout: interp_report.content, interp_stderr: interp.stderr,
