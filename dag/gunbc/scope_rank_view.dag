@@ -123,15 +123,28 @@ data scope_rank_view_slots: List<MaterializedSlot> = [
   },
 ]
 
-// WHAT A READER ASKS OF THE SCOPE MAPS. The two lookup arms are what the view makes approximately
+// WHAT A READER ASKS OF THE SCOPE MAPS. The lookup arms are what the view makes approximately
 // free; the enumeration arms are what it does not, and separating them is the point of the column.
+//
+// ProvenanceTest is the arm the per-site sweep added and the one a cutover most needs marked. These
+// readers do not want the declaration -- they want the WINNER'S DECLARING MODULE, and they decide a
+// builtin dispatch from it. A polarity or admission error does not surface at these sites as a
+// missing name; it surfaces as a DIFFERENT FUNCTION EXECUTING, which is why they cut over first and
+// why the discriminating RED is exercised against them rather than against a point lookup.
+//
+// UnconsumedConstruction is the site that looked like the hardest and is not: it hands out a whole
+// ResolvedGraph built from the scope map, which would force materialization to survive the cut for
+// any consumer of it, and it has none. Filed as a row rather than silently deleted, because "the
+// blocker is not real" is precisely the claim a reader wants to check.
 // A design that reported the scope-entry saving without the enumeration column would be reporting
 // half a ledger -- the cost is not removed there, it is moved from entry to the ask.
 type ReaderDemand
   = PointLookup { key_source: String }
   | MembershipTest { key_source: String }
+  | ProvenanceTest { what_is_read: String, decides: String }
   | KindFilteredEnumeration { kind: String, called_per: String }
   | WholeKeyEnumeration { what_is_wanted: String, called_per: String }
+  | UnconsumedConstruction { what_it_would_have_forced: String, proof_of_no_consumer: String }
 
 type ScopeMapReader {
   reader: DeclarationRef
@@ -164,6 +177,81 @@ data scope_rank_view_readers: List<ScopeMapReader> = [
     reads: "ambiguous_bare_function_names",
     demand: MembershipTest { key_source: "a bare spelling" },
     after_cutover: "true when the key has two or more ranked declarers, counted at item grain rather than module grain, because the seed counts items",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "try_witness_evaluation_dispatch"),
+    reads: "the scope item_registry, for the entry's module_name",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name of whichever declaration won the callee's bare name",
+      decides: "whether the call is the witness-evaluation authority's own, and therefore whether a builtin body runs instead of the authored one",
+    },
+    after_cutover: "the resolved declarer already carries its module, so the second lookup disappears rather than moving",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "is_v4_bridge_family"),
+    reads: "the scope item_registry, for the entry's module_name",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name, compared against one bridge family's module",
+      decides: "whether a name in the family's roster is that family's, or a homonym from elsewhere in the scope",
+    },
+    after_cutover: "same -- the declarer's module is part of the resolution result",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "is_v2_std_collection_map_grounded_fn"),
+    reads: "the scope item_registry, for the entry's module_name",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name, compared against the v2 std collection module",
+      decides: "whether a call takes the primitive map grounding instead of evaluating the authored body",
+    },
+    after_cutover: "same -- the declarer's module is part of the resolution result",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "definer_module_for_name"),
+    reads: "a ResolvedGraph's item_registry, twice -- once bare, once on the dotted tail",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name of the winner, falling back to the leaf of a dotted spelling",
+      decides: "which module is treated as defining a name, for change attribution",
+    },
+    after_cutover: "the one row this census leaves open: whether it is in the population at all depends on which graph its callers pass, and the cutover closes that rather than assuming it",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "call_test_claim_fn_bool"),
+    reads: "the scope item_registry, as a guard",
+    demand: MembershipTest { key_source: "the claim function name the caller is about to invoke" },
+    after_cutover: "resolution returning a declarer, rather than a separate presence question",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "call_floor_row_precompute_would_skip"),
+    reads: "the scope item_registry, as a hard requirement gate",
+    demand: MembershipTest { key_source: "a floor skip-predicate name, a literal -- one such gate each in call_floor_kernel_would_skip, call_floor_row_would_skip and this one" },
+    after_cutover: "same shape; these are the sites whose refusal text must survive the cut unchanged, because a missing predicate is an error rather than a skip",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "rerun_frontier_nodes_for_entry"),
+    reads: "the scope item_registry, as a guard before re-evaluating a data item",
+    demand: MembershipTest { key_source: "a data declaration name reached from a changed file" },
+    after_cutover: "resolution returning a declarer",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "eval_var"),
+    reads: "the scope item_registry on the slow path, after the environment misses",
+    demand: PointLookup { key_source: "the interned variable symbol, materialized back to a String only here" },
+    after_cutover: "collapses into one resolution -- the site already re-resolves through lookup_fn_from on the next line, so today it asks the same question twice",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "eval_data_item_value"),
+    reads: "the scope item_registry, then fn_nodes",
+    demand: PointLookup { key_source: "an item name supplied by the caller" },
+    after_cutover: "collapses into one resolution, as eval_var does",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "resolved_graph"),
+    reads: "the scope item_registry, whole, to rebuild a ResolvedGraph from it",
+    demand: UnconsumedConstruction {
+      what_it_would_have_forced: "a materialized scope registry surviving the cut, since a ResolvedGraph field cannot be served by a resolver",
+      proof_of_no_consumer: "no call site in src/ -- the pub fn is reachable by nobody, so it is deleted with the maps rather than being the reason to keep them",
+    },
+    after_cutover: "deleted",
   },
   {
     reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_initial_env"),
@@ -374,6 +462,20 @@ fn scope_rank_reader_count() -> Int {
 
 fn scope_rank_enumerating_readers() -> List<ScopeMapReader> {
   scope_rank_view_readers |> filter(r => scope_rank_reader_is_enumerating(r: r))
+}
+
+fn scope_rank_provenance_readers() -> List<ScopeMapReader> {
+  scope_rank_view_readers |> filter(r => match r.demand {
+    ProvenanceTest { what_is_read: _, decides: _ } => true
+    _ => false
+  })
+}
+
+fn scope_rank_unconsumed_construction_readers() -> List<ScopeMapReader> {
+  scope_rank_view_readers |> filter(r => match r.demand {
+    UnconsumedConstruction { what_it_would_have_forced: _, proof_of_no_consumer: _ } => true
+    _ => false
+  })
 }
 
 fn scope_rank_whole_key_readers() -> List<ScopeMapReader> {

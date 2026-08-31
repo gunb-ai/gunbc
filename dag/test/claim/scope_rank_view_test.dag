@@ -13,6 +13,8 @@ import gunbc.scope_rank_view {
   scope_rank_reader_count,
   scope_rank_enumerating_readers,
   scope_rank_whole_key_readers,
+  scope_rank_provenance_readers,
+  scope_rank_unconsumed_construction_readers,
   scope_rank_admission_is_structural_after,
   scope_rank_admission_regression_reachable,
   scope_rank_instrument_read_counts,
@@ -73,6 +75,26 @@ test fn some_reader_enumerates_rather_than_looks_up() -> Bool {
 test fn the_whole_key_enumeration_is_carried_as_its_own_arm() -> Bool {
   (scope_rank_whole_key_readers() |> count) > 0
     && (scope_rank_whole_key_readers() |> count) < (scope_rank_enumerating_readers() |> count)
+}
+
+// THE ARM THE PER-SITE SWEEP ADDED, AND THE REASON IT IS NOT A POINT LOOKUP. A provenance reader
+// wants the WINNER'S DECLARING MODULE and decides a builtin dispatch from it, so a polarity or
+// admission error surfaces there as a different function executing rather than as a missing name.
+// It must be non-empty (or the cut order in the design has no first step) and a proper subset (or
+// the column is not discriminating). RED case: score the three interpreter dispatch guards as point
+// lookups, which is what a census that read only the call shape would have done.
+test fn some_reader_wants_the_winners_module_not_the_declaration() -> Bool {
+  (scope_rank_provenance_readers() |> count) > 0
+    && (scope_rank_provenance_readers() |> count) < scope_rank_reader_count()
+}
+
+// THE SITE THAT WOULD HAVE FORCED MATERIALIZATION TO SURVIVE THE CUT IS CARRIED, NOT ASSUMED AWAY.
+// It hands out a whole ResolvedGraph built from the scope map, which no resolver can serve; it has
+// no consumer, so it deletes. "The blocker is not real" is the claim a reader most wants to check,
+// so it is a row with its proof rather than a silent absence. RED case: drop the row, and the
+// cutover's hardest apparent obstacle stops being visible anywhere.
+test fn the_materialization_forcing_site_is_carried_with_its_proof() -> Bool {
+  (scope_rank_unconsumed_construction_readers() |> count) > 0
 }
 
 test fn every_reader_row_is_scored() -> Bool {

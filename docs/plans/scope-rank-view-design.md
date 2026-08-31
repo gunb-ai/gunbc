@@ -120,6 +120,78 @@ This is the design's honest boundary: the prize is scope *entry*, and a reader t
 scope pays at the ask what it no longer pays at entry. A cutover that quotes the entry saving without
 this column would be reporting half a ledger.
 
+## 5b. The migration census — every site, its demand, and its cut order
+
+The brief sizes the reader migration at "~126 `item_registry` sites". That is the grep count over the
+token across `src/`, and it is not the migration population: **most of those occurrences are a
+different carrier's field of the same name.** Filing them separately is the first thing the census
+does, because a cutover scoped to the grep would edit the typecheck layer and the emitter for no
+reason, and a cutover that ignored the difference would edit the wrong authority.
+
+### What is not in the population (112 of 126)
+
+| kind | where | count | why it is not the subject |
+|---|---|---|---|
+| `TypedModule.item_registry` | emitters, `coproduct_reflection`, `owned_data`, `data_initializer_identity`, `v1_compiler_compile` | ~18 | the per-module registry — the authority the corpus index is *derived from*, and the one the fragment population of #9809 already reads. Untouched. |
+| typecheck-layer `scope`/`fn_scope`/`lam_scope`/`local`/`state`/`dep_state`/`ctx` registries | `v1_compiler_infer` | ~30 | `v1_compiler_infer`'s own threaded registry at compile time. A different carrier with the same field name; it never sees a claim scope. |
+| field declarations | `v1_compiler_infer`, `v1_compiler_infer_items`, `v1_interpreter` | 8 | type declarations, not reads. |
+| empty-map struct initializers | test fixtures and empty contexts across 9 files | ~12 | `Rc::new(HashMap::new())`; nothing is read. |
+| `item_registry_keys` | `v1_compiler_artifact`, `v1_compiler_compile` | 5 | a different field: the serialized key list of an artifact. |
+| doc-comment mentions | `cli_run`, `v1_interpreter`, `coproduct_reflection` | ~9 | prose. |
+| `build_qualified_item_registry` and its duplicate marker | `v1_compiler_emit_rust` | ~10 | the emitter's own qualified overlay, with its own fail-closed refusal. A separate authority on a separate key. |
+
+### The population (14 readers, 4 construction sites)
+
+Demands, and the arm each falls in. The fourth arm is one the reader census did not originally
+carry and this sweep found:
+
+**Provenance test** — the reader looks the name up *in order to read `info.module_name`*, and decides
+a builtin dispatch from it. These are the sites where a polarity error does not surface as a missing
+name but as a **different function executing**, so they are the ones the qualified-admission RED and
+the ambiguity line must both be exercised against:
+
+| site | decides |
+|---|---|
+| `v1_compiler.v1_interpreter` `try_witness_evaluation_dispatch` | whether a call is the witness-evaluation authority's own |
+| `v1_compiler.v1_interpreter` `is_v4_bridge_family` | whether a name is one bridge family's, by declaring module |
+| `v1_compiler.v1_interpreter` `is_v2_std_collection_map_grounded_fn` | whether a call takes the primitive map grounding |
+| `v1_compiler.cli_run` `definer_module_for_name` | the declaring module of a name — on a `ResolvedGraph` argument, so whether it is in the population depends on which graph its callers pass, and that is the one row this census leaves open for the cutover to close |
+
+**Point lookup** — `v1_compiler.v1_interpreter` `eval_var` (the registry slow path behind the env
+lookup) and `eval_data_item_value`. Both already re-resolve through `lookup_fn_from` immediately
+after, so under the view they collapse into one resolution rather than two.
+
+**Membership test** — five sites, all `contains_key` guarding a call into a modeled function:
+`call_test_claim_fn_bool`, the three `call_floor_kernel_would_skip` / `call_floor_row_would_skip` /
+`call_floor_row_precompute_would_skip` guards, and `rerun_frontier_nodes_for_entry`. Each
+becomes `resolve(name).is_some()`.
+
+**Enumeration** — the four readers of §5.
+
+**Construction** — `v1_compiler.cli_run` `claim_scope_for`'s registry fold (with its `winner_of` /
+`ambiguous` bookkeeping) and `v1_compiler.v1_interpreter` `build_scope_indexes_with_module_order`.
+These are the root: they are deleted, not migrated.
+
+Plus one site that looked like the hardest and is not. `v1_compiler.v1_interpreter`
+`InterpContext::resolved_graph` hands out a whole `ResolvedGraph` built from the scope map, which
+would force materialization to survive the cut for any consumer of it. **It has no consumer** — no
+call site anywhere in `src/`. It is deleted with the maps rather than being the reason to keep them.
+
+### Cut order
+
+1. The resolver and the rank map land, and the **provenance tests and point lookups** move first —
+   they are the sites that read the winner rather than merely its presence, so they are where a
+   polarity or admission error is loudest, and moving them first means the discriminating REDs run
+   against the arm most likely to be wrong.
+2. The **membership tests**, which are the same resolution asked for less.
+3. The **kind-filtered enumerators**, which need the corpus kind partition to exist.
+4. `roster_entry_registry_cache`, last, and only after its call frequency is measured — it is the one
+   reader the view does not obviously make cheaper.
+5. The **construction sites and `resolved_graph`** are deleted in the same motion, which is what
+   makes this a root cut rather than a leaf-first refinement. Nothing in steps 1–4 may be merged with
+   the fold still standing: a surviving map is the attractor, and readers understanding both
+   representations is the parallel-authority state the migration exists to avoid.
+
 ## 6. The scope population — 660 and 1,155 come from one instrument at two revisions
 
 The brief asks that the delta between 1,155 and 660 be reconciled rather than assumed. Both are
