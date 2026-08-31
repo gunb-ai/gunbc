@@ -84,6 +84,19 @@ test fn witness_target_decision_labels_round_trip() -> Bool {
     && (match target_decision_label_of_text(s: "maybe") { Absent => true  Present { value: _ } => false })
 }
 
+// RED (review 57765 condition, ruled by the lane manager): an UNKNOWN target_decision label on the
+// wire refuses through the DECODE path as a typed, located Unreadable -- the `_ => none` parse arm
+// is a refusal feeder, not an absorbing fallback, and this is its executing evidence.
+test fn witness_unknown_target_decision_label_is_unreadable_not_absorbed() -> Bool {
+  let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
+  let tampered = replace(wire, "\"target_decision\": \"proceed\"", "\"target_decision\": \"bogus\"")
+  tampered != wire
+    && (match live_deploy_apply_receipt_decode(raw: tampered) {
+      LiveDeployApplyReceiptDecoded { receipt: _ } => false
+      LiveDeployApplyReceiptUnreadable { reason: r } => string_contains(s: r, pattern: "target_decision is unknown")
+    })
+}
+
 // RED: a substituted predecessor receipt identity fails the identity check (review 5061891290 P1-4).
 test fn witness_dashboard_receipt_with_tampered_plan_receipt_identity_refuses() -> Bool {
   let wire = serialize_json(v: live_deploy_apply_receipt_json(r: fixture_dashboard_receipt()))
