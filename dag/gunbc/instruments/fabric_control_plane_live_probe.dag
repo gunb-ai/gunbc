@@ -685,7 +685,7 @@ func fci1_live_reserve_and_observe_available(
           path: path,
           wire: fabric_ci_evidence_wire(value: required_build_cell_lifetime_sample_wire(sample: sample) as NonEmptyStr),
         )
-      } }
+      }
     }
     _ => exit_failure(reason: join(["ReservationCommitRefused:", fci1_cell_reservation_wire(reservation: reserved)], ""))
   }
@@ -949,7 +949,7 @@ func fci1_canonical_cleanup_disposition(
   let before_decoded = decode_fabric_ci_evidence_wire(wire: before_wire)
   let observed = fci1_allocation_slot_observation(root: root)
   let observed_prestate = fci1_slot_observation_prestate(observed: observed)
-  match before_decoded {
+  let initial_disposition = match before_decoded {
     FabricCiEvidenceUndecodable => CanonicalCleanupRefused { prestate: AllocationSlotUnreadable { path: root }, observed: observed }
     FabricCiEvidenceDecoded { value: before_value } => {
       let prestate = fci1_decode_allocation_prestate(wire: before_value as String)
@@ -988,7 +988,8 @@ func fci1_canonical_cleanup_disposition(
             }
           } else { CanonicalCleanupRefused { prestate: prestate, observed: observed } }
         Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: prestate, observed: observed }
-      } |> fn(disposition) { match disposition {
+      } }
+      let disposition = match initial_disposition {
         CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } =>
           match fci1_cleanup_authority_from_path(path: authority_path) {
             Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
@@ -1007,12 +1008,10 @@ func fci1_canonical_cleanup_disposition(
               } else { CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } }
             Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed }
           }
-        _ => disposition
+        _ => initial_disposition
       } }
     }
   }
-}
-
 }
 
 func fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, authority_path: String, path: String) -> ProcessExit {
