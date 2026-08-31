@@ -292,6 +292,40 @@ pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<Strin
         .collect()
 }
 
+/// The member names an `import path { A, B }` line names explicitly.
+///
+/// An import edge is the AUTHORITY for a name it names: the author has already said
+/// which module they mean. Consulting the global bare census for such a name asks a
+/// question that was answered at the import site, and can re-open as AMBIGUOUS a name
+/// the author already disambiguated -- which is why this set is subtracted from the
+/// bare-name universe before the census is asked anything.
+pub(crate) fn explicit_import_member_names(content: &str) -> BTreeSet<String> {
+    let mut names = BTreeSet::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if !trimmed.starts_with("import ") {
+            continue;
+        }
+        let Some(open) = trimmed.find('{') else {
+            continue;
+        };
+        let rest = &trimmed[open + 1..];
+        let body = rest.split('}').next().unwrap_or(rest);
+        for member in body.split(',') {
+            // `A as B` binds B locally; the local binder is what a bare reference names.
+            let member = member.trim();
+            let bound = member
+                .rsplit_once(" as ")
+                .map(|(_, alias)| alias.trim())
+                .unwrap_or(member);
+            if !bound.is_empty() {
+                names.insert(bound.to_string());
+            }
+        }
+    }
+    names
+}
+
 pub(crate) fn extract_import_paths(content: &str) -> Vec<String> {
     let mut imports = Vec::new();
     for line in content.lines() {
@@ -7720,6 +7754,7 @@ fn bare_reference_pull_paths_for_source(
         st.edge_index_bare_name_universe += universe_started.elapsed().as_nanos();
     });
     let self_declared = module_self_declared_names(&sf.content);
+    let explicit_imports = explicit_import_member_names(&sf.content);
     let mut pulled: Vec<String> = Vec::new();
     let mut pulled_set: HashSet<String> = HashSet::new();
     let resolve_loop_started = std::time::Instant::now();
@@ -7727,6 +7762,13 @@ fn bare_reference_pull_paths_for_source(
     for (name, service_head) in all_names {
         // Bound by this module's own declaration — see `module_self_declared_names`.
         if !service_head && self_declared.contains(&name) {
+            continue;
+        }
+        // Bound by an explicit import edge, which is the single authority for this name
+        // (`explicit_import_member_names`). The import closure already pulls the named
+        // module, so there is nothing for the census to add -- and asking it anyway is
+        // what would report AMBIGUOUS for a name the author disambiguated by hand.
+        if !service_head && explicit_imports.contains(&name) {
             continue;
         }
         let in_call_position = candidates.call_position.contains(&name);
@@ -7745,53 +7787,67 @@ fn bare_reference_pull_paths_for_source(
         // entirely) and a permissive one overcounts (it reads an alias target and a
         // `data` initializer's head as variants), and the two answers differ by 30x on
         // the same trace. The census already knows; carrying its verdict costs nothing.
-        let resolve_in = |census: &Rc<SymbolIndex>| -> (Option<String>, &'static str) {
-            if service_head {
-                return (
-                    v1_rt::map_get(&census.services, name.clone())
-                        .map(|entry| entry.module_path.clone()),
-                    "service",
-                );
-            }
-            match v1_rt::map_get(&census.global_bare, name.clone()) {
-                Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path,
-                        binding,
-                    } => (
-                        if pullable(binding) {
-                            Some(module_path.clone())
+        let resolve_in =
+            |census: &Rc<SymbolIndex>| -> Result<(Option<String>, &'static str), String> {
+                if service_head {
+                    return Ok((
+                        v1_rt::map_get(&census.services, name.clone())
+                            .map(|entry| entry.module_path.clone()),
+                        "service",
+                    ));
+                }
+                Ok(match v1_rt::map_get(&census.global_bare, name.clone()) {
+                    Some(state) => match state.as_ref() {
+                        GlobalBareLookupState::GlobalBareUniqueBinding {
+                            module_path,
+                            binding,
+                        } => (
+                            if pullable(binding) {
+                                Some(module_path.clone())
+                            } else {
+                                None
+                            },
+                            "unique",
+                        ),
+                        GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
+                            // AMBIGUITY IS REFUSED, NOT RANKED (DESIGN §4: "a heuristic is
+                            // never necessary"; §5: a failure arm must refuse, never widen).
+                            // This arm used to call `global_bare_nearest_ancestor_candidate`,
+                            // which picked the candidate sharing the longest module-path
+                            // prefix with the referencing module -- a proximity heuristic with
+                            // no grounding: nearness in the namespace tree is not evidence
+                            // about which declaration the author meant, and it silently
+                            // resolved 312 occurrences whose meaning was never stated. The
+                            // remedy is authorable at every site: name the module you mean
+                            // with an explicit import, which `explicit_import_member_names`
+                            // then treats as the authority and this census is never asked.
+                            let mut modules: Vec<String> =
+                                candidates.iter().map(|c| c.module_path.clone()).collect();
+                            modules.sort();
+                            modules.dedup();
+                            return Err(format!(
+                                "bare_reference_closure: bare reference '{name}' in \
+                             '{file_rel}' is AMBIGUOUS -- {} modules declare that name \
+                             ({}) and this resolver does not rank candidates. Name the \
+                             one you mean with an explicit import, e.g. \
+                             `import {} {{ {name} }}`.",
+                                modules.len(),
+                                modules.join(", "),
+                                modules.first().map(String::as_str).unwrap_or("<module>"),
+                            ));
+                        }
+                    },
+                    None => (
+                        if in_call_position {
+                            v1_rt::map_get(&census.services, name.clone())
+                                .map(|entry| entry.module_path.clone())
                         } else {
                             None
                         },
-                        "unique",
+                        "absent",
                     ),
-                    GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => (
-                        crate::v1_compiler_infer_env::global_bare_nearest_ancestor_candidate(
-                            referencing_module.clone(),
-                            candidates.clone(),
-                        )
-                        .and_then(|c| {
-                            if pullable(&c.binding) {
-                                Some(c.module_path.clone())
-                            } else {
-                                None
-                            }
-                        }),
-                        "ambiguous",
-                    ),
-                },
-                None => (
-                    if in_call_position {
-                        v1_rt::map_get(&census.services, name.clone())
-                            .map(|entry| entry.module_path.clone())
-                    } else {
-                        None
-                    },
-                    "absent",
-                ),
-            }
-        };
+                })
+            };
         // WHICH ARM ANSWERED is a fact the caller needs and this match used to destroy
         // one line after computing it: `Some(m) => Some(m)` collapsed a scoped-census hit
         // and a whole-pool fallback hit into one `Option<String>`, so a name that the
@@ -7804,10 +7860,10 @@ fn bare_reference_pull_paths_for_source(
         // Carrying the provenance costs nothing (the arms already know it) and makes the
         // existing `GUNBC_BARE_PULL_TRACE` line answer "how was this resolved", not only
         // "what did it resolve to".
-        let (target_module, resolution_arm, census_state) = match resolve_in(&census) {
+        let (target_module, resolution_arm, census_state) = match resolve_in(&census)? {
             (Some(m), state) => (Some(m), "scoped", state),
             (None, _) => {
-                let (m, state) = resolve_in(&pool_bare_census(index)?);
+                let (m, state) = resolve_in(&pool_bare_census(index)?)?;
                 (m, "pool-fallback", state)
             }
         };
