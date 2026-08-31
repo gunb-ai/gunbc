@@ -77,7 +77,28 @@ data ollama_gpt_oss_20b_support_row: OllamaModelSupportRow = OllamaModelSupportR
   introduction_citation: ollama_gpt_oss_feature_introduction_citation,
 }
 
-data ollama_model_support_catalog: List<OllamaModelSupportRow> = [ollama_gpt_oss_20b_support_row]
+// THE SAME FAMILY AT A DIFFERENT SIZE, WHICH IS ONE AXIS AND NOT A SECOND MODEL CONCEPT.
+//
+// gpt-oss:120b and gpt-oss:20b are one upstream name distinguished by tag, so they are two rows over
+// the existing OllamaModelRef rather than a new carrier. The runtime floor is genuinely shared: the
+// cited v0.11.0 release is the one that introduced the gpt-oss family, and it introduced both sizes
+// together, so reusing ollama_gpt_oss_feature_introduction_floor here is the same fact and not a
+// guess about 120b specifically.
+data ollama_gpt_oss_120b_model_ref: OllamaModelRef = OllamaModelRef {
+  name: "gpt-oss" as NonEmptyStr,
+  tag: "120b" as NonEmptyStr,
+}
+
+data ollama_gpt_oss_120b_support_row: OllamaModelSupportRow = OllamaModelSupportRow {
+  model: ollama_gpt_oss_120b_model_ref,
+  minimum_runtime: ollama_gpt_oss_feature_introduction_floor,
+  introduction_citation: ollama_gpt_oss_feature_introduction_citation,
+}
+
+data ollama_model_support_catalog: List<OllamaModelSupportRow> = [
+  ollama_gpt_oss_20b_support_row,
+  ollama_gpt_oss_120b_support_row,
+]
 
 type OllamaModelSupportVerdict
   = OllamaModelSupportApplicable
