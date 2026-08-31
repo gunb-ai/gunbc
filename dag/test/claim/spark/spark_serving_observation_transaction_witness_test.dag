@@ -3,6 +3,22 @@ module test.claim.spark.spark_serving_observation_transaction_witness_test
 import std.types { Bool, List, NonEmptyStr, String }
 import product.placement_supply { HostIdentity }
 import extdeps.ssh.session { SshSessionExecResult }
+import std.content_hash { serialize_content_hash }
+import extdeps.ssh { SshPublicKey, Ed25519 }
+import gunbc.fleet_known_hosts_anchor {
+  FleetSshAttemptIdentity,
+  FleetSshCredentialBinding,
+  fleet_ssh_attempt_identity,
+  fleet_ssh_credential_identity,
+}
+import gunbc.fleet_ssh_credential_verify {
+  FleetSshCredentialVerification,
+  FleetSshCredentialVerified,
+  FleetSshCredentialIdentityMismatch,
+  FleetSshCredentialDerivationRefused,
+  expected_public_key_line,
+  classify_derived_public_key_line,
+}
 import gunbc.spark.serving_observation_transaction {
   SparkServingObservationTransaction,
   SparkServingProbeLegCapture,
@@ -57,6 +73,7 @@ import gunbc.spark.serving_observation_transaction {
   spark_serving_provenance_credential,
   spark_serving_provenance_receipt_line,
   spark_serving_transaction_receipt_line,
+  SparkServingObservationPhase,
   SparkServingPlanObservation,
   SparkServingPostApplyObservation,
   SparkServingReportObservation,
@@ -88,14 +105,53 @@ fn hermetic_capture_fixture(
 }
 
 fn hermetic_transaction_fixture(
+  fleet_attempt: FleetSshAttemptIdentity,
+  phase: SparkServingObservationPhase,
+  credential: FleetSshCredentialBinding,
   captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingTransactionAdmission {
   spark_serving_observation_transaction_of(
     host: subject_host,
-    attempt: "witness-attempt" as NonEmptyStr,
-    locus: "witness-locus" as NonEmptyStr,
+    fleet_attempt: fleet_attempt,
+    phase: phase,
+    credential: credential,
     captures: captures,
   )
+}
+
+// THE WITNESS BUILDS ITS IDENTITY MATERIAL THROUGH THE PRODUCTION ROUTES, NOT BESIDE THEM.
+//
+// A `FleetSshCredentialBinding` has exactly one reachable mint and it is admitted to the credential
+// classifier alone -- deliberately, so that a binding cannot exist without a derivation that
+// produced the material being hashed. Adding this file to that seal would have made the seal's own
+// annotation false, so the fixture goes THROUGH the classifier with hermetic stdout instead: the
+// derivation is simulated, the equality it establishes is real, and the binding this witness carries
+// is the same value an acquisition would carry. Likewise the fleet attempt is parsed by
+// `fleet_ssh_attempt_identity` rather than cast, so an unparseable literal refuses here too.
+data witness_identity_file: NonEmptyStr = "/tmp/gunbc-serving-transaction-witness-key"
+
+data witness_key: SshPublicKey = SshPublicKey {
+  algorithm: Ed25519,
+  material: "AAAAC3NzaC1lZDI1NTE5AAAAITRANSACTIONWITNESSMATERIAL000000" as NonEmptyStr,
+  comment: "serving-transaction-witness",
+}
+
+fn witness_credential() -> FleetSshCredentialBinding? {
+  match classify_derived_public_key_line(
+    identity_file: witness_identity_file,
+    expected_key: witness_key,
+    derivation_succeeded: true,
+    derivation_stdout: expected_public_key_line(key: witness_key),
+    derivation_stderr: "",
+  ) {
+    FleetSshCredentialVerified { binding: b } => Present { value: b }
+    FleetSshCredentialIdentityMismatch { expected_line: _, observed_line: _ } => none
+    FleetSshCredentialDerivationRefused { cause: _ } => none
+  }
+}
+
+fn witness_fleet_attempt() -> FleetSshAttemptIdentity? {
+  fleet_ssh_attempt_identity(raw: "witness-attempt")
 }
 
 fn capture(request: SparkServingProbeRequest, out: String) -> SparkServingProbeLegCapture {
@@ -124,8 +180,37 @@ fn complete_captures() -> List<SparkServingProbeLegCapture> {
   map(every_request(), r => capture(request: r, out: "fixture"))
 }
 
+// Both identity values are OPTIONAL here because both are parsed rather than asserted. If either
+// refuses, this answers refused rather than substituting a plausible constant -- so a claim below
+// that needs an admitted transaction goes red instead of testing a fabricated one.
+fn admission_at(
+  phase: SparkServingObservationPhase,
+  captures: List<SparkServingProbeLegCapture>,
+) -> SparkServingTransactionAdmission {
+  match witness_fleet_attempt() {
+    Absent =>
+      SparkServingTransactionRefused {
+        cause: "witness fleet attempt did not parse" as NonEmptyStr,
+      }
+    Present { value: fa } =>
+      match witness_credential() {
+        Absent =>
+          SparkServingTransactionRefused {
+            cause: "witness credential derivation did not verify" as NonEmptyStr,
+          }
+        Present { value: cr } =>
+          hermetic_transaction_fixture(
+            fleet_attempt: fa,
+            phase: phase,
+            credential: cr,
+            captures: captures,
+          )
+      }
+  }
+}
+
 fn admission(captures: List<SparkServingProbeLegCapture>) -> SparkServingTransactionAdmission {
-  hermetic_transaction_fixture(captures: captures)
+  admission_at(phase: SparkServingPlanObservation, captures: captures)
 }
 
 fn txn_of(captures: List<SparkServingProbeLegCapture>) -> SparkServingObservationTransaction? {
@@ -277,15 +362,58 @@ test fn a_prerequisite_refusal_reads_as_no_result() -> Bool {
   }
 }
 
-// The transaction names its host, attempt and locus, so a value derived from it can state which
-// credential path produced it and which instant it belongs to.
-test fn the_transaction_names_its_host_attempt_and_locus() -> Bool {
+// THE TRANSACTION CARRIES THE IDENTITY; IT DOES NOT RECEIVE IT ALONGSIDE.
+//
+// Host, fleet attempt, phase and sealed credential are fields, and the observation attempt is
+// DERIVED from the first three at the mint rather than supplied -- so a caller cannot claim an
+// attempt it did not run under, and every projector below takes only the transaction. This pins all
+// five, including the derivation, so a mint that stopped joining the phase in would go red here.
+test fn the_transaction_carries_its_full_acquisition_identity() -> Bool {
   match txn_of(captures: complete_captures()) {
     Absent => false
     Present { value: t } =>
       t.host == subject_host
-        && t.attempt == ("witness-attempt" as NonEmptyStr)
-        && t.locus == ("witness-locus" as NonEmptyStr)
+        && (t.fleet_attempt as String) == "witness-attempt"
+        && (match t.phase {
+             SparkServingPlanObservation => true
+             SparkServingPostApplyObservation => false
+             SparkServingReportObservation => false
+           })
+        && t.observation_attempt
+          == spark_serving_observation_attempt_of(
+               fleet_attempt: "witness-attempt" as NonEmptyStr,
+               host: subject_host,
+               phase: SparkServingPlanObservation,
+             )
+        && (match witness_credential() {
+             Absent => false
+             Present { value: c } =>
+               serialize_content_hash(hash: fleet_ssh_credential_identity(binding: t.credential))
+                 == serialize_content_hash(hash: fleet_ssh_credential_identity(binding: c))
+           })
+  }
+}
+
+// AND THE PHASE THE MINT WAS GIVEN IS THE PHASE THE TRANSACTION REPORTS.
+//
+// Without this the claim above is satisfied by a mint that hard-codes the plan phase, which is the
+// exact defect the phase field exists to prevent: pre-apply and post-apply readings of one host in
+// one attempt would again be indistinguishable.
+test fn the_minted_phase_travels_into_the_transaction_identity() -> Bool {
+  match admission_at(phase: SparkServingPostApplyObservation, captures: complete_captures()) {
+    SparkServingTransactionRefused { cause: _ } => false
+    SparkServingTransactionAdmitted { txn: t } =>
+      (match t.phase {
+        SparkServingPostApplyObservation => true
+        SparkServingPlanObservation => false
+        SparkServingReportObservation => false
+      })
+        && t.observation_attempt
+          == spark_serving_observation_attempt_of(
+               fleet_attempt: "witness-attempt" as NonEmptyStr,
+               host: subject_host,
+               phase: SparkServingPostApplyObservation,
+             )
   }
 }
 
@@ -421,7 +549,18 @@ test fn the_transaction_receipt_reports_coverage_and_outcome_shape() -> Bool {
         && string_contains(s: line, pattern: "executed=23")
         && string_contains(s: line, pattern: "transport-refused=0")
         && string_contains(s: line, pattern: "prerequisite-refused=0")
-        && string_contains(s: line, pattern: "credential-locus=witness-locus")
+        && string_contains(s: line, pattern: "observation-attempt=witness-attempt/srv5/plan")
+        && (match witness_credential() {
+             Absent => false
+             Present { value: c } =>
+               string_contains(
+                 s: line,
+                 pattern: concat(
+                   "credential-identity=",
+                   serialize_content_hash(hash: fleet_ssh_credential_identity(binding: c)) as String,
+                 ),
+               )
+           })
     }
   }
 }
