@@ -19,7 +19,7 @@ module test.claim.spark.spark_serving_hermetic_acquisition_fixture
 // The refused and fixture arms are also offered, because a witness that wants to prove planning
 // REFUSES a non-acquired observation needs to author one.
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, Int, List, NonEmptyStr, String }
 import std.content_hash { serialize_content_hash }
 import product.placement_supply { HostIdentity }
 import extdeps.ssh { SshPublicKey, Ed25519 }
@@ -73,6 +73,8 @@ import gunbc.spark.serving_observation_transaction {
   RuntimeExecutableRequest,
   RuntimeExecutableBitRequest,
   RuntimeRootListingRequest,
+  spark_serving_probe_leg_eq,
+  spark_serving_capture_leg,
   spark_serving_probe_leg_capture_of,
   spark_serving_observation_request,
   spark_serving_observation_transaction_of,
@@ -330,4 +332,118 @@ fn hermetic_acquired_observation(
     SparkServingTransactionAdmitted { txn: t } =>
       Present { value: spark_serving_host_observation_from_transaction(txn: t) }
   }
+}
+
+// ── SHAPING CAPTURES SO THE PRODUCTION PROJECTORS DERIVE A CHOSEN STATE ─────────────────────────
+
+// THIS IS THE COST THE REVIEW INSISTED ON, AND PAYING IT IS WHAT MAKES THE VALUE EVIDENCE.
+//
+// A witness that wants an acquired observation in a particular state cannot declare that state; it
+// must author capture results whose stdout, stderr and exit codes make the SAME projectors
+// production uses derive it. So these helpers encode what each probe actually answers -- systemd's
+// "enabled", is-active's exit 3, cat's "No such file or directory", loginctl's "Linger=yes" -- and
+// if a projector's parse changes, these fixtures move with it or the claims go red. A fixture that
+// declared the state instead would keep passing while the parse rotted.
+fn hermetic_exec(exit_code: Int, out: String, err: String) -> SparkServingProbeOutcome {
+  SparkServingProbeExecuted {
+    result: SshSessionExecResult {
+      exit_code: exit_code,
+      success: exit_code == 0,
+      stdout: out,
+      stderr: err,
+    },
+  }
+}
+
+fn hermetic_leg(
+  request: SparkServingProbeRequest,
+  exit_code: Int,
+  out: String,
+  err: String,
+) -> SparkServingProbeLegCapture {
+  hermetic_capture_of(
+    request: request,
+    outcome: hermetic_exec(exit_code: exit_code, out: out, err: err),
+  )
+}
+
+// `loginctl show-user -p Linger` answers exactly these two words on success.
+fn hermetic_linger_capture(enabled: Bool) -> SparkServingProbeLegCapture {
+  hermetic_leg(
+    request: LingerRequest,
+    exit_code: 0,
+    out: if enabled { "Linger=yes" } else { "Linger=no" },
+    err: "",
+  )
+}
+
+// The unit legs: a readable unit file, `systemctl --user is-enabled` answering "enabled", and
+// `is-active` answering "active" on exit 0. Together these make the production classifiers derive an
+// observed, enabled, running unit -- the state a converged host is in.
+fn hermetic_unit_captures() -> List<SparkServingProbeLegCapture> {
+  [
+    hermetic_leg(request: UserUnitReadRequest, exit_code: 0, out: "hermetic-unit-wire", err: ""),
+    hermetic_leg(request: UserUnitIsEnabledRequest, exit_code: 0, out: "enabled", err: ""),
+    hermetic_leg(request: IsActiveRequest, exit_code: 0, out: "active", err: ""),
+  ]
+}
+
+// A unit file that is genuinely ABSENT rather than unobserved: cat fails with the message the
+// production discriminator reads, which is the only thing separating absence from a failed probe.
+fn hermetic_absent_unit_captures() -> List<SparkServingProbeLegCapture> {
+  [
+    hermetic_leg(
+      request: UserUnitReadRequest,
+      exit_code: 1,
+      out: "",
+      err: "cat: /home/x/.config/systemd/user/x.service: No such file or directory",
+    ),
+    hermetic_leg(request: UserUnitIsEnabledRequest, exit_code: 1, out: "not-found", err: ""),
+    hermetic_leg(request: IsActiveRequest, exit_code: 4, out: "inactive", err: ""),
+  ]
+}
+
+// A COMPLETE ROSTER IN A CHOSEN STATE.
+//
+// Every required leg is present, so the transaction admits; the legs that decide the planning-visible
+// state carry chosen results and the rest carry the generic fixture output. The unit and linger arms
+// are parameters because those are the two states the planning claims actually discriminate on.
+fn hermetic_shaped_captures(
+  unit_present: Bool,
+  linger_enabled: Bool,
+) -> List<SparkServingProbeLegCapture> {
+  let shaped = concat(
+    if unit_present { hermetic_unit_captures() } else { hermetic_absent_unit_captures() },
+    [hermetic_linger_capture(enabled: linger_enabled)],
+  )
+  concat(
+    filter(
+      hermetic_complete_captures(),
+      c => length(
+        filter(
+          shaped,
+          sc => spark_serving_probe_leg_eq(
+            a: spark_serving_capture_leg(c: sc),
+            b: spark_serving_capture_leg(c: c),
+          ),
+        ),
+      ) == 0,
+    ),
+    shaped,
+  )
+}
+
+// The acquired observation the privilege-boundary suite plans from. Its runtime, store, unit, linger,
+// readback, account and projection are ALL derived by the production projectors from the captures
+// above -- nothing is supplied beside them.
+fn hermetic_shaped_observation(
+  host: HostIdentity,
+  unit_present: Bool,
+  linger_enabled: Bool,
+) -> SparkServingHostObservation? {
+  hermetic_acquired_observation(
+    host: host,
+    phase: SparkServingPlanObservation,
+    captures: hermetic_shaped_captures(unit_present: unit_present, linger_enabled: linger_enabled),
+  )
 }
