@@ -21,6 +21,8 @@ import gunbc.scope_rank_view {
   scope_rank_relayed_acceptance_rows
 }
 
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
+
 // WHAT THIS WITNESS IS AND IS NOT. It executes the MODEL, not the seed: no assertion here moves if
 // the interpreter's fold changes tomorrow, and a green here is not evidence that any scope resolves
 // correctly. It exists because gunbc.scope_rank_view is the carrier the reader migration will be
