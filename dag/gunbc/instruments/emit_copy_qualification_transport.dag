@@ -231,7 +231,11 @@ fn json_member(v: JsonValue, key: String) -> JsonValue {
 fn json_string_of(v: JsonValue) -> String {
   match v {
     JsonString { value: s } => s
-    _ => ""
+    JsonNull => ""
+    JsonBool { value: _ } => ""
+    JsonNumber { lexeme: _ } => ""
+    JsonArray { elements: _ } => ""
+    JsonObject { members: _ } => ""
   }
 }
 
@@ -242,7 +246,11 @@ fn json_int_of(v: JsonValue) -> Int {
         Present { value: n } => n
         Absent => 0 - 1
       }
-    _ => 0 - 1
+    JsonNull => 0 - 1
+    JsonBool { value: _ } => 0 - 1
+    JsonString { value: _ } => 0 - 1
+    JsonArray { elements: _ } => 0 - 1
+    JsonObject { members: _ } => 0 - 1
   }
 }
 
@@ -314,18 +322,9 @@ fn anchors_in_text(text: String, marker_prefix: String, rows: List<EmitCopyQuali
 }
 
 fn anchor_slug_for_line(anchors: List<CaseAnchor>, line: Int) -> String? {
-  let best = anchors
-    |> filter(a => a.line <= line)
-    |> fold(init: none, f: (acc, a) =>
-      match acc {
-        Absent => Present { value: a }
-        Present { value: b } => if a.line > b.line { Present { value: a } } else { acc }
-      }
-    )
-  match best {
-    Present { value: a } => Present { value: a.slug }
-    Absent => none
-  }
+  let eligible = anchors |> filter(a => a.line <= line)
+  let best_line = eligible |> fold(init: 0 - 1, f: (m, a) => if a.line > m { a.line } else { m })
+  eligible |> filter(a => a.line == best_line) |> map(a => a.slug) |> first
 }
 
 fn path_ends_with(path: String, suffix: String) -> Bool {
@@ -495,7 +494,7 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                     refuse_all(rows: rows, r: ShardRefusal { phase: "cargo_build", detail: stderr_tail(s: build.stderr) })
                   } else {
                     let runner_bin = concat(root, concat("/target/release/", shard_runner_bin_name(c: c, mutant: mutant)))
-                    let native = gunbc.WitnessBin.Run(workdir: root, bin_path: runner_bin, args: [])
+                    let native = gunbc.WitnessBin.Run(workdir: root, bin_path: runner_bin)
                     let interp = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
                       "run", "--source-root", a.src_dag_dir, "--source-root", concat(root, "/dag"),
                       "--entry", a.driver_path, "--function", "ecq_driver_main",

@@ -89,7 +89,11 @@ fn carrier_decl_text(c: CarrierRealization) -> String {
   match c {
     SharedRecordCarrier => "type EcqSharedRec {\n  tag: Int\n  items: List<Int>\n}\n\n"
     NestedCheapDeepRecordCarrier => "type EcqNestedRec {\n  tag: Int\n  name: String\n  items: List<Int>\n}\n\n"
-    _ => ""
+    CopyScalarControl => ""
+    OwnedStringCarrier => ""
+    DeepCloningSequenceCarrier => ""
+    PersistentSequenceCarrier => ""
+    PersistentMapCarrier => ""
   }
 }
 
@@ -173,14 +177,10 @@ fn carrier_accumulator_expr(c: CarrierRealization, mutant: MutantPlan) -> String
     PersistentMapCarrier => "map_insert(acc, to_string(e), e)"
     NestedCheapDeepRecordCarrier => "EcqNestedRec { tag: acc.tag + e, name: acc.name, items: list_push(acc.items, e) }"
   }
-  let guarded_step = match mutant {
-    PlantCopiedAccumulator =>
-      match c {
-        OwnedStringCarrier => "if string_length(acc) < 0 - 1 { acc } else { concat(acc, \"ab\") }"
-        _ => step
-      }
-    _ => step
-  }
+  let guarded_step =
+    if mutant_is_copied_accumulator(mutant: mutant) && carrier_is_owned_string(c: c) {
+      "if string_length(acc) < 0 - 1 { acc } else { concat(acc, \"ab\") }"
+    } else { step }
   let init = match c {
     CopyScalarControl => "0"
     OwnedStringCarrier => "\"\""
@@ -218,7 +218,7 @@ fn size_call(carrier: CarrierRealization, arg: String) -> String {
   concat("ecq_size_", concat(carrier_realization_slug(c: carrier), concat("(v: ", concat(arg, ")"))))
 }
 
-fn classify_call(carrier: CarrierRealization, arg: String) -> String {
+fn ecq_classify_call(carrier: CarrierRealization, arg: String) -> String {
   concat("ecq_classify_", concat(carrier_realization_slug(c: carrier), concat("(v: ", concat(arg, ")"))))
 }
 
@@ -240,7 +240,7 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
     BranchExclusive =>
       match id.control_shape {
         MatchBinding =>
-          concat("match ", concat(classify_call(carrier: c, arg: "x"),
+          concat("match ", concat(ecq_classify_call(carrier: c, arg: "x"),
           concat(" {\n    EcqSmallSize => 7\n    EcqLargeSize => ", concat(call_u(carrier: c, k: k, arg: "x"), "\n  }"))))
         _ =>
           concat("if ", concat(size_call(carrier: c, arg: "x"),
@@ -249,7 +249,7 @@ fn subject_body(id: EmitCopyQualificationCaseId, mutant: MutantPlan) -> String {
     ReuseAcrossJoin =>
       match id.control_shape {
         MatchBinding =>
-          concat("let a = match ", concat(classify_call(carrier: c, arg: "x"),
+          concat("let a = match ", concat(ecq_classify_call(carrier: c, arg: "x"),
           concat(" {\n    EcqSmallSize => ", concat(call_u(carrier: c, k: k, arg: "x"),
           concat(" + 1\n    EcqLargeSize => ", concat(call_u(carrier: c, k: k, arg: "x"),
           concat("\n  }\n  a + ", concat(call_u(carrier: c, k: k, arg: "x"), ""))))))))
@@ -342,7 +342,34 @@ fn carrier_is_record_gen(c: CarrierRealization) -> Bool {
   match c {
     SharedRecordCarrier => true
     NestedCheapDeepRecordCarrier => true
-    _ => false
+    CopyScalarControl => false
+    OwnedStringCarrier => false
+    DeepCloningSequenceCarrier => false
+    PersistentSequenceCarrier => false
+    PersistentMapCarrier => false
+  }
+}
+
+fn carrier_is_owned_string(c: CarrierRealization) -> Bool {
+  match c {
+    OwnedStringCarrier => true
+    CopyScalarControl => false
+    DeepCloningSequenceCarrier => false
+    SharedRecordCarrier => false
+    PersistentSequenceCarrier => false
+    PersistentMapCarrier => false
+    NestedCheapDeepRecordCarrier => false
+  }
+}
+
+fn mutant_is_copied_accumulator(mutant: MutantPlan) -> Bool {
+  match mutant {
+    PlantCopiedAccumulator => true
+    CleanSubject => false
+    PlantRedundantShareClone => false
+    PlantHiddenDeepCopy => false
+    PlantRedundantDeepClone => false
+    DisconnectCounter => false
   }
 }
 
@@ -430,7 +457,9 @@ fn runner_arg_expr(mutant: MutantPlan) -> String {
     PlantRedundantShareClone => "{ let input = input.clone(); input }"
     PlantRedundantDeepClone => "{ let input = input.clone(); input }"
     PlantHiddenDeepCopy => "{ let rebuilt: String = input.chars().collect(); rebuilt }"
-    _ => "input"
+    CleanSubject => "input"
+    DisconnectCounter => "input"
+    PlantCopiedAccumulator => "input"
   }
 }
 
@@ -460,7 +489,11 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
 fn runner_main_text(module_path: String, c: CarrierRealization, mutant: MutantPlan) -> String {
   let prelude = match mutant {
     DisconnectCounter => runner_prelude_disconnected_text
-    _ => runner_prelude_text
+    CleanSubject => runner_prelude_text
+    PlantRedundantShareClone => runner_prelude_text
+    PlantHiddenDeepCopy => runner_prelude_text
+    PlantRedundantDeepClone => runner_prelude_text
+    PlantCopiedAccumulator => runner_prelude_text
   }
   let blocks = shard_case_rows(carrier: c) |> fold(init: "", f: (acc, r) =>
     concat(acc, runner_case_block(module_path: module_path, id: r.id, mutant: mutant))

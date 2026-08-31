@@ -234,16 +234,32 @@ fn pattern_admits_shape(p: OwnershipPattern, s: ControlShape) -> CaseApplicabili
         StraightLine => CaseNotApplicable { reason: PatternRequiresBranchShape }
         LoopRecursion => CaseNotApplicable { reason: PatternRequiresBranchShape }
       }
-    LoopCarriedAccumulator =>
-      match s {
-        LoopRecursion => CaseApplicable
-        _ => CaseNotApplicable { reason: PatternRequiresLoopShape }
-      }
-    _ =>
-      match s {
-        StraightLine => CaseApplicable
-        _ => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
-      }
+    LoopCarriedAccumulator => shape_admits_only_loop(s: s)
+    ConsumedOnce => shape_admits_only_straight_line(s: s)
+    BorrowedReadOnly => shape_admits_only_straight_line(s: s)
+    ByValueThenReused => shape_admits_only_straight_line(s: s)
+    AliasThenMutate => shape_admits_only_straight_line(s: s)
+    MoveIntoClosure => shape_admits_only_straight_line(s: s)
+    BorrowIntoClosure => shape_admits_only_straight_line(s: s)
+    FieldExtractThenReuseEnclosing => shape_admits_only_straight_line(s: s)
+  }
+}
+
+fn shape_admits_only_loop(s: ControlShape) -> CaseApplicability {
+  match s {
+    LoopRecursion => CaseApplicable
+    StraightLine => CaseNotApplicable { reason: PatternRequiresLoopShape }
+    IfSplit => CaseNotApplicable { reason: PatternRequiresLoopShape }
+    MatchBinding => CaseNotApplicable { reason: PatternRequiresLoopShape }
+  }
+}
+
+fn shape_admits_only_straight_line(s: ControlShape) -> CaseApplicability {
+  match s {
+    StraightLine => CaseApplicable
+    LoopRecursion => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
+    IfSplit => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
+    MatchBinding => CaseNotApplicable { reason: PatternRequiresStraightLineShape }
   }
 }
 
@@ -251,7 +267,11 @@ fn carrier_is_record(c: CarrierRealization) -> Bool {
   match c {
     SharedRecordCarrier => true
     NestedCheapDeepRecordCarrier => true
-    _ => false
+    CopyScalarControl => false
+    OwnedStringCarrier => false
+    DeepCloningSequenceCarrier => false
+    PersistentSequenceCarrier => false
+    PersistentMapCarrier => false
   }
 }
 
@@ -260,7 +280,15 @@ fn pattern_admits_carrier(p: OwnershipPattern, c: CarrierRealization) -> CaseApp
     FieldExtractThenReuseEnclosing =>
       if carrier_is_record(c: c) { CaseApplicable }
       else { CaseNotApplicable { reason: PatternRequiresRecordCarrier } }
-    _ => CaseApplicable
+    ConsumedOnce => CaseApplicable
+    BorrowedReadOnly => CaseApplicable
+    ByValueThenReused => CaseApplicable
+    BranchExclusive => CaseApplicable
+    ReuseAcrossJoin => CaseApplicable
+    AliasThenMutate => CaseApplicable
+    MoveIntoClosure => CaseApplicable
+    BorrowIntoClosure => CaseApplicable
+    LoopCarriedAccumulator => CaseApplicable
   }
 }
 
@@ -293,29 +321,46 @@ fn pattern_admits_contract(p: OwnershipPattern, k: ConsumerContract) -> CaseAppl
         BorrowsByRef => CaseApplicable
         ConsumesByValue => CaseNotApplicable { reason: PatternRequiresBorrowingContract }
       }
-    _ => CaseApplicable
+    BranchExclusive => CaseApplicable
+    ReuseAcrossJoin => CaseApplicable
+    AliasThenMutate => CaseApplicable
+    LoopCarriedAccumulator => CaseApplicable
+    FieldExtractThenReuseEnclosing => CaseApplicable
   }
 }
 
 fn basis_admits_carrier(b: InputSizeBasis, c: CarrierRealization) -> CaseApplicability {
   match b {
     ScalarUnitBasis =>
-      match c {
-        CopyScalarControl => CaseApplicable
-        _ => CaseNotApplicable { reason: ScalarBasisRequiresCopyScalarCarrier }
-      }
+      if carrier_is_sized(c: c) { CaseNotApplicable { reason: ScalarBasisRequiresCopyScalarCarrier } }
+      else { CaseApplicable }
     SizedCardinalityBasis =>
-      match c {
-        CopyScalarControl => CaseNotApplicable { reason: SizedBasisRequiresSizedCarrier }
-        _ => CaseApplicable
-      }
+      if carrier_is_sized(c: c) { CaseApplicable }
+      else { CaseNotApplicable { reason: SizedBasisRequiresSizedCarrier } }
+  }
+}
+
+fn carrier_is_sized(c: CarrierRealization) -> Bool {
+  match c {
+    CopyScalarControl => false
+    OwnedStringCarrier => true
+    DeepCloningSequenceCarrier => true
+    SharedRecordCarrier => true
+    PersistentSequenceCarrier => true
+    PersistentMapCarrier => true
+    NestedCheapDeepRecordCarrier => true
   }
 }
 
 fn carrier_realized(c: CarrierRealization) -> CaseApplicability {
   match c {
     DeepCloningSequenceCarrier => CaseNotApplicable { reason: CarrierUnrealizedInProductionEmission }
-    _ => CaseApplicable
+    CopyScalarControl => CaseApplicable
+    OwnedStringCarrier => CaseApplicable
+    SharedRecordCarrier => CaseApplicable
+    PersistentSequenceCarrier => CaseApplicable
+    PersistentMapCarrier => CaseApplicable
+    NestedCheapDeepRecordCarrier => CaseApplicable
   }
 }
 
@@ -492,7 +537,10 @@ fn materialization_cost_class(f: CloneRealizationFact) -> CopyCostClass {
 fn materialization_alloc_growth(f: CloneRealizationFact) -> AllocGrowthClass {
   match f {
     DeepBytesRealization => LinearAllocGrowth
-    _ => ConstantAllocGrowth
+    BitCopyRealization => ConstantAllocGrowth
+    ShareBumpRealization => ConstantAllocGrowth
+    StructuralShareRealization => ConstantAllocGrowth
+    CloneRealizationUnknown { unresolved_fact: _ } => ConstantAllocGrowth
   }
 }
 
@@ -612,7 +660,12 @@ type EmitCopyQualification
 fn qualification_is_qualified(q: EmitCopyQualification) -> Bool {
   match q {
     Qualified { case: _, behavior_agreement: _, clone_minimality: _, expected: _, observed_rows: _, lint_observation: _ } => true
-    _ => false
+    QualificationRefusedBehaviorMismatch { case: _, expected_line: _, observed_line: _ } => false
+    QualificationRefusedCaseNotExecutable { case: _, phase: _, detail: _ } => false
+    QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => false
+    QualificationRefusedObservationUnavailable { case: _, cause: _ } => false
+    QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+    QualificationRefusedRedundantClone { case: _, lint: _, line: _ } => false
   }
 }
 
@@ -711,27 +764,38 @@ fn judge_case(
               match static_obs {
                 RedundantCloneReported { lint: l, emitted_item: _, line: ln, message: _ } =>
                   QualificationRefusedRedundantClone { case: id, lint: l, line: ln }
-                _ =>
-                  match judge_alloc_growth(expected: expected.alloc_growth, rows: rows) {
-                    GrowthExceeds { cardinality: n, observed_bytes: ob, allowed_bytes: ab } =>
-                      QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab }
-                    GrowthWithinExpectation =>
-                      let minimality = match static_obs {
-                        NoRedundantCloneReported => CloneNecessary
-                        StaticObservationUnavailable { cause: _ } => CloneNecessityUnjudgeable
-                        RedundantCloneReported { lint: _, emitted_item: _, line: _, message: _ } => CloneRedundant
-                      }
-                      Qualified {
-                        case: id,
-                        behavior_agreement: true,
-                        clone_minimality: minimality,
-                        expected: expected,
-                        observed_rows: rows,
-                        lint_observation: static_obs
-                      }
-                  }
+                NoRedundantCloneReported =>
+                  judge_growth_arm(id: id, expected: expected, rows: rows, static_obs: static_obs)
+                StaticObservationUnavailable { cause: _ } =>
+                  judge_growth_arm(id: id, expected: expected, rows: rows, static_obs: static_obs)
               }
           }
+      }
+  }
+}
+
+fn judge_growth_arm(
+  id: EmitCopyQualificationCaseId,
+  expected: ExpectedCopyCost,
+  rows: List<AllocObservationRow>,
+  static_obs: StaticCloneObservation
+) -> EmitCopyQualification {
+  match judge_alloc_growth(expected: expected.alloc_growth, rows: rows) {
+    GrowthExceeds { cardinality: n, observed_bytes: ob, allowed_bytes: ab } =>
+      QualificationRefusedExcessCopy { case: id, cardinality: n, observed_bytes: ob, allowed_bytes: ab }
+    GrowthWithinExpectation =>
+      let minimality = match static_obs {
+        NoRedundantCloneReported => CloneNecessary
+        StaticObservationUnavailable { cause: _ } => CloneNecessityUnjudgeable
+        RedundantCloneReported { lint: _, emitted_item: _, line: _, message: _ } => CloneRedundant
+      }
+      Qualified {
+        case: id,
+        behavior_agreement: true,
+        clone_minimality: minimality,
+        expected: expected,
+        observed_rows: rows,
+        lint_observation: static_obs
       }
   }
 }
