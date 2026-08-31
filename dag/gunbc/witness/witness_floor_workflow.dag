@@ -1861,3 +1861,15 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
       }
   }
 }
+
+// A TEXT-VALUED ENTRY POINT FOR THE ARTIFACT, used to regenerate the committed workflow when the
+// gate's write does not land. expected_witness_floor_yml returns the outcome coproduct, which the
+// host prints by TYPE and not by value, so it cannot be captured from a run; this returns the same
+// bytes as a String. It is the identical serialization the gate consumes -- not a second renderer --
+// so it cannot drift from what is committed.
+fn witness_floor_yml_text() -> String {
+  match expected_witness_floor_yml() {
+    WitnessFloorGenerated { content: c } => c
+    WitnessFloorGenerationRefused { reason: r } => concat("REFUSED: ", r)
+  }
+}
