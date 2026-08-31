@@ -652,3 +652,33 @@ test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare
     ["predecessor: Rc<Nat>,", "predecessor: Rc<i64>,"]
   )
 }
+
+// NESTED SHARED-FIELD REFUTATION, THE DISCRIMINATING RED (v2.lens.cost symbolic_product, 2 board
+// rows). A match arm nesting a refutable pattern under an Rc-carried field of an Rc-carried field
+// (`PConst { value: PSucc { prev: PZero } }`) lowered its guard SHAPE-ONLY
+// (`matches!(value.as_ref(), PSucc { .. })`) while the arm's let-else prelude demanded the full
+// nested pattern -- the inner Rc field met an enum pattern (E0308), and had the types been repaired
+// naively the prelude's `unreachable!()` sat on a REACHABLE path (guard admits PSucc { prev: PSucc },
+// prelude refuses it -- a fabricated panic, section 5). Refutation now lives entirely in the guard,
+// recursively (`.. { ref prev, .. } if matches!(prev.as_ref(), ..)`), and the prelude destructures
+// under that guarantee, level by level.
+test fn w_nested_shared_field_refutation_lives_in_the_guard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nested_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: PZero } } => 1\n    _ => 0\n  }\n}\n",
+    "src/test_claim_nested_shared_refutation_probe.rs",
+    ["if matches!(prev.as_ref(), PNat::PZero)"],
+    ["prev: PNat::PZero, .. } = value.as_ref()"]
+  )
+}
+
+// THE BOUNDARY CONTROL: a DEPTH-ONE refutation (inner pattern binds, refutes nothing below the
+// first shared level) keeps the shape-only guard and the single-level prelude byte-for-byte -- a
+// repair that recursed unconditionally would rewrite the whole corpus's preludes to prove two sites.
+test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.depth_one_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: p } } => 1\n    _ => 0\n  }\n}\n",
+    "src/test_claim_depth_one_shared_refutation_probe.rs",
+    ["matches!(value.as_ref(), PNat::PSucc { .. })"],
+    ["if matches!(prev.as_ref()"]
+  )
+}

@@ -11,7 +11,8 @@ import extdeps.cargo_diagnostic {
   RustcDiagnosticIdentity,
   RustcCoded,
   RustcUncoded,
-  rustc_diagnostic_row
+  rustc_diagnostic_row,
+  rustc_diagnostic_row_code
 }
 import extdeps.languages.rust.compiler_phases {
   RustcPhase,
@@ -57,7 +58,7 @@ type RustcPhaseBoard {
   rows: List<RustcPhaseBoardRow>
   furthest_phase_reached: RustcPhase
   furthest_phase_evidence: PhaseCountEvidence
-  census_identity_digest: Fnv1a64Structural
+  census_identity_digest: CensusIdentityDigest
   total_error_diagnostics: Int
   coded_error_diagnostics: Int
   codeless_error_diagnostics: Int
@@ -117,6 +118,17 @@ fn deduplicate_identities(identities: List<String>) -> List<String> {
   )
 }
 
+// Duplicate handling is a POPULATION fact, and the two populations answer it at different sites.
+// raw_identities is set-deduplicated by the live producer before the fold, and on the persisted
+// path a repeat makes the deduplicated total disagree with the raw count, which receipt coherence
+// refuses. parse_refused_files had neither wall: a path rustfmt refused twice would be counted
+// twice in the Parse row and kept twice in the digest, so the digest would answer about a multiset
+// while its name claims a set. Refusing is the right arm rather than deduplicating here, because
+// collapsing the repeat would hide the producer defect behind a well-formed-looking census.
+fn census_population_is_duplicate_free(identities: List<String>) -> Bool {
+  count(deduplicate_identities(identities: identities)) == count(identities)
+}
+
 fn phase_identities(ds: List<RustcCodedDiagnostic>, phase: RustcPhase) -> List<String> {
   deduplicate_identities(
     identities: ds |> filter(d => diagnostic_is_phase(d: d, phase: phase)) |> map(d => rustc_diagnostic_row(d: d))
@@ -151,16 +163,57 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
   else { Borrowck }
 }
 
-fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> Fnv1a64Structural {
-  content_hash_atom(
-    value: (concat(
-      ["self-host-compile-phase-census-v1"],
-      concat(
-        parse_refused_files |> map(path => concat("rustfmt-refused\t", path)),
-        raw_identities
-      )
-    ) |> join(separator: "\n")) as NonEmptyStr
-  )
+// The digest names the census as a SET, so it is folded over a canonical ordering of each
+// population rather than the encounter order cargo and rustfmt happened to emit. Without the sort
+// the same census reordered upstream produces a different digest, and receipt_population_coherent
+// refuses a receipt whose census is in fact identical. The two populations stay separate segments:
+// canonicalizing them jointly would let a refused path and an identity trade places.
+//
+// EmissionOrderedV1 is retired and NO PRODUCER CONSTRUCTS IT. Its justification is NOT that it
+// labels a live value -- it does not. docs/design-ledgers.md published an emission-order digest
+// until this change, and regenerating that projection replaces it, so after this commit no
+// artifact in the tree carries one and the retired value survives only in git history.
+//
+// It is kept because an algorithm identity with exactly ONE inhabitant distinguishes nothing. The
+// field exists to stop two incompatible digest meanings hiding behind a single unlabeled hash, and
+// that requires both meanings to be nameable. So the honest fork is not "drop the arm" but "drop
+// the arm AND the field": a one-inhabitant tag is decoration, and keeping the tag while deleting
+// its only contrast is the worse of the two shapes.
+//
+// It is read by production -- census_identity_domain_separator matches it exhaustively -- and by a
+// witness asserting the two separators differ, so it is not an inert carrier under
+// v2.lens.inert_carrier, whose scope is carriers read by no production code.
+type CensusIdentityAlgorithm
+  = EmissionOrderedV1
+  | CanonicalIdentitySetV1
+
+// The domain separator is DERIVED from the algorithm rather than authored beside it. A separate
+// version literal would be a second authority for the same fact, and the two would drift.
+fn census_identity_domain_separator(algorithm: CensusIdentityAlgorithm) -> String {
+  match algorithm {
+    EmissionOrderedV1 => "self-host-compile-phase-census-v1"
+    CanonicalIdentitySetV1 => "self-host-compile-phase-census-canonical-identity-set-v1"
+  }
+}
+
+type CensusIdentityDigest {
+  algorithm: CensusIdentityAlgorithm
+  digest: Fnv1a64Structural
+}
+
+fn phase_census_digest(parse_refused_files: List<String>, raw_identities: List<String>) -> CensusIdentityDigest {
+  CensusIdentityDigest {
+    algorithm: CanonicalIdentitySetV1,
+    digest: content_hash_atom(
+      value: (concat(
+        [census_identity_domain_separator(algorithm: CanonicalIdentitySetV1)],
+        concat(
+          parse_refused_files |> map(path => concat("rustfmt-refused\t", path)) |> sort_by(line => line),
+          raw_identities |> sort_by(identity => identity)
+        )
+      ) |> join(separator: "\n")) as NonEmptyStr
+    )
+  }
 }
 
 fn cargo_phase_board(parse_observation: RustfmtParseObservation, ds: List<RustcCodedDiagnostic>) -> RustcPhaseBoardRead {
@@ -224,8 +277,10 @@ fn self_host_compile_phase_frontier(entry: String) -> RustcPhaseBoardRead {
   }
 }
 
+// The row layout is owned by `rustc_diagnostic_row`, which produced these identities; this asks
+// that authority for the code rather than re-deriving a field index here.
 fn census_identity_code(identity: String) -> String? {
-  get(xs: split(s: identity, sep: "\t"), index: 3)
+  rustc_diagnostic_row_code(row: identity)
 }
 
 fn census_identity_phase(identity: String) -> RustcErrorCodePhase {
@@ -460,7 +515,7 @@ fn parse_evidence_rows(evidence: ParsePhaseEvidence) -> List<String> {
 fn optional_reclassified_digest(board: RustcPhaseBoard?) -> String {
   match board {
     Absent => "not-reclassified"
-    Present { value: b } => concat("reclassified:", b.census_identity_digest.digest as String)
+    Present { value: b } => concat("reclassified:", b.census_identity_digest.digest.digest as String)
   }
 }
 
@@ -482,7 +537,8 @@ fn receipt_payload_identity(receipt: CompilePhaseFrontierReceipt) -> Fnv1a64Stru
       receipt.producer.module_path,
       receipt.producer.function,
       receipt.producer.entry,
-      receipt.board.census_identity_digest.digest as String,
+      census_identity_domain_separator(algorithm: receipt.board.census_identity_digest.algorithm),
+      receipt.board.census_identity_digest.digest.digest as String,
       rustc_phase_name(phase: receipt.board.furthest_phase_reached)
     ], "\n") as NonEmptyStr
   )
@@ -910,7 +966,9 @@ fn receipt_population_coherent(receipt: CompilePhaseFrontierReceipt) -> Bool {
       parse_observation: parse,
       raw_identities: receipt.raw_error_diagnostic_identities
       )
-      derived.board.census_identity_digest == receipt.board.census_identity_digest
+      census_population_is_duplicate_free(identities: parse.refused_files)
+        && census_population_is_duplicate_free(identities: receipt.raw_error_diagnostic_identities)
+        && derived.board.census_identity_digest == receipt.board.census_identity_digest
         && derived.board.furthest_phase_reached == receipt.board.furthest_phase_reached
         && derived.board.rows == receipt.board.rows
         && phase_board_error_population_reconciles(board: receipt.board)
@@ -999,16 +1057,27 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
   }
 }
 
-fn render_phase_standing(row: RustcPhaseBoardRow) -> String {
+// PASSES is a claim about the phase, not about this row's arithmetic. A zero count means only that
+// no ATTRIBUTED identity landed in the phase, so while the census still holds identities no phase
+// row accounts for, every one of those unattributed identities is a candidate member of this phase
+// and the zero establishes nothing. Rendering PASSES there is the absorbing arm of DESIGN section
+// 5 pointed at the compiler's own self-description: a reader cannot tell "this phase passed" from
+// "the census could not be partitioned". The honest arm names the shortfall instead of hiding it.
+fn render_phase_standing(row: RustcPhaseBoardRow, partition_complete: Bool) -> String {
   match row.standing {
     PhaseNotYetReached => concat(rustc_phase_name(phase: row.phase), " not yet reached")
-    PhaseCount { count: 0, evidence: _ } => concat(rustc_phase_name(phase: row.phase), " PASSES")
+    PhaseCount { count: 0, evidence: _ } =>
+      if partition_complete {
+        concat(rustc_phase_name(phase: row.phase), " PASSES")
+      } else {
+        concat(rustc_phase_name(phase: row.phase), " 0 attributed (census partition incomplete)")
+      }
     PhaseCount { count: n, evidence: _ } => concat(concat(rustc_phase_name(phase: row.phase), " "), concat(to_string(n), " remaining"))
   }
 }
 
 fn render_phase_board(board: RustcPhaseBoard) -> String {
-  board.rows |> map(r => render_phase_standing(row: r)) |> join(separator: " / ")
+  board.rows |> map(r => render_phase_standing(row: r, partition_complete: board.partition_complete)) |> join(separator: " / ")
 }
 data genesis_5006ddc6_raw_error_diagnostic_identities: List<String> = [
   "src/v2_std_cross_tree_resolution.rs:98:102	E0308	mismatched types",

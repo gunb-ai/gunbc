@@ -1,0 +1,533 @@
+module gunbc.scope_rank_view
+
+import std.types { List, String, Bool, Int }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+
+// THE MODEL FOR REPLACING PER-SCOPE MAP MATERIALIZATION WITH A RESOLVED VIEW, LANDED BEFORE ANY
+// READER MOVES. Design: docs/plans/scope-rank-view-design.md.
+//
+// SUBJECT. `cli_run` `claim_scope_for` computes a scope's module `order` and then folds a set of
+// name-keyed maps over it, once per scope. gunbc#9809 removed the module-local half of that
+// derivation; what survives is the fold that applies the scope's precedence. Every entry it writes
+// is the answer to one question -- of the modules declaring this key, which one does THIS scope rank
+// first -- and that answer is a function of two things the process already holds: the corpus-wide
+// declarer population, and the scope's own ordering of modules. Storing it once per scope is DESIGN
+// section 2 redundancy and DESIGN section 3's second authority, because from that point a reader
+// consults the map rather than the order.
+//
+// WHAT THIS CARRIER IS NOT. It measures nothing. Every number about this subject comes from the
+// required floor's own lines, named here and never transcribed, per DESIGN section 6. No reader is
+// migrated by this module and no map is deleted by it; the sequencing is deliberate, because a view
+// landed ahead of the polarity roster below would cut over six slots under one slot's rule.
+
+// HOW A SCOPE DECIDES A KEY TWO OF ITS MODULES CLAIM.
+//
+// This is the axis the lane exists to get right, and the reason the model precedes the code: the
+// slots being replaced DO NOT AGREE on it. The brief names the rule as minimum rank, which is
+// correct for the bare function slot and for the item registry and is the opposite of what the
+// service-operation slot does today.
+//
+// LowestRankWins is the or_insert / first-write-wins shape under a precedence order. HighestRankWins
+// is the unconditional insert, where the last module in order overwrites every earlier one.
+// RankIndependent is the slot whose key cannot be claimed by two ranked modules at all, so no order
+// discriminates it -- a real arm, not an absence, and it must name why the key is module-local
+// rather than assert that it is. ExactlyOneDeclarerByConstruction is the qualified slot: the key
+// carries its own declaring module, so selection is not a contest -- which makes ADMISSION, not
+// precedence, the whole question for it.
+type SlotPolarity
+  = LowestRankWins { seed_expression: String, what_a_flip_would_do: String }
+  | HighestRankWins { seed_expression: String, what_a_flip_would_do: String }
+  | RankIndependent { why_the_key_is_module_local: String, what_would_discriminate_it: String }
+  | ExactlyOneDeclarerByConstruction { key_shape: String, admission_is_the_question: String }
+
+// ONE MATERIALIZED PER-SCOPE SLOT. `built_by` is the fold that writes it today; `resolved_by` is the
+// sentence the view must implement to answer identically. `discriminating_case` is the input that
+// separates this slot's polarity from the others -- a row that cannot name one is a row whose
+// polarity nobody can check, which is exactly the state that lets a uniform cutover pass review.
+type MaterializedSlot {
+  slot_name: String
+  built_by: DeclarationRef
+  key_shape: String
+  polarity: SlotPolarity
+  resolved_by: String
+  discriminating_case: String
+}
+
+data scope_rank_view_slots: List<MaterializedSlot> = [
+  {
+    slot_name: "fn_nodes bare slot",
+    built_by: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_scope_indexes_with_module_order"),
+    key_shape: "the authored leaf name of a top-level item",
+    polarity: LowestRankWins {
+      seed_expression: "fn_nodes.entry(name).or_insert(item) when module_order is present",
+      what_a_flip_would_do: "every bare reference to a colliding spelling would execute the last-ranked module's body instead of the first-ranked one -- the collapse that emitted one plan carrier holding another's entire section fold",
+    },
+    resolved_by: "of the key's declarers whose module has a rank in this scope, the one with the smallest rank, ties inside one module broken by item position",
+    discriminating_case: "two scopes containing the same two declarers of one spelling in opposite precedence order must resolve to different declarations",
+  },
+  {
+    slot_name: "scope item_registry",
+    built_by: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "claim_scope_for"),
+    key_shape: "the bare leaf name of a declaration, as each module's own registry keys it",
+    polarity: LowestRankWins {
+      seed_expression: "the winner_of guard -- insert only when the name has no winner yet, walking order",
+      what_a_flip_would_do: "a module's own declaration would lose its own bare name to a later transitively-reached homonym, and build_initial_env would bind the wrong value",
+    },
+    resolved_by: "the same minimum-rank selection as the bare function slot, over the declarers the registry knows",
+    discriminating_case: "the authored-region boundary: a name first claimed inside the authored prefix is ordinary shadowing, the same name first claimed outside it is the ambiguous population the floor counts",
+  },
+  {
+    slot_name: "file_import_bindings",
+    built_by: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_scope_indexes_with_module_order"),
+    key_shape: "a pair of source file and imported spelling",
+    polarity: RankIndependent {
+      why_the_key_is_module_local: "the file half of the key is the declaring module's own file, so only that module contributes entries under it and no second ranked module can claim the key",
+      what_would_discriminate_it: "two modules declared in one source file, each importing the same spelling from a different source module -- the grammar does not admit this today, which is why the seed's or_insert across the whole fold is indistinguishable from a per-module one",
+    },
+    resolved_by: "the declaring module's own fragment entry, reached without consulting rank beyond scope membership",
+    discriminating_case: "none reachable on the current grammar; the row records that rather than choosing an arm",
+  },
+  {
+    slot_name: "fn_nodes qualified slot",
+    built_by: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_scope_indexes_with_module_order"),
+    key_shape: "module path and leaf name joined, naming exactly one declaration",
+    polarity: ExactlyOneDeclarerByConstruction {
+      key_shape: "the key already carries the declaring module, so two scoped modules cannot contend for it",
+      admission_is_the_question: "today the key exists only because a SCOPED module wrote it, so an unadmitted module has no key at all; a corpus-wide index holds every declarer in the subject and would answer for modules the scope never admitted",
+    },
+    resolved_by: "the corpus index entry for the key, returned only after its declaring module is found to have a rank in this scope",
+    discriminating_case: "a qualified reference to a module present in the subject and absent from the scope's order must miss, not answer",
+  },
+  {
+    slot_name: "file_module_paths",
+    built_by: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_scope_indexes_with_module_order"),
+    key_shape: "a source file path",
+    polarity: HighestRankWins {
+      seed_expression: "file_module_paths.insert(file, module_path) -- unconditional, so the last module in order wins",
+      what_a_flip_would_do: "the own-module tier of lookup_fn_from would attribute a reference site to a different declaring module, redirecting every ambiguous bare name authored in that file",
+    },
+    resolved_by: "of the declarers of this file, the one with the largest rank in this scope",
+    discriminating_case: "two modules declared in one source file -- not reachable on the current grammar, so the seed's polarity is preserved rather than replaced by the one a reader would guess",
+  },
+  {
+    slot_name: "service_ops",
+    built_by: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_scope_indexes_with_module_order"),
+    key_shape: "a service or item name joined with an operation name",
+    polarity: HighestRankWins {
+      seed_expression: "service_ops.insert(key, op) -- unconditional, so the last module in order wins",
+      what_a_flip_would_do: "a colliding operation key would dispatch to the first-ranked module's transport instead of the last-ranked one, silently redirecting an effect rather than failing",
+    },
+    resolved_by: "of the key's declarers whose module has a rank in this scope, the one with the largest rank, ties inside one module broken by last item position",
+    discriminating_case: "the receipt already in the tree: std.resources declares resource Filesystem and extdeps.filesystem declares service Filesystem, and one closure holding both is why the walk keys service detection on item_kind rather than on the registry",
+  },
+]
+
+// WHAT A READER ASKS OF THE SCOPE MAPS. The lookup arms are what the view makes approximately
+// free; the enumeration arms are what it does not, and separating them is the point of the column.
+//
+// ProvenanceTest is the arm the per-site sweep added and the one a cutover most needs marked. These
+// readers do not want the declaration -- they want the WINNER'S DECLARING MODULE, and they decide a
+// builtin dispatch from it. A polarity or admission error does not surface at these sites as a
+// missing name; it surfaces as a DIFFERENT FUNCTION EXECUTING, which is why they cut over first and
+// why the discriminating RED is exercised against them rather than against a point lookup.
+//
+// UnconsumedConstruction is the site that looked like the hardest and is not: it hands out a whole
+// ResolvedGraph built from the scope map, which would force materialization to survive the cut for
+// any consumer of it, and it has none. Filed as a row rather than silently deleted, because "the
+// blocker is not real" is precisely the claim a reader wants to check.
+// A design that reported the scope-entry saving without the enumeration column would be reporting
+// half a ledger -- the cost is not removed there, it is moved from entry to the ask.
+type ReaderDemand
+  = PointLookup { key_source: String }
+  | MembershipTest { key_source: String }
+  | ProvenanceTest { what_is_read: String, decides: String }
+  | KindFilteredEnumeration { kind: String, called_per: String }
+  | WholeKeyEnumeration { what_is_wanted: String, called_per: String }
+  | UnconsumedConstruction { what_it_would_have_forced: String, proof_of_no_consumer: String }
+
+type ScopeMapReader {
+  reader: DeclarationRef
+  reads: String
+  demand: ReaderDemand
+  after_cutover: String
+}
+
+data scope_rank_view_readers: List<ScopeMapReader> = [
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "lookup_fn"),
+    reads: "fn_nodes, bare or qualified depending on the caller's key",
+    demand: PointLookup { key_source: "the callee spelling at the call site" },
+    after_cutover: "one declarer-list intersection with the rank map",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "lookup_fn_from"),
+    reads: "ambiguous_bare_function_names, then file_module_paths, then file_import_bindings, then fn_nodes",
+    demand: PointLookup { key_source: "the callee spelling plus the referring source file" },
+    after_cutover: "the ambiguity test becomes a declarer-count over the rank map rather than a precomputed set membership; the two qualified retries become admission-gated index reads",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "lookup_fn_node"),
+    reads: "fn_nodes, qualified key only",
+    demand: PointLookup { key_source: "a fully qualified name assembled by the caller" },
+    after_cutover: "the admission-gated read of section 4 -- the one reader where the corpus index could answer for an unadmitted module",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "bare_name_is_ambiguous"),
+    reads: "ambiguous_bare_function_names",
+    demand: MembershipTest { key_source: "a bare spelling" },
+    after_cutover: "true when the key has two or more ranked declarers, counted at item grain rather than module grain, because the seed counts items",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "try_witness_evaluation_dispatch"),
+    reads: "the scope item_registry, for the entry's module_name",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name of whichever declaration won the callee's bare name",
+      decides: "whether the call is the witness-evaluation authority's own, and therefore whether a builtin body runs instead of the authored one",
+    },
+    after_cutover: "the resolved declarer already carries its module, so the second lookup disappears rather than moving",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "is_v4_bridge_family"),
+    reads: "the scope item_registry, for the entry's module_name",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name, compared against one bridge family's module",
+      decides: "whether a name in the family's roster is that family's, or a homonym from elsewhere in the scope",
+    },
+    after_cutover: "same -- the declarer's module is part of the resolution result",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "is_v2_std_collection_map_grounded_fn"),
+    reads: "the scope item_registry, for the entry's module_name",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name, compared against the v2 std collection module",
+      decides: "whether a call takes the primitive map grounding instead of evaluating the authored body",
+    },
+    after_cutover: "same -- the declarer's module is part of the resolution result",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "definer_module_for_name"),
+    reads: "a ResolvedGraph's item_registry, twice -- once bare, once on the dotted tail",
+    demand: ProvenanceTest {
+      what_is_read: "info.module_name of the winner, falling back to the leaf of a dotted spelling",
+      decides: "which module is treated as defining a name, for change attribution",
+    },
+    after_cutover: "the one row this census leaves open: whether it is in the population at all depends on which graph its callers pass, and the cutover closes that rather than assuming it",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "call_test_claim_fn_bool"),
+    reads: "the scope item_registry, as a guard",
+    demand: MembershipTest { key_source: "the claim function name the caller is about to invoke" },
+    after_cutover: "resolution returning a declarer, rather than a separate presence question",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "call_floor_row_precompute_would_skip"),
+    reads: "the scope item_registry, as a hard requirement gate",
+    demand: MembershipTest { key_source: "a floor skip-predicate name, a literal -- one such gate each in call_floor_kernel_would_skip, call_floor_row_would_skip and this one" },
+    after_cutover: "same shape; these are the sites whose refusal text must survive the cut unchanged, because a missing predicate is an error rather than a skip",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "rerun_frontier_nodes_for_entry"),
+    reads: "the scope item_registry, as a guard before re-evaluating a data item",
+    demand: MembershipTest { key_source: "a data declaration name reached from a changed file" },
+    after_cutover: "resolution returning a declarer",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "eval_var"),
+    reads: "the scope item_registry on the slow path, after the environment misses",
+    demand: PointLookup { key_source: "the interned variable symbol, materialized back to a String only here" },
+    after_cutover: "collapses into one resolution -- the site already re-resolves through lookup_fn_from on the next line, so today it asks the same question twice",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "eval_data_item_value"),
+    reads: "the scope item_registry, then fn_nodes",
+    demand: PointLookup { key_source: "an item name supplied by the caller" },
+    after_cutover: "collapses into one resolution, as eval_var does",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "resolved_graph"),
+    reads: "the scope item_registry, whole, to rebuild a ResolvedGraph from it",
+    demand: UnconsumedConstruction {
+      what_it_would_have_forced: "a materialized scope registry surviving the cut, since a ResolvedGraph field cannot be served by a resolver",
+      proof_of_no_consumer: "no call site in src/ -- the pub fn is reachable by nobody, so it is deleted with the maps rather than being the reason to keep them",
+    },
+    after_cutover: "deleted",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "build_initial_env"),
+    reads: "the scope item_registry, iterated whole",
+    demand: KindFilteredEnumeration { kind: "DataItem, skipping every ambiguous bare name", called_per: "claim" },
+    after_cutover: "iterates the corpus data-item name list filtered by rank membership, which is a fraction of the corpus rather than all of a scope",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "eval_data_initializer_values"),
+    reads: "the scope item_registry, iterated whole",
+    demand: KindFilteredEnumeration { kind: "DataItem", called_per: "call" },
+    after_cutover: "same kind-partitioned corpus list, filtered by rank membership",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "resolve_published_mock_keys"),
+    reads: "the scope item_registry, iterated whole",
+    demand: KindFilteredEnumeration { kind: "DataItem carrying a PublishedMockCase annotation", called_per: "prepared scope" },
+    after_cutover: "same kind-partitioned corpus list, filtered by rank membership",
+  },
+  {
+    reader: decl_ref(module_path: "v1_compiler.cli_run", decl_name: "roster_entry_registry_cache"),
+    reads: "the scope item_registry key set, collected whole",
+    demand: WholeKeyEnumeration { what_is_wanted: "every declaration name visible in the scope", called_per: "roster entry" },
+    after_cutover: "the one row where the view is not obviously cheaper -- a corpus-sized filter replaces a scope-sized clone, and its call frequency is the fact the migration must carry rather than discover",
+  },
+]
+
+// THE HARD CONSTRAINT, AS A RUNG RATHER THAN A SENTENCE. On record for this lane: a scope's
+// qualified fn_nodes must never resolve a name outside the scope's admitting closure.
+//
+// The point the model exists to make is that this guarantee is currently INCIDENTAL. It holds
+// because the map is materialized from the scope's own members, so an unadmitted declaration has no
+// key. A corpus-wide index deletes that construction. The migration's obligation is therefore not to
+// add a filter but to re-establish the guarantee structurally: no arm of resolution may yield a
+// declaration without having consulted the rank map, so an unadmitted answer has no constructor.
+// DESIGN section 3 states the general form -- the minimum replacement is not the smallest thing that
+// executes the happy path, it must preserve every required refusal.
+type ClosureAdmission
+  = AdmittedByMaterialization { why_it_holds_today: String }
+  | AdmittedByRankMembership { how_it_is_constructed: String, what_makes_the_bad_state_unwritable: String }
+  | UnadmittedAnswerReachable { how: String }
+
+type AdmissionStanding {
+  subject: String
+  before_cutover: ClosureAdmission
+  after_cutover: ClosureAdmission
+  discriminating_red: String
+  positive_control: String
+}
+
+data scope_rank_view_admission: AdmissionStanding = {
+  subject: "qualified name resolution inside one claim scope",
+  before_cutover: AdmittedByMaterialization {
+    why_it_holds_today: "the qualified slot is written only by modules the scope admitted, so a name outside the closure has no key in fn_nodes and the lookup misses",
+  },
+  after_cutover: AdmittedByRankMembership {
+    how_it_is_constructed: "the resolver returns a declarer obtained THROUGH the rank map; there is no accessor that reaches the corpus index and returns a declaration node",
+    what_makes_the_bad_state_unwritable: "an answer carries the rank it was selected by, so a caller cannot construct one without a rank the scope issued",
+  },
+  discriminating_red: "a fixture subject with two entries whose closures are disjoint, where entry A qualified-references a declaration only entry B's closure admits: the reference must miss under both representations, and it is the arm a naive corpus-wide index turns green",
+  positive_control: "the same reference from an entry whose closure DOES admit the module must resolve, so the refusal is not a resolver that answers nothing",
+}
+
+// THE SCOPE POPULATION, RECONCILED WITHOUT PICKING A NUMBER.
+//
+// The brief carries two figures for the distinct-scope count and asks which is right. Both are
+// readings of ONE instrument at two revisions, so neither is a rival measurement and the delta is
+// not decidable from the figures. The reconciliation is the instrument, re-derived on the current
+// tree by the before half of the acceptance pair -- which is DESIGN section 6 applied to the
+// reconciliation itself rather than only to the design's own claims.
+type ScopeCountReading
+  = ReadFromInstrument { instrument_line: String, produced_by: DeclarationRef, revision: String }
+  | TranscribedIntoProse { carrier: DeclarationRef, why_it_misleads: String }
+
+type ScopeCountRow {
+  figure: Int
+  reading: ScopeCountReading
+}
+
+data scope_rank_view_scope_counts: List<ScopeCountRow> = [
+  {
+    figure: 660,
+    reading: ReadFromInstrument {
+      instrument_line: "floor: N scope construction(s) for M distinct scope(s), and the floor-scope-split line beside it",
+      produced_by: decl_ref(module_path: "v1_compiler.cli_run.required_floor_runner", decl_name: "run_required_floor"),
+      revision: "the branch carrying gunbc#9809, where constructions and distinct scopes agree",
+    },
+  },
+  {
+    figure: 1155,
+    reading: TranscribedIntoProse {
+      carrier: decl_ref(module_path: "v1_compiler.v1_interpreter", decl_name: "PreparedScopeIndexes"),
+      why_it_misleads: "it is an earlier reading of the same line copied into a doc comment, beside the 9573-construction figure that has since been repaired to equal the distinct count; nothing re-derives it, so it rotted while both ends stayed untouched and then read as a present-tense rival",
+    },
+  },
+]
+
+// THE ACCEPTANCE ORACLE IS A PAIRED RUN, NEVER A LITERAL. DESIGN section 5: a measurement copied
+// from the same tree is not an oracle. The figures relayed into this lane for the ambiguity line
+// were taken on a pre-9809 corpus, so they are carried as what they are -- a prior reading awaiting
+// re-baseline -- and no check is keyed on them.
+type AcceptanceOracle
+  = PairedRunByteIdentity { line_marker: String, moves_if_and_only_if: String }
+  | PairedRunFieldIdentity { field_compared: String, moves_if_and_only_if: String }
+  | PriorReadingAwaitingBaseline { measured_on: String, why_not_an_oracle: String }
+
+type AcceptanceRow {
+  what_is_compared: String
+  oracle: AcceptanceOracle
+}
+
+data scope_rank_view_acceptance: List<AcceptanceRow> = [
+  {
+    what_is_compared: "claim population, results, verdict and digests",
+    oracle: PairedRunFieldIdentity {
+      field_compared: "the required floor's own claim roster and per-claim digests",
+      moves_if_and_only_if: "the view resolves some claim to a different declaration",
+    },
+  },
+  {
+    what_is_compared: "scope identities",
+    oracle: PairedRunFieldIdentity {
+      field_compared: "the hash_combine fold over the scope's module order",
+      moves_if_and_only_if: "the closure moved -- the rank map is derived from that same order, so the view cannot move it",
+    },
+  },
+  {
+    what_is_compared: "the bare-name ambiguity line",
+    oracle: PairedRunByteIdentity {
+      line_marker: "floor-bare-name-ambiguity",
+      moves_if_and_only_if: "bare-name precedence forks, which is the exact failure a rank-view can introduce",
+    },
+  },
+  {
+    what_is_compared: "the prize -- per-scope index and registry construction time",
+    oracle: PairedRunFieldIdentity {
+      field_compared: "the indexes and registry terms of the floor-scope-split line, with the order term untouched",
+      moves_if_and_only_if: "the fold is actually gone rather than moved",
+    },
+  },
+  {
+    what_is_compared: "the ambiguity figures relayed into this lane",
+    oracle: PriorReadingAwaitingBaseline {
+      measured_on: "a pre-9809 corpus, before the two cuts that PR lands",
+      why_not_an_oracle: "the corpus has moved since; the before half of the pair re-derives them, and asserting the relayed values would be a change detector rather than a check",
+    },
+  },
+]
+
+fn scope_rank_slot_is_lowest_rank(s: MaterializedSlot) -> Bool {
+  match s.polarity {
+    LowestRankWins { seed_expression: _, what_a_flip_would_do: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_slot_is_highest_rank(s: MaterializedSlot) -> Bool {
+  match s.polarity {
+    HighestRankWins { seed_expression: _, what_a_flip_would_do: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_slot_is_rank_independent(s: MaterializedSlot) -> Bool {
+  match s.polarity {
+    RankIndependent { why_the_key_is_module_local: _, what_would_discriminate_it: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_slot_is_single_declarer(s: MaterializedSlot) -> Bool {
+  match s.polarity {
+    ExactlyOneDeclarerByConstruction { key_shape: _, admission_is_the_question: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_slot_count() -> Int {
+  scope_rank_view_slots |> count
+}
+
+fn scope_rank_lowest_rank_slots() -> List<MaterializedSlot> {
+  scope_rank_view_slots |> filter(s => scope_rank_slot_is_lowest_rank(s: s))
+}
+
+fn scope_rank_highest_rank_slots() -> List<MaterializedSlot> {
+  scope_rank_view_slots |> filter(s => scope_rank_slot_is_highest_rank(s: s))
+}
+
+fn scope_rank_polarity_arm_total() -> Int {
+  (scope_rank_view_slots |> filter(s => scope_rank_slot_is_lowest_rank(s: s)) |> count)
+    + (scope_rank_view_slots |> filter(s => scope_rank_slot_is_highest_rank(s: s)) |> count)
+    + (scope_rank_view_slots |> filter(s => scope_rank_slot_is_rank_independent(s: s)) |> count)
+    + (scope_rank_view_slots |> filter(s => scope_rank_slot_is_single_declarer(s: s)) |> count)
+}
+
+fn scope_rank_reader_is_enumerating(r: ScopeMapReader) -> Bool {
+  match r.demand {
+    KindFilteredEnumeration { kind: _, called_per: _ } => true
+    WholeKeyEnumeration { what_is_wanted: _, called_per: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_reader_count() -> Int {
+  scope_rank_view_readers |> count
+}
+
+fn scope_rank_enumerating_readers() -> List<ScopeMapReader> {
+  scope_rank_view_readers |> filter(r => scope_rank_reader_is_enumerating(r: r))
+}
+
+fn scope_rank_provenance_readers() -> List<ScopeMapReader> {
+  scope_rank_view_readers |> filter(r => match r.demand {
+    ProvenanceTest { what_is_read: _, decides: _ } => true
+    _ => false
+  })
+}
+
+fn scope_rank_unconsumed_construction_readers() -> List<ScopeMapReader> {
+  scope_rank_view_readers |> filter(r => match r.demand {
+    UnconsumedConstruction { what_it_would_have_forced: _, proof_of_no_consumer: _ } => true
+    _ => false
+  })
+}
+
+fn scope_rank_whole_key_readers() -> List<ScopeMapReader> {
+  scope_rank_view_readers |> filter(r => match r.demand {
+    WholeKeyEnumeration { what_is_wanted: _, called_per: _ } => true
+    _ => false
+  })
+}
+
+fn scope_rank_admission_is_structural_after() -> Bool {
+  match scope_rank_view_admission.after_cutover {
+    AdmittedByRankMembership { how_it_is_constructed: _, what_makes_the_bad_state_unwritable: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_admission_regression_reachable() -> Bool {
+  match scope_rank_view_admission.after_cutover {
+    UnadmittedAnswerReachable { how: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_count_is_instrument_read(r: ScopeCountRow) -> Bool {
+  match r.reading {
+    ReadFromInstrument { instrument_line: _, produced_by: _, revision: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_instrument_read_counts() -> List<ScopeCountRow> {
+  scope_rank_view_scope_counts |> filter(r => scope_rank_count_is_instrument_read(r: r))
+}
+
+fn scope_rank_transcribed_counts() -> List<ScopeCountRow> {
+  scope_rank_view_scope_counts |> filter(r => scope_rank_count_is_instrument_read(r: r) == false)
+}
+
+fn scope_rank_acceptance_is_paired(a: AcceptanceRow) -> Bool {
+  match a.oracle {
+    PairedRunByteIdentity { line_marker: _, moves_if_and_only_if: _ } => true
+    PairedRunFieldIdentity { field_compared: _, moves_if_and_only_if: _ } => true
+    _ => false
+  }
+}
+
+fn scope_rank_paired_acceptance_rows() -> List<AcceptanceRow> {
+  scope_rank_view_acceptance |> filter(a => scope_rank_acceptance_is_paired(a: a))
+}
+
+fn scope_rank_relayed_acceptance_rows() -> List<AcceptanceRow> {
+  scope_rank_view_acceptance |> filter(a => scope_rank_acceptance_is_paired(a: a) == false)
+}
+
+data scope_rank_view_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the per-scope materialized maps named in scope_rank_view_slots no longer exist -- every slot's fold is deleted and every reader in scope_rank_view_readers resolves through the rank view -- and the paired required-floor runs in scope_rank_view_acceptance have been taken with the stated identities holding. Not satisfied by landing the view beside the maps: a surviving fold is the DESIGN section 3 attractor this carrier exists to close, and a reader that understands both representations is the parallel-authority state the cutover forbids.")
