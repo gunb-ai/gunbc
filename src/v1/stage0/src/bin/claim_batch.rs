@@ -702,10 +702,19 @@ fn run() -> Result<ExitCode, ExitCode> {
                     return Err(ExitCode::from(1));
                 }
             };
-        let executed_at_unix_secs = std::time::SystemTime::now()
+        let executed_at_unix_secs = match std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
-            .unwrap_or(0);
+        {
+            Ok(secs) => secs,
+            Err(e) => {
+                eprintln!(
+                    "claim_batch: system clock is before the unix epoch ({e}) — refusing to \
+                     stamp executed_at on the wet envelope with a fabricated timestamp"
+                );
+                return Err(ExitCode::from(1));
+            }
+        };
         eprintln!(
             "wet-lane: subject_digest={subject_digest} \
              executor_contract_digest={executor_contract_digest}"

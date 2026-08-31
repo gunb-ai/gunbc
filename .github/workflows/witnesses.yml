@@ -326,7 +326,14 @@ jobs:
           git add dag/gunbc/witness/wet_lane
           git commit -m "wet-receipts: refresh lane receipt envelope (run ${GITHUB_RUN_ID})"
           git push -f origin 'wet-receipts/refresh'
-          gh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt envelope' --body "Generated artifact pair: the wet-lane latest-attempt receipt envelope and its canonical TSV projection (v2.workflow.floor_wet_route), produced by workflow run ${GITHUB_RUN_ID} on ${GITHUB_SHA}. The required floor re-projects the TSV from the JSON and refuses on drift; regenerate via the wet-receipts job, never by hand." || echo 'PR already open; the push refreshed it'
+          if ! gh pr create --head 'wet-receipts/refresh' --title 'wet-receipts: refresh lane receipt envelope' --body "Generated artifact pair: the wet-lane latest-attempt receipt envelope and its canonical TSV projection (v2.workflow.floor_wet_route), produced by workflow run ${GITHUB_RUN_ID} on ${GITHUB_SHA}. The required floor re-projects the TSV from the JSON and refuses on drift; regenerate via the wet-receipts job, never by hand."; then
+            state=$(gh pr view 'wet-receipts/refresh' --json state --jq .state 2>/dev/null || echo NONE)
+            if [ "$state" != 'OPEN' ]; then
+              echo "::error::gh pr create failed and no open pull request carries wet-receipts/refresh (observed state: $state) - the receipt pair was pushed but is not carried by any PR; this is a publication failure, not the already-open case" >&2
+              exit 1
+            fi
+            echo 'PR already open; the push refreshed it'
+          fi
         env:
           GH_TOKEN: ${{ github.token }}
         if: "!cancelled() && steps.wet_receipts_run.outcome != 'skipped' && github.ref == 'refs/heads/main'"
