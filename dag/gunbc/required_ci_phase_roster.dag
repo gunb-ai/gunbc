@@ -42,6 +42,15 @@ fn required_ci_lane_name(l: RequiredCiLane) -> String {
 // the post-bankruptcy roster (gunbc.rung_drop required_gate_bankruptcy, 2026-08-29), with the
 // generated-artifact wall restored after its declared population produced a real drift incident:
 // parse, namespace-wave-admission, regen, generated-artifact, floor.
+//
+// WALL-CLOCK PRICE OF THIS WIDENING, recorded here because `gunbc.rung_drop`
+// `required_gate_bankruptcy` requires every static-roster widening to be priced on the roster's
+// own header. GitHub Actions run 33392747727 is the first required execution: the timestamped
+// generated-artifact phase ran from 12:50:53.0230951Z to 12:53:00.5811355Z -- 127.558 seconds --
+// over rostered=35, adjudicated=35, unadjudicated=0. Its would-be-drifted tree found exactly one
+// drift (`docs/design-ledgers.md`), stopped the build lane, and thereby supplied the live RED this
+// restoration exists for. The clean-tree price is recorded beside this receipt after the first
+// regenerated-head run; until that execution exists, no clean figure is fabricated here.
 type RequiredCiPhase
   = ParsePhase
   | NamespaceWaveAdmissionPhase
