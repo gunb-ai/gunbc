@@ -345,7 +345,11 @@ fn disposition_in_verdict_bearing_denominator(disposition: RunDisposition) -> Bo
 // unconditional false the honest sentence is a different one, and a consumer reading the report
 // must be told which regime produced the numbers.
 fn supersession_availability_rule_text() -> String {
-  match witness_floor_cancel_in_progress {
+  supersession_availability_rule_text_under(spec: witness_floor_cancel_in_progress)
+}
+
+fn supersession_availability_rule_text_under(spec: CancelInProgressSpec) -> String {
+  match spec {
     CancelInProgressBool { value: b } =>
       if b {
         "cancellation may be lawful for EVERY event (witnesses.yml cancel-in-progress is unconditionally true)"

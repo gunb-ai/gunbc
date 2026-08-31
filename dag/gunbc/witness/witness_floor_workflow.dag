@@ -1862,11 +1862,29 @@ fn expected_witness_floor_yml() -> WitnessFloorGenerationOutcome {
   }
 }
 
-// A TEXT-VALUED ENTRY POINT FOR THE ARTIFACT, used to regenerate the committed workflow when the
-// gate's write does not land. expected_witness_floor_yml returns the outcome coproduct, which the
-// host prints by TYPE and not by value, so it cannot be captured from a run; this returns the same
-// bytes as a String. It is the identical serialization the gate consumes -- not a second renderer --
-// so it cannot drift from what is committed.
+// A TEXT-VALUED ENTRY POINT FOR THE ARTIFACT. expected_witness_floor_yml returns the outcome
+// coproduct, which the host prints by TYPE and not by value, so its bytes cannot be captured from a
+// run at all; this returns the same bytes as a String. It is the IDENTICAL serialization the gate
+// consumes -- not a second renderer -- so it cannot drift from what is committed.
+//
+// WHY IT WAS NEEDED, STATED CORRECTLY, because an earlier revision of this comment and its commit
+// message got the cause wrong and filed a defect that does not exist. Regenerating this artifact
+// through the documented actuator -- gunbc.ci_spec ci_heal_author_commit_regen_command, which is
+// gunbc run over gunbc.instruments.generated_artifact_gate main_wet -- left the local worktree
+// unchanged five times, and that was read as "Filesystem.Write reports success and moves no bytes",
+// i.e. an actuator that claims to have acted and has not. BOTH HALVES WERE UNSUPPORTED.
+//
+// Exit zero does not establish that the write succeeded: the stage0 interpreter represents a failed
+// std::fs::write as an ordinary record with success=false, and main_wet turns that into a REPORT
+// value rather than a process failure, so a genuine write failure and a genuine write success exit
+// identically. And a clean local tree is exactly what a SUCCESSFUL remote write also produces:
+// gunbc run resolves the artifact path in the operating-system namespace of the executing process,
+// so a remote dispatch writes the remote checkout, and nothing copies that mutation back to the
+// dispatching worktree. The observation was real; the mechanism attached to it was invented, which
+// is the recurring failure this repository's ledger calls diagnostic_name_mechanism_silent -- here
+// reached through an instrument rather than a diagnostic, and by grepping the committed file, which
+// cannot change unless the write lands and so could only ever confirm the failure it was meant to
+// detect.
 fn witness_floor_yml_text() -> String {
   match expected_witness_floor_yml() {
     WitnessFloorGenerated { content: c } => c

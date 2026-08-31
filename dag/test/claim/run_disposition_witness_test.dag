@@ -246,7 +246,11 @@ test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
   count(rows) == 5
     && string_contains(s: join(rows, "\n"), pattern: "lag < 0")
     && string_contains(s: join(rows, "\n"), pattern: "never external")
-    && string_contains(s: join(rows, "\n"), pattern: superseding_policy_event)
+    && string_contains(s: join(rows, "\n"), pattern: "unconditionally false")
+    && string_contains(
+         s: supersession_availability_rule_text_under(spec: superseding_policy()),
+         pattern: superseding_policy_event
+       )
 }
 
 // THE REFUSAL ARM HAS LIVE OCCUPANCY, WHICH IS WHY IT IS NOT DECORATION.
@@ -259,7 +263,8 @@ test fn w_RED_the_report_carries_its_classifier_rule() -> Bool {
 // as a non-loss either. Answering `not-lost` here would undercount lost verdicts, which is the
 // fail-open direction for the one count this module exists to get right.
 test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
-  let startup = classify_run(
+  let startup = classify_run_under(
+    spec: superseding_policy(),
     record: WorkflowRunRecord {
       run_id: 5, event: superseding_policy_event, head_branch: "b",
       status: "completed", conclusion: "startup_failure",
@@ -267,7 +272,8 @@ test fn w_RED_an_ungrounded_settlement_refuses_the_loss_judgement() -> Bool {
     },
     replacement: ReplacementAbsent
   )
-  let unattributable = classify_run(
+  let unattributable = classify_run_under(
+    spec: superseding_policy(),
     record: cancelled_run(event: superseding_policy_event),
     replacement: ReplacementUnobserved { cause: "window truncated" }
   )
