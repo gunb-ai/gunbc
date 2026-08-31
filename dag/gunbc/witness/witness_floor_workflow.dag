@@ -36,7 +36,7 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
 }
@@ -238,7 +238,34 @@ data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.p
 // destroying capacity, and this row goes back to an expression. Re-enabling it earlier restores
 // the leak; re-enabling it as part of the cutover canary is how the cutover proves itself, because
 // a cancelled build that leaves the next build at full declared capacity IS the acceptance test.
-data witness_floor_cancel_in_progress: CancelInProgressSpec = CancelInProgressBool { value: false }
+// THE SUPERSESSION POLICY IS SEMANTIC, AND THE YAML SPELLING IS ITS PROJECTION.
+//
+// `cancel-in-progress` is a SERIALIZED SPELLING of a business decision, and the decision is a
+// workflow fact this repository owns -- DESIGN section 3 puts business policy in the workflow layer
+// and calls modelling it in extdeps a layer inversion. So the policy is declared here as a closed
+// vocabulary and the extdeps spec is DERIVED from it, never the reverse.
+//
+// WHY THIS IS NOT COSMETIC: the classifier used to consult the serialized form by asking whether
+// the expression text CONTAINED the event name. That is not expression evaluation, and it inverts
+// on a perfectly ordinary policy -- `${{ github.event_name != 'pull_request' }}` contains
+// `pull_request` while authorizing exactly the opposite population, so a substring reader would
+// report supersession available for the one event the policy excludes. Reading the semantic arm
+// makes the question decidable by construction instead of by text search.
+type RunningSupersessionPolicy
+  = NeverSupersedeRunning
+  | SupersedeRunningForEvent { event: String }
+
+data witness_floor_running_supersession_policy: RunningSupersessionPolicy = NeverSupersedeRunning
+
+fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
+  match policy {
+    NeverSupersedeRunning => CancelInProgressBool { value: false }
+    SupersedeRunningForEvent { event: e } =>
+      CancelInProgressExpression { expression: concat(concat("${{ github.event_name == '", e), "' }}") }
+  }
+}
+
+data witness_floor_cancel_in_progress: CancelInProgressSpec = cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy)
 
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
