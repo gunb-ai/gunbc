@@ -1,0 +1,82 @@
+module test.claim.declared_type_expected_type_path_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SUBSTRATE-ONLY, for the reason the sibling module states in its own voice: a ReadsLiveTree
+// witness is discovered, counted in declined_live, and never folded, so an assertion authored
+// there is enrolled and inert. These arms are evidence about the compiler and must execute.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// WHAT THESE ARMS ARE, AND WHAT THEY DELIBERATELY DO NOT CLAIM.
+//
+// Two values reached expected-type positions they do not inhabit, and the required floor stayed
+// green over 3,136 witnesses on both. The specimens were found in production on this branch, not
+// constructed to prove a point:
+//
+//   a Gibibyte returned from a function declared -> ByteSize, which typechecked and yielded
+//   Measure { count: 3 } -- three BYTES per core -- and drove the whole fleet to a refusal that
+//   named neither the ratio nor the missing conversion;
+//
+//   a two-variant resolution coproduct passed to a parameter declared as a one-field measure, in
+//   gunbc.runner_slot_allocation's own aggregate wall.
+//
+// THESE FIXTURES ARE MECHANISM-NEUTRAL BY CONSTRUCTION. Each says only: this exact source contains
+// a type non-inhabitance, so an Accepted compilation must produce at least one blocking type
+// diagnostic. None of them names a cause. That is deliberate -- the candidates are a
+// coproduct-produced value, transparent alias expansion, generic application identity,
+// cross-module resolution, or an interaction -- and naming one without the matrix would repeat
+// exactly the guess that produced the unit bug above. Locating the cause is the matrix's job;
+// preserving the falsifying behaviour is this module's, and the two are not the same obligation.
+//
+// The sibling test.claim.declared_type_inhabitance_direct_call_witness already refuses distinct
+// unapplied constructors passed through a call, so whatever admits these is NOT the general
+// call-argument case. If the synthetic coproduct arm below refuses while the production shape
+// admits, that narrows the matrix toward alias expansion or cross-module resolution; if both
+// admit, the coproduct producer is sufficient. Either outcome is a result.
+
+// PAIR ONE -- THE DECLARED-RETURN PATH, which is the incident's own shape.
+data measure_scale_return_red_source: String = "module probe_measure_scale_return\nimport std.measure { ByteSize, Gibibyte, gibibyte }\nfn produces_gibibytes() -> Gibibyte { gibibyte(count: 3) }\nfn probe() -> ByteSize { produces_gibibytes() }\n"
+
+test fn w_a_gibibyte_returned_at_a_declared_bytesize_is_refused() -> Bool {
+  violation_count(source: measure_scale_return_red_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE POSITIVE CONTROL, identical but for the declared return type. Without it an arm that refused
+// every Measure return would satisfy the red above while making the corpus unwritable.
+data measure_scale_return_control_source: String = "module probe_measure_scale_return_ok\nimport std.measure { Gibibyte, gibibyte }\nfn produces_gibibytes() -> Gibibyte { gibibyte(count: 3) }\nfn probe() -> Gibibyte { produces_gibibytes() }\n"
+
+test fn w_a_gibibyte_returned_at_a_declared_gibibyte_is_admitted() -> Bool {
+  violation_count(source: measure_scale_return_control_source, wanted: "DeclaredTypeNotInhabited") == 0
+}
+
+// PAIR TWO -- THE COPRODUCT-AT-A-RECORD-PARAMETER PATH, minimised from the production shape. No
+// aliases, no generics, no imports beyond Int: if this refuses, the production admission needs one
+// of the remaining candidates to explain it, and the matrix starts one candidate shorter.
+data coproduct_at_record_parameter_red_source: String = "module probe_coproduct_at_record\nimport std.types { Int }\ntype ScalarMeasure { count: Int }\ntype ScalarResolution = ScalarResolved { value: ScalarMeasure } | ScalarUnresolved\nfn scalar_count(value: ScalarMeasure) -> Int { value.count }\nfn bad(value: ScalarResolution) -> Int { scalar_count(value: value) }\n"
+
+test fn w_a_coproduct_at_a_record_parameter_is_refused() -> Bool {
+  violation_count(source: coproduct_at_record_parameter_red_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE POSITIVE CONTROL: the same call reached through the match that extracts the record, which is
+// the repair the production site actually took.
+data coproduct_at_record_parameter_control_source: String = "module probe_coproduct_at_record_ok\nimport std.types { Int }\ntype ScalarMeasure { count: Int }\ntype ScalarResolution = ScalarResolved { value: ScalarMeasure } | ScalarUnresolved\nfn scalar_count(value: ScalarMeasure) -> Int { value.count }\nfn good(value: ScalarResolution) -> Int { match value { ScalarResolved { value: m } => scalar_count(value: m) ScalarUnresolved => 0 } }\n"
+
+test fn w_a_matched_record_at_a_record_parameter_is_admitted() -> Bool {
+  violation_count(source: coproduct_at_record_parameter_control_source, wanted: "DeclaredTypeNotInhabited") == 0
+}

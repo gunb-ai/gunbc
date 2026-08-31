@@ -422,9 +422,17 @@ fn runner_slot_shape_standing(d: RunnerSlotDesired) -> RunnerSlotShapeStanding {
 //
 // gunbc_runner_slots_per_host returns Int, so the unresolved arm has nowhere to put its cause and
 // answers 0. gunbc.ci_runner_placement no longer depends on that -- it consults the ratio directly
-// and refuses with RunnerCoreRatioUnresolved, carrying the reason -- so the live refusal path is
-// honest. What remains is that any OTHER caller of this function receives a 0 it cannot distinguish
-// from a host whose axes genuinely admit nothing.
+// and refuses with RunnerCoreRatioUnresolved, carrying the reason.
+//
+// THAT MAKES ONE PATH HONEST AND NOT THE PRODUCTION SURFACE, and an earlier revision of this note
+// said "the live refusal path is honest" without the qualifier. Two consumers take the Int
+// directly and would read an unresolved ratio as a real zero. gunbc.runner_host_deploy builds four
+// deploy rows from it, and that count becomes the materialization target -- so a zero changes the
+// desired runner population from the host's admitted roster to an empty one, which
+// gunbc.runner_slot_provision then plans against; removal ownership refuses destructive teardown,
+// which contains the harm, but the plan is answering the wrong question. gunbc.host_axis_caps uses
+// the same Int as the upper bound of the runner-unit roster whose system-control shadows are
+// reverted, where a zero produces no reverts and can leave stale effective caps standing.
 //
 // DECLARED GAP, NOT AN ACCIDENT, and the trigger is the CAPABILITY rather than an artifact: the arm
 // dissolves when the canonical width answer is a RunnerWidthResolution -- derived, held, or
