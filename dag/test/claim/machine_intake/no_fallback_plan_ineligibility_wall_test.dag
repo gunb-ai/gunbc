@@ -1,0 +1,49 @@
+module test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test
+
+import std.types { Bool, String }
+import gunbc.compile_diagnostic_census { CompileDiagnosticCensus, CensusObserved, CensusNotRunnable }
+import gunbc.guarantee_probe_corpus { census_blocking_count_for_class }
+import v2.std.optional { Absent, Present }
+
+// THE WALL IS REAL, PROVEN WHERE ITS RED IS AUTHORABLE (DESIGN §4b).
+// NO-FALLBACK-0's claim is that a plan cannot carry a spare available
+// transport. The accepted corpus can no longer express the violation —
+// PlanCandidateIneligible carries BootDeliveryCandidateIneligibility, which has
+// no eligible inhabitant — so asking for the refusal inside the corpus would be
+// asking for a check whose RED is unwritable, i.e. a decoration.
+//
+// §4b names the second boundary that decides it: a state unrepresentable in the
+// ACCEPTED corpus is still representable as SOURCE HANDED TO THE COMPILER BY A
+// FIXTURE. These two sources differ on exactly one axis — the value placed in
+// the plan's ineligible arm — so the verdict cannot be attributed to anything
+// else. The RED places CandidateEligible there and must be refused; the GREEN
+// places a real ineligibility cause and must compile.
+data plan_ineligible_eligible_red_source: String = "module probe_no_fallback_plan_ineligible_eligible_red\nimport gunbc.boot_artifact_delivery { BootDeliveryPlanCandidateDisposition, CandidateEligible, PlanCandidateIneligible }\nfn f() -> BootDeliveryPlanCandidateDisposition { PlanCandidateIneligible { cause: CandidateEligible } }\n"
+
+data plan_ineligible_cause_green_source: String = "module probe_no_fallback_plan_ineligible_cause_green\nimport gunbc.boot_artifact_delivery { BootDeliveryPlanCandidateDisposition, CandidateStagingAbsent, PlanCandidateIneligible }\nfn f() -> BootDeliveryPlanCandidateDisposition { PlanCandidateIneligible { cause: CandidateStagingAbsent } }\n"
+
+// THE DISCRIMINATING RED. Before the refusal-only split this source compiled,
+// because PlanCandidateIneligible carried the whole standing and CandidateEligible
+// inhabited it. It is the exact contradictory row NO-FALLBACK-0 forbids: a
+// candidate recorded as ineligible whose stated cause is that it was eligible —
+// an executor reading the plan finds a spare transport to try next.
+test fn an_eligible_standing_cannot_be_placed_in_a_plans_ineligible_arm() -> Bool {
+  match census_blocking_count_for_class(census: compile_dag_diagnostic_census(plan_ineligible_eligible_red_source), wanted: "TypeMismatch") {
+    Present { value: n } => n >= 1
+    Absent => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the RED above could be green for any reason
+// at all — a broken import, a misspelled type — and would still look like a
+// wall.
+test fn a_real_ineligibility_cause_is_still_admitted_in_that_arm() -> Bool {
+  match compile_dag_diagnostic_census(plan_ineligible_cause_green_source) {
+    CensusObserved { rows: rows } =>
+      match census_blocking_count_for_class(census: CensusObserved { rows: rows }, wanted: "TypeMismatch") {
+        Present { value: n } => n == 0
+        Absent => false
+      }
+    CensusNotRunnable { cause: _ } => false
+  }
+}
