@@ -1,0 +1,291 @@
+module v2.lens.undecidable_verdict_collapse
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import v2.std.witness { Holds, Witness }
+import v2.extdeps.languages.dag {
+  DagCanonicalBoolLiteral,
+  DagCanonicalIntLiteral,
+  dag_canonical_literal_from_node,
+  parse_production_emitted_identity_optional,
+  qualified_name_from_module_node
+}
+import std.algebra { Cons, Empty }
+import v2.std.algebra { fold_list, list_tail, TailFound, TailAbsent }
+import v2.std.collection { List, list_at_optional }
+import v2.std.optional {
+  Absent,
+  Optional,
+  Present,
+  optional_absent,
+  optional_present
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted
+}
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Match,
+  Node,
+  NodeFoldTopDown,
+  Symbol,
+  TypeNode,
+  fold_node_topdown,
+  match_arm_body,
+  match_arm_pattern
+}
+import v2.std.node_query { find_named_child, node_positional_child_targets }
+import v2.std.qualified_name { QualifiedName, qualified_name_to_dotted_string }
+
+// UNDECIDABLE-VERDICT ROUTING WALL (DESIGN §5 typed-and-located diagnostic; recurring failure mode
+// `state_space_conflation`). A verdict coproduct may carry a variant that denotes NOT a decided
+// answer but the model's inability to decide -- v2.std.runtime's RuntimeValueEqualityUnavailable is
+// the first. Its declaration states the routing rule in prose: the variant is "a typed third state
+// that is NEVER collapsed to 'false' here", and "no Bool adapter is provided, deliberately, because
+// the adapter would be the universal comparator this type exists to make unwritable."
+//
+// Prose is not enforcement. No Accepted program can read that annotation (DESIGN §4c), which is
+// exactly why four call sites open-coded the refused adapter arm-by-arm while the annotation sat
+// beside the declaration being true. This lens is that rule as a wall: a match arm whose pattern
+// names a rostered undecidable-verdict variant and whose body is a DECIDABLE LITERAL refuses
+// compilation with a typed, located diagnostic. The reason the variant computed is then forced to
+// survive its own arm.
+//
+// WHAT THIS IS NOT: it is not the absorbing-fallback census (v2.lens.fallback_arm_census), whose
+// subject is a WILDCARD arm answering over an OPEN space. These arms are NAMED, over a CLOSED
+// coproduct, and -- measured, not assumed -- they narrow rather than widen: every site found sits
+// in a positive position inside a *_holds predicate, so the collapse turns a witness RED. The
+// defect is that the located reason dies, not that the line fails to stop.
+//
+// SCOPE: the declaring authority module may materialize and decide these variants; test/claim
+// witness modules may open-code the collapse to exercise this wall's RED arm -- a fixture building
+// the escape hatch to TEST it is not smuggling one (the v2.lens.machine_shape carve-out precedent).
+
+data undecidable_verdict_collapse_law: String = "A match arm naming a rostered undecidable-verdict variant may not answer with a decidable literal: the variant denotes ⊤-as-ignorance and a literal body destroys the reason it carries. Roster: v2.std.runtime RuntimeValueEqualityUnavailable. Sanctioned homes: the declaring authority (v2.std.runtime) and test/claim witnesses. Grain: rooted whole-tree walk (module-context fold_node_topdown) -- enrolls in always_required_root_lenses, not the per-node roster, so enforcement is a compile refusal and never a post-hoc corpus scan. Residual, declared: a Bool witness cannot carry the reason to the report, so a repaired arm threads it only as far as the harness boundary; RETIRED BY the capability of a diagnostic-carrying witness modality beside BoolWitnessClaim in v2.std.verification, not by any single artifact."
+
+// The roster is the single authority for which variants denote model-ignorance. A variant earns a
+// row here at its DECLARATION's discretion, never by spelling: a name-shaped test (`*Unavailable`)
+// would be the heuristic DESIGN §4 says is never necessary in a closed system.
+data undecidable_verdict_variants: List<Symbol> = [^RuntimeValueEqualityUnavailable]
+
+data undecidable_verdict_authority_module: String = "v2.std.runtime"
+
+fn symbol_in_roster(sym: Symbol, roster: List<Symbol>) -> Bool {
+  fold_list(
+    xs: roster,
+    empty: false,
+    cons: fn(acc, s) { acc || s == sym }
+  )
+}
+
+// A pattern reaches its constructor identity by one of two shapes: a bare variant pattern is an
+// Atom node, and a payload-carrying variant pattern (`V { field: _ }`) carries that Atom as its
+// head positional child. Both are read here so the wall does not turn on whether the author
+// happened to bind a field.
+fn pattern_head_identity_optional(pattern: Node) -> Optional<Symbol> {
+  match pattern.kind {
+    TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+    _ =>
+      match list_at_optional(xs: node_positional_child_targets(node: pattern), index: 0) {
+        Present { value: head } =>
+          match head.kind {
+            TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
+            _ => optional_absent()
+          }
+        Absent => optional_absent()
+      }
+  }
+}
+
+fn pattern_names_undecidable_verdict(pattern: Node) -> Bool {
+  match pattern_head_identity_optional(pattern: pattern) {
+    Present { value: id } =>
+      symbol_in_roster(sym: id, roster: undecidable_verdict_variants)
+    Absent => false
+  }
+}
+
+// A decidable literal is the collapse this wall refuses: the arm answers the scrutinee's question
+// outright, discarding the reason. A body that constructs, calls, or refuses is not this shape.
+fn body_is_decidable_literal(body: Node) -> Bool {
+  match dag_canonical_literal_from_node(node: body) {
+    Accepted { value: DagCanonicalBoolLiteral { value: _ }, diagnostics: _ } => true
+    Accepted { value: DagCanonicalIntLiteral { magnitude: _ }, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn qualified_name_is_verdict_authority(qn: QualifiedName) -> Bool {
+  qualified_name_to_dotted_string(qn: qn) == undecidable_verdict_authority_module
+}
+
+// THE CARVE-OUT IS THE CLAIM-FIXTURE NAMESPACE, NOT THE TEST TREE. A fixture that open-codes the
+// collapse in order to exercise this wall's RED arm is building the escape hatch to TEST it; an
+// ORDINARY test module has no such licence, and exempting one would leave a real acceptance path
+// unenforced. `v2.test.` was the first spelling here and it was too wide: it exempted
+// v2.test.runtimes.effect_io_handler_claims -- a module this same change repaired -- so a
+// regression there would have re-collapsed the verdict with no compile refusal, which is the wall
+// claiming a rung it did not hold (DESIGN 4b rung honesty). Narrowed to the claim namespaces, and
+// module_scope_* controls in the wall test hold it there.
+fn qualified_name_is_witness_module(qn: QualifiedName) -> Bool {
+  let dotted = qualified_name_to_dotted_string(qn: qn)
+  dotted.starts_with(prefix: "test.claim.")
+    || dotted.starts_with(prefix: "v2.test.claim.")
+}
+
+fn module_allows_verdict_collapse(qn: Optional<QualifiedName>) -> Bool {
+  match qn {
+    Absent => false
+    Present { value: qn0 } =>
+      qualified_name_is_verdict_authority(qn: qn0)
+        || qualified_name_is_witness_module(qn: qn0)
+  }
+}
+
+fn module_qn_from_node(n: Node, inherited: Optional<QualifiedName>) -> Optional<QualifiedName> {
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } =>
+      if id == ^dag_surface_module {
+        match qualified_name_from_module_node(root: n) {
+          Accepted { value: qn, diagnostics: _ } => optional_present(value: qn)
+          Rejected { diagnostics: _ } => inherited
+        }
+      } else {
+        inherited
+      }
+    Absent => inherited
+  }
+}
+
+fn undecidable_verdict_collapse_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^undecidable_verdict_collapsed_to_literal,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn match_positional_arms(match_node: Node) -> List<Node> {
+  match match_node.kind {
+    ComputationNode { behavior: Match } =>
+      match list_tail(xs: node_positional_child_targets(node: match_node)) {
+        TailFound { tail: arms } => arms
+        TailAbsent => Empty
+      }
+    TypeNode { connective: _ } => Empty
+    ComputationNode { behavior: _ } => Empty
+  }
+}
+
+fn arm_collapse_findings(arm: Node) -> List<Diagnostic> {
+  match find_named_child(root: arm, name: match_arm_pattern) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: pat, diagnostics: _ } =>
+      if pattern_names_undecidable_verdict(pattern: pat) {
+        match find_named_child(root: arm, name: match_arm_body) {
+          Rejected { diagnostics: _ } => []
+          Accepted { value: body, diagnostics: _ } =>
+            if body_is_decidable_literal(body: body) {
+              [undecidable_verdict_collapse_diagnostic(n: arm)]
+            } else {
+              []
+            }
+        }
+      } else {
+        []
+      }
+  }
+}
+
+fn local_verdict_collapse_findings(
+  n: Node,
+  module_qn: Optional<QualifiedName>
+) -> List<Diagnostic> {
+  if module_allows_verdict_collapse(qn: module_qn) {
+    []
+  } else {
+    fold_list(
+      xs: match_positional_arms(match_node: n),
+      empty: [],
+      cons: fn(acc, arm) { concat(acc, arm_collapse_findings(arm: arm)) }
+    )
+  }
+}
+
+type VerdictWalkCtx {
+  module_qn: Optional<QualifiedName>
+}
+
+type VerdictWalkResult {
+  module_qn: Optional<QualifiedName>
+  findings: List<Diagnostic>
+}
+
+fn verdict_walk_init(n: Node, ctx: VerdictWalkCtx) -> VerdictWalkResult {
+  let module_qn = module_qn_from_node(n: n, inherited: ctx.module_qn)
+  VerdictWalkResult {
+    module_qn: module_qn,
+    findings: local_verdict_collapse_findings(n: n, module_qn: module_qn)
+  }
+}
+
+fn verdict_walk_child_context(n: Node, ctx: VerdictWalkCtx, _: Edge) -> VerdictWalkCtx {
+  VerdictWalkCtx {
+    module_qn: module_qn_from_node(n: n, inherited: ctx.module_qn)
+  }
+}
+
+fn verdict_walk_step(
+  acc: VerdictWalkResult,
+  _: Edge,
+  child_r: VerdictWalkResult
+) -> VerdictWalkResult {
+  VerdictWalkResult {
+    module_qn: child_r.module_qn,
+    findings: concat(acc.findings, child_r.findings)
+  }
+}
+
+fn verdict_topdown_algebra() -> NodeFoldTopDown<VerdictWalkCtx, VerdictWalkResult> {
+  NodeFoldTopDown {
+    init: verdict_walk_init,
+    child_context: verdict_walk_child_context,
+    step: verdict_walk_step
+  }
+}
+
+fn undecidable_verdict_collapse_findings(root: Node) -> List<Diagnostic> {
+  match fold_node_topdown(
+    n: root,
+    ctx: VerdictWalkCtx { module_qn: optional_absent() },
+    algebra: verdict_topdown_algebra()
+  ) {
+    VerdictWalkResult { module_qn: _, findings: findings } => findings
+  }
+}
+
+fn undecidable_verdict_collapse_compile_gate(node: Node) -> Outcome<Witness<Node>> {
+  match undecidable_verdict_collapse_findings(root: node) {
+    Cons { head: first, tail: rest } =>
+      Rejected {
+        diagnostics: NonEmptyDiagnostics { head: first, tail: rest }
+      }
+    Empty => outcome_accepted(value: Holds { value: node })
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

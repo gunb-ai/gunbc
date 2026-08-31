@@ -23086,6 +23086,95 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         );
     }
 
+    // THE RENAME DESTINATION'S DECLARATION SET, ENROLLED WHOLE.
+    //
+    // DISCRIMINATING RED, and it is a real receipt rather than a constructed one: this is
+    // gunbc#9823 verbatim. It renamed the MachineShape construction wall into `v2.test.` to
+    // enroll it in the required floor. Git detected the rename and printed two hunks — the
+    // module line, and the removed trailing blank line at EOF — so line attribution reached
+    // only the LAST declaration in the file. Exactly one of the two sibling `test fn`s was
+    // selected as a changed witness, and the one missed was the wall's DISCRIMINATING RED.
+    // Confirmed against that run's own disposition receipt (run 33413900349, artifact
+    // `required_floor_disposition.tsv`): `gate_red_synthetic_machine_shape_call` carried the
+    // ordinary `planned` disposition, not `planned_as_changed_witness`.
+    //
+    // Before the added-path declaration-set rule in `floor_diff_edits_from_line_ranges` this
+    // asserted 1 of 2 and failed here.
+    #[test]
+    fn rename_destination_enrolls_every_test_decl_not_only_the_diff_touched_one() {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let declared: HashSet<String> = super::scan_test_decl_names(&content).into_iter().collect();
+        assert!(
+            declared.len() >= 2
+                && declared.contains("gate_red_synthetic_machine_shape_call")
+                && declared.contains("gate_green_synthetic_shape_from_catalog_call"),
+            "fixture drift: this control is about a file with TWO sibling test fns, got {declared:?}"
+        );
+
+        // gunbc#9823's own `git diff -U0` output for the renamed entry, verbatim.
+        let diff = "\
+diff --git a/dag/test/claim/machine_shape_construction_wall_test.dag b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+similarity index 97%
+rename from dag/test/claim/machine_shape_construction_wall_test.dag
+rename to src/v2/test/claim/machine_shape_construction_wall_test.dag
+--- a/dag/test/claim/machine_shape_construction_wall_test.dag
++++ b/src/v2/test/claim/machine_shape_construction_wall_test.dag
+@@ -1 +1 @@
+-module test.claim.machine_shape_construction_wall
++module v2.test.claim.machine_shape_construction_wall
+@@ -90 +89,0 @@ test fn gate_green_synthetic_shape_from_catalog_call() -> Bool {
+-
+";
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, diff)
+            .expect("a rename-destination diff must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .edited_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled, declared,
+            "every test decl at a rename destination is a NEW qualified identity and must be a \
+             changed witness; the diff only printed the hunks that differ"
+        );
+    }
+
+    // THE OTHER DIRECTION OF THE SAME RULE, so the fix above cannot be satisfied by widening.
+    // An IN-PLACE modify (no `rename to`, no `/dev/null` old side) establishes no fresh
+    // declaration set: its identities already existed under these exact spellings, so only the
+    // declarations the diff actually reached are changed witnesses. This reds if the added-path
+    // rule is ever applied unconditionally.
+    #[test]
+    fn in_place_modify_enrolls_only_the_touched_test_decl() {
+        let dest = "src/v2/test/claim/machine_shape_construction_wall_test.dag";
+        let content = std::fs::read_to_string(super::process_workspace_root().join(dest))
+            .expect("the renamed wall entry is in the tree");
+        let green_line = content
+            .lines()
+            .position(|l| l.starts_with("test fn gate_green_synthetic_shape_from_catalog_call"))
+            .expect("green sibling declared")
+            + 1;
+        let diff = unified_diff_for_line(dest, green_line as i64 + 1);
+        let index = build_multi_entry_index(&[]);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("an in-place modify must attribute, not refuse");
+        let enrolled: HashSet<String> = edits
+            .edited_test_fns
+            .iter()
+            .filter(|(file, _)| file == dest)
+            .map(|(_, function)| function.clone())
+            .collect();
+        assert_eq!(
+            enrolled,
+            HashSet::from(["gate_green_synthetic_shape_from_catalog_call".to_string()]),
+            "an in-place edit inside one declaration enrolls that declaration and no sibling"
+        );
+    }
+
     #[test]
     fn parse_unified_diff_changed_new_lines_includes_deletions() {
         let diff = "\
