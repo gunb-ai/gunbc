@@ -84,6 +84,7 @@ import gunbc.fleet_converge_plan {
   ApplyScopeUndecodable,
   ApplyScopeMismatch,
   ApplyMemberSetMismatch,
+  ApplyAllocationStorePrestateMismatch,
   FleetConvergeScopeDecode,
   ScopeDecoded,
   ScopeUndecodable,
@@ -1796,12 +1797,14 @@ test fn witness_scope_row_is_what_separates_the_two_baselines() -> Bool {
 fn line_is_a_scope_row(l: String) -> Bool {
   l == fleet_converge_scope_wire(scope: FullHost)
     || l == fleet_converge_scope_wire(scope: FabricExecutionCellsOnly)
+    || l == fleet_converge_scope_wire(scope: FabricAllocationStoreOnly)
 }
 
 fn scope_is_full_host(s: FleetConvergeScope) -> Bool {
   match s {
     FullHost => true
     FabricExecutionCellsOnly => false
+    FabricAllocationStoreOnly => false
   }
 }
 
@@ -1809,6 +1812,7 @@ fn scope_is_fabric_only(s: FleetConvergeScope) -> Bool {
   match s {
     FabricExecutionCellsOnly => true
     FullHost => false
+    FabricAllocationStoreOnly => false
   }
 }
 
@@ -1945,26 +1949,31 @@ test fn witness_apply_admission_distinguishes_its_three_refusals() -> Bool {
                     ApplyScopeUndecodable { cause: _ } => false
                     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
                     ApplyMemberSetMismatch => false
+                    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
                   }
                 ApplyAdmitted => false
                 ApplySubjectHostMismatch { planned: _, observed: _ } => false
                 ApplyScopeUndecodable { cause: _ } => false
                 ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
+                ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
               }
             ApplyAdmitted => false
             ApplySubjectHostMismatch { planned: _, observed: _ } => false
             ApplyScopeUndecodable { cause: _ } => false
             ApplyMemberSetMismatch => false
+            ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
           }
         ApplyAdmitted => false
         ApplySubjectHostMismatch { planned: _, observed: _ } => false
         ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
         ApplyMemberSetMismatch => false
+        ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
       }
     ApplyAdmitted => false
     ApplyScopeUndecodable { cause: _ } => false
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
   }
 }
 
@@ -1989,5 +1998,6 @@ test fn witness_a_foreign_artifact_reports_its_host_before_its_scope() -> Bool {
     ApplyScopeUndecodable { cause: _ } => false
     ApplyScopeMismatch { planned_wire: _, observed_wire: _ } => false
     ApplyMemberSetMismatch => false
+    ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
   }
 }
