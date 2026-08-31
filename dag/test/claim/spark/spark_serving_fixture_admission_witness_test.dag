@@ -24,8 +24,10 @@ data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 // So the red below hands the compiler a module that explicitly imports and calls
 // hermetic_acquired_observation from a declaration no roster names. It must refuse
 // ConstructorCallAdmissionRefused on the real acceptance path. The green control beside it is
-// what keeps this from being a wall that refuses everyone: an identical call shape reaching the
-// same fixture through a route the roster DOES admit compiles clean.
+// what keeps this from being a wall that refuses everyone, and it is deliberately the SAME
+// function with the SAME argument shape: the two probe modules differ in exactly one respect --
+// whether the roster names the calling declaration. Anything else varying between them would let
+// the pair pass while the seal did nothing.
 //
 // PATH SCOPE, per DESIGN 4b: this is source -> .dag acceptance. The wall sits in inference's
 // admission arm, so nothing reaches emission through an unadmitted caller, but that is where the
@@ -40,7 +42,7 @@ fn fixture_violation_count(source: String, wanted: String) -> Int {
 
 data unadmitted_fixture_caller_source: String = "module probe_spark_fixture_trampoline\nimport test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_acquired_observation }\nimport gunbc.spark.serving_observe { SparkServingHostObservation }\nimport gunbc.spark.serving_observation_transaction { SparkServingPlanObservation }\nimport product.placement_supply { HostIdentity }\nfn unadmitted_acquire() -> SparkServingHostObservation? {\n  hermetic_acquired_observation(host: \"srv5\" as HostIdentity, phase: SparkServingPlanObservation, captures: [])\n}\n"
 
-data admitted_fixture_caller_source: String = "module probe_spark_fixture_admitted\nimport test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_converged_observation }\nimport gunbc.spark.serving_observe { SparkServingHostObservation }\nimport gunbc.spark.serving_observed_members { LingerObservedEnabled }\nimport product.placement_supply { HostIdentity }\nfn through_an_admitted_route() -> SparkServingHostObservation? {\n  hermetic_converged_observation(host: \"srv5\" as HostIdentity, linger: LingerObservedEnabled)\n}\n"
+data admitted_fixture_caller_source: String = "module probe_spark_fixture_admitted\nimport test.claim.spark.spark_serving_hermetic_acquisition_fixture { hermetic_acquired_observation }\nimport gunbc.spark.serving_observe { SparkServingHostObservation }\nimport gunbc.spark.serving_observation_transaction { SparkServingPlanObservation }\nimport product.placement_supply { HostIdentity }\nfn through_an_admitted_route() -> SparkServingHostObservation? {\n  hermetic_acquired_observation(host: \"srv5\" as HostIdentity, phase: SparkServingPlanObservation, captures: [])\n}\n"
 
 test fn an_unadmitted_caller_of_the_acquisition_fixture_is_refused() -> Bool {
   fixture_violation_count(
