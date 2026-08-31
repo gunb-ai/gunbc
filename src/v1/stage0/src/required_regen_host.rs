@@ -3482,7 +3482,7 @@ fn convergence_plan_from_model(
     affected_bound: &RegenEmissionScope,
     seen_state_keys: &[String],
     seed_digest: &str,
-) -> Result<(String, Vec<String>), String> {
+) -> Result<(String, Vec<String>, String), String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = source_roots
         .iter()
@@ -3852,7 +3852,39 @@ fn convergence_plan_from_model(
             "convergence planner returned {kind} for non-empty drift {drifted:?}"
         ));
     }
-    Ok((kind, paths))
+    let closure_id = match v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::run_in_context_with_args(
+            &ctx,
+            "regen_stage_plan_dependency_closure_ids",
+            &outcome_arg,
+            false,
+        )
+    })
+    .map_err(|e| format!("refusal: convergence closure projection failed: {e}"))?
+    {
+        Value::List(ids) if ids.len() == 1 => match &ids[0] {
+            Value::Str(id) => id.to_string(),
+            other => {
+                return Err(format!(
+                    "refusal: convergence closure projection member is {}",
+                    other.type_label_public()
+                ))
+            }
+        },
+        Value::List(ids) => {
+            return Err(format!(
+                "refusal: planned convergence stage has {} admitted closure identities",
+                ids.len()
+            ))
+        }
+        other => {
+            return Err(format!(
+                "refusal: convergence closure projection returned {}",
+                other.type_label_public()
+            ))
+        }
+    };
+    Ok((kind, paths, closure_id))
 }
 
 fn install_convergence_stage(
@@ -3869,7 +3901,7 @@ fn install_convergence_stage(
     generation_id: &str,
     candidate_tree_id: &str,
     candidate_tree_digest: &str,
-    authority_digest: &str,
+    dependency_closure_id: &str,
 ) -> Result<RegenConvergenceStageReceipt, String> {
     let subject = current_convergence_checkpoint_subject(workspace)?;
     install_convergence_stage_with_backend(
@@ -3886,7 +3918,7 @@ fn install_convergence_stage(
         generation_id,
         candidate_tree_id,
         candidate_tree_digest,
-        authority_digest,
+        dependency_closure_id,
         &subject,
         |workspace| seed_cargo_build(workspace, "round.rebuild_from_installed"),
         current_exe_digest,
@@ -3908,7 +3940,7 @@ fn install_convergence_stage_with_backend<Build, SeedDigest>(
     generation_id: &str,
     candidate_tree_id: &str,
     candidate_tree_digest: &str,
-    authority_digest: &str,
+    dependency_closure_id: &str,
     checkpoint_subject: &RegenConvergenceCheckpointSubject,
     mut build_seed: Build,
     mut seed_digest: SeedDigest,
@@ -4053,7 +4085,7 @@ where
         producer_generation_id: generation_id.to_string(),
         surfaces,
         deferred_surfaces: Vec::new(),
-        dependency_closure_id: format!("authority:{authority_digest}"),
+        dependency_closure_id: dependency_closure_id.to_string(),
         build_target: "claim_executor".to_string(),
         build_invocation: "cargo build --release --bin claim_executor".to_string(),
         build_terminal: RegenConvergenceBuildTerminalReceipt::Passed,
@@ -4246,7 +4278,7 @@ pub fn run_regen_round_cost(
             admit_candidate_manifest(&candidate_src, &candidate_manifest, &current_seed_digest)?;
         let state = format!("{current_seed_digest}:{candidate_digest}");
         let seen_state_keys = seen_states.iter().cloned().collect::<Vec<_>>();
-        let (kind, install_set) = convergence_plan_from_model(
+        let (kind, install_set, dependency_closure_id) = convergence_plan_from_model(
             source_roots,
             generation_ordinal + 1,
             &candidate_manifest.generation_id,
@@ -4318,7 +4350,7 @@ pub fn run_regen_round_cost(
             &candidate_manifest.generation_id,
             &candidate_tree_id,
             &candidate_digest,
-            &authority_digest,
+            &dependency_closure_id,
         );
         v1_rt::trace_mark("round.install.done".to_string());
         let mut stage = match stage_result {
@@ -4693,7 +4725,7 @@ mod regen_convergence_host_instrument_tests {
             "generation-0",
             "tree-0",
             "manifest-0",
-            "authority",
+            "generation-input-cut",
             &subject,
             |_| Ok(CargoBuildObservation { compiled_crates: 1 }),
             || Ok("seed-1".to_string()),
@@ -4722,7 +4754,7 @@ mod regen_convergence_host_instrument_tests {
             "generation-0",
             "tree-0",
             "manifest-0",
-            "authority",
+            "seed-compatibility-cut",
             &subject,
             |_| Err("fixture seed rejected partial generation".to_string()),
             || Ok("seed-1".to_string()),
@@ -4756,7 +4788,7 @@ mod regen_convergence_host_instrument_tests {
             "generation-0",
             "tree-0",
             "manifest-p",
-            "authority",
+            "generation-input-cut",
             &subject,
             |_| Ok(CargoBuildObservation { compiled_crates: 1 }),
             || Ok("seed-1".to_string()),
@@ -4788,7 +4820,7 @@ mod regen_convergence_host_instrument_tests {
             "generation-0",
             "tree-0",
             "manifest-s",
-            "authority",
+            "seed-compatibility-cut",
             &subject,
             |root| {
                 let src = root.join("src/v1/stage0/src");
@@ -4808,6 +4840,7 @@ mod regen_convergence_host_instrument_tests {
             && surface.terminal
             && surface.passed));
         assert_eq!(stage.output_seed_digest, "seed-2");
+        assert_eq!(stage.dependency_closure_id, "seed-compatibility-cut");
 
         // Cross-head and corrupt-backup journals refuse before touching authoritative bytes.
         let wrong_subject = RegenConvergenceCheckpointSubject {
@@ -4866,7 +4899,7 @@ mod regen_convergence_host_instrument_tests {
             "generation-0",
             "tree-0",
             "manifest-0",
-            "authority",
+            "generation-input-cut",
             &subject,
             |root| {
                 fs::write(
@@ -4901,7 +4934,7 @@ mod regen_convergence_host_instrument_tests {
         let non_seed_roles = [(rows[0].0.to_string(), "NonSeedGeneratedOutput".to_string())]
             .into_iter()
             .collect::<HashMap<_, _>>();
-        let (publish_kind, publish_paths) = convergence_plan_from_model(
+        let (publish_kind, publish_paths, publish_closure_id) = convergence_plan_from_model(
             &roots,
             1,
             "generation-publish",
@@ -4923,6 +4956,7 @@ mod regen_convergence_host_instrument_tests {
         .unwrap();
         assert_eq!(publish_kind, "PublishNonSeedOutputs");
         assert_eq!(publish_paths, vec![rows[0].0.to_string()]);
+        assert_eq!(publish_closure_id, "non-seed-publish");
 
         let cycle = convergence_plan_from_model(
             &roots,

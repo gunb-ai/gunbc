@@ -543,6 +543,14 @@ fn regen_stage_plan_kind_label(outcome: RegenStagePlanOutcome) -> String {
   }
 }
 
+fn regen_stage_plan_dependency_closure_ids(outcome: RegenStagePlanOutcome) -> List<String> {
+  match outcome {
+    RegenStagePlanned { stage: stage } => [stage.dependency_closure_id]
+    RegenStagePlanningRefused { refusal: _ } => []
+    RegenConvergenceTerminal => []
+  }
+}
+
 type RegenSurfaceExecutionReceipt {
   identity: RegenSurfaceIdentity
   pre_stage_state: RegenPreStageState
