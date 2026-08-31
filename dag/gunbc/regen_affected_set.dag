@@ -57,11 +57,76 @@ type BootstrapEdge {
   reason: String
 }
 
+type BootstrapSourceMirror {
+  source_module: String
+  reason: String
+}
+
+type GeneratedAggregateProductOwner {
+  source_module: String
+  product: String
+  generation_role: GeneratedAggregateProductGenerationRole
+  reason: String
+}
+
+type GeneratedAggregateProductGenerationRole
+  = AggregateGenerationInput
+  | AggregateNonSeedGeneratedOutput
+
+// Compiler substrate whose generated representation is itself an input to the next seed. These
+// are explicit bootstrap-source facts, not a std_ prefix: std.measure is seed-compiled and called
+// by the emitter but is not a compiler-transport mirror, which is the discriminator that forced
+// staged convergence to keep generation role separate from seed membership.
+data regen_bootstrap_source_mirrors: List<BootstrapSourceMirror> = [
+  BootstrapSourceMirror {
+    source_module: "std.decl_ref",
+    reason: "declaration identity is carried by resolver and emitter seed structures"
+  },
+  BootstrapSourceMirror {
+    source_module: "std.occurrence_identity",
+    reason: "parser-minted occurrence and constructor identities are carried by compiler seed structures"
+  },
+  BootstrapSourceMirror {
+    source_module: "std.repair_input_origin",
+    reason: "repair-input origin carriers are assembled by the emitter seed"
+  }
+]
+
 data regen_bootstrap_edges: List<BootstrapEdge> = [
   BootstrapEdge {
     source_module: "v1.compiler.runtime_rust",
     product: "v1_rt.rs",
     reason: "the runtime shim is the template's product, emitted from the string the emitting seed carries; it is a compared mirror with no module and no import edge (measured drift on tree 0fe2c517: v1_compiler_runtime_rust.rs and v1_rt.rs)"
+  }
+]
+
+// Generated aggregates have declaration ownership but are not affected-set bootstrap edges:
+// their producer modules retain their ordinary generation roles. Keeping ownership separate
+// prevents naming an aggregate from demoting its emitter out of the generation-input roster.
+data regen_generated_aggregate_product_owners: List<GeneratedAggregateProductOwner> = [
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.compiler_tests_rust",
+    product: "compiler_tests.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
+    reason: "the compiler test module is emitted from compiler_tests_source rather than from a same-named DAG module; the generated product therefore has no module-line mirror identity of its own"
+  },
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "emitted_population.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
+    reason: "emit_emitted_population_manifest derives this aggregate from the complete emitted file list; the manifest is deliberately not a Rust module and therefore has no same-named DAG module identity"
+  },
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "lib.rs",
+    generation_role: AggregateGenerationInput,
+    reason: "emit_lib_rs_from_files derives the crate module surface from the emitted module population; lib.rs is an aggregate product rather than a same-named DAG module mirror"
+  },
+  GeneratedAggregateProductOwner {
+    source_module: "v1.compiler.emit_rust",
+    product: "main.rs",
+    generation_role: AggregateNonSeedGeneratedOutput,
+    reason: "emit_main_rs derives the executable entry surface from the workflow population; main.rs is an aggregate product rather than a same-named DAG module mirror"
   }
 ]
 
@@ -104,6 +169,67 @@ fn regen_generation_inputs(edited: List<String>) -> List<String> {
   edited |> filter(m =>
     (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
       && !(regen_bootstrap_edges |> any(edge => edge.source_module == m)))
+}
+
+// Explicit-roster authority: generation role is a property of the emitter/bootstrap surface, not
+// a reachability answer. Dependency edges bound affectedness elsewhere in this module; they are
+// intentionally not an input here, so the interface cannot imply they decide this role.
+fn regen_generation_role_modules(modules: List<String>) -> List<String> {
+  let roots = modules |> filter(m =>
+    (regen_generation_input_prefixes |> any(prefix => starts_with(s: m, prefix: prefix)))
+      && !(regen_bootstrap_edges |> any(edge => edge.source_module == m))
+  )
+  fold(regen_bootstrap_source_mirrors, init: roots, f: fn(acc, row) {
+    if regen_list_has(items: modules, item: row.source_module)
+      && !regen_list_has(items: acc, item: row.source_module) {
+      list_push(acc, row.source_module)
+    } else {
+      acc
+    }
+  })
+}
+
+fn regen_bootstrap_source_modules() -> List<String> {
+  concat(
+    regen_bootstrap_edges |> map(edge => edge.source_module),
+    regen_bootstrap_source_mirrors |> map(row => row.source_module)
+  )
+}
+
+fn regen_bootstrap_product_paths() -> List<String> {
+  regen_bootstrap_edges |> map(edge => edge.product)
+}
+
+fn regen_generated_product_owner_paths() -> List<String> {
+  concat(
+    regen_bootstrap_edges |> map(edge => edge.product),
+    regen_generated_aggregate_product_owners |> map(row => row.product)
+  )
+}
+
+// The host asks this projection for every member of regen_generated_product_owner_paths. Both
+// answers come from the declared row authorities, so a non-module product retains its producer;
+// a synthesized basename-to-module fallback is refused.
+fn regen_generated_product_source_modules(product: String) -> List<String> {
+  concat(
+    regen_bootstrap_edges
+      |> filter(edge => edge.product == product)
+      |> map(edge => edge.source_module),
+    regen_generated_aggregate_product_owners
+      |> filter(row => row.product == product)
+      |> map(row => row.source_module)
+  )
+}
+
+// Host-boundary projection of the closed aggregate role. A product absent from these rows has
+// no role answer; callers must refuse rather than infer OutsideSeed from seed-manifest absence.
+fn regen_generated_product_generation_role_labels(product: String) -> List<String> {
+  regen_generated_aggregate_product_owners
+    |> filter(row => row.product == product)
+    |> map(row => match row.generation_role {
+      AggregateGenerationInput => "GenerationInput"
+      AggregateNonSeedGeneratedOutput => "NonSeedGeneratedOutput"
+    })
 }
 
 fn regen_bootstrap_products(reached: List<String>) -> List<String> {
