@@ -39,7 +39,8 @@ unit_terminal_observed() {
   done <<< "$output"
   [[ -n $load_state && -n $active_state ]] || return 1
   [[ $active_state == inactive || $active_state == failed ]] || return 1
-  [[ $load_state == loaded || $load_state == not-found ]] || return 1
+  [[ $load_state == not-found ]] || return 1
+  echo "unit-terminal-observed: unit=$unit LoadState=$load_state ActiveState=$active_state" >&2
 }
 
 cleanup() {
@@ -66,6 +67,8 @@ cleanup() {
   if [[ -e $mutation_root || -L $mutation_root ]]; then
     echo 'InstrumentRefused: dependent RuntimeDirectory remains after cleanup' >&2
     cleanup_status=1
+  else
+    echo "runtime-directory-observed: path=$mutation_root standing=absent" >&2
   fi
   local cleanup_unit
   for cleanup_unit in fci1-positive-submitter.service fci1-generation-submitter.service fci1-dependent-submitter.service; do
@@ -95,6 +98,7 @@ FABRIC_CI_GUNBC_BIN="$FABRIC_CI_GUNBC_BIN" bash "$repo_root/tools/fabric_ci_evid
 sha256sum "$subject"
 fabric_ci_run_assertion fci1_invalid_before_wire_refuses
 fabric_ci_run_assertion fci1_assert_slot_absent_admitted
+fabric_ci_run_assertion fci1_assert_unreadable_slot_refused
 fabric_ci_run_assertion fci1_assert_exact_absent_to_free_control
 fabric_ci_run_assertion fci1_assert_exact_free_to_free_control
 fabric_ci_run_assertion fci1_assert_extra_generation_refused_control
@@ -155,6 +159,7 @@ generation_root=
 
 dependent_before=$(capture_submitter_transport fci1-dependent-submitter.service fci1_live_reserve_and_observe_available dependent-before "$mutation_root" --property=RuntimeDirectory="$mutation_runtime")
 [[ ! -e $mutation_root && ! -L $mutation_root ]] || { echo 'ExpectedOutcomeNotObserved: submitter runtime directory removal' >&2; exit 1; }
+echo "runtime-directory-observed: path=$mutation_root standing=absent" >&2
 unit_terminal_observed fci1-dependent-submitter.service || { echo 'InstrumentRefused: dependent submitter terminal state unestablished' >&2; exit 1; }
 fabric_ci_run_assertion fci1_assert_lifetime_dependent --arg root="$mutation_root" --arg before_wire="$dependent_before"
 fabric_ci_run_assertion fci1_assert_cell_unchanged --arg before_wire="$cell_before"

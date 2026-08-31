@@ -616,6 +616,12 @@ func fci1_assert_slot_absent_admitted() -> ProcessExit {
   else { exit_failure(reason: "FCI-1 absent slot was not admitted") }
 }
 
+func fci1_assert_unreadable_slot_refused() -> ProcessExit {
+  if fci1_allocation_slot_available(prestate: AllocationSlotUnreadable { path: "/run/fci1-control" }) {
+    exit_failure(reason: "FCI-1 unreadable slot was admitted")
+  } else { ExitSuccess }
+}
+
 func fci1_assert_exact_absent_to_free_control() -> ProcessExit {
   match fci1_exact_allocation_restoration(
     prestate: AllocationSlotAbsent { path: "/run/fci1-control" },

@@ -1,7 +1,7 @@
 module test.claim.fabric.fabric_ci_fci1_allocation_lifecycle_witness_test
 
 import gunbc.fabric_required_build_cell {
-  AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld,
+  AllocationSlotAbsent, AllocationSlotFree, AllocationSlotHeld, AllocationSlotUnreadable,
   AllocationStoreRestorationRefused,
   AllocationSlotAbsentReturnedFree, AllocationSlotFreeReturnedFree,
   fci1_allocation_slot_available, fci1_exact_allocation_restoration,
@@ -10,6 +10,10 @@ import gunbc.fabric_required_build_cell {
 test fn witness_fci1_absent_slot_is_available_but_held_slot_is_not() -> Bool {
   fci1_allocation_slot_available(prestate: AllocationSlotAbsent { path: "/fixture/store" })
     && !fci1_allocation_slot_available(prestate: AllocationSlotHeld { path: "/fixture/store", generation: 1 })
+}
+
+test fn witness_fci1_unreadable_slot_is_never_available() -> Bool {
+  !fci1_allocation_slot_available(prestate: AllocationSlotUnreadable { path: "/fixture/store" })
 }
 
 test fn witness_fci1_absent_slot_exactly_returns_free_at_generation_two() -> Bool {
