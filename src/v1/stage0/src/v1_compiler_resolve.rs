@@ -144,7 +144,7 @@ pub fn resolve_modules_with_occurrence_transport(
                 imports_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ResolvedImport>>>>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |acc: Rc<ResolveAccum>, m: Rc<Node>| {
+            |acc: _, m: Rc<Node>| {
                 let acc = v1_rt::take_owned(acc);
                 {
                     let result = resolve_module_imports(
@@ -612,7 +612,7 @@ pub fn check_duplicate_modules(
                 seen_names: v1_rt::rc_empty_map::<String, bool>(),
                 diagnostics: Rc::new(vec![]),
             }),
-            |state: Rc<DuplicateCheckState>, m: Rc<Node>| {
+            |state: _, m: Rc<Node>| {
                 let m_name =
                     crate::v1_std_core::authored_name_at(source_indices.clone(), m.clone());
                 let is_dup = map_has(state.seen_names.clone(), m_name.clone());
@@ -661,7 +661,7 @@ pub fn check_duplicate_declarations(
                     seen_names: v1_rt::rc_empty_map::<String, bool>(),
                     diagnostics: Rc::new(vec![]),
                 }),
-                |state: Rc<DuplicateCheckState>, item: Rc<Node>| {
+                |state: _, item: Rc<Node>| {
                     let item_name =
                         crate::v1_std_core::authored_name_at(source_indices.clone(), item.clone());
                     if map_has(state.seen_names.clone(), item_name.clone()) {
