@@ -134,6 +134,7 @@ import gunbc.fleet_converge_receipt {
   fleet_converge_plan_receipt_identity_hex,
   admit_apply_plan_binding, PlanBindingAdmitted, plan_binding_admission_text,
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
+}
 import gunbc.spark.serving_observation_scope {
   spark_serving_enrollment,
   SparkServingHostEnrolled,
