@@ -66,6 +66,7 @@ import gunbc.roadmap_model {
   AcceptanceNodeReopensActiveFrontier,
   AcceptanceNodeWithdrawnFromProgram,
   acceptance_disposition_agreement,
+  acceptance_disposition_agreement_detail,
   AcceptanceDispositionAgreementHolds,
   AcceptanceDispositionRefusedWithdrawnNodeStillDeclared,
   AcceptanceDispositionRefusedReopenedNodeMissing,
@@ -825,6 +826,20 @@ test fn witness_terminal_disposition_agrees_with_declared_nodes() -> Bool {
     AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: _ } => false
     AcceptanceDispositionRefusedReopenedNodeMissing { node: _ } => false
   }
+}
+
+// A test fn returns Bool, so the located cause has to leave by the companion route rather than by
+// the verdict: claim_executor projects this witness's name to its own stem (it carries neither the
+// _holds nor the _passes suffix) and invokes the companion below on Bool(false), whose String names
+// the offending node. Without it the witness above is honestly just a Boolean, which is what the
+// earlier claim of an improved diagnostic got wrong.
+func witness_terminal_disposition_agrees_with_declared_nodes_failure_receipt() -> String {
+  acceptance_disposition_agreement_detail(
+    agreement: acceptance_disposition_agreement(
+      events: live_acceptance_event_history(),
+      declared: declared_node_ids(),
+    ),
+  )
 }
 
 test fn witness_reopening_a_deleted_node_refuses() -> Bool {

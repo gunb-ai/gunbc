@@ -709,6 +709,22 @@ fn acceptance_disposition_agreement(
   })
 }
 
+// THE LOCATED CAUSE, DERIVED FROM THE SAME COPRODUCT THE WITNESS MATCHES. A witness returning
+// Bool(false) is not diagnosable on its own: both refusal arms carry the offending node, and a
+// Bool discards it. claim_executor invokes the `_failure_receipt` companion on Bool(false), and the
+// companion asks THIS function, so the node reaches the operator without re-deriving the agreement
+// by hand. It is a projection to String, not a fold to Bool -- the three-arm distinction stays
+// readable in the value itself, exactly as acceptance_history_integrity_verdict_detail does below.
+fn acceptance_disposition_agreement_detail(agreement: AcceptanceDispositionAgreement) -> String {
+  match agreement {
+    AcceptanceDispositionAgreementHolds => ""
+    AcceptanceDispositionRefusedWithdrawnNodeStillDeclared { node: node } =>
+      concat("withdrawn acceptance node is still declared: node=", node as String)
+    AcceptanceDispositionRefusedReopenedNodeMissing { node: node } =>
+      concat("reopened acceptance node has no declaration: node=", node as String)
+  }
+}
+
 fn acceptance_history_integrity_verdict(
   history: List<RoadmapAcceptanceEvent>,
   prior_history: List<RoadmapAcceptanceEvent>,
