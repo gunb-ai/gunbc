@@ -171,6 +171,8 @@ data identity_absent_graph_traversal: RecurringFailureMode = RecurringFailureMod
 data surface_shorthand_preempts_resolved_identity: RecurringFailureMode = RecurringFailureMode {
   identity: "surface_shorthand_preempts_resolved_identity" as NonEmptyStr,
   authored: "**surface shorthand preempts resolved identity** (a semantic consumer dispatches on a raw lexeme after resolution has already named its declaration, so a declared constructor is reinterpreted as a host sentinel or primitive. Recognition rule: once a node carries a binding/declaration identity, value construction must be total over that identity; spelling may be interpreted only on an explicitly unresolved shorthand arm. Specimen gunbc#9741: bare and imported `None` became host `Null` while qualified `Diagnostics.None {}` became a `Variant`; a single-frame comparison hid the fork. This is not hollow alias: the binding is grounded and present, then discarded downstream. It is also separate from the per-frame symbol-ordinal defect: that defect corrupted lexeme identity while crossing frames, whereas this one ignores an identity already supplied at one construction site. Next-rung trigger: host literals and intentional primitive representations are typed parser/resolver constructions, and evaluator value construction is total over every resolved binding with no raw-spelling arm able to override it.)",
+  evidence: [],
+}
 
 data meaning_fork: RecurringFailureMode = RecurringFailureMode {
   identity: "meaning_fork" as NonEmptyStr,
