@@ -146,6 +146,14 @@ fn ordering_test_for(op: BinOp) -> OrderingTest? {
   }
 }
 
+// THE ONLY GLYPH TABLE, AND IT IS A RENDERING FACT. The refusal carriers above hold the BinOp
+// coproduct itself, never a spelling, so nothing downstream can compare operators by string. A
+// spelling is required exactly once -- at the human-readable message boundary -- which is where
+// this table sits. Corpus check before minting it (review 57758 asked whether the parser or the
+// emitter already owns one): no BinOp-to-glyph producer exists anywhere in the tree; v1's
+// compile.dag renders the VARIANT NAME ("Add"), and glyph recognition happens in the tokenizer
+// against token kinds, not against a .dag row. So this is the first authority for the mapping, not
+// a second one.
 fn binop_label(op: BinOp) -> String {
   match op {
     Add => "+"
@@ -166,9 +174,9 @@ fn binop_label(op: BinOp) -> String {
 }
 
 type OperatorRealizationRefusal
-  = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: String }
+  = NoStructuralOperationDeclared { declaration: DeclarationRef, operator: BinOp }
   | StructuralOrderingDuplicated { declaration: DeclarationRef, row_count: Int }
-  | OperandIdentityUnavailableAt { operator: String, facts: OperandShapeFacts }
+  | OperandIdentityUnavailableAt { operator: BinOp, facts: OperandShapeFacts }
 
 type OperatorRealization
   = HostOperator
@@ -180,7 +188,7 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
   match cause {
     NoStructuralOperationDeclared { declaration: d, operator: o } =>
       concat(
-        "operator realization: host operator `", o, "` on structural operand ",
+        "operator realization: host operator `", binop_label(op: o), "` on structural operand ",
         d.module_path as String, ".", d.decl_name as String,
         " -- the declaration has no host realization and declares no operation for this operator; spell the operation as a call to the declared structural operation"
       )
@@ -192,7 +200,7 @@ fn operator_realization_refusal_message(cause: OperatorRealizationRefusal) -> St
       )
     OperandIdentityUnavailableAt { operator: o, facts: f } =>
       concat(
-        "operator realization: host operator `", o, "` on an operand whose declaration could not be read",
+        "operator realization: host operator `", binop_label(op: o), "` on an operand whose declaration could not be read",
         " (authored `", f.authored_name, "`, connective ", f.connective, ", children ", to_string(value: f.child_count),
         ", resolved ", if f.resolved { "yes" } else { "no" }, ", decl_file `", f.decl_file, "`)"
       )
@@ -234,15 +242,15 @@ fn operator_realization_for(
         And => HostOperator
         Or => HostOperator
         NullCoalesce => HostOperator
-        Lt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Gt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Le => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Ge => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Add => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Sub => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Mul => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Div => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
-        Mod => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: binop_label(op: op), facts: f } }
+        Lt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Gt => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Le => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Ge => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Add => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Sub => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Mul => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Div => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
+        Mod => OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: op, facts: f } }
       }
     StructuralOperand { declaration: d } =>
       match op {
@@ -265,7 +273,7 @@ fn operator_realization_for(
 }
 
 fn structural_arithmetic_refusal(op: BinOp, declaration: DeclarationRef) -> OperatorRealization {
-  OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: declaration, operator: binop_label(op: op) } }
+  OperatorRealizationRefused { cause: NoStructuralOperationDeclared { declaration: declaration, operator: op } }
 }
 
 // An ordering operator on a structural operand: the declared comparison, or the refusal. Reached

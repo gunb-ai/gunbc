@@ -272,11 +272,13 @@ test fn host_numeric_operand_keeps_the_host_operator() -> Bool {
 test fn operand_without_a_readable_declaration_refuses() -> Bool {
   let facts = OperandShapeFacts { authored_name: "Nat", connective: "NoConnective", child_count: 0, resolved: false, decl_file: "probe.dag" }
   let ordering_refuses = match operator_realization_for(op: Lt, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
-    OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: f } } => o == "<" && f.authored_name == "Nat"
+    OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: f } } =>
+      match o { Lt => f.authored_name == "Nat"  _ => false }
     _ => false
   }
   let arithmetic_refuses = match operator_realization_for(op: Div, operand: OperandIdentityUnavailable { facts: facts }, ordering_rows: structural_ordering_rows) {
-    OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: _ } } => o == "/"
+    OperatorRealizationRefused { cause: OperandIdentityUnavailableAt { operator: o, facts: _ } } =>
+      match o { Div => true  _ => false }
     _ => false
   }
   ordering_refuses && arithmetic_refuses
