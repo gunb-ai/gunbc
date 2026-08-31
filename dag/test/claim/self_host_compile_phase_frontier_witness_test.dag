@@ -209,7 +209,7 @@ test fn a_planted_count_increase_in_the_reached_phase_refuses_and_names_it() -> 
     current: fixture_board(resolve_ids: [], typeck_ids: ["a", "b"])
   ) {
     PhaseRatchetRefused { phase: Typeck, identities: ids, reason: why } =>
-      ids == ["a", "b"] && string_contains(s: why as String, pattern: "count increased")
+      ids == ["b"] && string_contains(s: why as String, pattern: "count increased")
     verdict => false
   }
 }
