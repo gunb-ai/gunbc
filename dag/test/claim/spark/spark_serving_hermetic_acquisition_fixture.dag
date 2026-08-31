@@ -369,12 +369,19 @@ fn hermetic_host_observation(
 //
 // Absent means the fixture's own transaction refused. It is returned rather than swallowed so a
 // broken fixture reddens its claims instead of quietly turning them into refusal tests.
+//
+// The FIRST entry is the GREEN CONTROL of this roster's own wall. Its probe module makes the same
+// call, with the same arguments, as the unadmitted probe beside it in
+// test.claim.spark.spark_serving_fixture_admission_witness_test; the two differ in exactly one
+// respect, whether this list names the caller. Remove that entry and the control goes red, which is
+// what makes the refusal beside it evidence about the seal rather than about the call.
 fn hermetic_acquired_observation(
   host: HostIdentity,
   phase: SparkServingObservationPhase,
   captures: List<SparkServingProbeLegCapture>,
 ) -> SparkServingHostObservation?
   admit_callers: [
+    decl_ref(module_path: "probe_spark_fixture_admitted", decl_name: "through_an_admitted_route"),
     decl_ref(module_path: "test.claim.spark.spark_serving_hermetic_acquisition_fixture", decl_name: "hermetic_converged_observation"),
     decl_ref(module_path: "test.claim.spark.spark_serving_observation_transaction_witness_test", decl_name: "acquired_observation_body"),
   ] {
@@ -621,15 +628,11 @@ fn hermetic_converged_captures(
   }
 }
 
-// The FIRST entry is the GREEN CONTROL of this roster's own wall: an identical call shape from a
-// declaration the roster does NOT name must refuse, and this one must not, or the wall would be
-// refusing everyone rather than deciding.
 fn hermetic_converged_observation(
   host: HostIdentity,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingHostObservation?
   admit_callers: [
-    decl_ref(module_path: "probe_spark_fixture_admitted", decl_name: "through_an_admitted_route"),
     decl_ref(module_path: "test.claim.spark.spark_cell_role_retirement_witness_test", decl_name: "w_artifact"),
     decl_ref(module_path: "test.claim.spark_serving_converge_slice_witness", decl_name: "slice_artifact"),
     decl_ref(module_path: "test.claim.spark_serving_full_plan_witness_test", decl_name: "c3_observation_at"),
