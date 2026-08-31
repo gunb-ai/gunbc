@@ -33,6 +33,7 @@ import test.claim.spark.spark_serving_hermetic_acquisition_fixture {
   hermetic_every_request,
   hermetic_complete_captures,
   hermetic_admission,
+  hermetic_acquired_observation,
   hermetic_request,
   hermetic_fleet_attempt,
   hermetic_host_observation,
@@ -558,41 +559,18 @@ fn report_of(observations: List<SparkServingHostObservation>) -> SparkServingObs
   }
 }
 
-fn observation_with(
-  host: HostIdentity,
-  provenance: SparkServingObservationProvenance,
-) -> SparkServingHostObservation {
-  hermetic_host_observation(
-    readback: hermetic_readback(host: host),
-    account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
-    runtime: RuntimeMaterializationAbsent,
-    store: ModelStoreAbsent,
-    observed_unit: SparkServingObservedUnit {
-      state: UserUnitStateUnobserved,
-      enablement: UserUnitManagerUnobserved,
-      activity: UnitActivityUnobserved,
-    },
-    linger: LingerUnobservedState,
-    provenance: provenance,
-  )
-}
-
+// The observation is the one the PRODUCTION transaction route builds -- provenance and facts from
+// the same transaction -- so a splice that agreed with the captures by hand is unwritable here.
 fn acquired_observation_body(captures: List<SparkServingProbeLegCapture>) -> String? {
-  match admission_at(phase: SparkServingPlanObservation, captures: captures) {
+  match hermetic_acquired_observation(
+    host: subject_host,
+    phase: SparkServingPlanObservation,
+    captures: captures,
+  ) {
     Absent => none
-    Present { value: SparkServingTransactionRefused { refusal: _ } } => none
-    Present { value: SparkServingTransactionAdmitted { txn: t } } =>
+    Present { value: o } =>
       Present {
-        value: spark_serving_report_body_lines(
-          report: report_of(
-            observations: [
-              observation_with(
-                host: subject_host,
-                provenance: spark_serving_transaction_provenance(txn: t),
-              ),
-            ],
-          ),
-        ),
+        value: spark_serving_report_body_lines(report: report_of(observations: [o])),
       }
   }
 }
@@ -650,17 +628,22 @@ test fn a_hermetic_host_prints_no_acquired_line_in_the_same_report() -> Bool {
   let body = spark_serving_report_body_lines(
     report: report_of(
       observations: [
-        observation_with(
-          host: subject_host,
-          provenance: spark_serving_hermetic_provenance_of(
-            host: subject_host,
-            fixture_identity: "report-red" as NonEmptyStr,
-          ),
+        hermetic_host_observation(
+          readback: hermetic_readback(host: subject_host),
+          account: ManagedAccountProbeRefused { cause: "fixture: no account probe was run" },
+          runtime: RuntimeMaterializationAbsent,
+          store: ModelStoreAbsent,
+          observed_unit: SparkServingObservedUnit {
+            state: UserUnitStateUnobserved,
+            enablement: UserUnitManagerUnobserved,
+            activity: UnitActivityUnobserved,
+          },
+          linger: LingerUnobservedState,
         ),
       ],
     ),
   )
-  string_contains(s: body, pattern: "hermetic-fixture=report-red")
+  string_contains(s: body, pattern: "hermetic-fixture=hermetic-witness-fixture")
     && !string_contains(s: body, pattern: "acquired")
     && !string_contains(s: body, pattern: "missing=")
     && !string_contains(s: body, pattern: "executed=")
