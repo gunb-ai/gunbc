@@ -36339,6 +36339,15 @@ pub struct PreparedClaimScope {
     pub build_split: ScopeBuildSplit,
 }
 
+impl PreparedClaimScope {
+    /// The scope's answers at identity grain — see
+    /// [`v1_interpreter::PreparedScopeIndexes::resolution_fingerprint`].
+    #[cfg(any(test, feature = "interp_test_witness"))]
+    pub fn resolution_fingerprint(&self) -> Vec<String> {
+        self.indexes.resolution_fingerprint()
+    }
+}
+
 /// Project the exact scope for one entry file out of the prepared repository.
 ///
 /// The closure is the transitive declared-import closure of the entry's module, which is the
@@ -36396,6 +36405,40 @@ const FLOOR_PREPARED_SUBJECTS_PER_PROCESS: usize = 2;
 thread_local! {
     static REFERENCE_CLOSURE_INDEXES: std::cell::RefCell<Vec<(String, Rc<ReferenceClosureIndex>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
+}
+
+thread_local! {
+    /// PER-SUBJECT MODULE-FRAGMENT MEMO for the scope-index fold, keyed exactly as
+    /// `REFERENCE_CLOSURE_INDEXES` is — by the prepared subject's own digest, so a fragment a
+    /// scope consumes was derived from the graph that scope is over, by construction rather
+    /// than by a module-name coincidence across two subjects. Bounded by the same
+    /// `FLOOR_PREPARED_SUBJECTS_PER_PROCESS` population, and holding at most one fragment per
+    /// module of that subject: the entries a scope used to rebuild per scope, held once.
+    static SCOPE_FRAGMENT_CACHES: std::cell::RefCell<
+        Vec<(String, Rc<v1_interpreter::ScopeFragmentCache>)>,
+    > = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+/// The fragment memo for one prepared subject, created on first use.
+///
+/// Not a refusal site: an unexpected third subject already refuses in
+/// `reference_closure_index`, which every `claim_scope_for` passes through first, and a second
+/// copy of that wall here would be a second authority for the same bound.
+fn scope_fragment_cache(prepared: &PreparedRepository) -> Rc<v1_interpreter::ScopeFragmentCache> {
+    if let Some(existing) = SCOPE_FRAGMENT_CACHES.with(|c| {
+        c.borrow()
+            .iter()
+            .find(|(digest, _)| *digest == prepared.subject_digest)
+            .map(|(_, cache)| cache.clone())
+    }) {
+        return existing;
+    }
+    let created = Rc::new(v1_interpreter::ScopeFragmentCache::default());
+    SCOPE_FRAGMENT_CACHES.with(|c| {
+        c.borrow_mut()
+            .push((prepared.subject_digest.clone(), created.clone()))
+    });
+    created
 }
 
 fn reference_closure_index(
@@ -36616,6 +36659,28 @@ pub fn claim_scope_for(
     prepared: &PreparedRepository,
     entry_module_path: &str,
 ) -> Result<PreparedClaimScope, String> {
+    let fragments = scope_fragment_cache(prepared);
+    claim_scope_for_with_fragments(prepared, entry_module_path, Some(fragments.as_ref()))
+}
+
+/// THE DISCRIMINATING CONTROL for the per-module fragment memo, and the only other caller:
+/// the same construction with the memo withheld. A scope built with `None` re-derives every
+/// module's contribution from the module itself, which is what every scope did before the
+/// memo existed — so an equivalence witness can build both and compare answers rather than
+/// argue about the cache key.
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn claim_scope_for_without_fragment_memo(
+    prepared: &PreparedRepository,
+    entry_module_path: &str,
+) -> Result<PreparedClaimScope, String> {
+    claim_scope_for_with_fragments(prepared, entry_module_path, None)
+}
+
+fn claim_scope_for_with_fragments(
+    prepared: &PreparedRepository,
+    entry_module_path: &str,
+    fragments: Option<&v1_interpreter::ScopeFragmentCache>,
+) -> Result<PreparedClaimScope, String> {
     // THE CLOSURE COMES FROM THE COMPILER, NOT FROM A SECOND IMPORT SCAN.
     //
     // `TypedModule.func_env` is the module's `ResolvedFuncEnv`, and its `parents` field is —
@@ -36810,6 +36875,7 @@ pub fn claim_scope_for(
         &scoped_graph,
         prepared.source_indices.clone(),
         Some(&order),
+        fragments,
     );
     let indexes_nanos = indexes_started.elapsed().as_nanos();
     Ok(PreparedClaimScope {
