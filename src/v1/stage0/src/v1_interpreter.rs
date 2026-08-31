@@ -43,19 +43,86 @@ use crate::v1_std_core::{
 #[path = "bounded_shell_host_drain.rs"]
 pub mod bounded_shell_host_drain;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct Symbol(u32);
+/// A spelling's process-stable identity.
+///
+/// Symbols used to be per-`InterpContext` integer ordinals.  A `Value` can cross an
+/// evaluation-frame boundary (the required floor deliberately creates one frame per claim),
+/// so structural equality over records and variants could then compare two unrelated ordinal
+/// spaces. Carry one process-canonical spelling: equality and hashing stay pointer-fast on the
+/// interpreter's hottest path, while ordering is lexical and therefore deterministic rather
+/// than encounter-ordered.
+#[derive(Debug, Clone, Copy, PartialOrd, Ord)]
+pub struct Symbol(&'static str);
+
+impl PartialEq for Symbol {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self.0, other.0)
+    }
+}
+
+impl Eq for Symbol {}
+
+impl Hash for Symbol {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::ptr::hash(self.0 as *const str, state);
+    }
+}
 
 #[derive(Debug, Default)]
 pub struct SymbolInterner {
-    strings: Vec<String>,
-    index: HashMap<String, u32>,
+    index: HashMap<String, Symbol>,
     calls: u64,
+}
+
+const CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP: usize = 16 * 1024 * 1024;
+
+#[derive(Default)]
+struct CanonicalSymbolTable {
+    spellings: std::collections::HashSet<&'static str>,
+    retained_spelling_bytes: usize,
+}
+
+impl CanonicalSymbolTable {
+    fn intern_with_cap(
+        &mut self,
+        spelling: &str,
+        spelling_cap_bytes: usize,
+    ) -> Result<&'static str, (usize, usize)> {
+        if let Some(existing) = self.spellings.get(spelling) {
+            return Ok(*existing);
+        }
+        let projected = self.retained_spelling_bytes.saturating_add(spelling.len());
+        if projected > spelling_cap_bytes {
+            return Err((projected, spelling_cap_bytes));
+        }
+        let canonical = Box::leak(spelling.to_string().into_boxed_str());
+        self.spellings.insert(canonical);
+        self.retained_spelling_bytes = projected;
+        Ok(canonical)
+    }
+}
+
+static CANONICAL_SYMBOLS: std::sync::OnceLock<std::sync::Mutex<CanonicalSymbolTable>> =
+    std::sync::OnceLock::new();
+
+fn canonical_symbol_spelling(s: &str) -> &'static str {
+    let table =
+        CANONICAL_SYMBOLS.get_or_init(|| std::sync::Mutex::new(CanonicalSymbolTable::default()));
+    let mut table = table
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    table
+        .intern_with_cap(s, CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP)
+        .unwrap_or_else(|(projected, cap)| {
+            panic!(
+                "canonical symbol retention refused before allocation: projected_spelling_bytes={projected} spelling_cap_bytes={cap}"
+            )
+        })
 }
 
 #[cfg(test)]
 mod selected_identity_path_tests {
-    use super::{ExecutionMode, InterpContext};
+    use super::{CanonicalSymbolTable, ExecutionMode, InterpContext};
     use crate::v1_compiler_compile::SourceFile;
     use im::HashMap;
     use std::rc::Rc;
@@ -80,6 +147,25 @@ mod selected_identity_path_tests {
         index.insert("two".to_string(), "common.dag".to_string());
         assert_eq!(ctx.selected_function_identity("check", &index), None);
     }
+
+    #[test]
+    fn canonical_symbol_table_refuses_before_allocation_and_reuses_at_cap() {
+        let mut table = CanonicalSymbolTable::default();
+        let first = table.intern_with_cap("four", 4).expect("below cap stores");
+        assert_eq!(table.spellings.len(), 1);
+        assert_eq!(table.retained_spelling_bytes, 4);
+
+        let reused = table
+            .intern_with_cap("four", 4)
+            .expect("reuse at cap adds no billing");
+        assert!(std::ptr::eq(first, reused));
+        assert_eq!(table.spellings.len(), 1);
+        assert_eq!(table.retained_spelling_bytes, 4);
+
+        assert_eq!(table.intern_with_cap("x", 4), Err((5, 4)));
+        assert_eq!(table.spellings.len(), 1);
+        assert_eq!(table.retained_spelling_bytes, 4);
+    }
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -88,49 +174,51 @@ pub struct InternStats {
     pub distinct: u64,
     pub hits: u64,
     pub heap_bytes: u64,
+    pub canonical_entries: u64,
+    pub canonical_retained_spelling_bytes: u64,
+    pub canonical_spelling_cap_bytes: u64,
 }
 
 impl SymbolInterner {
     pub fn intern(&mut self, s: &str) -> Symbol {
         self.calls += 1;
-        if let Some(&id) = self.index.get(s) {
-            return Symbol(id);
+        if let Some(&symbol) = self.index.get(s) {
+            return symbol;
         }
-        let id = self.strings.len() as u32;
-        self.strings.push(s.to_string());
-        self.index.insert(s.to_string(), id);
-        Symbol(id)
+        let symbol = Symbol(canonical_symbol_spelling(s));
+        self.index.insert(s.to_string(), symbol);
+        symbol
     }
 
     pub fn stats(&self) -> InternStats {
-        let distinct = self.strings.len() as u64;
+        let distinct = self.index.len() as u64;
+        let canonical = CANONICAL_SYMBOLS
+            .get_or_init(|| std::sync::Mutex::new(CanonicalSymbolTable::default()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         InternStats {
             calls: self.calls,
             distinct,
             hits: self.calls.saturating_sub(distinct),
             heap_bytes: self.heap_bytes(),
+            canonical_entries: canonical.spellings.len() as u64,
+            canonical_retained_spelling_bytes: canonical.retained_spelling_bytes as u64,
+            canonical_spelling_cap_bytes: CANONICAL_SYMBOL_RETAINED_SPELLING_BYTE_CAP as u64,
         }
     }
 
     pub fn resolve(&self, sym: Symbol) -> &str {
-        self.strings
-            .get(sym.0 as usize)
-            .map(|s| s.as_str())
-            .unwrap_or("<invalid-symbol>")
+        sym.0
     }
 
     // Read-only counterpart to `intern` (no mutable borrow), for callers reentered while an
     // immutable borrow of this interner is held elsewhere on the stack (`free_monoid_ctx_syms`).
     pub fn get(&self, s: &str) -> Option<Symbol> {
-        self.index.get(s).map(|&id| Symbol(id))
+        self.index.get(s).copied()
     }
 
     fn heap_bytes(&self) -> u64 {
-        let mut bytes = (self.strings.len() * std::mem::size_of::<String>()) as u64;
-        for s in &self.strings {
-            bytes += s.len() as u64;
-        }
-        bytes += (self.index.len() * std::mem::size_of::<(String, u32)>()) as u64;
+        let mut bytes = (self.index.len() * std::mem::size_of::<(String, Symbol)>()) as u64;
         for key in self.index.keys() {
             bytes += key.len() as u64;
         }
@@ -239,7 +327,7 @@ fn active_ctx() -> Option<&'static InterpContext> {
 fn resolve_sym(sym: Symbol) -> String {
     active_ctx()
         .map(|ctx| ctx.resolve(sym).to_string())
-        .unwrap_or_else(|| format!("#{}", sym.0))
+        .unwrap_or_else(|| sym.0.to_string())
 }
 
 fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool {
@@ -531,11 +619,12 @@ fn value_hash(v: &Value) -> u64 {
             hash_fields_commutative(fields).hash(&mut h);
         }
         Value::Variant {
+            type_name,
             variant_name,
             fields,
-            ..
         } => {
             7u8.hash(&mut h);
+            type_name.hash(&mut h);
             variant_name.hash(&mut h);
             hash_fields_commutative(fields).hash(&mut h);
         }
@@ -570,10 +659,18 @@ fn hash_fields_commutative(fields: &[(Symbol, Value)]) -> u64 {
 }
 
 pub fn fields_get(fields: &[(Symbol, Value)], sym: Symbol) -> Option<&Value> {
+    // Field identity is the canonical spelling, never the order in which one evaluation
+    // frame encountered it. Keep the logarithmic path for values built through
+    // `sorted_fields`, then scan as the total fallback for host-built values whose constructors
+    // preserve a modeled field order instead. A binary search alone silently made lookup
+    // depend on those two unrelated orders agreeing.
+    if let Ok(i) = fields.binary_search_by_key(&sym, |(field, _)| *field) {
+        return Some(&fields[i].1);
+    }
     fields
-        .binary_search_by_key(&sym.0, |(s, _)| s.0)
-        .ok()
-        .map(|i| &fields[i].1)
+        .iter()
+        .find(|(field, _)| *field == sym)
+        .map(|(_, value)| value)
 }
 
 pub fn sorted_fields(mut v: Vec<(Symbol, Value)>) -> Vec<(Symbol, Value)> {
@@ -835,16 +932,16 @@ impl PartialEq for Value {
             (Value::Set(a), Value::Set(b)) => a == b,
             (
                 Value::Variant {
+                    type_name: at,
                     variant_name: a,
                     fields: af,
-                    ..
                 },
                 Value::Variant {
+                    type_name: bt,
                     variant_name: b,
                     fields: bf,
-                    ..
                 },
-            ) => a == b && af == bf,
+            ) => at == bt && a == b && af == bf,
             (Value::Record { fields: af, .. }, Value::Record { fields: bf, .. }) => af == bf,
             (Value::Fn { node: a }, Value::Fn { node: b }) => Rc::ptr_eq(a, b),
             (Value::List(_), Value::Variant { .. }) | (Value::Variant { .. }, Value::List(_)) => {
@@ -1270,23 +1367,22 @@ struct PureCallMemo {
     keepalive_fns: Vec<Rc<Node>>,
 }
 
-/// `Symbol`-free mirror of `Value`, used as the cross-claim memo's storage shape.
+/// Origin-free mirror of `Value`, used as the cross-claim memo's storage shape.
 ///
-/// A `Symbol` indexes ONE `InterpContext`'s `SymbolInterner` (`v1_interpreter.rs`
-/// `resolve_sym`) and means nothing outside it. Required-floor builds a FRESH `InterpContext`
-/// per claim (`cli_run.rs` `evaluation_frame`, "FRESH PER CLAIM"), while this memo survives
-/// across claims for one prepared-subject run (`clear_cross_claim_pure_memos` runs once per
-/// `register_floor_prepared_authority`/`clear_floor_prepared_authority`, not per claim).
-/// Caching a raw `Value` handed claim N's `Symbol` index to claim N+1's unrelated interner:
-/// matching missed every arm or hit the wrong one, and `PatternMatchFailure`'s Display printed
-/// `<invalid-symbol>` (gunbc#8505; the 33 `body_lowering_*` floor-only rows in
-/// `floor_expected_red` chunk_14). Per-entry `claim_batch` keeps one interner across an entry's
-/// claims, so it never hit this.
+/// Required-floor builds a FRESH `InterpContext` per claim by design (`cli_run.rs`
+/// `evaluation_frame`, "FRESH PER CLAIM"), while this memo survives across claims for one
+/// prepared-subject run. Before `Symbol` identity became spelling-backed, caching a raw `Value`
+/// here leaked producer-frame ordinals into a consumer frame (gunbc#8505). Symbols themselves
+/// are now frame-independent, but this positive portable shape remains the store's authority
+/// for total publication, structural collision verification, byte accounting, and exclusion of
+/// origin-bound closures/functions.
 ///
-/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) prescribes:
-/// de-symbolize to `PortableValue` (raw strings) at store time while the producing ctx is
-/// alive, re-intern into the CONSUMING ctx at load. `Closure`/`Fn` are not portable (their
-/// `Env` chain isn't a content snapshot) and are refused — `prepare_grammar` never returns them.
+/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
+/// prescribes: reify to `PortableValue` at store time while the producing ctx is still alive.
+/// Process-canonical `Symbol`s are themselves frame-independent, so the portable shape carries
+/// them directly and a served value does not walk a second global-interner path. `Closure`/`Fn`
+/// are not portable this way (their `Env` chain isn't a content snapshot) and are refused rather
+/// than guessed at — `prepare_grammar` never returns them.
 #[derive(Debug, Clone)]
 enum PortableValue {
     Null,
@@ -1299,13 +1395,13 @@ enum PortableValue {
     Map(Vec<(PortableValue, PortableValue)>),
     Set(Rc<OrdSet<String>>),
     Record {
-        type_name: String,
-        fields: Vec<(String, PortableValue)>,
+        type_name: Symbol,
+        fields: Vec<(Symbol, PortableValue)>,
     },
     Variant {
-        type_name: String,
-        variant_name: String,
-        fields: Vec<(String, PortableValue)>,
+        type_name: Symbol,
+        variant_name: Symbol,
+        fields: Vec<(Symbol, PortableValue)>,
     },
 }
 
@@ -1436,11 +1532,11 @@ fn portable_value_from_ctx_at(
         Value::Record { type_name, fields } => {
             let mut out = Vec::with_capacity(fields.len());
             for (k, v) in fields.iter() {
-                let name = ctx.resolve(*k).to_string();
-                out.push((name.clone(), descend!(format!(".{name}"), v)));
+                let name = ctx.resolve(*k);
+                out.push((*k, descend!(format!(".{name}"), v)));
             }
             PortableValue::Record {
-                type_name: ctx.resolve(*type_name).to_string(),
+                type_name: *type_name,
                 fields: out,
             }
         }
@@ -1451,12 +1547,12 @@ fn portable_value_from_ctx_at(
         } => {
             let mut out = Vec::with_capacity(fields.len());
             for (k, v) in fields.iter() {
-                let name = ctx.resolve(*k).to_string();
-                out.push((name.clone(), descend!(format!(".{name}"), v)));
+                let name = ctx.resolve(*k);
+                out.push((*k, descend!(format!(".{name}"), v)));
             }
             PortableValue::Variant {
-                type_name: ctx.resolve(*type_name).to_string(),
-                variant_name: ctx.resolve(*variant_name).to_string(),
+                type_name: *type_name,
+                variant_name: *variant_name,
                 fields: out,
             }
         }
@@ -1504,17 +1600,15 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
             map_value(fields)
         }
         PortableValue::Set(members) => Value::Set(members.clone()),
-        // FIELDS ARE RE-SORTED UNDER THE CONSUMING INTERNER. `fields_get` binary-searches on
-        // Symbol ORDINAL (per-interner encounter order), so a vector sorted under frame A is
-        // unsorted under frame B and every field read misses ("no field 'produced_decl_support'
-        // on type 'TargetModel'", six emit reds on run 33269961629). Reification must satisfy
-        // the consuming frame's representation invariants, order included.
+        // Re-sort after reconstruction so the representation invariant stays local to this
+        // constructor. Symbols are already process-canonical; no consuming-frame re-interning
+        // is needed. Retaining the sort keeps `fields_get`'s binary-search contract explicit.
         PortableValue::Record { type_name, fields } => Value::Record {
-            type_name: ctx.sym(type_name),
+            type_name: *type_name,
             fields: Rc::new(sorted_fields(
                 fields
                     .iter()
-                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .map(|(k, v)| (*k, value_from_portable_ctx(ctx, v)))
                     .collect(),
             )),
         },
@@ -1523,13 +1617,13 @@ fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Val
             variant_name,
             fields,
         } => Value::Variant {
-            type_name: ctx.sym(type_name),
-            variant_name: ctx.sym(variant_name),
+            type_name: *type_name,
+            variant_name: *variant_name,
             // Sorted for the same reason as the Record arm above.
             fields: Rc::new(sorted_fields(
                 fields
                     .iter()
-                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .map(|(k, v)| (*k, value_from_portable_ctx(ctx, v)))
                     .collect(),
             )),
         },
@@ -1625,25 +1719,17 @@ fn portable_value_size_bytes(v: &PortableValue) -> usize {
                 .map(|(k, v)| portable_value_size_bytes(k) + portable_value_size_bytes(v))
                 .sum(),
             PortableValue::Set(s) => s.iter().map(|x| x.len() + size_of::<String>()).sum(),
-            PortableValue::Record { type_name, fields } => {
-                type_name.len()
-                    + fields
-                        .iter()
-                        .map(|(n, f)| n.len() + portable_value_size_bytes(f))
-                        .sum::<usize>()
-            }
-            PortableValue::Variant {
-                type_name,
-                variant_name,
-                fields,
-            } => {
-                type_name.len()
-                    + variant_name.len()
-                    + fields
-                        .iter()
-                        .map(|(n, f)| n.len() + portable_value_size_bytes(f))
-                        .sum::<usize>()
-            }
+            // Symbols point into the process-wide canonical table. Their pointer-sized slots
+            // are already included in the enum/Vec allocation; no spelling allocation is
+            // retained per portable entry.
+            PortableValue::Record { fields, .. } => fields
+                .iter()
+                .map(|(_, f)| portable_value_size_bytes(f))
+                .sum::<usize>(),
+            PortableValue::Variant { fields, .. } => fields
+                .iter()
+                .map(|(_, f)| portable_value_size_bytes(f))
+                .sum::<usize>(),
         }
 }
 
@@ -1836,11 +1922,11 @@ fn keep_cross_claim_fn(fn_node: &Rc<Node>) {
     });
 }
 
-/// One content hash over ALL of a call's arguments (names and values); `None` when any is not
-/// content-hashable — such a call is never admitted to the cross-claim tier. The interner/
-/// hash-memo borrows (immutable, local to `ctx`) must not outlive this function: the caller's
-/// `value_from_portable_ctx` does `borrow_mut()` to intern symbols, so holding `interner`
-/// across it double-borrows.
+/// One content hash over ALL of a call's arguments (names and values). `None` when any
+/// argument is not content-hashable — such a call is never admitted to the cross-claim tier.
+/// The interner/hash-memo borrows stay local to this function. Portable reconstruction now
+/// carries process-canonical symbols directly, but keeping these borrows narrow also keeps the
+/// hashing boundary explicit and independent from the caller's cache mutations.
 fn cross_claim_args_hash(ctx: &InterpContext, args: &[(Option<String>, Value)]) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
@@ -2103,6 +2189,132 @@ mod cross_claim_memo_tests {
             emit_graph_info: empty_emit_graph_info(),
         };
         InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // Discriminating RED for the required-floor failure in
+    // `english_emit_add_ingest_round_trip_holds`: three source spellings resolve to one declared
+    // arm and are evaluated in three fresh frames, while a fourth frame evaluates a distinct
+    // declaration with the same short arm name. Equality follows the resolved parent+arm, not
+    // encounter order and not the nickname used at the source site.
+    #[test]
+    fn structural_variant_equality_is_independent_of_evaluation_frame() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/diagnostic.dag".to_string(),
+                content: "module fixture.diagnostic\ntype Diagnostics = None | Some {}\nfn bare() -> Diagnostics { None }\nfn qualified() -> Diagnostics { Diagnostics.None {} }\n"
+                    .to_string(),
+            }),
+            Rc::new(SourceFile {
+                path: "fixture/imported.dag".to_string(),
+                content: "module fixture.imported\nimport fixture.diagnostic { Diagnostics, None }\nfn imported() -> Diagnostics { None }\n"
+                    .to_string(),
+            }),
+            Rc::new(SourceFile {
+                path: "fixture/other.dag".to_string(),
+                content: "module fixture.other\ntype Other = None | Present {}\nfn other_none() -> Other { None }\n"
+                    .to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let eval = |name| {
+            let ctx = InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            );
+            super::run_in_context(&ctx, name, false).expect(name)
+        };
+        let bare = eval("bare");
+        let qualified = eval("qualified");
+        let imported = eval("imported");
+        let other = eval("other_none");
+        assert_eq!(bare, qualified);
+        assert_eq!(bare, imported);
+        assert_ne!(bare, other);
+    }
+
+    #[test]
+    fn typed_bool_literals_do_not_need_lexeme_shorthands_but_zero_still_does() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![Rc::new(
+            SourceFile {
+                path: "fixture/shorthand.dag".to_string(),
+                content: "module fixture.shorthand\ntype UserToken = Zero | Other\nfn literal_true() -> Bool { true }\nfn literal_false() -> Bool { false }\nfn user_zero() -> UserToken { Zero }\n"
+                    .to_string(),
+            },
+        )]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let eval = |name| {
+            let ctx = InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            );
+            super::run_in_context(&ctx, name, false).expect(name)
+        };
+        assert_eq!(eval("literal_true"), Value::Bool(true));
+        assert_eq!(eval("literal_false"), Value::Bool(false));
+        // Executable bounded residual: `Zero` is still the intentional native Nat encoding, but
+        // the seed receives no declaration identity with which to distinguish it from this user
+        // coproduct. NS-0B must make this select the native representation by declaration rather
+        // than by lexeme.
+        assert_eq!(eval("user_zero"), Value::Int(0));
+    }
+
+    // Bounded residual: the runtime carrier still has only parent and arm spellings. This
+    // executable specimen stays equal until NS-0B threads owner-module declaration identity.
+    #[test]
+    fn same_spelled_variants_from_distinct_owners_reproduce_identity_residual() {
+        use crate::v1_compiler_compile::SourceFile;
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(im_vec![
+            Rc::new(SourceFile {
+                path: "fixture/left.dag".to_string(),
+                content: "module fixture.left\ntype Diagnostics = None\nfn left_none() -> Diagnostics { None }\n".to_string(),
+            }),
+            Rc::new(SourceFile {
+                path: "fixture/right.dag".to_string(),
+                content: "module fixture.right\ntype Diagnostics = None\nfn right_none() -> Diagnostics { None }\n".to_string(),
+            }),
+        ]));
+        let graph = result.graph.as_ref().expect("fixture graph");
+        let eval = |name| {
+            let ctx = InterpContext::new(
+                graph,
+                result.source_indices.clone(),
+                ExecutionMode::Hermetic,
+            );
+            super::run_in_context(&ctx, name, false).expect(name)
+        };
+        assert_eq!(eval("left_none"), eval("right_none"));
+    }
+
+    // The mirror-image defect is silent wrongness rather than a false negative: before symbols
+    // were process-canonical, two different first-seen spellings occupied the same ordinal in
+    // two frames and compared equal. Keep this direction separate so an always-equal repair
+    // cannot satisfy the reported `None == None` case.
+    #[test]
+    fn distinct_spellings_at_the_same_frame_ordinal_are_not_equal() {
+        let left_frame = fresh_ctx();
+        let right_frame = fresh_ctx();
+        let left = Value::Variant {
+            type_name: left_frame.sym("Diagnostics"),
+            variant_name: left_frame.sym("None"),
+            fields: Rc::new(vec![]),
+        };
+        let right = Value::Variant {
+            type_name: right_frame.sym("Diagnostics"),
+            variant_name: right_frame.sym("Some"),
+            fields: Rc::new(vec![]),
+        };
+        assert_ne!(left, right);
+
+        let same_arm_name_from_another_declaration = Value::Variant {
+            type_name: right_frame.sym("OtherDiagnostics"),
+            variant_name: right_frame.sym("None"),
+            fields: Rc::new(vec![]),
+        };
+        assert_ne!(left, same_arm_name_from_another_declaration);
     }
 
     // RED1 (operator ruling, 2026-08-29): a value carrying an origin-bound fn ANYWHERE
@@ -3400,10 +3612,10 @@ pub struct InterpContext {
     // found via the artifact-store List-after-Delete staleness).
     effect_dispatch_count: std::cell::Cell<u64>,
     eval_recompute_hash_memo: std::cell::RefCell<EvalRecomputeHashMemo>,
-    /// Per-context cache of values served from the cross-claim tier: reconstructing a
-    /// `PortableValue` re-interns and re-allocates the whole structure, so this bounds a hot
-    /// producer's cost to once per frame rather than per CALL. Keyed as the global tier; lives
-    /// and dies with the frame.
+    /// Per-context cache of values already served from the cross-claim tier: reconstruction
+    /// still rebuilds the value containers (but carries canonical symbols without re-interning),
+    /// so a hot producer served on every call would pay that per CALL; this bounds it to once
+    /// per frame. Keyed identically to the global tier; lives and dies with the frame.
     cross_claim_hit_cache: std::cell::RefCell<
         HashMap<(usize, u64), Vec<(Vec<(Option<String>, PortableValue)>, Value)>>,
     >,
@@ -4921,17 +5133,11 @@ fn eval_var(
         }
     };
 
-    if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
-        return Ok(Value::Null);
-    }
-    if ctx.sym_eq(sym, "true") {
-        return Ok(Value::Bool(true));
-    }
-    if ctx.sym_eq(sym, "false") {
-        return Ok(Value::Bool(false));
-    }
-
     if let Some(VarBindingKind::VariantValueBinding { parent_enum }) = binding_kind {
+        // Bounded residual: Nat's intentional native representation is still selected by the
+        // arm lexeme because the seed binding carrier lacks exact owner declaration identity.
+        // The executable shorthand test and GuaranteeStall keep that silent-wrongness path
+        // visible until NS-0B can select the representation from typed identity instead.
         if ctx.sym_eq(sym, "Zero") {
             return Ok(Value::Int(0));
         }
@@ -4941,6 +5147,14 @@ fn eval_var(
             variant_name: ctx.sym(vn.rsplit('.').next().unwrap_or(&vn)),
             fields: Rc::new(vec![]),
         });
+    }
+
+    // Only the untyped null/optional shorthand collapses to the host Null carrier. A resolved
+    // coproduct arm named `None` was handled above and retains its declaration identity
+    // (`parent_enum`, terminal arm), so `Diagnostics.None`, an imported `None`, and a re-export
+    // construct the same value while an unrelated coproduct's `None` remains distinct.
+    if ctx.sym_eq(sym, "none") || ctx.sym_eq(sym, "None") {
+        return Ok(Value::Null);
     }
 
     if let Some(val) = env.lookup(sym) {
