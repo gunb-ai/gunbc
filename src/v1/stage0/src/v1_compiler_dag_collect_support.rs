@@ -10,7 +10,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_error_node;
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
-use crate::v1_std_core::ExprData::ExprElaboratedLiteral;
+use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{
@@ -102,7 +102,6 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     match (*data.clone()).clone() {
         ExprData::NoExprData => "NoExprData".to_string(),
         ExprData::ExprLiteral { value: _, .. } => "ExprLiteral".to_string(),
-        ExprData::ExprElaboratedLiteral { .. } => "ExprElaboratedLiteral".to_string(),
         ExprData::ExprError { .. } => "ExprError".to_string(),
         ExprData::ExprVar {
             binding_kind: _, ..

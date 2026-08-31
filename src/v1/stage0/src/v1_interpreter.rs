@@ -5018,7 +5018,6 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
     let si = ctx.si();
     match (*node.expr_data).clone() {
         ExprData::ExprLiteral { value } => eval_literal(&value),
-        ExprData::ExprElaboratedLiteral { value, .. } => eval_literal(&value),
 
         ExprData::ExprVar { binding_kind } => eval_var(node, binding_kind.as_deref(), env, ctx),
 
@@ -9939,7 +9938,6 @@ pub(crate) fn expr_data_form_name(expr_data: &ExprData) -> &'static str {
     match expr_data {
         ExprData::NoExprData => "NoExprData",
         ExprData::ExprLiteral { .. } => "ExprLiteral",
-        ExprData::ExprElaboratedLiteral { .. } => "ExprElaboratedLiteral",
         ExprData::ExprError { .. } => "ExprError",
         ExprData::ExprVar { .. } => "ExprVar",
         ExprData::ExprFieldAccess { .. } => "ExprFieldAccess",
@@ -16453,7 +16451,7 @@ pub fn list_cons_tail_split_snapshot() -> (u64, u64) {
     )
 }
 
-pub const EXPR_VARIANT_COUNT: usize = 23;
+pub const EXPR_VARIANT_COUNT: usize = 22;
 
 fn expr_variant_index(d: &ExprData) -> usize {
     match d {
@@ -16479,7 +16477,6 @@ fn expr_variant_index(d: &ExprData) -> usize {
         ExprData::ExprIndex => 19,
         ExprData::ExprSlice => 20,
         ExprData::ExprReturn => 21,
-        ExprData::ExprElaboratedLiteral { .. } => 22,
     }
 }
 
@@ -16507,7 +16504,6 @@ pub fn expr_variant_name(i: usize) -> &'static str {
         "ExprIndex",
         "ExprSlice",
         "ExprReturn",
-        "ExprElaboratedLiteral",
     ];
     NAMES.get(i).copied().unwrap_or("?")
 }
