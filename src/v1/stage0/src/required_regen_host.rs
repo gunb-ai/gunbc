@@ -3147,6 +3147,7 @@ fn render_round_cost_receipt(
     marks: &[v1_rt::TraceLedgerRow],
     changed_paths: &[String],
     convergence_stage_receipt_ids: &[String],
+    installed_mirrors: &[String],
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -3220,6 +3221,7 @@ fn render_round_cost_receipt(
         .iter()
         .map(str_value)
         .collect();
+    let installed_values: Vec<Value> = installed_mirrors.iter().map(str_value).collect();
     let receipt = Value::Record {
         type_name: ctx.sym("RegenRoundCostReceipt"),
         fields: Rc::new(vec![
@@ -3244,6 +3246,10 @@ fn render_round_cost_receipt(
             (
                 ctx.sym("convergence_stage_receipt_ids"),
                 Value::List(Rc::new(stage_values.into())),
+            ),
+            (
+                ctx.sym("installed_mirrors"),
+                Value::List(Rc::new(installed_values.into())),
             ),
         ]),
     };
@@ -4313,6 +4319,14 @@ pub fn run_regen_round_cost(
         .iter()
         .map(|stage| stage.build_compiled_crates)
         .sum();
+    let installed_mirrors = transaction_receipt
+        .stages
+        .iter()
+        .flat_map(|stage| stage.surfaces.iter())
+        .map(|surface| surface.projected_path.clone())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
     let convergence_stage_receipt_ids = ordered_stage_receipt_ids;
 
     // The runtime's `Vec` is the persistent vector its emitted programs use; the receipt
@@ -4335,6 +4349,7 @@ pub fn run_regen_round_cost(
         &marks,
         &changed_paths,
         &convergence_stage_receipt_ids,
+        &installed_mirrors,
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -4388,6 +4403,7 @@ mod regen_round_cost_tests {
             &marks,
             &["v1_rt.rs".to_string()],
             &["stage-1".to_string()],
+            &["v1_rt.rs".to_string()],
         )
         .expect("the model renders a host-built receipt");
         assert_eq!(
@@ -4399,7 +4415,13 @@ mod regen_round_cost_tests {
              regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
              regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
              regen-round-cost: changed_paths=1 [v1_rt.rs]\n\
-             regen-round-cost: convergence_stages=1 [stage-1]\n"
+             regen-round-cost: convergence_stages=1 [stage-1]\n\
+             partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[v1_rt.rs] \
+             owning_packages=[v1-stage0-runtime] \
+             package_closure=[v1-stage0-runtime, v1-stage0-std-core, v1-stage0-std-surface, \
+             v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-v1-infer, \
+             v1-stage0-emit-core] \
+             executable_assembly=unavailable trigger=PartitionedClaimExecutorAssembly\n"
         );
     }
 

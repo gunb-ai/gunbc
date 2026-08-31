@@ -24,7 +24,7 @@ import extdeps.posix.path_ownership {
   path_ownership_decision,
   path_ownership_verdict,
 }
-import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv }
+import extdeps.tools.stat { stat_owner_user_argv, stat_owner_group_argv, stat_mode_argv }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -216,5 +216,6 @@ test fn a_mismatch_refusal_names_what_the_chown_reported() -> Bool {
 
 test fn stat_argv_asks_for_one_numeric_field_each() -> Bool {
   stat_owner_user_argv(path: "/opt/gunbc/bin") == ["/usr/bin/stat", "-c", "%u", "/opt/gunbc/bin"] &&
-    stat_owner_group_argv(path: "/opt/gunbc/bin") == ["/usr/bin/stat", "-c", "%g", "/opt/gunbc/bin"]
+    stat_owner_group_argv(path: "/opt/gunbc/bin") == ["/usr/bin/stat", "-c", "%g", "/opt/gunbc/bin"] &&
+    stat_mode_argv(path: "/opt/gunbc/bin") == ["/usr/bin/stat", "-c", "%a", "--", "/opt/gunbc/bin"]
 }

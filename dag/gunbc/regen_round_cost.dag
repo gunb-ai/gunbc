@@ -4,6 +4,10 @@ import std.types { String, Int, List, Bool, NonEmptyStr }
 import std.nat { Nat }
 import std.measure { ClockBasis, CpuClock, WallClock, Nanosecond, nanosecond, nanosecond_count }
 import std.observation { TimedMeasurement, Measured, MeasuredValue, MeasuredUnavailable, observation_duration_of }
+import gunbc.stage0_partition_rebuild_scope {
+  stage0_partition_rebuild_decision_line,
+  stage0_partition_rebuild_decision_today
+}
 
 // ONE REGEN ROUND, PRICED BY PHASE, ON TWO CLOCKS -- the instrument behind
 // `claim_executor --regen-round-cost`. A round is the convergence recipe that
@@ -110,6 +114,7 @@ type RegenRoundCostReceipt {
   marks: List<TraceMark>
   changed_paths: List<String>
   convergence_stage_receipt_ids: List<String>
+  installed_mirrors: List<String>
 }
 
 fn regen_round_phase_tag(phase: RegenRoundPhase) -> String {
@@ -252,6 +257,18 @@ fn regen_round_convergence_stages_line(receipt: RegenRoundCostReceipt) -> String
   )
 }
 
+// The partition-cost projection consumes the exact surface population installed across the
+// convergence stages. It supplements the actual full-seed rebuild receipt; it does not replace
+// the transaction's requirement to rebuild the executable that performs the next generation.
+fn regen_round_partition_rebuild_line(receipt: RegenRoundCostReceipt) -> String {
+  stage0_partition_rebuild_decision_line(
+    decision: stage0_partition_rebuild_decision_today(
+      changed_mirrors: receipt.installed_mirrors,
+      unlocatable: []
+    )
+  )
+}
+
 // The whole receipt as the lines the host prints, in ledger order. Rendered here and read by
 // the host through the interpreter, so there is no Rust mirror of this format to drift.
 fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
@@ -264,7 +281,10 @@ fn regen_round_cost_render(receipt: RegenRoundCostReceipt) -> String {
       concat(regen_round_total_line(receipt: receipt), "\n"),
       concat(
         concat(regen_round_changed_paths_line(receipt: receipt), "\n"),
-        concat(regen_round_convergence_stages_line(receipt: receipt), "\n")
+        concat(
+          concat(regen_round_convergence_stages_line(receipt: receipt), "\n"),
+          concat(regen_round_partition_rebuild_line(receipt: receipt), "\n")
+        )
       )
     )
   )
