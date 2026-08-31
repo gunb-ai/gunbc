@@ -85,7 +85,7 @@ pub fn candidate_spelling_from_text(name: String) -> Rc<CandidateSpelling> {
                 .join(&".".to_string()),
                 member: match segments.clone().last().cloned() {
                     Some(member) => member.clone(),
-                    std::option::Option::None => "".to_string(),
+                    None => "".to_string(),
                 },
             })
         } else {

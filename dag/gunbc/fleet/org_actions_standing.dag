@@ -154,8 +154,43 @@ fn public_exposure_standing(obs: OrgSettingsObservation, r: RepoRunnerAccess) ->
   }
 }
 
+type OrgActionsSettingsDiff
+  = OrgActionsSettingsConverged { observed_on: NonEmptyStr }
+  | OrgActionsSettingsDiverged {
+      access_divergence_count: Int,
+      public_exposure_divergence_count: Int,
+      observed_on: NonEmptyStr
+    }
+  | OrgActionsSettingsDiffRefused { reason: NonEmptyStr }
+
+fn org_actions_settings_diff(obs: OrgSettingsObservation) -> OrgActionsSettingsDiff {
+  match obs {
+    SettingsReadRefusedTokenScope { refusal_fragment: _, observed_on: _ } =>
+      OrgActionsSettingsDiffRefused { reason: "organization Actions settings were not read" }
+    SettingsRead { groups: _, observed_on } => {
+      let access_divergence_count = count(filter(desired_repo_access, r => match standing_from(obs: obs, r: r) {
+        DivergesBySettingsRead { observed_admitted: _, desired: _, observed_on: _ } => true
+        _ => false
+      }))
+      let public_exposure_divergence_count = count(filter(desired_repo_access, r => match public_exposure_standing(obs: obs, r: r) {
+        DivergesFromDesired { exposing_groups: _, observed_on: _ } => true
+        _ => false
+      }))
+      if access_divergence_count == 0 && public_exposure_divergence_count == 0 {
+        OrgActionsSettingsConverged { observed_on: observed_on }
+      } else {
+        OrgActionsSettingsDiverged {
+          access_divergence_count: access_divergence_count,
+          public_exposure_divergence_count: public_exposure_divergence_count,
+          observed_on: observed_on
+        }
+      }
+    }
+  }
+}
+
 // The converge binding, as a typed dissolution row (not prose): HoldsByBehavior is weaker
 // than HoldsBySettingsRead - behavior proves admission today, not group shape - and the
 // diff is the deliverable while apply stays gated, because a settings surface converged
 // by silent overwrite would erase an operator's deliberate UI change.
-data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: fleet-converge converges this surface. CAPABILITY, both parts required: (1) an org-administration-scoped credential lands in the fleet secret set - the repo-scoped integration token observably receives the 403 cited by org_admin_scope_refusal_fragment; (2) a converge phase reads github.CliOrgRunnerGroups (groups joined to their repository lists), constructs a SettingsRead observation, diffs it against desired_repo_access and desired_allows_public_repositories, and REFUSES on divergence it is not authorized to apply. Until both hold, the standing here is honest about its channel and the UI remains the hand-actuated authority.")
+data org_converge_binding_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the read-only half has landed in gunbc.fleet.org_actions_converge and consumes org_actions_settings_diff through the existing fleet-converge workflow; this condition now retains only authorized write convergence. It retires when operator-approved write authority lets that same phase apply a typed settings diff and read it back. Until then divergence refuses and the UI remains the hand-actuated write authority.")

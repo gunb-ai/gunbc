@@ -8,9 +8,8 @@ use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::Required;
 use crate::v1_std_core::ExprData::{
-    ExprBlock, ExprCall, ExprElaboratedLiteral, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprLambda, ExprLet, ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn,
-    ExprVar, NoExprData,
+    ExprBlock, ExprCall, ExprError, ExprFieldAccess, ExprForEach, ExprIf, ExprLambda, ExprLet,
+    ExprLiteral, ExprMatch, ExprMethodCall, ExprRecordLit, ExprReturn, ExprVar, NoExprData,
 };
 use crate::v1_std_core::InferredNode::Resolved;
 use crate::v1_std_core::VarBindingKind::{FunctionValueBinding, LocalValueBinding};
@@ -169,7 +168,7 @@ pub fn record_use(
         });
         let existing = match v1_rt::map_get(&accum.bindings.clone(), name.clone()) {
             Some(usage) => usage.clone(),
-            std::option::Option::None => Rc::new(BindingUsage {
+            None => Rc::new(BindingUsage {
                 name: name.clone(),
                 binding_kind: std::option::Option::None,
                 consumers: Rc::new(vec![]),
@@ -212,9 +211,7 @@ pub fn map_usage_merge_at(
             key.clone(),
             max_usage_by_fan_out(existing.clone(), new_val.clone()),
         ),
-        std::option::Option::None => {
-            v1_rt::rc_map_insert(base.clone(), key.clone(), new_val.clone())
-        }
+        None => v1_rt::rc_map_insert(base.clone(), key.clone(), new_val.clone()),
     }
 }
 
@@ -241,7 +238,7 @@ pub fn merge_branch_usages(
                         name.clone(),
                     ) {
                         Some(usage) => map_usage_merge_at(acc.clone(), name.clone(), usage.clone()),
-                        std::option::Option::None => acc.clone(),
+                        None => acc.clone(),
                     },
                 )
             },
@@ -312,7 +309,6 @@ pub fn walk_expr(
                 }
             }
             ExprData::ExprLiteral { value: _, .. } => accum.clone(),
-            ExprData::ExprElaboratedLiteral { .. } => accum.clone(),
             ExprData::ExprFieldAccess { .. } => {
                 let base_node = crate::v1_std_core::field_access_base(texpr.clone());
                 match (*base_node.expr_data.clone()).clone() {
@@ -377,7 +373,7 @@ pub fn walk_expr(
                                     }
                                 }
                             }
-                            std::option::Option::None => accum.clone(),
+                            None => accum.clone(),
                         };
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
@@ -464,7 +460,7 @@ pub fn walk_expr(
                                     ),
                                 }
                             }
-                            std::option::Option::None => recv_accum.clone(),
+                            None => recv_accum.clone(),
                         };
                         let non_init = Rc::new({
                             let mut __result = Vec::new();
@@ -541,7 +537,7 @@ pub fn walk_expr(
                 let t_accum = walk_expr(seed.clone(), t.clone(), in_tail.clone(), si.clone());
                 let e_accum = match crate::v1_std_core::if_else_branch(texpr.clone()) {
                     Some(eb) => walk_expr(seed.clone(), eb.clone(), in_tail.clone(), si.clone()),
-                    std::option::Option::None => seed.clone(),
+                    None => seed.clone(),
                 };
                 merge_branch_usages(
                     c_accum.clone(),
@@ -553,7 +549,7 @@ pub fn walk_expr(
                 let v_accum = walk_expr(accum.clone(), v.clone(), false, si.clone());
                 match crate::v1_std_core::let_body(texpr.clone()) {
                     Some(b) => walk_expr(v_accum.clone(), b.clone(), in_tail.clone(), si.clone()),
-                    std::option::Option::None => v_accum.clone(),
+                    None => v_accum.clone(),
                 }
             }
             ExprData::ExprBlock => {
@@ -597,7 +593,7 @@ pub fn walk_expr(
                                 in_tail.clone(),
                                 si.clone(),
                             ),
-                            std::option::Option::None => init_accum.clone(),
+                            None => init_accum.clone(),
                         }
                     }
                 }
@@ -695,7 +691,7 @@ pub fn make_decision(usage: Rc<BindingUsage>) -> Rc<OwnershipDecision> {
                 });
                 let site = match consumed_sites.clone().first().cloned() {
                     Some(c) => c.site.clone(),
-                    std::option::Option::None => "unknown".to_string(),
+                    None => "unknown".to_string(),
                 };
                 Rc::new(OwnershipDecision::SoleOwner {
                     binding: usage.name.clone(),
@@ -858,7 +854,6 @@ pub fn collect_callable_refs(
                 _ => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLiteral { value: _, .. } => v1_rt::rc_empty_set::<String>(),
-            ExprData::ExprElaboratedLiteral { .. } => v1_rt::rc_empty_set::<String>(),
             ExprData::ExprFieldAccess { .. } => collect_callable_refs(
                 crate::v1_std_core::field_access_base(texpr.clone()),
                 si.clone(),
@@ -904,7 +899,7 @@ pub fn collect_callable_refs(
                 );
                 let else_br = match crate::v1_std_core::if_else_branch(texpr.clone()) {
                     Some(eb) => collect_callable_refs(eb.clone(), si.clone()),
-                    std::option::Option::None => v1_rt::rc_empty_set::<String>(),
+                    None => v1_rt::rc_empty_set::<String>(),
                 };
                 v1_rt::rc_set_union(
                     v1_rt::rc_set_union(cond.clone(), then_br.clone()),
@@ -937,7 +932,7 @@ pub fn collect_callable_refs(
                         val.clone(),
                         collect_callable_refs(lb.clone(), si.clone()),
                     ),
-                    std::option::Option::None => val.clone(),
+                    None => val.clone(),
                 }
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
@@ -948,7 +943,7 @@ pub fn collect_callable_refs(
             ),
             ExprData::ExprReturn => match texpr.children.clone().first().cloned() {
                 Some(child) => collect_callable_refs(child.clone(), si.clone()),
-                std::option::Option::None => v1_rt::rc_empty_set::<String>(),
+                None => v1_rt::rc_empty_set::<String>(),
             },
             ExprData::ExprLambda => {
                 collect_callable_refs(crate::v1_std_core::lambda_body(texpr.clone()), si.clone())
@@ -992,7 +987,7 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
                     body = __tco_0;
                     continue;
                 }
-                std::option::Option::None => {
+                None => {
                     break body.clone();
                 }
             },
@@ -1002,7 +997,7 @@ pub fn fold_terminal_expr(mut body: Rc<Node>) -> Rc<Node> {
                     body = __tco_0;
                     continue;
                 }
-                std::option::Option::None => {
+                None => {
                     break body.clone();
                 }
             },
@@ -1251,11 +1246,11 @@ pub fn analyze_single_fold(
         let args = crate::v1_std_core::method_arg_nodes(method_call.clone());
         let init_arg_node = match args.clone().first().cloned() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
-            std::option::Option::None => method_call.clone(),
+            None => method_call.clone(),
         };
         let fold_lambda_node = match args.clone().iter().cloned().skip(1 as usize).next() {
             Some(a) => crate::v1_std_core::arg_value(a.clone()),
-            std::option::Option::None => method_call.clone(),
+            None => method_call.clone(),
         };
         let acc_param_name = match (*fold_lambda_node.expr_data.clone()).clone() {
             ExprData::ExprLambda => match crate::v1_std_core::lambda_param_names_at(
@@ -1266,7 +1261,7 @@ pub fn analyze_single_fold(
             .cloned()
             {
                 Some(n) => n.clone(),
-                std::option::Option::None => "".to_string(),
+                None => "".to_string(),
             },
             _ => "".to_string(),
         };

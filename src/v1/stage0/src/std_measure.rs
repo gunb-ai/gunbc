@@ -502,10 +502,10 @@ pub type CelsiusDelta = Rc<Measure<(), (), i64>>;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum PositiveMeasureCount {
-    PositiveMeasureSuccessor { predecessor: i64 },
+    PositiveMeasureSuccessor { predecessor: Nat },
 }
 impl PositiveMeasureCount {
-    pub fn predecessor(&self) -> i64 {
+    pub fn predecessor(&self) -> Nat {
         match self {
             PositiveMeasureCount::PositiveMeasureSuccessor {
                 predecessor: __val, ..

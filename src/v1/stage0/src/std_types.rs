@@ -40,7 +40,7 @@ pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {
 pub fn is_kernel_type(name: String) -> bool {
     match v1_rt::map_get(&kernel_type_set(), name.clone()) {
         Some(_) => true,
-        std::option::Option::None => false,
+        None => false,
     }
 }
 
@@ -56,7 +56,7 @@ pub fn container_type_arity() -> Rc<HashMap<String, i64>> {
 pub fn is_container_type(name: String) -> bool {
     match container_expected_arity(name.clone()) {
         Some(_) => true,
-        std::option::Option::None => false,
+        None => false,
     }
 }
 
@@ -70,7 +70,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
             Some(p) => crate::std_algebra::algebra_type_param_names(p.clone()),
-            std::option::Option::None => Rc::new(vec![]),
+            None => Rc::new(vec![]),
         }
     }
 }
@@ -111,7 +111,7 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
         .cloned()
         {
             Some(name) => Some(name.clone()),
-            std::option::Option::None => std::option::Option::None,
+            None => std::option::Option::None,
         }
     }
 }

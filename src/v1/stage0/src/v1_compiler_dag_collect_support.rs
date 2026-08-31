@@ -10,7 +10,7 @@ use crate::v1_rt::{VecCompat, VecJoin};
 pub use crate::v1_std_core::make_error_node;
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Arrow, NoConnective};
-use crate::v1_std_core::ExprData::ExprElaboratedLiteral;
+use crate::v1_std_core::ExprData::*;
 use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::{Bind, LitPattern, VariantPattern, Wildcard};
 pub use crate::v1_std_core::{
@@ -87,7 +87,7 @@ pub fn json_quote(s: String) -> String {
 
 pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
     match value.clone().as_deref().cloned() {
-        std::option::Option::None => "none".to_string(),
+        None => "none".to_string(),
         Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
         Some(InferredNode::TypeVariable { id: id, .. }) => {
             v1_rt::concat("TypeVariable:".to_string(), id.clone())
@@ -102,7 +102,6 @@ pub fn expr_data_variant(data: Rc<ExprData>) -> String {
     match (*data.clone()).clone() {
         ExprData::NoExprData => "NoExprData".to_string(),
         ExprData::ExprLiteral { value: _, .. } => "ExprLiteral".to_string(),
-        ExprData::ExprElaboratedLiteral { .. } => "ExprElaboratedLiteral".to_string(),
         ExprData::ExprError { .. } => "ExprError".to_string(),
         ExprData::ExprVar {
             binding_kind: _, ..
@@ -214,9 +213,7 @@ pub fn literal_value_fingerprint(value: Rc<LiteralValue>) -> String {
 
 pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> String {
     match pattern.clone().as_deref().cloned() {
-        std::option::Option::None => {
-            v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string())
-        }
+        None => v1_rt::atom_identity_hash("^dag_collect_match_pattern_absent".to_string()),
         Some(MatchPattern::Bind { declaration: d, .. }) => v1_rt::hash_combine(
             v1_rt::atom_identity_hash("Bind".to_string()),
             dag_node_surface_fingerprint_rec(d.clone()),
@@ -240,7 +237,7 @@ pub fn match_pattern_fingerprint_rec(pattern: Option<Rc<MatchPattern>>) -> Strin
                 ),
                 match pe.clone() {
                     Some(p) => p.clone(),
-                    std::option::Option::None => "".to_string(),
+                    None => "".to_string(),
                 },
             ));
             let field_hashes = Rc::new({

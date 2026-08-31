@@ -99,12 +99,12 @@ pub fn build_adjacency_views(
                 let forward_neighbors =
                     match v1_rt::map_get(&acc.forward.clone(), edge.caller.clone()) {
                         Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.callee.clone()])),
-                        std::option::Option::None => Rc::new(vec![edge.callee.clone()]),
+                        None => Rc::new(vec![edge.callee.clone()]),
                     };
                 let reverse_neighbors =
                     match v1_rt::map_get(&acc.reverse.clone(), edge.callee.clone()) {
                         Some(ns) => v1_rt::concat(ns.clone(), Rc::new(vec![edge.caller.clone()])),
-                        std::option::Option::None => Rc::new(vec![edge.caller.clone()]),
+                        None => Rc::new(vec![edge.caller.clone()]),
                     };
                 Rc::new(CallGraphAdjacencyViews {
                     forward: v1_rt::rc_map_insert(
@@ -154,7 +154,7 @@ pub fn dfs_finish_order(
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
-                    std::option::Option::None => Rc::new(vec![]),
+                    None => Rc::new(vec![]),
                 };
                 let explored = neighbors.iter().cloned().fold(
                     Rc::new(DfsFinishAcc {
@@ -188,7 +188,7 @@ pub fn dfs_collect_component(
                 let next_members = v1_rt::rc_list_push(acc.members.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
                     Some(ns) => ns.clone(),
-                    std::option::Option::None => Rc::new(vec![]),
+                    None => Rc::new(vec![]),
                 };
                 neighbors.iter().cloned().fold(
                     Rc::new(SccComponentAcc {
@@ -344,7 +344,7 @@ pub fn graph_reverse_reachable_members(
 pub fn is_lexicographic_descent(mut evidence: Rc<Vec<DescentEvidence>>) -> bool {
     loop {
         match evidence.clone().first().cloned() {
-            std::option::Option::None => {
+            None => {
                 break false;
             }
             Some(e) => match e.clone() {
