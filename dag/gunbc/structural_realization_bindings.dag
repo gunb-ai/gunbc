@@ -1,0 +1,75 @@
+module gunbc.structural_realization_bindings
+
+import std.types { List, String, Bool, NonEmptyStr }
+import std.decl_ref { DeclarationRef, decl_ref }
+import std.literal_elaboration { LiteralHomomorphism, LiteralSourceKind, KernelIntLiteral, KernelBoolLiteral, LiteralUnfolding, PeanoUnfold, BooleanUnfold }
+import std.operator_realization { StructuralOrderingBinding, StructuralConnectiveBinding }
+
+// THE CORPUS'S HALF OF LITERAL ELABORATION AND OPERATOR REALIZATION (std.literal_elaboration,
+// std.operator_realization): which of THIS corpus's structural declarations supply a kernel literal,
+// and through which of their own constructors; and which declare an ordering, and by which
+// comparison. Keyed on the exact declaration, never on a spelling: std.nat Nat (a native-realizing
+// semiring alias) and v2.std.nat Nat (the Peano coproduct) share a spelling and only the second is
+// a row here. The sibling gunbc.rust_source_type_bindings answers the OTHER question -- which
+// declarations realize natively on the Rust target -- and a declaration is never in both: a native
+// realization takes the kernel literal directly and the host operator directly.
+//
+// A ROW MAY ONLY STATE A HOMOMORPHISM THAT IS ALREADY TRUE OF THE DESTINATION, never be added to
+// make a failing site compile (the same discipline gunbc.rust_source_type_bindings and
+// v1.compiler.coercion numeric_realization_roster_extension_note hold for the native roster). The
+// Peano row is true by the definition of the naturals: n maps to succ^n(zero), and that map is the
+// unique semiring homomorphism from the kernel integers restricted to the nonnegatives.
+
+fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, succ: String, prev_field: String) -> LiteralHomomorphism {
+  LiteralHomomorphism {
+    source_kind: KernelIntLiteral,
+    destination: decl_ref(module_path: module_path, decl_name: nat),
+    producer: PeanoUnfold {
+      zero: decl_ref(module_path: module_path, decl_name: zero),
+      succ: decl_ref(module_path: module_path, decl_name: succ),
+      prev_field: prev_field as NonEmptyStr
+    }
+  }
+}
+
+fn boolean_literal_homomorphism(module_path: String, bool_decl: String, true_variant: String, false_variant: String) -> LiteralHomomorphism {
+  LiteralHomomorphism {
+    source_kind: KernelBoolLiteral,
+    destination: decl_ref(module_path: module_path, decl_name: bool_decl),
+    producer: BooleanUnfold {
+      true_variant: decl_ref(module_path: module_path, decl_name: true_variant),
+      false_variant: decl_ref(module_path: module_path, decl_name: false_variant)
+    }
+  }
+}
+
+// v2.std.logic Bool = True | False is gated structural on purpose (v1.compiler.coercion
+// structural_declaration_modules_for); the corpus-wide prelude std.types Bool realizes natively and
+// is NOT a row -- a kernel true/false at that boundary stays the host bool.
+data literal_homomorphism_rows: List<LiteralHomomorphism> = [
+  peano_literal_homomorphism(module_path: "v2.std.nat", nat: "Nat", zero: "Zero", succ: "Succ", prev_field: "prev"),
+  boolean_literal_homomorphism(module_path: "v2.std.logic", bool_decl: "Bool", true_variant: "True", false_variant: "False")
+]
+
+fn structural_ordering_binding(carrier_module: String, carrier: String, compare_module: String, compare: String, ordering_module: String, ordering: String) -> StructuralOrderingBinding {
+  StructuralOrderingBinding {
+    carrier: decl_ref(module_path: carrier_module, decl_name: carrier),
+    compare: decl_ref(module_path: compare_module, decl_name: compare),
+    ordering: decl_ref(module_path: ordering_module, decl_name: ordering)
+  }
+}
+
+data structural_ordering_rows: List<StructuralOrderingBinding> = [
+  structural_ordering_binding(carrier_module: "v2.std.nat", carrier: "Nat", compare_module: "v2.std.nat", compare: "nat_compare", ordering_module: "std.algebra", ordering: "Ordering")
+]
+
+// Which structural carriers declare their connectives (&&, ||) host-realized. v2.std.logic Bool is
+// the corpus's ordinary Bool (True | False); its conjunction IS the host conjunction, which is why
+// this row may exist at all. A structural carrier with no row here refuses under a connective.
+fn structural_connective_binding(carrier_module: String, carrier: String) -> StructuralConnectiveBinding {
+  StructuralConnectiveBinding { carrier: decl_ref(module_path: carrier_module, decl_name: carrier) }
+}
+
+data structural_connective_rows: List<StructuralConnectiveBinding> = [
+  structural_connective_binding(carrier_module: "v2.std.logic", carrier: "Bool")
+]

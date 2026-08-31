@@ -4,7 +4,7 @@ import extdeps.tools.env { env_path_resolved_program }
 import std.types { String, NonEmptyStr, List, Bool, Int }
 import std.algebra { trim }
 import extdeps.git
-import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq }
+import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, git_object_id_eq, git_object_id_wire_hex }
 import extdeps.ssh.session { SshSessionExecResult }
 import gunbc.fleet_known_hosts_anchor { FleetSshExecutionContext, SshTarget }
 import gunbc.live_deploy.candidate { scan_checkout_status, scan_ignored_deployed_paths }
@@ -77,6 +77,16 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
   ["git", "-C", repo as String, "rev-parse", "HEAD"]
 }
 
+// THE ROOT-TREE OBJECT IDENTITY (RLM-2 ruling section 4, G7). `HEAD:` is the colon form naming the
+// root tree of HEAD; `HEAD^{tree}` names the same object but `^`, `{` and `}` are outside the
+// portability wall (gunbc.fleet_known_hosts_anchor portable_remote_word_char_allowed), while `:`
+// is inside it. Same locus, same transport, one more argv -- not a second remote-revision path.
+data deployed_tree_root_tree_ref: String = "HEAD:"
+
+fn deployed_tree_root_tree_argv(repo: NonEmptyStr) -> List<String> {
+  ["git", "-C", repo as String, "rev-parse", deployed_tree_root_tree_ref]
+}
+
 // THE WORKTREE IS COMPARED AGAINST AN INDEX WE BUILD, AND THE DEPLOYED REPO'S OWN INDEX IS NEVER
 // CONSULTED. This is the third instrument this observation has had, and the first two were both
 // wrong in the same way, so the reasoning is recorded rather than just the answer.
@@ -143,7 +153,6 @@ fn deployed_tree_revision_argv(repo: NonEmptyStr) -> List<String> {
 // `unspecified`. .gitattributes is generated from gunbc.gitattributes_emit, whose two attribute
 // constants are literals with no mechanism to admit a third, so the premise is structural rather than
 // merely observed.
-
 // THE COMPOSED CLAIM, stated because the status leg alone proves less than it looks like it proves.
 // `status` reports HEAD-versus-index as well as worktree-versus-index. Here the temp index is built
 // from the revision the rev-parse leg OBSERVED, so the HEAD-versus-index half is equal by
@@ -253,7 +262,7 @@ type DeployedTreeUnobservableCause
   | TreeStatusUnreadable { detail: String }
 
 type DeployedTreeObservation
-  = DeployedTreeObserved { revision: GitObjectId, content: DeployedTreeContentState }
+  = DeployedTreeObserved { revision: GitObjectId, tree: GitObjectId, content: DeployedTreeContentState }
   | DeployedTreeUnobservable { cause: DeployedTreeUnobservableCause }
 
 // ONE RENDERING, so every consumer that needs prose derives it from the arms rather than each
@@ -329,7 +338,6 @@ fn deployed_tree_content_reading(entries_nul: String, ignored_nul: String) -> De
 // second is required anyway -- publication has to hold it -- so the atomic read arrives as a property
 // of the lease rather than as a separate mechanism, and building the v2 scanner first would be a
 // second grammar for one concept that the lease then obsoletes.
-
 // BOTH READINGS OR NEITHER. The revision read is attempted first and a failure there ends the
 // observation, because a modification count without a revision to attach it to is a fact about no
 // particular commit -- and reporting it beside a fabricated or absent revision is the state-space
@@ -348,7 +356,28 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
           Absent =>
             DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: rev.stdout) } }
           Present { value: oid } =>
-            observe_deployed_tree_against_revision(locus: locus, revision: oid, revision_hex: trim(s: rev.stdout))
+            match deployed_tree_leg(locus: locus, argv: deployed_tree_root_tree_argv(repo: locus.repo)) {
+              DeployedTreeLegNotAttempted { reason: why } =>
+                DeployedTreeUnobservable { cause: TreeLegNotAttempted { leg: "root tree", reason: why } }
+              DeployedTreeLegRan { result: tr } =>
+                if tr.exit_code != 0 {
+                  DeployedTreeUnobservable {
+                    cause: TreeCommandFailed { leg: "root tree", exit_code: tr.exit_code, stderr: tr.stderr },
+                  }
+                } else {
+                  match git_object_id_from_untagged_hex(hex: trim(s: tr.stdout)) {
+                    Absent =>
+                      DeployedTreeUnobservable { cause: TreeRevisionUndecodable { text: trim(s: tr.stdout) } }
+                    Present { value: tree_oid } =>
+                      observe_deployed_tree_against_revision(
+                        locus: locus,
+                        revision: oid,
+                        tree: tree_oid,
+                        revision_hex: trim(s: rev.stdout),
+                      )
+                  }
+                }
+            }
         }
       }
   }
@@ -362,6 +391,7 @@ fn observe_deployed_tree(locus: DeployedTreeLocus) -> DeployedTreeObservation {
 fn observe_deployed_tree_against_revision(
   locus: DeployedTreeLocus,
   revision: GitObjectId,
+  tree: GitObjectId,
   revision_hex: String,
 ) -> DeployedTreeObservation {
   let index_path = deployed_tree_temp_index_path(locus: locus)
@@ -413,7 +443,7 @@ fn observe_deployed_tree_against_revision(
                       ContentUnreadable { detail: d } =>
                         DeployedTreeUnobservable { cause: TreeStatusUnreadable { detail: d } }
                       ContentRead { state: s } =>
-                        DeployedTreeObserved { revision: revision, content: s }
+                        DeployedTreeObserved { revision: revision, tree: tree, content: s }
                     }
                   }
               }
@@ -475,5 +505,41 @@ fn deployed_tree_standing_is_converged(standing: DeployedTreeStanding) -> Bool {
     DeployedTreeRevisionDrifted { desired: _, local: _ } => false
     DeployedTreeModifiedAtRevision { revision: _, changed_paths: _ } => false
     DeployedTreeStandingUnobserved { cause: _ } => false
+  }
+}
+
+
+// THE ROOT-TREE JOIN: candidate tree OID (read from the deploying checkout at R) equals the deployed
+// tree OID, AND the deployed scope matches its commit. Both are required; a tree that matches by
+// object identity but carries a modified deployed path is still not R.
+type DeployedRootTreeStanding
+  = DeployedRootTreeMatches { tree_hex: String }
+  | DeployedRootTreeMismatch { candidate_hex: String, deployed_hex: String }
+  | DeployedRootTreeScopeDiverged { tree_hex: String, changed_paths: NonEmptyStr }
+  | DeployedRootTreeUnobserved { cause: DeployedTreeUnobservableCause }
+
+fn deployed_root_tree_standing(candidate_tree_hex: String, observation: DeployedTreeObservation) -> DeployedRootTreeStanding {
+  match observation {
+    DeployedTreeUnobservable { cause: c } => DeployedRootTreeUnobserved { cause: c }
+    DeployedTreeObserved { revision: _, tree: t, content: content } => {
+      let deployed_hex = git_object_id_wire_hex(oid: t) as String
+      if deployed_hex != candidate_tree_hex {
+        DeployedRootTreeMismatch { candidate_hex: candidate_tree_hex, deployed_hex: deployed_hex }
+      } else {
+        match content {
+          DeployedScopeMatchesCommit => DeployedRootTreeMatches { tree_hex: deployed_hex }
+          DeployedScopeDiverged { changed_paths: p } => DeployedRootTreeScopeDiverged { tree_hex: deployed_hex, changed_paths: p }
+        }
+      }
+    }
+  }
+}
+
+fn deployed_root_tree_standing_text(s: DeployedRootTreeStanding) -> String {
+  match s {
+    DeployedRootTreeMatches { tree_hex: h } => join(["deployed root tree ", h, " matches the candidate"], "")
+    DeployedRootTreeMismatch { candidate_hex: c, deployed_hex: d } => join(["deployed root tree ", d, " is not the candidate tree ", c], "")
+    DeployedRootTreeScopeDiverged { tree_hex: h, changed_paths: p } => join(["deployed root tree ", h, " matches but the deployed scope diverged: ", p as String], "")
+    DeployedRootTreeUnobserved { cause: c } => join(["deployed root tree unobserved: ", deployed_tree_unobservable_text(cause: c)], "")
   }
 }

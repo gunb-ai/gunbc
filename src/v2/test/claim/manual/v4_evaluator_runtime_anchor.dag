@@ -62,9 +62,9 @@ data v2_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v2_evalua
 
 data witness_v4_evaluator_runtime_identity: Bool = v2_evaluator_anchor_runtime.runtime_identity == ^v2_evaluator_runtime_id
 
-data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = v2_evaluator_anchor_interpretation == v2_evaluator_anchor_interpretation_standalone
+data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = interpretation_algebra_slot_identities_equal(a: v2_evaluator_anchor_interpretation, b: v2_evaluator_anchor_interpretation_standalone)
 
-data witness_v4_evaluator_interpretation_fresh_call_eq: Bool = v2_evaluator_anchor_interpretation == v2_evaluator_interpretation()
+data witness_v4_evaluator_interpretation_fresh_call_eq: Bool = interpretation_algebra_slot_identities_equal(a: v2_evaluator_anchor_interpretation, b: v2_evaluator_interpretation())
 
 data witness_v4_evaluator_model_core_wired: Bool = v2_evaluator_anchor_core == bool_model_core() && v2_evaluator_anchor_core_standalone == bool_model_core()
 

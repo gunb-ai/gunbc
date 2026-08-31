@@ -75,7 +75,6 @@ import gunbc.compiler_frontend_program_status {
   Outstanding,
   NotDerivable,
   MissingInstrument,
-  WholeCorpusEmissionBoard,
   PhaseCargoExecutionFact,
   DeclaringIdentitySpellingCensus,
   RepairInputOriginRosterProducer,
@@ -460,14 +459,6 @@ test fn the_report_renders() -> Bool {
 // alone, moves nothing. Counted honestly: the board independently answers two milestones and is
 // co-required for a third; the gate-enrolment fact independently answers NONE and is only
 // co-required. Deriving singleton sufficiency is a stronger carrier and is not claimed here.
-test fn the_whole_corpus_board_is_awaited_by_exactly_these_three() -> Bool {
-  let waiting = milestones_awaiting(i: WholeCorpusEmissionBoard)
-  count(waiting) == 3
-    && any(waiting, l => l == milestone_label(m: SelfHostWholeCorpusPopulationDerived))
-    && any(waiting, l => l == milestone_label(m: SelfHostRatchetGateEnrolled))
-    && any(waiting, l => l == milestone_label(m: SelfHostCorpusEmitsCleanly))
-}
-
 // THE THREE DELETION MILESTONES ARE WIRED TO THE SUBJECT ROSTER -- the same wiring relation as
 // the S4a arm: the milestone's members equal its stage's declared-subject fold, re-derived here
 // from the roster's own sources (subjects_deleted_at + subject_probe_list) rather than obtained
@@ -751,16 +742,6 @@ test fn the_obstacle_axis_renders_its_three_arms_distinguishably() -> Bool {
 //
 // NotBuilt still answers false, and that is not laxity: a row with no citation cannot satisfy a
 // claim about which authority it names, and the board row is not in that state.
-test fn the_board_obstacle_cites_the_authority_it_is_about() -> Bool {
-  match missing_instrument_obstacle(i: WholeCorpusEmissionBoard) {
-    NotBuilt => false
-    RefusedByAuthority { authority, why: _ } =>
-      authority.module_path == "gunbc.whole_corpus_compile_admission"
-    NotBuiltRefusalFalsified { authority, falsified_by: _ } =>
-      authority.module_path == "gunbc.whole_corpus_compile_admission"
-  }
-}
-
 // THE CENSUS FIXTURE AUTHORS ITS ROWS, STATES INCLUDED. The previous pair of arms named real
 // milestones and asserted their live standings -- controlling MEMBERSHIP while reading STATE from
 // the tree. That made them live snapshot pins wearing a fixture's clothes, and their closing move

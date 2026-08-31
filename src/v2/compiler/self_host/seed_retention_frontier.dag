@@ -55,6 +55,16 @@ import v2.std.text { String }
 // prioritizable debt. It is NOT a refusal arm and does not widen anything: every such row is still
 // rostered, still joined, still covered by the three refusals above.
 
+// WHAT THE PARTITION EXECUTABLE CUT DID AND DID NOT CHANGE HERE, recorded because the obvious
+// reading of that change is wrong. The host shell stopped declaring seventy-one EMITTED mirrors,
+// which are compared files and were never rostered here; not one retained path moved, so every row
+// below is untouched and the three refusals answer exactly as before. The fact the cut ADDED is a
+// third one neither this roster nor stage0_crate_layout carried: which package compiles a module.
+// It lives in v2.compiler.self_host.stage0_executable_assembly, which joins this roster by path
+// identity -- a retained module whose row here has gone is refused there rather than silently
+// re-owned, so moving a hand-authored module between packages cannot be spent as retiring it.
+// Membership, retention reason and compiling package stay three facts in three places.
+
 type SeedRetentionCause
   = SeedRetainedIntrinsicSource
   | QuarantineScaffoldSource

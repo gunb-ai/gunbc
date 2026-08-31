@@ -419,7 +419,7 @@ fn floor_expected_red_chunk_11() -> List<String> {
 }
 
 fn floor_expected_red_chunk_12() -> List<String> {
-  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Cons { head: "v2.test.manual.english_emit_add.english_emit_add_ingest_round_trip_holds", tail: Empty {} } } }
+  Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_consumer_is_total_holds", tail: Cons { head: "v2.test.lens_mock_totality.shell_mock_totality.shell_mock_omitted_member_is_red_holds", tail: Empty {} } }
 }
 
 // Enrolled per deep-ant-102's 2026-08-20 ruling on gunbc#8625/#8627: the witness is permanent
@@ -528,8 +528,16 @@ fn floor_expected_red_chunk_13() -> List<String> {
 // THE PROSE ABOVE PREDICTED BOTH ROWS WOULD GO GREEN TOGETHER. Wrong, and left on the record: it
 // read the two halves of its own trigger as one event. The mechanical repair and the
 // literal-introduction model are independent, and only the first is a predicate repair.
+// RETIRED BY ITS TRIGGER (XL-0N, adhoc-aec65f93-b00): the expected-type-directed literal
+// introduction judgment is std.literal_elaboration, consumed by v1.compiler.infer at every typed
+// boundary, and the ruling (2026-08-30) admits the kernel numeral at the Peano Nat THROUGH its
+// declared homomorphism rather than refusing it. The row's witness is renamed to the ruled claim
+// (w_kernel_numeric_at_the_peano_nat_is_admitted_through_its_homomorphism) and stays enrolled as
+// a permanent control beside the emitted-bytes falsifier in
+// test.claim.self_host_peano_literal_operator_realization_witness_test. The chunk stays so the
+// roster's shape is unchanged; it carries nothing.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Cons { head: "test.claim.declared_type_inhabitance_direct_call_witness.w_kernel_numeric_at_the_peano_nat_is_refused", tail: Empty {} }
+  Empty {}
 }
 
 // THE LIST-ELEMENT ARM OF THE DIRECT-CALL INHABITANCE WITNESS. It asserts that a wrong element

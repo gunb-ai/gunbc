@@ -142,14 +142,14 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
 pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
     match items.clone().first().cloned() {
         Some(v) => v.clone(),
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 
 pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
     match items.clone().iter().cloned().skip(1 as usize).next() {
         Some(v) => v.clone(),
-        None => "".to_string(),
+        std::option::Option::None => "".to_string(),
     }
 }
 

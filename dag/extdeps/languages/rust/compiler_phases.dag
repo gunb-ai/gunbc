@@ -1,0 +1,144 @@
+module extdeps.languages.rust.compiler_phases
+
+import std.types { Int, String, NonEmptyStr }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+import std.content_hash { Fnv1a64Structural, content_hash_atom }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "rustc-dev-guide.rust-lang.org/overview.html" }
+}
+
+data rustc_error_index_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri { scheme: Https, locator: "doc.rust-lang.org/1.93.0/error_codes/index.html" }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.languages.rust.compiler_phases",
+      decl_name: "rustc_phases",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps.languages.rust.compiler_phases.extdeps_external_authority_anchor,
+  further_citations: [extdeps.languages.rust.compiler_phases.rustc_error_index_authority]
+}
+
+// Rust 1.93 / rustc-dev-guide names, in compilation order. Cargo check requests metadata and
+// therefore observes Parse through Borrowck; MIR optimization, Codegen and Linking are modeled as
+// real later rustc phases but are outside that instrument's reach. Expansion and resolution are
+// interleaved internally; this order is the user-visible progress order documented by the guide,
+// not a claim that rustc offers a stable stop-after-expand or stop-after-resolve switch.
+type RustcPhase
+  = Parse
+  | Expand
+  | Resolve
+  | Typeck
+  | Borrowck
+  | MirOptimizations
+  | Codegen
+  | Linking
+
+data rustc_phases: List<RustcPhase> = [
+  Parse,
+  Expand,
+  Resolve,
+  Typeck,
+  Borrowck,
+  MirOptimizations,
+  Codegen,
+  Linking
+]
+
+fn rustc_phase_order(phase: RustcPhase) -> Int {
+  match phase {
+    Parse => 0
+    Expand => 1
+    Resolve => 2
+    Typeck => 3
+    Borrowck => 4
+    MirOptimizations => 5
+    Codegen => 6
+    Linking => 7
+  }
+}
+
+fn rustc_phase_name(phase: RustcPhase) -> String {
+  match phase {
+    Parse => "parse"
+    Expand => "expand"
+    Resolve => "resolve"
+    Typeck => "typeck"
+    Borrowck => "borrowck"
+    MirOptimizations => "MIR optimizations"
+    Codegen => "codegen"
+    Linking => "linking"
+  }
+}
+
+type RustcErrorCodePhase
+  = ErrorCodePlaced { phase: RustcPhase, authority: ExternalAuthority }
+  | ErrorCodeUnplaced { code: String, index: ExternalAuthority }
+
+type RustcErrorCodePhaseRow {
+  code: String
+  phase: RustcPhase
+  authority: ExternalAuthority
+}
+
+fn rustc_error_code_authority(code: String) -> ExternalAuthority {
+  ExternalAuthority {
+    uri: Uri {
+      scheme: Https,
+      locator: concat(concat("doc.rust-lang.org/1.93.0/error_codes/", code), ".html")
+    }
+  }
+}
+
+// The error index entries describe the judgment that issues each code. These are exactly the
+// coded diagnostics observed in the XL-0 emitted-00_compile history: name lookup codes are Resolve,
+// type/inference/trait/pattern codes are Typeck, and move/borrow codes are Borrowck. A code absent
+// from this cited population is not guessed from its number; rustc_error_code_phase returns the
+// explicit Unplaced arm.
+data rustc_error_code_phase_rows: List<RustcErrorCodePhaseRow> = [
+  RustcErrorCodePhaseRow { code: "E0422", phase: Resolve, authority: rustc_error_code_authority(code: "E0422") },
+  RustcErrorCodePhaseRow { code: "E0425", phase: Resolve, authority: rustc_error_code_authority(code: "E0425") },
+  RustcErrorCodePhaseRow { code: "E0433", phase: Resolve, authority: rustc_error_code_authority(code: "E0433") },
+  RustcErrorCodePhaseRow { code: "E0603", phase: Resolve, authority: rustc_error_code_authority(code: "E0603") },
+  RustcErrorCodePhaseRow { code: "E0004", phase: Typeck, authority: rustc_error_code_authority(code: "E0004") },
+  RustcErrorCodePhaseRow { code: "E0061", phase: Typeck, authority: rustc_error_code_authority(code: "E0061") },
+  RustcErrorCodePhaseRow { code: "E0107", phase: Typeck, authority: rustc_error_code_authority(code: "E0107") },
+  RustcErrorCodePhaseRow { code: "E0223", phase: Typeck, authority: rustc_error_code_authority(code: "E0223") },
+  RustcErrorCodePhaseRow { code: "E0271", phase: Typeck, authority: rustc_error_code_authority(code: "E0271") },
+  RustcErrorCodePhaseRow { code: "E0277", phase: Typeck, authority: rustc_error_code_authority(code: "E0277") },
+  RustcErrorCodePhaseRow { code: "E0282", phase: Typeck, authority: rustc_error_code_authority(code: "E0282") },
+  RustcErrorCodePhaseRow { code: "E0308", phase: Typeck, authority: rustc_error_code_authority(code: "E0308") },
+  RustcErrorCodePhaseRow { code: "E0310", phase: Typeck, authority: rustc_error_code_authority(code: "E0310") },
+  RustcErrorCodePhaseRow { code: "E0369", phase: Typeck, authority: rustc_error_code_authority(code: "E0369") },
+  RustcErrorCodePhaseRow { code: "E0533", phase: Typeck, authority: rustc_error_code_authority(code: "E0533") },
+  RustcErrorCodePhaseRow { code: "E0560", phase: Typeck, authority: rustc_error_code_authority(code: "E0560") },
+  RustcErrorCodePhaseRow { code: "E0599", phase: Typeck, authority: rustc_error_code_authority(code: "E0599") },
+  RustcErrorCodePhaseRow { code: "E0618", phase: Typeck, authority: rustc_error_code_authority(code: "E0618") },
+  RustcErrorCodePhaseRow { code: "E0631", phase: Typeck, authority: rustc_error_code_authority(code: "E0631") },
+  RustcErrorCodePhaseRow { code: "E0505", phase: Borrowck, authority: rustc_error_code_authority(code: "E0505") },
+  RustcErrorCodePhaseRow { code: "E0507", phase: Borrowck, authority: rustc_error_code_authority(code: "E0507") },
+  RustcErrorCodePhaseRow { code: "E0382", phase: Borrowck, authority: rustc_error_code_authority(code: "E0382") }
+]
+
+data rustc_phase_classification_policy_digest: Fnv1a64Structural = content_hash_atom(
+  value: concat(
+    "rustc-1.93-error-index-phase-policy-v1\n",
+    rustc_error_code_phase_rows
+      |> map(row => join([row.code, rustc_phase_name(phase: row.phase), row.authority.uri.locator], "\t"))
+      |> join(separator: "\n")
+  ) as NonEmptyStr
+)
+
+fn rustc_error_code_phase(code: String) -> RustcErrorCodePhase {
+  match rustc_error_code_phase_rows |> filter(r => r.code == code) |> first {
+    Present { value: row } => ErrorCodePlaced { phase: row.phase, authority: row.authority }
+    Absent => ErrorCodeUnplaced { code: code, index: rustc_error_index_authority }
+  }
+}

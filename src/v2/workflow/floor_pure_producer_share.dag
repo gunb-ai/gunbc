@@ -22,8 +22,8 @@ import v2.std.text { String }
 // content: it is a pure function (no effect uses — the seed's admission path only reaches
 // pure calls), its arguments are content-hashable, and its value passes TOTAL reification —
 // a positive portable shape (scalars, strings, lists, maps, sets, records and variants of
-// those, re-interned in the consuming frame), with the first origin-bound child (a fn, a
-// closure, any evaluator-node reference) refusing the whole store as a typed, located
+// those, carrying process-canonical symbols across frames), with the first origin-bound child
+// (a fn, a closure, any evaluator-node reference) refusing the whole store as a typed, located
 // ServeCacheValueNotPortable at publication time, never discovered at retrieval. The seed
 // realization (`v1_interpreter` cross-claim tier) keys every entry on fn-node identity plus
 // a content hash of the full argument row, serves only after the stored argument row
@@ -73,10 +73,11 @@ import v2.std.text { String }
 // portability trigger fired and is retired.
 //
 // They are out for a DIFFERENT reason, and it is now MEASURED rather than inferred: SERVING
-// THESE VALUES COSTS MORE THAN RECOMPUTING THEM. A serve is not free — the tier reifies the
-// stored portable value into the consuming frame, re-interning every symbol and re-sorting
-// every record's fields, and a TargetModel is a large value (bundle node, lex rules, spelling
-// map, realization catalogs).
+// THESE VALUES COSTS MORE THAN RECOMPUTING THEM. At the time of that measurement a serve
+// re-interned every symbol and re-sorted every record's fields, and a TargetModel is a large
+// value (bundle node, lex rules, spelling map, realization catalogs). Frame-independent symbol
+// identity now removes the re-interning half; re-enrollment still requires a new measured
+// present-vs-absent floor receipt rather than inference from that implementation change.
 //
 // The discriminating experiment, run because the enrolled floor made the emit rows that touch
 // a rust target model SLOWER while the rest of the corpus got faster: hold the renderer fixed
@@ -99,8 +100,16 @@ import v2.std.text { String }
 //
 // RE-ENROL TRIGGER for these two, naming the capability and not an artifact: a serve that
 // does not re-intern and re-sort per consuming frame — an interner-stable representation the
-// tier can hand over without walking the whole value. That is a seed change in the
-// v1_compiler.v1_interpreter cross-claim tier, out of scope for the roster.
+// tier can hand over without walking the whole value. This change discharges re-interning;
+// container reconstruction and field sorting remain, so the zero-walk trigger is still open.
+//
+// CORRECTNESS ROOT, separated from that cost trigger: Symbol identity in the seed used to be
+// a per-frame encounter ordinal, so a value crossing this boundary could compare the SAME
+// spelling unequal, or DIFFERENT spellings equal, against a consumer-frame value. Symbols are
+// now process-canonical spelling identities; crossing frames no longer changes equality.
+// value_from_portable_ctx carries those symbols directly and therefore stops re-interning, but
+// it still walks the portable value to rebuild containers and re-sort every record. Equality
+// is frame-independent, while zero-walk serving remains a separate performance capability.
 data floor_cross_claim_pure_producers_warm: List<String> = [
   "v2.extdeps.languages.bash_command_fold.bash_fold_formal_productions",
   "v2.extdeps.languages.bash_command_fold.bash_fold_lex"

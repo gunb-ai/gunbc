@@ -12,6 +12,7 @@ import gunbc.stage0_partition_rebuild_scope {
   MirrorHasMultipleOwningPackages,
   MirrorHasNoOwningPackage,
   ExecutableAssemblyUnavailable,
+  NoChangedMirrorsToRebuild,
   PackageDependencyClosureUnderivable,
   PartitionAssembledExecutable,
   PartitionGenerationAuthorityChanged,
@@ -38,15 +39,18 @@ import gunbc.stage0_partition_rebuild_scope {
 // 3. Silence on an input every package is built from. Two rosters, two arms.
 // 4/5. Ownership that cannot answer. A mirror with no owner and a mirror with two owners must
 //    refuse with DIFFERENT causes -- collapsing them would hide which way the roster is wrong.
-// 6. A derived scope spent as a rebuild. The live decision derives real packages while its
-//    executable assembly is unavailable, so the pair witness_today_derives_scope_with_unavailable
-//    _assembly / witness_today_scope_is_not_actuatable holds those two facts apart, against a
-//    positive actuatability control so the predicate cannot be a constant false.
+// 6. A derived scope spent as a rebuild. Deriving packages and assembling an executable from them
+//    are two facts, so witness_today_derives_scope_with_assembled_executable asserts the arm AND
+//    the package identity while witness_today_scope_is_actuatable asserts the predicate the host
+//    spawns cargo on. Since the executable cut made both TRUE for the live decision, the negative
+//    control moved to a fixture: witness_unavailable_assembly_scope_is_not_actuatable keeps the
+//    refusing answer reachable, so the predicate cannot have become a constant true.
 //
-// The fixture executable below is a PARTITION-ASSEMBLED one because the positive arm has no live
-// inhabitant yet (see rebuild_scope_executable_assembly_dissolve_on). It is a fixture handed to
-// the selector, not a claim that the tree builds it -- and the selector is the subject, so a
-// fixture is the right and only place its accepting arm can be exercised today.
+// The fixture executable below is a partition package rather than the live host shell, and it
+// stays a fixture after the executable cut on purpose: the selector must accept an assembled
+// executable that is NOT the shell, reached through the ordinary package closure rather than
+// through the shell's declared edge. Using the live shell here would make every control below
+// pass through the one code path the live decision already exercises.
 fn witness_fixture_executable() -> PartitionAssembledExecutable {
   PartitionAssembledExecutable {
     package_name: "v1-stage0-emit-core",
@@ -153,6 +157,7 @@ test fn witness_unowned_mirror_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
@@ -195,6 +200,7 @@ test fn witness_duplicate_owner_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
@@ -214,6 +220,30 @@ test fn witness_unlocatable_changed_path_refuses_holds() -> Bool {
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
     RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
+    WholeCompilerRebuildRequired { cause: _ } => false
+    PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
+  }
+}
+
+// A round that installed nothing has nothing to rebuild, and that is a DIFFERENT answer from
+// "the executable is not covered". Without this arm an empty changed set fell through to the
+// coverage check with an empty closure and reported ExecutableAssemblyNotCovered -- a true
+// sentence about a question nobody asked, and a false one about the tree. Measured, not
+// predicted: a real round on this branch printed exactly that line before the arm existed.
+test fn witness_empty_changed_set_is_nothing_to_rebuild_holds() -> Bool {
+  match stage0_partition_rebuild_decision(
+    changed_mirrors: [],
+    unlocatable: [],
+    rows: generated_partition_crate_rows,
+    executable: witness_fixture_executable()
+  ) {
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => true
+    RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: _, detail: _ } } => false
+    RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
+    RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
+    RebuildScopeRefused { cause: ChangedMirrorUnlocatable { mirrors: _, reason: _ } } => false
+    RebuildScopeRefused { cause: PackageDependencyClosureUnderivable { package_name: _, detail: _ } } => false
     WholeCompilerRebuildRequired { cause: _ } => false
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: _, package_closure: _, executable_assembly: _ } => false
   }
@@ -228,6 +258,7 @@ test fn witness_unreached_executable_package_refuses_holds() -> Bool {
     rows: generated_partition_crate_rows,
     executable: PartitionAssembledExecutable { package_name: "v1-stage0-runtime", bin_name: "claim_executor" }
   ) {
+    RebuildScopeRefused { cause: NoChangedMirrorsToRebuild } => false
     RebuildScopeRefused { cause: ExecutableAssemblyNotCovered { executable_package: p, detail: _ } } => p == "v1-stage0-runtime"
     RebuildScopeRefused { cause: MirrorHasNoOwningPackage { mirror: _ } } => false
     RebuildScopeRefused { cause: MirrorHasMultipleOwningPackages { mirror: _, packages: _ } } => false
@@ -238,30 +269,51 @@ test fn witness_unreached_executable_package_refuses_holds() -> Bool {
   }
 }
 
-// CONTROL 6 -- the rung-honesty pair, and the reason it is a PAIR. Today's live decision DERIVES
-// the scope (the packages are a real answer, and the round-cost projection reports them) while
-// carrying ExecutableAssemblyUnavailable, so one arm alone cannot separate "we derived a scope"
-// from "we rebuilt from it". The first test fixes the derived shape; the second fixes that the
-// same decision is NOT actuatable. Both go red the moment this module claims an assembly the tree
-// does not build -- which is exactly the inflation the acceptance bar forbids -- and both are
-// edited, not deleted, when the executable cut lands: the shape survives, the expected arm flips.
-test fn witness_today_derives_scope_with_unavailable_assembly_holds() -> Bool {
+// CONTROL 6 -- the rung-honesty pair, and the reason it is a PAIR. The live decision derives the
+// scope AND names the executable assembled from it, so one arm alone cannot separate "we derived
+// a scope" from "we rebuilt from it": the first test fixes the derived shape and the assembled
+// arm, the second fixes that the same decision actuates. THE EXPECTED ARM FLIPPED WITH THE
+// EXECUTABLE CUT and the shape did not, which is what the pair was authored to make possible --
+// before the cut both asserted the unavailable arm, and a flip that had to delete them instead of
+// editing them would have been the tell that the assembly was never the fact under test. The
+// executable package is asserted by name because the whole claim is that THIS binary is the next
+// pass; the host holds cargo to the same identity.
+test fn witness_today_derives_scope_with_assembled_executable_holds() -> Bool {
   match stage0_partition_rebuild_decision_today(changed_mirrors: ["std_effects.rs"], unlocatable: []) {
     PartitionRebuildScopeDerived { changed_mirrors: _, owning_packages: o, package_closure: c, executable_assembly: assembly } =>
       witness_has(items: o, item: "v1-stage0-std-surface")
         && (count(c) > 1)
+        && witness_has(items: c, item: "v1-compiler")
         && (match assembly {
-              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => true
-              PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
+              PartitionAssembledExecutable { package_name: p, bin_name: b } =>
+                (p == "v1-compiler") && (b == "claim_executor")
+              ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => false
             })
     WholeCompilerRebuildRequired { cause: _ } => false
     RebuildScopeRefused { cause: _ } => false
   }
 }
 
-test fn witness_today_scope_is_not_actuatable_holds() -> Bool {
-  !stage0_partition_rebuild_is_actuatable(
+test fn witness_today_scope_is_actuatable_holds() -> Bool {
+  stage0_partition_rebuild_is_actuatable(
     decision: stage0_partition_rebuild_decision_today(changed_mirrors: ["std_effects.rs"], unlocatable: [])
+  )
+}
+
+// THE NEGATIVE CONTROL FOR ACTUATABILITY, which the live arm can no longer supply now that it is
+// true. An unavailable assembly handed to the same predicate must still answer false, or the
+// predicate has become a constant and the refusing path is untested rather than unreached.
+test fn witness_unavailable_assembly_scope_is_not_actuatable_holds() -> Bool {
+  !stage0_partition_rebuild_is_actuatable(
+    decision: stage0_partition_rebuild_decision(
+      changed_mirrors: ["std_effects.rs"],
+      unlocatable: [],
+      rows: generated_partition_crate_rows,
+      executable: ExecutableAssemblyUnavailable {
+        trigger: PartitionedClaimExecutorAssembly { capability: "a fixture assembly that does not exist" },
+        detail: "fixture: the negative control for stage0_partition_rebuild_is_actuatable"
+      }
+    )
   )
 }
 
@@ -271,9 +323,10 @@ test fn witness_assembled_executable_scope_is_actuatable_holds() -> Bool {
   stage0_partition_rebuild_is_actuatable(decision: witness_decide(changed: ["std_effects.rs"]))
 }
 
-test fn witness_next_pass_executable_assembly_is_unavailable_holds() -> Bool {
+test fn witness_next_pass_executable_assembly_is_assembled_holds() -> Bool {
   match stage0_next_pass_executable_assembly() {
-    ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => true
-    PartitionAssembledExecutable { package_name: _, bin_name: _ } => false
+    PartitionAssembledExecutable { package_name: p, bin_name: b } =>
+      (p == "v1-compiler") && (b == "claim_executor")
+    ExecutableAssemblyUnavailable { trigger: PartitionedClaimExecutorAssembly { capability: _ }, detail: _ } => false
   }
 }

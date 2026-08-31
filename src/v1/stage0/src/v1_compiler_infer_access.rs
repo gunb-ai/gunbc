@@ -60,7 +60,7 @@ pub fn access_result(
         {
             let message = match diagnostics.clone().first().cloned() {
                 Some(diag) => crate::v1_std_core::diagnostic_to_message(diag.diagnostic.clone()),
-                None => fallback_message.clone(),
+                std::option::Option::None => fallback_message.clone(),
             };
             Rc::new(AccessCheckResultNode {
                 inferred: Some(Rc::new(InferredNode::CompilerError {
@@ -86,9 +86,9 @@ pub fn keyed_collection_parts(
                     key_type: crate::v1_compiler_infer_types::resolved_type(key_child.clone()),
                     value_type: crate::v1_compiler_infer_types::resolved_type(value_child.clone()),
                 })),
-                None => std::option::Option::None,
+                std::option::Option::None => std::option::Option::None,
             },
-            None => std::option::Option::None,
+            std::option::Option::None => std::option::Option::None,
         }
     } else {
         std::option::Option::None
@@ -153,7 +153,7 @@ pub fn check_index_access_node(
                         "invalid keyed collection index access".to_string(),
                     )
                 }
-                None => {
+                std::option::Option::None => {
                     if crate::v1_compiler_infer_types::node_is_keyed_collection(
                         normed.clone(),
                         source_indices.clone(),
