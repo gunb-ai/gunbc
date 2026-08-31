@@ -535,6 +535,7 @@ test fn phase_boards_separate_equal_cardinality_identity_substitutions() -> Bool
   let b = census_probe_row(code: "E0599", message: "beta")
   let substituted = census_probe_row(code: "E0308", message: "substituted")
   census_fold(raw: [a, b]).board != census_fold(raw: [substituted, b]).board
+}
 
 // PINS THE WIRING, NOT THE PREDICATE. census_population_is_duplicate_free already has a direct
 // probe, but nothing drove receipt_population_coherent with a duplicated population, so DELETING
