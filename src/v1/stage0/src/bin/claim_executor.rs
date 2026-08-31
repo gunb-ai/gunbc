@@ -906,10 +906,16 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     if required_regen_mode {
-        return match v1_compiler::cli_run::run_required_regen(
-            &regen_candidate_dir,
-            &regen_receipt_path,
-        ) {
+        let regen = if regen_affected_scope {
+            v1_compiler::cli_run::run_required_regen_scoped(
+                &regen_candidate_dir,
+                &regen_receipt_path,
+                &source_roots,
+            )
+        } else {
+            v1_compiler::cli_run::run_required_regen(&regen_candidate_dir, &regen_receipt_path)
+        };
+        return match regen {
             Ok(outcome) => {
                 // Both values here ARE measured by this pass, so they print unqualified. Read
                 // through accessors rather than by matching the variant: the

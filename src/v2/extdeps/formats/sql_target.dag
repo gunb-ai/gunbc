@@ -24,6 +24,8 @@ import v2.std.compilers.lexing {
 }
 import v2.std.compilers.target_model {
   BoundToken,
+  EmitSpellingIdentity,
+  TokenClassEmitTransform,
   ConcreteSyntaxToken,
   FixedToken,
   TargetModel,
@@ -177,16 +179,8 @@ fn sql_relation_translation_rules_node(
   }
 }
 
-fn sql_identity_emit_transform(spelling: String) -> String {
-  spelling
-}
-
-fn sql_token_class_emit_transforms() -> Map<Symbol, fn(String) -> String> {
-  map_insert(empty_map(), ^sql_token_ident, sql_identity_emit_transform)
-}
-
-fn sql_kind_emit_transform(_spelling: String) -> String {
-  ""
+fn sql_token_class_emit_transforms() -> Map<Symbol, TokenClassEmitTransform> {
+  map_insert(empty_map(), ^sql_token_ident, EmitSpellingIdentity)
 }
 
 fn sql_serialize_source_node(
