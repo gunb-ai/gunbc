@@ -169,10 +169,20 @@ fn first_failing_checked_phase(ds: List<RustcCodedDiagnostic>) -> RustcPhase {
 // refuses a receipt whose census is in fact identical. The two populations stay separate segments:
 // canonicalizing them jointly would let a refused path and an identity trade places.
 //
-// EmissionOrderedV1 is retired and no producer constructs it. It is named rather than deleted
-// because an algorithm identity only prevents a meaning fork if the retired meaning is nameable:
-// a digest folded in emission order and one folded over the canonical set are incomparable, and
-// with a single name a reader has no way to say which of the two an unlabeled hash was.
+// EmissionOrderedV1 is retired and NO PRODUCER CONSTRUCTS IT. Its justification is NOT that it
+// labels a live value -- it does not. docs/design-ledgers.md published an emission-order digest
+// until this change, and regenerating that projection replaces it, so after this commit no
+// artifact in the tree carries one and the retired value survives only in git history.
+//
+// It is kept because an algorithm identity with exactly ONE inhabitant distinguishes nothing. The
+// field exists to stop two incompatible digest meanings hiding behind a single unlabeled hash, and
+// that requires both meanings to be nameable. So the honest fork is not "drop the arm" but "drop
+// the arm AND the field": a one-inhabitant tag is decoration, and keeping the tag while deleting
+// its only contrast is the worse of the two shapes.
+//
+// It is read by production -- census_identity_domain_separator matches it exhaustively -- and by a
+// witness asserting the two separators differ, so it is not an inert carrier under
+// v2.lens.inert_carrier, whose scope is carriers read by no production code.
 type CensusIdentityAlgorithm
   = EmissionOrderedV1
   | CanonicalIdentitySetV1
