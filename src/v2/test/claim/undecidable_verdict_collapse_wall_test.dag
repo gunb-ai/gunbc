@@ -2,9 +2,12 @@ module v2.test.claim.undecidable_verdict_collapse_wall_test
 
 import std.occurrence_identity { OccurrenceSynthetic }
 import v2.lens.undecidable_verdict_collapse {
+  module_allows_verdict_collapse,
   undecidable_verdict_collapse_compile_gate,
   undecidable_verdict_collapse_findings
 }
+import v2.std.optional { Absent, Present }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.extdeps.languages.dag {
   dag_match_arm_node,
   dag_match_body_from_arms,
@@ -16,6 +19,7 @@ import v2.std.algebra { length }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Outcome, Rejected }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 import v2.std.node {
   Conj,
   Edge,
@@ -191,4 +195,44 @@ test fn findings_empty_on_clean_tree() -> Bool {
     Empty => true
     _ => false
   }
+}
+
+
+// ---- MODULE-SCOPE CONTROLS (review 57883) ----
+//
+// Every control above plants a tree with NO module node, so none of them can see the scope
+// predicate at all -- which is exactly how an over-wide carve-out survived them. `v2.test.` as a
+// prefix exempted v2.test.runtimes.effect_io_handler_claims, a module this change repaired, so the
+// wall would not have refused a regression there. These controls pin the boundary directly.
+
+fn module_admits(dotted: String) -> Bool {
+  module_allows_verdict_collapse(
+    qn: Present { value: qualified_name_from_dotted_string(dotted: dotted) }
+  )
+}
+
+// The declaring authority decides these verdicts; it must be exempt.
+test fn module_scope_authority_is_exempt() -> Bool {
+  module_admits(dotted: "v2.std.runtime")
+}
+
+// A claim fixture builds the escape hatch to TEST the wall; it must be exempt, or the RED arm
+// becomes unauthorable and the wall a decoration.
+test fn module_scope_claim_fixtures_are_exempt() -> Bool {
+  module_admits(dotted: "test.claim.some_wall_fixture")
+    && module_admits(dotted: "v2.test.claim.some_wall_fixture")
+}
+
+// THE DISCRIMINATING CONTROL. An ordinary test module outside the claim namespace is NOT a fixture
+// namespace and must be walled. This is the arm review 57883 found open.
+test fn module_scope_ordinary_test_module_is_walled() -> Bool {
+  !module_admits(dotted: "v2.test.runtimes.effect_io_handler_claims")
+    && !module_admits(dotted: "v2.test.lens_common.infer_fixture")
+}
+
+// Production is walled, and an unattributed tree (no module node) is walled -- the context every
+// planted fixture above runs in.
+test fn module_scope_production_and_unattributed_are_walled() -> Bool {
+  !module_admits(dotted: "v2.program")
+    && !module_allows_verdict_collapse(qn: Absent)
 }
