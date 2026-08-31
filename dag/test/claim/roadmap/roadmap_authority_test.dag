@@ -828,18 +828,71 @@ test fn witness_terminal_disposition_agrees_with_declared_nodes() -> Bool {
   }
 }
 
-// A test fn returns Bool, so the located cause has to leave by the companion route rather than by
-// the verdict: claim_executor projects this witness's name to its own stem (it carries neither the
-// _holds nor the _passes suffix) and invokes the companion below on Bool(false), whose String names
-// the offending node. Without it the witness above is honestly just a Boolean, which is what the
-// earlier claim of an improved diagnostic got wrong.
-func witness_terminal_disposition_agrees_with_declared_nodes_failure_receipt() -> String {
+// THE LOCATED CAUSE IS EXERCISED HERE, NOT THROUGH A FAILURE-RECEIPT COMPANION. The companion route
+// was written first and then MEASURED, and it does not execute on the path that gates this witness:
+// required_floor_runner's required-floor Fail arm formats "<qualified> returned Bool(false)" without
+// invoking append_failure_receipt_companion_loudness at all, and the one site that does invoke it
+// sits on a discovery path whose only in-tree caller outside its own module is an #[ignore]d unit
+// test. Proven by execution rather than by reading the convention: a planted red (a live roadmap
+// node retargeted to the withdrawn id 2-scm-p0-landing-spine) made this witness FAIL on a real
+// --required-floor run, and the failure line carried no detail. A companion here would therefore be
+// specification-without-execution, so it is not written.
+//
+// The projection still has to be real, so it is asserted by these two witnesses, which DO run on
+// the floor. Each drives one refusal arm and reads the node back out of the String.
+test fn witness_disposition_detail_names_the_still_declared_withdrawn_node() -> Bool {
+  let history = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: history)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let withdrawn = concat(history, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeWithdrawnFromProgram {},
+      reason: "red control: withdrawal claims the node left the program" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-30" as NonEmptyStr,
+    },
+  ])
+  acceptance_disposition_agreement_detail(
+    agreement: acceptance_disposition_agreement(
+      events: withdrawn,
+      declared: declared_node_ids(),
+    ),
+  ) == "withdrawn acceptance node is still declared: node=namespace-occurrence-transport"
+}
+
+test fn witness_disposition_detail_names_the_missing_reopened_node() -> Bool {
+  let history = live_acceptance_event_history()
+  let receipt = first(
+    project_live_acceptance_receipts(history: history)
+      |> filter(r => r.node == tnid(s: "namespace-occurrence-transport")),
+  )
+  let flipped = concat(history, [
+    AcceptanceRevoked {
+      exact_prior_receipt: receipt,
+      disposition: AcceptanceNodeReopensActiveFrontier {},
+      reason: "red control: reopening claims the node is back on the active frontier" as NonEmptyStr,
+      revoked_by: "operator" as NonEmptyStr,
+      revoked_on: "2026-08-30" as NonEmptyStr,
+    },
+  ])
+  acceptance_disposition_agreement_detail(
+    agreement: acceptance_disposition_agreement(
+      events: flipped,
+      declared: declared_node_ids() |> filter(d => d != tnid(s: "namespace-occurrence-transport")),
+    ),
+  ) == "reopened acceptance node has no declaration: node=namespace-occurrence-transport"
+}
+
+test fn witness_disposition_detail_is_empty_when_agreement_holds() -> Bool {
   acceptance_disposition_agreement_detail(
     agreement: acceptance_disposition_agreement(
       events: live_acceptance_event_history(),
       declared: declared_node_ids(),
     ),
-  )
+  ) == ""
 }
 
 test fn witness_reopening_a_deleted_node_refuses() -> Bool {
