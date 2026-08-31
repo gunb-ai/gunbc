@@ -44,9 +44,17 @@ data megarac_vendor: Vendor<Hardware> = ami
 // The family answer is the PUBLISHED default - which is what FactoryLogin's
 // published_password field means - admin/admin being AMI's widely published MegaRAC
 // default; the Foxconn Mt. Collins build observation (its bmc binding module) is
-// corroboration, not the basis. An ODM build may ship differently; a workflow treats
-// this as the first credential to TRY, and a refusal as an already-rotated or
-// differently-shipped build, never as an error to force past.
+// corroboration, not the basis.
+//
+// THIS IS THE ONE CREDENTIAL A WORKFLOW TESTS, NOT THE FIRST OF SEVERAL
+// (NO-FALLBACK-0). It used to read "the first credential to TRY", which describes an
+// ordered search: try this, and on refusal try the next. There is no next. An ODM
+// build may ship differently, and a refusal here is a TERMINAL, typed fact about
+// this unit - the build shipped other credentials, or they have already been rotated
+// - which ends the attempt and is carried by a workflow-layer intake receipt. It is
+// neither an error to force past nor a cue to guess again: a second credential
+// attempted after the first is refused is exactly the fallback this model exists to
+// refuse, and it is also how a fleet locks itself out.
 data megarac_factory_login: FactoryLogin = FactoryLogin {
   username: "admin",
   published_password: "admin",
