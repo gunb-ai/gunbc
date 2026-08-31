@@ -135,16 +135,38 @@ cleanup() {
   fi
   local required_receipt
   local -a required_receipts=(
-    checkpoint.txt canonical-cleanup.txt generation-cleanup.txt generation-verdict.txt
-    dependent-lifetime.txt canonical-release.txt canonical-allocation.txt generation-terminal.txt
-    cell-after-canonical.txt cell-after-dependent.txt cell-terminal.txt
-    zero-work-before-canonical.txt zero-work-after-canonical.txt zero-work-after-dependent.txt zero-work-terminal.txt
-    runtime-directory.txt unit-terminal-fci1-positive-submitter.txt
+    checkpoint.txt canonical-cleanup.txt cell-terminal.txt zero-work-before-canonical.txt
+    zero-work-terminal.txt runtime-directory.txt unit-terminal-fci1-positive-submitter.txt
     unit-terminal-fci1-generation-submitter.txt unit-terminal-fci1-dependent-submitter.txt
   )
+  case $checkpoint in
+    before-canonical-commit|after-canonical-commit-before-transport|after-held-preserved) ;;
+    after-release-before-grading)
+      required_receipts+=(canonical-release.txt)
+      ;;
+    canonical-restored-later)
+      required_receipts+=(canonical-release.txt canonical-allocation.txt cell-after-canonical.txt zero-work-after-canonical.txt)
+      ;;
+    generation-held-one|generation-authority-two-before-commit|generation-held-two)
+      required_receipts+=(canonical-release.txt canonical-allocation.txt cell-after-canonical.txt zero-work-after-canonical.txt generation-cleanup.txt)
+      ;;
+    generation-changed-observed)
+      required_receipts+=(canonical-release.txt canonical-allocation.txt cell-after-canonical.txt zero-work-after-canonical.txt generation-cleanup.txt generation-verdict.txt)
+      ;;
+    generation-free-before-removal)
+      required_receipts+=(canonical-release.txt canonical-allocation.txt cell-after-canonical.txt zero-work-after-canonical.txt generation-cleanup.txt generation-verdict.txt)
+      ;;
+    runtime-directory-terminal)
+      required_receipts+=(canonical-release.txt canonical-allocation.txt cell-after-canonical.txt zero-work-after-canonical.txt generation-terminal.txt generation-verdict.txt dependent-lifetime.txt)
+      ;;
+    none)
+      required_receipts+=(canonical-release.txt canonical-allocation.txt cell-after-canonical.txt zero-work-after-canonical.txt generation-terminal.txt generation-verdict.txt dependent-lifetime.txt cell-after-dependent.txt zero-work-after-dependent.txt)
+      ;;
+  esac
   for required_receipt in "${required_receipts[@]}"; do
     if [[ ! -f $receipt_root/$required_receipt ]]; then
-      printf 'ReceiptCoordinateNotReached|file=%s|checkpoint=%s\n' "$required_receipt" "$checkpoint" >"$receipt_root/$required_receipt" || cleanup_status=1
+      echo "InstrumentRefused: required receipt missing: checkpoint=$checkpoint file=$required_receipt" >&2
+      cleanup_status=1
     fi
   done
   local observed_roster expected_roster
@@ -255,7 +277,9 @@ generation_root=$(mktemp -d /run/fci1-generation-mutation.XXXXXX)
 generation_authority_path="$FABRIC_CI_VALUE_ROOT/generation-cleanup-authority.wire"
 generation_before=$(capture_submitter_transport fci1-generation-submitter.service fci1_live_reserve_and_observe_available generation-before "$generation_root" "$generation_authority_path")
 checkpoint_if_selected generation-held-one
-fabric_ci_run_assertion fci1_assert_replace_held --arg root="$generation_root"
+fabric_ci_run_assertion fci1_assert_replace_held --arg root="$generation_root" \
+  --arg cleanup_path="$generation_authority_path" --arg checkpoint="$checkpoint" \
+  --arg checkpoint_path="$(receipt_path checkpoint)"
 checkpoint_if_selected generation-held-two
 fabric_ci_run_assertion fci1_write_generation_changed_receipt --arg root="$generation_root" --arg before_wire="$generation_before" --arg path="$(receipt_path generation-verdict)"
 checkpoint_if_selected generation-changed-observed

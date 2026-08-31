@@ -73,7 +73,8 @@ import gunbc.fabric_required_build_cell {
 import gunbc.fabric_cell_acquire {
   fabric_cell_probe_wet,
   FabricCellBoundaryReading, BoundaryValuesRead, BoundaryReadRefused,
-  fabric_cell_read_boundary,
+  fabric_cell_probe_reading_wet, fabric_cell_probe_reading_probe,
+  fabric_cell_probe_reading_boundaries,
 }
 import gunbc.fabric_cell_observation_admission {
   FabricCellObservationDecision, FabricCellObservationAdmitted, FabricCellObservationDenied,
@@ -128,6 +129,7 @@ type Fci1Checkpoint
   | Fci1CheckpointAfterReleaseBeforeGrading
   | Fci1CheckpointCanonicalRestoredLater
   | Fci1CheckpointGenerationHeldOne
+  | Fci1CheckpointGenerationAuthorityTwoBeforeCommit
   | Fci1CheckpointGenerationHeldTwo
   | Fci1CheckpointGenerationChangedObserved
   | Fci1CheckpointGenerationFreeBeforeRemoval
@@ -142,6 +144,7 @@ fn fci1_checkpoint_token(checkpoint: Fci1Checkpoint) -> NonEmptyStr {
     Fci1CheckpointAfterReleaseBeforeGrading => "after-release-before-grading"
     Fci1CheckpointCanonicalRestoredLater => "canonical-restored-later"
     Fci1CheckpointGenerationHeldOne => "generation-held-one"
+    Fci1CheckpointGenerationAuthorityTwoBeforeCommit => "generation-authority-two-before-commit"
     Fci1CheckpointGenerationHeldTwo => "generation-held-two"
     Fci1CheckpointGenerationChangedObserved => "generation-changed-observed"
     Fci1CheckpointGenerationFreeBeforeRemoval => "generation-free-before-removal"
@@ -158,6 +161,7 @@ fn fci1_checkpoints() -> List<Fci1Checkpoint> {
     Fci1CheckpointAfterReleaseBeforeGrading,
     Fci1CheckpointCanonicalRestoredLater,
     Fci1CheckpointGenerationHeldOne,
+    Fci1CheckpointGenerationAuthorityTwoBeforeCommit,
     Fci1CheckpointGenerationHeldTwo,
     Fci1CheckpointGenerationChangedObserved,
     Fci1CheckpointGenerationFreeBeforeRemoval,
@@ -546,13 +550,6 @@ fn fci1_member_wire(member: FabricCellMember) -> NonEmptyStr {
   ], "") as NonEmptyStr
 }
 
-fn fci1_path_owner_wire(path: NonEmptyStr) -> String {
-  match srv3_observe_path_owner(transport: LocalShell, path: path) {
-    PathOwnerObserved { owner: owner } => join(["path=", path as String, "|owner_group=", to_string(owner)], "")
-    PathOwnerUnobserved { reason: why } => join(["path=", path as String, "|owner_group_unobserved=", why], "")
-  }
-}
-
 fn fci1_modeled_ownership_wire(member: FabricCellMember) -> NonEmptyStr {
   match fabric_cell_member_ownership(member: member) {
     Absent => "modeled-ownership-absent"
@@ -565,15 +562,38 @@ func fci1_live_replace_held_wire(root: NonEmptyStr) -> String {
   fci1_cell_reservation_wire(reservation: fci1_live_replace_held(root: root))
 }
 
-func fci1_assert_replace_held(root: NonEmptyStr) -> ProcessExit {
-  let outcome = fci1_live_replace_held(root: root)
+func fci1_assert_replace_held(
+  root: NonEmptyStr,
+  cleanup_path: String,
+  checkpoint: NonEmptyStr,
+  checkpoint_path: String,
+) -> ProcessExit {
+  let observed = fci1_allocation_slot_observation(root: root)
+  let expected_generation = match observed {
+    Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation + 1
+    _ => -1
+  }
+  let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
+  let authority_write = Filesystem.Write(
+    path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
+    content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
+  )
+  if expected_generation < 1 { exit_failure(reason: "generation replacement prestate was not Held") }
+  else if !authority_write.success { exit_failure(reason: "ReplacementCleanupAuthorityWriteRefusedBeforeCommit") }
+  else if checkpoint == "generation-authority-two-before-commit" {
+    match fci1_checkpoint_reached(token: checkpoint, phase: checkpoint, path: checkpoint_path) {
+      ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterReplacementAuthorityBeforeCommit" }
+      ExitFailure { code: _, reason: why } => exit_failure(reason: why)
+    }
+  }
+  else { let outcome = fci1_live_replace_held(root: root)
   match outcome {
-    CellReserved { offer: offer, slot_key: slot, generation: _, account: _ } =>
-      if slot == "srv3-06" && offer.key == "offer-1" { ExitSuccess } else {
+    CellReserved { offer: offer, slot_key: slot, generation: generation, account: _ } =>
+      if slot == "srv3-06" && offer.key == "offer-1" && generation == expected_generation { ExitSuccess } else {
         exit_failure(reason: join(["generation replacement selected wrong identity: ", fci1_cell_reservation_wire(reservation: outcome)], ""))
       }
     _ => exit_failure(reason: join(["generation replacement refused: ", fci1_cell_reservation_wire(reservation: outcome)], ""))
-  }
+  } }
 }
 
 func fci1_live_binding_observation(root: NonEmptyStr) -> RequiredBuildCellObservation {
@@ -611,6 +631,23 @@ fn fci1_reservation_cleanup_authority_wire(authority: Fci1ReservationCleanupAuth
     "\n", authority.reservation_payload as String,
     "\n", authority.reservation_content as String,
   ], "") as NonEmptyStr
+}
+
+fn fci1_cleanup_authority(root: NonEmptyStr, generation: Int) -> Fci1ReservationCleanupAuthority {
+  let reservation = cp_probe_reservation_ref()
+  let payload = join(["held|", reservation as String], "") as NonEmptyStr
+  Fci1ReservationCleanupAuthority {
+    root: root,
+    slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()),
+    generation: generation,
+    reservation_identity: reservation as NonEmptyStr,
+    reservation_payload: payload,
+    reservation_content: serialize_content_hash(hash: content_hash_of_value(value: payload)),
+  }
+}
+
+fn fci1_cleanup_authority_generation_path(path: String, generation: Int) -> String {
+  join([path, ".", to_string(generation)], "")
 }
 
 fn fci1_decode_reservation_cleanup_authority(wire: String) -> Fci1ReservationCleanupAuthorityDecode {
@@ -656,24 +693,25 @@ func fci1_live_reserve_and_observe_available(
   checkpoint: NonEmptyStr,
   checkpoint_path: String,
 ) -> ProcessExit {
-  let reserved = fci1_live_reserve_available(root: root)
+  let prestate = fci1_allocation_prestate(root: root)
+  let expected_generation = fci1_expected_held_generation(prestate: prestate)
+  let authority = fci1_cleanup_authority(root: root, generation: expected_generation)
+  let authority_write = Filesystem.Write(
+    path: fci1_cleanup_authority_generation_path(path: cleanup_path, generation: expected_generation),
+    content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
+  )
+  if expected_generation < 1 { exit_failure(reason: "ReservationCleanupAuthorityPrestateRefused") }
+  else if !authority_write.success { exit_failure(reason: "ReservationCleanupAuthorityWriteRefusedBeforeCommit") }
+  else { let reserved = match prestate {
+    AllocationSlotAbsent { path: _ } => fci1_live_reserve(root: root, expected: ExpectSlotAbsent)
+    AllocationSlotFree { path: _, generation: generation } => fci1_live_reserve(root: root, expected: ExpectSlotGeneration { generation: generation })
+    AllocationSlotHeld { path: _, generation: _ } => ReservationLost { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()) }
+    AllocationSlotUnreadable { path: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate unreadable" }
+    AllocationSlotUndecodable { path: _, generation: _ } => AttemptRefused { slot_key: fabric_cell_allocation_key(slot: cp_probe_slot()), detail: "cleanup-authority prestate undecodable" }
+  }
   match reserved {
-    CellReserved { offer: _, slot_key: slot, generation: generation, account: _ } => {
-      let reservation = cp_probe_reservation_ref()
-      let payload = join(["held|", reservation as String], "") as NonEmptyStr
-      let authority = Fci1ReservationCleanupAuthority {
-        root: root,
-        slot_key: slot,
-        generation: generation,
-        reservation_identity: reservation as NonEmptyStr,
-        reservation_payload: payload,
-        reservation_content: serialize_content_hash(hash: content_hash_of_value(value: payload)),
-      }
-      let authority_write = Filesystem.Write(
-        path: cleanup_path,
-        content: fci1_reservation_cleanup_authority_wire(authority: authority) as String,
-      )
-      if !authority_write.success { exit_failure(reason: "ReservationCleanupAuthorityWriteRefused") }
+    CellReserved { offer: _, slot_key: _, generation: generation, account: _ } => {
+      if generation != expected_generation { exit_failure(reason: "ReservationGenerationDisagreedWithPrepublishedCleanupAuthority") }
       else if checkpoint == "after-canonical-commit-before-transport" {
         match fci1_checkpoint_reached(token: checkpoint, phase: checkpoint, path: checkpoint_path) {
           ExitSuccess => ExitFailure { code: 86, reason: "FCI1InjectedFailureAfterCommitBeforeTransport" }
@@ -692,7 +730,7 @@ func fci1_live_reserve_and_observe_available(
     ReservationLost { slot_key: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     StoreUnavailable { slot_key: _, cause: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
     AttemptRefused { slot_key: _, detail: _ } => exit_failure(reason: fci1_cell_reservation_wire(reservation: reserved))
-  }
+  } }
 }
 
 func fci1_live_binding_sample_wire(root: NonEmptyStr, path: String) -> ProcessExit {
@@ -912,6 +950,21 @@ fn fci1_cleanup_authority_from_path(path: String) -> Fci1ReservationCleanupAutho
   else { Fci1ReservationCleanupAuthorityUndecodable }
 }
 
+fn fci1_cleanup_authority_for_observation(
+  path: String,
+  observed: Fci1AllocationSlotObservation,
+) -> Fci1ReservationCleanupAuthorityDecode {
+  let authority_generation = match observed {
+    Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } => generation
+    Fci1SlotFree { path: _, generation: generation, released_by: _, payload: _, content: _ } => generation - 1
+    _ => -1
+  }
+  if authority_generation < 1 { Fci1ReservationCleanupAuthorityUndecodable }
+  else { fci1_cleanup_authority_from_path(
+    path: fci1_cleanup_authority_generation_path(path: path, generation: authority_generation),
+  ) }
+}
+
 fn fci1_authority_matches_held(
   authority: Fci1ReservationCleanupAuthority,
   observed: Fci1AllocationSlotObservation,
@@ -965,7 +1018,7 @@ func fci1_canonical_cleanup_disposition(
           AllocationSlotUnreadable { path: _ } => CanonicalCleanupRefused { prestate: prestate, observed: observed }
           AllocationSlotUndecodable { path: _, generation: _ } => CanonicalCleanupRefused { prestate: prestate, observed: observed }
         }
-      } else { match fci1_cleanup_authority_from_path(path: authority_path) {
+      } else { match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
           if authority.generation == fci1_expected_held_generation(prestate: prestate)
             && fci1_authority_matches_held(authority: authority, observed: observed) {
@@ -995,7 +1048,7 @@ func fci1_canonical_cleanup_disposition(
       } }
       match initial_disposition {
         CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } =>
-          match fci1_cleanup_authority_from_path(path: authority_path) {
+          match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
             Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
               if authority.generation == fci1_expected_held_generation(prestate: prestate)
                 && fci1_authority_matches_exact_free(authority: authority, observed: observed) {
@@ -1039,7 +1092,7 @@ func fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: St
       if write.success { ExitSuccess } else { exit_failure(reason: "disposable no-commit receipt write refused") }
     }
     Fci1SlotHeld { path: _, generation: generation, reservation_identity: _, payload: _, content: _ } =>
-      if generation == 1 || generation == 2 { match fci1_cleanup_authority_from_path(path: authority_path) {
+      if generation == 1 || generation == 2 { match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityUndecodable => exit_failure(reason: "disposable cleanup authority undecodable")
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } => if !fci1_authority_matches_held(authority: authority, observed: observed) {
           exit_failure(reason: "disposable held reservation identity refused")
@@ -1064,7 +1117,7 @@ func fci1_write_disposable_cleanup_receipt(root: NonEmptyStr, authority_path: St
         }
       } } else { exit_failure(reason: "disposable held an unexpected generation") }
     Fci1SlotFree { path: _, generation: generation, released_by: _, payload: _, content: _ } =>
-      match fci1_cleanup_authority_from_path(path: authority_path) {
+      match fci1_cleanup_authority_for_observation(path: authority_path, observed: observed) {
         Fci1ReservationCleanupAuthorityUndecodable => exit_failure(reason: "disposable already-Free authority undecodable")
         Fci1ReservationCleanupAuthorityDecoded { authority: authority } =>
           if (generation == 2 || generation == 3) && fci1_authority_matches_exact_free(authority: authority, observed: observed) {
@@ -1272,9 +1325,6 @@ fn fci1_cell_observation_wire(decision: FabricCellObservationDecision) -> String
         "|members=", join(map(members, m => fci1_member_wire(member: m) as String), ";"),
         "|boundaries=", serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: boundaries)) as String,
         "|modeled-teardown-ownership=", serialize_content_hash(hash: fabric_ci_shell_crossing_coordinates_hash(values: map(members, m => fci1_modeled_ownership_wire(member: m)))) as String,
-        "|base-owner-group=", fci1_path_owner_wire(path: fabric_cell_base_dir as NonEmptyStr),
-        "|cell-owner-group=", fci1_path_owner_wire(path: fabric_cell_root_path(slot: cp_probe_slot()) as NonEmptyStr),
-        "|attempt-owner-group=", fci1_path_owner_wire(path: fabric_cell_attempt_root_path(slot: cp_probe_slot()) as NonEmptyStr),
       ], "")
     }
     FabricCellObservationDenied { host: host, blocked: blocked } => join([
@@ -1283,6 +1333,32 @@ fn fci1_cell_observation_wire(decision: FabricCellObservationDecision) -> String
     ], "")
     FabricCellObservationNotApplicable { host: host } => join(["cell-not-applicable|host=", host as String], "")
   }
+}
+
+// Pure projection of the already acquired carrier.  No renderer is allowed to return to the host:
+// all equality and retained evidence below therefore describe the same owner and boundary reads.
+fn fci1_cell_receipt_wire(
+  decision: FabricCellObservationDecision,
+  memory_max: NonEmptyStr,
+  memory_high: NonEmptyStr,
+  memory_swap_max: NonEmptyStr,
+  tasks_max: NonEmptyStr,
+  cpu_weight: NonEmptyStr,
+  base_owner: PosixOwnerSpec,
+  cell_owner: PosixOwnerSpec,
+  attempt_owner: PosixOwnerSpec,
+) -> NonEmptyStr {
+  join([
+    fci1_cell_observation_wire(decision: decision),
+    "|memory_max=", memory_max as String,
+    "|memory_high=", memory_high as String,
+    "|memory_swap_max=", memory_swap_max as String,
+    "|tasks_max=", tasks_max as String,
+    "|cpu_weight=", cpu_weight as String,
+    "|base_owner_group=", to_string(base_owner),
+    "|cell_owner_group=", to_string(cell_owner),
+    "|attempt_owner_group=", to_string(attempt_owner),
+  ], "") as NonEmptyStr
 }
 
 type Fci1CellReceiptObservation
@@ -1300,7 +1376,8 @@ type Fci1CellReceiptObservation
   | Fci1CellReceiptRefused { detail: String }
 
 fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
-  let decision = admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: "srv3"))
+  let reading = fabric_cell_probe_reading_wet(host: "srv3")
+  let decision = admit_fabric_cell_probe(probe: fabric_cell_probe_reading_probe(reading: reading))
   match fabric_cell_observation_outcome(decision: decision) {
     FabricCellObservationDenied { host: _, blocked: _ } => Fci1CellReceiptRefused { detail: fci1_cell_observation_wire(decision: decision) }
     FabricCellObservationNotApplicable { host: _ } => Fci1CellReceiptRefused { detail: fci1_cell_observation_wire(decision: decision) }
@@ -1315,13 +1392,24 @@ fn fci1_cell_receipt_observation() -> Fci1CellReceiptObservation {
             transport: LocalShell, path: fabric_cell_attempt_root_path(slot: cp_probe_slot()) as NonEmptyStr,
           ) {
             PathOwnerUnobserved { reason: why } => Fci1CellReceiptRefused { detail: why }
-            PathOwnerObserved { owner: attempt_owner } => match fabric_cell_read_boundary(slot: cp_probe_slot()) {
-              BoundaryReadRefused { cause: why } => Fci1CellReceiptRefused { detail: why }
-              BoundaryValuesRead {
+            PathOwnerObserved { owner: attempt_owner } => match fabric_cell_probe_reading_boundaries(reading: reading).first() {
+              Absent => Fci1CellReceiptRefused { detail: "cell probe retained no boundary reading" }
+              Present { value: BoundaryReadRefused { cause: why } } => Fci1CellReceiptRefused { detail: why }
+              Present { value: BoundaryValuesRead {
                 memory_max: memory_max, memory_high: memory_high, memory_swap_max: memory_swap_max,
                 tasks_max: tasks_max, cpu_weight: cpu_weight,
-              } => Fci1CellReceiptAdmitted {
-                wire: fci1_cell_observation_wire(decision: decision) as NonEmptyStr,
+              } } => Fci1CellReceiptAdmitted {
+                wire: fci1_cell_receipt_wire(
+                  decision: decision,
+                  memory_max: memory_max as NonEmptyStr,
+                  memory_high: memory_high as NonEmptyStr,
+                  memory_swap_max: memory_swap_max as NonEmptyStr,
+                  tasks_max: tasks_max as NonEmptyStr,
+                  cpu_weight: cpu_weight as NonEmptyStr,
+                  base_owner: base_owner,
+                  cell_owner: cell_owner,
+                  attempt_owner: attempt_owner,
+                ),
                 memory_max: memory_max as NonEmptyStr,
                 memory_high: memory_high as NonEmptyStr,
                 memory_swap_max: memory_swap_max as NonEmptyStr,
