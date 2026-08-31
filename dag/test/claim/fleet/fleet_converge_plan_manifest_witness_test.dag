@@ -1,6 +1,6 @@
 module test.claim.fleet_converge_plan_manifest_witness
 
-import std.types { String, Bool, Int, NonEmptyStr }
+import std.types { String, Bool, Int, NonEmptyStr, List, list_length }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.actions_run_binding { ActionsRunBinding }
@@ -22,6 +22,27 @@ import gunbc.fleet_converge_plan_manifest {
   PayloadBundleDigestMismatch,
   PayloadDigestUncomputable,
   fleet_converge_apply_payload_admits,
+  FleetConvergePersistedMemberAuthority,
+  ReceiptBoundMember,
+  DerivedFromBoundAuthority,
+  NonAuthoritativePresentation,
+  FleetConvergePersistedMemberClassification,
+  PersistedMemberClassified,
+  UnclassifiedPersistedMember,
+  fleet_converge_persisted_member_authority,
+  fleet_converge_persisted_member_paths,
+}
+import gunbc.fleet_converge_plan {
+  fleet_converge_plan_body_path,
+  fleet_converge_plan_apply_shell_path,
+  fleet_converge_plan_spark_typed_actions_wire_path,
+  fleet_converge_plan_subject_host_path,
+  fleet_converge_plan_subject_scope_path,
+  fleet_converge_plan_member_set_fp_path,
+  fleet_converge_plan_baseline_hex_path,
+  fleet_converge_plan_prior_generation_path,
+  fleet_converge_plan_generation_path,
+  fleet_converge_plan_content_hash_path,
 }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -178,7 +199,7 @@ fn coordinated_full_host_substitution() -> FleetConvergeApplyPayload {
 test fn a_coordinated_other_scope_substitution_refuses_before_any_observation() -> Bool {
   let a = admission_of(payload: coordinated_full_host_substitution())
   !is_admitted_routing_launch(a: a)
-    && diverged_field(a: a) == "/tmp/fleet-converge-plan/subject_scope.txt"
+    && diverged_field(a: a) == fleet_converge_plan_subject_scope_path
 }
 
 // AND EACH SIDECAR ALONE, so the coordinated refusal above cannot be passing for a reason that
@@ -197,7 +218,7 @@ test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool {
     apply_shell: p.apply_shell,
     spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
-  })) == "/tmp/fleet-converge-plan/subject_member_set.txt"
+  })) == fleet_converge_plan_member_set_fp_path
 }
 
 test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
@@ -213,7 +234,7 @@ test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
     apply_shell: p.apply_shell,
     spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
-  })) == "/tmp/fleet-converge-plan/observed_baseline.hex"
+  })) == fleet_converge_plan_baseline_hex_path
 }
 
 test fn a_substituted_subject_host_alone_refuses() -> Bool {
@@ -229,7 +250,7 @@ test fn a_substituted_subject_host_alone_refuses() -> Bool {
     apply_shell: p.apply_shell,
     spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
-  })) == "/tmp/fleet-converge-plan/subject_host.txt"
+  })) == fleet_converge_plan_subject_host_path
 }
 
 // A REWOUND GENERATION IS A REPLAY, not drift: it is how a spent plan is presented as unspent.
@@ -246,7 +267,7 @@ test fn a_rewound_generation_sidecar_refuses() -> Bool {
     apply_shell: p.apply_shell,
     spark_typed_actions_wire: p.spark_typed_actions_wire,
     plan_content_hex: p.plan_content_hex,
-  })) == "/tmp/fleet-converge-plan/prior_generation.txt"
+  })) == fleet_converge_plan_prior_generation_path
 }
 
 // A CORRUPT GENERATION FILE IS ITS OWN ARM, never coerced to zero.
@@ -265,7 +286,7 @@ test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool {
     plan_content_hex: p.plan_content_hex,
   }) {
     PayloadGenerationTextCorrupt { field: f, on_disk_value: _ } =>
-      f == "/tmp/fleet-converge-plan/prior_generation.txt"
+      f == fleet_converge_plan_prior_generation_path
     PayloadAdmitted { routed_scope: _ } => false
     PayloadScopeUndecodableInReceipt { cause: _ } => false
     PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
@@ -406,4 +427,144 @@ test fn doctored_plan_body_bytes_refuse_even_when_the_hex_claim_still_matches() 
     PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
     PayloadDigestUncomputable { path: _ } => false
   }
+}
+
+// ---------------------------------------------------------------------------
+// THE PERSISTED-MEMBER MAP, JOINED TO THE BEHAVIOUR IT DESCRIBES.
+//
+// The classification is only worth having if it cannot drift from what the admission actually does.
+// A roster that says "subject_scope.txt is receipt-bound" while the admission quietly stopped
+// comparing it would be a parallel ledger -- the exact shape DESIGN warns about, and the shape the
+// PR body's table would have been on its own. So these rows assert BOTH halves together: the
+// classification says receipt-bound, AND a divergence in that member produces a refusal naming that
+// same path.
+// ---------------------------------------------------------------------------
+
+fn classifies_receipt_bound_to(path: String, receipt_field: String) -> Bool {
+  match fleet_converge_persisted_member_authority(path: path) {
+    PersistedMemberClassified { path: p, authority: a } =>
+      p == path
+        && match a {
+             ReceiptBoundMember { receipt_field: f } => f == receipt_field
+             DerivedFromBoundAuthority { recomputed_into: _ } => false
+             NonAuthoritativePresentation { justification: _ } => false
+           }
+    UnclassifiedPersistedMember { path: _ } => false
+  }
+}
+
+fn classifies_derived_into(path: String, recomputed_into: String) -> Bool {
+  match fleet_converge_persisted_member_authority(path: path) {
+    PersistedMemberClassified { path: p, authority: a } =>
+      p == path
+        && match a {
+             DerivedFromBoundAuthority { recomputed_into: r } => r == recomputed_into
+             ReceiptBoundMember { receipt_field: _ } => false
+             NonAuthoritativePresentation { justification: _ } => false
+           }
+    UnclassifiedPersistedMember { path: _ } => false
+  }
+}
+
+fn is_classified(path: String) -> Bool {
+  match fleet_converge_persisted_member_authority(path: path) {
+    PersistedMemberClassified { path: _, authority: _ } => true
+    UnclassifiedPersistedMember { path: _ } => false
+  }
+}
+
+// EVERY MEMBER THE PLAN WRITES IS CLASSIFIED. Asserted over the roster rather than one path at a
+// time, so a member added to the roster without a classification arm is red here rather than
+// discovered by whoever next reads the fold.
+test fn every_rostered_persisted_member_is_classified() -> Bool {
+  list_length(items: fleet_converge_persisted_member_paths) == 10
+    && all(fleet_converge_persisted_member_paths, p => is_classified(path: p))
+}
+
+// THE DISCRIMINATING RED, and the reason the fold has no default arm. An unrecognized path is
+// UnclassifiedPersistedMember, so an eleventh sidecar added without classifying it fails loudly
+// instead of silently acquiring whatever category the last `else` happened to name. Without this
+// row the "no fourth category" property would be a reading of the source rather than a wall.
+test fn an_unrecognized_persisted_path_is_refused_rather_than_defaulted() -> Bool {
+  match fleet_converge_persisted_member_authority(
+    path: "/tmp/fleet-converge-plan/an_eleventh_sidecar_nobody_classified.txt",
+  ) {
+    UnclassifiedPersistedMember { path: p } =>
+      p == "/tmp/fleet-converge-plan/an_eleventh_sidecar_nobody_classified.txt"
+    PersistedMemberClassified { path: _, authority: _ } => false
+  }
+}
+
+// THE MAP AGREES WITH THE ADMISSION, member by member, for every category-1 sidecar this file can
+// diverge independently. Each conjunct pairs the CLASSIFICATION with the EXECUTED refusal that
+// names the same path, so the two cannot drift apart without a red.
+test fn the_receipt_bound_classification_matches_the_executed_refusal() -> Bool {
+  let p = coherent_payload()
+  classifies_receipt_bound_to(path: fleet_converge_plan_subject_host_path, receipt_field: "observed_host")
+    && diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
+         subject_host_text: "srv2",
+         subject_scope_text: p.subject_scope_text,
+         subject_member_set_text: p.subject_member_set_text,
+         observed_baseline_hex_text: p.observed_baseline_hex_text,
+         prior_generation_text: p.prior_generation_text,
+         planned_generation_text: p.planned_generation_text,
+         plan_body: p.plan_body,
+         apply_shell: p.apply_shell,
+         spark_typed_actions_wire: p.spark_typed_actions_wire,
+         plan_content_hex: p.plan_content_hex,
+       })) == fleet_converge_plan_subject_host_path
+    && classifies_receipt_bound_to(path: fleet_converge_plan_subject_scope_path, receipt_field: "scope_wire")
+    && diverged_field(a: admission_of(payload: coordinated_full_host_substitution()))
+         == fleet_converge_plan_subject_scope_path
+    && classifies_receipt_bound_to(
+         path: fleet_converge_plan_member_set_fp_path,
+         receipt_field: "member_set_fingerprint_hex",
+       )
+    && classifies_receipt_bound_to(
+         path: fleet_converge_plan_baseline_hex_path,
+         receipt_field: "observed_baseline_hex",
+       )
+    && classifies_receipt_bound_to(
+         path: fleet_converge_plan_prior_generation_path,
+         receipt_field: "prior_generation",
+       )
+    && classifies_receipt_bound_to(
+         path: fleet_converge_plan_generation_path,
+         receipt_field: "planned_generation",
+       )
+    && classifies_receipt_bound_to(
+         path: fleet_converge_plan_content_hash_path,
+         receipt_field: "plan_artifact_hash",
+       )
+}
+
+// AND THE DERIVED MEMBERS NAME THE VALUE THEY ARE RECOMPUTED INTO. All three ride one digest, which
+// is why doctoring any of their bytes surfaces as a bundle mismatch against the receipt rather than
+// as a per-file comparison -- the map says derived, and that is exactly what the executed rows
+// doctored_apply_bytes_* and doctored_plan_body_bytes_* observe.
+test fn the_derived_classification_names_the_bound_value_it_is_recomputed_into() -> Bool {
+  classifies_derived_into(path: fleet_converge_plan_body_path, recomputed_into: "plan_artifact_hash")
+    && classifies_derived_into(path: fleet_converge_plan_apply_shell_path, recomputed_into: "plan_artifact_hash")
+    && classifies_derived_into(
+         path: fleet_converge_plan_spark_typed_actions_wire_path,
+         recomputed_into: "plan_artifact_hash",
+       )
+}
+
+// CATEGORY THREE IS EMPTY, EXECUTED RATHER THAN ASSERTED IN PROSE. An empty set has two causes --
+// nothing qualified, or nothing was asked -- and this row settles which: every rostered member is
+// asked, and none answers NonAuthoritativePresentation.
+test fn no_persisted_member_is_currently_non_authoritative() -> Bool {
+  all(
+    fleet_converge_persisted_member_paths,
+    p => match fleet_converge_persisted_member_authority(path: p) {
+      PersistedMemberClassified { path: _, authority: a } =>
+        match a {
+          NonAuthoritativePresentation { justification: _ } => false
+          ReceiptBoundMember { receipt_field: _ } => true
+          DerivedFromBoundAuthority { recomputed_into: _ } => true
+        }
+      UnclassifiedPersistedMember { path: _ } => false
+    },
+  )
 }

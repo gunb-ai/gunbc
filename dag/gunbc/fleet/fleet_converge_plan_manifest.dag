@@ -55,6 +55,76 @@ import gunbc.fleet_converge_plan {
 // digest over the actual bytes, so that a doctored plan body and a doctored hex file are two
 // different, separately named refusals instead of one covering for the other.
 
+// EVERY PERSISTED MEMBER, CLASSIFIED, WITH NO ROOM FOR A FOURTH ANSWER.
+//
+// The rule this encodes: a persisted file need not be in the authority digest, but only when apply
+// no longer TRUSTS it for any decision -- it may not select the observer arm, the baseline
+// population, the member-set fingerprint authority, the terminal, the apply shell, or the receipt
+// subject. Before this PR, subject_scope.txt failed that test while sitting outside the digest, and
+// the gap was invisible because nothing in the repository stated which category each file was in.
+//
+// THREE ARMS AND NO WILDCARD, so the classification is exhaustive by construction. There is
+// deliberately no arm for "covered incidentally by some other fingerprint": that is the sentence
+// under which subject_member_set.txt and observed_baseline.hex went unexamined -- they were each
+// folded into a hash somewhere, so nobody asked whether apply READ them, and it did.
+type FleetConvergePersistedMemberAuthority
+  = ReceiptBoundMember { receipt_field: String }
+  | DerivedFromBoundAuthority { recomputed_into: String }
+  | NonAuthoritativePresentation { justification: String }
+
+// TOTAL OVER THE PATH, and the refusal arm is what makes it total honestly: a path this fold does
+// not recognize is UnclassifiedPersistedMember rather than a default category, so adding an eighth
+// sidecar without classifying it is a loud failure at the witness rather than a silent third rail.
+type FleetConvergePersistedMemberClassification
+  = PersistedMemberClassified { path: String, authority: FleetConvergePersistedMemberAuthority }
+  | UnclassifiedPersistedMember { path: String }
+
+fn fleet_converge_persisted_member_authority(path: String) -> FleetConvergePersistedMemberClassification {
+  if path == fleet_converge_plan_subject_host_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "observed_host" } }
+  } else if path == fleet_converge_plan_subject_scope_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "scope_wire" } }
+  } else if path == fleet_converge_plan_member_set_fp_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "member_set_fingerprint_hex" } }
+  } else if path == fleet_converge_plan_baseline_hex_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "observed_baseline_hex" } }
+  } else if path == fleet_converge_plan_prior_generation_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "prior_generation" } }
+  } else if path == fleet_converge_plan_generation_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "planned_generation" } }
+  } else if path == fleet_converge_plan_content_hash_path {
+    PersistedMemberClassified { path: path, authority: ReceiptBoundMember { receipt_field: "plan_artifact_hash" } }
+  } else if path == fleet_converge_plan_body_path {
+    PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
+  } else if path == fleet_converge_plan_apply_shell_path {
+    PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
+  } else if path == fleet_converge_plan_spark_typed_actions_wire_path {
+    PersistedMemberClassified { path: path, authority: DerivedFromBoundAuthority { recomputed_into: "plan_artifact_hash" } }
+  } else {
+    UnclassifiedPersistedMember { path: path }
+  }
+}
+
+// THE PERSISTED POPULATION, AS A ROSTER. The classification above answers per path; this states
+// WHICH paths the plan writes, so the two together are a closed map rather than a lookup nobody
+// enumerates. The witness joins them at identity grain.
+data fleet_converge_persisted_member_paths: List<String> = [
+  fleet_converge_plan_subject_host_path,
+  fleet_converge_plan_subject_scope_path,
+  fleet_converge_plan_member_set_fp_path,
+  fleet_converge_plan_baseline_hex_path,
+  fleet_converge_plan_prior_generation_path,
+  fleet_converge_plan_generation_path,
+  fleet_converge_plan_content_hash_path,
+  fleet_converge_plan_body_path,
+  fleet_converge_plan_apply_shell_path,
+  fleet_converge_plan_spark_typed_actions_wire_path,
+]
+
+// CATEGORY THREE IS EMPTY TODAY, AND THAT IS AN OBSERVATION RATHER THAN AN OMISSION. Every file the
+// plan writes is either compared to the run-bound receipt directly or recomputed into a value that
+// is. The arm exists because a future presentation-only sidecar is a legitimate thing to add -- but
+// it must be classified as one deliberately, which is the point of the fold having no default.
 // THE ON-DISK POPULATION APPLY READS, AS ONE VALUE.
 //
 // It is a record rather than ten parameters because the admission below must be TOTAL over it: a
