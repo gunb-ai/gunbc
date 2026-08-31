@@ -77,6 +77,16 @@ type CompileDiagnosticCensusRow {
   count: Int
 }
 
+// THE ROW SET IS THE WHOLE COMPILE'S, NOT THE PROBED SOURCE'S. CensusObserved carries every
+// diagnostic that compile produced, the imported modules and their closure included, so a census
+// taken of a fixture that imports any production module carries that closure's rows - blocking ones
+// among them - and a CensusObserved is not evidence that the fixture itself compiled clean. A
+// witness reading census_total_count == 0 as "the fixture still compiles" is asserting a property of
+// the corpus, and on any importing fixture that assertion is permanently false: a check whose RED is
+// unauthorable, which DESIGN 4b names a decoration rather than a weak wall. Two forms ARE exact
+// here: a count scoped to a class AND subject_name, and a DIFFERENTIAL between two censuses whose
+// sources differ on one axis, where the shared closure cancels. Receipt for both:
+// test.claim.machine_intake.no_fallback_plan_ineligibility_wall_test.
 type CompileDiagnosticCensus
   = CensusObserved { rows: List<CompileDiagnosticCensusRow> }
   | CensusNotRunnable { cause: NonEmptyStr }
