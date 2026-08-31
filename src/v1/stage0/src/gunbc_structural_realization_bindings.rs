@@ -8,7 +8,7 @@ use crate::std_literal_elaboration::LiteralUnfolding::{BooleanUnfold, PeanoUnfol
 pub use crate::std_literal_elaboration::{
     LiteralHomomorphism, LiteralSourceKind, LiteralUnfolding,
 };
-pub use crate::std_operator_realization::StructuralOrderingBinding;
+pub use crate::std_operator_realization::{StructuralConnectiveBinding, StructuralOrderingBinding};
 use crate::std_types::Bool::*;
 pub use crate::std_types::{Bool, List, NonEmptyStr};
 use crate::v1_rt;
@@ -86,4 +86,22 @@ pub fn structural_ordering_rows() -> Rc<Vec<Rc<StructuralOrderingBinding>>> {
         };
     }
     CACHED.with(|c: &Rc<Vec<Rc<StructuralOrderingBinding>>>| c.clone())
+}
+
+pub fn structural_connective_binding(
+    carrier_module: String,
+    carrier: String,
+) -> Rc<StructuralConnectiveBinding> {
+    Rc::new(StructuralConnectiveBinding {
+        carrier: crate::std_decl_ref::decl_ref(carrier_module.clone(), carrier.clone()),
+    })
+}
+
+pub fn structural_connective_rows() -> Rc<Vec<Rc<StructuralConnectiveBinding>>> {
+    thread_local! {
+        static CACHED: Rc<Vec<Rc<StructuralConnectiveBinding>>> = {
+            Rc::new(vec![structural_connective_binding("v2.std.logic".to_string(), "Bool".to_string())])
+        };
+    }
+    CACHED.with(|c: &Rc<Vec<Rc<StructuralConnectiveBinding>>>| c.clone())
 }
