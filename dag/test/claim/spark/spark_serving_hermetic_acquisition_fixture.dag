@@ -98,6 +98,10 @@ import gunbc.spark.serving_observe {
 }
 import gunbc.spark.serving_loaded_release { SparkServingReadback, SparkServingUnitAbsent }
 import gunbc.spark.serving_readback_parse { SparkServingReadbackAbsent }
+import gunbc.spark.serving_unit_render {
+  spark_serving_user_unit_content_wire,
+  spark_serving_desired_user_unit_text,
+}
 import gunbc.spark.serving_boot_provenance { BootProvenanceUnobserved }
 import gunbc.spark.managed_access_bootstrap { GrantProbeRefused }
 import gunbc.ollama_runtime_bundle {
@@ -451,7 +455,12 @@ fn hermetic_linger_varied_observation(
 // observed, enabled, running unit -- the state a converged host is in.
 fn hermetic_unit_captures() -> List<SparkServingProbeLegCapture> {
   [
-    hermetic_leg(request: UserUnitReadRequest, exit_code: 0, out: "hermetic-unit-wire", err: ""),
+    hermetic_leg(
+      request: UserUnitReadRequest,
+      exit_code: 0,
+      out: spark_serving_user_unit_content_wire(text: spark_serving_desired_user_unit_text()),
+      err: "",
+    ),
     hermetic_leg(request: UserUnitIsEnabledRequest, exit_code: 0, out: "enabled", err: ""),
     hermetic_leg(request: IsActiveRequest, exit_code: 0, out: "active", err: ""),
   ]
