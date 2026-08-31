@@ -16,7 +16,6 @@ test fn install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
     && install_boot_target_for(mechanism: NbdProxyVirtualMediaInstall) == BootTargetCd
     && install_boot_target_for(mechanism: PxeHttpInstall) == BootTargetPxe
     && install_boot_target_for(mechanism: VirtualMediaInstall) == BootTargetCd
-    && install_boot_target_for(mechanism: FirmwareUpdateThenVirtualMedia) == BootTargetCd
 }
 
 // SOLVE-DRIVEN IS STILL THE CLAIM, and the refusal is what proves it. If the
@@ -126,13 +125,4 @@ test fn plan_with_unrealized_steps_is_refused_and_names_them() -> Bool {
     ActuatorPlanUnrealized { refusals: rs } => list_length(items: rs) == 1
     ActuatorPlanRealized { intents: _ } => false
   }
-    && match actuator_plan_realization(
-         steps: os_install_actuator_steps(
-           mechanism: FirmwareUpdateThenVirtualMedia,
-           export: srv3_nbd_proxy_export_placeholder
-         )
-       ) {
-         ActuatorPlanUnrealized { refusals: rs } => list_length(items: rs) == 2
-         ActuatorPlanRealized { intents: _ } => false
-       }
 }

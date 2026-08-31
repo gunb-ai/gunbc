@@ -2205,7 +2205,10 @@ thread_local! {
 /// same quantity WHILE a claim runs, and the interpreter cannot read a cell owned here, so one
 /// counter serves both readers instead of two drifting apart (one accounting rule, two homes —
 /// the defect this line of work closes).
-fn record_shared_artifact_fill_cpu(nanos: u128) {
+///
+/// `pub(crate)` because `coproduct_reflection`'s decl_facts memo fills a shared artifact on the
+/// same rule and must reach this one accumulator rather than opening a second.
+pub(crate) fn record_shared_artifact_fill_cpu(nanos: u128) {
     v1_interpreter::record_shared_artifact_fill_cpu_nanos(nanos);
 }
 
@@ -2213,7 +2216,7 @@ fn record_shared_artifact_fill_cpu(nanos: u128) {
 /// the same miss paths as `record_shared_artifact_fill_cpu`. The two are recorded together at
 /// every call site so a fill can never be counted on one clock and not the other — which is the
 /// state that produced the defect this pair exists to close.
-fn record_shared_artifact_fill_wall(nanos: u128) {
+pub(crate) fn record_shared_artifact_fill_wall(nanos: u128) {
     SHARED_ARTIFACT_FILL_WALL_NANOS.with(|c| c.set(c.get().saturating_add(nanos)));
 }
 

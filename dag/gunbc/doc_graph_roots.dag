@@ -1068,11 +1068,11 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "srv3-webui-kvm-virtual-media",
-    primary_work: DeclarationRef { module_path: "gunbc.os_install_mechanism", decl_name: "solve_install_mechanism", field: WholeDeclaration },
+    primary_work: DeclarationRef { module_path: "gunbc.boot_artifact_delivery", decl_name: "solve_boot_artifact_delivery", field: WholeDeclaration },
     additional_works: [
       DeclarationRef { module_path: "extdeps.external_authority", decl_name: "ExternalAuthority", field: WholeDeclaration },
     ],
-    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject solve_install_mechanism describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject solve_boot_artifact_delivery describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
