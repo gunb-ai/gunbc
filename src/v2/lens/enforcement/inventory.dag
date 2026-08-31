@@ -87,6 +87,24 @@ fn disposition_when_bool(enrolled: Bool) -> SchedulingDisposition {
   if enrolled { SchedulingEnrolled } else { SchedulingExcluded }
 }
 
+// Pattern arms are resolved against the WitnessConsumerCadence scrutinee. Keep this predicate
+// local and keep LensExecutionCadence.OfflineLocalRecipe's colliding spelling: importing or bare-
+// calling an owner-side predicate, or renaming the local arm, perturbs the prepared bare closure
+// of unrelated import-free v2.lens.mock_totality modules (gunbc#9741's 21-row discriminator).
+fn primary_is_offline_local_recipe(primary: WitnessConsumerCadence) -> Bool {
+  match primary {
+    DiscoverySelection => false
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => true
+    FixtureExplicitRoster => false
+    NoConsumer => false
+  }
+}
+
 fn pr_floor_scheduling_disposition(
   primary: WitnessConsumerCadence,
   ci_enrolled: Bool
@@ -152,7 +170,7 @@ fn scheduling_disposition_for_primary_cadence(
     SubstrateLongLane =>
       disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
     OfflineLocalRecipe =>
-      disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
+      disposition_when_bool(enrolled: primary_is_offline_local_recipe(primary: primary))
     ScheduledFalsifier =>
       scheduled_falsifier_scheduling_disposition(primary: primary)
   }

@@ -2902,6 +2902,7 @@ fn render_round_cost_receipt(
     rustfmt_spawns: u64,
     marks: &[v1_rt::TraceLedgerRow],
     changed_paths: &[String],
+    installed_mirrors: &[String],
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -2971,6 +2972,10 @@ fn render_round_cost_receipt(
         })
         .collect();
     let path_values: Vec<Value> = changed_paths.iter().map(str_value).collect();
+    // The regen's own drift answer, at the grain it installed: `gunbc.stage0_partition_rebuild_scope`
+    // reads it to derive which packages a change-denominated rebuild would compile. Passed as data,
+    // never re-derived here — the host owns no part of that decision.
+    let installed_values: Vec<Value> = installed_mirrors.iter().map(str_value).collect();
     let receipt = Value::Record {
         type_name: ctx.sym("RegenRoundCostReceipt"),
         fields: Rc::new(vec![
@@ -2991,6 +2996,10 @@ fn render_round_cost_receipt(
             (
                 ctx.sym("changed_paths"),
                 Value::List(Rc::new(path_values.into())),
+            ),
+            (
+                ctx.sym("installed_mirrors"),
+                Value::List(Rc::new(installed_values.into())),
             ),
         ]),
     };
@@ -3077,7 +3086,12 @@ pub fn run_regen_round_cost(
 
     let mut rebuild_compiled_crates = 0;
     let mut changed_paths: Vec<String> = Vec::new();
+    // The drift answer is kept past the install because it is the rebuild scope's input: the
+    // receipt reports which packages a change-denominated rebuild of THESE mirrors would compile,
+    // beside what the whole-crate rebuild above actually cost.
+    let mut installed_mirrors: Vec<String> = Vec::new();
     if let Some(drifted) = drifted {
+        installed_mirrors = drifted.clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         install_candidate_paths(&candidate_src, &stage0_src, &drifted)?;
         v1_rt::trace_mark("round.install.done".to_string());
@@ -3116,6 +3130,7 @@ pub fn run_regen_round_cost(
         rustfmt_spawn_count() - rustfmt_spawns_before,
         &marks,
         &changed_paths,
+        &installed_mirrors,
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -3168,6 +3183,7 @@ mod regen_round_cost_tests {
             7,
             &marks,
             &["v1_rt.rs".to_string()],
+            &["v1_rt.rs".to_string()],
         )
         .expect("the model renders a host-built receipt");
         assert_eq!(
@@ -3178,7 +3194,13 @@ mod regen_round_cost_tests {
              regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\n\
              regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
              regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
-             regen-round-cost: changed_paths=1 [v1_rt.rs]\n"
+             regen-round-cost: changed_paths=1 [v1_rt.rs]\n\
+             partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[v1_rt.rs] \
+             owning_packages=[v1-stage0-runtime] \
+             package_closure=[v1-stage0-runtime, v1-stage0-std-core, v1-stage0-std-surface, \
+             v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-v1-infer, \
+             v1-stage0-emit-core] \
+             executable_assembly=unavailable trigger=PartitionedClaimExecutorAssembly\n"
         );
     }
 
