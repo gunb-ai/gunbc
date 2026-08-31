@@ -293,14 +293,16 @@ fn clippy_findings_from_stdout(stdout: String) -> List<ClippyFinding> {
     )
 }
 
-fn static_arm_debug_text(stdout: String) -> String {
+fn static_arm_debug_text(ok: Bool, stdout: String, stderr: String) -> String {
   let findings = clippy_findings_from_stdout(stdout: stdout)
   let clones = findings |> filter(f => finding_is_clone_lint(f: f))
   let files = clones |> fold(init: "", f: (acc, f) =>
     concat(acc, concat("\nclone_finding file=", concat(f.file, concat(" line=", to_string(f.line))))))
-  concat("findings_total=", concat(to_string(findings |> count),
+  concat("clippy_ok=", concat(to_string(ok),
+  concat(" findings_total=", concat(to_string(findings |> count),
   concat(" clone_findings=", concat(to_string(clones |> count),
-  concat(" stdout_bytes=", concat(to_string(string_length(s: stdout)), files))))))
+  concat(" stdout_bytes=", concat(to_string(string_length(s: stdout)),
+  concat(" stderr_tail=", concat(stderr_tail(s: stderr), files))))))))))
 }
 
 fn finding_is_clone_lint(f: ClippyFinding) -> Bool {
@@ -390,7 +392,13 @@ fn behavior_for_case(
           Absent => BehaviorUnavailable { phase: "interpreted_driver", detail: concat("no interpreted result line for cardinality ", to_string(n)) }
           Present { value: iv } =>
             match result_at(lines: n_lines, cardinality: n) {
-              Absent => BehaviorUnavailable { phase: "native_runner", detail: concat("no native result line for cardinality ", to_string(n)) }
+              Absent =>
+                match observation_at(lines: n_lines, cardinality: n) {
+                  CaseNondeterministicLine { slug: _, cardinality: k } =>
+                    BehaviorUnavailable { phase: "native_runner", detail: concat("nondeterministic repeats at cardinality ", to_string(k)) }
+                  _ =>
+                    BehaviorUnavailable { phase: "native_runner", detail: concat("no native result line for cardinality ", to_string(n)) }
+                }
               Present { value: nv } =>
                 if iv == nv { BehaviorAgreed }
                 else {
@@ -491,10 +499,12 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                   refuse_all(rows: rows, r: ShardRefusal { phase: "fixture_write", detail: a.runner_source_path })
                 } else {
                   let clippy = cargo.Build.Clippy(
-                    extra_args: ["--release", "--manifest-path", a.manifest_path, "--target-dir", concat(a.base, "/target"), "--message-format=json"],
+                    extra_args: ["--release", "--all-targets", "--manifest-path", a.manifest_path, "--target-dir", concat(a.base, "/target"), "--message-format=json"],
                     lint_args: ["-W", ecq_lint_name]
                   )
-                  let static_debug = Filesystem.Write(path: concat(a.base, "/static_arm.txt"), content: static_arm_debug_text(stdout: clippy.stdout))
+                  let static_debug = Filesystem.Write(
+                    path: concat(root, concat("/target/emit_copy_qual/receipts/", concat(shard_slug(c: c, mutant: mutant), "_static_arm.txt"))),
+                    content: static_arm_debug_text(ok: clippy.success, stdout: clippy.stdout, stderr: clippy.stderr))
                   let build = cargo.Build.BuildManifest(
                     workdir: root,
                     manifest_path: a.manifest_path,

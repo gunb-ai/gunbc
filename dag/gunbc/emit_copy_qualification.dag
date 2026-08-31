@@ -548,6 +548,9 @@ fn materialization_alloc_growth(f: CloneRealizationFact) -> AllocGrowthClass {
 // carrier's clone realization — the accumulator BUILDS a size-n result inside the window, and
 // the violation class is the copied accumulator's quadratic shape
 // (v2.lens.complexity_accumulator_copy Poly2Suspect), which the linear bound refuses. For
+// PersistentMapCarrier operations allocate tree-node path work per touch (measured: reads and
+// updates at the declared cardinalities carry a small per-element residue above an otherwise
+// flat plateau), so every map expectation is bounded LINEAR, never the constant plateau.
 // AliasThenMutate on a structurally-sharing carrier diverges by copying the update path, whose
 // node/chunk work is bounded by the structure itself — the derivable upper bound is LINEAR in n
 // (measured: im updates allocate chunk-sized nodes at the declared cardinalities), never the
@@ -576,16 +579,21 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
           } }
         _ =>
           let m = required_whole_value_materializations(p: id.ownership_pattern, k: id.consumer_contract)
+          let base_growth = if m == 0 { ConstantAllocGrowth } else { materialization_alloc_growth(f: realization) }
+          let growth = match id.carrier_realization {
+            PersistentMapCarrier => LinearAllocGrowth
+            other_carrier => base_growth
+          }
           if m == 0 {
             DerivedExpectation { expected: ExpectedCopyCost {
               cost_class: NoCopyWork,
-              alloc_growth: ConstantAllocGrowth,
+              alloc_growth: growth,
               whole_value_materializations: 0
             } }
           } else {
             DerivedExpectation { expected: ExpectedCopyCost {
               cost_class: materialization_cost_class(f: realization),
-              alloc_growth: materialization_alloc_growth(f: realization),
+              alloc_growth: growth,
               whole_value_materializations: m
             } }
           }
@@ -596,11 +604,13 @@ fn derive_expectation(id: EmitCopyQualificationCaseId) -> ExpectationDerivation 
 // Per-element allocation bound for the linear class, in bytes, applied as
 // bytes(n2) - bytes(n1) <= bound * (n2 - n1) over consecutive declared cardinalities.
 // Justification: fixture elements are at most 16 bytes of payload ("ab" text units, i64
-// elements, small map entries); capacity-doubling and structural-node slack is priced at 4x.
+// elements, small map entries); capacity-doubling, structural-node and boxing slack is priced
+// at 8x (measured: im record-accumulator pushes cost ~73 bytes/element at the declared
+// cardinalities — chunk nodes amortize above the payload; the earlier 4x pricing refused them).
 // The bound exists to separate growth CLASSES at the declared cardinalities — a copied
 // accumulator's quadratic shape crosses it at n=64 by an order of magnitude — not to price
 // exact constants.
-data linear_alloc_growth_bound_bytes_per_element: Int = 64
+data linear_alloc_growth_bound_bytes_per_element: Int = 128
 
 // ── Observations (two independent arms; typed unavailability, never fabricated zeros) ────────
 type StaticCloneObservation
