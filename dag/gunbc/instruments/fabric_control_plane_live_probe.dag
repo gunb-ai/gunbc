@@ -992,7 +992,7 @@ func fci1_canonical_cleanup_disposition(
             }
           } else { CanonicalCleanupRefused { prestate: prestate, observed: observed } }
         Fci1ReservationCleanupAuthorityUndecodable => CanonicalCleanupRefused { prestate: prestate, observed: observed }
-      } }
+      }
       let disposition = match initial_disposition {
         CanonicalCleanupRefused { prestate: refused_prestate, observed: refused_observed } =>
           match fci1_cleanup_authority_from_path(path: authority_path) {
@@ -1016,6 +1016,7 @@ func fci1_canonical_cleanup_disposition(
       } }
     }
   }
+}
 func fci1_write_canonical_cleanup_receipt(root: NonEmptyStr, before_wire: String, authority_path: String, path: String) -> ProcessExit {
   let disposition = fci1_canonical_cleanup_disposition(root: root, before_wire: before_wire, authority_path: authority_path)
   let write = Filesystem.Write(path: path, content: to_string(disposition))
