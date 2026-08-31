@@ -193,11 +193,21 @@ while total reconciliation remained six to seven minutes. A second throwaway tim
 no longer one inference module holding most reconciliation cost on this population; most of the
 remaining six-minute reconcile is outside these slow `infer_items` calls.
 
-This is the transformed outcome, not a declaration that reconciliation is cheap. The next
-measurement is a current-main phase partition of reconciliation on this exact `dag`-primary
-population: time `build_type_env`, `build_module_context`, `infer_items`, and the three rewire
-passes separately before proposing candidate #4. The old partition cannot be carried forward:
-both the population and the runtime map carrier changed after it was measured.
+This is the transformed outcome, not a declaration that reconciliation is cheap. A current-main
+phase partition on the same `dag`-primary population attributes the six-minute reconcile rather
+than leaving a subtraction: typecheck 264.9s, comprising `infer_items` 133.7s,
+`build_type_env` 61.0s, `build_module_context` 36.4s, and about 34s residual; outside typecheck,
+the import-binding identity rewire is 62.6s, parent rewire 8.5s, function-environment rewire 5.5s,
+and emit-info construction 12.8s. Producer: the no-entry three-root command named above, with a
+throwaway timer in `v1.compiler.infer::reconcile_with_census_extra` and aggregate timers at
+`typecheck_module`'s three named calls. The old partition cannot be carried forward: both the
+population and the runtime map carrier changed after it was measured.
+
+The new shape has no single inference outlier to optimize. Its preparation-shaped 97.4s
+(`build_type_env` plus `build_module_context`) converges on the separately measured per-scope
+closure-growth surface; coordinate with that authority rather than building a second cache beside
+it. The remaining inference question is distribution, not recurrence of the old singleton:
+133.7s aggregate against only about 57s in modules individually above 500ms.
 
 **The two apparent per-module copied-accumulator repairs are obsolete on current main.** Reading
 `merge_global_bare_variant_locals` and the immediately following
