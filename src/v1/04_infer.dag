@@ -5012,9 +5012,7 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
           Absent => LiteralBoundaryPlain
           Present { value: destination } =>
             let kind = literal_source_kind_of(value: lit)
-            let census_file = declaration_ref_census_file(d: destination, env: scope.type_env)
-            let natively_file = if census_file != "" { census_file } else { type_reference_decl_file(n: exp) }
-            let natively = decl_file_realizes_natively(decl_file: natively_file)
+            let natively = decl_file_realizes_natively(decl_file: type_reference_decl_file(n: exp))
             match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, destination_realizes_natively: natively) {
               DirectLiteral => LiteralBoundaryPlain
               ViaHomomorphism { homomorphism: h } =>

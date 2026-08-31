@@ -121,7 +121,7 @@ import v1.compiler.trait_bound_witness {
 
 import std.types { is_container_type, is_kernel_type, container_template_algebra }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref, declaration_ref_census_file }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, GlobalBareLookupState, GlobalBareUniqueBinding, GlobalBareAmbiguousBinding, empty_symbol_index, binding_declares_span, type_reference_declaration_ref }
 import std.operator_realization {
   OperatorRealization, HostOperator, StructuralEquality, StructuralComparison, OperatorRealizationRefused,
   OperandRealization, HostNumericOperand, StructuralOperand, OperandIdentityUnavailable,
