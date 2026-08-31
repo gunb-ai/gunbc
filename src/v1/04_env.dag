@@ -1397,7 +1397,7 @@ fn declaration_ref_from_module_binding(n: Node, source_indices: Map<String, Newl
         Present { value: d } => Present { value: d }
         Absent => declaration_ref_from_unique_census(decl_name: qualified_last_segment(name: authored), env: env)
       }
-    Absent => declaration_ref_from_unique_census(decl_name: qualified_last_segment(name: authored), env: env)
+    Absent => none
   }
 }
 
@@ -1434,10 +1434,7 @@ fn declaration_ref_census_file(d: DeclarationRef, env: TypeEnv) -> String {
 
 fn type_reference_declaration_ref(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> DeclarationRef? {
   let authored_leaf = qualified_last_segment(name: authored_name_at(source_indices: source_indices, node: n))
-  match type_reference_declaration_ref_hops(n: n, source_indices: source_indices, env: env, authored_leaf: authored_leaf) {
-    Present { value: d } => Present { value: d }
-    Absent => declaration_ref_from_unique_census(decl_name: authored_leaf, env: env)
-  }
+  type_reference_declaration_ref_hops(n: n, source_indices: source_indices, env: env, authored_leaf: authored_leaf)
 }
 
 fn type_reference_declaration_ref_hops(n: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv, authored_leaf: String) -> DeclarationRef? {
