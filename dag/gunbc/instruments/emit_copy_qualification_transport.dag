@@ -27,7 +27,7 @@ import gunbc.emit_copy_qualification {
 }
 import gunbc.emit_copy_qualification_fixture_gen {
   MutantPlan, CleanSubject, DisconnectCounter, mutant_plan_slug,
-  fixture_module_text, fixture_module_name, runner_main_text,
+  fixture_module_text, fixture_module_name, driver_module_text, runner_main_text,
   shard_case_rows, shard_cardinalities, shard_runner_bin_name
 }
 
@@ -50,6 +50,8 @@ type ShardArtifacts {
   base: String
   src_dag_dir: String
   fixture_path: String
+  driver_path: String
+  interp_report_path: String
   crate_dir: String
   manifest_path: String
   emitted_module_path: String
@@ -66,6 +68,8 @@ fn shard_artifacts(root: String, c: CarrierRealization, mutant: MutantPlan) -> S
     base: base,
     src_dag_dir: concat(base, "/src_dag"),
     fixture_path: concat(base, concat("/src_dag/emit_copy_", concat(carrier_realization_slug(c: c), ".dag"))),
+    driver_path: concat(base, concat("/src_dag/emit_copy_", concat(carrier_realization_slug(c: c), "_driver.dag"))),
+    interp_report_path: concat(base, "/interp_report.txt"),
     crate_dir: concat(base, "/crate"),
     manifest_path: concat(base, "/crate/Cargo.toml"),
     emitted_module_path: concat(base, concat("/crate/src/test_fixture_emit_copy_", concat(carrier_realization_slug(c: c), ".rs"))),
@@ -453,7 +457,8 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
         refuse_all(rows: rows, r: ShardRefusal { phase: "workspace_setup", detail: a.base })
       } else {
         let wrote_fixture = Filesystem.Write(path: a.fixture_path, content: fixture_module_text(c: c, mutant: mutant))
-        if !wrote_fixture.success {
+        let wrote_driver = Filesystem.Write(path: a.driver_path, content: driver_module_text(c: c))
+        if !(wrote_fixture.success && wrote_driver.success) {
           refuse_all(rows: rows, r: ShardRefusal { phase: "fixture_write", detail: a.base })
         } else {
           let emitted = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
@@ -492,14 +497,18 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
                     let runner_bin = concat(root, concat("/target/release/", shard_runner_bin_name(c: c, mutant: mutant)))
                     let native = gunbc.WitnessBin.Run(workdir: root, bin_path: runner_bin, args: [])
                     let interp = gunbc.WitnessBin.Run(workdir: root, bin_path: gunbc_path, args: [
-                      "run", "--source-root", a.src_dag_dir, "--entry", a.fixture_path, "--function", "ecq_driver"
+                      "run", "--source-root", a.src_dag_dir, "--source-root", concat(root, "/dag"),
+                      "--entry", a.driver_path, "--function", "ecq_driver_main",
+                      "--arg", concat("out=", a.interp_report_path)
                     ])
+                    let interp_report = Filesystem.Read(path: a.interp_report_path)
                     let emitted_module = Filesystem.Read(path: a.emitted_module_path)
                     let verdicts = judge_shard(
                       rows: rows,
                       runner_suffix: concat("/src/bin/", concat(shard_runner_bin_name(c: c, mutant: mutant), ".rs")),
                       native_success: native.success, native_stdout: native.stdout,
-                      interp_success: interp.success, interp_stdout: interp.stdout, interp_stderr: interp.stderr,
+                      interp_success: interp.success && interp_report.success,
+                      interp_stdout: interp_report.content, interp_stderr: interp.stderr,
                       clippy_success: clippy.success, clippy_stdout: clippy.stdout,
                       emitted_module_text: emitted_module.content,
                       runner_text: runner_text

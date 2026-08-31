@@ -362,16 +362,39 @@ fn driver_line_expr(id: EmitCopyQualificationCaseId, n: Int) -> String {
   concat("(n: ", concat(to_string(n), "))))"))))))))))))
 }
 
-fn driver_text(c: CarrierRealization) -> String {
+// The interpreted driver is its OWN module, deliberately outside the emission entry closure:
+// `gunbc compile --entry <fixture>` never sees it, so the emitted crate stays the pure fixture,
+// while `gunbc run` interprets the driver (fixture imported by name) and delivers its lines
+// through a typed Filesystem.Write to the path the transport passes as --arg. gunbc run admits
+// only ProcessExit-returning entries, so the report travels as written bytes, never as a value
+// smuggled through an error rendering.
+fn driver_imported_fn_names(c: CarrierRealization) -> List<String> {
+  shard_case_rows(carrier: c) |> flat_map(r =>
+    let slug = case_slug(id: r.id)
+    [concat("ecq_input_", slug), concat("ecq_subject_", slug)]
+  )
+}
+
+fn driver_module_name(c: CarrierRealization) -> String {
+  concat(fixture_module_name(c: c), "_driver")
+}
+
+fn driver_module_text(c: CarrierRealization) -> String {
   let rows = shard_case_rows(carrier: c)
+  let names = driver_imported_fn_names(c: c) |> fold(init: "", f: (acc, n) =>
+    if acc == "" { n } else { concat(acc, concat(", ", n)) })
+  let header = concat("module ", concat(driver_module_name(c: c),
+    concat("\n\nimport std.process { ProcessExit, ExitSuccess, exit_failure }\nimport extdeps.filesystem.filesystem_io\nimport ", concat(fixture_module_name(c: c),
+    concat(" { ", concat(names, " }\n\n"))))))
   let line_exprs = rows |> flat_map(r =>
     shard_cardinalities(id: r.id) |> map(n => driver_line_expr(id: r.id, n: n))
   )
   let joined = line_exprs |> fold(init: "", f: (acc, e) =>
     if acc == "" { e } else { concat(acc, concat(",\n    ", e)) }
   )
-  concat("fn ecq_driver() -> String {\n  let lines = [\n    ", concat(joined,
-  "\n  ]\n  lines |> fold(init: \"\", f: (acc, l) => if acc == \"\" { l } else { concat(acc, concat(\"\\n\", l)) })\n}\n"))
+  concat(header,
+  concat("fn ecq_driver_main(out: String) -> ProcessExit {\n  let lines = [\n    ", concat(joined,
+  "\n  ]\n  let report = lines |> fold(init: \"\", f: (acc, l) => if acc == \"\" { l } else { concat(acc, concat(\"\\n\", l)) })\n  let wrote = Filesystem.Write(path: out, content: report)\n  if wrote.success { ExitSuccess } else { exit_failure(reason: \"ecq driver report write refused\") }\n}\n")))
 }
 
 // ── The fixture module per (carrier, mutant) ─────────────────────────────────────────────────
@@ -385,7 +408,7 @@ fn fixture_module_text(c: CarrierRealization, mutant: MutantPlan) -> String {
   let cases = shard_case_rows(carrier: c) |> fold(init: "", f: (acc, r) =>
     concat(acc, case_fn_text(id: r.id, mutant: mutant))
   )
-  concat(header, concat(shard_prelude_text(c: c), concat(cases, driver_text(c: c))))
+  concat(header, concat(shard_prelude_text(c: c), cases))
 }
 
 // ── Runner (test-workspace observation transport, generated Rust text) ───────────────────────

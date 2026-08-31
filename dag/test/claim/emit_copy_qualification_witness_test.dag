@@ -31,7 +31,7 @@ import gunbc.witness_floor_workflow {
 import gunbc.emit_copy_qualification_fixture_gen {
   CleanSubject, PlantCopiedAccumulator, DisconnectCounter, PlantHiddenDeepCopy,
   PlantRedundantShareClone, PlantRedundantDeepClone,
-  fixture_module_text, runner_main_text, shard_case_rows, driver_text
+  fixture_module_text, runner_main_text, shard_case_rows, driver_module_text
 }
 
 // Hermetic floor witnesses for the EMIT-COST-QUAL-0 grid authority: roster totality and
@@ -389,7 +389,7 @@ test fn ecq_runner_mutants_wrap_the_window_argument_holds() -> Bool {
 
 test fn ecq_shard_driver_names_every_shard_case_holds() -> Bool {
   let rows = shard_case_rows(carrier: OwnedStringCarrier)
-  let text = driver_text(c: OwnedStringCarrier)
+  let text = driver_module_text(c: OwnedStringCarrier)
   (rows |> count) > 0
     && rows |> all(r => string_contains_marker(haystack: text, marker: concat("case=", case_slug(id: r.id))))
 }
