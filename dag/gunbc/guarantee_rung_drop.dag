@@ -285,11 +285,8 @@ data two_nat_authorities_stall: GuaranteeStall = GuaranteeStall {
   current: Mitigatable,
   ceiling: StructurallyImpossible,
   blocker: ClimbableButUnbuilt,
-  population: BoundedPopulation {
-    members: [
-      "std.nat and v2.std.nat both declaring Nat, with per-operation forks (nat_add, nat_mul, nat_max, nat_compare) that no single function can serve because the two are different types",
-      "every reference site in a closure containing both modules, which must qualify the name (v2.lens.cost.valuation does) or resolve by pool precedence",
-    ],
+  population: UncountedNotEnumerable {
+    reason: "the declaration half IS enumerable -- std.nat and v2.std.nat both declaring Nat, with the per-operation forks nat_add / nat_mul / nat_max / nat_compare that no single function can serve because the two are different types -- but the exposure half is not, and one carrier answers for the whole population. The exposed set is every reference site whose CLOSURE contains both modules, and closure membership is transitive: a module importing one neighbour that reaches std.nat and another that reaches v2.std.nat has both without importing either. So a direct-import scan is not that set -- it currently names four dual-importing files and understates the real exposure -- and rendering those four as a BoundedPopulation would read as bounded while measuring the wrong property, which is the empty-observation narrow this carrier's second variant exists to prevent. It is bounded in principle by the corpus and shrinks to zero with the trigger below, but no enumeration here would be true when written",
   },
   next_rung_trigger: "the atomic Nat unification wave specified in gunbc.plans.dag_v2_defork_audit: dag/std/nat.dag carrying the coproduct and the Peano operations with the semiring alias deleted, v2.std.nat reduced to a thin reimport plus the node-bound law roster, integer and float repointing GroupCompletion<Nat> to std.nat.Nat, and every importer repointed in the same push -- retired by that wave landing and by nothing less, since deleting either declaration without deriving its operations would remove the operations its consumers call rather than unify the authority"
 }
