@@ -5,7 +5,13 @@ import std.types { List, String }
 import gunbc.capability_origin { NoNewCapability }
 import gunbc.seed_growth_admission { SeedGrowthChangeDisposition, ExistingSeedItemModified }
 
-// THREE EXISTING SEED ITEMS WERE MODIFIED, AND NONE WAS ADDED. The SCM excision had to record five
+// THREE EXISTING SEED ITEMS WERE MODIFIED HERE, AND THIS MODULE'S SUBJECT IS EXACTLY THOSE THREE.
+// The change as a whole DOES add one hand item -- the renamed prefix test, whose old identity
+// departed and whose new one arrived -- and that addition is NOT dispositioned here, because
+// seed_growth_admit_change joins added items against seed_growth_justification_roster and never
+// reads a disposition. It carries gunbc.roadmap_prefix_test_seed_growth
+// roadmap_prefix_test_seed_growth_justification instead. Reading this sentence as a claim about
+// the whole change would be exactly the miscount it used to make. The SCM excision had to record five
 // withdrawn acceptances, and the one existing AcceptanceRevocationDisposition arm claims the node
 // REOPENS onto the active frontier -- false for a node the same change removes from the product
 // program, whose roadmap declaration is gone and which no further work is wanted on. (What the
