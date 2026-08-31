@@ -2770,8 +2770,15 @@ pub const REGEN_ROUND_COST_RECEIPT_REL: &str = "target/stage0-regen-round-cost.t
 const REGEN_ROUND_COST_PRODUCER: &str = "claim_executor --regen-round-cost";
 const REGEN_ROUND_COST_ENTRY_UNDER_ROOT: &str = "gunbc/regen_round_cost.dag";
 
+/// WHAT CARGO SAYS IT COMPILED, at package identity and not only at count.
+///
+/// `rebuild_compiled_crates=3` is display: it cannot distinguish three packages of the derived
+/// closure from three unrelated ones, and the guarantee the partitioned rebuild makes is an
+/// EXCLUSION -- an unrelated package stays uncompiled. So the roster is the evidence and the
+/// count rides beside it.
 struct CargoBuildObservation {
     compiled_crates: u64,
+    compiled_packages: Vec<String>,
 }
 
 fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservation, String> {
@@ -2792,11 +2799,17 @@ fn seed_cargo_build(workspace: &Path, label: &str) -> Result<CargoBuildObservati
             tail.join("\n")
         ));
     }
-    let compiled_crates = stderr
+    let compiled_packages: Vec<String> = stderr
         .lines()
-        .filter(|l| l.trim_start().starts_with("Compiling "))
-        .count() as u64;
-    Ok(CargoBuildObservation { compiled_crates })
+        .filter_map(|l| l.trim_start().strip_prefix("Compiling "))
+        .filter_map(|rest| rest.split_whitespace().next())
+        .map(|name| name.to_string())
+        .collect();
+    let compiled_crates = compiled_packages.len() as u64;
+    Ok(CargoBuildObservation {
+        compiled_crates,
+        compiled_packages,
+    })
 }
 
 /// The seed binary ON DISK at the path this process started from. After a cargo build replaces
@@ -2902,6 +2915,10 @@ fn render_round_cost_receipt(
     rustfmt_spawns: u64,
     marks: &[v1_rt::TraceLedgerRow],
     changed_paths: &[String],
+    installed_mirrors: &[String],
+    rebuild_packages: &[String],
+    executable_digest: &str,
+    second_generation_candidate_digest: &str,
 ) -> Result<String, String> {
     use crate::v1_interpreter::{self, str_value, ExecutionMode, Value};
     let entry = round_cost_entry(source_roots)?;
@@ -2971,6 +2988,10 @@ fn render_round_cost_receipt(
         })
         .collect();
     let path_values: Vec<Value> = changed_paths.iter().map(str_value).collect();
+    // The regen's own drift answer, at the grain it installed: `gunbc.stage0_partition_rebuild_scope`
+    // reads it to derive which packages a change-denominated rebuild would compile. Passed as data,
+    // never re-derived here — the host owns no part of that decision.
+    let installed_values: Vec<Value> = installed_mirrors.iter().map(str_value).collect();
     let receipt = Value::Record {
         type_name: ctx.sym("RegenRoundCostReceipt"),
         fields: Rc::new(vec![
@@ -2992,6 +3013,25 @@ fn render_round_cost_receipt(
                 ctx.sym("changed_paths"),
                 Value::List(Rc::new(path_values.into())),
             ),
+            (
+                ctx.sym("installed_mirrors"),
+                Value::List(Rc::new(installed_values.into())),
+            ),
+            (
+                ctx.sym("rebuild_packages"),
+                Value::List(Rc::new(
+                    rebuild_packages
+                        .iter()
+                        .map(str_value)
+                        .collect::<std::vec::Vec<Value>>()
+                        .into(),
+                )),
+            ),
+            (ctx.sym("executable_digest"), str_value(executable_digest)),
+            (
+                ctx.sym("second_generation_candidate_digest"),
+                str_value(second_generation_candidate_digest),
+            ),
         ]),
     };
     let args = vec![(Some("receipt".to_string()), receipt)];
@@ -3007,6 +3047,238 @@ fn render_round_cost_receipt(
         )),
     }
 }
+
+/// THE MODELED REBUILD SCOPE, READ BEFORE cargo IS SPAWNED.
+///
+/// Three questions, all answered by `gunbc.stage0_partition_rebuild_scope` and none of them
+/// re-derived here: may this rebuild actuate at all, which packages does the change denominate,
+/// and which packages must therefore NOT be compiled. The host owns the spawn and the reading of
+/// cargo's output; it owns no part of the decision.
+struct PartitionRebuildActuation {
+    actuatable: bool,
+    package_closure: Vec<String>,
+    excluded_packages: Vec<String>,
+    decision_line: String,
+}
+
+type ModelValue = crate::v1_interpreter::Value;
+
+fn model_string_list(xs: &[String]) -> ModelValue {
+    use crate::v1_interpreter::str_value;
+    ModelValue::List(Rc::new(
+        xs.iter()
+            .map(str_value)
+            .collect::<std::vec::Vec<ModelValue>>()
+            .into(),
+    ))
+}
+
+fn model_value_to_string_list(value: &ModelValue, what: &str) -> Result<Vec<String>, String> {
+    match value {
+        ModelValue::List(items) => items
+            .iter()
+            .map(|item: &ModelValue| match item {
+                ModelValue::Str(s) => Ok(s.to_string()),
+                other => Err(format!(
+                    "refusal: {what} returned a {} where a String was expected",
+                    other.type_label_public()
+                )),
+            })
+            .collect(),
+        other => Err(format!(
+            "refusal: {what} returned {} where a List was expected",
+            other.type_label_public()
+        )),
+    }
+}
+
+fn partition_rebuild_actuation(
+    source_roots: &[String],
+    installed_mirrors: &[String],
+) -> Result<PartitionRebuildActuation, String> {
+    use crate::v1_interpreter::{self, ExecutionMode};
+    let entry = round_cost_entry(source_roots)?;
+    let index = super::process_shared_index(source_roots);
+    let (graph, indices) = super::resolve_entry_with_index_for_discovery_corpus(&index, &entry)
+        .map_err(|e| {
+            format!("refusal: {entry} did not resolve, so the rebuild scope has no decider: {e}")
+        })?;
+    let ctx = super::make_eval_context(&graph, indices, ExecutionMode::Hermetic);
+    let call = |function: &str| -> Result<ModelValue, String> {
+        let args = vec![
+            (
+                Some("changed_mirrors".to_string()),
+                model_string_list(installed_mirrors),
+            ),
+            (Some("unlocatable".to_string()), model_string_list(&[])),
+        ];
+        v1_interpreter::with_active_context(&ctx, || {
+            v1_interpreter::run_in_context_with_args(&ctx, function, &args, false)
+        })
+        .map_err(|e| format!("refusal: {function} did not evaluate: {e}"))
+    };
+    let actuatable = match call("stage0_partition_rebuild_is_actuatable_today")? {
+        ModelValue::Bool(b) => b,
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_is_actuatable_today returned {} where a Bool \
+                 was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    let package_closure = model_value_to_string_list(
+        &call("stage0_partition_rebuild_packages_today")?,
+        "stage0_partition_rebuild_packages_today",
+    )?;
+    let excluded_packages = model_value_to_string_list(
+        &call("stage0_partition_rebuild_excluded_today")?,
+        "stage0_partition_rebuild_excluded_today",
+    )?;
+    let decision_line = match call("stage0_partition_rebuild_decision_line_today")? {
+        ModelValue::Str(s) => s.to_string(),
+        other => {
+            return Err(format!(
+                "refusal: stage0_partition_rebuild_decision_line_today returned {} where a String \
+                 was expected",
+                other.type_label_public()
+            ))
+        }
+    };
+    Ok(PartitionRebuildActuation {
+        actuatable,
+        package_closure,
+        excluded_packages,
+        decision_line,
+    })
+}
+
+/// THE REBUILD, DENOMINATED IN THE CHANGE AND HELD TO IT.
+///
+/// The decision is asked FIRST and the line stops when it refuses: there is no arm here that
+/// falls back to a whole-compiler build, because a fallback would destroy the only signal that
+/// the ownership rosters have a hole and would price the round in the corpus rather than in the
+/// edit. A refused decision is returned as its own located diagnostic, verbatim from the model.
+///
+/// After cargo runs, the observation is joined against the modeled EXCLUSION rather than against
+/// the closure: cargo may legitimately compile fewer packages than the closure names, because a
+/// package can already be fresh, but it may never compile one the change does not reach. That
+/// direction is the guarantee; the other would fail on a warm cache and prove nothing.
+fn partitioned_rebuild_from_installed(
+    workspace: &Path,
+    actuation: &PartitionRebuildActuation,
+) -> Result<CargoBuildObservation, String> {
+    if !actuation.actuatable {
+        return Err(format!(
+            "refusal: the rebuild scope does not actuate, so no build was attempted and no \
+             whole-compiler fallback was run -- {}",
+            actuation.decision_line
+        ));
+    }
+    if actuation.package_closure.is_empty() {
+        return Err(format!(
+            "refusal: the rebuild scope actuates with an empty package closure, which names no \
+             package to compile -- {}",
+            actuation.decision_line
+        ));
+    }
+    let observation = seed_cargo_build(workspace, "round.rebuild_from_installed")?;
+    let widened: Vec<&String> = observation
+        .compiled_packages
+        .iter()
+        .filter(|p| actuation.excluded_packages.contains(p))
+        .collect();
+    if !widened.is_empty() {
+        return Err(format!(
+            "refusal: the rebuild compiled {widened:?}, which the derived package closure \
+             excludes, so this round was not denominated in its change -- {}",
+            actuation.decision_line
+        ));
+    }
+    Ok(observation)
+}
+
+/// THE DIGEST OF THE EXECUTABLE THE SECOND GENERATION WILL RUN. Read from the linked artifact
+/// rather than from the build's exit status: a green build says the packages compiled, and only
+/// the digest says which binary the next phase is about to execute.
+fn next_pass_executable_digest(workspace: &Path) -> Result<String, String> {
+    let exe = workspace.join("target/release/claim_executor");
+    let bytes = fs::read(&exe).map_err(|e| format!("read {}: {e}", exe.display()))?;
+    Ok(v1_rt::bytes_identity_hash(&bytes))
+}
+
+/// THE SECOND GENERATION, RUN BY THE BINARY THAT WAS JUST RELINKED FROM THE INSTALLED MIRRORS.
+///
+/// This is the phase the round previously did not have, and without it a green byte comparison
+/// can be produced by a compiler that never saw the installed bytes. The rebuilt `claim_executor`
+/// is spawned as its own process -- not called in-process, which would run THIS binary -- and
+/// emits into a candidate directory of its own so the first generation's candidate is left
+/// untouched for comparison.
+///
+/// A NON-ZERO EXIT IS A MEASURED FACT ABOUT THE ROUND, not a refusal of the measurement: the
+/// second generation legitimately reports drift on a two-generation change. The digest of what it
+/// produced is taken either way, because that digest is the evidence about which compiler ran.
+fn run_second_generation(
+    workspace: &Path,
+    source_roots: &[String],
+    candidate_dir_rel: &str,
+) -> Result<(String, Option<String>), String> {
+    let exe = workspace.join("target/release/claim_executor");
+    let mut command = Command::new(&exe);
+    command.arg("--required-regen");
+    for root in source_roots {
+        command.args(["--source-root", root]);
+    }
+    command.args(["--regen-candidate-dir", candidate_dir_rel]);
+    command.current_dir(workspace);
+    v1_rt::trace_mark("round.second_generation.begin".to_string());
+    let output = command
+        .output()
+        .map_err(|e| format!("spawn {} --required-regen: {e}", exe.display()))?;
+    v1_rt::trace_mark("round.second_generation.done".to_string());
+    let failure = if output.status.success() {
+        None
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: std::vec::Vec<&str> = stderr.lines().rev().take(20).collect();
+        let tail: std::vec::Vec<&str> = tail.into_iter().rev().collect();
+        Some(format!(
+            "second_generation: the rebuilt claim_executor exited {} -- last lines:\n{}",
+            output.status,
+            tail.join("\n")
+        ))
+    };
+    let digest = candidate_tree_digest(&workspace.join(candidate_dir_rel).join("src"))?;
+    Ok((digest, failure))
+}
+
+/// A CANDIDATE TREE'S IDENTITY, at path-and-bytes grain. Every emitted mirror is flat under the
+/// candidate's `src`, so the walk is one level deep by construction (emitted Rust filenames are
+/// forced flat under src/ -- see the seed retention frontier's host-binary family). The digest
+/// folds sorted `path\0<bytes digest>` rows so a renamed file and an edited file are different
+/// answers, which a digest over concatenated bytes alone would not be.
+fn candidate_tree_digest(candidate_src: &Path) -> Result<String, String> {
+    let mut rows: Vec<String> = Vec::new();
+    let entries = fs::read_dir(candidate_src)
+        .map_err(|e| format!("read_dir {}: {e}", candidate_src.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read_dir {}: {e}", candidate_src.display()))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let bytes = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        rows.push(format!("{name}\0{}", v1_rt::bytes_identity_hash(&bytes)));
+    }
+    rows.sort();
+    Ok(v1_rt::bytes_identity_hash(rows.join("\n").as_bytes()))
+}
+
+const REGEN_ROUND_SECOND_GENERATION_CANDIDATE_REL: &str = "target/stage0-regen-candidate-gen2";
 
 /// `affected_scope` consumes the affected-set bound for this round: the selection is derived
 /// from the SAME edited population `--regen-affected-set` reports (the floor's own diff range),
@@ -3076,8 +3348,16 @@ pub fn run_regen_round_cost(
     };
 
     let mut rebuild_compiled_crates = 0;
+    let mut rebuild_packages: Vec<String> = Vec::new();
+    let mut executable_digest = String::from("unbuilt");
+    let mut second_generation_candidate_digest = String::from("unrun");
     let mut changed_paths: Vec<String> = Vec::new();
+    // The drift answer is kept past the install because it is the rebuild scope's input: the
+    // receipt reports which packages a change-denominated rebuild of THESE mirrors would compile,
+    // beside what the whole-crate rebuild above actually cost.
+    let mut installed_mirrors: Vec<String> = Vec::new();
     if let Some(drifted) = drifted {
+        installed_mirrors = drifted.clone();
         v1_rt::trace_mark("round.install.begin".to_string());
         install_candidate_paths(&candidate_src, &stage0_src, &drifted)?;
         v1_rt::trace_mark("round.install.done".to_string());
@@ -3088,9 +3368,50 @@ pub fn run_regen_round_cost(
         // hand-synced one and the rebuild refused -- the two-round bootstrap the merge-driver
         // recipe's step 3 exists for. The receipt still renders; the failure rides beside it and
         // fails the exit code.
-        match seed_cargo_build(&workspace, "round.rebuild_from_installed") {
-            Ok(rebuild) => rebuild_compiled_crates = rebuild.compiled_crates,
-            Err(failure) => round_failures.push(format!("rebuild_from_installed: {failure}")),
+        // A DRIFT ANSWER THAT IS EMPTY INSTALLED NOTHING, so no package went stale and there is
+        // nothing to relink. The model says the same thing (NoChangedMirrorsToRebuild) and would
+        // refuse; asking it here would turn a round that legitimately had no work into a failed
+        // one.
+        if drifted.is_empty() {
+            eprintln!(
+                "regen-round-cost: the emit drifted no mirror; no install, no rebuild, no second \
+                 generation"
+            );
+        } else {
+            let actuation = partition_rebuild_actuation(source_roots, &drifted)?;
+            match partitioned_rebuild_from_installed(&workspace, &actuation) {
+                Ok(rebuild) => {
+                    rebuild_compiled_crates = rebuild.compiled_crates;
+                    rebuild_packages = rebuild.compiled_packages;
+                    match next_pass_executable_digest(&workspace) {
+                        Ok(digest) => executable_digest = digest,
+                        Err(failure) => {
+                            round_failures.push(format!("next_pass_executable_digest: {failure}"))
+                        }
+                    }
+                    // THE SECOND GENERATION RUNS THE BINARY THAT WAS JUST RELINKED, and it runs only
+                    // when the rebuild produced one. A second pass launched after a failed rebuild
+                    // would execute the PREVIOUS executable and report a byte comparison about a
+                    // compiler the installed mirrors did not produce -- the exact confusion the
+                    // execution-identity fields exist to make visible.
+                    match run_second_generation(
+                        &workspace,
+                        source_roots,
+                        REGEN_ROUND_SECOND_GENERATION_CANDIDATE_REL,
+                    ) {
+                        Ok((digest, failure)) => {
+                            second_generation_candidate_digest = digest;
+                            if let Some(failure) = failure {
+                                round_failures.push(failure);
+                            }
+                        }
+                        Err(failure) => {
+                            round_failures.push(format!("second_generation: {failure}"))
+                        }
+                    }
+                }
+                Err(failure) => round_failures.push(format!("rebuild_from_installed: {failure}")),
+            }
         }
         v1_rt::trace_mark("round.diff.begin".to_string());
         changed_paths = git_changed_stage0_paths(&workspace)?;
@@ -3116,6 +3437,10 @@ pub fn run_regen_round_cost(
         rustfmt_spawn_count() - rustfmt_spawns_before,
         &marks,
         &changed_paths,
+        &installed_mirrors,
+        &rebuild_packages,
+        &executable_digest,
+        &second_generation_candidate_digest,
     )?;
     let receipt_path = workspace.join(REGEN_ROUND_COST_RECEIPT_REL);
     if let Some(parent) = receipt_path.parent() {
@@ -3168,6 +3493,10 @@ mod regen_round_cost_tests {
             7,
             &marks,
             &["v1_rt.rs".to_string()],
+            &["v1_rt.rs".to_string()],
+            &["v1-stage0-runtime".to_string(), "v1-compiler".to_string()],
+            "exedigest",
+            "gen2digest",
         )
         .expect("the model renders a host-built receipt");
         assert_eq!(
@@ -3178,7 +3507,16 @@ mod regen_round_cost_tests {
              regen-round-cost: phase=seed_build wall_ms=1500 cpu_ms=9000\n\
              regen-round-cost: phase=compile.emit wall_ms=300000 cpu_ms=na\n\
              regen-round-cost: total wall_ms=301500 cpu_ms=na\n\
-             regen-round-cost: changed_paths=1 [v1_rt.rs]\n"
+             regen-round-cost: changed_paths=1 [v1_rt.rs]\n\
+             partition-rebuild: PartitionRebuildScopeDerived changed_mirrors=[v1_rt.rs] \
+             owning_packages=[v1-stage0-runtime] \
+             package_closure=[v1-stage0-runtime, v1-stage0-std-core, v1-stage0-std-surface, \
+             v1-stage0-extdeps-languages, v1-stage0-v1-artifact, v1-stage0-v1-infer, \
+             v1-stage0-emit-core, v1-compiler] \
+             executable_assembly=assembled package=v1-compiler bin=claim_executor\n\
+             regen-round-cost: execution-identity rebuild_packages=2 \
+             [v1-stage0-runtime, v1-compiler] executable_digest=exedigest \
+             second_generation_candidate=gen2digest\n"
         );
     }
 
