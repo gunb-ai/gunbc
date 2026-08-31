@@ -153,10 +153,17 @@ pub enum RegenReceipt {
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub enum RegenCandidateManifestSurfaceRole {
+    GeneratedSurface,
+    BootstrapSourceMirror,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct RegenCandidateManifestSurface {
     pub declaring_module: String,
     pub projected_path: String,
     pub content_digest: String,
+    pub role: RegenCandidateManifestSurfaceRole,
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -532,12 +539,12 @@ pub fn run_required_regen_scoped(
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
     let candidate_manifest = produce_candidate_manifest(
+        &formatter,
         &fresh_src,
         &selected_basenames,
         &basename_to_module,
         &producer_seed_digest,
         &candidate_tree_id,
-        &candidate_digest,
     )?;
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
@@ -3016,14 +3023,32 @@ fn candidate_manifest_aggregate(
 }
 
 fn produce_candidate_manifest(
+    formatter: &ResolvedFormatter,
     candidate_src: &Path,
     selected_basenames: &[String],
     basename_to_module: &HashMap<String, String>,
     producer_seed_digest: &str,
     candidate_tree_id: &str,
-    candidate_tree_digest: &str,
 ) -> Result<RegenCandidateManifest, String> {
-    let mut names = selected_basenames.to_vec();
+    let selected = selected_basenames.iter().cloned().collect::<BTreeSet<_>>();
+    let bootstrap_mirrors = HAND_MAINTAINED_STAGE0_FILES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<BTreeSet<_>>();
+    let mut names = fs::read_dir(candidate_src)
+        .map_err(|e| {
+            format!(
+                "read complete candidate artifact {}: {e}",
+                candidate_src.display()
+            )
+        })?
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| {
+            let path = entry.path();
+            (path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
+                .then(|| entry.file_name().to_string_lossy().into_owned())
+        })
+        .collect::<Vec<_>>();
     names.sort();
     names.dedup();
     let generation_id =
@@ -3031,31 +3056,52 @@ fn produce_candidate_manifest(
     let surfaces = names
         .iter()
         .map(|basename| {
-            let declaring_module = basename_to_module.get(basename).cloned().ok_or_else(|| {
-                format!(
-                    "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
-                     declaring module"
+            let (declaring_module, role) = if bootstrap_mirrors.contains(basename) {
+                (
+                    basename.strip_suffix(".rs").unwrap_or(basename).to_string(),
+                    RegenCandidateManifestSurfaceRole::BootstrapSourceMirror,
                 )
-            })?;
+            } else if selected.contains(basename) {
+                (
+                    basename_to_module.get(basename).cloned().ok_or_else(|| {
+                        format!(
+                            "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
+                             declaring module"
+                        )
+                    })?,
+                    RegenCandidateManifestSurfaceRole::GeneratedSurface,
+                )
+            } else {
+                return Err(format!(
+                    "CandidateManifestPopulationMismatch: candidate artifact surface {basename} is neither a generated surface nor a modeled bootstrap-source mirror"
+                ));
+            };
             Ok(RegenCandidateManifestSurface {
                 declaring_module,
                 projected_path: basename.clone(),
                 content_digest: path_digest(&candidate_src.join(basename))?,
+                role,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let complete_candidate_tree_digest = tree_digest_for_basenames(
+        formatter,
+        candidate_src,
+        &names,
+        "complete candidate manifest",
+    )?;
     let aggregate_digest = candidate_manifest_aggregate(
         producer_seed_digest,
         &generation_id,
         candidate_tree_id,
-        candidate_tree_digest,
+        &complete_candidate_tree_digest,
         &surfaces,
     )?;
     Ok(RegenCandidateManifest {
         producer_seed_digest: producer_seed_digest.to_string(),
         generation_id,
         candidate_tree_id: candidate_tree_id.to_string(),
-        candidate_tree_digest: candidate_tree_digest.to_string(),
+        candidate_tree_digest: complete_candidate_tree_digest,
         surfaces,
         aggregate_digest,
     })
@@ -5202,6 +5248,7 @@ mod regen_convergence_host_instrument_tests {
                 declaring_module: (*module).to_string(),
                 projected_path: (*path).to_string(),
                 content_digest: path_digest(&candidate.join(path)).unwrap(),
+                role: RegenCandidateManifestSurfaceRole::GeneratedSurface,
             })
             .collect::<Vec<_>>();
         surfaces.sort_by(|left, right| left.projected_path.cmp(&right.projected_path));
@@ -5253,6 +5300,52 @@ mod regen_convergence_host_instrument_tests {
     fn mutating_transaction_binds_candidates_restores_and_reaches_staged_fixed_point() {
         let roots = fixture_roots();
         let model = RegenConvergenceModel::load(&roots).unwrap();
+
+        // Bootstrap-source mirrors inhabit the same immutable candidate artifact as generated
+        // surfaces. Their role is bound by the manifest, and changing their bytes after
+        // production refuses before any install journal exists.
+        let (_, _, bootstrap_candidate, _) = fixture_workspace();
+        let bootstrap_rows = [("fixture_host.rs", "fixture_host", "// host source\n")];
+        let (mut bootstrap_manifest, _) = fixture_manifest(&bootstrap_candidate, &bootstrap_rows);
+        bootstrap_manifest.surfaces[0].role =
+            RegenCandidateManifestSurfaceRole::BootstrapSourceMirror;
+        bootstrap_manifest.aggregate_digest = candidate_manifest_aggregate(
+            &bootstrap_manifest.producer_seed_digest,
+            &bootstrap_manifest.generation_id,
+            &bootstrap_manifest.candidate_tree_id,
+            &bootstrap_manifest.candidate_tree_digest,
+            &bootstrap_manifest.surfaces,
+        )
+        .unwrap();
+        fs::write(
+            bootstrap_candidate.join("fixture_host.rs"),
+            "// tampered host\n",
+        )
+        .unwrap();
+        assert!(admit_candidate_manifest(
+            &model,
+            &bootstrap_candidate,
+            &bootstrap_manifest,
+            "seed-0"
+        )
+        .unwrap_err()
+        .contains("CandidateManifestTreeDigestMismatch"));
+
+        // A file with neither a generated-surface row nor a bootstrap-source-mirror row remains
+        // foreign to the complete artifact and is refused at the population wall.
+        let (_, _, foreign_candidate, _) = fixture_workspace();
+        let foreign_rows = [(
+            "fixture_generated.rs",
+            "fixture.generated",
+            "// generated\n",
+        )];
+        let (foreign_manifest, _) = fixture_manifest(&foreign_candidate, &foreign_rows);
+        fs::write(foreign_candidate.join("foreign.rs"), "// foreign\n").unwrap();
+        assert!(
+            admit_candidate_manifest(&model, &foreign_candidate, &foreign_manifest, "seed-0")
+                .unwrap_err()
+                .contains("CandidateManifestPopulationMismatch")
+        );
 
         // A candidate changed after its generation manifest is refused before a journal exists.
         let (workspace, stage0, candidate, subject) = fixture_workspace();
