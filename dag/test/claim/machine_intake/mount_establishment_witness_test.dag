@@ -13,6 +13,7 @@ import gunbc.machine_intake_mount_establishment {
   MountTimedOut,
   EstablishedThenAbsent,
   EvaluationBoundaryBeforeLastObservation,
+  EvaluationBoundaryBeforeRequest,
   MountEvaluationBoundary,
   ObservationBeforeRequest,
   ObservationOutOfOrder,
@@ -101,6 +102,7 @@ test fn a_listing_after_the_timeout_is_a_contradiction_not_a_late_success() -> B
         ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
         ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
         EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
+        EvaluationBoundaryBeforeRequest { observed_through: _, requested_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -124,6 +126,7 @@ test fn an_absence_after_establishment_is_a_contradiction_not_a_regression() -> 
         ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
         ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
         EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
+        EvaluationBoundaryBeforeRequest { observed_through: _, requested_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -158,6 +161,7 @@ test fn an_out_of_order_observation_is_a_defect() -> Bool {
         ObservationBeforeRequest { requested_at: _, observed_at: _ } => false
         ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
         EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
+        EvaluationBoundaryBeforeRequest { observed_through: _, requested_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -177,6 +181,7 @@ test fn an_observation_before_the_request_is_a_defect() -> Bool {
         ObservationOutOfOrder { previous_at: _, observed_at: _ } => false
         ObservationTimestampCollision { previous_at: _, observed_at: _ } => false
         EvaluationBoundaryBeforeLastObservation { observed_through: _, last_observed_at: _ } => false
+        EvaluationBoundaryBeforeRequest { observed_through: _, requested_at: _ } => false
       }
     MountRequested { window: _ } => false
     MountPending { window: _, last_observed_at: _, observations: _ } => false
@@ -285,4 +290,51 @@ test fn the_boundary_preserves_terminal_standings() -> Bool {
     _ => false
   }
   a && b
+}
+
+fn boundary_refusal_precedes_observation(standing: RemoteMediaMountStanding, at: EpochMs, last: EpochMs) -> Bool {
+  match standing {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EvaluationBoundaryBeforeLastObservation { observed_through: t, last_observed_at: l } => t == at && l == last
+        _ => false
+      }
+    _ => false
+  }
+}
+
+// THE BOUNDARY REFUSAL IS TOTAL ACROSS STANDINGS, not just the pending one. Each
+// case below reaches a TERMINAL standing and then observes again, so the
+// observation frontier is LATER than anything the standing itself carries: an
+// established mount records when it was established, not the last thing seen
+// after it, and a timeout or contradiction carries no frontier at all. Only the
+// fold holds that fact, which is why these cannot be satisfied by reconstructing
+// a timestamp per standing.
+test fn a_boundary_before_the_frontier_of_an_established_mount_is_a_defect() -> Bool {
+  let standing = mount_standing_as_of(window: window, observations: [listed_at(at: 2000), listed_at(at: 4000)], boundary: boundary_at(at: 3000))
+  boundary_refusal_precedes_observation(standing: standing, at: 3000, last: 4000)
+}
+
+test fn a_boundary_before_the_frontier_of_a_timed_out_attempt_is_a_defect() -> Bool {
+  let standing = mount_standing_as_of(window: window, observations: [absent_at(at: 7000), absent_at(at: 9000)], boundary: boundary_at(at: 8000))
+  boundary_refusal_precedes_observation(standing: standing, at: 8000, last: 9000)
+}
+
+test fn a_boundary_before_the_frontier_of_a_contradiction_is_a_defect() -> Bool {
+  let standing = mount_standing_as_of(window: window, observations: [listed_at(at: 2000), absent_at(at: 3000), absent_at(at: 5000)], boundary: boundary_at(at: 4000))
+  boundary_refusal_precedes_observation(standing: standing, at: 4000, last: 5000)
+}
+
+// WITH NOTHING OBSERVED there is no frontier, so the coherent lower bound is the
+// REQUEST: a boundary before it would describe the request as already standing
+// at a time before it occurred.
+test fn a_boundary_before_the_request_with_no_observations_is_a_defect() -> Bool {
+  match mount_standing_as_of(window: window, observations: [], boundary: boundary_at(at: 500)) {
+    MountObservationContradictory { cause: c } =>
+      match c {
+        EvaluationBoundaryBeforeRequest { observed_through: t, requested_at: r } => t == 500 && r == 1000
+        _ => false
+      }
+    _ => false
+  }
 }

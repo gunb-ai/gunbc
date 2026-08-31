@@ -60,14 +60,20 @@ type RemoteMediaListingObservation {
 // the bound means what a bound normally means and a budget cannot be spent
 // twice at its own boundary.
 //
-// A ZERO BUDGET IS REPRESENTABLE AND MEANS AN IMMEDIATELY-CLOSED WINDOW, which
-// is the honest reading of Milliseconds' range(min: 0) rather than a claim the
-// carrier does not support: half-open with a zero budget admits no observation
-// at all, so the first observation is judged past the deadline. An earlier
-// version of this annotation claimed a budgetless window was unrepresentable.
-// It was not — `where range` refinements are reported by the compiler as
-// deferred and enforce nothing — so the claim was rung inflation (§4b) and is
-// withdrawn rather than propped up with a second unenforced refinement.
+// A ZERO BUDGET IS REPRESENTABLE AND MEANS AN IMMEDIATELY-CLOSED WINDOW: with a
+// half-open window, deadline = requested_at + 0 = requested_at, so the interval
+// [requested_at, requested_at) is empty, admits no observation, and the first
+// observation is judged past the deadline. An earlier version of this annotation
+// claimed a budgetless window was unrepresentable, which was rung inflation
+// (§4b) and is withdrawn.
+//
+// Milliseconds admits zero by its declared range. A second gt_zero refinement
+// would enforce decidable literal constructions but would not establish
+// positivity for genuinely nonliteral inputs, which remain deferred; this module
+// therefore does not claim a total positive-budget construction wall and gives
+// zero an explicit immediately-closed meaning instead. The residual
+// nonliteral-refinement gap belongs to the compiler's refinement lane, not to a
+// local duplicate validator here.
 type RemoteMediaMountWindow {
   requested_at: EpochMs
   budget: Milliseconds
@@ -89,6 +95,7 @@ type MountContradiction
   | ObservationOutOfOrder { previous_at: EpochMs, observed_at: EpochMs }
   | ObservationTimestampCollision { previous_at: EpochMs, observed_at: EpochMs }
   | EvaluationBoundaryBeforeLastObservation { observed_through: EpochMs, last_observed_at: EpochMs }
+  | EvaluationBoundaryBeforeRequest { observed_through: EpochMs, requested_at: EpochMs }
 
 type RemoteMediaMountStanding
   = MountRequested { window: RemoteMediaMountWindow }
@@ -247,15 +254,31 @@ fn unwrap_previous(previous_at: EpochMs?, fallback: EpochMs) -> EpochMs {
 // The standing of one mount attempt over the observations that were actually
 // taken. An empty observation list is MountRequested and NOT established: a
 // mount nobody looked at is not a mount that worked.
-fn remote_media_mount_standing(
+// THE FOLD IS THE ANSWER; THE STANDING IS A PROJECTION OF IT. previous_at -- the observation
+// frontier -- is a fact the fold already computes exactly, and it is not recoverable from the
+// standing alone: MountEstablished carries the moment it was established, not the last thing seen
+// after it, and MountTimedOut and MountObservationContradictory carry no frontier at all. An
+// earlier cut discarded the fold and tried to reconstruct the frontier per standing; that answered
+// only for MountPending, so a boundary earlier than the evidence behind any TERMINAL standing was
+// silently accepted -- a verdict read as of a moment before the observations that produced it.
+// Reconstructing it arm by arm cannot be made total either, because "established at 2000" and
+// "last observed at 4000" are different facts and only the fold holds the second.
+fn remote_media_mount_fold(
   window: RemoteMediaMountWindow,
   observations: List<RemoteMediaListingObservation>,
-) -> RemoteMediaMountStanding {
+) -> MountFold {
   fold(
     observations,
     init: MountFold { standing: MountRequested { window: window }, previous_at: none },
     f: fn(acc, o) { mount_fold_step(acc: acc, window: window, observation: o) },
-  ).standing
+  )
+}
+
+fn remote_media_mount_standing(
+  window: RemoteMediaMountWindow,
+  observations: List<RemoteMediaListingObservation>,
+) -> RemoteMediaMountStanding {
+  remote_media_mount_fold(window: window, observations: observations).standing
 }
 
 // TIME CLOSES THE WINDOW; POLLING IS NOT WHAT MAKES A DEADLINE REAL. The fold
@@ -277,41 +300,44 @@ type MountEvaluationBoundary {
   clock_evidence: ContentHash
 }
 
-fn mount_last_observed_at(standing: RemoteMediaMountStanding) -> EpochMs? {
-  match standing {
-    MountPending { window: _, last_observed_at: last, observations: _ } => Present { value: last }
-    MountRequested { window: _ } => none
-    MountEstablished { established_at: _, establishing_evidence: _ } => none
-    MountTimedOut { window: _, last_observed_at: _ } => none
-    MountObservationContradictory { cause: _ } => none
+// THE BOUNDARY IS JUDGED AGAINST THE FOLD'S FRONTIER, so the refusal is total across every
+// standing rather than only the pending one. Two incoherent boundaries are refused: one that
+// precedes the last observation, which would read a verdict as of a moment before the evidence
+// behind it, and -- when nothing was observed at all -- one that precedes the request itself, which
+// would describe the request as already standing before it occurred.
+fn boundary_incoherence(
+  window: RemoteMediaMountWindow,
+  folded: MountFold,
+  boundary: MountEvaluationBoundary,
+) -> MountContradiction? {
+  match folded.previous_at {
+    Present { value: last } =>
+      if (boundary.observed_through < last) {
+        Present { value: EvaluationBoundaryBeforeLastObservation { observed_through: boundary.observed_through, last_observed_at: last } }
+      } else {
+        none
+      }
+    Absent =>
+      if (boundary.observed_through < window.requested_at) {
+        Present { value: EvaluationBoundaryBeforeRequest { observed_through: boundary.observed_through, requested_at: window.requested_at } }
+      } else {
+        none
+      }
   }
 }
 
-fn boundary_precedes_last_observation(standing: RemoteMediaMountStanding, boundary: MountEvaluationBoundary) -> Bool {
-  match mount_last_observed_at(standing: standing) {
-    Absent => false
-    Present { value: last } => boundary.observed_through < last
-  }
-}
-
-// The standing of one mount attempt as of a declared moment. Terminal standings
-// are preserved exactly; only the nonterminal pair can be closed by the clock,
-// and only once the boundary has actually reached the deadline.
+// The standing of one mount attempt as of a declared moment. Terminal standings are preserved
+// exactly; only the nonterminal pair can be closed by the clock, and only once the boundary has
+// actually reached the deadline.
 fn mount_standing_as_of(
   window: RemoteMediaMountWindow,
   observations: List<RemoteMediaListingObservation>,
   boundary: MountEvaluationBoundary,
 ) -> RemoteMediaMountStanding {
-  let standing = remote_media_mount_standing(window: window, observations: observations)
-  if boundary_precedes_last_observation(standing: standing, boundary: boundary) {
-    MountObservationContradictory {
-      cause: EvaluationBoundaryBeforeLastObservation {
-        observed_through: boundary.observed_through,
-        last_observed_at: unwrap_previous(previous_at: mount_last_observed_at(standing: standing), fallback: boundary.observed_through),
-      },
-    }
-  } else {
-    close_window_at_boundary(standing: standing, window: window, boundary: boundary)
+  let folded = remote_media_mount_fold(window: window, observations: observations)
+  match boundary_incoherence(window: window, folded: folded, boundary: boundary) {
+    Present { value: cause } => MountObservationContradictory { cause: cause }
+    Absent => close_window_at_boundary(standing: folded.standing, window: window, boundary: boundary)
   }
 }
 
