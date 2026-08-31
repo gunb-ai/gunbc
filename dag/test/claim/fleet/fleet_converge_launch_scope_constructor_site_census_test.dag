@@ -1,0 +1,165 @@
+module test.claim.fleet_converge_launch_scope_constructor_site_census
+
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+// THE PRODUCTION CONSTRUCTOR-SITE WALL FOR THE LAUNCH-ENVIRONMENT SCOPE.
+//
+// WHY THIS EXISTS. The current compiler admits ARBITRARY excess fields on a payload-carrying
+// coproduct arm literal -- not just fields borrowed from a sibling arm, but any name at all, and
+// the excess field's initializer is ANALYSED even though the field is dropped. Both facts are
+// measured in test.claim.fleet_converge_launch_scope_constructor_compile_control, and the mechanism
+// is owned by the compiler-floor lane (dashboard adhoc-0f99c6bc-193, session sharp-otter-269): a
+// payload arm is not projected to its arm record, so the record-literal field roster is Absent and
+// the unknown-field arm's Absent case is silence. So the type declaration is NOT the wall, and the
+// executed non-interference evidence in
+// test.claim.fleet_converge_launch_scope_non_interference proves only that the excess-field
+// populations MEASURED THERE cannot influence the transaction. Neither closes the forward-looking
+// hole: a future author could add an excess field carrying an operational expression to a
+// production constructor, and nothing in this repository would say a word.
+//
+// WHAT THIS FILE CLOSES, AND WHAT IT HONESTLY DOES NOT. It closes the SITE population: every
+// production record-literal construction of LaunchEnvironmentConverge in the whole corpus, at
+// identity grain, against a declared roster. A new constructor anywhere -- including one carrying an
+// excess field -- makes this red and names the declaration it appeared in. Editing one of the two
+// rostered constructors to add an excess field does NOT make it red, because the field NAMES are
+// not readable; see the missing-capability trigger below. The wall is therefore over WHERE launch
+// requests are built, not over WHAT is put in them, and the pair (this census + the review of two
+// named declarations) is what stands until the capability lands.
+//
+// THE MISSING CAPABILITY, NAMED RATHER THAN WORKED AROUND. An exact "the field-name set of this
+// literal equals {host, observed_timers}" assertion is NOT AUTHORABLE in .dag today. The field
+// names exist in the v1 AST -- make_field_init_node stamps them and declaration_field_names reads
+// them -- but the reflection projection exposed to the substrate drops them: coproduct_reflection's
+// marshal_generic pushes every field-init child on an UNLABELLED positional edge, and the only named
+// edge a record literal ever mints is record_construction_spelling, which carries the CONSTRUCTOR
+// spelling and nothing about fields. NEXT-RUNG TRIGGER, stated as the capability and not as an
+// artifact: a substrate-readable per-field label on record-literal children -- a named edge minted
+// per field-init in the host marshal, parallel to record_construction_spelling -- SUFFICIENT FOR a
+// witness to assert the exact field-name SET of a named construction site. A spelling grep is not
+// an acceptable substitute and none is offered here: a grep is a second naming scheme over what the
+// containment tree already names, and it would read as coverage while establishing nothing.
+//
+// WHY THE SPELLING EDGE IS SOUND FOR THIS QUESTION EVEN THOUGH IT IS NOT AN IDENTITY. The edge
+// carries the AUTHORED CONSTRUCTOR SPELLING, so it over-approximates: a same-spelled type in
+// another module would also count. Over-approximation is the SAFE direction for a census whose
+// verdict is "exactly these sites and no others" -- a foreign homonym makes this red, never green.
+// It discriminates a construction from a match pattern (which marshals no construction spelling)
+// and from a callee or string-literal atom (which ride positional edges), and it is suffix-aware so
+// a qualified construction cannot hide. LaunchEnvironmentConverge carries fields, so it is NOT the
+// invisible nullary case whose zero would be vacuous -- and the positive control below executes
+// that rather than assuming it.
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+type ConstructionCount {
+  constructions: Int
+  self_is_target_atom: Bool
+}
+
+fn edge_is_construction(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^record_construction_spelling
+    Positional => false
+  }
+}
+
+fn spelling_names_target(spelling: String, target: Symbol) -> Bool {
+  spelling == (target as String) || ends_with(spelling, "." + (target as String))
+}
+
+fn construction_fold(n: Node, target: Symbol) -> ConstructionCount {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: s } } =>
+            ConstructionCount {
+              constructions: 0,
+              self_is_target_atom: spelling_names_target(spelling: s as String, target: target),
+            }
+          _ => ConstructionCount { constructions: 0, self_is_target_atom: false }
+        }
+      },
+      step: fn(acc, e, child) {
+        ConstructionCount {
+          constructions: acc.constructions + child.constructions
+            + (if edge_is_construction(e: e) && child.self_is_target_atom { 1 } else { 0 }),
+          self_is_target_atom: acc.self_is_target_atom,
+        }
+      }
+    }
+  )
+}
+
+fn construction_count(n: Node, target: Symbol) -> Int {
+  construction_fold(n: n, target: target).constructions
+}
+
+// decl_facts SKIPS test .dag files, so this population IS the production corpus -- the filter is a
+// property of the walk rather than a path convention this file re-implements.
+data production_roots: List<String> = ["dag", "src/v1", "src/v2"]
+
+// Hoisted into a data initializer so the corpus walk is evaluated once for the whole module rather
+// than once per row. A whole-corpus walk is the expensive part of every census in this repository.
+data production_facts: List<DeclFact> = decl_facts(pool_roots: production_roots)
+
+fn sites_constructing(target: Symbol) -> List<String> {
+  fold(production_facts, init: [], f: fn(acc, fact) {
+    if construction_count(n: fact.node, target: target) > 0 {
+      concat(acc, [fact.qualified_name])
+    } else {
+      acc
+    }
+  })
+}
+
+fn total_constructions(target: Symbol) -> Int {
+  fold(production_facts, init: 0, f: fn(acc, fact) { acc + construction_count(n: fact.node, target: target) })
+}
+
+// THE DECLARED ROSTER. Two production constructors and no others: the scoped plan fold, and the wet
+// observer branch that builds a request from a decoded scope wire. Both are reviewed in this PR and
+// both supply exactly host and observed_timers.
+data rostered_launch_constructor_sites: List<String> = [
+  "gunbc.fleet_converge_plan.fleet_converge_launch_environment_plan_artifact",
+  "gunbc.fleet_converge_plan_cli.observe_fleet_converge_request_wet",
+]
+
+fn roster_is_exactly(found: List<String>, declared: List<String>) -> Bool {
+  list_length(items: found) == list_length(items: declared)
+    && all(declared, d => any(found, f => f == d))
+    && all(found, f => any(declared, d => d == f))
+}
+
+// THE POPULATION IS REAL. A census whose walk silently returned nothing would satisfy an
+// "and no others" claim for free, so the corpus is proved nonempty and proved to CONTAIN
+// constructions of this shape before any absence is asserted. FullHostConverge is the sibling arm
+// with the largest production presence and is the sentinel: if the walk can see it, the walk works.
+test fn the_production_corpus_walk_is_nonempty_and_sees_this_construction_shape() -> Bool {
+  list_length(items: production_facts) > 0
+    && total_constructions(target: ^FullHostConverge) > 0
+    && total_constructions(target: ^LaunchEnvironmentConverge) > 0
+}
+
+// THE WALL. Every production construction site of the launch-environment arm, at identity grain
+// against a declared roster -- not a count, because a count would be satisfied by one site moving
+// and another appearing.
+test fn every_production_launch_constructor_is_on_the_declared_roster() -> Bool {
+  roster_is_exactly(
+    found: sites_constructing(target: ^LaunchEnvironmentConverge),
+    declared: rostered_launch_constructor_sites,
+  )
+}
+
+// AND EXACTLY ONE CONSTRUCTION IN EACH. The row above is an identity join over DECLARATIONS; a
+// second literal added inside one of the two rostered functions would leave it green. This pins the
+// occurrence count too, so the reviewed pair really is the whole population.
+test fn the_two_rostered_declarations_carry_exactly_two_constructions_between_them() -> Bool {
+  total_constructions(target: ^LaunchEnvironmentConverge) == 2
+}

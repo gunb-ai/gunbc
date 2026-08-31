@@ -233,11 +233,37 @@ type TimerRetirementMemberAt = NonEmptyStr
 // a wall possible is not the wall, and describing the intended construction in the present tense is
 // how a reader concludes coverage exists that does not.
 // THE LAUNCH-ENVIRONMENT SCOPE IS A NARROWER OBLIGATION, NOT A FILTERED FULL HOST. RLM-2 asks
-// whether the production instance can EXECUTE at an exact revision, and the resources that answer
-// it are the host's caps, its legacy timer retirement, and its fabric execution cells. CI runner
-// capacity -- the GitHub runner slot family and the runner service activation that follows it --
-// answers a different question: how much work the host can accept, on which ladder its own plan
+// whether the production instance can EXECUTE at an exact revision. CI runner capacity -- the
+// GitHub runner slot family and the runner service activation that follows it -- answers a
+// different question: how much work the host can accept, on which ladder its own plan
 // (docs/plans/runner-service-capacity-convergence.md) is the authority.
+//
+// THE ARM CARRIES TIMER RETIREMENT AND NOTHING ELSE, AND TWO AXES WERE REMOVED FROM AN EARLIER CUT
+// OF IT AFTER REVIEW MEASURED THEM AS FOREIGN. Recording both, because the mistake is instructive
+// and a reader will otherwise wonder why the narrowest scope is this narrow:
+//
+//   THE CAP AXIS IS CI CAPACITY WEARING A HOST-SHAPED NAME. fleet_converge_desired_caps builds
+//   CapMembers at gunbc_runner_per_slot_dropin_path, and gunbc.runner_unit resolves that to
+//   /etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf. Those are drop-ins ON THE
+//   ACTIONS-RUNNER UNIT TEMPLATE -- the same family the slot and activation axes act on, reached by
+//   a different name. Selecting caps here excluded runner capacity through the front door and
+//   readmitted it through the side.
+//
+//   AND THE CAP AXIS COULD NOT HAVE PERFORMED ANYWAY, which is the independent half. Cap
+//   MemberAdded/Changed/Removed arms are rendered into plan.txt for review and are deliberately NOT
+//   emitted into apply.sh (fleet_converge_cap_apply_shell_note: drop-in writes are live_deploy
+//   deploy-principal authority). So a launch terminal that COUNTED cap refusals was counting an
+//   axis whose work this script never performs: an actionable cap mutation would sit unapplied
+//   while the terminal reported FullyApplied. That is the fabricated plausible output at the
+//   actuation seam, admitted by an axis nobody could act on.
+//
+//   FABRIC EXECUTION CELLS ARE RULED OFF THIS PROOF'S PATH BY THE PLAN ITSELF.
+//   docs/plans/roadmap-launch-mvp-plan.md: "Do not couple the first roadmap-launch proof to Fabric
+//   CI." An axis the governing plan excludes is not this scope's obligation to carry.
+//
+// WHY THE REMAINDER IS NOT A CEREMONIAL EMPTY SCOPE. Timer retirement is a real observed obligation
+// with a real membership reconcile, a real baseline the apply compare-and-swaps against, and real
+// emitted teardown work in apply.sh. The scope answers a question that can fail.
 //
 // THE TWO WERE FUSED IN ONE SCOPE AND THE FUSION WAS LOAD-BEARING IN THE WRONG DIRECTION. A
 // full-host plan for srv1 lands PartiallyApplied on runner-slot ownership and activation readiness
@@ -273,8 +299,6 @@ type FleetConvergeRequest
   | LaunchEnvironmentConverge {
       host: NonEmptyStr
       observed_timers: List<TimerRetirementMember>
-      observed_caps: List<CapMember>
-      observed_fabric_cells: FabricCellObservationDecision
     }
   | FabricExecutionCellsConverge {
       host: NonEmptyStr
@@ -288,7 +312,7 @@ type FleetConvergeRequest
 fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeScope {
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => FullHost
-    LaunchEnvironmentConverge { host: _, observed_timers: _, observed_caps: _, observed_fabric_cells: _ } => LaunchEnvironment
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } => LaunchEnvironment
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => FabricExecutionCellsOnly
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => FabricAllocationStoreOnly
   }
@@ -297,7 +321,7 @@ fn fleet_converge_request_scope(request: FleetConvergeRequest) -> FleetConvergeS
 fn fleet_converge_request_host(request: FleetConvergeRequest) -> NonEmptyStr {
   match request {
     FullHostConverge { host: h, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => h
-    LaunchEnvironmentConverge { host: h, observed_timers: _, observed_caps: _, observed_fabric_cells: _ } => h
+    LaunchEnvironmentConverge { host: h, observed_timers: _ } => h
     FabricExecutionCellsConverge { host: h, observed_fabric_cells: _ } => h
     FabricAllocationStoreConverge { host: h, observed_allocation_store: _ } => h
   }
@@ -450,7 +474,7 @@ fn fleet_converge_apply_artifact_admits(
                 observed: allocation_store_substrate_prestate_wire(prestate: prestate),
               }
             FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } => ApplyMemberSetMismatch
-            LaunchEnvironmentConverge { host: _, observed_timers: _, observed_caps: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
+            LaunchEnvironmentConverge { host: _, observed_timers: _ } => ApplyMemberSetMismatch
             FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } => ApplyMemberSetMismatch
           }
         } else {
@@ -510,40 +534,26 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
   }
 }
 
-// A SCOPE COMPARISON THAT IS TOTAL IN BOTH ARGUMENTS. Written as a match rather than as equality
-// so that a third scope cannot silently join the admitted set: adding an arm to FleetConvergeScope
-// makes this fail to compile, where a derived == would quietly answer false and route nothing.
+// SCOPE EQUALITY IS ASKED OF THE WIRE FOLD, WHICH IS THIS TYPE'S CANONICAL TOTAL SURFACE.
+//
+// This was a nested match over both arguments -- one arm per ORDERED PAIR, so it grew
+// quadratically and a fourth scope would have taken it to sixteen arms. Its annotation defended the
+// shape on the ground that a derived `==` would let a new scope join the admitted set silently, and
+// that concern is correct and is PRESERVED here rather than traded away: fleet_converge_scope_wire
+// is itself an exhaustive match, so a new scope still fails to compile until it is given a wire,
+// and the comparison still cannot answer for a scope nobody spelled.
+//
+// WHAT THE WIRE FORM ADDS is a single authority. The wire already decides scope identity everywhere
+// that matters -- it is what the plan artifact persists, what apply decodes, and what
+// fleet_converge_scope_of_wire inverts -- so comparing two scopes by any OTHER rule would have been
+// a second answer to a question the wire already answers, and the two could disagree.
+//
+// THE ONE PROPERTY THE PAIRWISE FORM HAD FOR FREE AND THIS ONE MUST STATE: two scopes sharing a
+// wire spelling would compare equal. That is not left to inspection --
+// witness_every_scope_wire_is_distinct pins the wires pairwise distinct, which is the same fact
+// fleet_converge_scope_of_wire's decode already depends on.
 fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConvergeScope) -> Bool {
-  match planned {
-    FullHost =>
-      match observed {
-        FullHost => true
-        LaunchEnvironment => false
-        FabricExecutionCellsOnly => false
-        FabricAllocationStoreOnly => false
-      }
-    LaunchEnvironment =>
-      match observed {
-        LaunchEnvironment => true
-        FullHost => false
-        FabricExecutionCellsOnly => false
-        FabricAllocationStoreOnly => false
-      }
-    FabricExecutionCellsOnly =>
-      match observed {
-        FabricExecutionCellsOnly => true
-        FullHost => false
-        LaunchEnvironment => false
-        FabricAllocationStoreOnly => false
-      }
-    FabricAllocationStoreOnly =>
-      match observed {
-        FabricAllocationStoreOnly => true
-        FullHost => false
-        LaunchEnvironment => false
-        FabricExecutionCellsOnly => false
-      }
-  }
+  fleet_converge_scope_wire(scope: planned) == fleet_converge_scope_wire(scope: observed)
 }
 
 fn fleet_converge_plan_held_lease(
@@ -1170,29 +1180,14 @@ fn fleet_converge_apply_terminal(request: FleetConvergeRequest) -> FleetConverge
         }
       }
     }
-    LaunchEnvironmentConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_fabric_cells: observed_fabric_cells,
-    } => {
-      let cap_refused = membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } => {
       let timer_refused = membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers))
-      let fabric_refused = fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells)
-      let total = cap_refused + timer_refused + fabric_refused
-      if total == 0 {
+      if timer_refused == 0 {
         FullyApplied
       } else {
         PartiallyApplied {
-          refused_axis_count: total,
-          detail: join(
-            [
-              "cap=", to_string(cap_refused),
-              " timer=", to_string(timer_refused),
-              " fabric-cell=", to_string(fabric_refused),
-            ],
-            "",
-          ),
+          refused_axis_count: timer_refused,
+          detail: join(["timer=", to_string(timer_refused)], ""),
         }
       }
     }
@@ -1242,19 +1237,8 @@ fn fleet_converge_plan_axis_lines(request: FleetConvergeRequest) -> List<String>
           concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
         ),
       )
-    LaunchEnvironmentConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_fabric_cells: observed_fabric_cells,
-    } =>
-      concat(
-        concat(
-          concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers))),
-          concat(["# cap-axis"], membership_plan_lines_cap(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps))),
-        ),
-        concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells)),
-      )
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
+      concat(["# timer-retirement"], membership_plan_lines_timer(plan: timer_retirement_plan(observed: observed_timers)))
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       concat(["# fabric-cell"], fleet_converge_fabric_cell_lines(host: host, observed_fabric_cells: observed_fabric_cells))
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } => []
@@ -1284,17 +1268,10 @@ fn fleet_converge_plan_refusal_counter_lines(request: FleetConvergeRequest) -> L
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
         concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
       ]
-    LaunchEnvironmentConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_fabric_cells: observed_fabric_cells,
-    } =>
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
       [
         concat("# scope=", fleet_converge_scope_wire(scope: LaunchEnvironment)),
-        concat("# cap-refusals=", to_string(membership_refusal_count(plan: caps_reconcile(desired: fleet_converge_desired_caps(), observed: observed_caps)))),
         concat("# timer-refusals=", to_string(membership_refusal_count(plan: timer_retirement_plan(observed: observed_timers)))),
-        concat("# fabric-cell-refusals=", to_string(fleet_converge_fabric_cell_refusal_count(host: host, observed_fabric_cells: observed_fabric_cells))),
       ]
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       [
@@ -1680,22 +1657,11 @@ fn observed_baseline_text(request: FleetConvergeRequest) -> String {
         ),
         "\n",
       )
-    LaunchEnvironmentConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_fabric_cells: observed_fabric_cells,
-    } =>
+    LaunchEnvironmentConverge { host: host, observed_timers: observed_timers } =>
       join(
         concat(
-          concat(
-            [fleet_converge_scope_wire(scope: LaunchEnvironment), concat("host:", host as String)],
-            concat(
-              map(observed_timers, m => concat("timer:", m.unit_name as String)),
-              map(observed_caps, c => concat("cap:", c.dropin_path as String, "=", c.content)),
-            ),
-          ),
-          fabric_cell_baseline_rows(population: observed_fabric_cells),
+          [fleet_converge_scope_wire(scope: LaunchEnvironment), concat("host:", host as String)],
+          map(observed_timers, m => concat("timer:", m.unit_name as String)),
         ),
         "\n",
       )
@@ -2455,8 +2421,8 @@ fn fleet_converge_apply_shell_axis_note(request: FleetConvergeRequest) -> String
   match request {
     FullHostConverge { host: _, observed_timers: _, observed_caps: _, observed_spark: _, observed_slots: _, observed_fabric_cells: _, observed_activation_readiness: _ } =>
       "this script runs timer teardown, runner-slot ADD, and fabric-cell ensure effects"
-    LaunchEnvironmentConverge { host: _, observed_timers: _, observed_caps: _, observed_fabric_cells: _ } =>
-      "scope:launch-environment — this script runs timer teardown and fabric-cell ensure effects; runner-slot and runner-service activation are not in this scope and have no lines here"
+    LaunchEnvironmentConverge { host: _, observed_timers: _ } =>
+      "scope:launch-environment — this script runs legacy fleet-converge timer teardown and nothing else; runner-slot, runner-service activation, the cap axis and fabric cells are not in this scope and have no lines here"
     FabricExecutionCellsConverge { host: _, observed_fabric_cells: _ } =>
       "scope:fabric-execution-cells-only — this script runs fabric-cell ensure effects only"
     FabricAllocationStoreConverge { host: _, observed_allocation_store: _ } =>
@@ -2494,18 +2460,10 @@ fn fleet_converge_apply_shell_axis_lines(request: FleetConvergeRequest) -> List<
           ),
         ),
       )
-    LaunchEnvironmentConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: _,
-      observed_fabric_cells: observed_fabric_cells,
-    } =>
+    LaunchEnvironmentConverge { host: _, observed_timers: observed_timers } =>
       concat(
-        concat(
-          timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
-          [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
-        ),
-        fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells),
+        timer_apply_lines(plan: timer_retirement_plan(observed: observed_timers)),
+        [concat("sudo -n ", concat(ci_runner_sudo_binary_path(b: SudoSystemctl) as String, " daemon-reload"))],
       )
     FabricExecutionCellsConverge { host: host, observed_fabric_cells: observed_fabric_cells } =>
       fabric_cell_apply_lines(host: host, observed_fabric_cells: observed_fabric_cells)
@@ -2685,25 +2643,19 @@ fn fleet_converge_plan_artifact(
 }
 
 // THE RLM-2 LAUNCH-ENVIRONMENT PLAN. Its parameter list IS the scope: there is no slot population
-// to pass and no activation readiness to pass, so a caller cannot hand this fold a CI-capacity
-// observation and cannot ask it to excuse one. What that buys downstream is the honest terminal --
-// a launch environment whose caps, timers and fabric cells are converged lands FullyApplied, which
-// the RLM deployment receipt already requires and which a full-host plan for the same host cannot
-// reach while runner-slot ownership and activation readiness stand unresolved on their own plan.
+// to pass, no activation readiness, no cap population and no fabric observation, so a caller cannot
+// hand this fold a CI-capacity or fabric observation and cannot ask it to excuse one. What that
+// buys downstream is the honest terminal -- a launch environment whose timer retirement is
+// converged lands FullyApplied, which the RLM deployment receipt requires and which a full-host
+// plan for the same host cannot reach while runner-slot ownership and activation readiness stand
+// unresolved on their own plan.
 fn fleet_converge_launch_environment_plan_artifact(
   host: NonEmptyStr,
   prior_generation: Int,
   observed_timers: List<TimerRetirementMember>,
-  observed_caps: List<CapMember>,
-  observed_fabric_cells: FabricCellObservationDecision,
 ) -> FleetConvergePlanArtifact? {
   fleet_converge_plan_artifact_of_request(
-    request: LaunchEnvironmentConverge {
-      host: host,
-      observed_timers: observed_timers,
-      observed_caps: observed_caps,
-      observed_fabric_cells: observed_fabric_cells,
-    },
+    request: LaunchEnvironmentConverge { host: host, observed_timers: observed_timers },
     prior_generation: prior_generation,
   )
 }
@@ -2798,6 +2750,7 @@ data fleet_converge_plan_prior_generation_path: String = "/tmp/fleet-converge-pl
 
 data fleet_converge_plan_member_set_fp_path: String = "/tmp/fleet-converge-plan/subject_member_set.txt"
 data fleet_converge_plan_subject_scope_path: String = "/tmp/fleet-converge-plan/subject_scope.txt"
+data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
 fn fleet_converge_observed_baseline_matches(
   observed_baseline_hex: Fnv1a64StructuralDigestHex,

@@ -8,6 +8,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergeRequest,
   FullHostConverge,
   LaunchEnvironmentConverge,
+  FabricExecutionCellsConverge,
   FleetConvergeScope,
   FullHost,
   LaunchEnvironment,
@@ -16,6 +17,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergeApplyTerminal,
   FullyApplied,
   PartiallyApplied,
+  TimerRetirementMember,
   fleet_converge_apply_terminal,
   fleet_converge_apply_terminal_wire,
   fleet_converge_apply_shell,
@@ -24,6 +26,7 @@ import gunbc.fleet_converge_plan {
   ScopeDecoded,
   ScopeUndecodable,
   fleet_converge_request_scope,
+  fleet_converge_request_host,
   fleet_converge_apply_artifact_admits,
   ApplyAdmitted,
   ApplyScopeMismatch,
@@ -36,15 +39,17 @@ import gunbc.fleet_converge_plan {
   fleet_converge_launch_environment_plan_artifact,
   fleet_converge_plan_artifact,
   fleet_converge_desired_caps,
-  fleet_converge_request_host,
+  timer_retirement_observed_legacy_srv1,
 }
+import gunbc.host_converge { gunbc_runner_per_slot_dropin_path }
 import gunbc.runner_slot_provision { RunnerSlotMember, runner_slot_member_from_instance_name }
 import gunbc.build_cache_instance { RunnerSlotIdentity }
 import gunbc.runner_slot_allocation { committed_slot_identities }
 import gunbc.runner_unit { runner_slot_unit_name, runner_unit_template_name, runner_unit_prefix }
 import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_owned_steps_retract_order }
-import std.content_hash { serialize_content_hash }
+import gunbc.host_axis_caps { CapMember }
 import gunbc.fleet_intent_network { operator_host_srv3 }
+import std.content_hash { serialize_content_hash }
 import v2.std.optional { Present, Absent }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -57,36 +62,26 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // `partially_applied|33|slot=31 cap=0 timer=0 fabric-cell=0 activation=2`. Thirty-one of those are
 // REFUSED-REMOVAL on runner slots whose ownership no provenance signal establishes, and two are the
 // runner-service activation stall every production caller supplies. Both belong to CI runner
-// capacity and to its own plan; neither says anything about whether the launch environment is
-// converged. The RLM deployment fold accepts only FullyApplied, so a scope that ANSWERS FOR MORE
-// THAN THE QUESTION could not report the answer honestly.
+// capacity and to its own plan. The RLM deployment fold accepts only FullyApplied, so the launch
+// environment could not be proven converged for reasons that say nothing about it.
 //
-// WHAT WOULD BE THE WRONG FIX, AND WHY THESE CONTROLS ARE SHAPED TO CATCH IT. Relaxing the
-// FullyApplied requirement, or selecting the slot family and excusing its refusals, or passing an
-// empty slot population, would each produce a green RLM receipt with the axis set unchanged. So the
-// controls do not assert "the terminal is FullyApplied" alone -- every one of them is a PAIR over
-// the SAME host observation, full-host beside launch-environment, and each pair goes red if the
-// launch-environment scope quietly regains an axis or if the full-host scope quietly loses one.
+// THE SCOPE CARRIES TIMER RETIREMENT AND NOTHING ELSE, and an earlier cut of this file tested a
+// wider one. Caps and fabric cells were removed after review measured them as foreign -- caps
+// because gunbc_runner_per_slot_dropin_path resolves under /etc/systemd/system/actions-runner@
+// .service.d and is therefore the same CI-capacity family reached by another name, and fabric cells
+// because docs/plans/roadmap-launch-mvp-plan.md rules them off this proof's path outright. The
+// controls below now pin BOTH exclusions, not just the slot and activation ones.
 //
-// THE STRUCTURAL HALF IS NOT ASSERTED HERE, AND THAT IS A RUNG STATEMENT RATHER THAN AN OMISSION.
-// `LaunchEnvironmentConverge` has no runner-slot field and no activation field, so a launch-
-// environment request carrying one has no constructor: the invalid state is unwritable in the
-// accepted corpus (DESIGN section 4b rung 4), and the executing evidence for that is the exhaustive
-// matches over `FleetConvergeRequest` in gunbc.fleet_converge_plan -- adding an axis makes the
-// terminal, the apply shell, the baseline text and the axis lines fail to compile.
-// A fixture-authored RED is expressible -- `compile_dag_diagnostic_census` compiles a synthetic
-// source through the real acceptance path -- and it is NOT enrolled here for a reason that is
-// itself a finding rather than a preference: a witness carrier calling that builtin declares
-// `ReadsLiveTree` truthfully, and the required floor DECLINES every ReadsLiveTree identity before
-// the fold (gunbc.guarantee_probe_corpus, measured 2026-08-22). Enrolling the probe would add a
-// never-executed identity that reads as coverage, which is worse than absent. The trigger is that
-// arm's deletion, which v2.workflow.required_floor already stages.
-data witness_unmodeled_host: NonEmptyStr = "srv9" as NonEmptyStr
+// EVERY CLAIM IS A PAIR OVER ONE HOST OBSERVATION, full-host beside launch-environment, so a red is
+// attributable to the scope rather than to the harness. Asserting only that a launch plan is
+// FullyApplied would stay green if the refusal disappeared for any reason at all.
 
-// AN UNMODELED HOST IS THE MINIMAL DISCRIMINATING OBSERVATION. Its runner-slot family refuses
-// (`REFUSED-UNMODELED-HOST`, one refusal) while its caps, its timer retirement and its fabric cells
-// have nothing refused -- so every difference the pairs below report is attributable to the slot
-// and activation axes and to nothing else.
+data witness_unmodeled_host: NonEmptyStr = "srv9" as NonEmptyStr
+data witness_host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
+
+// AN UNMODELED HOST IS THE MINIMAL DISCRIMINATING OBSERVATION: its runner-slot family refuses
+// (REFUSED-UNMODELED-HOST, one refusal) while its caps, timers and fabric cells have nothing
+// refused, so every difference below is attributable to the slot and activation axes alone.
 fn witness_full_host_request() -> FleetConvergeRequest {
   FullHostConverge {
     host: witness_unmodeled_host,
@@ -100,12 +95,7 @@ fn witness_full_host_request() -> FleetConvergeRequest {
 }
 
 fn witness_launch_environment_request() -> FleetConvergeRequest {
-  LaunchEnvironmentConverge {
-    host: witness_unmodeled_host,
-    observed_timers: [],
-    observed_caps: [],
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
-  }
+  LaunchEnvironmentConverge { host: witness_unmodeled_host, observed_timers: [] }
 }
 
 fn terminal_is_fully_applied(t: FleetConvergeApplyTerminal) -> Bool {
@@ -125,74 +115,75 @@ fn scope_is_launch_environment(s: FleetConvergeScope) -> Bool {
 }
 
 // THE PAIR. One observation, two scopes, opposite terminals -- and the full-host half is the
-// control that makes the launch-environment half mean anything. If this file asserted only that a
-// launch-environment plan is FullyApplied, it would stay green if the refusal disappeared for any
-// reason at all, including the slot family silently ceasing to refuse.
+// control that makes the launch-environment half mean anything.
 test fn the_launch_environment_scope_is_fully_applied_where_the_host_scope_is_not() -> Bool {
   terminal_is_fully_applied(t: fleet_converge_apply_terminal(request: witness_launch_environment_request()))
     && !terminal_is_fully_applied(t: fleet_converge_apply_terminal(request: witness_full_host_request()))
 }
 
-// THE WIRE IS WHAT RLM-2's DEPLOYMENT FOLD READS. It requires the exact token `fully_applied` and
-// cannot re-derive a refusal count, so the terminal being FullyApplied and the wire spelling it are
-// two facts and this asserts the second.
+// THE WIRE IS WHAT RLM-2's DEPLOYMENT FOLD READS: it requires the exact token and cannot re-derive
+// a refusal count, so the terminal being FullyApplied and the wire spelling it are two facts.
 test fn the_launch_environment_terminal_wire_is_the_token_the_rlm_join_requires() -> Bool {
   fleet_converge_apply_terminal_wire(
     terminal: fleet_converge_apply_terminal(request: witness_launch_environment_request()),
   ) == "fully_applied"
 }
 
-// THE HOST SCOPE'S DETAIL STILL NAMES THE SLOT AXIS. Without this, the pair above would also be
-// satisfied by a full-host plan that refused for some unrelated reason.
+// WITHOUT THIS, the pair above would also be satisfied by a full-host plan refusing for some
+// unrelated reason.
 test fn the_host_scope_detail_still_attributes_its_refusal_to_the_slot_axis() -> Bool {
   match fleet_converge_apply_terminal(request: witness_full_host_request()) {
     FullyApplied => false
     PartiallyApplied { refused_axis_count: _, detail: d } =>
-      string_contains(s: d, pattern: "slot=1")
-        && string_contains(s: d, pattern: "activation=")
+      string_contains(s: d, pattern: "slot=1") && string_contains(s: d, pattern: "activation=")
   }
 }
 
-// AND THE LAUNCH-ENVIRONMENT DETAIL HAS NO POSITION FOR THEM. A terminal that reported `slot=0` for
-// this scope would be the empty-observation narrow in its reporting form: zero reads as "nothing was
-// refused on this axis", which is a claim about the host, where the truth is that the axis was never
-// this scope's obligation. Exercised through a refusing fabric observation so the PartiallyApplied
-// arm -- the only arm that carries a detail -- is actually reached.
-test fn the_launch_environment_detail_has_no_slot_or_activation_position() -> Bool {
-  match fleet_converge_apply_terminal(
-    request: LaunchEnvironmentConverge {
-      host: witness_unmodeled_host,
-      observed_timers: [],
-      observed_caps: [],
-      observed_fabric_cells: refusing_fabric_observation(),
-    },
+// THE SCOPE IS NOT A CEREMONIAL EMPTY ONE, WHICH THE REVIEW EXPLICITLY DID NOT AUTHORIZE.
+//
+// Timer retirement is a real obligation: the legacy srv1 timers are OBSERVED, they enter the
+// baseline the subject fingerprints and apply compare-and-swaps against, they render as REMOVE
+// lines in the reviewed plan body, and they emit actual teardown work into apply.sh. A scope whose
+// only axis produced no rows, no baseline members and no executed lines would be a receipt wearing
+// a plan's shape; this asserts all four in one claim so none can quietly become vacuous.
+fn witness_legacy_timer_launch_request() -> FleetConvergeRequest {
+  LaunchEnvironmentConverge {
+    host: witness_host_srv1,
+    observed_timers: timer_retirement_observed_legacy_srv1(),
+  }
+}
+
+test fn the_launch_environment_scope_carries_a_real_timer_obligation() -> Bool {
+  let req = witness_legacy_timer_launch_request()
+  let baseline = observed_baseline_text(request: req)
+  let shell = fleet_converge_apply_shell(
+    request: req,
+    terminal: fleet_converge_apply_terminal(request: req),
+  )
+  match fleet_converge_launch_environment_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: timer_retirement_observed_legacy_srv1(),
   ) {
-    FullyApplied => false
-    PartiallyApplied { refused_axis_count: _, detail: d } =>
-      string_contains(s: d, pattern: "cap=")
-        && string_contains(s: d, pattern: "timer=")
-        && string_contains(s: d, pattern: "fabric-cell=")
-        && !string_contains(s: d, pattern: "slot=")
-        && !string_contains(s: d, pattern: "activation=")
+    Absent => false
+    Present { value: artifact } =>
+      string_contains(s: baseline, pattern: "timer:")
+        && string_contains(s: artifact.plan_body, pattern: "# timer-retirement")
+        && string_contains(s: artifact.plan_body, pattern: "REMOVE timer-unit ")
+        && string_contains(s: shell, pattern: "systemctl")
+        && (serialize_content_hash(hash: fleet_converge_plan_subject(request: req).member_set_fingerprint) as String)
+             != (serialize_content_hash(
+                  hash: fleet_converge_plan_subject(
+                    request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },
+                  ).member_set_fingerprint,
+                ) as String)
   }
 }
 
-// A HOST WHOSE FABRIC CELLS ARE EXPECTED BUT UNREAD REFUSES ITS FABRIC AXIS, which is what puts the
-// launch-environment terminal into its PartiallyApplied arm for the detail assertion above.
-fn refusing_fabric_observation() -> FabricCellObservationDecision {
-  fabric_cell_observation_unobserved(host: operator_host_srv3)
-}
-
-// THE EXECUTED SCRIPT, NOT ONLY THE REPORTED COUNT. A terminal that omitted the axes while the
-// apply script still emitted slot installs would be the worse failure of the two: it would report a
-// converged launch environment while actuating CI runner capacity nobody planned.
-// THE ASSERTION IS OVER THE SECTION MARKERS AND THE REFUSAL THE SLOT FAMILY EMITS, NOT OVER THE
-// WORD. Its first cut matched the bare spelling `runner-slot` and went RED on this script's own
-// preamble note, which names the omitted axes so an operator reading the script knows they were
-// never selected. That red was correct about the string and wrong about the subject: a witness that
-// cannot tell an emitted SECTION from a sentence describing its absence would force the annotation
-// out to stay green, which is the check dictating the prose rather than measuring the behaviour.
-test fn the_launch_environment_apply_script_emits_no_slot_or_activation_work() -> Bool {
+// THE EXECUTED SCRIPT CARRIES NO FOREIGN AXIS. A terminal that omitted the axes while the script
+// still emitted their work would be the worse failure of the two: a converged launch environment
+// reported while CI runner capacity nobody planned is actuated.
+test fn the_launch_environment_apply_script_emits_no_foreign_axis_work() -> Bool {
   let le = fleet_converge_apply_shell(
     request: witness_launch_environment_request(),
     terminal: fleet_converge_apply_terminal(request: witness_launch_environment_request()),
@@ -204,36 +195,38 @@ test fn the_launch_environment_apply_script_emits_no_slot_or_activation_work() -
   !string_contains(s: le, pattern: "# runner-slot membership")
     && !string_contains(s: le, pattern: "# runner-service activation (gunbc.runner_service_activation)")
     && !string_contains(s: le, pattern: "REFUSED-UNMODELED-HOST")
+    && !string_contains(s: le, pattern: "fabric-cell")
+    && !string_contains(s: le, pattern: gunbc_runner_per_slot_dropin_path)
     && string_contains(s: fh, pattern: "# runner-slot membership")
     && string_contains(s: fh, pattern: "# runner-service activation (gunbc.runner_service_activation)")
     && string_contains(s: fh, pattern: "REFUSED-UNMODELED-HOST")
 }
 
-// THE REVIEWED PLAN BODY CARRIES THE SAME AXIS SET THE SCRIPT DOES, so a reviewer approving a
-// launch-environment plan is not reading counters for families it never observed.
-test fn the_launch_environment_plan_body_carries_only_its_own_axis_counters() -> Bool {
+// THE REVIEWED BODY CARRIES ONE COUNTER, AND FOUR ARE ABSENT. A `# cap-refusals=0` row under a
+// scope that never observed caps is the empty-observation narrow in its reporting form: zero reads
+// as "nothing was refused on this axis", a claim about the host, where the truth is that the axis
+// was never this scope's obligation.
+test fn the_launch_environment_plan_body_carries_only_its_own_axis_counter() -> Bool {
   match fleet_converge_launch_environment_plan_artifact(
     host: witness_unmodeled_host,
     prior_generation: 0,
     observed_timers: [],
-    observed_caps: [],
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
   ) {
     Absent => false
     Present { value: artifact } =>
       string_contains(s: artifact.plan_body, pattern: "# scope=scope:launch-environment")
-        && string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# timer-refusals=")
-        && string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
         && !string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
         && !string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
+        && !string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
+        && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
+        && !string_contains(s: artifact.plan_body, pattern: "# cap-axis")
+        && !string_contains(s: artifact.plan_body, pattern: "# fabric-cell")
         && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: FullyApplied")
   }
 }
 
-// THE FULL-HOST BODY IS UNCHANGED IN THE FACT THAT MATTERS: it still carries both counters. This is
-// the control that separates "the launch-environment scope omits these axes" from "these axes were
-// deleted from the module".
+// THE CONTROL THAT SEPARATES "the launch scope omits these axes" FROM "these axes were deleted".
 test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters() -> Bool {
   match fleet_converge_plan_artifact(
     host: witness_unmodeled_host,
@@ -250,14 +243,104 @@ test fn the_full_host_plan_body_still_carries_the_slot_and_activation_counters()
       string_contains(s: artifact.plan_body, pattern: "# scope=scope:full-host")
         && string_contains(s: artifact.plan_body, pattern: "# slot-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# activation-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# cap-refusals=")
+        && string_contains(s: artifact.plan_body, pattern: "# fabric-cell-refusals=")
         && string_contains(s: artifact.plan_body, pattern: "# apply-terminal: PartiallyApplied")
   }
 }
 
-// SCOPE IS IN THE SUBJECT, so the two plans are different subjects rather than two readings of one.
-// A launch-environment plan artifact admitted against a full-host re-observation would actuate a
-// family the plan never selected; apply refuses it as a SCOPE crossing and not as ordinary drift,
-// which is the distinction that decides whether an operator replans or investigates.
+// CAP DRIFT IS OBSERVABLE UNDER FULL-HOST AND HAS NO POSITION UNDER LAUNCH.
+//
+// A cap drop-in whose content differs from desired is a real, actionable difference. Under
+// full-host it reaches the reviewed body as a cap action on a path under the runner unit template's
+// drop-in directory. Under launch-environment there is no field to observe it into, so no plan body
+// can mention it -- which is the point, because the launch scope's apply.sh never emitted cap work
+// anyway (drop-in writes are live_deploy deploy-principal authority), so counting cap refusals
+// there would have reported an axis whose work this script cannot perform.
+fn drifted_cap() -> CapMember {
+  CapMember {
+    dropin_path: gunbc_runner_per_slot_dropin_path as NonEmptyStr,
+    content: "[Service]\nMemoryMax=1\n",
+  }
+}
+
+test fn cap_drift_is_visible_under_full_host_and_unconstructible_under_launch() -> Bool {
+  let full_with_drift = fleet_converge_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [drifted_cap()],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  )
+  let launch = fleet_converge_launch_environment_plan_artifact(
+    host: witness_host_srv1,
+    prior_generation: 0,
+    observed_timers: [],
+  )
+  match full_with_drift {
+    Absent => false
+    Present { value: fh } =>
+      match launch {
+        Absent => false
+        Present { value: le } =>
+          string_contains(s: fh.plan_body, pattern: "# cap-axis")
+            && string_contains(s: fh.plan_body, pattern: gunbc_runner_per_slot_dropin_path)
+            && !string_contains(s: le.plan_body, pattern: gunbc_runner_per_slot_dropin_path)
+            && !string_contains(s: le.plan_body, pattern: "# cap-axis")
+            && !string_contains(s: le.apply_shell, pattern: gunbc_runner_per_slot_dropin_path)
+      }
+  }
+}
+
+// THE CAP PATH IS A RUNNER-UNIT PATH, WHICH IS THE MEASUREMENT THAT CONDEMNED THE EARLIER CUT.
+// This is not decoration beside the claim above: it is the fact that makes caps foreign rather
+// than merely out of budget, and nothing else in this file would notice if the path moved.
+test fn the_cap_axis_lives_under_the_actions_runner_unit_template() -> Bool {
+  string_contains(s: gunbc_runner_per_slot_dropin_path, pattern: runner_unit_prefix)
+    && string_contains(s: gunbc_runner_per_slot_dropin_path, pattern: runner_unit_template_name as String)
+}
+
+// A FABRIC OBSERVATION MOVES THE SCOPES THAT OWN IT AND CANNOT ENTER THIS ONE. srv3 has an expected
+// fabric cell, so an unobserved population there is a REFUSAL for a scope carrying that axis; the
+// launch body cannot render it under any host because the arm has no field for it.
+test fn a_refusing_fabric_observation_moves_full_host_and_cannot_enter_launch() -> Bool {
+  let fh = fleet_converge_plan_artifact(
+    host: operator_host_srv3 as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    observed_spark: [],
+    observed_slots: [],
+    observed_fabric_cells: fabric_cell_observation_unobserved(host: operator_host_srv3),
+    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
+  )
+  let le = fleet_converge_launch_environment_plan_artifact(
+    host: operator_host_srv3 as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+  )
+  match fh {
+    Absent => false
+    Present { value: f } =>
+      match le {
+        Absent => false
+        Present { value: l } =>
+          string_contains(s: f.plan_body, pattern: "REFUSED-OBSERVATION fabric-cell")
+            && !string_contains(s: l.plan_body, pattern: "fabric-cell")
+            && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
+                 request: LaunchEnvironmentConverge { host: operator_host_srv3 as NonEmptyStr, observed_timers: [] },
+               ))
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SCOPE-CROSSING AND MUTATION CONTROLS
+// ---------------------------------------------------------------------------
+
 test fn a_launch_environment_plan_cannot_be_applied_against_a_full_host_reobservation() -> Bool {
   match fleet_converge_apply_artifact_admits(
     planned_host_text: witness_unmodeled_host as String,
@@ -277,9 +360,9 @@ test fn a_launch_environment_plan_cannot_be_applied_against_a_full_host_reobserv
   }
 }
 
-// AND THE REVERSE, because a one-directional refusal would leave the crossing open the way that
-// actually actuates: a full-host plan admitted against a launch-environment re-observation is the
-// arm where slot work runs under a scope that never reviewed it.
+// THE REVERSE, because a one-directional refusal leaves open the arm that actually actuates: a
+// full-host plan admitted against a launch re-observation runs slot work under a scope that never
+// reviewed it.
 test fn a_full_host_plan_cannot_be_applied_against_a_launch_environment_reobservation() -> Bool {
   match fleet_converge_apply_artifact_admits(
     planned_host_text: witness_unmodeled_host as String,
@@ -297,55 +380,6 @@ test fn a_full_host_plan_cannot_be_applied_against_a_launch_environment_reobserv
     ApplyMemberSetMismatch => false
     ApplyAllocationStorePrestateMismatch { namespace_path: _, store_path: _, observed: _ } => false
   }
-}
-
-// THE WIRE DECODES BACK TO THE SCOPE IT NAMES. Apply reads the planned scope off a file, so a wire
-// this build could write and could not read would refuse every launch-environment apply -- the
-// version-skew arm the decode's own refusal vocabulary separates from an empty artifact.
-test fn the_launch_environment_wire_round_trips_through_the_decode() -> Bool {
-  match fleet_converge_scope_of_wire(wire: "scope:launch-environment") {
-    ScopeDecoded { scope: s } => scope_is_launch_environment(s: s)
-    ScopeUndecodable { cause: _ } => false
-  }
-    && scope_is_launch_environment(s: fleet_converge_request_scope(request: witness_launch_environment_request()))
-}
-
-// THE OMISSION REACHES SUBJECT IDENTITY, NOT ONLY THE REPORT. The baseline the fingerprint hashes
-// carries the scope row and the members the scope observed, so two scopes over one host fingerprint
-// differently and neither can be admitted against the other's artifact.
-test fn the_two_scopes_fingerprint_the_same_host_differently() -> Bool {
-  let le = fleet_converge_plan_subject(request: witness_launch_environment_request())
-  let fh = fleet_converge_plan_subject(request: witness_full_host_request())
-  (serialize_content_hash(hash: le.member_set_fingerprint) as String)
-    != (serialize_content_hash(hash: fh.member_set_fingerprint) as String)
-    && string_contains(
-      s: observed_baseline_text(request: witness_launch_environment_request()),
-      pattern: "scope:launch-environment",
-    )
-    && !string_contains(
-      s: observed_baseline_text(request: witness_launch_environment_request()),
-      pattern: "scope:full-host",
-    )
-}
-
-// ---------------------------------------------------------------------------
-// SCOPE-CROSSING MUTATION CONTROLS
-//
-// The scope apply routes on is READ BACK FROM A FILE (subject_scope.txt), so the three ways that
-// file can lie are three different defects with three different operator remedies, and each is
-// asserted separately rather than collapsed into "apply refuses somehow".
-// ---------------------------------------------------------------------------
-
-// (a) THE PERSISTED WIRE IS MUTATED. A truncated write and a token from a vintage that spelled the
-// scope differently are the two live causes, and the decode separates them from an EMPTY artifact
-// because only the second is a version problem. What neither may do is default: choosing FullHost
-// for an unreadable wire would widen apply from one resource family to every family on the host,
-// invisibly, because the wider run is what the old signature always did.
-test fn a_mutated_persisted_scope_wire_refuses_rather_than_choosing_a_scope() -> Bool {
-  admission_is_scope_undecodable(wire: "scope:launch-environmen")
-    && admission_is_scope_undecodable(wire: "scope:launch environment")
-    && admission_is_scope_undecodable(wire: "")
-    && admission_is_scope_undecodable(wire: "scope:launch-environment-extended")
 }
 
 fn admission_is_scope_undecodable(wire: String) -> Bool {
@@ -366,29 +400,13 @@ fn admission_is_scope_undecodable(wire: String) -> Bool {
   }
 }
 
-// (b) THE POPULATIONS LOOK THE SAME AND THE SCOPES DO NOT. A full-host observation of a host with
-// no slots and a launch-environment observation of the same host carry the same timers, the same
-// caps and the same fabric cells -- every MEMBER agrees -- so a fingerprint computed over members
-// alone would admit one plan against the other's re-observation. The scope row is inside the
-// baseline the fingerprint hashes, so it does not: the two are different subjects.
-//
-// THE ASSERTION IS THE CONJUNCTION, and the second half is what makes it a mutation control rather
-// than a restatement of the pair test. Each side's OWN fingerprint still admits, so the refusal
-// above is attributable to the scope crossing and not to a fingerprint that never matches anything.
-test fn an_identical_looking_population_under_the_other_scope_still_refuses() -> Bool {
-  let empty_slot_full_host = FullHostConverge {
-    host: witness_unmodeled_host,
-    observed_timers: [],
-    observed_caps: [],
-    observed_spark: [],
-    observed_slots: [],
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_unmodeled_host as HostIdentity),
-    observed_activation_readiness: runner_activation_readiness_unobserved_no_transaction,
-  }
-  admission_is_admitted(planned: witness_launch_environment_request(), observed: witness_launch_environment_request())
-    && admission_is_admitted(planned: empty_slot_full_host, observed: empty_slot_full_host)
-    && !admission_is_admitted(planned: witness_launch_environment_request(), observed: empty_slot_full_host)
-    && !admission_is_admitted(planned: empty_slot_full_host, observed: witness_launch_environment_request())
+// DEFAULTING TO FullHost FOR AN UNREADABLE WIRE WOULD WIDEN APPLY FROM ONE RESOURCE FAMILY TO EVERY
+// FAMILY ON THE HOST, invisibly, because the wider run is what the old signature always did.
+test fn a_mutated_persisted_scope_wire_refuses_rather_than_choosing_a_scope() -> Bool {
+  admission_is_scope_undecodable(wire: "scope:launch-environmen")
+    && admission_is_scope_undecodable(wire: "scope:launch environment")
+    && admission_is_scope_undecodable(wire: "")
+    && admission_is_scope_undecodable(wire: "scope:launch-environment-extended")
 }
 
 fn admission_is_admitted(planned: FleetConvergeRequest, observed: FleetConvergeRequest) -> Bool {
@@ -409,25 +427,60 @@ fn admission_is_admitted(planned: FleetConvergeRequest, observed: FleetConvergeR
   }
 }
 
+// IDENTICAL-LOOKING POPULATIONS, DIFFERENT SCOPES. A slot-less full-host observation and a
+// timer-less launch observation of one host agree on every MEMBER, so a fingerprint over members
+// alone would admit one against the other. The scope row is inside the hashed baseline, so it does
+// not. The conjunction matters: each side's OWN fingerprint still admits, which is what makes the
+// refusal attributable to the crossing rather than to a fingerprint matching nothing.
+test fn an_identical_looking_population_under_the_other_scope_still_refuses() -> Bool {
+  admission_is_admitted(planned: witness_launch_environment_request(), observed: witness_launch_environment_request())
+    && admission_is_admitted(planned: witness_full_host_request(), observed: witness_full_host_request())
+    && !admission_is_admitted(planned: witness_launch_environment_request(), observed: witness_full_host_request())
+    && !admission_is_admitted(planned: witness_full_host_request(), observed: witness_launch_environment_request())
+}
+
+test fn the_launch_environment_wire_round_trips_through_the_decode() -> Bool {
+  match fleet_converge_scope_of_wire(wire: "scope:launch-environment") {
+    ScopeDecoded { scope: s } => scope_is_launch_environment(s: s)
+    ScopeUndecodable { cause: _ } => false
+  }
+    && scope_is_launch_environment(s: fleet_converge_request_scope(request: witness_launch_environment_request()))
+}
+
+// SCOPE EQUALITY IS NOW ASKED OF THE WIRE FOLD, so the property the old pairwise match had for
+// free must be stated: two scopes sharing a wire spelling would compare equal, and the decode's
+// inverse would be ambiguous too. This pins the four wires pairwise distinct.
+test fn every_scope_wire_is_distinct() -> Bool {
+  let wires = [
+    fleet_converge_scope_wire(scope: FullHost),
+    fleet_converge_scope_wire(scope: LaunchEnvironment),
+    fleet_converge_scope_wire(scope: FabricExecutionCellsOnly),
+    fleet_converge_scope_wire(scope: FabricAllocationStoreOnly),
+  ]
+  all(wires, w => list_length(items: filter(wires, x => x == w)) == 1)
+}
+
+test fn the_two_scopes_fingerprint_the_same_host_differently() -> Bool {
+  let le = fleet_converge_plan_subject(request: witness_launch_environment_request())
+  let fh = fleet_converge_plan_subject(request: witness_full_host_request())
+  (serialize_content_hash(hash: le.member_set_fingerprint) as String)
+    != (serialize_content_hash(hash: fh.member_set_fingerprint) as String)
+    && string_contains(
+      s: observed_baseline_text(request: witness_launch_environment_request()),
+      pattern: "scope:launch-environment",
+    )
+    && !string_contains(
+      s: observed_baseline_text(request: witness_launch_environment_request()),
+      pattern: "scope:full-host",
+    )
+}
+
 // ---------------------------------------------------------------------------
 // THE PRODUCTION-SHAPED CONTROL: THE EXACT OBSERVATION THAT PRODUCED THE INCIDENT
 // ---------------------------------------------------------------------------
 
-// The RLM-2b plan run over srv1 observed thirty-one surplus runner-slot artifacts -- srv1-22
-// through srv1-50, plus the two loose scripts the slot roster also sees -- none of which carries a
-// provenance signal, so membership_reconcile yields MemberRemovalRefused with OwnershipUnknown for
-// every one, and the activation family contributes its two. This reconstructs that population from
-// the same authorities the live plan used rather than transcribing the run's numbers as literals a
-// reader could not re-derive.
-//
-// WHY THIS IS NOT THE SAME TEST AS THE UNMODELED-HOST PAIR ABOVE. That pair uses a host the slot
-// family cannot resolve at all, which refuses for a structural reason; this one uses a MODELED host
-// whose slot family works perfectly and produces refusals about real artifacts on a real machine.
-// The two exercise different arms of the same axis, and only this one is the shape RLM-2 met.
-// THE THIRTY-ONE ARE SPELLED OUT RATHER THAN GENERATED FROM A RANGE. A fixture population is
-// evidence about an exact observation, and a range expression would let a boundary slip -- 22..50
-// silently becoming 22..49 -- without any reader noticing, which for a control whose whole content
-// is the number 31 would be the change detector this repository keeps refusing.
+// The thirty-one are spelled out rather than generated from a range: for a control whose content is
+// the number 31, a range expression would let a boundary slip unobserved.
 fn srv1_surplus_slot_names() -> List<String> {
   [
     "jit-runner.sh", "runner-liveness-reconcile.sh",
@@ -454,19 +507,8 @@ fn srv1_full_host_request() -> FleetConvergeRequest {
   }
 }
 
-fn srv1_launch_environment_request() -> FleetConvergeRequest {
-  LaunchEnvironmentConverge {
-    host: witness_host_srv1,
-    observed_timers: [],
-    observed_caps: fleet_converge_desired_caps(),
-    observed_fabric_cells: fabric_cell_observation_unobserved(host: witness_host_srv1 as HostIdentity),
-  }
-}
-
-data witness_host_srv1: NonEmptyStr = "srv1" as NonEmptyStr
-
-// THE INCIDENT, REPRODUCED AND THEN SPLIT. Same host, same caps, same timers, same fabric
-// observation; the ONLY difference is that one request type has runner-slot and activation
+// THE INCIDENT, REPRODUCED AND THEN SPLIT. Same host, same timers, same everything the launch scope
+// can see; the only difference is that one request type has runner-slot, activation, cap and fabric
 // positions and the other has none.
 test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bool {
   match fleet_converge_apply_terminal(request: srv1_full_host_request()) {
@@ -479,13 +521,13 @@ test fn the_production_shaped_srv1_observation_splits_on_the_scope_alone() -> Bo
         && string_contains(s: d, pattern: "timer=0")
         && string_contains(s: d, pattern: "fabric-cell=0")
   }
-    && terminal_is_fully_applied(t: fleet_converge_apply_terminal(request: srv1_launch_environment_request()))
+    && terminal_is_fully_applied(t: fleet_converge_apply_terminal(
+         request: LaunchEnvironmentConverge { host: witness_host_srv1, observed_timers: [] },
+       ))
 }
 
-// AND THE FULL-HOST PLAN STILL REPORTS THEM. The two excluded families stay owned by the fleet
-// program: this asserts that the thirty-one refusals still reach the reviewed plan body under the
-// scope that owns them, so the narrowing removed an obligation from RLM and removed nothing from
-// the fleet.
+// THE EXCLUDED FAMILIES STILL REFUSE LOUDLY UNDER THE SCOPE THAT OWNS THEM. The narrowing removed
+// an obligation from RLM and removed nothing from the fleet program.
 test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them() -> Bool {
   match fleet_converge_plan_artifact(
     host: witness_host_srv1,
@@ -507,34 +549,26 @@ test fn the_excluded_families_still_refuse_loudly_under_the_scope_that_owns_them
 }
 
 // ---------------------------------------------------------------------------
-// THE DEPENDENCY ARGUMENT, COMPUTED RATHER THAN ASSERTED
+// THE SLOT-AND-ACTIVATION EXCLUSION ARGUMENT, COMPUTED RATHER THAN ASSERTED.
 //
-// The claim the scope rests on is that the deployed roadmap service and belt path do not consume a
-// runner unit or a runner activation as a selected effect. Stated as prose that is an opinion; the
-// two populations are both derivable, so it is decided here by a join.
+// SCOPE OF THIS CLAIM, NARROWED AFTER REVIEW: it proves that the deployment the RLM transaction
+// installs owns no RUNNER UNIT, and therefore that the slot and activation axes are foreign to it.
+// It says nothing about caps or fabric cells -- caps are excluded by
+// the_cap_axis_lives_under_the_actions_runner_unit_template above (their path IS a runner-unit
+// path), and fabric cells by the governing plan document, not by this join. An earlier cut let this
+// claim read as proving the whole scope clean, which is exactly how caps survived in it.
 //
-// THE RLM SIDE is `deployment_owned_steps_retract_order(deployment_spec_srv1())` -- every path the
-// live deployment installs, owns and retracts, which is the complete set of host artifacts the
-// launch environment consists of. THE RUNNER SIDE is `runner_slot_unit_name` over srv1's desired
-// slots plus the unit template itself, from gunbc.runner_unit, which is the family the excluded
-// axes act on.
-//
-// A NON-DEGENERACY GUARD RIDES WITH IT, because a disjointness claim over an empty set is free and
-// would go green if either producer silently stopped answering. Both populations are asserted
-// nonempty in the same claim.
+// Both populations are asserted nonempty: a disjointness claim over an empty set is free and would
+// go green if either producer silently stopped answering.
 // ---------------------------------------------------------------------------
 test fn the_launch_environment_owns_no_runner_unit_and_no_runner_unit_owns_it() -> Bool {
   let owned = map(deployment_owned_steps_retract_order(spec: deployment_spec_srv1()), s => s.path as String)
   let runner_units = concat(
     [runner_unit_template_name as String],
-    map(gunbc_runner_slot_desired_identities_srv1(), i => runner_slot_unit_name(slot: i) as String),
+    map(committed_slot_identities(host: witness_host_srv1 as HostIdentity), i => runner_slot_unit_name(slot: i) as String),
   )
   list_length(items: owned) > 0
     && list_length(items: runner_units) > 0
     && !any(owned, p => any(runner_units, u => string_contains(s: p, pattern: u)))
     && !any(owned, p => string_contains(s: p, pattern: runner_unit_prefix))
-}
-
-fn gunbc_runner_slot_desired_identities_srv1() -> List<RunnerSlotIdentity> {
-  committed_slot_identities(host: witness_host_srv1 as HostIdentity)
 }

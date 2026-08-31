@@ -1,0 +1,328 @@
+module test.claim.fleet_converge_plan_manifest_witness
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import v2.std.optional { Present, Absent }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import gunbc.actions_run_binding { ActionsRunBinding }
+import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
+import gunbc.fleet_converge_plan {
+  FleetConvergeScope, FullHost, LaunchEnvironment,
+  FabricExecutionCellsOnly, FabricAllocationStoreOnly,
+  FullyApplied, PartiallyApplied,
+  fleet_converge_scope_wire,
+}
+import gunbc.fleet_converge_plan_manifest {
+  FleetConvergeApplyPayload,
+  FleetConvergeApplyPayloadAdmission,
+  PayloadAdmitted,
+  PayloadScopeUndecodableInReceipt,
+  PayloadSidecarDiverged,
+  PayloadGenerationTextCorrupt,
+  PayloadBundleDigestMismatch,
+  PayloadDigestUncomputable,
+  fleet_converge_apply_payload_admits,
+}
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE SUBJECT: apply must not be steerable by any file it reads.
+//
+// THE ATTACK THIS FILE EXECUTES. The plan writes eight files. plan_content.hex covered three of
+// them; subject_scope.txt, subject_host.txt, subject_member_set.txt, observed_baseline.hex and the
+// two generation files were covered by nothing. Apply then read the SCOPE out of subject_scope.txt
+// and used it for BOTH halves of its own admission -- as the "planned scope" it compared, and as
+// the selector deciding which observers built the re-observation it compared AGAINST. A value
+// compared only with itself always agrees. So a COORDINATED substitution -- scope, member-set
+// fingerprint and baseline replaced together and coherently -- admitted the original, reviewed
+// apply.sh under a different re-observation scope, with the bundle hash still matching because none
+// of the substituted files was in the bundle.
+//
+// WHY THESE GO THROUGH fleet_converge_apply_payload_admits RATHER THAN THE PREDICATE UNDERNEATH.
+// Calling fleet_converge_apply_artifact_admits directly with arguments of my choosing would test a
+// predicate, not the composition -- and the hole was never in that predicate. It was in WHICH
+// VALUES production handed it, which is a property of the composition and invisible to any test
+// that supplies the arguments itself. This is the function the CLI calls, given the bytes the CLI
+// read, judged against the receipt the CLI holds.
+
+data fixture_r: String = "0123456789abcdef0123456789abcdef01234567"
+data fixture_bundle_hash: String = "a1b2c3d4e5f60718"
+data fixture_member_set: String = "fnv1a64:0011223344556677"
+data fixture_baseline: String = "1122334455667788"
+data fixture_other_member_set: String = "fnv1a64:8899aabbccddeeff"
+data fixture_other_baseline: String = "99aabbccddeeff00"
+
+fn fixture_run() -> ActionsRunBinding {
+  ActionsRunBinding {
+    repository: "gunb-ai/gunbc",
+    workflow_ref: "gunb-ai/gunbc/.github/workflows/fleet-converge.yml@refs/heads/main",
+    run_id: "1001",
+    run_revision: fixture_r,
+  }
+}
+
+// THE ANCHOR: a plan receipt minted by the plan run at the launch-environment scope.
+fn fixture_receipt_at(scope_wire: String) -> FleetConvergePlanReceipt {
+  FleetConvergePlanReceipt {
+    run: fixture_run(),
+    observed_host: "srv1",
+    scope_wire: scope_wire,
+    member_set_fingerprint_hex: fixture_member_set,
+    plan_artifact_hash: fixture_bundle_hash,
+    observed_baseline_hex: fixture_baseline,
+    prior_generation: 4,
+    planned_generation: 5,
+    lease_key: "fleet-converge-plan:srv1",
+    lease_resource_fingerprint: "fnv1a64:aaaaaaaaaaaaaaaa",
+    lease_owner_fingerprint: "fnv1a64:bbbbbbbbbbbbbbbb",
+    lease_generation: 5,
+    apply_terminal: FullyApplied,
+  }
+}
+
+fn fixture_receipt() -> FleetConvergePlanReceipt {
+  fixture_receipt_at(scope_wire: fleet_converge_scope_wire(scope: LaunchEnvironment))
+}
+
+// THE HONEST ON-DISK POPULATION: exactly what the plan run wrote.
+fn coherent_payload() -> FleetConvergeApplyPayload {
+  FleetConvergeApplyPayload {
+    subject_host_text: "srv1",
+    subject_scope_text: fleet_converge_scope_wire(scope: LaunchEnvironment),
+    subject_member_set_text: fixture_member_set,
+    observed_baseline_hex_text: fixture_baseline,
+    prior_generation_text: "4",
+    planned_generation_text: "5",
+    plan_body: "# fleet-converge plan\nsubject_host:srv1\n",
+    apply_shell: "set -euo pipefail\n# apply-terminal: FullyApplied\n",
+    spark_typed_actions_wire: "",
+    plan_content_hex: fixture_bundle_hash,
+  }
+}
+
+fn admission_of(payload: FleetConvergeApplyPayload) -> FleetConvergeApplyPayloadAdmission {
+  fleet_converge_apply_payload_admits(receipt: fixture_receipt(), payload: payload)
+}
+
+fn is_admitted_routing_launch(a: FleetConvergeApplyPayloadAdmission) -> Bool {
+  match a {
+    PayloadAdmitted { routed_scope: s } =>
+      fleet_converge_scope_wire(scope: s) == fleet_converge_scope_wire(scope: LaunchEnvironment)
+    PayloadScopeUndecodableInReceipt { cause: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
+    PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}
+
+fn diverged_field(a: FleetConvergeApplyPayloadAdmission) -> String {
+  match a {
+    PayloadSidecarDiverged { field: f, receipt_value: _, on_disk_value: _ } => f
+    PayloadAdmitted { routed_scope: _ } => "admitted"
+    PayloadScopeUndecodableInReceipt { cause: _ } => "scope-undecodable"
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => "generation-corrupt"
+    PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => "bundle-mismatch"
+    PayloadDigestUncomputable { path: _ } => "digest-uncomputable"
+  }
+}
+
+// THE PAIRED POSITIVE. Without it every red below could be red by vacancy -- an admission that
+// refused everything would satisfy all of them.
+test fn an_untouched_artifact_population_is_admitted_and_routes_on_the_receipt_scope() -> Bool {
+  is_admitted_routing_launch(a: admission_of(payload: coherent_payload()))
+}
+
+// THE COORDINATED OTHER-SCOPE SUBSTITUTION -- THE ATTACK ITSELF.
+//
+// The reviewed payload is held BYTE-FOR-BYTE FIXED, the bundle hash still matches, and the three
+// subject sidecars are replaced together and COHERENTLY so that they agree with each other exactly
+// as a genuine full-host plan's would. Under the old composition this admitted: the substituted
+// scope selected the observers, and the substituted fingerprint and baseline were computed over
+// that same substituted scope, so every comparison agreed. It now refuses, because the scope apply
+// routes on comes from the run-bound receipt and the files are checked AGAINST it rather than
+// trusted BY it.
+fn coordinated_full_host_substitution() -> FleetConvergeApplyPayload {
+  FleetConvergeApplyPayload {
+    subject_host_text: "srv1",
+    subject_scope_text: fleet_converge_scope_wire(scope: FullHost),
+    subject_member_set_text: fixture_other_member_set,
+    observed_baseline_hex_text: fixture_other_baseline,
+    prior_generation_text: "4",
+    planned_generation_text: "5",
+    plan_body: "# fleet-converge plan\nsubject_host:srv1\n",
+    apply_shell: "set -euo pipefail\n# apply-terminal: FullyApplied\n",
+    spark_typed_actions_wire: "",
+    plan_content_hex: fixture_bundle_hash,
+  }
+}
+
+test fn a_coordinated_other_scope_substitution_refuses_before_any_observation() -> Bool {
+  let a = admission_of(payload: coordinated_full_host_substitution())
+  !is_admitted_routing_launch(a: a)
+    && diverged_field(a: a) == "/tmp/fleet-converge-plan/subject_scope.txt"
+}
+
+// AND EACH SIDECAR ALONE, so the coordinated refusal above cannot be passing for a reason that
+// would also fire on an honest population -- and so a future edit that stops checking one of them
+// is named rather than absorbed by the others.
+test fn a_substituted_member_set_fingerprint_alone_refuses() -> Bool {
+  let p = coherent_payload()
+  diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: fixture_other_member_set,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: p.prior_generation_text,
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  })) == "/tmp/fleet-converge-plan/subject_member_set.txt"
+}
+
+test fn a_substituted_baseline_digest_alone_refuses() -> Bool {
+  let p = coherent_payload()
+  diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: fixture_other_baseline,
+    prior_generation_text: p.prior_generation_text,
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  })) == "/tmp/fleet-converge-plan/observed_baseline.hex"
+}
+
+test fn a_substituted_subject_host_alone_refuses() -> Bool {
+  let p = coherent_payload()
+  diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: "srv2",
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: p.prior_generation_text,
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  })) == "/tmp/fleet-converge-plan/subject_host.txt"
+}
+
+// A REWOUND GENERATION IS A REPLAY, not drift: it is how a spent plan is presented as unspent.
+test fn a_rewound_generation_sidecar_refuses() -> Bool {
+  let p = coherent_payload()
+  diverged_field(a: admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: "3",
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  })) == "/tmp/fleet-converge-plan/prior_generation.txt"
+}
+
+// A CORRUPT GENERATION FILE IS ITS OWN ARM, never coerced to zero.
+test fn a_corrupt_generation_sidecar_refuses_rather_than_coercing() -> Bool {
+  let p = coherent_payload()
+  match admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: "not-a-number",
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: p.plan_content_hex,
+  }) {
+    PayloadGenerationTextCorrupt { field: f, on_disk_value: _ } =>
+      f == "/tmp/fleet-converge-plan/prior_generation.txt"
+    PayloadAdmitted { routed_scope: _ } => false
+    PayloadScopeUndecodableInReceipt { cause: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}
+
+test fn a_bundle_hash_that_disagrees_with_the_receipt_refuses() -> Bool {
+  let p = coherent_payload()
+  match admission_of(payload: FleetConvergeApplyPayload {
+    subject_host_text: p.subject_host_text,
+    subject_scope_text: p.subject_scope_text,
+    subject_member_set_text: p.subject_member_set_text,
+    observed_baseline_hex_text: p.observed_baseline_hex_text,
+    prior_generation_text: p.prior_generation_text,
+    planned_generation_text: p.planned_generation_text,
+    plan_body: p.plan_body,
+    apply_shell: p.apply_shell,
+    spark_typed_actions_wire: p.spark_typed_actions_wire,
+    plan_content_hex: "deadbeefdeadbeef",
+  }) {
+    PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
+      r == fixture_bundle_hash && o == "deadbeefdeadbeef"
+    PayloadAdmitted { routed_scope: _ } => false
+    PayloadScopeUndecodableInReceipt { cause: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}
+
+// AN UNDECODABLE SCOPE IN THE RECEIPT STOPS THE LINE BEFORE ANY OBSERVER IS SELECTED, and it is
+// the RECEIPT that must be decodable now -- not the file. This is the version-skew arm: a receipt
+// minted by a build that spelled scopes differently.
+test fn a_receipt_naming_an_undecodable_scope_selects_no_observer() -> Bool {
+  match fleet_converge_apply_payload_admits(
+    receipt: fixture_receipt_at(scope_wire: "full_host"),
+    payload: coherent_payload(),
+  ) {
+    PayloadScopeUndecodableInReceipt { cause: _ } => true
+    PayloadAdmitted { routed_scope: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
+    PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}
+
+// THE ROUTED SCOPE COMES FROM THE RECEIPT AND NOT FROM THE FILE, asserted directly rather than
+// inferred from the refusals: a receipt at full-host routes full-host even when the on-disk sidecar
+// says full-host too, and there is no arm of the admission type that can yield a scope taken from
+// disk. This is the property the whole repair rests on.
+test fn the_routed_scope_is_the_receipts_and_never_the_files() -> Bool {
+  let p = coherent_payload()
+  match fleet_converge_apply_payload_admits(
+    receipt: fixture_receipt_at(scope_wire: fleet_converge_scope_wire(scope: FullHost)),
+    payload: FleetConvergeApplyPayload {
+      subject_host_text: p.subject_host_text,
+      subject_scope_text: fleet_converge_scope_wire(scope: FullHost),
+      subject_member_set_text: p.subject_member_set_text,
+      observed_baseline_hex_text: p.observed_baseline_hex_text,
+      prior_generation_text: p.prior_generation_text,
+      planned_generation_text: p.planned_generation_text,
+      plan_body: p.plan_body,
+      apply_shell: p.apply_shell,
+      spark_typed_actions_wire: p.spark_typed_actions_wire,
+      plan_content_hex: p.plan_content_hex,
+    },
+  ) {
+    PayloadAdmitted { routed_scope: s } =>
+      fleet_converge_scope_wire(scope: s) == fleet_converge_scope_wire(scope: FullHost)
+    PayloadScopeUndecodableInReceipt { cause: _ } => false
+    PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } => false
+    PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } => false
+    PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } => false
+    PayloadDigestUncomputable { path: _ } => false
+  }
+}

@@ -239,7 +239,7 @@ fn fleet_converge_plan_step() -> Step {
 // would produce a receipt naming a revision nobody selected.
 fn fleet_converge_launch_environment_plan_step() -> Step {
   RunStep {
-    name: Present { value: "Fleet converge plan — scope:launch-environment (caps, timer retirement, fabric cells)" },
+    name: Present { value: "Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)" },
     id: Present { value: "launch_environment_plan" },
     run: gunbc_ci_fleet_converge_launch_environment_plan_invoke(),
     shell: none,

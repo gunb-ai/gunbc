@@ -56,6 +56,17 @@ import extdeps.posix.path_ownership {
   PathModeUnobserved,
 }
 import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
+import gunbc.fleet_converge_plan_manifest {
+  FleetConvergeApplyPayload,
+  PayloadAdmitted,
+  PayloadScopeUndecodableInReceipt,
+  PayloadSidecarDiverged,
+  PayloadGenerationTextCorrupt,
+  PayloadBundleDigestMismatch,
+  PayloadDigestUncomputable,
+  fleet_converge_apply_payload_admits,
+  fleet_converge_apply_payload_refusal_text,
+}
 import gunbc.fleet_converge_plan {
   TimerRetirementMember,
   fleet_converge_plan_artifact,
@@ -73,6 +84,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_observed_baseline_matches,
   fleet_converge_member_set_fingerprint_matches,
   fleet_converge_plan_subject_scope_path,
+  fleet_converge_plan_spark_typed_actions_wire_path,
   fleet_converge_apply_artifact_admits,
   fleet_converge_apply_admission_refusal_text,
   fleet_converge_scope_wire,
@@ -131,7 +143,6 @@ import gunbc.fleet_converge_receipt {
   PlanBindingRunIdMismatch, PlanBindingHashMismatch, PlanBindingRevisionMismatch, PlanBindingRepositoryMismatch,
 }
 
-data fleet_converge_plan_spark_typed_actions_wire_path: String = "/tmp/fleet-converge-plan/spark_serving_typed_actions.wire"
 
 // The apply script is written by this CLI and then executed, so its mode is a decision this module
 // makes rather than a fact about a host: 0755 is owner-write, everyone-read-and-execute.
@@ -213,11 +224,11 @@ type FleetConvergeRequestObservation
   = FleetConvergeRequestObserved { request: FleetConvergeRequest }
   | FleetConvergeRequestUnobserved { reason: String }
 
-// THE LAUNCH-ENVIRONMENT ARM DOES NOT CALL THE SLOT OBSERVER, and that is the construction rather
-// than a saved probe: the arm it builds has no slot field to put the answer in, so observing runner
-// slots here would produce a value with nowhere to go. The refusal an unreadable slot roster raises
-// for a full-host plan is therefore not suppressed for this scope -- it is not reachable, because
-// this scope never took on that obligation.
+// THE LAUNCH-ENVIRONMENT ARM CALLS ONLY THE TIMER OBSERVER, and that is the construction rather
+// than a saved probe: the arm it builds has no slot, cap, activation or fabric field to put an
+// answer in, so running those probes here would produce values with nowhere to go. The refusals an
+// unreadable slot roster or a blocked fabric observation raise for their own scopes are therefore
+// not SUPPRESSED here -- they are unreachable, because this scope never took those obligations on.
 func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
@@ -246,8 +257,6 @@ func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -
       request: LaunchEnvironmentConverge {
         host: host,
         observed_timers: observe_timer_members_wet(),
-        observed_caps: observe_cap_members_wet(),
-        observed_fabric_cells: admit_fabric_cell_probe(probe: fabric_cell_probe_wet(host: host as HostIdentity)),
       },
     }
     ScopeDecoded { scope: FullHost } =>
@@ -725,7 +734,37 @@ func fleet_converge_apply_bound_wet(
             exit_failure(reason: "fleet_converge_apply: planned_generation artifact corrupt — refuse, do not coerce to 0")
           Present { value: planned_generation } => {
             {
-              match observe_fleet_converge_request_wet(scope_wire: read_scope.content, host: observed_host) {
+              let payload_admission = fleet_converge_apply_payload_admits(
+                receipt: plan_receipt,
+                payload: FleetConvergeApplyPayload {
+                  subject_host_text: read_host.content,
+                  subject_scope_text: read_scope.content,
+                  subject_member_set_text: read_member_fp.content,
+                  observed_baseline_hex_text: read_base.content,
+                  prior_generation_text: read_prior.content,
+                  planned_generation_text: read_gen.content,
+                  plan_body: read_plan.content,
+                  apply_shell: read_apply.content,
+                  spark_typed_actions_wire: read_spark_wire.content,
+                  plan_content_hex: read_hash.content,
+                },
+              )
+              match payload_admission {
+                PayloadScopeUndecodableInReceipt { cause: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadSidecarDiverged { field: _, receipt_value: _, on_disk_value: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadGenerationTextCorrupt { field: _, on_disk_value: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadBundleDigestMismatch { receipt_value: _, on_disk_value: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadDigestUncomputable { path: _ } =>
+                  exit_failure(reason: concat("fleet_converge_apply: ", fleet_converge_apply_payload_refusal_text(a: payload_admission)))
+                PayloadAdmitted { routed_scope: routed_scope } =>
+              match observe_fleet_converge_request_wet(
+                scope_wire: fleet_converge_scope_wire(scope: routed_scope),
+                host: observed_host,
+              ) {
                 FleetConvergeRequestUnobserved { reason: why } =>
                   exit_failure(reason: concat("fleet_converge_apply: PlannedScopeOrObservationRefused — ", why))
                 FleetConvergeRequestObserved { request: observed_request } =>
@@ -830,6 +869,7 @@ func fleet_converge_apply_bound_wet(
               }
               }
             }
+          }
           }
         }
       }

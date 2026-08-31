@@ -1,0 +1,231 @@
+module gunbc.fleet_converge_plan_manifest
+
+import std.types { String, Bool, Int, NonEmptyStr, List }
+import std.algebra { trim }
+import std.content_hash { Fnv1a64StructuralDigestHex, Fnv1a64Structural, Fnv1a64, content_hash_of_value }
+import v2.std.optional { Present, Absent }
+import gunbc.fleet_converge_receipt { FleetConvergePlanReceipt }
+import gunbc.fleet_converge_plan {
+  FleetConvergeScope,
+  ScopeDecoded,
+  ScopeUndecodable,
+  fleet_converge_scope_of_wire,
+  fleet_converge_scope_wire,
+  fleet_converge_plan_body_path,
+  fleet_converge_plan_apply_shell_path,
+  fleet_converge_plan_spark_typed_actions_wire_path,
+  fleet_converge_plan_subject_host_path,
+  fleet_converge_plan_subject_scope_path,
+  fleet_converge_plan_member_set_fp_path,
+  fleet_converge_plan_baseline_hex_path,
+  fleet_converge_plan_prior_generation_path,
+  fleet_converge_plan_generation_path,
+  fleet_converge_parse_nonneg_generation_text,
+}
+
+// EVERY VALUE APPLY TRUSTS, JUDGED IN ONE PLACE AGAINST ONE RUN-BOUND ANCHOR.
+//
+// THE HOLE THIS CLOSES, stated as the attack rather than as a property. The plan writes eight files
+// into /tmp/fleet-converge-plan. plan_content.hex covers exactly three of them -- plan.txt, apply.sh
+// and the spark wire -- and subject_scope.txt, subject_host.txt, subject_member_set.txt,
+// observed_baseline.hex and the two generation files were covered by nothing. Apply then read the
+// SCOPE out of subject_scope.txt and used it for BOTH halves of its own admission: it was the
+// planned scope handed to fleet_converge_apply_artifact_admits AND the selector deciding which
+// observers ran to build the re-observation it was compared against. A value compared only against
+// itself always agrees, so a coordinated substitution -- scope, member-set fingerprint and baseline
+// replaced together and coherently -- admitted the ORIGINAL, REVIEWED apply.sh under a DIFFERENT
+// re-observation scope, with the bundle hash still matching because none of the substituted files
+// was in the bundle.
+//
+// THE REPAIR IS NOT A BIGGER HASH, IT IS A DIFFERENT DIRECTION OF TRUST. The scope apply routes on
+// is now taken from the PLAN RECEIPT, which the plan run mints, which is bound to that run's id and
+// revision, and which apply already carries for the plan-binding check. The on-disk sidecar is no
+// longer an input to routing at all: it is an artifact whose AGREEMENT with the receipt is checked,
+// and a disagreement is a typed refusal. Substituting it cannot steer anything, because nothing
+// downstream reads it for a decision. That is construction over validation -- the file LOST its
+// authority rather than gaining a guard in front of it.
+//
+// SO THE RECEIPT IS THE MANIFEST, AND THIS MODULE DOES NOT MINT A SECOND ONE. A separate manifest
+// record carrying host, scope, fingerprint, baseline, generations, lease and terminal would be a
+// second representation of fields FleetConvergePlanReceipt already carries and already folds into
+// its identity hash, and two records of one subject drift in the ordinary direction -- someone adds
+// a field, one gets it. What this module adds is the half the receipt did not cover: path-tagged
+// digests over the payload bytes, and the total admission that judges the whole on-disk population
+// against the receipt in one decision rather than at six call sites that each chose what to check.
+
+// THE DIGEST IS TAGGED WITH THE PATH THE BYTES CAME FROM. The bundle digest combines its three
+// members positionally, which already refuses a straight swap -- but positional binding is a
+// property of the FOLD, not of the value, so anything that later reorders, extends or reuses that
+// combine loses it silently. Tagging the bytes with their own path makes the binding a property of
+// each digest, so plan.txt's bytes cannot be admitted as apply.sh's under any fold.
+fn path_tagged_digest(path: String, content: String) -> Fnv1a64StructuralDigestHex? {
+  match content_hash_of_value(value: join([path, " ", content], "") as NonEmptyStr) {
+    Fnv1a64(structural) => Present { value: structural.digest }
+    _ => Absent
+  }
+}
+
+// THE ON-DISK POPULATION APPLY READS, AS ONE VALUE.
+//
+// It is a record rather than ten parameters because the admission below must be TOTAL over it: a
+// caller able to pass nine of ten would be back in the shape that produced the hole, where each
+// site chose which facts it carried. Every field is the raw TEXT read from disk and never a parsed
+// value, because parsing before admitting is what let a corrupt generation file reach a comparison
+// at all.
+type FleetConvergeApplyPayload {
+  subject_host_text: String
+  subject_scope_text: String
+  subject_member_set_text: String
+  observed_baseline_hex_text: String
+  prior_generation_text: String
+  planned_generation_text: String
+  plan_body: String
+  apply_shell: String
+  spark_typed_actions_wire: String
+  plan_content_hex: String
+}
+
+// ONE ARM PER DIVERGING FACT. These fail for reasons with different operator remedies, and
+// collapsing them to a Bool makes one message answer for six causes -- the state-space conflation
+// this repository keeps paying for. The sidecar arm names the FIELD, the receipt value and the
+// on-disk value, because whoever reads it is deciding between ordinary drift, a truncated write,
+// and a substitution.
+type FleetConvergeApplyPayloadAdmission
+  = PayloadAdmitted { routed_scope: FleetConvergeScope }
+  | PayloadScopeUndecodableInReceipt { cause: String }
+  | PayloadSidecarDiverged { field: String, receipt_value: String, on_disk_value: String }
+  | PayloadGenerationTextCorrupt { field: String, on_disk_value: String }
+  | PayloadBundleDigestMismatch { receipt_value: String, on_disk_value: String }
+  | PayloadDigestUncomputable { path: String }
+
+// THE ORDER OF THESE CHECKS IS THE SAFETY PROPERTY AND IS NOT COSMETIC.
+//
+// The routed scope is decoded from the RECEIPT first and is returned FROM THE ADMITTED ARM, so a
+// caller cannot route on anything else: no arm of this type yields a scope taken from disk, so
+// there is no spelling in which the selector and the substituted file are the same value. The
+// payload bundle is then judged against the receipt's hash, then every sidecar against its receipt
+// field. Only a population agreeing with the run-bound receipt on all of them reaches
+// PayloadAdmitted, and the scope it carries came from the receipt rather than from the files it
+// just finished validating.
+fn fleet_converge_apply_payload_admits(
+  receipt: FleetConvergePlanReceipt,
+  payload: FleetConvergeApplyPayload,
+) -> FleetConvergeApplyPayloadAdmission {
+  match fleet_converge_scope_of_wire(wire: receipt.scope_wire) {
+    ScopeUndecodable { cause: why } => PayloadScopeUndecodableInReceipt { cause: why }
+    ScopeDecoded { scope: routed } =>
+      if trim(s: payload.plan_content_hex) != receipt.plan_artifact_hash {
+        PayloadBundleDigestMismatch {
+          receipt_value: receipt.plan_artifact_hash,
+          on_disk_value: trim(s: payload.plan_content_hex),
+        }
+      } else if trim(s: payload.subject_host_text) != receipt.observed_host {
+        PayloadSidecarDiverged {
+          field: fleet_converge_plan_subject_host_path,
+          receipt_value: receipt.observed_host,
+          on_disk_value: trim(s: payload.subject_host_text),
+        }
+      } else if trim(s: payload.subject_scope_text) != receipt.scope_wire {
+        PayloadSidecarDiverged {
+          field: fleet_converge_plan_subject_scope_path,
+          receipt_value: receipt.scope_wire,
+          on_disk_value: trim(s: payload.subject_scope_text),
+        }
+      } else if trim(s: payload.subject_member_set_text) != receipt.member_set_fingerprint_hex {
+        PayloadSidecarDiverged {
+          field: fleet_converge_plan_member_set_fp_path,
+          receipt_value: receipt.member_set_fingerprint_hex,
+          on_disk_value: trim(s: payload.subject_member_set_text),
+        }
+      } else if trim(s: payload.observed_baseline_hex_text) != receipt.observed_baseline_hex {
+        PayloadSidecarDiverged {
+          field: fleet_converge_plan_baseline_hex_path,
+          receipt_value: receipt.observed_baseline_hex,
+          on_disk_value: trim(s: payload.observed_baseline_hex_text),
+        }
+      } else {
+        payload_generation_admits(receipt: receipt, payload: payload, routed: routed)
+      }
+  }
+}
+
+fn payload_generation_admits(
+  receipt: FleetConvergePlanReceipt,
+  payload: FleetConvergeApplyPayload,
+  routed: FleetConvergeScope,
+) -> FleetConvergeApplyPayloadAdmission {
+  match fleet_converge_parse_nonneg_generation_text(content: payload.prior_generation_text) {
+    Absent => PayloadGenerationTextCorrupt {
+      field: fleet_converge_plan_prior_generation_path,
+      on_disk_value: trim(s: payload.prior_generation_text),
+    }
+    Present { value: prior } =>
+      match fleet_converge_parse_nonneg_generation_text(content: payload.planned_generation_text) {
+        Absent => PayloadGenerationTextCorrupt {
+          field: fleet_converge_plan_generation_path,
+          on_disk_value: trim(s: payload.planned_generation_text),
+        }
+        Present { value: planned } =>
+          if prior != receipt.prior_generation {
+            PayloadSidecarDiverged {
+              field: fleet_converge_plan_prior_generation_path,
+              receipt_value: to_string(receipt.prior_generation),
+              on_disk_value: to_string(prior),
+            }
+          } else if planned != receipt.planned_generation {
+            PayloadSidecarDiverged {
+              field: fleet_converge_plan_generation_path,
+              receipt_value: to_string(receipt.planned_generation),
+              on_disk_value: to_string(planned),
+            }
+          } else {
+            payload_digest_admits(payload: payload, routed: routed)
+          }
+      }
+  }
+}
+
+fn payload_digest_admits(
+  payload: FleetConvergeApplyPayload,
+  routed: FleetConvergeScope,
+) -> FleetConvergeApplyPayloadAdmission {
+  match path_tagged_digest(path: fleet_converge_plan_body_path, content: payload.plan_body) {
+    Absent => PayloadDigestUncomputable { path: fleet_converge_plan_body_path }
+    Present { value: _ } =>
+      match path_tagged_digest(path: fleet_converge_plan_apply_shell_path, content: payload.apply_shell) {
+        Absent => PayloadDigestUncomputable { path: fleet_converge_plan_apply_shell_path }
+        Present { value: _ } =>
+          match path_tagged_digest(
+            path: fleet_converge_plan_spark_typed_actions_wire_path,
+            content: payload.spark_typed_actions_wire,
+          ) {
+            Absent => PayloadDigestUncomputable { path: fleet_converge_plan_spark_typed_actions_wire_path }
+            Present { value: _ } => PayloadAdmitted { routed_scope: routed }
+          }
+      }
+  }
+}
+
+fn fleet_converge_apply_payload_refusal_text(a: FleetConvergeApplyPayloadAdmission) -> String {
+  match a {
+    PayloadAdmitted { routed_scope: s } =>
+      join(["admitted; routing on ", fleet_converge_scope_wire(scope: s)], "")
+    PayloadScopeUndecodableInReceipt { cause: why } =>
+      join([
+        "PlanReceiptScopeUndecodable — ", why,
+        "; the run-bound receipt names a scope this build cannot decode, so no observer may be selected",
+      ], "")
+    PayloadSidecarDiverged { field: f, receipt_value: r, on_disk_value: o } =>
+      join([
+        "PlanArtifactDivergedFromReceipt — ", f, " holds ", o,
+        " and the run-bound plan receipt says ", r,
+        "; the artifact on disk is not the one this receipt was minted for",
+      ], "")
+    PayloadGenerationTextCorrupt { field: f, on_disk_value: o } =>
+      join(["PlanGenerationTextCorrupt — ", f, " holds ", o, "; refuse rather than coerce to 0"], "")
+    PayloadBundleDigestMismatch { receipt_value: r, on_disk_value: o } =>
+      join(["PlanBundleDigestMismatch — plan_content.hex holds ", o, " and the plan receipt minted ", r], "")
+    PayloadDigestUncomputable { path: p } =>
+      join(["PlanPayloadDigestUncomputable — ", p, " did not hash as Fnv1a64Structural"], "")
+  }
+}
