@@ -1,6 +1,6 @@
 module gunbc.machine_intake_mount_establishment
 
-import std.types { Bool, EpochMs, Int, List, Milliseconds, NonEmptyStr }
+import std.types { Bool, EpochMs, Int, List, Milliseconds }
 import std.content_hash { ContentHash }
 
 // REMOTE-MEDIA MOUNT IS AN ASYNCHRONOUS ESTABLISHMENT, AND THAT IS NOT A LICENCE
