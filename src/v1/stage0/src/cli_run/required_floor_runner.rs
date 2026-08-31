@@ -548,9 +548,8 @@ impl WetLaneReceiptStanding {
             } => format!(
                 "executor-snapshot-different — envelope was executed under seed executor \
                  {receipt_digest} but this tree computes {computed_digest}; the same semantic \
-                 subject ran under a superseded seed build. Re-run the lane on this head, or \
-                 (bootstrap only) a declared one-shot lease naming exactly this envelope may \
-                 admit it inside its fixed window"
+                 subject ran under a superseded seed build. Re-run the lane on this head \
+                 (workflow_dispatch) and land its envelope"
             ),
             WetLaneReceiptStanding::ContractMismatch { detail } => {
                 format!("contract-mismatch — {detail}")
@@ -560,157 +559,6 @@ impl WetLaneReceiptStanding {
             }
         }
     }
-}
-
-/// Host realization of `v2.workflow.floor_wet_route.BootstrapExecutorSnapshotReceipt` — the
-/// declared one-shot lease row — and its admission evaluation
-/// (`wet_seed_bootstrap_admission`). The lease admits exactly one named envelope past
-/// `ExecutorSnapshotDifferent` — never past any other standing — inside a FIXED window of
-/// executed_at + window with no slide or renewal; `not_after` is derived and checked, not
-/// trusted. Digest derivations realized here (the .dag fn takes them as parameters):
-/// envelope digest is sha256 over the committed latest-attempt.json bytes; roster digest is
-/// sha256 over the newline-joined sorted roster identities.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WetBootstrapLease {
-    pub exact_envelope_digest: String,
-    pub exact_attempt_seq: u64,
-    pub exact_semantic_subject_digest: String,
-    pub exact_roster_digest: String,
-    pub executed_at_unix_secs: u64,
-    pub not_after_unix_secs: u64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum WetSeedBootstrapAdmission {
-    Admitted { not_after_unix_secs: u64 },
-    Expired { detail: String },
-    NotApplicable,
-}
-
-pub(crate) fn wet_seed_bootstrap_admission(
-    lease: Option<&WetBootstrapLease>,
-    window_secs: u64,
-    envelope_digest: &str,
-    attempt_seq: u64,
-    semantic_subject_digest: &str,
-    roster_digest: &str,
-    evaluated_tree_commit_secs: u64,
-) -> WetSeedBootstrapAdmission {
-    let Some(r) = lease else {
-        return WetSeedBootstrapAdmission::NotApplicable;
-    };
-    if r.exact_envelope_digest != envelope_digest
-        || r.exact_attempt_seq != attempt_seq
-        || r.exact_semantic_subject_digest != semantic_subject_digest
-        || r.exact_roster_digest != roster_digest
-    {
-        return WetSeedBootstrapAdmission::NotApplicable;
-    }
-    if r.not_after_unix_secs != r.executed_at_unix_secs + window_secs {
-        return WetSeedBootstrapAdmission::NotApplicable;
-    }
-    if evaluated_tree_commit_secs > r.not_after_unix_secs {
-        return WetSeedBootstrapAdmission::Expired {
-            detail: format!(
-                "the evaluated tree's commit time {} exceeds the lease's fixed not_after {}",
-                evaluated_tree_commit_secs, r.not_after_unix_secs
-            ),
-        };
-    }
-    WetSeedBootstrapAdmission::Admitted {
-        not_after_unix_secs: r.not_after_unix_secs,
-    }
-}
-
-/// Read the declared lease row (`gunbc.wet_seed_bootstrap_lease.wet_seed_bootstrap_lease_declared`
-/// — homed OUTSIDE the wet semantic closure so a flip moves no digest) and the fixed window
-/// from the route authority. Absent is the standing state; fail-closed on shape.
-pub(crate) fn wet_seed_bootstrap_lease_declared(
-    source_roots: &[String],
-) -> Result<(Option<WetBootstrapLease>, u64), String> {
-    let index = process_shared_index(source_roots);
-    let entry = "dag/gunbc/floor/wet_seed_bootstrap_lease.dag";
-    let (graph, source_indices) = resolve_entry_with_index(&index, entry)
-        .map_err(|e| format!("wet_seed_bootstrap_lease_declared: resolve {entry}: {e}"))?;
-    let ctx = make_eval_context(
-        &graph,
-        source_indices,
-        v1_interpreter::ExecutionMode::Hermetic,
-    );
-    let window = match v1_interpreter::run_in_context(
-        &ctx,
-        "v2.workflow.floor_wet_route.wet_seed_bootstrap_lease_window_secs",
-        false,
-    ) {
-        Ok(v1_interpreter::Value::Int(n)) if n > 0 => n as u64,
-        Ok(other) => {
-            return Err(format!(
-                "wet_seed_bootstrap_lease_window_secs: expected a positive Int, got {}",
-                floor_value_shape(Some(&other))
-            ))
-        }
-        Err(e) => return Err(format!("wet_seed_bootstrap_lease_window_secs: {e}")),
-    };
-    let value = v1_interpreter::run_in_context(
-        &ctx,
-        "gunbc.wet_seed_bootstrap_lease.wet_seed_bootstrap_lease_declared",
-        false,
-    )
-    .map_err(|e| format!("wet_seed_bootstrap_lease_declared: {e}"))?;
-    let v1_interpreter::Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = &value
-    else {
-        return Err(format!(
-            "wet_seed_bootstrap_lease_declared: expected Optional, got {}",
-            floor_value_shape(Some(&value))
-        ));
-    };
-    if ctx.sym_eq(*variant_name, "Absent") {
-        return Ok((None, window));
-    }
-    if !ctx.sym_eq(*variant_name, "Present") {
-        return Err(format!(
-            "wet_seed_bootstrap_lease_declared: expected Absent/Present, got {}",
-            ctx.resolve(*variant_name)
-        ));
-    }
-    let Some(v1_interpreter::Value::Record { fields: rf, .. }) = ctx.field(fields, "value") else {
-        return Err("wet_seed_bootstrap_lease_declared: Present must carry a \
-             BootstrapExecutorSnapshotReceipt record"
-            .to_string());
-    };
-    let field_str = |name: &str| -> Result<String, String> {
-        match ctx.field(rf, name) {
-            Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
-            other => Err(format!(
-                "wet_seed_bootstrap_lease_declared: {name} must be String, got {}",
-                floor_value_shape(other)
-            )),
-        }
-    };
-    let field_u64 = |name: &str| -> Result<u64, String> {
-        match ctx.field(rf, name) {
-            Some(v1_interpreter::Value::Int(n)) if *n >= 0 => Ok(*n as u64),
-            other => Err(format!(
-                "wet_seed_bootstrap_lease_declared: {name} must be a non-negative Int, got {}",
-                floor_value_shape(other)
-            )),
-        }
-    };
-    Ok((
-        Some(WetBootstrapLease {
-            exact_envelope_digest: field_str("exact_envelope_digest")?,
-            exact_attempt_seq: field_u64("exact_attempt_seq")?,
-            exact_semantic_subject_digest: field_str("exact_semantic_subject_digest")?,
-            exact_roster_digest: field_str("exact_roster_digest")?,
-            executed_at_unix_secs: field_u64("executed_at_unix_secs")?,
-            not_after_unix_secs: field_u64("not_after_unix_secs")?,
-        }),
-        window,
-    ))
 }
 
 /// The standing fold, mirroring the .dag decision order exactly: unreadable-contract facts
@@ -1229,80 +1077,6 @@ mod wet_lane_receipt_tests {
             WetLaneReceiptStanding::ExecutorSnapshotDifferent { .. }
         ));
         assert!(executor_mismatch.blocks());
-        // THE ONE-SHOT BOOTSTRAP LEASE admits exactly its named envelope inside the fixed
-        // window, refuses a slid window, an expired window, and any mismatched exact fact.
-        let lease = WetBootstrapLease {
-            exact_envelope_digest: "env-digest".to_string(),
-            exact_attempt_seq: 1,
-            exact_semantic_subject_digest: "subject-d".to_string(),
-            exact_roster_digest: "roster-d".to_string(),
-            executed_at_unix_secs: 1000,
-            not_after_unix_secs: 1000 + 28_800,
-        };
-        assert!(matches!(
-            wet_seed_bootstrap_admission(
-                Some(&lease),
-                28_800,
-                "env-digest",
-                1,
-                "subject-d",
-                "roster-d",
-                1000 + 28_800,
-            ),
-            WetSeedBootstrapAdmission::Admitted { .. }
-        ));
-        assert!(matches!(
-            wet_seed_bootstrap_admission(
-                Some(&lease),
-                28_800,
-                "env-digest",
-                1,
-                "subject-d",
-                "roster-d",
-                1001 + 28_800,
-            ),
-            WetSeedBootstrapAdmission::Expired { .. }
-        ));
-        assert!(matches!(
-            wet_seed_bootstrap_admission(
-                Some(&lease),
-                28_800,
-                "other-envelope",
-                1,
-                "subject-d",
-                "roster-d",
-                1001,
-            ),
-            WetSeedBootstrapAdmission::NotApplicable
-        ));
-        let slid = WetBootstrapLease {
-            not_after_unix_secs: 1001 + 28_800,
-            ..lease.clone()
-        };
-        assert!(matches!(
-            wet_seed_bootstrap_admission(
-                Some(&slid),
-                28_800,
-                "env-digest",
-                1,
-                "subject-d",
-                "roster-d",
-                1001,
-            ),
-            WetSeedBootstrapAdmission::NotApplicable
-        ));
-        assert!(matches!(
-            wet_seed_bootstrap_admission(
-                None,
-                28_800,
-                "env-digest",
-                1,
-                "subject-d",
-                "roster-d",
-                1001,
-            ),
-            WetSeedBootstrapAdmission::NotApplicable
-        ));
         // Per-identity verdicts are not an envelope standing (parent ruling 2026-08-30): a
         // failing row leaves the standing fresh, and the join classifies it by enrollment.
         let mut failed = fixture_envelope();
@@ -7073,73 +6847,8 @@ pub fn run_required_floor(
                 wet_route_staleness_budget_secs,
                 wet_route_publication_skew_secs,
             );
-            // THE GATE DISPOSITION (`v2.workflow.floor_wet_route.wet_route_gate_disposition`):
-            // exactly FreshExactSubject admits ordinarily, and ExecutorSnapshotDifferent may
-            // be admitted by the declared one-shot bootstrap lease — visibly, never by
-            // widening any other standing. The lease's admission requires every exact fact
-            // to join (envelope digest, attempt_seq, semantic subject, roster) inside its
-            // fixed window; anything else refuses exactly as before.
-            let lease_admission = if matches!(
-                standing,
-                WetLaneReceiptStanding::ExecutorSnapshotDifferent { .. }
-            ) {
-                let (lease, window_secs) = wet_seed_bootstrap_lease_declared(source_roots)?;
-                let envelope = wet_route_envelope
-                    .as_ref()
-                    .expect("executor-snapshot standing entails an envelope");
-                let envelope_digest = {
-                    use sha2::Digest as _;
-                    let bytes = std::fs::read(&wet_route_receipt_json_rel_path).map_err(|e| {
-                        format!(
-                            "bootstrap lease: read {}: {e}",
-                            wet_route_receipt_json_rel_path
-                        )
-                    })?;
-                    format!("{:x}", sha2::Sha256::digest(&bytes))
-                };
-                let roster_digest = {
-                    use sha2::Digest as _;
-                    let joined = roster_sorted.iter().cloned().collect::<Vec<_>>().join("\n");
-                    format!("{:x}", sha2::Sha256::digest(joined.as_bytes()))
-                };
-                match evaluated_tree_commit_secs {
-                    Some(tree_secs) => wet_seed_bootstrap_admission(
-                        lease.as_ref(),
-                        window_secs,
-                        &envelope_digest,
-                        envelope.attempt_seq,
-                        &computed_digest,
-                        &roster_digest,
-                        tree_secs,
-                    ),
-                    None => WetSeedBootstrapAdmission::NotApplicable,
-                }
-            } else {
-                WetSeedBootstrapAdmission::NotApplicable
-            };
-            let admitted_under_lease = matches!(
-                (&standing, &lease_admission),
-                (
-                    WetLaneReceiptStanding::ExecutorSnapshotDifferent { .. },
-                    WetSeedBootstrapAdmission::Admitted { .. }
-                )
-            );
-            if admitted_under_lease {
-                if let WetSeedBootstrapAdmission::Admitted {
-                    not_after_unix_secs,
-                } = &lease_admission
-                {
-                    eprintln!(
-                        "[floor-wet-route] ADMITTED UNDER BOOTSTRAP LEASE — \
-                         executor-snapshot-different envelope admitted by the declared \
-                         one-shot lease (not_after={not_after_unix_secs}); the standing \
-                         stays different, the admission is the lease's, and the lease \
-                         deletes with the first exact-main receipt"
-                    );
-                }
-            }
-            wet_route_candidate_exact = !standing.blocks() || admitted_under_lease;
-            if standing.blocks() && !admitted_under_lease {
+            wet_route_candidate_exact = !standing.blocks();
+            if standing.blocks() {
                 outcome.wet_route_standing_blocking.push(format!(
                     "wet-lane receipt standing for {} routed identity(ies): {}",
                     wet_route_seen.len(),
@@ -7163,10 +6872,10 @@ pub fn run_required_floor(
             // receipt-confined refresh PR could not resolve them by construction.
             // Envelope-level standings are never waived. An unobservable diff or base
             // leaves the transaction invalid — the wall fails closed toward blocking.
-            if !standing.blocks() || admitted_under_lease {
+            if !standing.blocks() {
                 let envelope = wet_route_envelope
                     .as_ref()
-                    .expect("admitted standing entails an envelope");
+                    .expect("fresh standing entails an envelope");
                 let (unexpected_red, held, now_passing, no_verdict) =
                     wet_receipt_identity_verdicts(envelope, &wet_expected_red);
                 eprintln!(

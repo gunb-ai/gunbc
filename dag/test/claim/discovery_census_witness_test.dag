@@ -141,8 +141,8 @@ fn refusal_is_empty_target_name(c: LabelRefusal) -> Bool {
 
 test fn w_site_label_is_the_module_path_as_package() -> Bool {
   let rendered = rendered_planned_labels(sites: mixed_sites())
-  list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
-    && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+  list_holds(xs: rendered, wanted: "//v2/test/claim/alpha_witness:w_alpha")
+    && list_holds(xs: rendered, wanted: "//v2/test/claim/alpha_witness:w_beta")
 }
 
 // THE LEADING EMPTY SEGMENT IS THE CONTROL THE OBVIOUS JOIN FAILS. An accumulator that skips the
@@ -454,7 +454,6 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
       DeclinedRoutedToWetLane => false
-    DeclinedRoutedToWetLane => false
     })
     && all(split.declined, r => match r.disposition {
       DeclinedOutsideRequiredGate => true
@@ -466,7 +465,6 @@ test fn w_planned_and_outside_gate_rows_partition_once_each() -> Bool {
       DeclinedOutsideGateClosure => false
       DeclinedDiscoveryExcluded { matched_substring: _ } => false
       DeclinedRoutedToWetLane => false
-    DeclinedRoutedToWetLane => false
     })
 }
 
@@ -526,11 +524,11 @@ test fn w_required_aggregate_dependencies_are_exactly_the_planned_subset() -> Bo
       is_required_aggregate(t: a)
         && (target_identity(t: a) == "//:required")
         && ((a.dependencies |> count) == 3)
-        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_alpha")
-        && list_holds(xs: rendered, wanted: "//test/claim/alpha_witness:w_beta")
+        && list_holds(xs: rendered, wanted: "//v2/test/claim/alpha_witness:w_alpha")
+        && list_holds(xs: rendered, wanted: "//v2/test/claim/alpha_witness:w_beta")
         && !list_holds(xs: rendered, wanted: "//test/claim/long/slow_witness:w_slow")
         && !list_holds(xs: rendered, wanted: "//v2/test/fixture/walk_plan_stage/common:w_member")
-        && list_holds(xs: rendered, wanted: "//test/claim/reads_tree_witness:w_reads")
+        && list_holds(xs: rendered, wanted: "//v2/test/claim/reads_tree_witness:w_reads")
     }
   }
 }
