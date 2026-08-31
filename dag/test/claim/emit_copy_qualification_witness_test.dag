@@ -1,0 +1,396 @@
+module test.claim.emit_copy_qualification_witness_test
+
+import gunbc.emit_copy_qualification {
+  all_ownership_patterns, all_carrier_realizations, all_control_shapes, all_consumer_contracts,
+  all_input_size_bases, ruling_shape_assignments,
+  OwnershipPatternAxis, CarrierRealizationAxis, ControlShapeAxis,
+  full_case_roster, roster_denominator, applicable_case_count, row_is_applicable,
+  case_slug, case_applicability, derive_expectation, judge_alloc_growth, judge_case,
+  ownership_pattern_slug, carrier_realization_slug, control_shape_slug,
+  EmitCopyQualificationCaseId, ConsumedOnce, ByValueThenReused, LoopCarriedAccumulator,
+  OwnedStringCarrier, DeepCloningSequenceCarrier, CopyScalarControl, SharedRecordCarrier,
+  StraightLine, LoopRecursion, ConsumesByValue, BorrowsByRef,
+  ScalarUnitBasis, SizedCardinalityBasis,
+  CaseApplicable, CaseNotApplicable, CarrierUnrealizedInProductionEmission,
+  DerivedExpectation, ExpectationUnderivable,
+  ConstantAllocGrowth, LinearAllocGrowth, AllocObservationRow,
+  GrowthWithinExpectation, GrowthExceeds,
+  BehaviorAgreed, BehaviorDisagreed, BehaviorUnavailable,
+  NoRedundantCloneReported, RedundantCloneReported, StaticObservationUnavailable,
+  RuntimeRowsObserved, RuntimeObservationUnavailable,
+  Qualified, QualificationRefusedBehaviorMismatch, QualificationRefusedCaseNotExecutable,
+  QualificationRefusedCostOracleUnavailable, QualificationRefusedObservationUnavailable,
+  QualificationRefusedExcessCopy, QualificationRefusedRedundantClone,
+  CloneNecessary, CloneNecessityUnjudgeable
+}
+import gunbc.emit_copy_qualification_fixture_gen {
+  CleanSubject, PlantCopiedAccumulator, DisconnectCounter, PlantHiddenDeepCopy,
+  PlantRedundantShareClone, PlantRedundantDeepClone,
+  fixture_module_text, runner_main_text, shard_case_rows, driver_text
+}
+
+// Hermetic floor witnesses for the EMIT-COST-QUAL-0 grid authority: roster totality and
+// denominator exactness, applicability and expectation derivation controls, growth-judgment
+// and join-arm discrimination, and generation-grain mutant discrimination. The wet transaction
+// (emission, clippy, build, execution) has its own transport and witnesses; nothing here runs
+// a process.
+
+// ── Roster and denominator ───────────────────────────────────────────────────────────────────
+
+test fn ecq_denominator_is_axis_product_holds() -> Bool {
+  let p = all_ownership_patterns |> count
+  let c = all_carrier_realizations |> count
+  let s = all_control_shapes |> count
+  let k = all_consumer_contracts |> count
+  let b = all_input_size_bases |> count
+  roster_denominator() == p * c * s * k * b
+}
+
+test fn ecq_roster_partitions_exactly_holds() -> Bool {
+  let roster = full_case_roster()
+  let applicable = roster |> filter(r => row_is_applicable(r: r)) |> count
+  let inapplicable = roster |> filter(r => !row_is_applicable(r: r)) |> count
+  applicable + inapplicable == roster_denominator() && applicable == applicable_case_count()
+}
+
+test fn ecq_case_identity_is_unique_holds() -> Bool {
+  let roster = full_case_roster()
+  let seen = roster |> fold(init: empty_map(), f: (acc, r) => map_insert(acc, case_slug(id: r.id), true))
+  (map_keys(seen) |> count) == (roster |> count)
+}
+
+test fn ecq_population_is_nonempty_and_carries_both_arms_holds() -> Bool {
+  let roster = full_case_roster()
+  let applicable = roster |> filter(r => row_is_applicable(r: r)) |> count
+  let inapplicable = roster |> filter(r => !row_is_applicable(r: r)) |> count
+  applicable > 0 && inapplicable > 0
+}
+
+test fn ecq_unrealized_carrier_column_fully_typed_holds() -> Bool {
+  let deep_rows = full_case_roster() |> filter(r => r.id.carrier_realization == DeepCloningSequenceCarrier)
+  let typed = deep_rows |> all(r => match r.applicability {
+    CaseNotApplicable { reason: CarrierUnrealizedInProductionEmission } => true
+    _ => false
+  })
+  (deep_rows |> count) > 0 && typed
+}
+
+test fn ecq_every_realized_carrier_has_applicable_cases_holds() -> Bool {
+  all_carrier_realizations
+    |> filter(c => c != DeepCloningSequenceCarrier)
+    |> all(c => (full_case_roster() |> filter(r => r.id.carrier_realization == c && row_is_applicable(r: r)) |> count) > 0)
+}
+
+// ── Ruling-shape assignment coverage (the approved dedup, checked by construction) ───────────
+
+test fn ecq_ruling_shapes_count_holds() -> Bool {
+  (ruling_shape_assignments |> count) == 10
+}
+
+test fn ecq_ruling_shapes_unique_holds() -> Bool {
+  let seen = ruling_shape_assignments |> fold(init: empty_map(), f: (acc, a) => map_insert(acc, a.ruling_shape, true))
+  (map_keys(seen) |> count) == (ruling_shape_assignments |> count)
+}
+
+test fn ecq_ruling_shape_members_resolve_on_their_axis_holds() -> Bool {
+  ruling_shape_assignments |> all(a =>
+    match a.axis {
+      OwnershipPatternAxis =>
+        all_ownership_patterns |> any(p => ownership_pattern_slug(p: p) == a.member)
+      CarrierRealizationAxis =>
+        all_carrier_realizations |> any(c => carrier_realization_slug(c: c) == a.member)
+      ControlShapeAxis =>
+        all_control_shapes |> any(s => control_shape_slug(s: s) == a.member)
+      _ => false
+    }
+  )
+}
+
+// ── Expectation derivation ───────────────────────────────────────────────────────────────────
+
+test fn ecq_every_applicable_case_derives_expectation_holds() -> Bool {
+  full_case_roster()
+    |> filter(r => row_is_applicable(r: r))
+    |> all(r => match derive_expectation(id: r.id) {
+      DerivedExpectation { expected: _ } => true
+      ExpectationUnderivable { unresolved_fact: _ } => false
+    })
+}
+
+test fn ecq_unrealized_carrier_expectation_refuses_holds() -> Bool {
+  let id = EmitCopyQualificationCaseId {
+    ownership_pattern: ConsumedOnce,
+    carrier_realization: DeepCloningSequenceCarrier,
+    control_shape: StraightLine,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: SizedCardinalityBasis
+  }
+  match derive_expectation(id: id) {
+    ExpectationUnderivable { unresolved_fact: _ } => true
+    DerivedExpectation { expected: _ } => false
+  }
+}
+
+test fn ecq_reuse_by_value_string_expects_one_deep_materialization_holds() -> Bool {
+  let id = EmitCopyQualificationCaseId {
+    ownership_pattern: ByValueThenReused,
+    carrier_realization: OwnedStringCarrier,
+    control_shape: StraightLine,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: SizedCardinalityBasis
+  }
+  match derive_expectation(id: id) {
+    DerivedExpectation { expected: e } =>
+      e.whole_value_materializations == 1
+        && (match e.alloc_growth { LinearAllocGrowth => true, _ => false })
+    ExpectationUnderivable { unresolved_fact: _ } => false
+  }
+}
+
+test fn ecq_consumed_once_scalar_expects_constant_zero_materializations_holds() -> Bool {
+  let id = EmitCopyQualificationCaseId {
+    ownership_pattern: ConsumedOnce,
+    carrier_realization: CopyScalarControl,
+    control_shape: StraightLine,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: ScalarUnitBasis
+  }
+  match derive_expectation(id: id) {
+    DerivedExpectation { expected: e } =>
+      e.whole_value_materializations == 0
+        && (match e.alloc_growth { ConstantAllocGrowth => true, _ => false })
+    ExpectationUnderivable { unresolved_fact: _ } => false
+  }
+}
+
+test fn ecq_accumulator_expectation_is_linear_holds() -> Bool {
+  let id = EmitCopyQualificationCaseId {
+    ownership_pattern: LoopCarriedAccumulator,
+    carrier_realization: OwnedStringCarrier,
+    control_shape: LoopRecursion,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: SizedCardinalityBasis
+  }
+  match derive_expectation(id: id) {
+    DerivedExpectation { expected: e } =>
+      match e.alloc_growth { LinearAllocGrowth => true, _ => false }
+    ExpectationUnderivable { unresolved_fact: _ } => false
+  }
+}
+
+// ── Growth judgment discrimination ───────────────────────────────────────────────────────────
+
+fn rows_constant() -> List<AllocObservationRow> {
+  [
+    AllocObservationRow { cardinality: 0, allocation_operations: 1, allocated_bytes: 32 },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 32 },
+    AllocObservationRow { cardinality: 16, allocation_operations: 1, allocated_bytes: 32 },
+    AllocObservationRow { cardinality: 64, allocation_operations: 1, allocated_bytes: 32 }
+  ]
+}
+
+fn rows_linear() -> List<AllocObservationRow> {
+  [
+    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
+    AllocObservationRow { cardinality: 4, allocation_operations: 1, allocated_bytes: 128 },
+    AllocObservationRow { cardinality: 16, allocation_operations: 2, allocated_bytes: 512 },
+    AllocObservationRow { cardinality: 64, allocation_operations: 3, allocated_bytes: 2048 }
+  ]
+}
+
+fn rows_quadratic() -> List<AllocObservationRow> {
+  [
+    AllocObservationRow { cardinality: 0, allocation_operations: 0, allocated_bytes: 0 },
+    AllocObservationRow { cardinality: 4, allocation_operations: 4, allocated_bytes: 16 },
+    AllocObservationRow { cardinality: 16, allocation_operations: 16, allocated_bytes: 256 },
+    AllocObservationRow { cardinality: 64, allocation_operations: 64, allocated_bytes: 4096 }
+  ]
+}
+
+test fn ecq_growth_constant_accepts_flat_rows_holds() -> Bool {
+  match judge_alloc_growth(expected: ConstantAllocGrowth, rows: rows_constant()) {
+    GrowthWithinExpectation => true
+    GrowthExceeds { cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+  }
+}
+
+test fn ecq_growth_constant_refuses_growing_rows_holds() -> Bool {
+  match judge_alloc_growth(expected: ConstantAllocGrowth, rows: rows_linear()) {
+    GrowthExceeds { cardinality: n, observed_bytes: _, allowed_bytes: _ } => n == 4
+    GrowthWithinExpectation => false
+  }
+}
+
+test fn ecq_growth_linear_accepts_linear_rows_holds() -> Bool {
+  match judge_alloc_growth(expected: LinearAllocGrowth, rows: rows_linear()) {
+    GrowthWithinExpectation => true
+    GrowthExceeds { cardinality: _, observed_bytes: _, allowed_bytes: _ } => false
+  }
+}
+
+test fn ecq_growth_linear_refuses_quadratic_rows_holds() -> Bool {
+  match judge_alloc_growth(expected: LinearAllocGrowth, rows: rows_quadratic()) {
+    GrowthExceeds { cardinality: n, observed_bytes: _, allowed_bytes: _ } => n == 64
+    GrowthWithinExpectation => false
+  }
+}
+
+// ── Join-arm discrimination (every verdict arm reachable and typed) ──────────────────────────
+
+fn clean_case_id() -> EmitCopyQualificationCaseId {
+  EmitCopyQualificationCaseId {
+    ownership_pattern: ConsumedOnce,
+    carrier_realization: SharedRecordCarrier,
+    control_shape: StraightLine,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: SizedCardinalityBasis
+  }
+}
+
+test fn ecq_join_clean_qualifies_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorAgreed,
+    static_obs: NoRedundantCloneReported,
+    runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
+  )
+  match v {
+    Qualified { case: _, behavior_agreement: ba, clone_minimality: CloneNecessary, expected: _, observed_rows: _, lint_observation: _ } => ba
+    _ => false
+  }
+}
+
+test fn ecq_join_behavior_mismatch_refuses_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorDisagreed { expected_line: "result=3", observed_line: "result=4" },
+    static_obs: NoRedundantCloneReported,
+    runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
+  )
+  match v {
+    QualificationRefusedBehaviorMismatch { case: _, expected_line: _, observed_line: _ } => true
+    _ => false
+  }
+}
+
+test fn ecq_join_not_executable_refuses_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorUnavailable { phase: "cargo_build", detail: "fixture crate did not compile" },
+    static_obs: StaticObservationUnavailable { cause: "build refused before clippy" },
+    runtime_obs: RuntimeObservationUnavailable { cause: "runner never built" }
+  )
+  match v {
+    QualificationRefusedCaseNotExecutable { case: _, phase: p, detail: _ } => p == "cargo_build"
+    _ => false
+  }
+}
+
+test fn ecq_join_cost_oracle_unavailable_refuses_holds() -> Bool {
+  let id = EmitCopyQualificationCaseId {
+    ownership_pattern: ConsumedOnce,
+    carrier_realization: DeepCloningSequenceCarrier,
+    control_shape: StraightLine,
+    consumer_contract: ConsumesByValue,
+    input_size_basis: SizedCardinalityBasis
+  }
+  let v = judge_case(
+    id: id,
+    behavior: BehaviorAgreed,
+    static_obs: NoRedundantCloneReported,
+    runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
+  )
+  match v {
+    QualificationRefusedCostOracleUnavailable { case: _, unresolved_fact: _ } => true
+    _ => false
+  }
+}
+
+test fn ecq_join_observation_unavailable_refuses_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorAgreed,
+    static_obs: NoRedundantCloneReported,
+    runtime_obs: RuntimeObservationUnavailable { cause: "counter=disconnected" }
+  )
+  match v {
+    QualificationRefusedObservationUnavailable { case: _, cause: c } => c == "counter=disconnected"
+    _ => false
+  }
+}
+
+test fn ecq_join_excess_copy_refuses_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorAgreed,
+    static_obs: NoRedundantCloneReported,
+    runtime_obs: RuntimeRowsObserved { rows: rows_linear() }
+  )
+  match v {
+    QualificationRefusedExcessCopy { case: _, cardinality: _, observed_bytes: _, allowed_bytes: _ } => true
+    _ => false
+  }
+}
+
+test fn ecq_join_redundant_clone_refuses_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorAgreed,
+    static_obs: RedundantCloneReported { lint: "clippy::redundant_clone", emitted_item: "ecq_subject_x", line: 12, message: "redundant clone" },
+    runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
+  )
+  match v {
+    QualificationRefusedRedundantClone { case: _, lint: l, line: n } => l == "clippy::redundant_clone" && n == 12
+    _ => false
+  }
+}
+
+test fn ecq_join_static_unavailable_is_unjudgeable_not_refusal_holds() -> Bool {
+  let v = judge_case(
+    id: clean_case_id(),
+    behavior: BehaviorAgreed,
+    static_obs: StaticObservationUnavailable { cause: "clippy did not run" },
+    runtime_obs: RuntimeRowsObserved { rows: rows_constant() }
+  )
+  match v {
+    Qualified { case: _, behavior_agreement: _, clone_minimality: CloneNecessityUnjudgeable, expected: _, observed_rows: _, lint_observation: _ } => true
+    _ => false
+  }
+}
+
+// ── Generation-grain mutant discrimination ───────────────────────────────────────────────────
+
+test fn ecq_copied_accumulator_mutant_changes_fixture_holds() -> Bool {
+  fixture_module_text(c: OwnedStringCarrier, mutant: CleanSubject)
+    != fixture_module_text(c: OwnedStringCarrier, mutant: PlantCopiedAccumulator)
+}
+
+test fn ecq_disconnect_counter_mutant_removes_allocator_registration_holds() -> Bool {
+  let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject, result_is_shared: false)
+  let cut = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: DisconnectCounter, result_is_shared: false)
+  string_contains_marker(haystack: clean, marker: "#[global_allocator]")
+    && !string_contains_marker(haystack: cut, marker: "#[global_allocator]")
+}
+
+test fn ecq_runner_mutants_wrap_the_window_argument_holds() -> Bool {
+  let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject, result_is_shared: false)
+  let hidden = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantHiddenDeepCopy, result_is_shared: false)
+  let share = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantShareClone, result_is_shared: false)
+  let deep = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantDeepClone, result_is_shared: false)
+  clean != hidden && clean != share && clean != deep
+    && string_contains_marker(haystack: hidden, marker: ".chars().collect()")
+    && string_contains_marker(haystack: share, marker: ".clone()")
+}
+
+test fn ecq_shard_driver_names_every_shard_case_holds() -> Bool {
+  let rows = shard_case_rows(carrier: OwnedStringCarrier)
+  let text = driver_text(c: OwnedStringCarrier)
+  (rows |> count) > 0
+    && rows |> all(r => string_contains_marker(haystack: text, marker: concat("case=", case_slug(id: r.id))))
+}
+
+// Substring scan via the ambient split: a marker is contained when splitting on it yields
+// more than one piece.
+fn string_contains_marker(haystack: String, marker: String) -> Bool {
+  (split(s: haystack, delimiter: marker) |> count) > 1
+}
