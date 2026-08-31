@@ -364,17 +364,17 @@ test fn ecq_copied_accumulator_mutant_changes_fixture_holds() -> Bool {
 }
 
 test fn ecq_disconnect_counter_mutant_removes_allocator_registration_holds() -> Bool {
-  let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject, result_is_shared: false)
-  let cut = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: DisconnectCounter, result_is_shared: false)
+  let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject)
+  let cut = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: DisconnectCounter)
   string_contains_marker(haystack: clean, marker: "#[global_allocator]")
     && !string_contains_marker(haystack: cut, marker: "#[global_allocator]")
 }
 
 test fn ecq_runner_mutants_wrap_the_window_argument_holds() -> Bool {
-  let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject, result_is_shared: false)
-  let hidden = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantHiddenDeepCopy, result_is_shared: false)
-  let share = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantShareClone, result_is_shared: false)
-  let deep = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantDeepClone, result_is_shared: false)
+  let clean = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: CleanSubject)
+  let hidden = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantHiddenDeepCopy)
+  let share = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantShareClone)
+  let deep = runner_main_text(module_path: "fixture::m", c: OwnedStringCarrier, mutant: PlantRedundantDeepClone)
   clean != hidden && clean != share && clean != deep
     && string_contains_marker(haystack: hidden, marker: ".chars().collect()")
     && string_contains_marker(haystack: share, marker: ".clone()")

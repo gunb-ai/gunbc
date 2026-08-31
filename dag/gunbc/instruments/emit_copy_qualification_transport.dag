@@ -96,9 +96,14 @@ fn manifest_crate_name(manifest: String) -> String? {
   }
 }
 
+// [workspace] keeps the crate out of the repo workspace; the [features] rows declare the
+// cfg names the emitted v1_rt template guards on, so unexpected_cfgs cannot red the fixture
+// build under a -D warnings environment (the emitted manifest carries neither today).
 fn manifest_isolated(manifest: String) -> String {
-  if (split(s: manifest, delimiter: "[workspace]") |> count) > 1 { manifest }
-  else { concat(manifest, "\n[workspace]\n") }
+  let with_ws = if (split(s: manifest, delimiter: "[workspace]") |> count) > 1 { manifest }
+    else { concat(manifest, "\n[workspace]\n") }
+  if (split(s: with_ws, delimiter: "[features]") |> count) > 1 { with_ws }
+  else { concat(with_ws, "\n[features]\ntext_lookup_work_counter = []\ninterp_test_witness = []\ntest_hooks = []\n") }
 }
 
 // ── Line parsing (runner + interpreted driver share one grammar) ─────────────────────────────
@@ -470,7 +475,7 @@ fn run_emit_copy_qualification_shard(c: CarrierRealization, mutant: MutantPlan) 
               Present { value: crate_name } =>
                 let runner_text = runner_main_text(
                   module_path: concat(crate_name, concat("::test_fixture_emit_copy_", carrier_realization_slug(c: c))),
-                  c: c, mutant: mutant, result_is_shared: false)
+                  c: c, mutant: mutant)
                 let isolated = Filesystem.Write(path: a.manifest_path, content: manifest_isolated(manifest: emitted_manifest.content))
                 let wrote_runner = Filesystem.Write(path: a.runner_source_path, content: runner_text)
                 if !(isolated.success && wrote_runner.success) {

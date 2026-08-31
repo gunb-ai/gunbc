@@ -440,26 +440,21 @@ fn runner_case_block(module_path: String, id: EmitCopyQualificationCaseId, mutan
   let ns_text = ns |> fold(init: "", f: (acc, n) =>
     if acc == "" { concat(to_string(n), "i64") } else { concat(acc, concat(", ", concat(to_string(n), "i64"))) }
   )
-  concat("    for n in [", concat(ns_text, concat("] {\n        let mut seen: Vec<(i64, u64, u64)> = std::vec::Vec::new();\n        for _rep in 0..", concat(to_string(runner_repeat_count), concat(" {\n            let input = ", concat(module_path, concat("::ecq_input_", concat(slug, concat("(n);\n            let (r, o, b) = ecq_window(|| ", concat(module_path, concat("::ecq_subject_", concat(slug, concat("(", concat(runner_arg_expr(mutant: mutant), concat("));\n            seen.push((ecq_result_scalar(&r), o, b));\n        }\n        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, concat(" n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n        } else {\n            println!(\"case=", concat(slug, " n={} observation=nondeterministic\", n);\n        }\n    }\n")))))))))))))))))))
+  concat("    for n in [", concat(ns_text, concat("] {\n        let mut seen: Vec<(i64, u64, u64)> = std::vec::Vec::new();\n        for _rep in 0..", concat(to_string(runner_repeat_count), concat(" {\n            let input = ", concat(module_path, concat("::ecq_input_", concat(slug, concat("(n);\n            let (r, o, b) = ecq_window(|| ", concat(module_path, concat("::ecq_subject_", concat(slug, concat("(", concat(runner_arg_expr(mutant: mutant), concat("));\n            let r_scalar: i64 = format!(\"{}\", r).parse::<i64>().expect(\"ecq result not integral\");\n            seen.push((r_scalar, o, b));\n        }\n        if seen.iter().all(|s| *s == seen[0]) {\n            println!(\"case=", concat(slug, concat(" n={} result={} alloc_ops={} alloc_bytes={}\", n, seen[0].0, seen[0].1, seen[0].2);\n        } else {\n            println!(\"case=", concat(slug, " n={} observation=nondeterministic\", n);\n        }\n    }\n")))))))))))))))))))
 }
 
 // The subject's return is Int-realized; the scalar reader tolerates either the bare or the
 // shared spelling without naming the emitted type (Deref makes both print, but tuples need Eq,
 // so the runner normalizes through a i64-returning helper generated once).
-data runner_result_scalar_text: String = "fn ecq_result_scalar<T: std::ops::Deref<Target = i64>>(r: &T) -> i64 { **r }\n"
-
-data runner_result_scalar_bare_text: String = "fn ecq_result_scalar(r: &i64) -> i64 { *r }\n"
-
-fn runner_main_text(module_path: String, c: CarrierRealization, mutant: MutantPlan, result_is_shared: Bool) -> String {
+fn runner_main_text(module_path: String, c: CarrierRealization, mutant: MutantPlan) -> String {
   let prelude = match mutant {
     DisconnectCounter => runner_prelude_disconnected_text
     _ => runner_prelude_text
   }
-  let scalar_reader = if result_is_shared { runner_result_scalar_text } else { runner_result_scalar_bare_text }
   let blocks = shard_case_rows(carrier: c) |> fold(init: "", f: (acc, r) =>
     concat(acc, runner_case_block(module_path: module_path, id: r.id, mutant: mutant))
   )
-  concat(prelude, concat(scalar_reader, concat("\nfn main() {\n", concat(runner_connectivity_control_text, concat(blocks, "    println!(\"ecq_runner_done\");\n}\n")))))
+  concat(prelude, concat("\nfn main() {\n", concat(runner_connectivity_control_text, concat(blocks, "    println!(\"ecq_runner_done\");\n}\n"))))
 }
 
 // ── Shard crate manifest (path dependency on the seed crate for v1_rt, per the
