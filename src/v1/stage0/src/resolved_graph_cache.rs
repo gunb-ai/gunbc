@@ -1,5 +1,6 @@
 // SCAFFOLD (§7 seed-retained HAND-RUST — authority: gunbc.resolved_graph_cache_hand_rust_scaffold;
 // witness: dag/test/claim/resolved_graph_cache_hand_rust_witness_test.dag).
+use flate2::{read::ZlibDecoder, write::ZlibEncoder, Compression};
 use im::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -15,11 +16,13 @@ use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::{ErrorNode, NewlineIndex};
 use im::Vector;
 
-/// v4: persisted graphs are assembly-final for import-str identity. Decode no
+/// v5: graph JSON is zlib-compressed and streamed through bounded temporary
+/// parts, so encoding cannot retain a corpus-sized JSON DOM or byte buffer.
+/// Persisted graphs remain assembly-final for import-str identity. Decode no
 /// longer replays `rewire_type_env_import_str_binding_identity` (v3 did). v1 and
 /// v3 artifacts cold-rebuild. Parent-link and func-env rewire remain decode-time
 /// — they repair Rc parent edges, not declaration identity.
-const FORMAT_VERSION: u32 = 4;
+const FORMAT_VERSION: u32 = 5;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 /// v3 header sentinel: union output not persisted in payload (semantically incomplete).
 pub const UNION_PART_ABSENT_DIGEST: &str = "ffffffffffffffff";
@@ -66,7 +69,7 @@ pub enum CacheRejectReason {
     PartDecodeFailure,
 }
 
-/// Per-output digests and byte sizes for a FORMAT_VERSION 4 artifact — derived
+/// Per-output digests and byte sizes for a FORMAT_VERSION 5 artifact — derived
 /// from the bounded header without reading payload bytes on the probe path.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FaithfulResolvedGraphProbeParts {
@@ -150,9 +153,14 @@ fn encode_cache_payload(payload: &CachePayload) -> Result<Vec<u8>, String> {
 }
 
 fn encode_graph_part(graph: &ResolvedGraph) -> Result<Vec<u8>, String> {
-    let value =
-        serde_json::to_value(graph).map_err(|e| format!("cache graph value encode: {e}"))?;
-    serde_json::to_vec(&sort_json_value(value)).map_err(|e| format!("cache graph encode: {e}"))
+    // Never route the corpus graph through `serde_json::Value`: that constructs
+    // a second recursive DOM before producing bytes and exceeds 31 GiB on the
+    // production whole-tree graph. Serde grows only the output byte buffer here.
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::fast());
+    serde_json::to_writer(&mut encoder, graph).map_err(|e| format!("cache graph encode: {e}"))?;
+    encoder
+        .finish()
+        .map_err(|e| format!("cache graph compression: {e}"))
 }
 
 fn encode_source_indices_part(
@@ -173,7 +181,8 @@ fn encode_compile_clean_union_part(
 }
 
 fn decode_graph_part(bytes: &[u8]) -> Result<ResolvedGraph, String> {
-    serde_json::from_slice(bytes).map_err(|e| format!("cache graph decode failed: {e}"))
+    serde_json::from_reader(ZlibDecoder::new(bytes))
+        .map_err(|e| format!("cache graph decode failed: {e}"))
 }
 
 fn decode_source_indices_part(bytes: &[u8]) -> Result<HashMap<String, NewlineIndex>, String> {
@@ -396,6 +405,29 @@ fn validate_declared_artifact_len(
 
 const FAITHFUL_PROBE_FORMAT_VERSION: u32 = 3;
 const MAX_PART_BYTES: u64 = 512 * 1024 * 1024;
+
+struct BoundedWriter<W> {
+    inner: W,
+    written: u64,
+}
+
+impl<W: Write> Write for BoundedWriter<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self.written.saturating_add(buf.len() as u64) > MAX_PART_BYTES {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::FileTooLarge,
+                "resolved-graph cache part exceeds MAX_PART_BYTES",
+            ));
+        }
+        let n = self.inner.write(buf)?;
+        self.written += n as u64;
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
 
 #[derive(Debug, Clone)]
 struct V3PartDescriptor {
@@ -950,6 +982,107 @@ pub struct EncodedResolvedGraphParts {
     pub union_bytes: Vec<u8>,
 }
 
+pub struct PreparedResolvedGraphParts {
+    paths: [PathBuf; PART_COUNT],
+    pub graph_digest: Hash,
+    pub graph_bytes: u64,
+    pub indices_digest: Hash,
+    pub indices_bytes: u64,
+    pub union_digest: Hash,
+    pub union_bytes: u64,
+}
+
+impl Drop for PreparedResolvedGraphParts {
+    fn drop(&mut self) {
+        for path in &self.paths {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+fn digest_file(path: &Path) -> Result<(Hash, u64), String> {
+    let mut file = File::open(path).map_err(|e| format!("open encoded cache part: {e}"))?;
+    let len = file
+        .metadata()
+        .map_err(|e| format!("stat encoded cache part: {e}"))?
+        .len();
+    let mut hasher = v1_rt::BytesIdentityHasher::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("read encoded cache part: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok((hasher.finish(), len))
+}
+
+pub fn prepare_resolved_graph_parts(
+    cache_root: &Path,
+    subject_digest: &str,
+    graph: &ResolvedGraph,
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+    compile_clean_diags: &Vector<Rc<ErrorNode>>,
+) -> Result<PreparedResolvedGraphParts, String> {
+    let artifact = artifact_path(cache_root, subject_digest);
+    let parent = artifact
+        .parent()
+        .ok_or_else(|| "cache artifact has no parent".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| format!("create cache root: {e}"))?;
+    let base = unique_temp_path(&artifact);
+    let paths = [
+        base.with_extension("graph.part"),
+        base.with_extension("indices.part"),
+        base.with_extension("union.part"),
+    ];
+    let result = (|| {
+        let graph_file = File::create(&paths[0]).map_err(|e| format!("create graph part: {e}"))?;
+        let graph_sink = BoundedWriter {
+            inner: graph_file,
+            written: 0,
+        };
+        let mut graph_encoder = ZlibEncoder::new(graph_sink, Compression::fast());
+        serde_json::to_writer(&mut graph_encoder, graph)
+            .map_err(|e| format!("cache graph encode: {e}"))?;
+        graph_encoder
+            .finish()
+            .map_err(|e| format!("cache graph compression: {e}"))?;
+        let si_plain: HashMap<String, NewlineIndex> = source_indices
+            .iter()
+            .map(|(k, v)| (k.clone(), (**v).clone()))
+            .collect();
+        let indices_file =
+            File::create(&paths[1]).map_err(|e| format!("create indices part: {e}"))?;
+        serde_json::to_writer(indices_file, &si_plain)
+            .map_err(|e| format!("cache indices encode: {e}"))?;
+        let plain: Vec<ErrorNode> = compile_clean_diags.iter().map(|d| (**d).clone()).collect();
+        let union_file = File::create(&paths[2]).map_err(|e| format!("create union part: {e}"))?;
+        serde_json::to_writer(union_file, &plain)
+            .map_err(|e| format!("cache union encode: {e}"))?;
+        let (graph_digest, graph_bytes) = digest_file(&paths[0])?;
+        let (indices_digest, indices_bytes) = digest_file(&paths[1])?;
+        let (union_digest, union_bytes) = digest_file(&paths[2])?;
+        Ok(PreparedResolvedGraphParts {
+            paths: paths.clone(),
+            graph_digest,
+            graph_bytes,
+            indices_digest,
+            indices_bytes,
+            union_digest,
+            union_bytes,
+        })
+    })();
+    if result.is_err() {
+        for path in &paths {
+            let _ = fs::remove_file(path);
+        }
+    }
+    result
+}
+
 pub fn encode_resolved_graph_parts(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
@@ -981,6 +1114,131 @@ pub fn write(
     stored_request_key: &str,
     stored_semantic_digest: &str,
 ) -> Result<CacheWriteOutcome, String> {
+    let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
+    write_encoded(
+        cache_root,
+        subject_digest,
+        encoded,
+        stored_request_key,
+        stored_semantic_digest,
+    )
+}
+
+pub fn write_prepared(
+    cache_root: &Path,
+    subject_digest: &str,
+    prepared: PreparedResolvedGraphParts,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
+) -> Result<CacheWriteOutcome, String> {
+    if !v1_rt::is_hash_digest(subject_digest)
+        || !v1_rt::is_hash_digest(stored_request_key)
+        || !v1_rt::is_hash_digest(stored_semantic_digest)
+    {
+        return Err("cache keys must be 16-char hex hashes".to_string());
+    }
+    let final_path = artifact_path(cache_root, subject_digest);
+    match classify_existing_artifact(&final_path, subject_digest)? {
+        ExistingArtifactDisposition::V3Present => return Ok(CacheWriteOutcome::AlreadyExists),
+        ExistingArtifactDisposition::Unrecognized => {
+            return Err(format!(
+                "refusing v3 write: unrecognized cache artifact at {:?}",
+                final_path
+            ))
+        }
+        ExistingArtifactDisposition::Absent | ExistingArtifactDisposition::LegacyV1Upgrade => {}
+    }
+    if let Some(parent) = final_path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("failed to create cache dir {:?}: {e}", parent))?;
+    }
+    let lengths = [
+        prepared.graph_bytes,
+        prepared.indices_bytes,
+        prepared.union_bytes,
+    ];
+    let digests = [
+        &prepared.graph_digest,
+        &prepared.indices_digest,
+        &prepared.union_digest,
+    ];
+    let payload_len = lengths
+        .iter()
+        .try_fold(0u64, |a, n| a.checked_add(*n))
+        .ok_or_else(|| "cache payload length overflow".to_string())?;
+    let mut aggregate = v1_rt::BytesIdentityHasher::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    for path in &prepared.paths {
+        let mut part = File::open(path).map_err(|e| format!("open encoded cache part: {e}"))?;
+        loop {
+            let n = part
+                .read(&mut buf)
+                .map_err(|e| format!("read encoded cache part: {e}"))?;
+            if n == 0 {
+                break;
+            }
+            aggregate.update(&buf[..n]);
+        }
+    }
+    let payload_integrity_digest = aggregate.finish();
+    let temp_path = unique_temp_path(&final_path);
+    let write_result = (|| {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_path)
+            .map_err(|e| format!("failed to open cache temp {:?}: {e}", temp_path))?;
+        file.write_all(MAGIC)
+            .map_err(|e| format!("cache write failed: {e}"))?;
+        file.write_all(&FORMAT_VERSION.to_le_bytes())
+            .map_err(|e| format!("cache write failed: {e}"))?;
+        for bytes in [
+            subject_digest.as_bytes(),
+            payload_integrity_digest.as_bytes(),
+            stored_request_key.as_bytes(),
+            stored_semantic_digest.as_bytes(),
+        ] {
+            file.write_all(bytes)
+                .map_err(|e| format!("cache write failed: {e}"))?;
+        }
+        file.write_all(&payload_len.to_le_bytes())
+            .map_err(|e| format!("cache write failed: {e}"))?;
+        let mut offset = 0u64;
+        for i in 0..PART_COUNT {
+            file.write_all(&offset.to_le_bytes())
+                .map_err(|e| format!("cache write failed: {e}"))?;
+            file.write_all(&lengths[i].to_le_bytes())
+                .map_err(|e| format!("cache write failed: {e}"))?;
+            file.write_all(digests[i].as_bytes())
+                .map_err(|e| format!("cache write failed: {e}"))?;
+            offset += lengths[i];
+        }
+        for path in &prepared.paths {
+            let mut part = File::open(path).map_err(|e| format!("open encoded cache part: {e}"))?;
+            std::io::copy(&mut part, &mut file)
+                .map_err(|e| format!("copy encoded cache part: {e}"))?;
+        }
+        file.sync_all()
+            .map_err(|e| format!("cache fsync failed: {e}"))?;
+        commit_v3_temp_artifact(&temp_path, &final_path, subject_digest, cache_root)
+    })();
+    if write_result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    write_result
+}
+
+/// Publish parts already encoded for the provider verdict. The production caller
+/// needs their digests and lengths before it can obtain `stored_request_key` and
+/// `stored_semantic_digest`; accepting ownership here prevents encoding the
+/// corpus-sized graph a second time and lets the writer emit each part directly.
+pub fn write_encoded(
+    cache_root: &Path,
+    subject_digest: &str,
+    encoded: EncodedResolvedGraphParts,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
+) -> Result<CacheWriteOutcome, String> {
     if !v1_rt::is_hash_digest(subject_digest) {
         return Err("subject_digest must be a 16-char hex hash".to_string());
     }
@@ -1003,14 +1261,16 @@ pub fn write(
         fs::create_dir_all(parent)
             .map_err(|e| format!("failed to create cache dir {:?}: {}", parent, e))?;
     }
-    let encoded = encode_resolved_graph_parts(graph, source_indices, compile_clean_diags)?;
-    let payload_bytes = [
+    let payload_slices = [
         encoded.graph_bytes.as_slice(),
         encoded.indices_bytes.as_slice(),
         encoded.union_bytes.as_slice(),
-    ]
-    .concat();
-    let payload_integrity_digest = payload_content_digest(&payload_bytes);
+    ];
+    let payload_len = payload_slices
+        .iter()
+        .try_fold(0u64, |total, bytes| total.checked_add(bytes.len() as u64))
+        .ok_or_else(|| "cache payload length overflow".to_string())?;
+    let payload_integrity_digest = v1_rt::bytes_identity_hash_parts(&payload_slices);
     let parts = [
         V3PartDescriptor {
             offset: 0,
@@ -1049,7 +1309,7 @@ pub fn write(
             .map_err(|e| format!("cache write failed: {e}"))?;
         file.write_all(stored_semantic_digest.as_bytes())
             .map_err(|e| format!("cache write failed: {e}"))?;
-        file.write_all(&(payload_bytes.len() as u64).to_le_bytes())
+        file.write_all(&payload_len.to_le_bytes())
             .map_err(|e| format!("cache write failed: {e}"))?;
         for part in parts {
             file.write_all(&part.offset.to_le_bytes())
@@ -1059,8 +1319,10 @@ pub fn write(
             file.write_all(part.digest.as_bytes())
                 .map_err(|e| format!("cache write failed: {e}"))?;
         }
-        file.write_all(&payload_bytes)
-            .map_err(|e| format!("cache write failed: {e}"))?;
+        for bytes in payload_slices {
+            file.write_all(bytes)
+                .map_err(|e| format!("cache write failed: {e}"))?;
+        }
         file.sync_all()
             .map_err(|e| format!("cache fsync failed: {e}"))?;
     }

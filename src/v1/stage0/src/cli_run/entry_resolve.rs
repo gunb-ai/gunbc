@@ -1645,27 +1645,33 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
         let closure_digest = closure_content_digest(&sources);
         let compiler_digest = transform_content_digest();
-        let encoded = crate::resolved_graph_cache::encode_resolved_graph_parts(
-            &typed,
-            source_indices.as_ref(),
-            &compile_clean_diags,
-        )?;
-        let stored_request_key =
-            resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)?;
-        let stored_semantic_digest = resolved_graph_parts_semantic_digest(
-            &encoded.graph_digest,
-            encoded.graph_bytes.len() as u64,
-            &encoded.indices_digest,
-            encoded.indices_bytes.len() as u64,
-            &encoded.union_digest,
-            encoded.union_bytes.len() as u64,
-        )?;
-        if let Err(e) = cross_process_write(
+        let encoded = match cross_process_prepare(
             &cache_root,
             &subject,
             &typed,
             source_indices.as_ref(),
             &compile_clean_diags,
+        ) {
+            Ok(encoded) => encoded,
+            Err(e) => {
+                eprintln!("[resolved-graph-cache] prepare refused subject={subject}: {e}");
+                return Ok((typed, source_indices, compile_clean_diags));
+            }
+        };
+        let stored_request_key =
+            resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)?;
+        let stored_semantic_digest = resolved_graph_parts_semantic_digest(
+            &encoded.graph_digest,
+            encoded.graph_bytes,
+            &encoded.indices_digest,
+            encoded.indices_bytes,
+            &encoded.union_digest,
+            encoded.union_bytes,
+        )?;
+        if let Err(e) = cross_process_write_prepared(
+            &cache_root,
+            &subject,
+            encoded,
             &stored_request_key,
             &stored_semantic_digest,
         ) {

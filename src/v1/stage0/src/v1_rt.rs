@@ -1134,6 +1134,35 @@ pub fn bytes_identity_hash(bytes: &[u8]) -> Hash {
     format!("{:016x}", fnv1a64(bytes))
 }
 
+/// Content hash over several byte slices as one logical byte stream. This is
+/// exactly `bytes_identity_hash(concat(parts))` without allocating the concat.
+pub fn bytes_identity_hash_parts(parts: &[&[u8]]) -> Hash {
+    let mut hasher = BytesIdentityHasher::new();
+    for bytes in parts {
+        hasher.update(bytes);
+    }
+    hasher.finish()
+}
+
+pub struct BytesIdentityHasher(u64);
+
+impl BytesIdentityHasher {
+    pub fn new() -> Self {
+        Self(FNV1A64_OFFSET)
+    }
+
+    pub fn update(&mut self, bytes: &[u8]) {
+        for byte in bytes {
+            self.0 ^= *byte as u64;
+            self.0 = self.0.wrapping_mul(FNV1A64_PRIME);
+        }
+    }
+
+    pub fn finish(self) -> Hash {
+        format!("{:016x}", self.0)
+    }
+}
+
 pub fn atom_identity_hash(s: String) -> Hash {
     bytes_identity_hash(s.as_bytes())
 }

@@ -840,6 +840,7 @@ name = "v1-compiler"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "flate2",
  "im",
  "lazy_static",
  "libc",
