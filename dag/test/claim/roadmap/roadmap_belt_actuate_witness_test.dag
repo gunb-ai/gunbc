@@ -1268,6 +1268,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
   let receipt = belt_tick_receipt_from_result(
     result: result,
     observed_at: "2026-08-02T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
   match receipt.spawn_pass {
     BeltPassRefused { reason: _ } => true
@@ -1297,6 +1298,7 @@ test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
   match belt_tick_receipt_from_result(
     result: result,
     observed_at: "2026-08-02T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   ).verify_pass {
     BeltPassDeferred { reason: _ } => true
     BeltPassRecorded => false
@@ -1345,6 +1347,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
       publish_outcomes: [],
     },
     observed_at: "2026-08-02T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
   let detail = belt_verification_presentation_detail(
     progress: completed_attempt_progress(node_id: "pres-decouple-node"),
@@ -1357,6 +1360,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
 test fn verification_presentation_verify_refused_is_blocked() -> Bool {
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
@@ -1373,6 +1377,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
 test fn verification_presentation_verify_failed_is_failed() -> Bool {
   let receipt = BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
     launches: [],
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
@@ -2218,6 +2223,7 @@ test fn transition_halted_tick_refuses_all_four_passes() -> Bool {
       publish_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
   all_four_refused_with(receipt: receipt, pattern: "deployment transition in force")
 }
@@ -2234,6 +2240,7 @@ test fn revision_refusal_keeps_verify_independently_recorded() -> Bool {
       publish_outcomes: [],
     },
     observed_at: "2026-08-30T02:00:00Z",
+    execution: TickExecuted { instance_id: "srv1-live", deployed_revision: "0123456789abcdef0123456789abcdef01234567", spawn_mode: ManualReady },
   )
   (match receipt.spawn_pass { BeltPassRefused { reason } => string_contains(s: reason, pattern: "not the admitted fleet revision") _ => false })
     && (match receipt.teardown_pass { BeltPassRefused { reason: _ } => true _ => false })

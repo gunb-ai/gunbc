@@ -431,23 +431,20 @@ pub struct TransitionAdmission {
 /// `gunbc.bmc_firmware_transition`, and the legacy projection no longer binds them at all — so
 /// the required run on cdbf4611bb reported `0 unadjudicated delta(s), 31 stale admission(s)`.
 /// Removed by the roster's own rule before the PR merged, so the rows never reached main.
-/// XL-0N (`node://adhoc-aec65f93-b00`, gunbc#9719) RETIRED BY ITS OWN TRIGGER (2026-08-31,
-/// gunbc#9756). That row admitted the relocation of `type_reference_declaration_ref` from
-/// `v1.compiler.emit_rust` to `v1.compiler.infer_env`, and it wrote its dissolution condition as
-/// "this pull request merging. Base and head then both carry the relocation, no run can produce
-/// this delta, the row reports stale on every build, and it is removed by that trigger exactly as
-/// all six shrinks above were -- A STALE ROW HERE REFUSES EVERY UNRELATED PR."
+/// XL-0N (`node://adhoc-aec65f93-b00`, gunbc#9719): ONE relocation, rostered by its author under
+/// the rule this ledger states -- "a run carrying a real namespace delta still refuses it as
+/// UNADJUDICATED until its author adds a row here". The operand's declaration must be read where
+/// the type reference's SCOPED env binding is live, which is inference; `v1.compiler.emit_rust`
+/// cannot be imported by `v1.compiler.infer` (emission depends on inference, not the reverse), so
+/// the identity read `type_reference_declaration_ref` moves to `v1.compiler.infer_env`, where the
+/// only other consumer already lives. The move is the whole change to this spelling: same function,
+/// same signature, one declaring module -- not a requalification, and no second declaration is left
+/// behind. `emit_rust`'s own call site now resolves to the new declarer, which is the delta below.
 ///
-/// The trigger fired and the removal did not follow it. `type_reference_declaration_ref` is
-/// declared once, in `src/v1/04_env.dag`, and no declaration remains in `05_emit_rust.dag`, so the
-/// relocation is in the merge base and no run can produce the delta the row adjudicates. The
-/// required witnesses lane then reported `0 unadjudicated delta(s), 1 stale admission(s)` and
-/// FAILED -- on this PR, which touches neither module and neither spelling.
-///
-/// It is removed here rather than reported, because the row itself prescribes removal on this
-/// trigger and names the harm of leaving it. Retiring another lane's row is executing its declared
-/// condition, not overriding its author. THE ROSTER IS EMPTY AGAIN, AND EMPTY IS NOT PERMISSIVE:
-/// the next real namespace delta refuses as UNADJUDICATED until its author adds a row.
+/// SEVENTH DISSOLUTION (2026-08-31). XL-0N (#9719) merged, so base and head both carry the
+/// `type_reference_declaration_ref` relocation. The row above can no longer match a delta and was
+/// observed stale on every unrelated PR, including gunbc#9771 run 33368922338. Removed by its own
+/// dissolve-on trigger. The roster is empty and remains fail-closed for any new namespace delta.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
