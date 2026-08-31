@@ -38,12 +38,13 @@ import extdeps.systemd.unit_file {
 // unit file (gunbc.live_deploy.emit live_deploy_serve_unit_file /
 // live_deploy_belt_service_unit_file), reading systemd's `{ path=... ; argv[]=... ; ... }`
 // rendering by its `argv[]=` segment. The timer's target unit is compared exactly through the Unit
-// property. The timer's cadence is compared STRUCTURALLY: TimersMonotonic must carry both an
-// OnBootUSec and an OnUnitInactiveUSec entry, but their VALUES are not compared, because systemd
-// renders '60s' as '1min' and the repository has no systemd duration normalization to ground an
-// equality on. That is a declared residue with its trigger: an extdeps.systemd duration model that
-// can equate the emitted spelling to the rendered one, at which point the cadence equality lands
-// here as a fourth timer conjunct.
+// property. The timer's cadence VALUES are compared exactly too: OnBootUSec and OnUnitInactiveUSec
+// from TimersMonotonic and the AccuracyUSec property are each normalized through
+// extdeps.systemd systemd_duration_usec (systemd.time(7), microsecond resolution) and compared
+// against the Microsecond expectations derived from R's emitted timer unit -- '60s' and '1min'
+// are one value, and a spelling that stops normalizing refuses rather than passing structurally.
+// This dissolves the former declared residue (cadence compared by entry presence only), whose
+// trigger -- an extdeps.systemd duration model -- is the mechanism that landed beside this text.
 // 
 // EVERY REFUSAL NAMES THE UNIT AND THE PROPERTY that disagreed; an unreadable property is a
 // refusal, never a pass by vacancy.
