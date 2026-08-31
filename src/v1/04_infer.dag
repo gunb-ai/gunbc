@@ -11591,7 +11591,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
-  let source_indices = fold(["Optional", "Present", "Absent", "value", "none"], init: source_indices, f: (acc, name) =>
+  let source_indices = fold(["Optional", "Present", "Absent", "value", "none", "True", "False"], init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
@@ -11615,6 +11615,18 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  // The kernel binding for Bool carries the coproduct structure its cited declaration has
+  // (std.types `type Bool = True | False`). The scalar synthetic stand-in erased the variants,
+  // and once the kernel overlay applies unconditionally that erasure deleted the
+  // coproduct-payload refusal at kernel-Bool formals (discriminating red:
+  // test.claim.coproduct_payload_soundness_witness_test
+  // bcp_foreign_coproduct_where_bool_required_must_refuse) -- the wall reads the formal's
+  // resolved declaration, so the model is repaired at the producer rather than the wall
+  // re-checking kernelness downstream.
+  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bool = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool, provenance: SubValueUnknown })
 
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
@@ -11782,6 +11794,18 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
   let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  // The kernel binding for Bool carries the coproduct structure its cited declaration has
+  // (std.types `type Bool = True | False`). The scalar synthetic stand-in erased the variants,
+  // and once the kernel overlay applies unconditionally that erasure deleted the
+  // coproduct-payload refusal at kernel-Bool formals (discriminating red:
+  // test.claim.coproduct_payload_soundness_witness_test
+  // bcp_foreign_coproduct_where_bool_required_must_refuse) -- the wall reads the formal's
+  // resolved declaration, so the model is repaired at the producer rather than the wall
+  // re-checking kernelness downstream.
+  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bool = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool, provenance: SubValueUnknown })
   let kernel_str_bindings = str_bindings_from_bindings(bindings: kernel_bindings)
   let kernel = TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: kernel_str_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), authored_import_names: empty_map(), symbol_index: empty_symbol_index(), unit_variant_index: build_unit_variant_index(str_bindings: kernel_str_bindings, parents: [], source_indices: source_indices) }
 
@@ -12734,7 +12758,7 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
 
 fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
-  let intern_table = fold(["Optional", "Present", "Absent", "value", "none"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
+  let intern_table = fold(["Optional", "Present", "Absent", "value", "none", "True", "False"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
@@ -13109,6 +13133,18 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   let absent_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = Node { occurrence_identity: OccurrenceSynthetic, name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  // The kernel binding for Bool carries the coproduct structure its cited declaration has
+  // (std.types `type Bool = True | False`). The scalar synthetic stand-in erased the variants,
+  // and once the kernel overlay applies unconditionally that erasure deleted the
+  // coproduct-payload refusal at kernel-Bool formals (discriminating red:
+  // test.claim.coproduct_payload_soundness_witness_test
+  // bcp_foreign_coproduct_where_bool_required_must_refuse) -- the wall reads the formal's
+  // resolved declaration, so the model is repaired at the producer rather than the wall
+  // re-checking kernelness downstream.
+  let kernel_true_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "True", span: kernel_span(name: "True"), ident_span: Present { value: kernel_span(name: "True") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_false_variant = Node { occurrence_identity: OccurrenceSynthetic, name: "False", span: kernel_span(name: "False"), ident_span: Present { value: kernel_span(name: "False") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bool = Node { occurrence_identity: OccurrenceSynthetic, name: "Bool", span: kernel_span(name: "Bool"), ident_span: Present { value: kernel_span(name: "Bool") }, children: [kernel_true_variant, kernel_false_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Bool").id, TypeBinding { name: "Bool", resolved: kernel_bool, provenance: SubValueUnknown })
   let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
   let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
