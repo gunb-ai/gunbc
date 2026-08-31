@@ -4,7 +4,8 @@ import std.types { NonEmptyStr, String, Int }
 import std.types { list_length }
 import std.algebra { trim }
 import std.types { List }
-import std.measure { ByteSize, byte_size, byte_size_count }
+import std.measure { ByteSize, byte_size, byte_size_count, Microsecond, microsecond }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.systemd.systemd_contracts { systemd_unit_active_state_wire_contract }
@@ -146,7 +147,7 @@ fn systemd_time_span_split(part: String) -> SystemdTimeSpanPart? {
   }
 }
 
-fn systemd_duration_usec(text: String) -> Int? {
+fn systemd_duration_usec(text: String) -> Microsecond? {
   let parts = filter(split(s: trim(s: text), delimiter: " "), p => p != "")
   if list_length(items: parts) == 0 {
     none
@@ -162,7 +163,14 @@ fn systemd_duration_usec(text: String) -> Int? {
             }
         }
       })
-    if total < 0 { none } else { Present { value: total } }
+    if total < 0 {
+      none
+    } else {
+      match checked_int_magnitude(a: total) {
+        CheckedNatOverflow { cause: _ } => none
+        CheckedNatReady { value: n } => Present { value: microsecond(count: n) }
+      }
+    }
   }
 }
 

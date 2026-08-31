@@ -1,6 +1,8 @@
 module gunbc.roadmap_launch_deployment_observe
 
 import extdeps.systemd { systemd_duration_usec }
+import std.measure { Second, second, second_count, microsecond_count }
+import std.checked_arithmetic { checked_int_magnitude, CheckedNat, CheckedNatReady, CheckedNatOverflow }
 import gunbc.live_deploy.emit { belt_tick_cadence }
 
 import std.types { String, Bool, NonEmptyStr, Int, List }
@@ -328,24 +330,32 @@ fn iso8601_utc_epoch_seconds(text: String) -> Int? {
 // Derived from the ONE emitted cadence authority (gunbc.live_deploy.emit belt_tick_cadence),
 // normalized through systemd.time(7); a spelling that stops normalizing refuses freshness rather
 // than silently keeping an out-of-date number here.
-fn belt_tick_cadence_seconds_derived() -> Int? {
+fn belt_tick_cadence_seconds_derived() -> Second? {
   match systemd_duration_usec(text: belt_tick_cadence) {
-    Absent => Absent
-    Present { value: usec } => Present { value: usec / 1000000 }
+    Absent => none
+    Present { value: usec } =>
+      match checked_int_magnitude(a: microsecond_count(usec) / 1000000) {
+        CheckedNatOverflow { cause: _ } => none
+        CheckedNatReady { value: n } => Present { value: second(count: n) }
+      }
   }
 }
 data belt_tick_freshness_cadence_multiplier: Int = 3
 
-fn belt_tick_freshness_bound_seconds() -> Int? {
+fn belt_tick_freshness_bound_seconds() -> Second? {
   match belt_tick_cadence_seconds_derived() {
-    Absent => Absent
-    Present { value: cadence } => Present { value: cadence * belt_tick_freshness_cadence_multiplier }
+    Absent => none
+    Present { value: cadence } =>
+      match checked_int_magnitude(a: second_count(cadence) * belt_tick_freshness_cadence_multiplier) {
+        CheckedNatOverflow { cause: _ } => none
+        CheckedNatReady { value: n } => Present { value: second(count: n) }
+      }
   }
 }
 
 type TickFreshness
-  = TickFresh { age_seconds: Int }
-  | TickStale { age_seconds: Int, bound_seconds: Int }
+  = TickFresh { age_seconds: Second }
+  | TickStale { age_seconds: Second, bound_seconds: Second }
   | TickBeforeDeploy { observed_at: String, deploy_completed_at: String }
   | TickInstantUnparseable { which: String, text: String }
   | TickCadenceUnnormalizable { text: String }
@@ -367,10 +377,18 @@ fn belt_tick_freshness(observed_at: String, deploy_completed_at: String, now: St
                   Absent => TickCadenceUnnormalizable { text: belt_tick_cadence }
                   Present { value: bound } => {
                     let age = now_s - tick_s
-                    if age > bound {
-                      TickStale { age_seconds: age, bound_seconds: bound }
+                    if age < 0 {
+                      TickInstantUnparseable { which: "receipt run now (earlier than the tick observed_at)", text: now }
                     } else {
-                      TickFresh { age_seconds: age }
+                      match checked_int_magnitude(a: age) {
+                        CheckedNatOverflow { cause: _ } => TickInstantUnparseable { which: "tick age", text: to_string(age) }
+                        CheckedNatReady { value: age_n } =>
+                          if age > second_count(bound) {
+                            TickStale { age_seconds: second(count: age_n), bound_seconds: bound }
+                          } else {
+                            TickFresh { age_seconds: second(count: age_n) }
+                          }
+                      }
                     }
                   }
                 }
@@ -382,8 +400,8 @@ fn belt_tick_freshness(observed_at: String, deploy_completed_at: String, now: St
 
 fn tick_freshness_text(f: TickFreshness) -> String {
   match f {
-    TickFresh { age_seconds: a } => join(["fresh (", to_string(a), "s old)"], "")
-    TickStale { age_seconds: a, bound_seconds: b } => join(["stale: ", to_string(a), "s old, bound ", to_string(b), "s"], "")
+    TickFresh { age_seconds: a } => join(["fresh (", to_string(second_count(a)), "s old)"], "")
+    TickStale { age_seconds: a, bound_seconds: b } => join(["stale: ", to_string(second_count(a)), "s old, bound ", to_string(second_count(b)), "s"], "")
     TickBeforeDeploy { observed_at: o, deploy_completed_at: d } => join(["observed at ", o, ", before the dashboard deployment completed at ", d], "")
     TickInstantUnparseable { which: w, text: t } => join([w, " is not a %Y-%m-%dT%H:%M:%SZ instant: ", t], "")
     TickCadenceUnnormalizable { text: t } => join(["the emitted timer cadence does not normalize under systemd.time(7): ", t], "")

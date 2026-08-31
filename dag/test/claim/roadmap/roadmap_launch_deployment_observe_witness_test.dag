@@ -31,8 +31,8 @@ test fn witness_iso8601_utc_epoch_seconds_matches_known_instants() -> Bool {
 // refused on an unparseable instant -- four typed arms, none of which is a default.
 test fn witness_tick_freshness_arms() -> Bool {
   let deploy = "2026-08-30T12:00:00Z"
-  (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:02:00Z") { TickFresh { age_seconds: a } => a == 60  _ => false })
-    && (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:10:00Z") { TickStale { age_seconds: a, bound_seconds: b } => a == 540 && b == 180  _ => false })
+  (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:02:00Z") { TickFresh { age_seconds: a } => second_count(a) == 60  _ => false })
+    && (match belt_tick_freshness(observed_at: "2026-08-30T12:01:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:10:00Z") { TickStale { age_seconds: a, bound_seconds: b } => second_count(a) == 540 && second_count(b) == 180  _ => false })
     && (match belt_tick_freshness(observed_at: "2026-08-30T11:59:00Z", deploy_completed_at: deploy, now: "2026-08-30T12:00:30Z") { TickBeforeDeploy { observed_at: _, deploy_completed_at: _ } => true  _ => false })
     && (match belt_tick_freshness(observed_at: "clock-unreadable", deploy_completed_at: deploy, now: "2026-08-30T12:00:30Z") { TickInstantUnparseable { which: w, text: _ } => string_contains(s: w, pattern: "observed_at")  _ => false })
 }

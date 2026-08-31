@@ -559,7 +559,7 @@ data gunbc_ci_fleet_job_worst_case_mode_spark_step_count: Int = 1
 // exactly one value per dispatch — fleet_converge_workflow.dag DispatchInput "mode"), so
 // plan/apply/spark_linger/spark_grants/spark_observe/spark_reboot/spark_durability are MUTUALLY
 // EXCLUSIVE per run, not concurrent tiers to sum. Recounted from fleet_converge_job()'s actual step
-// list (fleet_converge_workflow.dag:280-303) by what a single dispatch can actually execute:
+// list (gunbc.fleet_converge_workflow fleet_converge_job) by what a single dispatch can actually execute:
 // ALWAYS-RUN, no if_condition or if_condition: always() — ci_release_bins_download_step (transfer),
 // ci_release_bins_unpack_verify_step, ci_fleet_wif_auth_step, ci_fleet_key_agent_step,
 // ci_spark_admin_credential_cleanup_step, ci_fleet_key_agent_cleanup_step (5 aux + 1 transfer,

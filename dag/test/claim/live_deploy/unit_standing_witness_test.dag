@@ -27,7 +27,7 @@ fn fixture_oneshot_observed(unit_file_state: String, active_state: String, resul
 }
 
 fn fixture_timer_expectation() -> TimerUnitExpectation {
-  TimerUnitExpectation { target_unit: "gunbc-belt.service", on_boot_usec: 120000000, on_unit_inactive_usec: 60000000, accuracy_usec: 5000000 }
+  TimerUnitExpectation { target_unit: "gunbc-belt.service", on_boot_usec: microsecond(count: 120000000), on_unit_inactive_usec: microsecond(count: 60000000), accuracy_usec: microsecond(count: 5000000) }
 }
 
 fn fixture_timer_observed(unit_file_state: String, active_state: String, target: String) -> TimerUnitObserved {
@@ -141,10 +141,10 @@ test fn witness_expectations_derive_from_the_emitted_srv1_units() -> Bool {
 
 // (8) systemd.time(7) normalization: "60s" == "1min" is decidable equality; unknown units refuse.
 test fn witness_systemd_duration_normalizes_equal_spellings() -> Bool {
-  (match systemd_duration_usec(text: "60s") { Present { value: v } => v == 60000000  Absent => false })
-    && (match systemd_duration_usec(text: "1min") { Present { value: v } => v == 60000000  Absent => false })
-    && (match systemd_duration_usec(text: "1min 30s") { Present { value: v } => v == 90000000  Absent => false })
-    && (match systemd_duration_usec(text: "5s") { Present { value: v } => v == 5000000  Absent => false })
+  (match systemd_duration_usec(text: "60s") { Present { value: v } => microsecond_count(v) == 60000000  Absent => false })
+    && (match systemd_duration_usec(text: "1min") { Present { value: v } => microsecond_count(v) == 60000000  Absent => false })
+    && (match systemd_duration_usec(text: "1min 30s") { Present { value: v } => microsecond_count(v) == 90000000  Absent => false })
+    && (match systemd_duration_usec(text: "5s") { Present { value: v } => microsecond_count(v) == 5000000  Absent => false })
     && (match systemd_duration_usec(text: "2 fortnights") { Present { value: _ } => false  Absent => true })
     && (match systemd_duration_usec(text: "") { Present { value: _ } => false  Absent => true })
 }
@@ -161,7 +161,7 @@ test fn witness_timer_with_wrong_cadence_value_refuses() -> Bool {
 // (10) The derived expectation carries R's cadence VALUES from the emitted unit, one authority.
 test fn witness_derived_timer_expectation_carries_the_emitted_cadence() -> Bool {
   match timer_unit_expectation_of(file: live_deploy_belt_timer_unit_file(spec: deployment_spec_srv1())) {
-    TimerExpectationDerived { expectation: e } => e.on_unit_inactive_usec == 60000000 && e.on_boot_usec == 120000000 && e.accuracy_usec == 5000000
+    TimerExpectationDerived { expectation: e } => microsecond_count(e.on_unit_inactive_usec) == 60000000 && microsecond_count(e.on_boot_usec) == 120000000 && microsecond_count(e.accuracy_usec) == 5000000
     TimerExpectationUnderivable { detail: _ } => false
   }
 }
