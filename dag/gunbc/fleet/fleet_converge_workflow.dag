@@ -55,6 +55,8 @@ import gunbc.ci_spec {
   gunbc_ci_fleet_converge_plan_invoke,
   gunbc_ci_fleet_converge_allocation_store_plan_invoke,
   gunbc_ci_fleet_converge_apply_invoke,
+  gunbc_ci_org_actions_converge_invoke,
+  gunbc_ci_live_deploy_apply_srv1_invoke,
   gunbc_ci_spark_serving_converge_slice_invoke,
   gunbc_ci_spark_serving_observe_invoke,
   gunbc_ci_spark_serving_reboot_invoke,
@@ -82,8 +84,9 @@ import std.types { NonEmptyStr, List, String, Int }
 
 // Emitted on-demand fleet converge workflow (operator directive 2026-08-13, sleek-heron-218).
 // workflow_dispatch with host=srv1|srv2|srv3|srv4 (executor runner pin) and
-// mode=plan|apply|spark_linger|...|dashboard_deploy|rlm_launch_deployment_receipt: plan observes the RUNNER host; apply downloads a prior plan
-// artifact; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over
+// mode includes plan, apply, org_actions_observe, dashboard_deploy, rlm_launch_deployment_receipt, and the spark modes: plan observes the RUNNER
+// host; apply downloads a prior plan artifact; org_actions_observe validates the separately held
+// org-admin credential and performs only a read/diff; spark_linger runs executor-on-runner → target-on-spark (srv5|srv6) typed argv over
 // FleetSsh via run_typed_argv_transport. Replaces the retired 15-minute ctrl-fleet-converge.timer
 // cadence on every enrolled CI host (timer install route is TimerRetired fleet-wide). Standalone
 // dispatch carries its own build job (release-bins pack/upload) so the converge job never downloads
@@ -92,7 +95,7 @@ data fleet_converge_enrolled_host_options: List<String> = ["srv1", "srv2", "srv3
 
 data fleet_converge_spark_target_options: List<String> = ["srv5", "srv6"]
 
-data fleet_converge_mode_options: List<String> = ["plan", "allocation_store_plan", "apply", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
+data fleet_converge_mode_options: List<String> = ["plan", "allocation_store_plan", "apply", "org_actions_observe", "spark_linger", "spark_observe", "spark_reboot", "spark_grants", "spark_durability", "dashboard_deploy", "rlm_launch_deployment_receipt"]
 
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
@@ -151,6 +154,7 @@ data fleet_converge_plan_step_if: String = "github.event.inputs.mode == 'plan'"
 data fleet_converge_allocation_store_plan_step_if: String = "github.event.inputs.mode == 'allocation_store_plan'"
 data fleet_converge_any_plan_step_if: String = "github.event.inputs.mode == 'plan' || github.event.inputs.mode == 'allocation_store_plan'"
 data fleet_converge_apply_step_if: String = "github.event.inputs.mode == 'apply'"
+data fleet_converge_org_actions_step_if: String = "github.event.inputs.mode == 'org_actions_observe'"
 data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 'spark_linger'"
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
@@ -282,6 +286,41 @@ fn fleet_converge_receipt_upload_step(id: String, name: String, artifact: String
     },
     env: none,
     if_condition: Present { value: if_condition },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_org_actions_step() -> Step {
+  RunStep {
+    name: Present { value: "Org Actions credential validation + read-only settings diff" },
+    id: Present { value: "org_actions_observe" },
+    run: gunbc_ci_org_actions_converge_invoke(),
+    shell: none,
+    env: Present { value: [
+      kv(key: "GUNBC_ORG_ADMIN_TOKEN", value: yaml_string(s: "${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}")),
+      kv(key: "GH_TOKEN", value: yaml_string(s: "${{ secrets.GUNBC_ORG_ADMIN_TOKEN }}")),
+    ] },
+    working_directory: none,
+    if_condition: Present { value: fleet_converge_org_actions_step_if },
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+  }
+}
+
+fn fleet_converge_org_actions_receipt_upload_step() -> Step {
+  UsesStep {
+    name: Present { value: "Upload org Actions credential validation receipt" },
+    id: Present { value: "org_actions_receipt_upload" },
+    uses: upload_artifact_action,
+    with: Present { value: [
+      kv(key: "name", value: yaml_string(s: "org-actions-credential-validation")),
+      kv(key: "path", value: yaml_string(s: "target/org-actions-credential-validation-receipt.txt")),
+      kv(key: "if-no-files-found", value: yaml_string(s: "error")),
+      kv(key: "retention-days", value: yaml_int(n: 30)),
+    ] },
+    env: none,
+    if_condition: Present { value: fleet_converge_org_actions_step_if },
     continue_on_error: none,
     timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
@@ -550,6 +589,8 @@ fn fleet_converge_job() -> Job {
         fleet_converge_plan_download_step(),
         fleet_converge_apply_step(),
         fleet_converge_apply_receipt_upload_step(),
+        fleet_converge_org_actions_step(),
+        fleet_converge_org_actions_receipt_upload_step(),
         fleet_converge_spark_linger_step(),
         fleet_converge_spark_grants_step(),
         fleet_converge_spark_observe_step(),
@@ -697,7 +738,7 @@ data fleet_converge_workflow: Workflow = Workflow {
         },
         DispatchInput {
           name: "mode",
-          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks" },
+          description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; org_actions_observe validates the org credential and refuses on runner-group drift; spark modes observe or converge the selected Spark" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },

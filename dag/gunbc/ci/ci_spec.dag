@@ -711,6 +711,11 @@ data gunbc_ci_fleet_converge_apply_target: GunbcRunStepTarget = GunbcRunStepTarg
   function: "fleet_converge_apply_wet",
 }
 
+data gunbc_ci_org_actions_converge_target: GunbcRunStepTarget = GunbcRunStepTarget {
+  entry: "dag/gunbc/fleet/org_actions_converge.dag",
+  function: "org_actions_converge_wet",
+}
+
 data gunbc_ci_spark_serving_reboot_target: GunbcRunStepTarget = GunbcRunStepTarget {
   entry: "dag/gunbc/spark/serving_reboot_probe.dag",
   function: "spark_serving_reboot_ci_wet",
@@ -833,6 +838,7 @@ fn gunbc_run_step_targets() -> List<GunbcRunStepTarget> {
     gunbc_ci_fleet_converge_plan_target,
     gunbc_ci_fleet_converge_allocation_store_plan_target,
     gunbc_ci_fleet_converge_apply_target,
+    gunbc_ci_org_actions_converge_target,
     gunbc_ci_spark_serving_reboot_target,
     gunbc_ci_spark_serving_durability_target,
     gunbc_ci_spark_grant_install_target,
@@ -1297,6 +1303,16 @@ fn gunbc_ci_fleet_converge_apply_invoke() -> String {
     source_roots: witness_layer_roots,
     entry: gunbc_ci_fleet_converge_apply_target.entry,
     function: gunbc_ci_fleet_converge_apply_target.function,
+    claim_run: false,
+    receipt_rel: none
+  )
+}
+
+fn gunbc_ci_org_actions_converge_invoke() -> String {
+  gunbc_run_step_script(
+    source_roots: witness_layer_roots,
+    entry: gunbc_ci_org_actions_converge_target.entry,
+    function: gunbc_ci_org_actions_converge_target.function,
     claim_run: false,
     receipt_rel: none
   )
