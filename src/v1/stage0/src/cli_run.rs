@@ -64,6 +64,20 @@ pub(crate) use entry_resolve::*;
 pub fn required_lane_resolved_module_identities_for_ci() -> Vec<String> {
     entry_resolve::required_lane_resolved_module_identities()
 }
+
+/// Module identities admitted by the same source-root ingestion used by compilation.
+///
+/// This is a measurement receipt for required CI. It intentionally reuses the ingest producer
+/// instead of treating the broader parse-sweep declaration index as proof that a module was a
+/// lane subject.
+pub fn source_root_ingest_module_identities_for_ci(
+    source_roots: &[String],
+) -> Result<Vec<String>, String> {
+    let index = try_build_module_index(source_roots)?;
+    let mut identities: Vec<String> = index.keys().cloned().collect();
+    identities.sort();
+    Ok(identities)
+}
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
     resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,

@@ -940,17 +940,15 @@ pub fn index_get<'a>(
 
 /// Identity-grain complement of a required lane's semantic-resolution population.
 ///
-/// The declaration side comes from the parse sweep's index and the resolution side comes from
-/// the lane that actually ran. Import edges are deliberately absent: global unique-name lookup
-/// means authored imports do not determine which modules a lane resolved.
+/// Both inputs name observations made by the lane: `admitted_module_identities` comes from
+/// source-root ingest, while `resolved_module_identities` comes from sources submitted to
+/// semantic resolution. The broader parse-sweep index is deliberately not a denominator, and
+/// import edges are deliberately absent: neither establishes that the lane judged a module.
 pub fn modules_unresolved_by_lane(
-    index: &DeclarationIndex,
+    admitted_module_identities: Vec<String>,
     resolved_module_identities: &[String],
 ) -> Vec<String> {
-    module_identity_difference(
-        index.modules.keys().cloned().collect(),
-        resolved_module_identities,
-    )
+    module_identity_difference(admitted_module_identities, resolved_module_identities)
 }
 
 fn module_identity_difference(
