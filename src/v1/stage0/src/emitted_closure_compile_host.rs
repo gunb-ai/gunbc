@@ -34,6 +34,11 @@
 //! and `run_cargo` deliberately: a separately authored fixture harness would make a green here and
 //! a green there two facts about two crates.
 //!
+//! THE FIXTURE ROUTE IS `#[cfg(test)]` AND HAS EXACTLY ONE CONSUMER: the generated
+//! `fixture_closure_rustc_discrimination` (authored in `v1.compiler.compiler_tests_rust`), which
+//! is `#[ignore]`d and therefore available on demand rather than executing on push. It reaches no
+//! CLI flag and no required phase, and it is not on the emitted seed's public surface.
+//!
 //! WHAT THIS PHASE IS NOT. No baseline, no diagnostic count, no ratchet. Cargo's exit status is
 //! the whole verdict; warnings are not errors here. Pinning a diagnostic population measured on
 //! the current tree would be the tree-copied oracle DESIGN 5 rejects; an identity-grain debt
@@ -993,12 +998,14 @@ pub(crate) fn fixture_closure_compiled(outcome: &FixtureClosureOutcome) -> bool 
 /// - `NotAttempted` -- the toolchain was never invoked;
 /// - `DidNotComplete` -- cargo was killed or failed to spawn, reporting no status of its own.
 ///
-/// THIS EXISTS BECAUSE THE CALL SITE GOT IT WRONG (review 58120). `--fixture-closure-compile`
-/// counted only `CrateNotWritten` as unanswered and therefore exited SUCCESSFULLY on a fixture
-/// gunbc rejected and on a cargo run that never finished -- a mode reporting success without
-/// reaching rustc, which is the fail-open §5 forbids and which contradicted this module's own
-/// outcome separation. A predicate beside the carrier, rather than a `matches!` at each caller,
-/// is what stops the next caller from enumerating a different subset of the same arms.
+/// THIS EXISTS BECAUSE A CALL SITE GOT IT WRONG (review 58120). A caller counted only
+/// `CrateNotWritten` as unanswered and therefore treated a fixture gunbc REJECTED, and a cargo run
+/// that never FINISHED, as successfully measured -- reporting success without reaching rustc,
+/// which is the fail-open §5 forbids and which contradicted this module's own outcome separation.
+/// That caller was a CLI mode since withdrawn, so the specimen no longer exists in the tree; the
+/// predicate stays because the defect was a caller enumerating a SUBSET of the arms that cannot
+/// answer, and the next caller would enumerate a different subset. A predicate beside the carrier
+/// is what makes that unavailable, rather than a `matches!` repeated at each call site.
 #[cfg(test)]
 pub(crate) fn fixture_closure_reached_rustc(outcome: &FixtureClosureOutcome) -> bool {
     match outcome {
@@ -1157,8 +1164,8 @@ pub(crate) struct FixtureDiscrimination {
 }
 
 /// THE TWO ARMS ARE FIXTURE FILES, NOT STRING CONSTANTS IN THIS FILE, and the difference is
-/// §3 rather than taste. The same arms are what a caller passes to `--fixture-closure-compile`
-/// by path; carrying a second copy of their source here would be one fixture with two authorities
+/// §3 rather than taste. The same arms are files any caller can hand this route by path; carrying
+/// a second copy of their source here would be one fixture with two authorities
 /// that drift the first time either is edited, and the arm this pair adjudicates would stop being
 /// the arm anyone else runs.
 ///
