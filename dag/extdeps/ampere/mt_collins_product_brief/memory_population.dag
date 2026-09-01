@@ -117,12 +117,13 @@ data mt_collins_population_32_dimms_completion: MtCollinsPopulationCorrection = 
 
 // Table 10 constraint carried with the rows: supported channel counts per socket are 1, 2, 4, 6,
 // and 8. The rows above are the population sequences ENUMERATED BY TABLE 11, which is not the same
-// set: Table 10 carries two distinct one-channel configurations (MCU0 alone and MCU4 alone) and a
-// six-channel configuration, and Table 11 gives a connector sequence for neither. So these rows are
-// not a fill-in-any-order suggestion, and equally they are not an exhaustive statement of what
-// Table 10 supports - a width absent here is unenumerated by Table 11, not unsupported. DIMMs on all populated channels of one socket must be identically sized; socket 0 and
-// socket 1 may differ from each other. Max data rate at these populations is the platform row's
-// DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
+// set: Table 10 also carries an MCU4-alone one-channel configuration and a six-channel
+// configuration, and Table 11 gives a connector sequence for neither; its two-DIMM row enumerates
+// the MCU0-alone one-channel configuration. So these rows are not a fill-in-any-order suggestion,
+// and equally they are not an exhaustive statement of what Table 10 supports - a width absent here
+// is unenumerated by Table 11, not unsupported. DIMMs on all populated channels of one socket must
+// be identically sized; socket 0 and socket 1 may differ from each other. Max data rate at these
+// populations is the platform row's DDR4-3200; the guide states the sequences without per-population data-rate derating, so any 2DPC
 // downclock is unstated by this source rather than absent.
 
 // TABLES 12-13: WHICH MEMORY CONTROLLER EACH CONNECTOR PAIR BELONGS TO. The population
