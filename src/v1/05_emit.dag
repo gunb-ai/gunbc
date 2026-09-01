@@ -17,7 +17,7 @@ import v1.std.core {
   field_binding_name_at, field_binding_pattern, FieldSummary, TupleFirst, TupleSecond,
   expr_method_name_at, method_arg_nodes, expr_method_call_semantics, expr_field_access_summary,
   lambda_param_names_at, record_lit_type_name_at, arm_body, arm_pattern, arm_guard,
-  arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, if_condition,
+  arg_name_at, arg_value, field_init_node_name_at, field_init_node_value, from_key_property_name, if_condition,
   if_then_branch, if_else_branch, match_scrutinee, match_arm_nodes, let_value, let_body,
   field_access_base, method_receiver, lambda_body, cast_expr, cast_target, return_value,
   binop_left, binop_right, foreach_variable_at, foreach_collection, foreach_body, index_base,
@@ -1088,7 +1088,7 @@ fn bind_file_verb(t: Node, op_node: Node, source_indices: Map<String, NewlineInd
 }
 
 fn bind_file_result_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> FileResultField? {
-  match file_result_channel_of_key(key: file_output_channel_of_field(ch: ch, source_indices: source_indices)) {
+  match file_result_channel_of_key(key: transport_output_channel_of_field(ch: ch, source_indices: source_indices)) {
     Present { value: c } => Present { value: FileResultField { channel: c, optional: ch.return_cardinality == CardOptional } }
     Absent => none
   }
@@ -1106,7 +1106,7 @@ fn bind_file_operation(t: Node, op_node: Node, source_indices: Map<String, Newli
       match transport_base_path(t: t, source_indices: source_indices) {
         Absent => BindingRefused { cause: FileBindingRefused { refusal: FilePathNotStaticallyRenderable } }
         Present { value: path_tpl } => {
-          let declared = file_output_channel_fields(op_node: op_node)
+          let declared = transport_output_channel_fields(op_node: op_node)
           let fields = declared |> flat_map(ch =>
             match bind_file_result_field(ch: ch, source_indices: source_indices) {
               Present { value: f } => [f]
@@ -2065,7 +2065,7 @@ fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<Stri
 // the renderer cannot in fact express, and the emitted output -- not a diagnostic -- would carry
 // the deficit.
 fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
+  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == from_key_property_name()) |> first {
     Present { value: prop } => match field_init_node_value(n: prop).expr_data {
       ExprLiteral { value: LitStr { value: s } } => Present { value: s }
       _ => none
@@ -2153,12 +2153,12 @@ fn is_modeled_file_output_channel(key: String) -> Bool {
 // this pair, so "which key does this field carry" is decided once. Unwrapping a single-field
 // product here would lose the field's `from` key -- the shape a `from` key is most often
 // authored on -- and the renderer would silently answer the default channel for it.
-fn file_output_channel_fields(op_node: Node) -> List<Node> {
+fn transport_output_channel_fields(op_node: Node) -> List<Node> {
   let rt = resolved_type(n: op_node)
   if is_product_type(n: rt) { rt.children } else { [] }
 }
 
-fn file_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn transport_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match child_from_key(ch: ch, source_indices: source_indices) {
     Present { value: k } => k
     Absent => authored_name_at(source_indices: source_indices, node: ch)
@@ -2166,8 +2166,216 @@ fn file_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineInd
 }
 
 fn file_operation_output_channels(op_node: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  file_output_channel_fields(op_node: op_node)
-    |> map(ch => file_output_channel_of_field(ch: ch, source_indices: source_indices))
+  transport_output_channel_fields(op_node: op_node)
+    |> map(ch => transport_output_channel_of_field(ch: ch, source_indices: source_indices))
+}
+
+// THE CLOSED ROSTER OF SHELL OUTPUT CHANNELS -- the shell twin of FileResultChannel, and the
+// authority that replaces a string compared against string literals at three sites.
+//
+// The members are MEASURED, not guessed: they are the eight keys authored on `from` across the
+// shell operations in this corpus, and they are exactly the eight `v1_interpreter`
+// shell_evidence_value plus map_shell_outputs answer. The interpreter is the working realization
+// and therefore the oracle for what the transport MEANS; this roster reads that meaning off it
+// once instead of each renderer re-deciding it.
+//
+// It is a coproduct rather than a String because the set is DECIDABLE from the declaration. A key
+// outside it is a modelling gap that must be added here -- which is the whole difference from the
+// arm this replaces, where an unrecognised key fell through to `stdout.clone()` and the emitted
+// Rust bound an Int field to a String with no diagnostic (DESIGN section 5, fabricated plausible
+// output, in the emitter).
+type ShellResultChannel
+  = ShellChanStdout
+  | ShellChanStderr
+  | ShellChanStdoutLines
+  | ShellChanExitSuccess
+  | ShellChanExitCode
+  | ShellChanStderrTruncated
+  | ShellChanStderrTotalBytes
+  | ShellChanStderrRetainedBytes
+
+// The single authority for which declared output keys name a shell channel at all.
+// `is_modeled_shell_output_channel` is derived from it, exactly as the file twin is.
+fn shell_result_channel_of_key(key: String) -> ShellResultChannel? {
+  if key == "stdout" { Present { value: ShellChanStdout } }
+  else if key == "stderr" { Present { value: ShellChanStderr } }
+  else if key == "stdout_lines" { Present { value: ShellChanStdoutLines } }
+  else if key == "exit_success" { Present { value: ShellChanExitSuccess } }
+  else if key == "exit_code" { Present { value: ShellChanExitCode } }
+  else if key == "stderr_truncated" { Present { value: ShellChanStderrTruncated } }
+  else if key == "stderr_total_bytes" { Present { value: ShellChanStderrTotalBytes } }
+  else if key == "stderr_retained_bytes" { Present { value: ShellChanStderrRetainedBytes } }
+  else { none }
+}
+
+fn is_modeled_shell_output_channel(key: String) -> Bool {
+  match shell_result_channel_of_key(key: key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn shell_result_channel_key(c: ShellResultChannel) -> String {
+  match c {
+    ShellChanStdout             => "stdout"
+    ShellChanStderr             => "stderr"
+    ShellChanStdoutLines        => "stdout_lines"
+    ShellChanExitSuccess        => "exit_success"
+    ShellChanExitCode           => "exit_code"
+    ShellChanStderrTruncated    => "stderr_truncated"
+    ShellChanStderrTotalBytes   => "stderr_total_bytes"
+    ShellChanStderrRetainedBytes => "stderr_retained_bytes"
+  }
+}
+
+// WHICH CHANNELS A RUST REALIZATION CAN ANSWER, kept separate from the roster above for the same
+// reason target_renders_file_transport is kept separate from file_binding_refusal: "this channel
+// is not a shell channel" and "this target cannot render this shell channel" are two different
+// facts with two different remedies, and fusing them would report a modelling gap where the truth
+// is a backend capability gap.
+//
+// The three stderr accounting channels are the ones Rust cannot answer. They are not missing
+// plumbing: they report a TRUNCATION POLICY (`WitnessStderrCapturePolicy`), and the emitted
+// `std::process::Command` body captures stderr whole and models no policy at all, so there is no
+// honest value for total-versus-retained bytes or for `truncated`. Emitting one would be an
+// invented fact, which is why this refuses instead.
+//
+// NEXT-RUNG TRIGGER (DESIGN section 4b(2)): they climb when the emitted shell body carries the
+// declared capture policy -- a bounded reader that records total bytes, retained bytes and a
+// truncation flag as it reads the child's stderr. That is the capability, and nothing less than it
+// retires this refusal.
+fn rust_realizes_shell_channel(c: ShellResultChannel) -> Bool {
+  match c {
+    ShellChanStdout             => true
+    ShellChanStderr             => true
+    ShellChanStdoutLines        => true
+    ShellChanExitSuccess        => true
+    ShellChanExitCode           => true
+    ShellChanStderrTruncated    => false
+    ShellChanStderrTotalBytes   => false
+    ShellChanStderrRetainedBytes => false
+  }
+}
+
+// The closed vocabulary of reasons a declared `transport shell` operation cannot be emitted, in
+// the shape of FileEmissionRefusal and for the same reason: every arm is a fact read off the
+// declaration, so a cause outside this list is a modelling gap to be added here rather than a
+// message someone writes at a call site.
+type ShellEmissionRefusal
+  = ShellOutputKeyNotModeled { key: String }
+  | ShellChannelNotRealizedByTarget { key: String, target_name: String }
+
+fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
+  match refusal {
+    ShellOutputKeyNotModeled { key: k } =>
+      concat("the declared output source '", k, "' names no member of the shell channel roster (stdout, stderr, stdout_lines, exit_success, exit_code, stderr_truncated, stderr_total_bytes, stderr_retained_bytes)")
+    ShellChannelNotRealizedByTarget { key: k, target_name: tn } =>
+      concat("the shell channel '", k, "' has no realization in the ", tn, " backend")
+  }
+}
+
+// The TARGET-NEUTRAL half: does every declared output field name a shell channel?
+fn shell_binding_refusal(op_node: Node, source_indices: Map<String, NewlineIndex>) -> ShellEmissionRefusal? {
+  match transport_output_channel_fields(op_node: op_node)
+    |> map(ch => transport_output_channel_of_field(ch: ch, source_indices: source_indices))
+    |> filter(k => !is_modeled_shell_output_channel(key: k))
+    |> first {
+    Present { value: k } => Present { value: ShellOutputKeyNotModeled { key: k } }
+    Absent => none
+  }
+}
+
+// ONE predicate, consumed by the wall (which mints the diagnostic) and by the rust renderer (whose
+// channel expression is total over the roster and therefore cannot answer for a refused field).
+// The target gate is applied SECOND and separately, so an unmodeled key and an unrealizable
+// channel stay two distinct answers.
+fn shell_emission_refusal(op_node: Node, target: RenderTarget, source_indices: Map<String, NewlineIndex>) -> ShellEmissionRefusal? {
+  match shell_binding_refusal(op_node: op_node, source_indices: source_indices) {
+    Present { value: r } => Present { value: r }
+    Absent =>
+      if !target_realizes_shell_channels(target: target) { none } else {
+        match transport_output_channel_fields(op_node: op_node)
+          |> map(ch => transport_output_channel_of_field(ch: ch, source_indices: source_indices))
+          |> filter(k => match shell_result_channel_of_key(key: k) {
+              Present { value: c } => !rust_realizes_shell_channel(c: c)
+              Absent => false
+            })
+          |> first {
+          Present { value: k } => Present { value: ShellChannelNotRealizedByTarget { key: k, target_name: render_target_name(target: target) } }
+          Absent => none
+        }
+      }
+  }
+}
+
+// Only the rust backend renders shell OUTPUT CHANNELS at all: the go and python dispatchers hand
+// the shell arm to their own renderers, which do not project the declared output contract, and the
+// dag serializer realizes no transport. Asking the rust channel-capability question of them would
+// report a rust gap against a target that never consults the roster.
+fn target_realizes_shell_channels(target: RenderTarget) -> Bool {
+  match target {
+    Rust   => true
+    Python => false
+    Go     => false
+    Dag    => false
+  }
+}
+
+fn unmodeled_shell_transport_operation_diagnostics(tm: TypedModule, item: Node, target: RenderTarget) -> List<ErrorNode> {
+  let env = tm.type_env
+  let si = env.source_indices
+  let module_name = authored_name(env: env, node: tm.module)
+  let service_name = authored_name(env: env, node: item)
+  let fallback = service_fallback_transport(item: item)
+  item.children |> flat_map(op_node => {
+    let t = effective_operation_transport(op_node: op_node, fallback: fallback)
+    if is_shell_transport_after_dispatch_precedence(t: t, source_indices: si) {
+      match shell_emission_refusal(op_node: op_node, target: target, source_indices: si) {
+        Present { value: refusal } => [make_error_node(
+          diagnostic: TransportEmissionNotModeled {
+            transport_kind: "shell",
+            service: service_name,
+            operation: authored_name(env: env, node: op_node),
+            declaring_module: module_name,
+            target: render_target_name(target: target),
+            missing_realization_fact: shell_emission_refusal_fact(refusal: refusal),
+            span: op_node.span
+          },
+          module_name: module_name)]
+        Absent => []
+      }
+    } else { [] }
+  })
+}
+
+// Reads the dispatch's precedence from the one authority that declares it, exactly as the file
+// twin does -- a transport carrying more than one key is emitted by the FIRST arm that claims it.
+fn is_shell_transport_after_dispatch_precedence(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match classify_transport(t: t, source_indices: source_indices) {
+    Present { value: ShellTransport } => true
+    _ => false
+  }
+}
+
+fn unmodeled_shell_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  match target_emission_mode(target: target) {
+    SerializesSubstrate => []
+    RealizesTransports =>
+      typed.modules |> flat_map(tm =>
+        tm.items
+          |> filter(item => is_service_item(item: item))
+          |> flat_map(item => unmodeled_shell_transport_operation_diagnostics(tm: tm, item: item, target: target))
+      )
+  }
+}
+
+// ONE wall for "this target cannot realize this declared transport", over both transports that ask
+// the question. emit_artifact consulted the file half alone, which is why the shell half could
+// fabricate for its whole life without a single diagnostic.
+fn unmodeled_transport_diagnostics(typed: ResolvedGraph, target: RenderTarget) -> List<ErrorNode> {
+  concat(
+    unmodeled_file_transport_diagnostics(typed: typed, target: target),
+    unmodeled_shell_transport_diagnostics(typed: typed, target: target))
 }
 
 fn file_transport_path_is_renderable(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {

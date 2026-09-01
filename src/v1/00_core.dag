@@ -1121,8 +1121,25 @@ fn field_node_default_value(n: Node) -> Node? {
   } else { none }
 }
 
+// THE SINGLE AUTHORITY FOR THE OUTPUT-SOURCE PROPERTY'S NAME (DESIGN section 3).
+//
+// This property had TWO names for one fact and the divergence was invisible. The parser mints it
+// through make_field_init_node with the synthetic name "from_key" AND with the authored `from`
+// token's span; every reader reaches the name through field_init_node_name_at, which resolves it
+// from the SPAN. So the name a reader gets back is always "from", the synthetic spelling is
+// unobservable, and every `== "from_key"` filter in the corpus matched nothing on every field,
+// always -- silently, because the emitter's Absent arm answered "stdout" for the miss.
+//
+// The interpreter is the tell: v1_interpreter extract_from_key reads
+// `prop_name == "from_key" || prop_name == "from"`. Someone met this before and repaired it on one
+// side only, which is what left the two readers agreeing about the fact and disagreeing about its
+// name. Teaching the emitter the second spelling too would have converged the readers on the
+// LENIENT side and given the nickname a third permanent home; the name is a single fact, so it
+// gets a single declaration and both the mint and every reader are derived from it.
+fn from_key_property_name() -> String { "from" }
+
 fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match find_property(props: n.properties, prop_name: "from_key", source_indices: source_indices) {
+  match find_property(props: n.properties, prop_name: from_key_property_name(), source_indices: source_indices) {
     Present { value: p } => Present { value: authored_name_at(source_indices: source_indices, node: p) }
     Absent => none
   }
