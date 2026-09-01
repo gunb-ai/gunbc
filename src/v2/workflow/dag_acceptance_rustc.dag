@@ -2,7 +2,6 @@ module v2.workflow.dag_acceptance_rustc
 
 import extdeps.rustc
 import v2.std.logic { Bool }
-import v2.std.text { String }
 import v2.std.leaf_model_verification { TargetCompileAccepted, TargetCompileRejected }
 import v2.workflow.dag_acceptance {
   TargetCompileDecided,
