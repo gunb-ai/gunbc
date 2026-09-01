@@ -8,8 +8,11 @@ Baseline: main@de2f5f86346, read 2026-09-01.
 
 Operator direction (2026-09-01): serve a large open model on the DGX Sparks and drive a minimal
 coding harness against it, retiring the Claude, Codex and Cursor provider runtimes. Written from
-the ground up in `.dag` and Rust. **gunbc does not know about `ctrl`** — no import, no dependency,
-no citation of a `ctrl` artifact as authority. Spark parity is to be handled by fleet convergence
+the ground up in `.dag` and Rust. **DCH and the dedicated harness must not import, vendor, depend
+on, or cite `ctrl` as authority.** Stated at that grain deliberately: the wider claim would be false
+of the repository today, because `extdeps.ctrl.gunbc_pin` already declares an `ExternalAuthority`
+pointing into `gunb-ai/ctrl` and compares the host pin against the ctrl pin. That row is out of this
+lane's scope and is not to be touched here. Spark parity is to be handled by fleet convergence
 rather than by hand. RLM closes first; this lane starts after it.
 
 ## 0. What is measured, and what is assumed
