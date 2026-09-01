@@ -51,6 +51,8 @@ data regen_convergence_seed_growth_justification: SeedGrowthJustification = Seed
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "convergence_plan_from_model", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "install_convergence_stage", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "install_convergence_stage_with_backend", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "admit_install_target", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "admit_install_destination", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "admit_stage_execution_from_model", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.required_regen_host", decl_name: "regen_generation_role_population", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.cli_run", decl_name: "run_required_regen_scoped", field: WholeDeclaration }
