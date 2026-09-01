@@ -9,6 +9,7 @@ use self::DataReferenceUnresolvableCause::*;
 use self::IterOwnedReceiverCloneDisposition::*;
 use self::ParamDefaultResolution::*;
 use self::ReferenceDerivedCandidateDisposition::*;
+use self::WitnessCtorPathVerdict::*;
 pub use crate::extdeps_cargo_version::render_cargo_package_header_prefix;
 pub use crate::extdeps_languages_rust_capabilities::phantom_opaque_carrier_derive_traits;
 pub use crate::extdeps_languages_rust_emit::HigherOrderMethodSpec;
@@ -1610,6 +1611,13 @@ pub fn rust_witness_type_arg_for_variant(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WitnessCtorPathVerdict {
+    WitnessCtorPathResolved { path: String },
+    WitnessCtorPathUnresolved { reason: String },
+}
+
 pub fn rust_witness_variant_ctor_path(
     variant_name: String,
     ctor_name: String,
@@ -1619,11 +1627,13 @@ pub fn rust_witness_variant_ctor_path(
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<WitnessCtorPathVerdict> {
     match effective_parent.clone() {
         Some(parent) => {
             if !rust_witness_parent_leaf(parent.clone()) {
-                rust_variant_path(parent.clone(), variant_name.clone())
+                Rc::new(WitnessCtorPathVerdict::WitnessCtorPathResolved {
+                    path: rust_variant_path(parent.clone(), variant_name.clone()),
+                })
             } else {
                 match rust_witness_type_arg_for_variant(
                     variant_name.clone(),
@@ -1633,26 +1643,37 @@ pub fn rust_witness_variant_ctor_path(
                     emit_info.clone(),
                     source_indices.clone(),
                 ) {
-                    Some(arg) => v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat("Witness::<".to_string(), arg.clone()),
-                            ">::".to_string(),
-                        ),
-                        variant_name.clone(),
-                    ),
-                    std::option::Option::None => v1_rt::concat(
-                        v1_rt::concat(
-                            "compile_error!(\"witness carrier type arg unresolved for variant "
-                                .to_string(),
+                    Some(arg) => Rc::new(WitnessCtorPathVerdict::WitnessCtorPathResolved {
+                        path: v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat("Witness::<".to_string(), arg.clone()),
+                                ">::".to_string(),
+                            ),
                             variant_name.clone(),
                         ),
-                        "\")".to_string(),
-                    ),
+                    }),
+                    std::option::Option::None => {
+                        Rc::new(WitnessCtorPathVerdict::WitnessCtorPathUnresolved {
+                            reason: v1_rt::concat(
+                                "witness carrier type arg unresolved for variant ".to_string(),
+                                variant_name.clone(),
+                            ),
+                        })
+                    }
                 }
             }
         }
-        std::option::Option::None => ctor_name,
+        std::option::Option::None => Rc::new(WitnessCtorPathVerdict::WitnessCtorPathResolved {
+            path: ctor_name.clone(),
+        }),
     }
+}
+
+pub fn rust_witness_ctor_refusal_expr(reason: String) -> String {
+    v1_rt::concat(
+        v1_rt::concat("compile_error!(\"".to_string(), reason.clone()),
+        "\")".to_string(),
+    )
 }
 
 pub fn is_parametric_opaque_type_by_name(env: Rc<TypeEnv>, type_name: String) -> bool {
@@ -29667,8 +29688,10 @@ pub fn emit_typed_record_lit(
                 } else {
                     tn.clone()
                 };
-                let display_tn = if optional_variant.clone() {
-                    rust_tn.clone()
+                let ctor_verdict = if optional_variant.clone() {
+                    Rc::new(WitnessCtorPathVerdict::WitnessCtorPathResolved {
+                        path: rust_tn.clone(),
+                    })
                 } else {
                     rust_witness_variant_ctor_path(
                         rust_tn.clone(),
@@ -29680,6 +29703,12 @@ pub fn emit_typed_record_lit(
                         emit_info.clone(),
                         si.clone(),
                     )
+                };
+                let display_tn = match (*ctor_verdict.clone()).clone() {
+                    WitnessCtorPathVerdict::WitnessCtorPathResolved { path: p, .. } => p.clone(),
+                    WitnessCtorPathVerdict::WitnessCtorPathUnresolved { reason: r, .. } => {
+                        return rust_witness_ctor_refusal_expr(r.clone())
+                    }
                 };
                 if ((optional_variant.clone()
                     && is_some_like_variant_name(variant_surface_name.clone()))
