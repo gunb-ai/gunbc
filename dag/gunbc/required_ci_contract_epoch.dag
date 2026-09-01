@@ -1,0 +1,37 @@
+module gunbc.required_ci_contract_epoch
+
+import std.types { NonEmptyStr }
+import std.contract_identity { ContractEpoch }
+
+// THE REQUIRED CI CONTRACT'S DECLARED EFFECTIVE EPOCH, in one place, because both sides of the
+// comparison must read the SAME authority or the comparison is between two independently writable
+// answers rather than between an observation and a requirement.
+//
+// WHY THIS IS ITS OWN MODULE AND NOT A ROW IN EITHER CONSUMER. Two modules need this value for
+// opposite reasons: gunbc.witness_floor_workflow EMITS it into the workflow the required run
+// executes, so the epoch is observable at the exact commit that ran; gunbc.fleet_revision_acceptance
+// REQUIRES it, so fleet admission can refuse a contract whose obligations were revised under an
+// unchanged name. Putting the value in either consumer would make the other import its peer for a
+// single datum and would give the emitting side authority over what the judging side requires --
+// which is the layer inversion §3 names, and would also make the epoch trivially self-satisfying.
+//
+// WHAT BUMPING THIS MEANS, since the value is only as honest as the discipline around it. Bump it
+// when the Required CI contract's OBLIGATIONS change materially under an unchanged name: what the
+// floor admits, what it refuses, or what a success entitles a consumer to conclude. Do NOT bump it
+// for a change in what the contract does internally -- the phase roster is the contract's own
+// business, and an identity that moved with the roster would make every added phase a breaking
+// change to fleet admission, which is the exact backwards rule this identity's own note forbids.
+//
+// THE HONEST RUNG, stated so it is not over-read: a cross-epoch admission is MECHANICALLY PREVENTED
+// by the production join that compares this required value against the observed one. An UNBUMPED
+// material change is not -- nothing here derives materiality, so that half is declared-version
+// diligence until a contract-surface digest or a classifier distinguishes material from internal
+// change. That distinction is the next-rung trigger for this row, and it is a capability, not an
+// artifact: acceptance deriving contract materiality from the contract's own surface.
+data required_ci_contract_epoch: ContractEpoch = "2026-09-01.1" as ContractEpoch
+
+// The env member name the workflow authority emits and the exact-commit reader looks up. It is
+// declared here beside the value because the KEY and the VALUE are one fact about how this epoch is
+// carried: a reader looking up a key the emitter does not write, or an emitter writing a key no
+// reader looks up, is the same fork in two directions.
+data required_ci_contract_epoch_env_key: NonEmptyStr = "GUNBC_REQUIRED_CI_CONTRACT_EPOCH" as NonEmptyStr

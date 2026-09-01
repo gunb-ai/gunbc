@@ -60,6 +60,34 @@ pub use required_floor_runner::{
 mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
+
+pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
+    entry_resolve::required_lane_judged_module_identities()
+}
+
+pub fn required_lane_cross_process_content_judged_module_identities_for_ci() -> Vec<String> {
+    // The weaker column still has content provenance: `subject_digest_for_closure` keys the
+    // artifact by closure-content digest plus compiler-transform digest, and disk lookup verifies
+    // both the request key and stored semantic digest. It does not prove judgment by this run.
+    // Required CI does not arm `GUNBC_RESOLVED_GRAPH_CACHE_DIR`, so this split has no reachable
+    // nonempty arm there today: its expected empty column must be read beside the in-run column,
+    // and its presence is not evidence that disk provenance has been exercised.
+    entry_resolve::required_lane_cross_process_content_judged_module_identities()
+}
+
+/// Module identities admitted by the same source-root ingestion used by compilation.
+///
+/// This is a measurement receipt for required CI. It intentionally reuses the ingest producer
+/// instead of treating the broader parse-sweep declaration index as proof that a module was a
+/// lane subject.
+pub fn source_root_ingest_module_identities_for_ci(
+    source_roots: &[String],
+) -> Result<Vec<String>, String> {
+    let index = try_build_module_index(source_roots)?;
+    let mut identities: Vec<String> = index.keys().cloned().collect();
+    identities.sort();
+    Ok(identities)
+}
 pub use entry_resolve::{
     load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
     resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
@@ -1893,7 +1921,7 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 /// `resolve_imports_transitively` — the same BFS over `extract_import_paths` on the same module
 /// index the floor uses, so a `.dag` witness can compile an arbitrary in-memory program without
 /// a second resolver.
-fn resolve_virtual_source_with_imports(
+pub(crate) fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, String>,
@@ -2244,7 +2272,8 @@ const REQUIRED_V2_EMISSION_ENTRIES_DATA_NAME: &str = "required_v2_emission_entri
 // manifest of the frontier rows instead of parsing the authority source (the same
 // module-binding supply-carrier pattern as `witness_admission_explicit_consumer_manifest`;
 // same marker family as `non_fold_residue_units_from_module_source`).
-const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 8] = [
+const WITNESS_EXCLUSION_CLASSIFICATIONS: [&str; 9] = [
+    "LocalRepoWetLane",
     "OfflineLocalRecipe",
     "FixtureExplicitRoster",
     "BinWitnessWet",
@@ -9912,6 +9941,10 @@ pub struct MultiEntryIndex {
             ),
         >,
     >,
+    /// Subjects whose current `resolved_graph_memo` value was installed from the on-disk
+    /// cross-process store rather than computed by this process. Kept alongside the memo so a
+    /// reference hit cannot erase the provenance distinction.
+    resolved_graph_memo_cross_process_subjects: RefCell<std::collections::HashSet<String>>,
     /// Schedule-derived per-module retention bookkeeping (v1-run-stability M2 — the
     /// retention keystone). Armed at the start of a private-index (`cross_worker_store
     /// == None`) discovery run from the schedule's per-entry closures, driven per
@@ -9993,6 +10026,10 @@ pub fn entry_closure_sources_len_for_test(index: &MultiEntryIndex) -> usize {
 #[cfg(any(test, feature = "interp_test_witness"))]
 pub fn clear_resolved_graph_memo_for_test(index: &MultiEntryIndex) {
     index.resolved_graph_memo.borrow_mut().clear();
+    index
+        .resolved_graph_memo_cross_process_subjects
+        .borrow_mut()
+        .clear();
 }
 
 /// Install a schedule retention armed over `per_entry` with an EXPLICIT eviction switch,
@@ -10165,7 +10202,13 @@ pub fn drop_private_term_for_test(index: &MultiEntryIndex, term: &str) -> bool {
         "pool_bare_census" => *index.pool_bare_census.borrow_mut() = None,
         "entry_closure_sources" => index.entry_closure_sources.borrow_mut().clear(),
         "both_closure_edges" => *index.both_closure_edges.borrow_mut() = None,
-        "resolved_graph_memo" => index.resolved_graph_memo.borrow_mut().clear(),
+        "resolved_graph_memo" => {
+            index.resolved_graph_memo.borrow_mut().clear();
+            index
+                .resolved_graph_memo_cross_process_subjects
+                .borrow_mut()
+                .clear();
+        }
         "intern_table" => {
             *index.intern_table.borrow_mut() = crate::v1_std_core::empty_intern_table();
         }
@@ -11010,11 +11053,17 @@ fn index_schedule_entry_completed(
     // retain EVERYTHING — graphs included — so it faithfully reproduces pre-M2 peak
     // retention (D0.4). Before this the pole understated peak by silently freeing graphs.
     let graph_evicted = match subject {
-        Some(subj) if evict_enabled => index
-            .resolved_graph_memo
-            .borrow_mut()
-            .remove(subj)
-            .is_some(),
+        Some(subj) if evict_enabled => {
+            index
+                .resolved_graph_memo_cross_process_subjects
+                .borrow_mut()
+                .remove(subj);
+            index
+                .resolved_graph_memo
+                .borrow_mut()
+                .remove(subj)
+                .is_some()
+        }
         _ => false,
     };
     let (sched_releases, sched_evictions, retention_unknown, graph_evictions) = {
@@ -13206,6 +13255,10 @@ fn install_cross_process_materialization_hit(
     Rc<im::Vector<Rc<ErrorNode>>>,
 ) {
     if memo_share == ResolvedGraphMemoShare::Memoize {
+        index
+            .resolved_graph_memo_cross_process_subjects
+            .borrow_mut()
+            .insert(subject.to_string());
         index.resolved_graph_memo.borrow_mut().insert(
             subject.to_string(),
             (
@@ -37854,30 +37907,46 @@ fn emit_expected_red_roster_join_summary(
     report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
 ) {
     use crate::v1_compiler_expected_red_roster_join::{
-        expected_red_roster_join_not_evaluated, expected_red_roster_join_now_passes,
-        expected_red_roster_join_roster_len, expected_red_roster_join_still_red, is_not_evaluated,
-        not_evaluated_reason,
+        disposition_reason, expected_red_roster_join_not_evaluated,
+        expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
+        expected_red_roster_join_still_red, expected_red_roster_join_suppressed, is_not_evaluated,
+        is_suppressed,
     };
     let head = report.run_head.as_deref().unwrap_or("(unresolved)");
     eprintln!(
         "[expected-red-roster-join] roster={} still_red={} now_passes={} not_evaluated={} \
-         (head={head})",
+         suppressed={} (head={head})",
         expected_red_roster_join_roster_len(report.clone()),
         expected_red_roster_join_still_red(report.clone()),
         expected_red_roster_join_now_passes(report.clone()),
         expected_red_roster_join_not_evaluated(report.clone()),
+        expected_red_roster_join_suppressed(report.clone()),
     );
     eprintln!("[expected-red-roster-join] {}", report.run_note);
+    // Reason counts for BOTH absence-of-verdict arms, printed under their own prefix so
+    // `not_evaluated.budget_refused` and `suppressed.outside_required_gate` cannot be read as
+    // one population: the first was attempted and produced nothing, the second was never
+    // attempted at all.
     let mut reason_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut suppressed_counts: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
     for row in report.rows.iter() {
         if is_not_evaluated(row.disposition.clone()) {
-            let reason = not_evaluated_reason(row.disposition.clone());
-            *reason_counts.entry(reason).or_default() += 1;
+            *reason_counts
+                .entry(disposition_reason(row.disposition.clone()))
+                .or_default() += 1;
+        } else if is_suppressed(row.disposition.clone()) {
+            *suppressed_counts
+                .entry(disposition_reason(row.disposition.clone()))
+                .or_default() += 1;
         }
     }
     for (reason, count) in reason_counts {
         eprintln!("[expected-red-roster-join] not_evaluated.{reason}={count}");
+    }
+    for (reason, count) in suppressed_counts {
+        eprintln!("[expected-red-roster-join] {reason}={count}");
     }
 }
 
@@ -37886,9 +37955,9 @@ fn write_expected_red_roster_join_tsv(
     report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
 ) -> Result<(), String> {
     use crate::v1_compiler_expected_red_roster_join::{
-        disposition_label, expected_red_roster_join_not_evaluated,
+        disposition_label, disposition_reason, expected_red_roster_join_not_evaluated,
         expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
-        expected_red_roster_join_still_red, not_evaluated_reason,
+        expected_red_roster_join_still_red, expected_red_roster_join_suppressed,
     };
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("expected_red_roster_join create {path}: {e}"))?;
@@ -37902,14 +37971,15 @@ fn write_expected_red_roster_join_tsv(
         .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
     writeln!(
         file,
-        "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}",
+        "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}\tsuppressed={}",
         expected_red_roster_join_roster_len(report.clone()),
         expected_red_roster_join_still_red(report.clone()),
         expected_red_roster_join_now_passes(report.clone()),
         expected_red_roster_join_not_evaluated(report.clone()),
+        expected_red_roster_join_suppressed(report.clone()),
     )
     .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
-    writeln!(file, "identity\tdisposition\tnot_evaluated_reason\tdetail")
+    writeln!(file, "identity\tdisposition\treason\tdetail")
         .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
     for row in report.rows.iter() {
         writeln!(
@@ -37917,7 +37987,7 @@ fn write_expected_red_roster_join_tsv(
             "{}\t{}\t{}\t{}",
             row.identity,
             disposition_label(row.disposition.clone()),
-            not_evaluated_reason(row.disposition.clone()),
+            disposition_reason(row.disposition.clone()),
             row.detail.replace('\t', " ").replace('\n', " ")
         )
         .map_err(|e| format!("expected_red_roster_join row: {e}"))?;
@@ -38760,6 +38830,21 @@ pub use emitted_closure_compile_host::{
     required_ci_emit_compile_probe_root, required_emit_compile_entries,
     retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
     EmitCompileSelection, MutationVerdict,
+};
+
+/// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
+/// IN THE LIST ABOVE.
+///
+/// `pub(crate)` under `#[cfg(test)]`: the generated `compiler_tests` module is a sibling module in
+/// this crate, so it needs crate visibility to reach the route and needs nothing wider. Putting
+/// these names in the production list would place them on the emitted seed's exported surface --
+/// PublicSurfaceGrowth against a seed frozen for growth. An internal test function does not become
+/// public surface merely because Rust needs a path to it.
+#[cfg(test)]
+pub(crate) use emitted_closure_compile_host::{
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
+    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
+    fixture_discrimination_report, run_fixture_closure_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

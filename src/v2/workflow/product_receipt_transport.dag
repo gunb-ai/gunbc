@@ -16,7 +16,6 @@ import v2.std.subject_evidence {
   subject_evidence_establishes
 }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
-import v2.std.text { String }
 import tools.host_prelude {
   WitnessBinReady,
   WitnessBinRefused,
