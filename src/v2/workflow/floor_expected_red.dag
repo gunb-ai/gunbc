@@ -2,7 +2,6 @@ module v2.workflow.floor_expected_red
 
 import v2.std.algebra { Cons, Empty, filter, list_flat_map }
 import v2.std.collection { List }
-import v2.std.text { String }
 
 // 101 ROWS LEFT THIS ROSTER ON 2026-08-20 AND WERE NEVER ELIGIBLE FOR IT — a fact about this
 // mechanism, not those rows, so it is recorded at the top where the next enrolling author reads it.

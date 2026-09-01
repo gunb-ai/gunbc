@@ -39,7 +39,6 @@ import v2.std.leaf_model_verification {
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol, node_subtree_count }
 import v2.std.optional { Absent, Optional, Present, optional_absent, optional_present }
-import v2.std.text { String }
 
 // STAGES MINT EVIDENCE, A CONTRACT MINTS ACCEPTANCE. Given a candidate .dag SOURCE STRING this
 // authority answers how far it got and why it stopped, as typed per-stage evidence adjudicated by a

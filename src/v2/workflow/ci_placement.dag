@@ -2,7 +2,6 @@ module v2.workflow.ci_placement
 
 import std.logic { Bool }
 import std.nat { Nat }
-import v2.std.text { String }
 import v2.std.collection { List }
 import v2.std.algebra { any, filter, length }
 import gunbc.witness_row_cost { gunbc_ci_fast_lane_eval_budget_ms }
