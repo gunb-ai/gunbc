@@ -116,6 +116,7 @@ At a service boundary, rung honesty has a commercial consequence: a dimension ma
 
 Every newly discovered error class — incident, review finding, runtime exception, falsifier divergence — files or updates one row: invalid state, harm, distinguishing facts, rung found at, ceiling with reason, next trigger. Declared drops are rostered in full — previous rung, temporary rung, reason, population, restoration trigger — in [docs/design-ledgers.md](docs/design-ledgers.md), authority `gunbc.rung_drop`. A drop is retired BY ITS TRIGGER AND BY NOTHING ELSE, so the trigger is the whole check. The ones standing today:
 
+- **Emitted-bytes fixture witnesses in a required lane** — declared 2026-09-01
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
 - **Regen candidate-tree producer** — declared 2026-08-20

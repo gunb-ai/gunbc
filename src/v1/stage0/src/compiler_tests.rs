@@ -415,6 +415,51 @@ mod compiler_tests {
     }
 
     #[test]
+    fn emit_import_lines_follow_resolved_binding_identity() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let textlike = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_textlike.dag".to_string(),
+                    content: "module probe.textlike\ntype String = StringLeaf | StringNode { next: String }\ntype Carrier = CarrierOne | CarrierTwo\n".to_string(),
+                });
+                let logiclike = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_logiclike.dag".to_string(),
+                    content: "module probe.logiclike\ntype Bool = ProbeTrue | ProbeFalse\n".to_string(),
+                });
+                let victim = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_victim.dag".to_string(),
+                    content: "module probe.victim\nimport probe.textlike { String, Carrier }\nimport probe.logiclike { Bool }\ntype Holder { tag: String, load: Carrier, flag: Bool }\nfn keep(h: Holder) -> String { h.tag }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![textlike, logiclike, victim]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let victim_out = result.files.iter().find(|f| f.path.contains("probe_victim")).expect("victim module must emit");
+                assert!(
+                    !victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("String")),
+                    "a name the resolver answers with the structureless kernel scalar must not emit a structural use-line shadow (the 139-row std::string::String vs Rc<im::Vector<i64>> family); emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("Carrier")),
+                    "a non-kernel imported type must keep its use-line -- positive control that the drop is keyed on the resolved kernel identity, not on the import list; emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("Bool")),
+                    "a kernel-SPELLED name whose kernel binding is structural (Bool = True | False) must keep its use-line -- the control that stops a blanket kernel-name drop; emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.contains("pub tag:") && victim_out.content.contains("pub load:"),
+                    "the probe fields must still emit at all; emitted:\n{}",
+                    victim_out.content
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
+    }
+
+    #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
         // (resolve_node_bounded masked boundary). module_b references `Widget`
