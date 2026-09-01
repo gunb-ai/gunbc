@@ -956,10 +956,26 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
 // (apply_compile_lens_introspect, E0308 expected Witness<Rc<Node>>).
 // This is the discipline `rust_witness_carrier_from_type_node` already states for an erased
 // identity -- a first source that cannot answer must DECLINE so the second is consulted -- applied
-// to the case that was not asked. Declining here leaves `rust_witness_type_arg_for_variant`'s
-// second source (the variant's own resolved type) to answer, and its refusal arm to fire if
-// neither can.
-fn rust_witness_carrier_from_expected_type_node(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+// to the case that was not asked.
+//
+// BOTH SOURCES IN THE `Violates` CHAIN READ THROUGH HERE, because declining in one and fabricating
+// in the other only moves the fabrication one frame down. Measured: making the expected-type source
+// decline turned v2.compiler.compile's E0308 into E0573 `expected type, found variant Holds` at the
+// same site -- the second source, the variant's own resolved type, answering with something that is
+// not a Witness either. A `Violates` arm carries no value from which its carrier could be read, so
+// the carrier is a fact about the CONTEXT and only a Witness-headed type is that fact. When neither
+// source is Witness-headed, `rust_witness_variant_ctor_path`'s refusal fires and the emitted crate
+// carries a located `compile_error!` naming the variant rather than a plausible wrong type.
+//
+// NEXT-RUNG TRIGGER, shared with `rust_param_type_is_type_variable`: at
+// `outcome_with_diagnostics(value: Violates { .. }, ..)` the carrier IS derivable -- it is the
+// instantiated type of the callee's `value` parameter, `T` unified from the declared return
+// `Outcome<T>` against the expected `Outcome<Witness<Node>>`. The emitter cannot reach it because
+// `emit_info.expected_type` at an argument carries the ENCLOSING expression's type rather than the
+// argument position's, and no per-call type-argument substitution is recorded. Inference recording
+// that substitution -- the shape `__applied_type_args` already has on type nodes -- makes this
+// source answerable and both fabrications in this class unnecessary at once.
+fn rust_witness_carrier_from_witness_headed_type_node(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
   if type_node.inferred != none && is_compiler_error(inferred: type_node.inferred.value) { return none }
   let peeled = rust_peel_all_rc_type_node(type_node: type_node, source_indices: source_indices)
   if qualified_last_segment(name: peeled.name) != "Witness" { none }
@@ -968,7 +984,7 @@ fn rust_witness_carrier_from_expected_type_node(type_node: Node, shared_types: S
 
 fn rust_witness_type_arg_from_expected_type(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
   match emit_info.expected_type {
-    Present { value: rt } => rust_witness_carrier_from_expected_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    Present { value: rt } => rust_witness_carrier_from_witness_headed_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     Absent => none
   }
 }
@@ -982,7 +998,7 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   } else if variant_name == "Violates" {
     match rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+      Absent => rust_witness_carrier_from_witness_headed_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
   } else {
     rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
