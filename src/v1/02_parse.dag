@@ -1,5 +1,15 @@
 module v1.compiler.parse
 
+import std.occurrence_identity {
+  AuthoredTypeTarget,
+  SourceDeclarationConstructor,
+  FunctionDeclaration, DataDeclaration, ServiceDeclaration, ResourceDeclaration,
+  PatternDeclaration, InterfaceDeclaration,
+  NominalTypeDeclaration, ProductTypeDeclaration, CoproductTypeDeclaration,
+  TransparentTypeAlias, NamespaceAlias,
+  ParsedDeclarationConstructorRow,
+}
+
 import v1.std.core {
   module_node, import_node,
   Node, InferredNode, Resolved, CompilerError, TypeVariable,
@@ -8,7 +18,7 @@ import v1.std.core {
   make_param_node, param_node_type_expr, param_node_default_value,
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   make_variant_node, variant_node_name_at, variant_node_fields, leaf_node_with_span,
-  ExprData, NoExprData,
+  ExprData, NoExprData, CallableTargetUndetermined,
   ExprLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit,
   ExprBinOp, ExprUnaryOp, ExprLambda, ExprStringInterp, ExprBlock,
@@ -134,6 +144,7 @@ type ParseContext {
   occurrence_index: OccurrenceIndex?
   declaration_occurrences: List<DeclarationOccurrence>?
   reference_occurrences: List<ReferenceOccurrence>?
+  declaration_constructors: List<ParsedDeclarationConstructorRow>
   heads_only: Bool
 }
 
@@ -147,6 +158,7 @@ type ParseWithTableResult {
   intern_table: InternTable
   occurrence_allocator: OccurrenceIdAllocator
   occurrence_transport: OccurrenceTransport
+  declaration_constructors: List<ParsedDeclarationConstructorRow>
 }
 
 type ParsedNodeStampResult {
@@ -241,6 +253,7 @@ fn parse_context_with_occurrence_state(
     occurrence_index: occurrence_index,
     declaration_occurrences: declaration_occurrences,
     reference_occurrences: reference_occurrences,
+    declaration_constructors: ctx.declaration_constructors,
     heads_only: ctx.heads_only,
   }
 }
@@ -256,6 +269,7 @@ fn parse_context_with_intern_table(
     occurrence_index: ctx.occurrence_index,
     declaration_occurrences: ctx.declaration_occurrences,
     reference_occurrences: ctx.reference_occurrences,
+    declaration_constructors: ctx.declaration_constructors,
     heads_only: ctx.heads_only,
   }
 }
@@ -306,6 +320,31 @@ type NameResult { name: String, span: SourceSpan, tokens: TokenStream, err: Erro
 // returning the input context where an advanced context is required becomes a type error.
 type ExprResult { expr: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ItemResult { item: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
+
+fn item_result_with_declaration_constructor(result: ItemResult, constructor: SourceDeclarationConstructor) -> ItemResult {
+  if has_err(err: result.err) {
+    result
+  } else {
+    ItemResult {
+      item: result.item,
+      tokens: result.tokens,
+      ctx: ParseContext {
+        source_indices: result.ctx.source_indices,
+        intern_table: result.ctx.intern_table,
+        occurrence_allocator: result.ctx.occurrence_allocator,
+        occurrence_index: result.ctx.occurrence_index,
+        declaration_occurrences: result.ctx.declaration_occurrences,
+        reference_occurrences: result.ctx.reference_occurrences,
+        declaration_constructors: concat(result.ctx.declaration_constructors, [ParsedDeclarationConstructorRow {
+          declaration_occurrence: result.item.occurrence_identity,
+          constructor: constructor,
+        }]),
+        heads_only: result.ctx.heads_only,
+      },
+      err: result.err,
+    }
+  }
+}
 type TypeResult { type_expr: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ModuleResult { module: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
 type ImportResult { import: Node, tokens: TokenStream, ctx: ParseContext, err: ErrorNode? }
@@ -1765,6 +1804,7 @@ fn parse_with_table_at(
     },
     declaration_occurrences: Present { value: [] },
     reference_occurrences: Present { value: [] },
+    declaration_constructors: [],
     heads_only: heads_only,
   }
   let r = parse_module(tokens: token_stream_new(all: tokens), ctx: ctx)
@@ -1784,6 +1824,7 @@ fn parse_with_table_at(
       ),
       occurrence_allocator: occurrence_allocator,
       occurrence_transport: occurrence_transport,
+      declaration_constructors: r.ctx.declaration_constructors,
     }
   } else {
     let stamped = stamp_parsed_node(
@@ -1810,6 +1851,7 @@ fn parse_with_table_at(
       ),
       occurrence_allocator: occurrence_allocator,
       occurrence_transport: occurrence_transport,
+      declaration_constructors: stamped.ctx.declaration_constructors,
     }
   }
 }
@@ -2125,16 +2167,26 @@ fn parse_item_by_form(tokens: TokenStream, ctx: ParseContext, form: ItemForm) ->
     ExprBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
-      parse_fn_body_from_prefix(prefix: prefix, start_span: start_span)
+      item_result_with_declaration_constructor(
+        result: parse_fn_body_from_prefix(prefix: prefix, start_span: start_span),
+        constructor: FunctionDeclaration
+      )
     }
     BlockBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
       if has_err(err: prefix.err) { return ItemResult { item: dummy, tokens: prefix.tokens, ctx: prefix.ctx, err: prefix.err } }
-      parse_block_body_from_prefix(prefix: prefix, start_span: start_span)
+      let parsed = parse_block_body_from_prefix(prefix: prefix, start_span: start_span)
+      if form.keyword == "pattern" {
+        item_result_with_declaration_constructor(result: parsed, constructor: PatternDeclaration)
+      } else if form.keyword == "interface" {
+        item_result_with_declaration_constructor(result: parsed, constructor: InterfaceDeclaration)
+      } else {
+        item_result_with_declaration_constructor(result: parsed, constructor: FunctionDeclaration)
+      }
     }
-    ServiceBody => parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    ResourceBody => parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
-    ValueBody => parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
+    ServiceBody => item_result_with_declaration_constructor(result: parse_service_after_kw(tokens: tokens, ctx: ctx, start_span: start_span), constructor: ServiceDeclaration)
+    ResourceBody => item_result_with_declaration_constructor(result: parse_resource_after_kw(tokens: tokens, ctx: ctx, start_span: start_span), constructor: ResourceDeclaration)
+    ValueBody => item_result_with_declaration_constructor(result: parse_data_after_kw(tokens: tokens, ctx: ctx, start_span: start_span), constructor: DataDeclaration)
     AliasBody => parse_alias_after_kw(tokens: tokens, ctx: ctx, start_span: start_span)
     NoBody => {
       let prefix = parse_item_prefix(tokens: tokens, ctx: ctx, form: form)
@@ -2240,7 +2292,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
     let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span)
     let minted = mint_parsed_node_identity(ctx: sole.ctx)
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }
+    item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }, constructor: ProductTypeDeclaration)
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
@@ -2250,7 +2302,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
         let type_mint = mint_parsed_node_identity(ctx: ctx)
         let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx)
         let item = Node { occurrence_identity: item_mint.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(occurrence_identity: type_mint.identity, name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }
+        item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }, constructor: NominalTypeDeclaration)
     }
   }
 }
@@ -2277,7 +2329,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
     let sole = parsed_sole_constructor_properties(ctx: ctx, enabled: is_sole_constructor, span: start_span)
     let minted = mint_parsed_node_identity(ctx: sole.ctx)
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole.properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }
+    item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: skip_newlines(tokens: r2.tokens), ctx: minted.ctx, err: none }, constructor: ProductTypeDeclaration)
   EatUnchanged { tokens: __eu } =>
     match eat(tokens: tokens, expected: ExpectEq) {
       EatConsumed { token: _, tokens: __ec } =>
@@ -2287,7 +2339,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
         let type_mint = mint_parsed_node_identity(ctx: ctx)
         let item_mint = mint_parsed_node_identity(ctx: type_mint.ctx)
         let item = Node { occurrence_identity: item_mint.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(occurrence_identity: type_mint.identity, name: name, span: name_span) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-        ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }
+        item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: __eu, ctx: item_mint.ctx, err: none }, constructor: NominalTypeDeclaration)
     }
   }
 }
@@ -2341,6 +2393,17 @@ fn alias_rhs_is_anonymous_record(te: Node) -> Bool {
     && te.type_annotation == none
 }
 
+fn declaration_constructor_for_type_rhs(te: Node, source_indices: Map<String, NewlineIndex>) -> SourceDeclarationConstructor {
+  if alias_rhs_is_anonymous_record(te: te) {
+    ProductTypeDeclaration
+  } else {
+    TransparentTypeAlias { representation_target: AuthoredTypeTarget {
+      spelling: authored_name_at(source_indices: source_indices, node: te),
+      argument_count: te.children |> count,
+    } }
+  }
+}
+
 fn type_item_from_alias_rhs(occurrence_identity: NodeOccurrenceIdentity, name: String, name_span: SourceSpan, start_span: SourceSpan, type_params: List<Node>, te: Node, sole_constructor_properties: List<Node>) -> Node {
   if alias_rhs_is_anonymous_record(te: te) {
     Node { occurrence_identity: occurrence_identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: te.children, connective: Conj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: sole_constructor_properties, type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -2367,7 +2430,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     let type_children = rest.variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
     let minted = mint_parsed_node_identity(ctx: rest.ctx)
     let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-    ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
+    item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }, constructor: CoproductTypeDeclaration)
   EatUnchanged { tokens: _ } =>
   if tok_is_ident(tok: token_stream_first(stream: tokens)) {
     let r = parse_dotted_ident(tokens: tokens)
@@ -2386,7 +2449,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       let type_children = variants |> map(v => variant_to_child_node(variant: v, source_indices: ctx.source_indices))
       let minted = mint_parsed_node_identity(ctx: rest.ctx)
       let item = Node { occurrence_identity: minted.identity, name: name, span: start_span, ident_span: Present { value: name_span }, children: type_children, connective: Disj, params: type_params, inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
-      ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }
+      item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: skip_newlines(tokens: rest.tokens), ctx: minted.ctx, err: none }, constructor: CoproductTypeDeclaration)
     } else {
       let r = finish_type_expr_from_name(tokens: tokens, ctx: ctx, type_name: first_name, start_span: first_name_span)
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -2395,7 +2458,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       let sole = parsed_sole_constructor_properties(ctx: wr.ctx, enabled: is_sole_constructor, span: start_span)
       let minted = mint_parsed_node_identity(ctx: sole.ctx)
       let item = type_item_from_alias_rhs(occurrence_identity: minted.identity, name: name, name_span: name_span, start_span: start_span, type_params: type_params, te: wr.type_expr, sole_constructor_properties: sole.properties)
-      ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: minted.ctx, err: none }
+      item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: minted.ctx, err: none }, constructor: declaration_constructor_for_type_rhs(te: wr.type_expr, source_indices: wr.ctx.source_indices))
     }
   } else {
     let r = parse_type_expr(tokens: tokens, ctx: ctx)
@@ -2405,7 +2468,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     let sole = parsed_sole_constructor_properties(ctx: wr.ctx, enabled: is_sole_constructor, span: start_span)
     let minted = mint_parsed_node_identity(ctx: sole.ctx)
     let item = type_item_from_alias_rhs(occurrence_identity: minted.identity, name: name, name_span: name_span, start_span: start_span, type_params: type_params, te: wr.type_expr, sole_constructor_properties: sole.properties)
-    ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: minted.ctx, err: none }
+    item_result_with_declaration_constructor(result: ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: minted.ctx, err: none }, constructor: declaration_constructor_for_type_rhs(te: wr.type_expr, source_indices: wr.ctx.source_indices))
   }
   }
 }
@@ -2499,7 +2562,7 @@ fn parse_single_predicate(tokens: TokenStream, ctx: ParseContext) -> PredResult 
         if has_err(err: r3.err) { return PredResult { predicate: dummy_pred, tokens: r3.tokens, ctx: r2.ctx, err: r3.err } }
         let min = mint_parsed_optional_int_property(ctx: r2.ctx, name: "min", value: r2.min_val, span: zero_span)
         let max = mint_parsed_optional_int_property(ctx: min.ctx, name: "max", value: r2.max_val, span: zero_span)
-        parsed_predicate_result(tokens: r3.tokens, ctx: max.ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "range", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprRecordLit { parent_enum: none }, children: concat(min.properties, max.properties), inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
+        parsed_predicate_result(tokens: r3.tokens, ctx: max.ctx, build: (value_identity, predicate_identity) => make_field_init_node(occurrence_identity: predicate_identity, name: "range", value: make_expr_node(occurrence_identity: value_identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: concat(min.properties, max.properties), inferred: none, span: zero_span), span: zero_span, name_span: zero_span))
       }
       _ =>
         PredResult { predicate: dummy_pred, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("unknown where predicate `", pred_name, "`"), span: token_span(tok: token_stream_first(stream: tokens))) } }
@@ -4201,7 +4264,10 @@ fn parse_alias_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sour
     properties: [target_prop], type_annotation: none,
     is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData
   }
-  ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: item_mint.ctx, err: none }
+  item_result_with_declaration_constructor(
+    result: ItemResult { item: item, tokens: skip_newlines(tokens: r.tokens), ctx: item_mint.ctx, err: none },
+    constructor: NamespaceAlias { referent_key: target_path }
+  )
 }
 
 fn parse_data_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: SourceSpan) -> ItemResult {
@@ -5752,7 +5818,7 @@ fn parse_record_literal_named(tokens: TokenStream, ctx: ParseContext, name: Stri
   let r2 = expect(tokens: tokens, expected: ExpectRBrace)
   if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
 
-  parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span, name_span: name_span))
+  parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_named_expr_node(occurrence_identity: identity, name: name, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span, name_span: name_span))
 }
 
 fn parse_field_init_list(tokens: TokenStream, ctx: ParseContext) -> FieldInitsResult {
@@ -5857,7 +5923,7 @@ fn parse_paren_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
   let tokens = skip_newlines(tokens: r.tokens)
 
   if tok_is_rparen(tok: token_stream_first(stream: tokens)) {
-    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
+    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: [], inferred: none, span: span))
   } else {
     let lambda_r = try_lambda_params(tokens: tokens, ctx: ctx)
     if lambda_r.is_lambda {
@@ -6024,7 +6090,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
 
   let tok = token_stream_first(stream: tokens)
   if tok_is_rbrace(tok: tok) {
-    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: [], inferred: none, span: span))
+    parsed_expr_result(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: [], inferred: none, span: span))
   } else {
     let sh = match tok { Present { value: t } => Present { value: t.shape }  Absent => none }
     match sh {
@@ -6048,7 +6114,7 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
             let tokens = skip_newlines(tokens: r.tokens)
             let r2 = expect(tokens: tokens, expected: ExpectRBrace)
             if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+            parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span))
           } else {
             let r = parse_expr(tokens: tokens, ctx: ctx)
             if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
@@ -6067,14 +6133,14 @@ fn parse_brace_expr(tokens: TokenStream, ctx: ParseContext) -> ExprResult {
           let tokens = skip_newlines(tokens: r.tokens)
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span))
         } else if tok_is_lit_str(tok: tok) && peek_is_colon_after_ident(tokens: tokens) {
           let r = parse_field_init_list(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }
           let tokens = skip_newlines(tokens: r.tokens)
           let r2 = expect(tokens: tokens, expected: ExpectRBrace)
           if has_err(err: r2.err) { return ExprResult { expr: dummy_expr, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
-          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none }, children: r.fields, inferred: none, span: span))
+          parsed_expr_result(tokens: r2.tokens, ctx: r.ctx, build: identity => make_expr_node(occurrence_identity: identity, expr_data: ExprRecordLit { parent_enum: none, target: CallableTargetUndetermined }, children: r.fields, inferred: none, span: span))
         } else {
           let r = parse_stmts(tokens: tokens, ctx: ctx)
           if has_err(err: r.err) { return ExprResult { expr: dummy_expr, tokens: r.tokens, ctx: r.ctx, err: r.err } }

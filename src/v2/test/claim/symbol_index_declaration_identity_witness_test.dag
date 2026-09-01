@@ -1,0 +1,224 @@
+module v2.test.claim.symbol_index_declaration_identity_witness_test
+
+import std.types { Bool, String }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
+import std.induction { SubValueUnknown }
+import std.occurrence_identity { ParsedDeclarationConstructorRow, FunctionDeclaration, DataDeclaration, TransparentTypeAlias, NamespaceAlias, NominalTypeDeclaration }
+import v1.std.core { error_type, build_newline_index, empty_intern_table }
+import v1.compiler.tokenize { tokenize }
+import v1.compiler.parse { parse_with_table }
+import v1.compiler.infer_env {
+  SymbolIndex,
+  SymbolIndexEntry,
+  TypeEnv,
+  TypeBinding,
+  GlobalBareUniqueBinding,
+  OwnSourceDeclaration,
+  ResolvedAliasBinding,
+  NamespaceAliasReferentUnresolved,
+  NamespaceAliasReferentCycle,
+  ConflictingIndexedIdentity,
+  empty_symbol_index,
+  empty_type_env,
+  symbol_index_insert_decl,
+  symbol_index_entry_lookup,
+  declared_type_binding_for_unlisted_reference,
+}
+import v1.compiler.infer { finalize_symbol_index_alias_edge }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data qualified_unlisted_identity_correction_note: String = "STOP #3 before/after identity correction. Main resolved an already-qualified unlisted type through its binding environment and emitted advisory UnlistedImportUse without declaration identity. The first NS-0B form stripped the qualified name to its last segment, consulted an authored-import membership carrier repurposed as a target map, and could rewrite fixture.right.Thing to an unrelated direct import's module before hard-refusing identity unavailable. After deletion, the qualified spelling is the SymbolIndex key unchanged; a present entry emits advisory UnlistedImportUse carrying that entry's DeclarationRef, while a genuinely absent entry remains the identity-unavailable hard refusal. Identity join: the qualified spelling and SymbolIndexEntry.declaring_declaration must name the same declaration; no import-map spelling participates."
+
+fn parsed_constructor_rows(source: String) -> List<ParsedDeclarationConstructorRow> {
+  let file = "fixture.dag"
+  parse_with_table(
+    tokens: tokenize(source: source, file: file),
+    source_indices: map_insert(empty_map(), file, build_newline_index(file: file, source: source)),
+    intern_table: empty_intern_table()
+  ).declaration_constructors
+}
+
+test fn parser_distinguishes_string_function_data_and_transparent_type_alias() -> Bool {
+  let rows = parsed_constructor_rows(source: "module fixture\nfn f() -> String { \"x\" }\ndata x: String = \"x\"\ntype CommitSha = String\n")
+  (rows |> any(row => match row.constructor { FunctionDeclaration => true  _ => false }))
+    && (rows |> any(row => match row.constructor { DataDeclaration => true  _ => false }))
+    && (rows |> any(row => match row.constructor {
+      TransparentTypeAlias { representation_target } => representation_target.spelling == "String" && representation_target.argument_count == 0
+      _ => false
+    }))
+    && (rows |> count) == 3
+}
+
+test fn parser_namespace_alias_is_a_distinct_constructor() -> Bool {
+  let rows = parsed_constructor_rows(source: "module fixture\nalias X = provider.Y\n")
+  (rows |> count) == 1 && (rows |> any(row => match row.constructor {
+    NamespaceAlias { referent_key } => referent_key == "provider.Y"
+    _ => false
+  }))
+}
+
+fn declaration(module_path: String, name: String) -> DeclarationRef {
+  decl_ref(module_path: module_path, decl_name: name)
+}
+
+fn nominal(index: SymbolIndex, module_path: String, name: String) -> SymbolIndex {
+  symbol_index_insert_decl(
+    index: index,
+    module_path: module_path,
+    binding: TypeBinding { name: name, resolved: error_type, provenance: SubValueUnknown },
+    provenance: OwnSourceDeclaration { declaration: declaration(module_path: module_path, name: name), constructor: NominalTypeDeclaration }
+  )
+}
+
+fn one_edge(alias_key: String, referent_key: String) -> Map<String, String> {
+  map_insert(empty_map(), alias_key, referent_key)
+}
+
+fn resolved_alias(
+  index: SymbolIndex,
+  edges: Map<String, String>,
+  alias_module: String,
+  alias_name: String,
+  referent_key: String
+) -> SymbolIndex {
+  finalize_symbol_index_alias_edge(
+    index: index,
+    edges: edges,
+    alias_key: concat(alias_module, ".", alias_name),
+    alias_declaration: declaration(module_path: alias_module, name: alias_name),
+    referent_key: referent_key
+  )
+}
+
+fn alias_entry_has(
+  entry: SymbolIndexEntry,
+  alias_module: String,
+  alias_name: String,
+  referent_key: String,
+  owner_module: String,
+  owner_name: String
+) -> Bool {
+  declaration_ref_eq(a: entry.declaring_declaration, b: declaration(module_path: owner_module, name: owner_name))
+    && match entry.provenance {
+      ResolvedAliasBinding { alias_declaration, referent_key: observed_referent, declaring_declaration } =>
+        declaration_ref_eq(a: alias_declaration, b: declaration(module_path: alias_module, name: alias_name))
+          && observed_referent == referent_key
+          && declaration_ref_eq(a: declaring_declaration, b: declaration(module_path: owner_module, name: owner_name))
+      OwnSourceDeclaration { declaration: _, constructor: _ } => false
+      _ => false
+    }
+}
+
+test fn reexport_keeps_alias_edge_and_terminal_declaration() -> Bool {
+  let base = nominal(index: empty_symbol_index(), module_path: "fixture.owner", name: "Thing")
+  let edges = one_edge(alias_key: "fixture.facade.Alias", referent_key: "fixture.owner.Thing")
+  let finalized = resolved_alias(index: base, edges: edges, alias_module: "fixture.facade", alias_name: "Alias", referent_key: "fixture.owner.Thing")
+  match symbol_index_entry_lookup(index: finalized, qualified_name: "fixture.facade.Alias") {
+    Present { value: entry } =>
+      alias_entry_has(entry: entry, alias_module: "fixture.facade", alias_name: "Alias", referent_key: "fixture.owner.Thing", owner_module: "fixture.owner", owner_name: "Thing")
+        && match map_get(finalized.global_bare, "Alias") {
+          Present { value: GlobalBareUniqueBinding { module_path: _, entry: bare_entry } } =>
+            declaration_ref_eq(a: bare_entry.declaring_declaration, b: entry.declaring_declaration)
+          _ => false
+        }
+    Absent => false
+  }
+}
+
+test fn alias_chain_and_retarget_preserve_terminal_identity() -> Bool {
+  let base = nominal(index: nominal(index: empty_symbol_index(), module_path: "fixture.left", name: "Thing"), module_path: "fixture.right", name: "Thing")
+  let chain = map_insert(one_edge(alias_key: "fixture.facade.Alias", referent_key: "fixture.bridge.Middle"), "fixture.bridge.Middle", "fixture.left.Thing")
+  let left = resolved_alias(index: base, edges: chain, alias_module: "fixture.facade", alias_name: "Alias", referent_key: "fixture.bridge.Middle")
+  let right_edges = one_edge(alias_key: "fixture.facade.Alias", referent_key: "fixture.right.Thing")
+  let right = resolved_alias(index: base, edges: right_edges, alias_module: "fixture.facade", alias_name: "Alias", referent_key: "fixture.right.Thing")
+  match symbol_index_entry_lookup(index: left, qualified_name: "fixture.facade.Alias") {
+    Present { value: left_entry } => match symbol_index_entry_lookup(index: right, qualified_name: "fixture.facade.Alias") {
+      Present { value: right_entry } =>
+        declaration_ref_eq(a: left_entry.declaring_declaration, b: declaration(module_path: "fixture.left", name: "Thing"))
+          && declaration_ref_eq(a: right_entry.declaring_declaration, b: declaration(module_path: "fixture.right", name: "Thing"))
+      Absent => false
+    }
+    Absent => false
+  }
+}
+
+test fn alias_refusal_population_is_typed() -> Bool {
+  let missing_edges = one_edge(alias_key: "fixture.facade.Missing", referent_key: "fixture.absent.Thing")
+  let missing = resolved_alias(index: empty_symbol_index(), edges: missing_edges, alias_module: "fixture.facade", alias_name: "Missing", referent_key: "fixture.absent.Thing")
+  let cycle_edges = map_insert(one_edge(alias_key: "fixture.a.A", referent_key: "fixture.b.B"), "fixture.b.B", "fixture.a.A")
+  let cycle = resolved_alias(index: empty_symbol_index(), edges: cycle_edges, alias_module: "fixture.a", alias_name: "A", referent_key: "fixture.b.B")
+  (missing.insert_refusals |> any(r => match r {
+    NamespaceAliasReferentUnresolved { alias_qualified_name, referent_qualified_name } => alias_qualified_name == "fixture.facade.Missing" && referent_qualified_name == "fixture.absent.Thing"
+    _ => false
+  })) && (cycle.insert_refusals |> any(r => match r {
+    NamespaceAliasReferentCycle { alias_qualified_name, cycle_at: _ } => alias_qualified_name == "fixture.a.A"
+    _ => false
+  }))
+}
+
+test fn alias_finalization_is_insertion_order_independent() -> Bool {
+  let base = nominal(index: empty_symbol_index(), module_path: "fixture.owner", name: "Thing")
+  let edges = map_insert(one_edge(alias_key: "fixture.a.A", referent_key: "fixture.owner.Thing"), "fixture.b.B", "fixture.owner.Thing")
+  let ab = resolved_alias(index: resolved_alias(index: base, edges: edges, alias_module: "fixture.a", alias_name: "A", referent_key: "fixture.owner.Thing"), edges: edges, alias_module: "fixture.b", alias_name: "B", referent_key: "fixture.owner.Thing")
+  let ba = resolved_alias(index: resolved_alias(index: base, edges: edges, alias_module: "fixture.b", alias_name: "B", referent_key: "fixture.owner.Thing"), edges: edges, alias_module: "fixture.a", alias_name: "A", referent_key: "fixture.owner.Thing")
+  ab.entries == ba.entries && ab.global_bare == ba.global_bare
+}
+
+test fn conflicting_indexed_identity_is_never_overwritten() -> Bool {
+  let first = nominal(index: empty_symbol_index(), module_path: "fixture.owner", name: "Thing")
+  let conflicting = symbol_index_insert_decl(
+    index: first,
+    module_path: "fixture.owner",
+    binding: TypeBinding { name: "Thing", resolved: error_type, provenance: SubValueUnknown },
+    provenance: OwnSourceDeclaration { declaration: declaration(module_path: "fixture.other", name: "Thing"), constructor: NominalTypeDeclaration }
+  )
+  (conflicting.insert_refusals |> any(r => match r {
+    ConflictingIndexedIdentity { qualified_name, existing: _, proposed } =>
+      qualified_name == "fixture.owner.Thing"
+        && declaration_ref_eq(a: proposed, b: declaration(module_path: "fixture.other", name: "Thing"))
+    _ => false
+  })) && match symbol_index_entry_lookup(index: conflicting, qualified_name: "fixture.owner.Thing") {
+    Present { value: entry } => declaration_ref_eq(a: entry.declaring_declaration, b: declaration(module_path: "fixture.owner", name: "Thing"))
+    Absent => false
+  }
+}
+
+test fn qualified_unlisted_identity_reaches_symbol_index_unchanged() -> Bool {
+  let index = nominal(
+    index: nominal(index: empty_symbol_index(), module_path: "fixture.right", name: "Thing"),
+    module_path: "fixture.wrong",
+    name: "Thing"
+  )
+  let base = empty_type_env()
+  let env = TypeEnv {
+    module_path: "fixture.consumer",
+    bindings: base.bindings,
+    str_bindings: base.str_bindings,
+    ancestry_str_bindings: base.ancestry_str_bindings,
+    parents: base.parents,
+    recursive_types: base.recursive_types,
+    recursive_type_set: base.recursive_type_set,
+    inductive_fields: base.inductive_fields,
+    source_indices: base.source_indices,
+    intern_table: base.intern_table,
+    source_visible_names: map_insert(empty_map(), "Thing", true),
+    authored_import_names: map_insert(empty_map(), "Thing", true),
+    symbol_index: index,
+    unit_variant_index: base.unit_variant_index,
+  }
+  match declared_type_binding_for_unlisted_reference(env: env, name: "fixture.right.Thing") {
+    Present { value: declared } =>
+      declaration_ref_eq(
+        a: declared.declaration,
+        b: declaration(module_path: "fixture.right", name: "Thing")
+      )
+    Absent => false
+  }
+}
+
+test fn genuinely_absent_qualified_unlisted_identity_stays_absent() -> Bool {
+  let base = empty_type_env()
+  declared_type_binding_for_unlisted_reference(env: base, name: "fixture.absent.Thing") == none
+}

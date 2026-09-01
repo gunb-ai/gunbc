@@ -57,6 +57,32 @@ type OccurrenceId {
 // projection — std_occurrence_binding is not on the stage0 roster until PR #7515 lands and proves
 // ContainmentPath<OccurrenceId> compiles there.
 
+// The parser mints the declaration-form axis at the same occurrence boundary that mints the
+// declaration identity. Later resolver and index stages preserve this row; they never infer a
+// constructor from a resolved Node shape.
+type AuthoredTypeTarget {
+  spelling: String
+  argument_count: Int
+}
+
+type SourceDeclarationConstructor
+  = FunctionDeclaration
+  | DataDeclaration
+  | ServiceDeclaration
+  | ResourceDeclaration
+  | PatternDeclaration
+  | InterfaceDeclaration
+  | NominalTypeDeclaration
+  | ProductTypeDeclaration
+  | CoproductTypeDeclaration
+  | TransparentTypeAlias { representation_target: AuthoredTypeTarget }
+  | NamespaceAlias { referent_key: String }
+
+type ParsedDeclarationConstructorRow {
+  declaration_occurrence: NodeOccurrenceIdentity
+  constructor: SourceDeclarationConstructor
+}
+
 type OccurrenceContainmentPath {
   ancestors: FreeMonoid<OccurrenceId>
   terminal: OccurrenceId

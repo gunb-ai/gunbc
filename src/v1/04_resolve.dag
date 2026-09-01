@@ -47,7 +47,7 @@ import std.induction { SubValueUnknown }
 
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name,
-  env_with_type_variable_bindings, bare_name_miss_diagnostic,
+  env_with_type_variable_bindings, bare_name_miss_diagnostic, declared_type_binding_for_unlisted_reference,
   type_ref_measure_binding_authority,
   UnitVariantContribution
 }
@@ -588,7 +588,16 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
     if n_is_callable || is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
-      match lookup_type_for(env: env, node: n) {
+      let authored_type_name = authored_name(env: env, node: n)
+      let unlisted_site = masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: authored_type_name) == false
+      let declared_unlisted = if unlisted_site {
+        declared_type_binding_for_unlisted_reference(env: env, name: authored_type_name)
+      } else { none }
+      let selected_type = match declared_unlisted {
+        Present { value: declared } => Present { value: declared.binding.resolved }
+        Absent => lookup_type_for(env: env, node: n)
+      }
+      match selected_type {
         Present { value: resolved } =>
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
@@ -620,8 +629,11 @@ fn resolve_node_bounded(n: Node, env: TypeEnv, module_name: String, depth: Int, 
               diagnostics: [make_error_node(diagnostic: bare_name_miss_diagnostic(env: env, name: type_name, span: n.span), module_name: module_name)]
             }
           } else {
-            let unlisted_diags = if masked && map_is_empty(m: env.source_visible_names) == false && map_has(m: env.source_visible_names, key: type_name) == false {
-              [make_error_node(diagnostic: UnlistedImportUse { name: type_name, span: n.span }, module_name: module_name)]
+            let unlisted_diags = if unlisted_site {
+              match declared_unlisted {
+                Present { value: declared } => [make_error_node(diagnostic: UnlistedImportUse { name: type_name, declaration: declared.declaration, span: n.span }, module_name: module_name)]
+                Absent => [make_error_node(diagnostic: InternalError { message: concat("UnlistedTypeDeclarationIdentityUnavailable: ", type_name), span: n.span }, module_name: module_name)]
+              }
             } else { [] }
             NodeResolveResult { resolved: final_resolved, diagnostics: unlisted_diags }
           }
@@ -952,7 +964,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
         expr_data: ExprLet
       }
       ExprResolveResult { expr: let_node, diagnostics: concat(vr.diagnostics, match br { Present { value: r } => r.diagnostics  Absent => [] }, anno_resolved.diagnostics) }
-    ExprRecordLit { parent_enum: pe } =>
+    ExprRecordLit { parent_enum: pe, target: target } =>
 
       let fi_results = texpr.children |> map(fi_node =>
         let val = match fi_node.children |> first { Present { value: v } => v  Absent => fi_node }
@@ -961,7 +973,7 @@ fn resolve_expr_types(texpr: Node, env: TypeEnv, module_name: String) -> ExprRes
       )
       let resolved_children = fi_results |> map(r => r.expr)
       let all_diags = flat_map(fi_results, r => r.diagnostics)
-      ExprResolveResult { expr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: authored_name_at(source_indices: env.source_indices, node: texpr), expr_data: ExprRecordLit { parent_enum: pe }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
+      ExprResolveResult { expr: make_named_expr_node(occurrence_identity: texpr.occurrence_identity, name: authored_name_at(source_indices: env.source_indices, node: texpr), expr_data: ExprRecordLit { parent_enum: pe, target: target }, children: resolved_children, inferred: texpr.inferred, span: texpr.span, name_span: node_name_span(n: texpr)), diagnostics: all_diags }
     ExprListLit =>
       let el_results = texpr.children |> map(el => resolve_expr_types(texpr: el, env: env, module_name: module_name))
       let resolved_children = el_results |> map(r => r.expr)

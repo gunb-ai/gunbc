@@ -4693,6 +4693,48 @@ import pur.common { shared_double }\n\nfn beta_use(x: Int) -> Int {\n  shared_do
         );
     }
 
+    #[test]
+    fn via_index_parse_cache_preserves_declaration_constructor_rows_into_resolve() {
+        let corpus = Corpus::new(
+            "constructor-row-handoff",
+            &[(
+                "types.dag",
+                "module eqv.constructor_row_handoff\ntype SourceSpan { start: Int end: Int }\n",
+            )],
+        );
+        let index = super::process_shared_index(&corpus.roots);
+        let cached = super::via_index_parse_one_source(&index, &corpus.sources[0]);
+        assert_eq!(
+            cached.declaration_constructors.len(),
+            1,
+            "parse-cache handoff must retain the record declaration constructor"
+        );
+        let module = cached
+            .parse_result
+            .module
+            .clone()
+            .expect("fixture module parses");
+        let input = super::v1_compiler_resolve::module_occurrence_input(
+            module,
+            cached.occurrence_transport.clone(),
+            cached.declaration_constructors.clone(),
+        );
+        let graph = super::v1_compiler_resolve::resolve_modules_with_occurrence_transport(
+            Rc::new(vec![input].into()),
+            Rc::new(im::HashMap::from(vec![(
+                cached.newline_index.file.clone(),
+                cached.newline_index.clone(),
+            )])),
+            cached.occurrence_transport,
+        );
+        assert_eq!(graph.modules.len(), 1);
+        assert_eq!(
+            graph.modules[0].declaration_constructors.len(),
+            1,
+            "resolve boundary must not replace the observed row population with empty"
+        );
+    }
+
     /// `handle_serve` resolves `Memoize`, consumes `compile_clean_diags`, and shares
     /// `process_shared_index`. An Ephemeral compile-clean warms parse_cache without
     /// joining `resolved_graph_memo`, so the subsequent Memoize is a parse_cache hit
@@ -7755,11 +7797,8 @@ fn bare_reference_pull_paths_for_source(
             }
             match v1_rt::map_get(&census.global_bare, name.clone()) {
                 Some(state) => match state.as_ref() {
-                    GlobalBareLookupState::GlobalBareUniqueBinding {
-                        module_path,
-                        binding,
-                    } => (
-                        if pullable(binding) {
+                    GlobalBareLookupState::GlobalBareUniqueBinding { module_path, entry } => (
+                        if pullable(&entry.binding) {
                             Some(module_path.clone())
                         } else {
                             None
@@ -7772,7 +7811,7 @@ fn bare_reference_pull_paths_for_source(
                             candidates.clone(),
                         )
                         .and_then(|c| {
-                            if pullable(&c.binding) {
+                            if pullable(&c.entry.binding) {
                                 Some(c.module_path.clone())
                             } else {
                                 None
@@ -9795,6 +9834,9 @@ mod live_read_selection_manifest_producer_tests {
 pub(crate) struct ParseCacheEntry {
     parse_result: Rc<v1_compiler_parse::ParseResult>,
     newline_index: Rc<NewlineIndex>,
+    occurrence_transport: Rc<crate::std_occurrence_identity::OccurrenceTransport>,
+    declaration_constructors:
+        Rc<im::Vector<Rc<crate::std_occurrence_identity::ParsedDeclarationConstructorRow>>>,
     annotation_diags: Option<Rc<im::Vector<Rc<ErrorNode>>>>,
 }
 
@@ -10244,6 +10286,8 @@ fn next_index_generation() -> u64 {
 struct PoolParse {
     /// Workspace-relative file path → census-head module node.
     nodes_by_file: Vec<(String, Rc<Node>)>,
+    declaration_constructors:
+        Vec<Rc<crate::std_occurrence_identity::ParsedDeclarationConstructorRow>>,
     combined_si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
@@ -13678,7 +13722,14 @@ fn note_source_hash(index: &MultiEntryIndex, source: &Rc<v1_compiler_compile::So
 fn parse_module_heads_for_pool_census(
     index: &MultiEntryIndex,
     source: Rc<v1_compiler_compile::SourceFile>,
-) -> Result<(Rc<Node>, Rc<NewlineIndex>), String> {
+) -> Result<
+    (
+        Rc<Node>,
+        Rc<NewlineIndex>,
+        Rc<im::Vector<Rc<crate::std_occurrence_identity::ParsedDeclarationConstructorRow>>>,
+    ),
+    String,
+> {
     note_source_hash(index, &source);
     // One acquisition, not one per walk -- see `cli_run::pool_acquire`.
     let tokens = pool_acquire::tokens_for(&source.path, &source.content);
@@ -13717,7 +13768,11 @@ fn parse_module_heads_for_pool_census(
         ));
     }
     match &parsed.result.module {
-        Some(module) => Ok((census_heads_module_node(module.clone()), nl_index)),
+        Some(module) => Ok((
+            census_heads_module_node(module.clone()),
+            nl_index,
+            parsed.declaration_constructors.clone(),
+        )),
         None => Err(format!(
             "symbol_index qualified-projection census refused: no module in {}",
             source.path
@@ -13752,19 +13807,22 @@ fn pool_parse(index: &MultiEntryIndex) -> Result<Rc<PoolParse>, String> {
     let pool_started = std::time::Instant::now();
     let mut combined_si: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut nodes_by_file: Vec<(String, Rc<Node>)> = Vec::with_capacity(pool_paths.len());
+    let mut declaration_constructors = Vec::new();
     for module_path in pool_paths {
         let source = index
             .source_files
             .get(&module_path)
             .cloned()
             .expect("pool path came from source_files keys");
-        let (module, nl_index) = parse_module_heads_for_pool_census(index, source)?;
+        let (module, nl_index, constructors) = parse_module_heads_for_pool_census(index, source)?;
         let file = nl_index.file.clone();
         combined_si.insert(file.clone(), nl_index);
         nodes_by_file.push((file, module));
+        declaration_constructors.extend(constructors.iter().cloned());
     }
     let parsed = Rc::new(PoolParse {
         nodes_by_file,
+        declaration_constructors,
         combined_si: Rc::new(combined_si),
     });
     *index.pool_parse.borrow_mut() = Some(parsed.clone());
@@ -13855,6 +13913,14 @@ pub fn heads_reading_differential(source_roots: &[String]) -> HeadsReadingDiffer
 }
 
 fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> {
+    // KEEP: this is not compensation for a lossy closure census. Its irreducible
+    // population is qualified declarations outside one entry closure, across tree
+    // views; a closure census cannot answer those references. On overlap,
+    // symbol_index_with_qualified_fill inserts closure entries over this fill, so
+    // closure evidence is authoritative. Residual: outside that overlap this is the
+    // only source, so a future closure-row loss can be absorbed rather than observed;
+    // the parse-cache-to-resolver row-preservation test guards the handoff, but the
+    // absorbed-instance population is not yet counted.
     if let Some(cached) = index.pool_qualified_fill.borrow().clone() {
         return Ok(cached);
     }
@@ -13867,6 +13933,7 @@ fn pool_qualified_fill(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, Strin
     let fill = v1_compiler_infer::build_symbol_index_qualified_fill(
         Rc::new(nodes),
         pool.combined_si.clone(),
+        Rc::new(pool.declaration_constructors.iter().cloned().collect()),
     );
     *index.pool_qualified_fill.borrow_mut() = Some(fill.clone());
     Ok(fill)
@@ -13961,6 +14028,7 @@ fn tree_bare_census_for_root(
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
         Rc::new(nodes),
         pool.combined_si.clone(),
+        Rc::new(pool.declaration_constructors.iter().cloned().collect()),
     );
     index
         .tree_bare_census
@@ -13998,6 +14066,7 @@ fn pool_bare_census(index: &MultiEntryIndex) -> Result<Rc<SymbolIndex>, String> 
     let census = v1_compiler_infer::build_symbol_index_census_nodes(
         Rc::new(nodes),
         pool.combined_si.clone(),
+        Rc::new(pool.declaration_constructors.iter().cloned().collect()),
     );
     *index.pool_bare_census.borrow_mut() = Some(census.clone());
     Ok(census)
@@ -17972,7 +18041,11 @@ fn resolved_initializer_decl_ref(
     type_annotation: Option<&Rc<Node>>,
 ) -> Result<ResolvedDeclRef, String> {
     let si = Rc::new(source_indices.clone());
-    if let ExprData::ExprRecordLit { parent_enum } = &*body.expr_data {
+    if let ExprData::ExprRecordLit {
+        parent_enum,
+        target: _,
+    } = &*body.expr_data
+    {
         if let Some(parent_name) = parent_enum.as_deref() {
             // A qualified constructor spelling (v2.std.verification.BoolWitnessClaim)
             // names the same arm as its bare last segment — the module prefix already
@@ -34776,7 +34849,26 @@ mod peel_alias_fixpoint_termination {
                 std::rc::Rc::new(
                     crate::v1_compiler_infer_env::GlobalBareLookupState::GlobalBareUniqueBinding {
                         module_path: "".to_string(),
-                        binding: census_binding,
+                        entry: std::rc::Rc::new(
+                            crate::v1_compiler_infer_env::SymbolIndexEntry {
+                                declaring_declaration: crate::std_decl_ref::decl_ref(
+                                    "".to_string(),
+                                    "PeelFixpointProbe".to_string(),
+                                ),
+                                provenance: std::rc::Rc::new(
+                                    crate::v1_compiler_infer_env::SymbolIndexEntryProvenance::OwnSourceDeclaration {
+                                        declaration: crate::std_decl_ref::decl_ref(
+                                            "".to_string(),
+                                            "PeelFixpointProbe".to_string(),
+                                        ),
+                                        constructor: std::rc::Rc::new(
+                                            crate::std_occurrence_identity::SourceDeclarationConstructor::NominalTypeDeclaration,
+                                        ),
+                                    },
+                                ),
+                                binding: census_binding,
+                            },
+                        ),
                     },
                 ),
             );
@@ -34786,6 +34878,9 @@ mod peel_alias_fixpoint_termination {
                 services: crate::v1_rt::rc_empty_map(),
                 transparent_alias_rep: crate::v1_rt::rc_empty_map(),
                 type_head_exposures: crate::v1_rt::rc_empty_map(),
+                insert_refusals: std::rc::Rc::new(im::vector![]),
+                inserted_count: 0,
+                already_present_same_identity_count: 0,
             });
             let env = std::rc::Rc::new(crate::v1_compiler_infer_env::TypeEnv {
                 module_path: "".to_string(),

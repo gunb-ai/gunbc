@@ -346,22 +346,18 @@ fn orphan_import_claim_is_refused_here_and_nowhere_else() {
 /// Resolve exactly the named fixture files as one pool and return the names
 /// `MissingExport` fired on. The pool IS the closure — which is the point of the control.
 fn missing_export_names(dir: &Path, basenames: &[&str]) -> Vec<String> {
-    let mut modules: Vec<Rc<v1_compiler::v1_std_core::Node>> = Vec::new();
-    let mut indices = im::HashMap::new();
+    let mut sources = Vec::new();
     for basename in basenames {
         let path = dir.join("probe_root").join(basename);
         let content = std::fs::read_to_string(&path).expect("fixture source");
         let key = basename.to_string();
-        let tokens = v1_compiler::v1_compiler_tokenize::tokenize(content.clone(), key.clone());
-        let index = v1_compiler::v1_std_core::build_newline_index(key.clone(), content);
-        indices.insert(key, index);
-        let parsed = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(indices.clone()));
-        modules.push(parsed.module.as_ref().expect("fixture must parse").clone());
+        sources.push(Rc::new(v1_compiler::v1_compiler_compile::SourceFile {
+            path: key,
+            content,
+        }));
     }
-    let graph = v1_compiler::v1_compiler_resolve::resolve_modules(
-        Rc::new(modules.into_iter().collect()),
-        Rc::new(indices),
-    );
+    let frontend = v1_compiler::v1_compiler_compile::front_end_sources(Rc::new(sources.into()));
+    let graph = frontend.graph.as_ref().expect("fixture must resolve");
     graph
         .diagnostics
         .iter()

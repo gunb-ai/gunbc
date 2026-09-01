@@ -62,6 +62,20 @@ fn decl_field_ref(module_path: String, decl_name: String, field_name: String) ->
   }
 }
 
+fn declaration_ref_member_name(reference: DeclarationRef) -> NonEmptyStr {
+  match reference.field {
+    WholeDeclaration => reference.decl_name
+    NamedField { field_name } => field_name
+  }
+}
+
+fn declaration_ref_qualified_key(reference: DeclarationRef) -> NonEmptyStr {
+  match reference.field {
+    WholeDeclaration => concat(reference.module_path, ".", reference.decl_name) as NonEmptyStr
+    NamedField { field_name } => concat(reference.module_path, ".", reference.decl_name, ".", field_name) as NonEmptyStr
+  }
+}
+
 fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
   match a {
     WholeDeclaration =>

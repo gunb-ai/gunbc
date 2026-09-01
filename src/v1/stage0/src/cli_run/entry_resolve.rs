@@ -1280,6 +1280,8 @@ pub(crate) fn via_index_parse_one_source(
     let entry = ParseCacheEntry {
         parse_result: parsed.result.clone(),
         newline_index: nl_index,
+        occurrence_transport: parsed.occurrence_transport.clone(),
+        declaration_constructors: parsed.declaration_constructors.clone(),
         annotation_diags: Some(Rc::new(annotation_diags)),
     };
     index
@@ -1414,7 +1416,8 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         );
     }
 
-    let mut modules: Vec<Rc<Node>> = Vec::new();
+    let mut module_inputs: Vec<Rc<v1_compiler_resolve::ModuleOccurrenceInput>> = Vec::new();
+    let mut occurrence_transports = Vec::new();
     let mut si_map: HashMap<String, Rc<NewlineIndex>> = HashMap::new();
     let mut parse_error_msgs: Vec<String> = Vec::new();
     let mut annotation_diags: im::Vector<Rc<ErrorNode>> = im::Vector::new();
@@ -1443,7 +1446,12 @@ pub(crate) fn resolved_graph_from_sources_with_index(
             continue;
         }
         if let Some(module) = &parse_result.module {
-            modules.push(module.clone());
+            module_inputs.push(v1_compiler_resolve::module_occurrence_input(
+                module.clone(),
+                entry.occurrence_transport.clone(),
+                entry.declaration_constructors.clone(),
+            ));
+            occurrence_transports.push(entry.occurrence_transport.clone());
         }
     }
     if !parse_error_msgs.is_empty() {
@@ -1460,8 +1468,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     resolve_stage_slot_add(|s| s.parse += parse_started.elapsed().as_nanos());
 
     let resolve_started = std::time::Instant::now();
-    let graph =
-        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
+    let graph = v1_compiler_resolve::resolve_modules_with_occurrence_transport(
+        Rc::new(module_inputs.into()),
+        source_indices.clone(),
+        v1_compiler_compile::merge_occurrence_transports(Rc::new(occurrence_transports.into())),
+    );
 
     if graph
         .diagnostics
@@ -1673,6 +1684,8 @@ pub(crate) fn parse_module_node_from_index_source(
             let entry = ParseCacheEntry {
                 parse_result: parsed.result.clone(),
                 newline_index: nl_index.clone(),
+                occurrence_transport: parsed.occurrence_transport.clone(),
+                declaration_constructors: parsed.declaration_constructors.clone(),
                 annotation_diags: None,
             };
             index

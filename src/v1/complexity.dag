@@ -806,7 +806,7 @@ fn parser_success_progress(expr: Node, state_param: ParserStateParam, env: Parse
         result_name: ""
       )
 
-    ExprRecordLit { parent_enum: _ } =>
+    ExprRecordLit { parent_enum: _, target: _ } =>
       match parser_record_field_value(expr: expr, field_name: "err", si: si) {
         Present { value: err_expr } =>
           if parser_expr_is_none(expr: err_expr) {

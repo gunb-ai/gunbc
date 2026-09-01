@@ -11,6 +11,7 @@ import v1.std.core {
   NewlineIndex, authored_name_at,
 }
 import std.occurrence_identity { OccurrenceIndex, OccurrenceTransport }
+import std.occurrence_identity { ParsedDeclarationConstructorRow }
 
 
 type ModuleGraph {
@@ -22,15 +23,18 @@ type ModuleGraph {
 type ModuleOccurrenceInput {
   module: Node
   occurrence_transport: OccurrenceTransport
+  declaration_constructors: List<ParsedDeclarationConstructorRow>
 }
 
 fn module_occurrence_input(
   module: Node,
-  occurrence_transport: OccurrenceTransport
+  occurrence_transport: OccurrenceTransport,
+  declaration_constructors: List<ParsedDeclarationConstructorRow>
 ) -> ModuleOccurrenceInput {
   ModuleOccurrenceInput {
     module: module,
     occurrence_transport: occurrence_transport,
+    declaration_constructors: declaration_constructors,
   }
 }
 
@@ -49,6 +53,7 @@ type ResolvedModule {
   resolved_imports: List<ResolvedImport>
   dep_order: Int
   occurrence_transport: OccurrenceTransport
+  declaration_constructors: List<ParsedDeclarationConstructorRow>
 }
 
 type ResolvedImport {
@@ -132,6 +137,7 @@ fn resolve_modules_with_occurrence_transport(
               resolved_imports: imps,
               dep_order: order,
               occurrence_transport: module_occurrence_input_transport(input: input),
+              declaration_constructors: input.declaration_constructors,
             }]
           Absent => []
         }
@@ -146,28 +152,6 @@ fn resolve_modules_with_occurrence_transport(
     diagnostics: concat(dup_diags, dup_decl_diags, import_diags, topo_diags),
     occurrence_transport: occurrence_transport,
   }
-}
-
-fn resolve_modules(
-  modules: List<Node>,
-  source_indices: Map<String, NewlineIndex>
-) -> ModuleGraph {
-  resolve_modules_with_occurrence_transport(
-    module_inputs: modules |> map(module => module_occurrence_input(
-      module: module,
-      occurrence_transport: OccurrenceTransport {
-        index: OccurrenceIndex { entries: [] },
-        declarations: [],
-        references: [],
-      }
-    )),
-    source_indices: source_indices,
-    occurrence_transport: OccurrenceTransport {
-      index: OccurrenceIndex { entries: [] },
-      declarations: [],
-      references: [],
-    }
-  )
 }
 
 fn find_module(module_index: Map<String, Node>, path: String) -> Node? {
