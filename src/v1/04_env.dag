@@ -1054,6 +1054,24 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
   }
 }
 
+// THE KERNEL-IDENTITY FACT EXISTS ONCE (operator ruling on gunbc#9850). Whether a resolved node
+// IS the kernel identity for a queried name is one semantic fact with one authority: exact
+// equality of the node's ident_span file against the kernel span file "<kernel:NAME>" that
+// build_type_env installs for that name. Both the infer-side rewire guard
+// (ancestry_binding_is_kernel_identity) and the emit-side use-line decision consume THIS
+// predicate; neither re-derives it. The emitter's additional condition -- that the kernel node is
+// a host-realized structureless scalar (NoConnective, zero children), which excludes structural
+// kernels like Bool = True | False whose use-line IS the path to the realization -- is a SEPARATE
+// fact composed beside this one, never folded into it. A substring or prefix test here would be a
+// second, weaker authority for the same fact: the defect this predicate exists to repair was two
+// readers giving one environment two meanings.
+fn resolved_node_is_kernel_identity_for_name(node: Node, name: String) -> Bool {
+  match node.ident_span {
+    Present { value: sp } => sp.file == concat("<kernel:", concat(name, ">"))
+    Absent => false
+  }
+}
+
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
   match lookup_binding_by_name(env: env, name: name) {
     Present { value: binding } =>

@@ -43,7 +43,6 @@ import std.realization_schedule {
 import v2.std.algebra { any, contains, fold_list, length, list_snoc_item, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { String }
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_witness_entries,
