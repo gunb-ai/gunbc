@@ -230,9 +230,15 @@ pub struct NamespaceDelta {
     /// The two sides, rendered. Never a summary: a refusal a reader cannot act on withholds the
     /// analysis.
     pub detail: String,
-    /// Modules whose transitive closure moves because of THIS delta. Measured, never
-    /// separately adjudicated — see the module header.
-    pub closure_blast_radius: usize,
+    /// Modules whose transitive closure moves because of THIS delta, when that question was
+    /// ASKED. Closure is a pure function of membership, so only a membership delta generates
+    /// closure motion and only a membership row can answer. `None` is the binding row saying the
+    /// question does not apply to it — it is NOT a measured zero, and the renderer omits the
+    /// clause entirely rather than printing one. The field was a bare `usize` until 2026-09-01,
+    /// which gave those two states one spelling: every binding row carried a literal `0` and
+    /// rendered identically to a membership row whose closure genuinely moved nothing, so a
+    /// reader could not tell an unasked question from a measured answer.
+    pub closure_blast_radius: Option<usize>,
     /// Set when a transition admission covers this exact subject and disposition.
     pub admitted_by: Option<String>,
 }
@@ -836,7 +842,7 @@ pub fn adjudicate(
                     base_set.iter().cloned().collect::<Vec<_>>().join(", "),
                     head_set.iter().cloned().collect::<Vec<_>>().join(", ")
                 ),
-                closure_blast_radius: 0,
+                closure_blast_radius: None,
                 admitted_by: None,
             });
         }
@@ -864,7 +870,7 @@ pub fn adjudicate(
                 } else {
                     format!("added; NO name in this module resolves into it")
                 },
-                closure_blast_radius: blast_radius(&closure_moved_for, target),
+                closure_blast_radius: Some(blast_radius(&closure_moved_for, target)),
                 admitted_by: None,
             });
         }
@@ -892,7 +898,7 @@ pub fn adjudicate(
                          (a binding that did not would be refused on its own row)"
                     )
                 },
-                closure_blast_radius: blast_radius(&closure_moved_for, target),
+                closure_blast_radius: Some(blast_radius(&closure_moved_for, target)),
                 admitted_by: None,
             });
         }
@@ -1151,13 +1157,20 @@ pub fn render_delta(delta: &NamespaceDelta) -> String {
         Some(label) => format!(" ADMITTED-BY {label}"),
         None => String::new(),
     };
+    // The clause is printed ONLY where the question was asked. A row that did not ask it says
+    // nothing, rather than saying zero: a measurement-shaped output on a row that measured
+    // nothing is fabricated plausible output, and it was read as evidence of containment.
+    let radius = match delta.closure_blast_radius {
+        Some(n) => format!(" [closure blast radius: {n} module(s)]"),
+        None => String::new(),
+    };
     format!(
-        "{} {} — {}{} [closure blast radius: {} module(s)]",
+        "{} {} — {}{}{}",
         disposition_label(delta.disposition),
         delta_subject_render(&delta.subject),
         delta.detail,
         admitted,
-        delta.closure_blast_radius
+        radius
     )
 }
 
