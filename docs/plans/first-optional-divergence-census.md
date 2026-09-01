@@ -73,6 +73,39 @@ non-optional field is a real consumer class (`tested_head_sha: lines.skip(n: 4).
 source text. Add 22 `let` bindings whose consumers are not followed here. What would settle it is not
 a better reader — it is the compiler, which knows every declared type.
 
+### How this document's numbers went wrong twice, and the rule that covers both
+
+**A catch-all is only visible once something has fallen out of it, so the first census of anything
+should be assumed to have one.** This is stated here because it is the rule a reader needs in order
+to weigh every number below it, and because this document is its own two receipts.
+
+*First layer — the population was a spelling.* The census declared itself over "every terminal
+`|> first` occurrence". That is a syntax, not the operation, and the method-call form is the larger
+by far. Everything that has actually failed in production was in the half never looked at.
+
+*Second layer — the residue wore a class name.* The re-derivation that fixed the spelling produced a
+tidy table with six named classes and a 96-site bucket called `propagated / returned onward,
+declared type honest`. That is not a class; it is what was left after five were named, described in
+a way that reassures. It had already eaten a real one — record-field assignment into a declared
+non-optional field.
+
+The correction was not judgement or restraint. Three successive classifiers were written; the first
+two both produced the tidy table. The bucket that now names its own undecidability appeared only
+after a **specimen** — `tested_head_sha: lines.skip(n: 4).first()` in `gunbc.merge_admission_produce`
+— fell out of the catch-all and showed what it was hiding. Without that specimen the tidy table
+would have shipped a third time.
+
+So the operative rules, both earned here rather than reasoned:
+
+- Go looking for the catch-all before someone else finds it. The tell is a bucket defined by what it
+  is **not**, or one whose description is a reassurance — *honest*, *unaffected*, *fine*.
+- Where the instrument genuinely cannot decide a position, name the bucket after the
+  **undecidability** rather than the likelier class, and say what *would* decide it. Here that is
+  the compiler, which knows every declared type; a guessed split would have produced a tidier table
+  no reader could question.
+- Report the surviving count as a **lower bound**, and make the completion criterion a
+  self-verifying property rather than a number.
+
 **The completion criterion is therefore not "23 sites fixed" — it is THE CLOSURE LOADS.** That is
 self-verifying and needs no population known in advance, and each fix lets the closure load further
 so the next refusal names the next site: exhaustive by construction, every step verified, and it
