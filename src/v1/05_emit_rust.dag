@@ -3830,7 +3830,10 @@ fn collect_item_type_surface_occurrences(item: Node, source_indices: Map<String,
     Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: false, source_indices: source_indices)
     _ => []
   }
-  concat(from_ann, concat(from_params, from_inferred))
+  let from_decl_children = if is_type_def_item(item: item) {
+    item.children |> flat_map(child => collect_item_type_surface_occurrences(item: child, source_indices: source_indices))
+  } else { [] }
+  concat(from_ann, concat(from_params, concat(from_inferred, from_decl_children)))
 }
 
 fn emit_scrutinee_type_name(scrutinee: Node, source_indices: Map<String, NewlineIndex>) -> String {

@@ -11,6 +11,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // includes were absent and this witness was red.  The excludes keep a future
 // position-dependent collapse from satisfying the positive strings beside an
 // erased spelling.
+
 fn w_distinct_phantom_markers_remain_distinct() -> Bool {
   compile_dag_rust_emit_check(
     "module phantom_marker_identity\n\ntype Quantity = Time | Memory\n\ntype Measure<Q> {\n  count: Int\n}\n\ntype DistinctMeasures {\n  time: Measure<Time>\n  memory: Measure<Memory>\n}\n",
@@ -22,4 +23,93 @@ fn w_distinct_phantom_markers_remain_distinct() -> Bool {
 
 test fn distinct_phantom_markers_do_not_render_identically() -> Bool {
   w_distinct_phantom_markers_remain_distinct()
+}
+
+// The same applied-argument decision must survive every outer type renderer.
+// These five uniquely named declarations exercise alias RHS, record field,
+// parameter, return, and top-level data positions.
+
+fn w_outer_positions_share_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_outer_positions\n\ntype Quantity = Time | Memory\n\ntype Measure<Q> { count: Int }\n\ntype AliasPosition = Measure<Time>\n\ntype FieldPosition { field: Measure<Time> }\n\nfn parameter_position(value: Measure<Time>) -> Int { value.count }\n\nfn return_position() -> Measure<Time> { Measure { count: 0 } }\n\ndata data_position: Measure<Time> = Measure { count: 0 }\n",
+    "src/phantom_marker_outer_positions.rs",
+    ["AliasPosition", "FieldPosition", "parameter_position", "return_position", "data_position", "Measure<Time>"],
+    ["Measure<()>"]
+  )
+}
+
+test fn every_outer_renderer_preserves_the_same_marker_argument() -> Bool {
+  w_outer_positions_share_marker_identity()
+}
+
+// A bare unit variant in a type position is not thereby an applied argument.
+// The broad all-type-surface predicate changes this use-line to the direct ZST
+// marker import, making this control red and exposing the former 70-file cut.
+
+fn w_non_applied_variant_keeps_value_import() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_non_applied\n\nimport std.measure { Time }\n\ntype NonApplied {\n  value: Time\n}\n",
+    "src/phantom_marker_non_applied.rs",
+    ["std_measure::Quantity"],
+    []
+  )
+}
+
+test fn non_applied_unit_variant_does_not_become_marker_import() -> Bool {
+  w_non_applied_variant_keeps_value_import()
+}
+
+// Both consumers are in one closure and bind the same leaf spelling to
+// different declarations.  The marker consumer must read its own module env;
+// a closure-global env selecting the plain record loses the marker identity.
+
+fn w_marker_module_uses_its_own_type_environment() -> Bool {
+  let entry = "module phantom_marker_module_context\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_consumer { PlainConsumer }\n\ntype Both { marker: MarkerConsumer, plain: PlainConsumer }\n"
+  compile_dag_rust_emit_check(
+    entry,
+    "src/test_fixture_phantom_marker_identity_marker_consumer.rs",
+    ["Measure<Time"],
+    ["Quantity::\\\{Time}"]
+  )
+}
+
+fn w_plain_module_uses_its_own_type_environment() -> Bool {
+  let entry = "module phantom_marker_module_context\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_consumer { PlainConsumer }\n\ntype Both { marker: MarkerConsumer, plain: PlainConsumer }\n"
+  compile_dag_rust_emit_check(
+    entry,
+    "src/test_fixture_phantom_marker_identity_plain_consumer.rs",
+    ["PlainBox<Time>"],
+    ["std_measure::Quantity"]
+  )
+}
+
+test fn module_context_not_global_context_decides_marker_identity() -> Bool {
+  w_marker_module_uses_its_own_type_environment()
+    && w_plain_module_uses_its_own_type_environment()
+}
+
+// The unrelated record deliberately shares the leaf SharedMarker with the
+// marker provider in the same closure.  Its resolved declaration identity,
+// not last-segment equality, determines that it is an ordinary type argument.
+
+test fn declaration_identity_wins_over_same_leaf_spelling() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_identity_over_spelling\n\nimport test.fixture.phantom_marker_identity.marker_consumer { MarkerConsumer }\nimport test.fixture.phantom_marker_identity.plain_provider { PlainBox, Time }\n\ntype Subject { marker: MarkerConsumer, plain: PlainBox<Time> }\n",
+    "src/phantom_marker_identity_over_spelling.rs",
+    ["PlainBox<Time>"],
+    ["std_measure::Time"]
+  )
+}
+
+// Position is recomputed at each immediate parent edge.  In
+// Outer<Inner<Time>>, Time qualifies from the Inner edge, not transitively from
+// Outer, while the applied head Inner is never mistaken for its own argument.
+
+test fn nested_applied_argument_keeps_inner_marker_identity() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_nested\n\ntype Quantity = Time | Memory\n\ntype Inner<Q> { value: Int }\n\ntype Outer<T> { value: Int }\n\ntype Nested { value: Outer<Inner<Time>> }\n",
+    "src/phantom_marker_nested.rs",
+    ["Inner<Time>"],
+    ["Inner<()>"]
+  )
 }
