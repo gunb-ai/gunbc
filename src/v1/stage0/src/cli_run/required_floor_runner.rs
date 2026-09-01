@@ -8,6 +8,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+
+/// The two grounds on which the floor removes an enrolled identity from a roster BEFORE the
+/// fold. The authority is `v1.compiler.expected_red_roster_join`; this alias only shortens the
+/// path at the suppression site, which is the one place both grounds are decided.
+use crate::v1_compiler_expected_red_roster_join::ExpectedRedSuppressionGround as SuppressionGround;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
@@ -3596,8 +3601,28 @@ pub fn run_required_floor(
             .iter()
             .any(|prefix| module_path.starts_with(prefix.as_str()))
     };
-    let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
+    // RETURNS WHAT IT REMOVED, at identity grain and carrying which of the two grounds removed
+    // it. The counts were already printed; what did not exist was the per-identity fact, and the
+    // expected-red roster join needs exactly that to account for every enrolled identity rather
+    // than for the survivors. See the disposition note in v1.compiler.expected_red_roster_join.
+    let suppress_withheld = |roster: &mut HashSet<String>,
+                             name: &str|
+     -> Vec<(String, SuppressionGround)> {
+        let mut removed: Vec<(String, SuppressionGround)> = Vec::new();
         let before = roster.len();
+        let mut withheld: Vec<String> = roster
+            .iter()
+            .filter(|identity| {
+                !(changed_witness_set.contains(*identity) || !cost_debt_roster.contains(*identity))
+            })
+            .cloned()
+            .collect();
+        withheld.sort();
+        removed.extend(
+            withheld
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::WithheldCostDebt)),
+        );
         roster.retain(|identity| {
             changed_witness_set.contains(identity) || !cost_debt_roster.contains(identity)
         });
@@ -3610,6 +3635,20 @@ pub fn run_required_floor(
             );
         }
         let before = roster.len();
+        let mut outside: Vec<String> = roster
+            .iter()
+            .filter(|identity| {
+                !(changed_witness_set.contains(*identity)
+                    || identity_inside_required_gate(identity))
+            })
+            .cloned()
+            .collect();
+        outside.sort();
+        removed.extend(
+            outside
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::OutsideRequiredGate)),
+        );
         roster.retain(|identity| {
             changed_witness_set.contains(identity) || identity_inside_required_gate(identity)
         });
@@ -3622,6 +3661,7 @@ pub fn run_required_floor(
                  roster admits the module or in the whole-corpus receipts run"
             );
         }
+        removed
     };
 
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
@@ -4143,7 +4183,7 @@ pub fn run_required_floor(
         out
     };
     let mut expected_red_roster = expected_red_roster;
-    suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    let expected_red_suppressed = suppress_withheld(&mut expected_red_roster, "floor_expected_red");
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -4197,7 +4237,7 @@ pub fn run_required_floor(
         out
     };
     let mut route_gap_roster = route_gap_roster;
-    suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -4394,7 +4434,7 @@ pub fn run_required_floor(
         out
     };
     let mut non_verdict_roster = non_verdict_roster;
-    suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
+    let _ = suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -4483,8 +4523,18 @@ pub fn run_required_floor(
     let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let claim_cost_path = std::env::var("GUNBC_REQUIRED_FLOOR_CLAIM_COST").ok();
     let mut roster_join_report = if roster_join_active {
-        let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
+        // THE DENOMINATOR IS THE ENROLLED ROSTER, NOT THE SURVIVORS. Until 2026-09-01 this took
+        // the post-suppression roster, so the report described only identities the fold could
+        // reach while its own run_note said it described every enrolled one. The suppressed rows
+        // now enter the report and carry their ground, so the sentence is true and a reader can
+        // see the two populations apart.
+        let mut roster_identities: Vec<String> = expected_red_roster
+            .iter()
+            .cloned()
+            .chain(expected_red_suppressed.iter().map(|(id, _)| id.clone()))
+            .collect();
         roster_identities.sort();
+        roster_identities.dedup();
         let run_head = std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])
             .output()
@@ -4504,16 +4554,24 @@ pub fn run_required_floor(
                 .to_string()
         } else {
             "full-floor join: every enrolled identity receives still_red | now_passes | \
-             not_evaluated"
+             not_evaluated | suppressed; suppressed rows were removed before the fold and carry \
+             the ground that removed them"
                 .to_string()
         };
-        Some(
+        let mut report =
             crate::v1_compiler_expected_red_roster_join::new_expected_red_roster_join_report(
                 run_head,
                 run_note,
                 std::rc::Rc::new(roster_identities.into_iter().collect::<im::Vector<_>>()),
-            ),
-        )
+            );
+        for (identity, ground) in expected_red_suppressed.iter() {
+            report = crate::v1_compiler_expected_red_roster_join::record_suppressed(
+                report,
+                identity.clone(),
+                *ground,
+            );
+        }
+        Some(report)
     } else {
         None
     };
@@ -6781,5 +6839,104 @@ mod changed_witness_projection_tests {
             rows.iter().find(|(q, _)| *q == "m.b").map(|(_, s)| *s),
             Some(CostDebtRosterStanding::DeclaredButNotWithheld)
         );
+    }
+}
+
+#[cfg(test)]
+mod expected_red_roster_join_suppression_tests {
+    use crate::v1_compiler_expected_red_roster_join::{
+        disposition_label, disposition_reason, expected_red_roster_join_not_evaluated,
+        expected_red_roster_join_roster_len, expected_red_roster_join_suppressed,
+        finalize_not_observed, new_expected_red_roster_join_report, record_suppressed,
+        ExpectedRedSuppressionGround,
+    };
+    use std::rc::Rc;
+
+    fn report_over(
+        identities: &[&str],
+    ) -> Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport> {
+        new_expected_red_roster_join_report(
+            Some("fixture-head".to_string()),
+            "fixture".to_string(),
+            Rc::new(
+                identities
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<im::Vector<String>>(),
+            ),
+        )
+    }
+
+    /// A suppressed identity is IN the report and carries the ground that removed it. This is the
+    /// repair's whole subject: before it, a suppressed identity was absent from the roster the
+    /// report was built over, so the run_note's "every enrolled identity" sentence described a
+    /// population the artifact did not contain.
+    #[test]
+    fn a_suppressed_identity_is_reported_with_its_ground() {
+        let report = report_over(&["a.b.c", "d.e.f"]);
+        let report = record_suppressed(
+            report,
+            "a.b.c".to_string(),
+            ExpectedRedSuppressionGround::OutsideRequiredGate,
+        );
+        assert_eq!(expected_red_roster_join_roster_len(report.clone()), 2);
+        assert_eq!(expected_red_roster_join_suppressed(report.clone()), 1);
+        let row = report
+            .rows
+            .iter()
+            .find(|r| r.identity == "a.b.c")
+            .expect("suppressed identity is in the report");
+        assert_eq!(disposition_label(row.disposition.clone()), "suppressed");
+        assert_eq!(
+            disposition_reason(row.disposition.clone()),
+            "suppressed_outside_required_gate"
+        );
+    }
+
+    /// THE DISCRIMINATING RED, and it is not the arm above. `finalize_not_observed` rewrites every
+    /// row still carrying the initial placeholder into `not_in_executed_manifest` -- which is TRUE
+    /// of a row nobody executed and FALSE of a row nobody attempted. If it reached suppressed rows,
+    /// the artifact would report the 39 outside-gate identities as "no matching claim executed",
+    /// losing the only fact that distinguishes a dormant enrolment from an unobserved one, and
+    /// every assertion in the test above would still pass because it runs before finalize.
+    #[test]
+    fn finalize_does_not_overwrite_a_suppressed_row_with_not_in_executed_manifest() {
+        let report = report_over(&["a.b.c", "d.e.f"]);
+        let report = record_suppressed(
+            report,
+            "a.b.c".to_string(),
+            ExpectedRedSuppressionGround::WithheldCostDebt,
+        );
+        let report = finalize_not_observed(report);
+        let suppressed = report
+            .rows
+            .iter()
+            .find(|r| r.identity == "a.b.c")
+            .expect("suppressed identity survives finalize");
+        assert_eq!(
+            disposition_label(suppressed.disposition.clone()),
+            "suppressed"
+        );
+        assert_eq!(
+            disposition_reason(suppressed.disposition.clone()),
+            "suppressed_withheld_cost_debt"
+        );
+        // The positive control: an ordinary unobserved row IS finalized, so the assertion above
+        // cannot be satisfied by finalize doing nothing at all.
+        let unobserved = report
+            .rows
+            .iter()
+            .find(|r| r.identity == "d.e.f")
+            .expect("the other identity is present");
+        assert_eq!(
+            disposition_label(unobserved.disposition.clone()),
+            "not_evaluated"
+        );
+        assert_eq!(
+            disposition_reason(unobserved.disposition.clone()),
+            "not_in_executed_manifest"
+        );
+        assert_eq!(expected_red_roster_join_not_evaluated(report.clone()), 1);
+        assert_eq!(expected_red_roster_join_suppressed(report), 1);
     }
 }
