@@ -4,7 +4,7 @@ import std.types { Bool, Int, String, NonEmptyStr }
 import std.content_hash { content_hash_atom, Sha1Digest }
 import extdeps.git.object_store { GitSha1ObjectId }
 import extdeps.crypto.hash { sha256_digest }
-import v2.workflow.floor_discovery { floor_discovery_tree_id }
+import v2.workflow.floor_discovery { FloorDiscoveryTreeId, floor_discovery_tree_id }
 import extdeps.git.inspect { CommitSha }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import extdeps.languages.rust.compiler_phases { RustcPhase, Parse, Expand, Resolve, Typeck, Borrowck }
@@ -51,6 +51,11 @@ import gunbc.self_host_compile_phase_frontier {
   board_row,
   CompilePhaseFrontierValidated,
   compile_phase_frontier_standing,
+  CompilePhaseFrontierCoverage,
+  FrontierCoversSubjectTree,
+  FrontierReceiptTreeStale,
+  FrontierCoverageRefused,
+  compile_phase_frontier_coverage,
   genesis_5006ddc6_parse_observation,
   genesis_5006ddc6_raw_error_diagnostic_identities,
   phase_census_digest,
@@ -680,4 +685,75 @@ fn clean_refusal_receipt() -> CompilePhaseFrontierReceipt {
 
 test fn the_same_receipt_without_the_repeat_is_coherent() -> Bool {
   receipt_population_coherent(receipt: clean_refusal_receipt())
+}
+
+// THE LIVE-COVERAGE JOIN, AND THESE FOUR PROBES ARE ITS ENROLLED EVIDENCE. The judgment gates
+// nothing today -- see the module annotation on compile_phase_frontier_coverage for why an
+// actuated arm would refuse every merge -- so these fixtures are the only thing that executes it,
+// and they stay enrolled when the measurement surface that actuates it arrives.
+fn fixture_tree_at(hex: String) -> FloorDiscoveryTreeId {
+  floor_discovery_tree_id(object_id: GitSha1ObjectId { digest: Sha1Digest { hex: hex } })
+}
+
+// The tree clean_refusal_receipt names. Written once so the covered and stale probes cannot drift
+// apart into agreeing for a reason other than the one under test.
+fn fixture_receipt_tree_hex() -> String { "2222222222222222222222222222222222222222" }
+
+test fn a_receipt_naming_the_tree_under_judgment_covers_it() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [clean_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoversSubjectTree { latest: _ } => true
+    _ => false
+  }
+}
+
+// THE DISCRIMINATING RED. Same validated series, a different tree under judgment -- which is the
+// ordinary state of every merge, since the live tree moves and receipts are authored rarely. If
+// this answered Covered the judgment would be a decoration that reports coverage it never checked.
+test fn a_receipt_naming_a_different_tree_is_stale_against_the_tree_under_judgment() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [clean_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: "7777777777777777777777777777777777777777") }
+  ) {
+    FrontierReceiptTreeStale { receipt_tree: r, subject_tree: s } =>
+      r == concat("sha1:", fixture_receipt_tree_hex())
+        && s == "sha1:7777777777777777777777777777777777777777"
+    _ => false
+  }
+}
+
+// THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller with no tree identity gets a typed
+// refusal; answering Covered there is the absorbing fallback, and answering Stale would be a
+// fabricated comparison against a subject nobody observed.
+test fn an_unobserved_tree_under_judgment_refuses_rather_than_covering() -> Bool {
+  match compile_phase_frontier_coverage(series: [clean_refusal_receipt()], subject_tree: none) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+// AN INVALID SERIES MAY NOT COVER ANYTHING, EVEN WHEN THE TREES MATCH. duplicated_refusal_receipt
+// names the SAME tree as the clean one and is refused by receipt_population_coherent, so a
+// coverage judgment that compared tree identities before validating the series would answer
+// Covered here. This is the probe that pins the ordering.
+test fn an_incoherent_series_refuses_coverage_of_the_tree_it_names() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [duplicated_refusal_receipt()],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
+}
+
+test fn an_empty_series_refuses_coverage_rather_than_reporting_none_needed() -> Bool {
+  match compile_phase_frontier_coverage(
+    series: [],
+    subject_tree: Present { value: fixture_tree_at(hex: fixture_receipt_tree_hex()) }
+  ) {
+    FrontierCoverageRefused { reason: _ } => true
+    _ => false
+  }
 }
