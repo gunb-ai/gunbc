@@ -1368,21 +1368,26 @@ pub fn rust_witness_type_arg_admit_rendered(
     if ((rendered.clone() == "_".to_string()) || (rendered.clone() == "".to_string())) {
         std::option::Option::None
     } else {
-        if (((v1_rt::string_length(&rendered) == 1) && rust_is_uppercase_letter(rendered.clone()))
-            && !type_var_in_fn_generic_scope(
-                rendered.clone(),
-                emit_info.fn_generic_param_names.clone(),
-            ))
-        {
+        if v1_rt::map_contains_key(&emit_info.variant_to_enum.clone(), rendered.clone()) {
             std::option::Option::None
         } else {
-            if rust_fold_rendered_type_has_any_spurious_generic(
-                rendered.clone(),
-                emit_info.fn_generic_param_names.clone(),
-            ) {
+            if (((v1_rt::string_length(&rendered) == 1)
+                && rust_is_uppercase_letter(rendered.clone()))
+                && !type_var_in_fn_generic_scope(
+                    rendered.clone(),
+                    emit_info.fn_generic_param_names.clone(),
+                ))
+            {
                 std::option::Option::None
             } else {
-                Some(rendered.clone())
+                if rust_fold_rendered_type_has_any_spurious_generic(
+                    rendered.clone(),
+                    emit_info.fn_generic_param_names.clone(),
+                ) {
+                    std::option::Option::None
+                } else {
+                    Some(rendered.clone())
+                }
             }
         }
     }

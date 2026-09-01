@@ -1015,19 +1015,36 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   }
 }
 
-fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+// A REFUSAL IS AN EXPRESSION, NOT A PATH, and this carrier exists because the refusal was written
+// as a path and is not one. `compile_error!(..)` was returned where the caller then appends the
+// variant's field body, producing `compile_error!("..") { diagnostic: .. }` -- which is not Rust.
+// Measured on v2.compiler.compile: one unresolved carrier became FOUR rows, two of them uncoded
+// parse errors ("struct literal body without path", "expected one of `)`, `,` ... found `{`") plus
+// an E0061 on the macro. A refusal that emits a syntax error is not a located refusal; it is noise
+// at a location, and it is louder about the wrong thing than the defect it replaced.
+// So the verdict is typed and the CALLER decides the whole expression: on refusal it emits the
+// `compile_error!` alone and drops the field body, which is one located row naming the variant.
+type WitnessCtorPathVerdict
+  = WitnessCtorPathResolved { path: String }
+  | WitnessCtorPathUnresolved { reason: String }
+
+fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> WitnessCtorPathVerdict {
   match effective_parent {
     Present { value: parent } =>
       if !rust_witness_parent_leaf(parent: parent) {
-        rust_variant_path(parent: parent, rust_name: variant_name)
+        WitnessCtorPathResolved { path: rust_variant_path(parent: parent, rust_name: variant_name) }
       } else {
         match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
-          Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
-          Absent => concat("compile_error!(\"witness carrier type arg unresolved for variant ", variant_name, "\")")
+          Present { value: arg } => WitnessCtorPathResolved { path: concat("Witness::<", arg, ">::", variant_name) }
+          Absent => WitnessCtorPathUnresolved { reason: concat("witness carrier type arg unresolved for variant ", variant_name) }
         }
       }
-    Absent => ctor_name
+    Absent => WitnessCtorPathResolved { path: ctor_name }
   }
+}
+
+fn rust_witness_ctor_refusal_expr(reason: String) -> String {
+  concat("compile_error!(\"", reason, "\")")
 }
 
 fn is_parametric_opaque_type_by_name(env: TypeEnv, type_name: String) -> Bool {
@@ -12688,10 +12705,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       let rust_tn = if optional_variant {
         rust_optional_variant_spelling(name: variant_surface_name)
       } else { tn }
-      let display_tn = if optional_variant { rust_tn }
-        else {
-          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
-        }
+      let ctor_verdict = if optional_variant {
+        WitnessCtorPathResolved { path: rust_tn }
+      } else {
+        rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+      }
+      let display_tn = match ctor_verdict {
+        WitnessCtorPathResolved { path: p } => p
+        WitnessCtorPathUnresolved { reason: r } => return rust_witness_ctor_refusal_expr(reason: r)
+      }
       if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
           Present { value: f } =>

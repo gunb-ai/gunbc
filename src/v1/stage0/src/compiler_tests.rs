@@ -2448,13 +2448,21 @@ mod compiler_tests {
             "a Witness-headed expected type still answers with its carrier"
         );
         let no_fields: Vec<std::rc::Rc<crate::v1_std_core::Node>> = Vec::new();
+        let mut variants = HashMap::new();
+        variants.insert("Holds".to_string(), "Witness".to_string());
+        variants.insert("Violates".to_string(), "Witness".to_string());
+        let emit_with_variants =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                variant_to_enum: std::rc::Rc::new(variants),
+                ..(*empty_emit).clone()
+            });
         assert!(
             crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
                 "Violates".to_string(),
-                named_type_node("Holds"),
+                shaped_type_node("Witness", vec![named_type_node("Holds")]),
                 std::rc::Rc::new(no_fields.clone().into()),
                 shared2.clone(),
-                empty_emit.clone(),
+                emit_with_variants.clone(),
                 source_indices2.clone()
             )
             .is_none(),
