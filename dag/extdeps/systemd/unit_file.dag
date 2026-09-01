@@ -1,7 +1,7 @@
 module extdeps.systemd.unit_file
 
 import std.types { NonEmptyStr, String, List, Bool, Int }
-import std.measure { ByteSize, byte_size_count }
+import std.measure { ByteSize, byte_size_count, HardwareThreadCount, hardware_thread_count_value }
 import extdeps.systemd {
   SystemdUnitProperty,
   MemoryMax, MemoryHigh, MemorySwapMax, TasksMax, CPUWeight,
@@ -378,10 +378,33 @@ type SystemdSliceDirective sole_constructor {
 // that difference into position, which is the same move this module refuses for `RestartSec=` versus
 // `TimeoutStopSec=` above; and the two ranges are unrelated, so a bound modeled later narrows one
 // arm rather than needing to be told which meaning it is narrowing.
+// `CPUQuota=` IS THE PERCENTAGE FORM gunbc.systemd_directive_value_grain FILED AS LATENT, AND
+// DirectiveCpuTime IS WHAT MAKES IT LIVE. That filing said the loss "becomes live the first time a
+// producer wants a percentage", and named the obstacle: a percentage is "a fraction of a host figure
+// this repository does not hold".
+//
+// THAT OBSTACLE DOES NOT APPLY ON THIS AXIS, which is why the arm is a thread count rather than the
+// general percentage arm the filing anticipated. `MemoryMax=50%` is a fraction of installed memory --
+// a host figure. `CPUQuota=` is denominated in CPU TIME PER WALL SECOND, where 100% is one CPU by
+// definition and not a share of the machine, so the quantity is a MULTIPLE OF A UNIT this repository
+// already carries as HardwareThreadCount. Six threads is 600%, and it means the same six threads on a
+// 128-core host as on an 8-core one.
+//
+// So the arm is DirectiveCpuTime and not DirectivePercentage: a general percentage arm would also
+// admit `MemoryMax=50%`, which is still a fraction of a figure nothing here holds, and would make that
+// unwritable state writable again to buy reuse. The memory half of the filing stays open and keeps its
+// own trigger.
+//
+// There is deliberately no `slice_cpu_quota` mint beside slice_cpu_weight. One was written and
+// deleted unused (review 57699): the live CPU-quota producer is gunbc.host_converge
+// runner_cpu_boundary_knobs, which reaches the property-generic PerSlotMemoryCap target directly, so
+// a slice-directive mint would have been set-completion with no caller -- the residue DESIGN 6 names.
+// It costs one line to add when a slice-directive consumer exists.
 type SystemdDirectiveValue
   = DirectiveByteCount { bytes: ByteSize }
   | DirectiveCardinal { count: Int }
   | DirectiveWeight { weight: Int }
+  | DirectiveCpuTime { threads: HardwareThreadCount }
   | DirectiveUnlimited
 
 fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
@@ -389,6 +412,7 @@ fn systemd_directive_value_wire(value: SystemdDirectiveValue) -> String {
     DirectiveByteCount { bytes: b } => to_string(byte_size_count(b: b))
     DirectiveCardinal { count: n } => to_string(n)
     DirectiveWeight { weight: w } => to_string(w)
+    DirectiveCpuTime { threads: t } => join([to_string(hardware_thread_count_value(t: t) * 100), "%"], "")
     DirectiveUnlimited => systemd_directive_unlimited_wire
   }
 }
