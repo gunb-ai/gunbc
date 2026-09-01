@@ -2371,9 +2371,9 @@ mod compiler_tests {
             name: "outcome_accepted".to_string(),
             module_name: "v2.std.diagnostic".to_string(),
             kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
-            service_names: std::rc::Rc::new(Vec::new()),
-            resource_names: std::rc::Rc::new(Vec::new()),
-            params: std::rc::Rc::new(vec![param]),
+            service_names: std::rc::Rc::new(im::Vector::new()),
+            resource_names: std::rc::Rc::new(im::Vector::new()),
+            params: std::rc::Rc::new(vec![param].into()),
             is_self_recursive: false,
             has_non_tail_self_call: false,
         }))
@@ -2414,6 +2414,8 @@ mod compiler_tests {
     fn witness_carrier_declines_a_non_witness_expected_type() {
         let source_indices = std::rc::Rc::new(HashMap::new());
         let shared = std::rc::Rc::new(im::OrdSet::new());
+        let shared2 = shared.clone();
+        let source_indices2 = source_indices.clone();
         let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
         let witness_of_node = shaped_type_node("Witness", vec![named_type_node("Node")]);
         let outcome_of_witness = shaped_type_node("Outcome", vec![witness_of_node.clone()]);
@@ -2444,6 +2446,31 @@ mod compiler_tests {
             ),
             Some("Node".to_string()),
             "a Witness-headed expected type still answers with its carrier"
+        );
+        let no_fields: Vec<std::rc::Rc<crate::v1_std_core::Node>> = Vec::new();
+        assert!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
+                "Violates".to_string(),
+                named_type_node("Holds"),
+                std::rc::Rc::new(no_fields.clone().into()),
+                shared2.clone(),
+                empty_emit.clone(),
+                source_indices2.clone()
+            )
+            .is_none(),
+            "the Violates fallback must decline a non-Witness resolved type too, or the fabrication only moves one frame down"
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
+                "Violates".to_string(),
+                shaped_type_node("Witness", vec![named_type_node("Node")]),
+                std::rc::Rc::new(no_fields.into()),
+                shared2,
+                empty_emit,
+                source_indices2
+            ),
+            Some("Node".to_string()),
+            "a Witness-headed resolved type still answers the Violates fallback"
         );
     }
 

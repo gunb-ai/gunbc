@@ -1513,7 +1513,7 @@ pub fn rust_witness_type_arg_from_holds_value_field(
     }
 }
 
-pub fn rust_witness_carrier_from_expected_type_node(
+pub fn rust_witness_carrier_from_witness_headed_type_node(
     type_node: Rc<Node>,
     shared_types: Rc<BTreeSet<String>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -1547,7 +1547,7 @@ pub fn rust_witness_type_arg_from_expected_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match emit_info.expected_type.clone() {
-        Some(rt) => rust_witness_carrier_from_expected_type_node(
+        Some(rt) => rust_witness_carrier_from_witness_headed_type_node(
             rt.clone(),
             shared_types.clone(),
             emit_info.clone(),
@@ -1587,7 +1587,7 @@ pub fn rust_witness_type_arg_for_variant(
                 source_indices.clone(),
             ) {
                 Some(arg) => Some(arg.clone()),
-                std::option::Option::None => rust_witness_carrier_from_type_node(
+                std::option::Option::None => rust_witness_carrier_from_witness_headed_type_node(
                     resolved_type.clone(),
                     shared_types.clone(),
                     emit_info.clone(),
