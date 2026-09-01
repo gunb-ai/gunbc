@@ -476,8 +476,15 @@ fn is_classified(path: String) -> Bool {
 // EVERY MEMBER THE PLAN WRITES IS CLASSIFIED. Asserted over the roster rather than one path at a
 // time, so a member added to the roster without a classification arm is red here rather than
 // discovered by whoever next reads the fold.
+//
+// THE ROSTER LENGTH IS NOT ASSERTED, AND AN EARLIER CUT ASSERTED IT AT TEN. That literal was a
+// measurement of the same tree it was checking -- automate its update and the row collapses to
+// measure() == measure(), which is the change-detector DESIGN forbids as an oracle (review 57997).
+// The identity join below is the whole content of the row. Non-vacuity is still required, because
+// `all` over an empty roster is true for free and a roster that silently stopped being populated
+// would satisfy this row without classifying anything.
 test fn every_rostered_persisted_member_is_classified() -> Bool {
-  list_length(items: fleet_converge_persisted_member_paths) == 10
+  list_length(items: fleet_converge_persisted_member_paths) > 0
     && all(fleet_converge_persisted_member_paths, p => is_classified(path: p))
 }
 
