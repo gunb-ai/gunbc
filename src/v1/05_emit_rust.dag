@@ -4640,7 +4640,7 @@ type ReferenceDerivedUseLinePlan {
 // (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
 // is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
 // answers what `any` answered, for the same names in the same order.
-fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, type_env: TypeEnv, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -4711,7 +4711,11 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
           Absent => false
         }
       )
-      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, type_position_names: applied_type_argument_names, type_env: type_env, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+      let plan_module_env = match map_get(module_index.by_name, this_module_name) {
+        Present { value: tm } => Present { value: tm.type_env }
+        Absent => none
+      }
+      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, type_position_names: applied_type_argument_names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, module_env: plan_module_env)
       let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
       let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
       let fallback = names |> flat_map(nm =>
@@ -4795,8 +4799,8 @@ fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, 
   ))
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, type_env: TypeEnv, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
-  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, type_env: type_env, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
+  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
   plan.lines
 }
 
@@ -4859,7 +4863,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
-  let imports_str = emit_imports(imports: module_imports(n: m), type_env: scope.type_env, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
+  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items, module_env: Present { value: scope.type_env })
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
     items: typed_module.items,
@@ -4886,7 +4890,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       this_module_name: authored_name(env: scope.type_env, node: m),
       registry: registry,
       emit_info: emit_info,
-      type_env: scope.type_env,
       local_type_names: local_type_names,
       already_imported_names: already_imported_names,
       export_sets: export_sets,
@@ -5754,10 +5757,52 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
   }
 }
 
-fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, type_env: TypeEnv, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
+// EMISSION FOLLOWS RESOLUTION AT THE AUTHORED-IMPORT BOUNDARY (#9813's contract, 2026-08-31).
+// A name in an authored import list earns a use-line only if the module's RESOLVED binding for
+// that bare spelling is the imported declaration. Post-#9813 the kernel overlay sits above the
+// direct-import layer unconditionally, so a kernel-spelled name (String from v2.std.text, Bool
+// from std.types) binds the kernel identity while the emitted `pub use` re-bound the spelling to
+// the provider's structural type -- the shadow measured as 139 of the 146 E0308 rows in frontier
+// receipt 1 (host std::string::String vs Rc<im::Vector<i64>>). The question is asked of the
+// resolver's own lookup over the module's typed environment and decided by the BINDING'S IDENTITY
+// -- the kernel span file marker -- never by a name roster or arm order: a name that is both a
+// graph type and a kernel spelling answers by what its binding IS. Absent binding or absent env
+// keeps the line: ignorance must not widen a drop (DESIGN section 5). Structural consumers whose
+// binding declares in the provider (Witness) keep their lines by the same comparison. The drop is
+// further keyed to the binding's own STRUCTURE: a kernel binding that is a bare synthetic scalar
+// (no connective, no children -- String, Int, Float, Bytes) realizes as a host type the emitted
+// module reaches with no import, so its use-line can only shadow; a kernel binding that carries
+// declared structure (Bool's True|False Disj, Optional) realizes THROUGH the cited declaration,
+// so its use-line is the path to that realization and stays -- measured in the seed mirror, whose
+// bodies consume the structural Bool enum by bare spelling.
+fn import_name_resolves_to_kernel(name: String, module_env: TypeEnv?) -> Bool {
+  match module_env {
+    Absent => false
+    Present { value: env } =>
+      match lookup_type_by_name(env: env, name: name) {
+        Absent => false
+        Present { value: n } => match n.ident_span {
+          Present { value: sp } =>
+            string_contains(s: sp.file, pattern: "<kernel:")
+              && n.connective == NoConnective
+              && (n.children |> count) == 0
+          Absent => false
+        }
+      }
+  }
+}
+
+fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, module_env: TypeEnv?) -> String {
   let type_summaries = emit_info.type_summaries
-  let deduped_names = unique_strings(items: filtered_names |> filter(n => local_names |> all(ln => ln != n)))
-  let marker_type_names = unique_strings(items: type_position_names |> filter(n => is_phantom_unit_variant_type_arg(env: type_env, variant_name: n)))
+  let deduped_names = unique_strings(items: filtered_names
+    |> filter(n => local_names |> all(ln => ln != n))
+    |> filter(n => !import_name_resolves_to_kernel(name: n, module_env: module_env)))
+  let marker_type_names = unique_strings(items: type_position_names |> filter(n =>
+    match module_env {
+      Present { value: env } => is_phantom_unit_variant_type_arg(env: env, variant_name: n)
+      Absent => false
+    }
+  ))
   if deduped_names |> count == 0 {
     ""
   } else {
@@ -6190,7 +6235,7 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   strip_repeated_use_symbols(lines: covered)
 }
 
-fn emit_imports(imports: List<Node>, type_env: TypeEnv, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>) -> String {
+fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>, module_env: TypeEnv?) -> String {
   if imports |> count == 0 {
     ""
   } else {
@@ -6217,14 +6262,14 @@ fn emit_imports(imports: List<Node>, type_env: TypeEnv, emit_info: EmitGraphInfo
           mod_name: mod_name,
           filtered_names: merged_specific,
           type_position_names: applied_type_argument_names,
-          type_env: type_env,
           emit_info: emit_info,
           registry: registry,
           local_names: local_names,
           export_sets: export_sets,
           typed_modules: typed_modules,
           source_indices: source_indices,
-        module_index: module_index)
+        module_index: module_index,
+        module_env: module_env)
         if specific_block != "" {
           concat(wildcard_line, "\n", specific_block)
         } else {
@@ -6239,14 +6284,14 @@ fn emit_imports(imports: List<Node>, type_env: TypeEnv, emit_info: EmitGraphInfo
           mod_name: mod_name,
           filtered_names: merged_specific,
           type_position_names: applied_type_argument_names,
-          type_env: type_env,
           emit_info: emit_info,
           registry: registry,
           local_names: local_names,
           export_sets: export_sets,
           typed_modules: typed_modules,
           source_indices: source_indices,
-        module_index: module_index)
+        module_index: module_index,
+        module_env: module_env)
       }
       block |> split(delimiter: "\n")
     )
