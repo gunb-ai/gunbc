@@ -1513,13 +1513,41 @@ pub fn rust_witness_type_arg_from_holds_value_field(
     }
 }
 
+pub fn rust_witness_carrier_from_expected_type_node(
+    type_node: Rc<Node>,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    {
+        if ((type_node.inferred.clone() != std::option::Option::None)
+            && crate::v1_std_core::is_compiler_error(type_node.inferred.clone().clone().unwrap()))
+        {
+            return std::option::Option::None;
+        }
+        let peeled = rust_peel_all_rc_type_node(type_node.clone(), source_indices.clone());
+        if (crate::v1_std_core::qualified_last_segment(peeled.name.clone())
+            != "Witness".to_string())
+        {
+            std::option::Option::None
+        } else {
+            rust_witness_carrier_from_type_node(
+                peeled.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                source_indices.clone(),
+            )
+        }
+    }
+}
+
 pub fn rust_witness_type_arg_from_expected_type(
     emit_info: Rc<EmitGraphInfo>,
     shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match emit_info.expected_type.clone() {
-        Some(rt) => rust_witness_carrier_from_type_node(
+        Some(rt) => rust_witness_carrier_from_expected_type_node(
             rt.clone(),
             shared_types.clone(),
             emit_info.clone(),
@@ -22959,6 +22987,32 @@ pub fn emit_typed_call_expr(
     }
 }
 
+pub fn rust_param_type_is_type_variable(
+    param_type: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if ((param_type.children.clone().len() as i64) > 0) {
+        false
+    } else {
+        if ((param_type.params.clone().len() as i64) > 0) {
+            false
+        } else {
+            {
+                let authored = crate::v1_std_core::authored_name_at(
+                    source_indices.clone(),
+                    param_type.clone(),
+                );
+                let name = if (authored.clone() != "".to_string()) {
+                    authored.clone()
+                } else {
+                    param_type.name.clone()
+                };
+                ((v1_rt::string_length(&name) == 1) && rust_is_uppercase_letter(name.clone()))
+            }
+        }
+    }
+}
+
 pub fn rust_call_arg_fail_closed_unwrap(
     arg_str: String,
     arg: Rc<Node>,
@@ -22976,9 +23030,13 @@ pub fn rust_call_arg_fail_closed_unwrap(
         {
             Some(param) => {
                 let param_type = crate::v1_std_core::param_node_type_expr(param.clone());
-                let param_required = ((param_type.return_cardinality.clone()
+                let param_required = (((param_type.return_cardinality.clone()
                     != Cardinality::CardOptional)
-                    && !is_host_optional_carrier_type(param_type.clone(), source_indices.clone()));
+                    && !is_host_optional_carrier_type(param_type.clone(), source_indices.clone()))
+                    && !rust_param_type_is_type_variable(
+                        param_type.clone(),
+                        source_indices.clone(),
+                    ));
                 let arg_optional = (crate::v1_compiler_infer_types::resolved_type(arg.clone())
                     .return_cardinality
                     .clone()
