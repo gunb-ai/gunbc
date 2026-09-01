@@ -1663,6 +1663,17 @@ fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String,
   }
 }
 
+// APPLIED-CHILD POSITION IS THE ONLY ENTRY THAT CAN SELECT A PHANTOM MARKER.
+// The root alias renderer below never calls rust_type_arg_identity_spelling: a bare
+// alias RHS is a declaration-level type reference, not an argument merely because
+// recursive applied children share the rest of its rendering machinery.
+fn render_rust_alias_rhs_applied_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+    Present { value: identity } => identity
+    Absent => render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+  }
+}
+
 fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
   if is_where_refinement_type(ty: n) {
     match n.children |> first {
@@ -1675,9 +1686,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
-    match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
-      Present { value: identity } => identity
-      Absent =>
     match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: exact } => exact
       Absent =>
@@ -1697,7 +1705,6 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           }
         }
       }
-    }
     }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
@@ -1732,7 +1739,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
-        render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
     )
     let args = arg_list |> join(separator: ", ")
@@ -1751,7 +1758,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
       if peel {
         render_rust_phantom_opaque_applied_type_arg(n: arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       } else {
-        render_rust_alias_rhs_type(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
+        render_rust_alias_rhs_applied_arg(n: alias_rhs_container_arg(arg: arg, source_indices: source_indices), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
       }
     )
     let args = arg_list |> join(separator: ", ")
