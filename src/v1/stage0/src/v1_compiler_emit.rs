@@ -2611,6 +2611,9 @@ pub enum ShellResultChannel {
     ShellChanExitSuccess,
     ShellChanExitCode,
     ShellChanStdoutLines,
+    ShellChanStderrTruncated,
+    ShellChanStderrTotalBytes,
+    ShellChanStderrRetainedBytes,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2623,11 +2626,15 @@ pub struct ShellResultField {
 #[serde(tag = "_variant")]
 pub enum ShellEmissionRefusal {
     ShellOutputKeyNotModeled { key: String },
+    ShellChannelNotRealizedByTarget { key: String, target_name: String },
 }
 impl ShellEmissionRefusal {
     pub fn key(&self) -> String {
         match self {
             ShellEmissionRefusal::ShellOutputKeyNotModeled { key: __val, .. } => __val.clone(),
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: __val, .. } => {
+                __val.clone()
+            }
         }
     }
 }
@@ -2651,7 +2658,19 @@ pub fn shell_result_channel_of_key(key: String) -> Option<ShellResultChannel> {
                     if (key.clone() == "stdout_lines".to_string()) {
                         Some(ShellResultChannel::ShellChanStdoutLines)
                     } else {
-                        std::option::Option::None
+                        if (key.clone() == "stderr_truncated".to_string()) {
+                            Some(ShellResultChannel::ShellChanStderrTruncated)
+                        } else {
+                            if (key.clone() == "stderr_total_bytes".to_string()) {
+                                Some(ShellResultChannel::ShellChanStderrTotalBytes)
+                            } else {
+                                if (key.clone() == "stderr_retained_bytes".to_string()) {
+                                    Some(ShellResultChannel::ShellChanStderrRetainedBytes)
+                                } else {
+                                    std::option::Option::None
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2659,9 +2678,39 @@ pub fn shell_result_channel_of_key(key: String) -> Option<ShellResultChannel> {
     }
 }
 
+pub fn shell_result_channel_key(c: ShellResultChannel) -> String {
+    match c.clone() {
+        ShellResultChannel::ShellChanStdout => "stdout".to_string(),
+        ShellResultChannel::ShellChanStderr => "stderr".to_string(),
+        ShellResultChannel::ShellChanExitSuccess => "exit_success".to_string(),
+        ShellResultChannel::ShellChanExitCode => "exit_code".to_string(),
+        ShellResultChannel::ShellChanStdoutLines => "stdout_lines".to_string(),
+        ShellResultChannel::ShellChanStderrTruncated => "stderr_truncated".to_string(),
+        ShellResultChannel::ShellChanStderrTotalBytes => "stderr_total_bytes".to_string(),
+        ShellResultChannel::ShellChanStderrRetainedBytes => "stderr_retained_bytes".to_string(),
+    }
+}
+
+pub fn shell_channel_realized_by_target(c: ShellResultChannel, target: RenderTarget) -> bool {
+    match c.clone() {
+        ShellResultChannel::ShellChanStderrTruncated => false,
+        ShellResultChannel::ShellChanStderrTotalBytes => false,
+        ShellResultChannel::ShellChanStderrRetainedBytes => false,
+        _ => target_renders_shell_transport(target.clone()),
+    }
+}
+
+pub fn target_renders_shell_transport(target: RenderTarget) -> bool {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::RealizesTransports => true,
+        TargetEmissionMode::SerializesSubstrate => false,
+    }
+}
+
 pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String {
     match (*refusal.clone()).clone() {
-    ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code and stdout_lines".to_string()),
+    ShellEmissionRefusal::ShellOutputKeyNotModeled { key: k, .. } => v1_rt::concat(v1_rt::concat("shell transport output key '".to_string(), k.clone()), "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stderr_truncated, stderr_total_bytes and stderr_retained_bytes".to_string()),
+    ShellEmissionRefusal::ShellChannelNotRealizedByTarget { key: k, target_name: tn, .. } => v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("shell output channel '".to_string(), k.clone()), "' is a modeled channel that target ".to_string()), tn.clone()), " cannot realize -- the emitted realization implements no stderr capture policy, so answering it would assert that the declared policy ran".to_string()),
 }
 }
 
@@ -5230,6 +5279,99 @@ pub fn target_emission_mode(target: RenderTarget) -> TargetEmissionMode {
     }
 }
 
+pub fn unmodeled_shell_transport_operation_diagnostics(
+    tm: Rc<TypedModule>,
+    item: Rc<Node>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    {
+        let env = tm.type_env.clone();
+        let si = env.source_indices.clone();
+        let module_name =
+            crate::v1_compiler_infer_env::authored_name(env.clone(), tm.module.clone());
+        let service_name = crate::v1_compiler_infer_env::authored_name(env.clone(), item.clone());
+        let fallback = service_fallback_transport(item.clone());
+        Rc::new({
+            let mut __result = Vec::new();
+            for op_node in item.children.clone().iter().cloned() {
+                __result.extend((*{
+            let t = effective_operation_transport(op_node.clone(), fallback.clone());
+match crate::v1_std_core::classify_transport(t.clone(), si.clone()) {
+    Some(TransportKind::ShellTransport) => Rc::new({ let mut __result = Vec::new(); for ch in shell_output_channel_fields(op_node.clone()).iter().cloned() { __result.extend((*match shell_result_channel_of_key(shell_output_channel_of_field(ch.clone(), si.clone())) {
+    Some(c) => if shell_channel_realized_by_target(c.clone(), target.clone()) {
+                Rc::new(vec![])
+            } else {
+                Rc::new(vec![crate::v1_std_core::make_error_node(Rc::new(CompilerDiagnostic::TransportEmissionNotModeled {
+    transport_kind: "shell".to_string(),
+    service: service_name.clone(),
+    operation: crate::v1_compiler_infer_env::authored_name(env.clone(), op_node.clone()),
+    declaring_module: module_name.clone(),
+    target: render_target_name(target.clone()),
+    missing_realization_fact: shell_emission_refusal_fact(Rc::new(ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+    key: shell_result_channel_key(c.clone()),
+    target_name: render_target_name(target.clone()),
+})),
+    span: ch.span.clone(),
+}), module_name.clone())])
+            },
+    std::option::Option::None => Rc::new(vec![]),
+}).iter().cloned()); } __result }),
+    _ => Rc::new(vec![]),
+}
+}).iter().cloned());
+            }
+            __result
+        })
+    }
+}
+
+pub fn unmodeled_shell_transport_diagnostics(
+    typed: Rc<ResolvedGraph>,
+    target: RenderTarget,
+) -> Rc<Vec<Rc<ErrorNode>>> {
+    match target_emission_mode(target.clone()) {
+        TargetEmissionMode::SerializesSubstrate => Rc::new(vec![]),
+        TargetEmissionMode::RealizesTransports => Rc::new({
+            let mut __result = Vec::new();
+            for tm in typed.modules.clone().iter().cloned() {
+                __result.extend(
+                    (*Rc::new({
+                        let mut __result = Vec::new();
+                        for item in Rc::new({
+                            let mut __result = Vec::new();
+                            for item in tm.items.clone().iter().cloned() {
+                                if crate::v1_compiler_emit_core_support::is_service_item(
+                                    item.clone(),
+                                ) {
+                                    __result.push(item);
+                                }
+                            }
+                            __result
+                        })
+                        .iter()
+                        .cloned()
+                        {
+                            __result.extend(
+                                (*unmodeled_shell_transport_operation_diagnostics(
+                                    tm.clone(),
+                                    item.clone(),
+                                    target.clone(),
+                                ))
+                                .iter()
+                                .cloned(),
+                            );
+                        }
+                        __result
+                    }))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }),
+    }
+}
+
 pub fn unmodeled_file_transport_diagnostics(
     typed: Rc<ResolvedGraph>,
     target: RenderTarget,
@@ -7711,6 +7853,12 @@ pub struct ShellChanExitSuccess;
 pub struct ShellChanExitCode;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ShellChanStdoutLines;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderrTruncated;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderrTotalBytes;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShellChanStderrRetainedBytes;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ExprCatLeaf;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

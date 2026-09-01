@@ -105,6 +105,7 @@ pub use crate::v1_compiler_coercion::{
 };
 pub use crate::v1_compiler_compiler_tests_rust::compiler_tests_source;
 pub use crate::v1_compiler_dag_collect_support::connective_name;
+pub use crate::v1_compiler_emit::render_target_name;
 use crate::v1_compiler_emit::BoundOperation::{
     BindingRefused, FileBound, LocalBound, RestBound, ShellBound,
 };
@@ -115,8 +116,10 @@ use crate::v1_compiler_emit::FileResultChannel::{
 use crate::v1_compiler_emit::FileVerb::{
     FileDelete, FileList, FileRead, FileWrite, FileWriteOwnerOnly,
 };
+use crate::v1_compiler_emit::ShellEmissionRefusal::ShellChannelNotRealizedByTarget;
 use crate::v1_compiler_emit::ShellResultChannel::{
-    ShellChanExitCode, ShellChanExitSuccess, ShellChanStderr, ShellChanStdout, ShellChanStdoutLines,
+    ShellChanExitCode, ShellChanExitSuccess, ShellChanStderr, ShellChanStderrRetainedBytes,
+    ShellChanStderrTotalBytes, ShellChanStderrTruncated, ShellChanStdout, ShellChanStdoutLines,
 };
 pub use crate::v1_compiler_emit::{
     bind_operation_transport, child_from_key, compute_service_fields,
@@ -131,11 +134,13 @@ pub use crate::v1_compiler_emit::{
     keyed_container_has_target_inhabitant, lookup_item, module_emit_scope, order_typed_call_args,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
-    tco_reassign_core, transport_binding_refusal_fact,
+    shell_emission_refusal_fact, shell_result_channel_key, tco_reassign_core,
+    transport_binding_refusal_fact,
 };
 pub use crate::v1_compiler_emit::{
     BlockEmitState, BoundOperation, EmitterOutcome, FileResultChannel, FileResultField, FileVerb,
-    InterpPart, ServiceFieldSet, ShellResultChannel, ShellResultField, TcoFrame, TcoReassignInput,
+    InterpPart, ServiceFieldSet, ShellEmissionRefusal, ShellResultChannel, ShellResultField,
+    TcoFrame, TcoReassignInput,
 };
 pub use crate::v1_compiler_emit_core_support::{
     apply_named_template, apply_type_template1, apply_type_template2, apply_type_template3,
@@ -34571,6 +34576,15 @@ pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -
                 "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()"
                     .to_string(),
             ),
+            ShellResultChannel::ShellChanStderrTruncated => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
+            ShellResultChannel::ShellChanStderrTotalBytes => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
+            ShellResultChannel::ShellChanStderrRetainedBytes => {
+                emit_unrealizable_shell_channel(channel.clone())
+            }
         };
         if is_optional.clone() {
             v1_rt::concat(
@@ -34581,6 +34595,18 @@ pub fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: bool) -
             base.clone()
         }
     }
+}
+
+pub fn emit_unrealizable_shell_channel(channel: ShellResultChannel) -> String {
+    crate::v1_compiler_emit::emit_error_expr(
+        crate::v1_compiler_emit::shell_emission_refusal_fact(Rc::new(
+            ShellEmissionRefusal::ShellChannelNotRealizedByTarget {
+                key: crate::v1_compiler_emit::shell_result_channel_key(channel.clone()),
+                target_name: render_target_name(RenderTarget::Rust),
+            },
+        )),
+        RenderTarget::Rust,
+    )
 }
 
 pub fn emit_file_call(

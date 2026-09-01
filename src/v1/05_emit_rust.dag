@@ -203,6 +203,8 @@ import v1.compiler.emit {
   BoundOperation, RestBound, ShellBound, LocalBound, FileBound, BindingRefused,
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
+  ShellChanStderrTruncated, ShellChanStderrTotalBytes, ShellChanStderrRetainedBytes,
+  ShellChannelNotRealizedByTarget, shell_emission_refusal_fact, shell_result_channel_key,
   bind_operation_transport, transport_binding_refusal_fact,
   FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
@@ -14192,8 +14194,26 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     ShellChanExitCode => "(output.status.code().unwrap_or(-1) as i64)"
     ShellChanStdoutLines =>
       rust_shared_wrap_ctor(inner_expr: "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()")
+    ShellChanStderrTruncated => emit_unrealizable_shell_channel(channel: channel)
+    ShellChanStderrTotalBytes => emit_unrealizable_shell_channel(channel: channel)
+    ShellChanStderrRetainedBytes => emit_unrealizable_shell_channel(channel: channel)
   }
   if is_optional { concat("Some(", base, ")") } else { base }
+}
+
+// THE SECOND HALF OF THE REFUSAL, and deliberately not the only half. The blocking
+// diagnostic in `unmodeled_shell_transport_diagnostics` is what stops the line --
+// emit_artifact returns NO files when it fires, so this expression is unreachable
+// on the ordinary path. It exists so the two readers cannot disagree if the wall is
+// ever weakened: a body that fabricated a value here while the diagnostic was
+// removed would be the exact fail-open this branch exists to close.
+fn emit_unrealizable_shell_channel(channel: ShellResultChannel) -> String {
+  emit_error_expr(
+    message: shell_emission_refusal_fact(refusal: ShellChannelNotRealizedByTarget {
+      key: shell_result_channel_key(c: channel),
+      target_name: render_target_name(target: Rust)
+    }),
+    target: Rust)
 }
 
 // The rust realization handler for `transport file`, now bound to FACTS rather
