@@ -49,7 +49,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitRootReferenceUnresolved,
   repository_envelope_load_standing,
 }
-import gunbc.scm.commit_closure_json_v2 {
+import gunbc.scm.commit_closure_json {
   ClosureDocRefusal, ClosureDocFormatUnrecognized, ClosureDocObjectTableRefused,
   ClosureDocMemberReadRefused,
   ClosureDocUnexpectedMember, ClosureDocEnvelopeMembers,

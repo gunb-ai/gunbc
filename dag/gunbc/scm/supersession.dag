@@ -140,7 +140,7 @@ fn observe_generation(
 // destination's whole producer side, not any one defect site. Measured on the live tree rather than
 // recalled, by enumerating every declaration that returns a `LoadStanding`.
 //
-//   PRODUCERS, TOTAL: two, both in `gunbc.scm.commit_closure_json_v2`.
+//   PRODUCERS, TOTAL: two, both in `gunbc.scm.commit_closure_json`.
 //     `closure_document_load_standing` classifies one format's refusals. It descends everywhere a
 //       payload could hide a second distinction -- through `MemberReadRefusal`'s four modes and
 //       `TargetReferenceRefusal`'s four -- and is the ONLY declaration in the tree that can return

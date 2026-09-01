@@ -128,7 +128,7 @@ data nfr_reason_build_axis_reading_unreachable_arm: String = "axis-reading proje
 
 data nfr_dissolve_build_axis_reading_refined_carrier: DissolutionCondition = unbound_dissolution(description: "BuildCandidate carries its cash and ceiling on a refined Derived-only carrier once candidate_missing_inputs has admitted it (illegal states unrepresentable at the reading), so the readings match totally over the refined carrier and the unreachable arms delete with their rows")
 
-data nfr_reason_connective_payload_encoding: String = "one-special-variant dispatch over Connective: Atom carries an identity payload and encodes two members, and the five nullary connectives share one tag-only member through connective_tag — enumerating them would clone the tag-only arm per variant (the DESIGN §2 redundancy, not the DESIGN §4 totality); same shape as the orchestration-emit row. Landed with the commit_closure_json_v2 format cut (#8965, 2026-08-23) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
+data nfr_reason_connective_payload_encoding: String = "one-special-variant dispatch over Connective: Atom carries an identity payload and encodes two members, and the five nullary connectives share one tag-only member through connective_tag — enumerating them would clone the tag-only arm per variant (the DESIGN §2 redundancy, not the DESIGN §4 totality); same shape as the orchestration-emit row. Landed with the commit_closure_json format cut (#8965, 2026-08-23) unrostered and surfaced by the whole-corpus nfr receipt (cli_run nfr_roster_receipt) on 2026-08-29; declared so the ratchet re-arms"
 
 data nfr_dissolve_connective_payload_encoding: DissolutionCondition = unbound_dissolution(description: "the closure encoding becomes the backward grammar-row fold (DESIGN §4) or Connective carries a derived payload-arity projection from inhabitance, so the payload-bearing arm is a named partition case rather than a wildcard, and the row deletes with that fold")
 
@@ -1016,7 +1016,7 @@ data non_fold_residue_frontier: List<FrontierRow> = [
     dissolution: nfr_dissolve_build_axis_reading_refined_carrier,
   },
   FrontierRow {
-    subject: PathSubject { path: "dag/gunbc/scm/commit_closure_json_v2.dag::encode_connective" },
+    subject: PathSubject { path: "dag/gunbc/scm/commit_closure_json.dag::encode_connective" },
     reason: nfr_reason_connective_payload_encoding,
     dissolution: nfr_dissolve_connective_payload_encoding,
   },

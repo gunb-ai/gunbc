@@ -1,8 +1,8 @@
 module gunbc.scm.repository_envelope
 
-// THE REPOSITORY ENVELOPE: the layer that gunbc.scm.commit_closure_json_v2 deliberately is not.
+// THE REPOSITORY ENVELOPE: the layer that gunbc.scm.commit_closure_json deliberately is not.
 //
-// commit_closure_json_v2 holds ONE ROOT AND ITS CLOSURE. A repository holds facts that carrier cannot express,
+// commit_closure_json holds ONE ROOT AND ITS CLOSURE. A repository holds facts that carrier cannot express,
 // and each one is a reason this module exists rather than a field bolted onto that one:
 //
 //   - AN EMPTY INITIALIZED STATE. `init` produces a repository with no commits and no root at all.
@@ -94,7 +94,7 @@ import gunbc.scm.object_store {
   find_node_record,
 }
 import gunbc.scm.commit_closure { uncontained_targets }
-import gunbc.scm.commit_closure_json_v2 {
+import gunbc.scm.commit_closure_json {
   ClosureDocRefusal,
   DecodeAcc,
   DecodePositions,
@@ -133,7 +133,7 @@ import gunbc.scm.load_standing {
 // -- which is canonical because the digests are already content-derived. That is a real change to
 // encode_object_table rather than a flag, so it is a separate slice, not a footnote.
 // v2, FOR TWO CHANGES THAT ARE BOTH SCHEMA CHANGES BY THIS STACK'S OWN RULE. The embedded object
-// table is gunbc.scm.commit_closure_json_v2's, which now admits authored-source entries, so a v1
+// table is gunbc.scm.commit_closure_json's, which now admits authored-source entries, so a v1
 // reader refuses documents this writer can produce. And a commit's `root` is now RESOLVED against
 // that table at decode -- a root the table does not carry, or carries as a file, refuses here rather
 // than being admitted and noticed later -- so the set of documents that decode is different in both
@@ -266,7 +266,7 @@ type RepositoryDecodeRefusal
 
 // THE CONTEXT VOCABULARY IS THIS LAYER'S, THE MEMBERSHIP MECHANISM IS SHARED. gunbc.scm.json_member owns
 // `unexpected_member_key`, which answers a context-free question -- which key is not in this set --
-// and each layer names its own shapes. Adding `RepositoryEnvelopeMembers` to commit_closure_json_v2's context
+// and each layer names its own shapes. Adding `RepositoryEnvelopeMembers` to commit_closure_json's context
 // coproduct would have made the lower carrier enumerate the shapes of a layer above it, which is the
 // inversion DESIGN section 3 names; duplicating the fold here instead would have been a second
 // authority for one rule. Neither is necessary: the mechanism generalizes, the vocabulary does not.
@@ -700,7 +700,7 @@ fn unresolved_checkout_selection(commits: List<RepositoryCommit>, selected: Repo
 
 // COMMITS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE AT THE CONSUMER. concat-at-end inside a fold
 // copies the whole accumulator per commit, which is the quadratic shape DESIGN section 6 says is
-// always fixed regardless of the realized n. This stack removed that shape from commit_closure_json_v2 and from
+// always fixed regardless of the realized n. This stack removed that shape from commit_closure_json and from
 // object_store.dag and then reintroduced it here in the same diff -- caught by review, and the point
 // worth recording is that fixing a cost shape at the sites a review names is not the same as not
 // having the defect: the sweep has to be over every accumulator the change touches, or the rule is
@@ -1207,7 +1207,7 @@ fn decode_repository_checkout(
 
 // THE SECOND FORMAT'S CLASSIFIER, AND IT WAS MISSING RATHER THAN UNNECESSARY.
 //
-// gunbc.scm.commit_closure_json_v2 and gunbc.scm.object_table_json each classify their own refusals
+// gunbc.scm.commit_closure_json and gunbc.scm.object_table_json each classify their own refusals
 // into the format-agnostic vocabulary; this document format did not, so any consumer deciding what to
 // do with a refused repository load had to reach into RepositoryDecodeRefusal and assign a standing
 // itself -- one format's error enum answering a format-agnostic question, which is the placement

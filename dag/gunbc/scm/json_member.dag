@@ -1,7 +1,7 @@
 module gunbc.scm.json_member
 
 // READING A NAMED MEMBER OFF A JSON OBJECT IS ONE OPERATION WITH ONE FAILURE POPULATION, and this
-// module owns both. It was previously homed inside gunbc.scm.commit_closure_json_v2 with its failure
+// module owns both. It was previously homed inside gunbc.scm.commit_closure_json with its failure
 // typed as THAT module's ClosureDocRefusal, which is the layer inversion DESIGN section 3 names: a
 // domain-neutral facility carrying a domain's vocabulary. The measured cost was not stylistic. Every
 // repository-envelope member read -- `checked_out`, `identity_rule`, `root`, `message` -- had to

@@ -1,4 +1,16 @@
-module gunbc.scm.commit_closure_json_v2
+module gunbc.scm.commit_closure_json
+
+// THE MODULE NAME CARRIED A VERSION AND THE DOCUMENT CARRIED A DIFFERENT ONE, which is a meaning
+// fork in the place least able to afford it. It was `commit_closure_json_v2`, a suffix that named
+// the second CODEC generation -- the predecessor that encoded the root positionally, since deleted.
+// With that sibling gone the suffix distinguished nothing, and once the schema grew a member and the
+// tag became `…-v3`, one authority was announcing v2 in its name and v3 in its bytes. A reader has no
+// way to know which of the two is the contract.
+//
+// So the module names the CODEC and the tag names the VERSION, one fact each. There is exactly one
+// place to look for which schema this build writes, and it is a value the encoder actually emits
+// rather than a spelling in a path. Named by the designated SCM reviewer while tracing whether
+// retired version names still fork meaning; they did.
 
 import std.types { Bool, Int, List, String, list_length }
 
