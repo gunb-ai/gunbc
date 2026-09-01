@@ -7,6 +7,7 @@ import v1.std.core {
   Node, ErrorNode, make_error_node, TransportEmissionNotModeled, InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   module_imports, module_items, param_node_name_at, param_node_type_expr, qualified_last_segment,
   param_node_default_value, NewlineIndex, authored_name_at, empty_intern_table,
+  field_from_key_property_name,
   expr_var_name_at, expr_call_func_at, let_binding_name_at, field_access_field_at, ExprData,
   NoExprData, VarBindingKind, ExprLiteral, ExprElaboratedLiteral, ExprVar, ExprFieldAccess, ExprCall, ExprMethodCall,
   ExprMatch, ExprIf, ExprLet, ExprRecordLit, ExprListLit, ExprBinOp, ExprUnaryOp, ExprLambda,
@@ -2112,7 +2113,7 @@ fn is_file_transport_after_dispatch_precedence(t: Node, source_indices: Map<Stri
 // the renderer cannot in fact express, and the emitted output -- not a diagnostic -- would carry
 // the deficit.
 fn child_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
+  match ch.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == field_from_key_property_name) |> first {
     Present { value: prop } => match field_init_node_value(n: prop).expr_data {
       ExprLiteral { value: LitStr { value: s } } => Present { value: s }
       _ => none

@@ -11870,10 +11870,16 @@ fn map_shell_outputs(
     })
 }
 
+// ONE SPELLING, read from the authority the parser mints against
+// (`v1_std_core::field_from_key_property_name`). This accepted BOTH "from_key"
+// and "from" while every emitter reader compared against "from_key" alone, which
+// is span-derived and therefore never matched: the two directions of one
+// procedure disagreed and nothing went red. Accepting both here is what kept the
+// nickname alive, so the lenient arm is gone rather than mirrored (DESIGN §3).
 fn extract_from_key(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<String> {
     for prop in field_node.properties.iter() {
         let prop_name = field_init_node_name_at(prop.clone(), ctx.si());
-        if prop_name == "from_key" || prop_name == "from" {
+        if prop_name == crate::v1_std_core::field_from_key_property_name() {
             let val_node = field_init_node_value(prop.clone());
             if let ExprData::ExprLiteral { ref value } = *val_node.expr_data {
                 if let LiteralValue::LitStr { value: s } = value.as_ref() {

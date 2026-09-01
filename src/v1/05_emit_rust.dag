@@ -44,6 +44,7 @@ import v1.std.core {
   arm_body, arm_pattern, arm_guard, field_init_node_name_at, field_init_node_value,
   record_lit_named_field_value_optional,
   find_property, make_arg_node, make_named_expr_node, let_value, let_body, lambda_body,
+  field_from_key_property_name,
   lambda_param_names_at, foreach_collection, foreach_body, method_receiver, method_arg_nodes,
   match_scrutinee, match_arm_nodes, if_condition, if_then_branch, if_else_branch, index_base,
   index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
@@ -7249,7 +7250,7 @@ fn emit_struct_field_from_child(struct_name: String, child: Node, generic_param_
   let final_ty = rust_field_carrier_final_type(rt_field: rt_child, ty: ty, recursive_types: recursive_types, shared_types: shared_types, source_indices: env.source_indices, env: env)
   let needs_serde = struct_needs_serde(name: struct_name, emit_info: emit_info)
   let rename_attr = if !needs_serde { "" } else {
-    match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == "from_key") |> first {
+    match child.properties |> filter(p => field_init_node_name_at(n: p, source_indices: env.source_indices) == field_from_key_property_name) |> first {
       Present { value: prop } => match field_init_node_value(n: prop).expr_data {
         ExprLiteral { value: lv } => match lv {
           LitStr { value: key } => concat("    ", apply_type_template1(template: rust_serde_rename_template_text(), arg0: key), "\n")

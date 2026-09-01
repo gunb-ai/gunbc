@@ -1682,16 +1682,25 @@ pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     }
 }
 
+pub fn field_from_key_property_name() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "from".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn field_node_from_key(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
     match find_property(
         n.properties.clone(),
-        "from_key".to_string(),
+        field_from_key_property_name(),
         source_indices.clone(),
     ) {
-        Some(p) => Some(authored_name_at(source_indices.clone(), p.clone())),
+        Some(p) => expr_literal_string_optional(p.clone()),
         std::option::Option::None => std::option::Option::None,
     }
 }
