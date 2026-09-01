@@ -4,7 +4,7 @@ import std.types { String, NonEmptyStr, List, Bool, Int, Timestamp }
 import std.content_hash { ContentHash, Sha256Digest, Sha256DigestHex, as_content_hash_cryptographic, serialize_content_hash }
 import extdeps.pin { TrackedReferenceResolution, tracked_reference_resolution, tracked_reference_resolution_evidence }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_ref_wire }
-import extdeps.ollama.capability { ollama_gpt_oss_20b_model_ref }
+import extdeps.ollama.capability { ollama_gpt_oss_20b_model_ref, ollama_gpt_oss_120b_model_ref }
 
 // WHICH BYTES `gpt-oss:20b` NAMED ON A GIVEN DAY, recorded as a resolution rather than assumed as a
 // property of the tag.
@@ -82,6 +82,49 @@ fn gpt_oss_20b_resolution() -> TrackedReferenceResolution<OllamaModelRef, Ollama
   )
 }
 
+// WHICH BYTES `gpt-oss:120b` NAMED ON 2026-08-30, recorded the same way and for the same reason.
+//
+// SPARK-PAIR-0 P1. The reference resolved on srv5 after the pull, and the three readings below are
+// the same three authorities the 20b resolution uses, in the same order and for the same reason: the
+// registry is what SELECTS the bytes, and the two host readings are independent confirmations that
+// srv5 already holds what the registry now serves. All three answered the identity below.
+//
+// THE READING THAT IS NOT HERE. There is no superseded 120b digest, because this is the first
+// resolution of this reference -- not because the tag is known to be stable. gpt-oss:20b moved once
+// already, which is the incident the carrier above exists to record, and nothing about 120b makes it
+// less likely to move.
+data gpt_oss_120b_manifest_digest_2026_08_30: Sha256Digest = Sha256Digest {
+  hex: "a951a23b46a1f6093dafee2ea481d634b4e31ac720a8a16f3f91e04f5a40ecd9" as Sha256DigestHex,
+}
+
+data gpt_oss_120b_registry_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "registry.ollama.ai/v2/library/gpt-oss/manifests/120b" as NonEmptyStr,
+  observed_at: "2026-08-30T12:00Z",
+  observed_identity: gpt_oss_120b_manifest_digest_2026_08_30,
+}
+
+data gpt_oss_120b_srv5_manifest_file_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv5 ollama model store manifest file for gpt-oss:120b" as NonEmptyStr,
+  observed_at: "2026-08-30T12:00Z",
+  observed_identity: gpt_oss_120b_manifest_digest_2026_08_30,
+}
+
+data gpt_oss_120b_srv5_api_tags_reading: OllamaManifestReading = OllamaManifestReading {
+  authority: "srv5 ollama /api/tags digest for gpt-oss:120b" as NonEmptyStr,
+  observed_at: "2026-08-30T12:00Z",
+  observed_identity: gpt_oss_120b_manifest_digest_2026_08_30,
+}
+
+fn gpt_oss_120b_resolution() -> TrackedReferenceResolution<OllamaModelRef, OllamaManifestReading> {
+  tracked_reference_resolution(
+    reference: ollama_gpt_oss_120b_model_ref,
+    resolved_identity: as_content_hash_cryptographic(digest: gpt_oss_120b_manifest_digest_2026_08_30),
+    resolved_at: "2026-08-30T12:00Z",
+    first_evidence: gpt_oss_120b_registry_reading,
+    further_evidence: [gpt_oss_120b_srv5_manifest_file_reading, gpt_oss_120b_srv5_api_tags_reading],
+  )
+}
+
 // THE BLOB CLOSURE THE RESOLVED MANIFEST NAMES, frozen at resolution time along with the manifest
 // identity itself.
 //
@@ -139,6 +182,113 @@ data gpt_oss_20b_blob_closure: List<OllamaBlobDigest> = [
 
 fn gpt_oss_20b_blob_closure_count() -> Int {
   length(gpt_oss_20b_blob_closure)
+}
+
+// THE 120b CLOSURE, AND THREE OF ITS FIVE ENTRIES ARE THE SAME BYTES THE 20b CLOSURE NAMES.
+//
+// Measured 2026-08-30 from the manifest body on srv5 whose sha256 is the resolved identity above.
+// The template, license and params digests are byte-identical to the 20b rows -- one family, one set
+// of auxiliary blobs, deduplicated by the content-addressed half of the store. They are repeated
+// here rather than shared through a common row because the closure is a fact ABOUT THIS MANIFEST:
+// if upstream republishes 120b with a different template, this list must be able to say so without
+// editing the 20b closure.
+//
+// FETCHABILITY, stated at the strength it actually has. Four of five are VERIFIED BY CONTENT: the
+// config (490 B), template (7240 B), license (11353 B) and params (18 B) blobs were hashed where
+// they sit in srv5's store and each hashed EXACTLY to the digest named here. The model layer was not
+// re-hashed -- it is 65.4 GB and this measurement is not worth that read -- but the file the store
+// holds for it is exactly 65369799840 bytes, which is the size the manifest declares for it to the
+// byte. So four by content and the fifth by size, which is stated rather than rounded up to
+// "verified" -- the same distinction the 20b row draws, reached by a different route: there the
+// fifth was checked by reachability against the registry, here by the size of bytes already resident.
+data gpt_oss_120b_blob_closure: List<OllamaBlobDigest> = [
+  OllamaBlobDigest {
+    hex: "0b3eaefc220f88ee3875909c1306654b2fbda9e31dae0133d6cdf488b37f9402" as NonEmptyStr,
+    media_type: "application/vnd.docker.container.image.v1+json" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "6be6d66a3f546d8c19b130dc41dc24b2fc159f84ffbc76a0ee0676205083cf5a" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.model" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "fa6710a93d78da62641e192361344be7a8c0a1c3737f139cf89f20ce1626b99c" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.template" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "f60356777647e927149cbd4c0ec1314a90caba9400ad205ddc4ce47ed001c2d6" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.license" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "d8ba2f9a17b3bbdeb5690efaa409b3fcb0b56296a777c7a69c78aa33bbddf182" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.params" as NonEmptyStr,
+  },
+]
+
+fn gpt_oss_120b_blob_closure_count() -> Int {
+  length(gpt_oss_120b_blob_closure)
+}
+
+// THE MANIFEST AND ITS CLOSURE ARE ONE FACT, AND WERE TWO DECLARATIONS.
+//
+// Added on review of #9749 (codex/gpt-5.6-sol, REQUEST_CHANGES), whose finding was correct and
+// whose scope was larger than the diff that provoked it: `gpt_oss_120b_resolution` and
+// `gpt_oss_120b_blob_closure` were independent values with no edge between them, so pairing the
+// digest with a DIFFERENT five-entry closure -- or rewiring the resolution's reference or evidence
+// -- left every claim green. The 20b pair beside it had the same shape, which is why this repair is
+// made at the root for both rather than only for the row under review.
+//
+// WHY THE EDGE MATTERS RATHER THAN BEING TIDIER. A closure is not a list that happens to sit near a
+// digest; it is the set of blobs THAT MANIFEST names, and the install plan's whole safety property
+// is that the bytes fetched are the bytes the resolved manifest called for. Two free-standing
+// declarations can drift into disagreeing while every consumer keeps reading whichever one it
+// imported -- DESIGN §3's fork, in the input to a materializer. One constructor carrying both makes
+// the association the thing consumers hold, so a claim about a manifest is unavoidably a claim
+// about its closure too.
+type OllamaResolvedManifest {
+  resolution: TrackedReferenceResolution<OllamaModelRef, OllamaManifestReading>
+  closure: List<OllamaBlobDigest>
+}
+
+fn ollama_resolved_manifest_reference(m: OllamaResolvedManifest) -> OllamaModelRef {
+  m.resolution.reference
+}
+
+fn ollama_resolved_manifest_identity(m: OllamaResolvedManifest) -> String {
+  serialize_content_hash(hash: m.resolution.resolved_identity) as String
+}
+
+fn ollama_resolved_manifest_closure(m: OllamaResolvedManifest) -> List<OllamaBlobDigest> {
+  m.closure
+}
+
+fn ollama_resolved_manifest_evidence(m: OllamaResolvedManifest) -> List<OllamaManifestReading> {
+  tracked_reference_resolution_evidence(resolution: m.resolution)
+}
+
+// Membership by identity, which is what DESIGN §5 asks of a completeness check and what a count
+// cannot give: a closure of the right length holding the wrong bytes is exactly the state the
+// review found unprotected.
+fn ollama_resolved_manifest_names_blob(m: OllamaResolvedManifest, hex: NonEmptyStr) -> Bool {
+  any(ollama_resolved_manifest_closure(m: m), b => b.hex as String == hex as String)
+}
+
+// Every reading behind this manifest agrees with the identity the resolution settled on. An
+// evidence row that disagreed would mean the three authorities did not in fact concur, which is the
+// premise the whole three-reading discipline rests on and was nowhere checked.
+fn ollama_resolved_manifest_evidence_is_unanimous(m: OllamaResolvedManifest) -> Bool {
+  let settled = ollama_resolved_manifest_identity(m: m)
+  !any(ollama_resolved_manifest_evidence(m: m), r =>
+    !(serialize_content_hash(hash: as_content_hash_cryptographic(digest: r.observed_identity)) as String == settled))
+}
+
+data gpt_oss_20b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
+  resolution: gpt_oss_20b_resolution(),
+  closure: gpt_oss_20b_blob_closure,
+}
+
+data gpt_oss_120b_manifest: OllamaResolvedManifest = OllamaResolvedManifest {
+  resolution: gpt_oss_120b_resolution(),
+  closure: gpt_oss_120b_blob_closure,
 }
 
 fn ollama_manifest_reading_wire(reading: OllamaManifestReading) -> String {

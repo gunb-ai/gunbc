@@ -966,8 +966,8 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
     // the container's cgroup namespace (BuildBuddy, measured 2026-08-30), and it used to be
     // answered with the machine's MemAvailable capped at this fleet's own declared slot line
     // — two substitutions stacked, and an rc=137 SIGKILL of `main_wet` with no diagnostic.
-    // The bound the executor knows and the process cannot see is exactly what the env
-    // override is for. Panicking here is a hard
+    // An environment declaration cannot replace that missing observation: it constrains no
+    // allocation. Panicking here is a hard
     // stop by design: this runs inside resolution, there is no caller that could honour a
     // typed refusal without threading Result through the cache seam, and continuing is the
     // one option ruled out.
@@ -978,8 +978,8 @@ pub(crate) fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
              unknown budget cannot be defaulted — the previous default was the ceiling, which \
              OOM-killed this process rather than refusing, and the MemAvailable arm that \
              replaced it substituted the MACHINE's memory for this slot's and was SIGKILLed \
-             at rc=137 instead. Declare this slot's bound with GUNBC_MEMORY_BUDGET_BYTES, or \
-             model this platform's memory source \
+             at rc=137 instead. Configure the executor to expose a cgroup memory limit; \
+             GUNBC_MEMORY_BUDGET_BYTES may only request a lower planning ceiling \
              (dag/gunbc/host/host_budget_source.dag)."
         );
     };
@@ -1289,6 +1289,74 @@ pub(crate) fn via_index_parse_one_source(
     entry
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ResolvedGraphCacheDegradation {
+    JsonRepresentationCannotServe,
+}
+
+impl ResolvedGraphCacheDegradation {
+    fn stable_tag(self) -> &'static str {
+        match self {
+            Self::JsonRepresentationCannotServe => "json-representation-cannot-serve",
+        }
+    }
+
+    fn reason(self) -> &'static str {
+        match self {
+            Self::JsonRepresentationCannotServe => {
+                "canonical JSON cold write exceeded 31 GiB; bounded experiment remained \
+                 incomplete after 28 minutes at 1.2 GiB compressed, so production payoff is \
+                 negative"
+            }
+        }
+    }
+}
+
+static RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+fn format_resolved_graph_cache_degradation(
+    diagnostic: ResolvedGraphCacheDegradation,
+    subject: &str,
+    count: usize,
+) -> String {
+    format!(
+        "[resolved-graph-cache] degradation tag={} count={count} subject={subject} \
+         disposition=cold-recompute reason={}",
+        diagnostic.stable_tag(),
+        diagnostic.reason(),
+    )
+}
+
+fn report_resolved_graph_cache_degradation(
+    diagnostic: ResolvedGraphCacheDegradation,
+    subject: &str,
+) {
+    let count = RESOLVED_GRAPH_CACHE_DEGRADATION_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    eprintln!(
+        "{}",
+        format_resolved_graph_cache_degradation(diagnostic, subject, count)
+    );
+}
+
+#[cfg(test)]
+mod resolved_graph_cache_degradation_tests {
+    use super::{format_resolved_graph_cache_degradation, ResolvedGraphCacheDegradation};
+
+    #[test]
+    fn unavailable_optional_tier_is_typed_located_counted_cold_recompute() {
+        let diagnostic = format_resolved_graph_cache_degradation(
+            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
+            "subject-abc",
+            7,
+        );
+        assert!(diagnostic.contains("tag=json-representation-cannot-serve"));
+        assert!(diagnostic.contains("count=7"));
+        assert!(diagnostic.contains("subject=subject-abc"));
+        assert!(diagnostic.contains("disposition=cold-recompute"));
+        assert!(!diagnostic.contains("refus"));
+    }
+}
+
 /// The sources-taking core of `resolve_entry_with_parse_cache`: parse → resolve →
 /// normalize → `reconcile_with_typed_cache` → ownership, every stage through the
 /// index's per-module memo tiers (parse/normalize/typed/ownership caches + the
@@ -1332,79 +1400,18 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     {
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
-    // Cross-process store tier: opt-in via `GUNBC_RESOLVED_GRAPH_CACHE_DIR` only.
-    // Installs into the share above on hit so later same-subject demands never
-    // re-decode. Floor/CI leave it unset (mechanism-inventory-red-controls: inert
-    // on floor); only explicit test harnesses arm the disk tier.
-    if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        if !cross_process_provider_routing_suppressed() {
-            match cross_process_probe(&cache_root, &subject) {
-                CacheProbeResult::Hit(probe) => {
-                    if !supports_faithful_probe() {
-                        return Err(format!(
-                            "resolved-graph-cache provider refused faithful probe: {}",
-                            faithful_probe_unavailable_gap()
-                        ));
-                    }
-                    let parts = &probe.parts;
-                    let closure_digest = closure_content_digest(&sources);
-                    let compiler_digest = transform_content_digest();
-                    match materialization_provider_consumer::serve_resolved_graph_stored_disk_probe(
-                        &closure_digest,
-                        &compiler_digest,
-                        &probe.stored_request_key,
-                        &probe.stored_semantic_digest,
-                        parts,
-                    ) {
-                        Ok(ResolvedGraphProviderOutcome::Hit) => {
-                            match cross_process_lookup_verified_probe(&cache_root, &subject, &probe)
-                            {
-                                CacheLookupResult::Hit(cached) => {
-                                    return Ok(install_cross_process_materialization_hit(
-                                        index, &subject, cached, memo_share,
-                                    ));
-                                }
-                                CacheLookupResult::RejectedHit(reason) => {
-                                    return Err(cross_process_cache_integrity_refusal(reason));
-                                }
-                                CacheLookupResult::Miss => {
-                                    return Err(
-                                        "resolved-graph-cache lookup miss after provider hit"
-                                            .to_string(),
-                                    );
-                                }
-                            }
-                        }
-                        Ok(other) => {
-                            if let Some(msg) = provider_integrity_refusal_message(other) {
-                                return Err(msg);
-                            }
-                        }
-                        Err(e) => return Err(e),
-                    }
-                }
-                CacheProbeResult::LegacyMigrationRequired { .. } => {
-                    // Cold rebuild is the declared migration disposition — never route
-                    // legacy on-disk rows through the v3 provider probe.
-                }
-                CacheProbeResult::RejectedHit(CacheRejectReason::ContentDigestMismatch) => {
-                    return Err(cross_process_cache_integrity_refusal(
-                        CacheRejectReason::ContentDigestMismatch,
-                    ));
-                }
-                CacheProbeResult::RejectedHit(CacheRejectReason::BackendKeyMalformed) => {
-                    return Err(cross_process_cache_integrity_refusal(
-                        CacheRejectReason::BackendKeyMalformed,
-                    ));
-                }
-                CacheProbeResult::RejectedHit(CacheRejectReason::PartDecodeFailure) => {
-                    return Err(cross_process_cache_integrity_refusal(
-                        CacheRejectReason::PartDecodeFailure,
-                    ));
-                }
-                CacheProbeResult::Miss => {}
-            }
-        }
+    // Arming the optional tier while its JSON representation cannot serve is a
+    // deliberate, bounded degradation to the authoritative cold computation. It
+    // never changes the compiler answer or enters the OOMing encoder. Keep the
+    // degradation typed, subject-located, and process-counted until the
+    // `real-production-invocation` clause lands a representation with positive
+    // measured cold/write and warm/hit payoff, at which point this arm dissolves.
+    let cross_process_cache_degraded = resolved_graph_cache_root_from_env().is_some();
+    if cross_process_cache_degraded {
+        report_resolved_graph_cache_degradation(
+            ResolvedGraphCacheDegradation::JsonRepresentationCannotServe,
+            &subject,
+        );
     }
 
     let mut modules: Vec<Rc<Node>> = Vec::new();
@@ -1636,41 +1643,8 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // store, unbounded, ~1GB per level (repeat-resolve OOM, root-caused 2026-08-03).
     // Counted, never silent: a suppressed store is a bounded bootstrap-window skip
     // whose frequency stays observable (§5 — a failure arm must refuse, never widen).
-    if cross_process_provider_routing_suppressed() {
+    if cross_process_provider_routing_suppressed() && !cross_process_cache_degraded {
         record_provider_bootstrap_store_skip();
-    } else if let Some(cache_root) = resolved_graph_cache_root_from_env() {
-        // A failed store write is a disclosed refusal, never a silent shrug —
-        // the swallowed error hid that big closures never landed on disk (only
-        // the prelude artifact ever existed), which mis-shaped a whole OOM
-        // investigation (receipt: eager-ram-612 bisect, 2026-07-10).
-        let closure_digest = closure_content_digest(&sources);
-        let compiler_digest = transform_content_digest();
-        let encoded = crate::resolved_graph_cache::encode_resolved_graph_parts(
-            &typed,
-            source_indices.as_ref(),
-            &compile_clean_diags,
-        )?;
-        let stored_request_key =
-            resolve_closure_request_key_from_digests(&closure_digest, &compiler_digest)?;
-        let stored_semantic_digest = resolved_graph_parts_semantic_digest(
-            &encoded.graph_digest,
-            encoded.graph_bytes.len() as u64,
-            &encoded.indices_digest,
-            encoded.indices_bytes.len() as u64,
-            &encoded.union_digest,
-            encoded.union_bytes.len() as u64,
-        )?;
-        if let Err(e) = cross_process_write(
-            &cache_root,
-            &subject,
-            &typed,
-            source_indices.as_ref(),
-            &compile_clean_diags,
-            &stored_request_key,
-            &stored_semantic_digest,
-        ) {
-            eprintln!("[resolved-graph-cache] write refused subject={subject}: {e}");
-        }
     }
 
     Ok((typed, source_indices, compile_clean_diags))

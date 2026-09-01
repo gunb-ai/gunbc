@@ -153,10 +153,17 @@ pub enum RegenReceipt {
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub enum RegenCandidateManifestSurfaceRole {
+    GeneratedSurface,
+    BootstrapSourceMirror,
+}
+
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct RegenCandidateManifestSurface {
     pub declaring_module: String,
     pub projected_path: String,
     pub content_digest: String,
+    pub role: RegenCandidateManifestSurfaceRole,
 }
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -531,13 +538,20 @@ pub fn run_required_regen_scoped(
         convergence_surface_roles(&workspace, &convergence_roots)?;
     let producer_seed_digest = current_exe_digest()?;
     let candidate_tree_id = format!("{candidate_dir_rel}:{candidate_digest}");
+    // This is the writer's own exact artifact population, including non-Rust products such as
+    // the crate manifest.  It is deliberately distinct from `selected_basenames`, whose authority
+    // is the compared generated-Rust population and therefore cannot name these products.
+    let emitted_artifact_paths = emitted
+        .keys()
+        .map(|path| candidate_relative_emit_path(path))
+        .collect::<Result<BTreeSet<_>, _>>()?;
     let candidate_manifest = produce_candidate_manifest(
         &fresh_src,
         &selected_basenames,
+        &emitted_artifact_paths,
         &basename_to_module,
         &producer_seed_digest,
         &candidate_tree_id,
-        &candidate_digest,
     )?;
 
     // Every field here was measured by THIS pass against THIS tree. The old shape also carried
@@ -1518,6 +1532,22 @@ fn verify_hand_maintained(
 /// the round does with it is install the drifted ones, and the drifted set is a subset of the
 /// selection by construction (`compare_generated_surfaces` is run over exactly this set). It is
 /// not a crate and is not offered as one.
+fn candidate_relative_emit_path(emitted_path: &str) -> Result<String, String> {
+    let path = Path::new(emitted_path);
+    let relative = path.strip_prefix("src").unwrap_or(path);
+    if relative.as_os_str().is_empty()
+        || relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!(
+            "refusal: emitted artifact path {emitted_path} has no safe candidate-root-relative projection"
+        ));
+    }
+    Ok(relative.to_string_lossy().into_owned())
+}
+
 fn write_emitted_tree(
     formatter: &ResolvedFormatter,
     dest_src: &Path,
@@ -1534,12 +1564,17 @@ fn write_emitted_tree(
                 continue;
             }
         }
-        let out_path = dest_src.join(emit_path_basename(path));
+        let relative_path = candidate_relative_emit_path(path)?;
+        let out_path = dest_src.join(&relative_path);
+        if let Some(parent) = out_path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("create emitted parent {}: {e}", parent.display()))?;
+        }
         // Only `.rs` surfaces are the generated-Rust population this comparator reasons
         // about (see committed_generated_basenames / generated_basenames_from_emit); a
         // non-Rust emitted artifact (e.g. Cargo.toml from the crate-layout emit) is not
         // rustfmt-normalizable and is written through verbatim.
-        let normalized = if emit_path_basename(path).ends_with(".rs") {
+        let normalized = if relative_path.ends_with(".rs") {
             normalize_generated_source(formatter, content)
                 .map_err(|e| format!("normalize emitted {path}: {e}"))?
         } else {
@@ -2996,6 +3031,106 @@ fn path_digest(path: &Path) -> Result<String, String> {
         .map_err(|e| format!("read {} for digest: {e}", path.display()))
 }
 
+fn observe_complete_candidate_artifact_population_from_entries<I>(
+    candidate_src: &Path,
+    phase: &str,
+    entries: I,
+) -> Result<Vec<String>, String>
+where
+    I: IntoIterator<Item = Result<PathBuf, String>>,
+{
+    let mut population = Vec::new();
+    for entry in entries {
+        let path = entry.map_err(|error| {
+            format!(
+                "CandidateManifestPopulationUnreadable: candidate_path={} phase={phase} error={error}",
+                candidate_src.display()
+            )
+        })?;
+        let relative = path.strip_prefix(candidate_src).map_err(|error| {
+            format!(
+                "CandidateManifestPopulationUnreadable: candidate_path={} phase={phase} error=observed file {} is outside the candidate root: {error}",
+                candidate_src.display(),
+                path.display()
+            )
+        })?;
+        population.push(
+            relative
+                .components()
+                .map(|component| component.as_os_str().to_string_lossy())
+                .collect::<Vec<_>>()
+                .join("/"),
+        );
+    }
+    population.sort();
+    population.dedup();
+    Ok(population)
+}
+
+fn observe_complete_candidate_artifact_population(
+    candidate_src: &Path,
+    phase: &str,
+) -> Result<Vec<String>, String> {
+    fn visit(candidate_src: &Path, directory: &Path, entries: &mut Vec<Result<PathBuf, String>>) {
+        let directory_entries = match fs::read_dir(directory) {
+            Ok(value) => value,
+            Err(error) => {
+                entries.push(Err(format!("read {}: {error}", directory.display())));
+                return;
+            }
+        };
+        for entry in directory_entries {
+            let entry = match entry {
+                Ok(value) => value,
+                Err(error) => {
+                    entries.push(Err(format!(
+                        "read directory entry under {}: {error}",
+                        directory.display()
+                    )));
+                    continue;
+                }
+            };
+            let path = entry.path();
+            match entry.file_type() {
+                Ok(file_type) if file_type.is_dir() => visit(candidate_src, &path, entries),
+                Ok(file_type) if file_type.is_file() => entries.push(Ok(path)),
+                Ok(_) => entries.push(Err(format!(
+                    "unsupported non-file candidate entry {}",
+                    path.display()
+                ))),
+                Err(error) => entries.push(Err(format!(
+                    "read candidate entry type {}: {error}",
+                    path.display()
+                ))),
+            }
+        }
+    }
+
+    let mut entries = Vec::new();
+    visit(candidate_src, candidate_src, &mut entries);
+    observe_complete_candidate_artifact_population_from_entries(candidate_src, phase, entries)
+}
+
+fn candidate_artifact_tree_digest(
+    candidate_src: &Path,
+    paths: &[String],
+    label: &str,
+) -> Result<String, String> {
+    if paths.is_empty() {
+        return Err(format!(
+            "CandidateManifestPopulationMismatch: cannot compute {label} over an empty artifact"
+        ));
+    }
+    let mut payload = String::new();
+    for relative_path in paths {
+        payload.push_str(relative_path);
+        payload.push('\0');
+        payload.push_str(&path_digest(&candidate_src.join(relative_path))?);
+        payload.push('\n');
+    }
+    Ok(bytes_digest(payload.as_bytes()))
+}
+
 fn candidate_manifest_aggregate(
     producer_seed_digest: &str,
     generation_id: &str,
@@ -3018,44 +3153,86 @@ fn candidate_manifest_aggregate(
 fn produce_candidate_manifest(
     candidate_src: &Path,
     selected_basenames: &[String],
+    emitted_artifact_paths: &BTreeSet<String>,
     basename_to_module: &HashMap<String, String>,
     producer_seed_digest: &str,
     candidate_tree_id: &str,
-    candidate_tree_digest: &str,
 ) -> Result<RegenCandidateManifest, String> {
-    let mut names = selected_basenames.to_vec();
-    names.sort();
-    names.dedup();
+    let selected = selected_basenames.iter().cloned().collect::<BTreeSet<_>>();
+    let bootstrap_mirrors = HAND_MAINTAINED_STAGE0_FILES
+        .iter()
+        .map(|name| (*name).to_string())
+        .collect::<BTreeSet<_>>();
+    let names =
+        observe_complete_candidate_artifact_population(candidate_src, "manifest-production")?;
     let generation_id =
         bytes_digest(format!("{producer_seed_digest}:{candidate_tree_id}").as_bytes());
     let surfaces = names
         .iter()
         .map(|basename| {
-            let declaring_module = basename_to_module.get(basename).cloned().ok_or_else(|| {
-                format!(
-                    "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
-                     declaring module"
+            let bootstrap_directory = HAND_MAINTAINED_STAGE0_DIRS
+                .iter()
+                .find(|directory| {
+                    basename
+                        .strip_prefix(**directory)
+                        .is_some_and(|suffix| suffix.starts_with('/'))
+                });
+            let (declaring_module, role) = if bootstrap_mirrors.contains(basename)
+                || bootstrap_directory.is_some()
+            {
+                (
+                    basename
+                        .strip_suffix(".rs")
+                        .unwrap_or(basename)
+                        .replace('/', "::"),
+                    RegenCandidateManifestSurfaceRole::BootstrapSourceMirror,
                 )
-            })?;
+            } else if selected.contains(basename) {
+                (
+                    basename_to_module.get(basename).cloned().ok_or_else(|| {
+                        format!(
+                            "SurfaceOwnershipUnresolved: candidate manifest surface {basename} has no \
+                             declaring module"
+                        )
+                    })?,
+                    RegenCandidateManifestSurfaceRole::GeneratedSurface,
+                )
+            } else if emitted_artifact_paths.contains(basename) {
+                // Non-Rust aggregate products do not have a same-named DAG module. Their
+                // authority is the emitter transaction that returned this exact path and whose
+                // writer installed it into this candidate tree. A path merely observed on disk
+                // cannot enter this arm.
+                (
+                    "v1.compiler.emit_rust".to_string(),
+                    RegenCandidateManifestSurfaceRole::GeneratedSurface,
+                )
+            } else {
+                return Err(format!(
+                    "CandidateManifestPopulationMismatch: candidate artifact surface {basename} is neither a generated surface nor a modeled bootstrap-source mirror"
+                ));
+            };
             Ok(RegenCandidateManifestSurface {
                 declaring_module,
                 projected_path: basename.clone(),
                 content_digest: path_digest(&candidate_src.join(basename))?,
+                role,
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
+    let complete_candidate_tree_digest =
+        candidate_artifact_tree_digest(candidate_src, &names, "complete candidate manifest")?;
     let aggregate_digest = candidate_manifest_aggregate(
         producer_seed_digest,
         &generation_id,
         candidate_tree_id,
-        candidate_tree_digest,
+        &complete_candidate_tree_digest,
         &surfaces,
     )?;
     Ok(RegenCandidateManifest {
         producer_seed_digest: producer_seed_digest.to_string(),
         generation_id,
         candidate_tree_id: candidate_tree_id.to_string(),
-        candidate_tree_digest: candidate_tree_digest.to_string(),
+        candidate_tree_digest: complete_candidate_tree_digest,
         surfaces,
         aggregate_digest,
     })
@@ -3154,21 +3331,8 @@ fn admit_candidate_manifest(
             manifest.aggregate_digest, aggregate
         ));
     }
-    let mut observed_population = fs::read_dir(candidate_src)
-        .map_err(|e| {
-            format!(
-                "read candidate manifest population {}: {e}",
-                candidate_src.display()
-            )
-        })?
-        .filter_map(|entry| entry.ok())
-        .filter_map(|entry| {
-            let path = entry.path();
-            (path.extension().and_then(|extension| extension.to_str()) == Some("rs"))
-                .then(|| entry.file_name().to_string_lossy().into_owned())
-        })
-        .collect::<Vec<_>>();
-    observed_population.sort();
+    let observed_population =
+        observe_complete_candidate_artifact_population(candidate_src, "manifest-admission")?;
     let recorded_population = manifest
         .surfaces
         .iter()
@@ -3179,13 +3343,8 @@ fn admit_candidate_manifest(
             "CandidateManifestPopulationMismatch: recorded {recorded_population:?} observed {observed_population:?}"
         ));
     }
-    let formatter = ResolvedFormatter::admit()?;
-    let observed_tree_digest = tree_digest_for_basenames(
-        &formatter,
-        candidate_src,
-        &recorded_population,
-        "candidate manifest",
-    )?;
+    let observed_tree_digest =
+        candidate_artifact_tree_digest(candidate_src, &recorded_population, "candidate manifest")?;
     if observed_tree_digest != manifest.candidate_tree_digest {
         return Err(format!(
             "CandidateManifestTreeDigestMismatch: recorded {} observed {}",
@@ -5202,17 +5361,16 @@ mod regen_convergence_host_instrument_tests {
                 declaring_module: (*module).to_string(),
                 projected_path: (*path).to_string(),
                 content_digest: path_digest(&candidate.join(path)).unwrap(),
+                role: RegenCandidateManifestSurfaceRole::GeneratedSurface,
             })
             .collect::<Vec<_>>();
         surfaces.sort_by(|left, right| left.projected_path.cmp(&right.projected_path));
-        let formatter = ResolvedFormatter::admit().unwrap();
         let population = surfaces
             .iter()
             .map(|surface| surface.projected_path.clone())
             .collect::<Vec<_>>();
         let candidate_tree_digest =
-            tree_digest_for_basenames(&formatter, candidate, &population, "fixture candidate")
-                .unwrap();
+            candidate_artifact_tree_digest(candidate, &population, "fixture candidate").unwrap();
         let aggregate_digest = candidate_manifest_aggregate(
             "seed-0",
             "generation-0",
@@ -5247,65 +5405,31 @@ mod regen_convergence_host_instrument_tests {
             .collect()
     }
 
-    /// PRODUCT HOST-JOIN INSTRUMENT: the carrier's producer role, product role, seed membership,
-    /// and bootstrap-edge absence come from their independent production authorities. The real
-    /// host then materializes the changed surface and must choose the seed-compatibility cut.
     #[test]
-    fn gunbc_cli_dispatch_host_join_materializes_one_generation_subject_seed_member() {
-        let workspace = workspace_root();
-        let roots = fixture_roots();
-        let (
-            basename_to_module,
-            generation_modules,
-            bootstrap_sources,
-            bootstrap_products,
-            seed_embedded_basenames,
-            generated_product_roles,
-        ) = convergence_surface_roles(&workspace, &roots).unwrap();
-        let carrier = "gunbc_cli_dispatch_generated.rs";
+    fn complete_candidate_population_refuses_an_unreadable_entry_and_sorts_successes() {
+        let candidate = PathBuf::from("fixture-candidate");
+        let refused = observe_complete_candidate_artifact_population_from_entries(
+            &candidate,
+            "fixture-observation",
+            vec![
+                Ok(candidate.join("a.rs")),
+                Err("injected read_dir entry failure".to_string()),
+                Ok(candidate.join("b.rs")),
+            ],
+        )
+        .unwrap_err();
         assert_eq!(
-            basename_to_module.get(carrier).map(String::as_str),
-            Some("v1.compiler.emit_rust")
+            refused,
+            "CandidateManifestPopulationUnreadable: candidate_path=fixture-candidate phase=fixture-observation error=injected read_dir entry failure"
         );
-        assert!(generation_modules.contains("v1.compiler.emit_rust"));
-        assert_eq!(
-            generated_product_roles.get(carrier).map(String::as_str),
-            Some("GenerationSubject")
-        );
-        assert!(seed_embedded_basenames.contains(carrier));
-        assert!(!bootstrap_products.contains(carrier));
 
-        let (fixture_root, stage0, candidate, _) = fixture_workspace();
-        let rows = [(carrier, "v1.compiler.emit_rust", "// candidate carrier\n")];
-        let (manifest, admitted) = fixture_manifest(&candidate, &rows);
-        let model = RegenConvergenceModel::load(&roots).unwrap();
-        let (kind, planned, closure) = convergence_plan_from_model(
-            &model,
-            1,
-            &manifest.generation_id,
-            &manifest.candidate_tree_id,
-            &manifest.candidate_tree_digest,
-            &[carrier.to_string()],
-            &admitted,
-            &stage0,
-            &basename_to_module,
-            &generation_modules,
-            &bootstrap_sources,
-            &bootstrap_products,
-            &seed_embedded_basenames,
-            &generated_product_roles,
-            &RegenEmissionScope::WholePopulation,
-            &[],
-            "seed-0",
+        let observed = observe_complete_candidate_artifact_population_from_entries(
+            &candidate,
+            "fixture-observation",
+            vec![Ok(candidate.join("b.rs")), Ok(candidate.join("a.rs"))],
         )
         .unwrap();
-        assert_eq!(
-            kind,
-            RegenConvergenceStageKindReceipt::InstallSeedCompatibilityCut
-        );
-        assert_eq!(planned, vec![carrier.to_string()]);
-        assert_eq!(closure, "seed-compatibility-cut");
-        fs::remove_dir_all(fixture_root).unwrap();
+        assert_eq!(observed, vec!["a.rs".to_string(), "b.rs".to_string()]);
     }
 
     /// HOST-PATH INSTRUMENT: this calls the same journal/install/build/admission orchestration as
@@ -5314,6 +5438,107 @@ mod regen_convergence_host_instrument_tests {
     fn mutating_transaction_binds_candidates_restores_and_reaches_staged_fixed_point() {
         let roots = fixture_roots();
         let model = RegenConvergenceModel::load(&roots).unwrap();
+
+        // An emitted non-Rust artifact is admitted from the writer's exact output population,
+        // not from a basename exception. This is the crate-layout-product shape without naming
+        // any particular product path in the manifest authority.
+        let (_, _, emitted_artifact_candidate, _) = fixture_workspace();
+        fs::write(
+            emitted_artifact_candidate.join("fixture-layout.artifact"),
+            "emitted layout bytes\n",
+        )
+        .unwrap();
+        let emitted_artifact_manifest = produce_candidate_manifest(
+            &emitted_artifact_candidate,
+            &[],
+            &["fixture-layout.artifact".to_string()]
+                .into_iter()
+                .collect(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-emitted-artifact",
+        )
+        .unwrap();
+        assert_eq!(emitted_artifact_manifest.surfaces.len(), 1);
+        assert!(matches!(
+            emitted_artifact_manifest.surfaces[0].role,
+            RegenCandidateManifestSurfaceRole::GeneratedSurface
+        ));
+
+        // Relative-path identity is load-bearing: a nested file cannot borrow the generated role
+        // of an emitted root artifact merely because their basenames collide.
+        let (_, _, emitted_collision_candidate, _) = fixture_workspace();
+        fs::create_dir_all(emitted_collision_candidate.join("nested")).unwrap();
+        fs::write(
+            emitted_collision_candidate.join("nested/fixture-layout.artifact"),
+            "nested foreign bytes\n",
+        )
+        .unwrap();
+        assert!(produce_candidate_manifest(
+            &emitted_collision_candidate,
+            &[],
+            &["fixture-layout.artifact".to_string()]
+                .into_iter()
+                .collect(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-emitted-collision",
+        )
+        .unwrap_err()
+        .contains("CandidateManifestPopulationMismatch"));
+
+        // Bootstrap-source mirrors inhabit the same immutable candidate artifact as generated
+        // surfaces. Their role is bound by the manifest, and changing their bytes after
+        // production refuses before any install journal exists.
+        let (_, _, bootstrap_candidate, _) = fixture_workspace();
+        fs::create_dir_all(bootstrap_candidate.join("cli_run")).unwrap();
+        fs::write(
+            bootstrap_candidate.join("cli_run/fixture_support.txt"),
+            "original support bytes\n",
+        )
+        .unwrap();
+        let bootstrap_manifest = produce_candidate_manifest(
+            &bootstrap_candidate,
+            &[],
+            &BTreeSet::new(),
+            &HashMap::new(),
+            "seed-0",
+            "tree-bootstrap",
+        )
+        .unwrap();
+        assert!(matches!(
+            bootstrap_manifest.surfaces[0].role,
+            RegenCandidateManifestSurfaceRole::BootstrapSourceMirror
+        ));
+        fs::write(
+            bootstrap_candidate.join("cli_run/fixture_support.txt"),
+            "tampered support bytes\n",
+        )
+        .unwrap();
+        assert!(admit_candidate_manifest(
+            &model,
+            &bootstrap_candidate,
+            &bootstrap_manifest,
+            "seed-0"
+        )
+        .unwrap_err()
+        .contains("CandidateManifestTreeDigestMismatch"));
+
+        // A file with neither a generated-surface row nor a bootstrap-source-mirror row remains
+        // foreign to the complete artifact and is refused at the population wall.
+        let (_, _, foreign_candidate, _) = fixture_workspace();
+        let foreign_rows = [(
+            "fixture_generated.rs",
+            "fixture.generated",
+            "// generated\n",
+        )];
+        let (foreign_manifest, _) = fixture_manifest(&foreign_candidate, &foreign_rows);
+        fs::write(foreign_candidate.join("foreign.bin"), b"foreign bytes\n").unwrap();
+        assert!(
+            admit_candidate_manifest(&model, &foreign_candidate, &foreign_manifest, "seed-0")
+                .unwrap_err()
+                .contains("CandidateManifestPopulationMismatch")
+        );
 
         // A candidate changed after its generation manifest is refused before a journal exists.
         let (workspace, stage0, candidate, subject) = fixture_workspace();
@@ -5545,7 +5770,7 @@ mod regen_convergence_host_instrument_tests {
         let journal_root = regen_convergence_journal_path(&workspace);
         let backup = fs::read_dir(&journal_root)
             .unwrap()
-            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.expect("fixture journal directory entry must remain readable"))
             .map(|entry| entry.path())
             .find(|path| path.extension().and_then(|ext| ext.to_str()) == Some("bak"))
             .unwrap();

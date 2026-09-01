@@ -30,6 +30,7 @@ import gunbc.recurring_failure_mode { recurring_failure_mode_roster }
 import gunbc.rung_drop { rung_drop_roster }
 import v2.workflow.floor_discovery { floor_discovery_tree_identity }
 import gunbc.self_host_compile_phase_frontier {
+  census_identity_domain_separator,
   CompilePhaseFrontierEmpty,
   CompilePhaseFrontierValidated,
   CompilePhaseFrontierInvalid,
@@ -91,7 +92,10 @@ fn compile_phase_frontier_blocks() -> List<MarkdownBlock> {
       p(text: concat("Milestones: ", render_phase_board(board: latest.board))),
       p(text: concat("Tree: `", concat(floor_discovery_tree_identity(tree: latest.subject.git_tree_object), "`"))),
       p(text: concat("Invocation: `", concat(latest.invocation as String, "`"))),
-      p(text: concat("Census identity digest: `", concat(latest.board.census_identity_digest.digest as String, "`"))),
+      p(text: concat(
+        concat("Census identity digest (", concat(census_identity_domain_separator(algorithm: latest.board.census_identity_digest.algorithm), "): `")),
+        concat(latest.board.census_identity_digest.digest.digest as String, "`")
+      )),
       p(text: concat(
         "Error identities: ",
         concat(

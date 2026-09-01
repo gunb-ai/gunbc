@@ -605,6 +605,14 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
       remedy: RemedyConstructionWall,
       admission: GenuinelyNewInvariant
     }
+    UndecidableVerdictCollapse => LensInvariantSurface {
+      module: module,
+      lens_id: id,
+      projection: ProjectionNodeDag,
+      verdict_authority: VerdictLensVerdict,
+      remedy: RemedyConstructionWall,
+      admission: GenuinelyNewInvariant
+    }
   }
 }
 

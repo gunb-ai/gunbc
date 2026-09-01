@@ -3319,12 +3319,12 @@ pub fn collect_field_binding_names(
             MatchPattern::VariantPattern {
                 field_bindings: nested,
                 ..
-            } => nested.iter().cloned().fold(
-                vars.clone(),
-                |inner: Rc<HashMap<String, bool>>, nested_fb: Rc<Node>| {
+            } => nested
+                .iter()
+                .cloned()
+                .fold(vars.clone(), |inner: _, nested_fb: Rc<Node>| {
                     collect_field_binding_names(nested_fb.clone(), inner)
-                },
-            ),
+                }),
             _ => vars.clone(),
         }
     })
@@ -3405,7 +3405,7 @@ pub fn is_match_option_descent(
                                 } => {
                                     let binding_names = bindings.iter().cloned().fold(
                                         v1_rt::rc_empty_map::<String, bool>(),
-                                        |acc: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                        |acc: _, fb: Rc<Node>| {
                                             collect_field_binding_names(fb.clone(), acc)
                                         },
                                     );
@@ -3701,57 +3701,51 @@ pub fn collect_descent_vars(
                     crate::v1_std_core::match_arm_nodes(body.clone())
                         .iter()
                         .cloned()
-                        .fold(
-                            vars.clone(),
-                            |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| {
-                                match (*crate::v1_std_core::arm_pattern(arm_node.clone())).clone() {
-                                    MatchPattern::VariantPattern {
-                                        field_bindings: bindings,
-                                        ..
-                                    } => bindings.iter().cloned().fold(
-                                        acc.clone(),
-                                        |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
-                                            collect_field_binding_names(fb.clone(), inner)
-                                        },
-                                    ),
-                                    MatchPattern::Bind {
-                                        declaration: declaration,
-                                        ..
-                                    } => {
-                                        if scrut_is_descent.clone() {
-                                            v1_rt::rc_map_insert(
-                                                acc.clone(),
-                                                declaration.name.clone(),
-                                                true,
-                                            )
-                                        } else {
-                                            acc.clone()
-                                        }
+                        .fold(vars.clone(), |acc: _, arm_node: Rc<Node>| {
+                            match (*crate::v1_std_core::arm_pattern(arm_node.clone())).clone() {
+                                MatchPattern::VariantPattern {
+                                    field_bindings: bindings,
+                                    ..
+                                } => bindings.iter().cloned().fold(
+                                    acc.clone(),
+                                    |inner: _, fb: Rc<Node>| {
+                                        collect_field_binding_names(fb.clone(), inner)
+                                    },
+                                ),
+                                MatchPattern::Bind {
+                                    declaration: declaration,
+                                    ..
+                                } => {
+                                    if scrut_is_descent.clone() {
+                                        v1_rt::rc_map_insert(
+                                            acc.clone(),
+                                            declaration.name.clone(),
+                                            true,
+                                        )
+                                    } else {
+                                        acc.clone()
                                     }
-                                    _ => acc.clone(),
                                 }
-                            },
-                        )
+                                _ => acc.clone(),
+                            }
+                        })
                 } else {
                     vars.clone()
                 };
                 crate::v1_std_core::match_arm_nodes(body.clone())
                     .iter()
                     .cloned()
-                    .fold(
-                        with_patterns.clone(),
-                        |acc: Rc<HashMap<String, bool>>, arm_node: Rc<Node>| {
-                            let arm_result = collect_descent_vars(
-                                crate::v1_std_core::arm_body(arm_node.clone()),
-                                param_name.clone(),
-                                with_patterns.clone(),
-                                check_child.clone(),
-                                check_list.clone(),
-                                si.clone(),
-                            );
-                            v1_rt::rc_map_merge(acc, arm_result.clone())
-                        },
-                    )
+                    .fold(with_patterns.clone(), |acc: _, arm_node: Rc<Node>| {
+                        let arm_result = collect_descent_vars(
+                            crate::v1_std_core::arm_body(arm_node.clone()),
+                            param_name.clone(),
+                            with_patterns.clone(),
+                            check_child.clone(),
+                            check_list.clone(),
+                            si.clone(),
+                        );
+                        v1_rt::rc_map_merge(acc, arm_result.clone())
+                    })
             }
             ExprData::ExprIf => {
                 let then_vars = collect_descent_vars(
@@ -3777,7 +3771,7 @@ pub fn collect_descent_vars(
             }
             ExprData::ExprBlock => body.children.clone().iter().cloned().fold(
                 vars.clone(),
-                |acc: Rc<HashMap<String, bool>>, stmt: Rc<Node>| {
+                |acc: _, stmt: Rc<Node>| {
                     collect_descent_vars(
                         stmt.clone(),
                         param_name.clone(),
@@ -3962,7 +3956,7 @@ pub fn all_self_calls_descend_inc(
                                         ..
                                     } => bindings.iter().cloned().fold(
                                         vars.clone(),
-                                        |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                        |inner: _, fb: Rc<Node>| {
                                             collect_field_binding_names(fb.clone(), inner)
                                         },
                                     ),
@@ -4042,7 +4036,7 @@ pub fn all_self_calls_descend_inc(
                         ok: true,
                         vars: vars.clone(),
                     }),
-                    |acc: Rc<DescentCheckAcc>, stmt: Rc<Node>| {
+                    |acc: _, stmt: Rc<Node>| {
                         if (acc.ok.clone() == false) {
                             acc.clone()
                         } else {
@@ -4891,7 +4885,7 @@ pub fn collect_evidence_incremental(
                                                 ..
                                             } => bindings.iter().cloned().fold(
                                                 vars.clone(),
-                                                |inner: Rc<HashMap<String, bool>>, fb: Rc<Node>| {
+                                                |inner: _, fb: Rc<Node>| {
                                                     collect_field_binding_names(fb.clone(), inner)
                                                 },
                                             ),
@@ -5045,7 +5039,7 @@ pub fn collect_evidence_incremental(
                         evidence: std::option::Option::None,
                         vars: vars.clone(),
                     }),
-                    |acc: Rc<EvidenceBlockAcc>, stmt: Rc<Node>| {
+                    |acc: _, stmt: Rc<Node>| {
                         let stmt_ev = collect_evidence_incremental(
                             stmt.clone(),
                             func_name.clone(),
@@ -6694,7 +6688,7 @@ pub fn collect_scc_child_edges(
                         edges: Rc::new(vec![]),
                         vars: descent_vars.clone(),
                     }),
-                    |acc: Rc<SccEdgeBlockAcc>, stmt: Rc<Node>| {
+                    |acc: _, stmt: Rc<Node>| {
                         let stmt_edges = collect_scc_child_edges(
                             stmt.clone(),
                             caller.clone(),
@@ -9092,10 +9086,7 @@ pub fn deduplicate(items: Rc<Vec<String>>) -> Rc<Vec<String>> {
                 seen: v1_rt::rc_empty_map::<String, bool>(),
                 out: Rc::new(vec![]),
             }),
-            |acc: Rc<DeduplicateAcc>, item: String| match v1_rt::map_get(
-                &acc.seen.clone(),
-                item.clone(),
-            ) {
+            |acc: _, item: String| match v1_rt::map_get(&acc.seen.clone(), item.clone()) {
                 Some(_) => acc.clone(),
                 std::option::Option::None => Rc::new(DeduplicateAcc {
                     seen: v1_rt::rc_map_insert(acc.seen.clone(), item.clone(), true),
@@ -10301,7 +10292,7 @@ pub fn analyze_structural_bounds(
 ) -> Rc<Vec<Rc<StructuralBoundResult>>> {
     func_entries.iter().cloned().fold(
         Rc::new(vec![]),
-        |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
+        |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: _| {
             let all_calls =
                 collect_self_call_evidence(entry.body.clone(), entry.name.clone(), si.clone());
             if ((all_calls.clone().len() as i64) == 0) {
@@ -10431,16 +10422,14 @@ pub fn build_complexity_report(
         let si = source_indices.clone();
         let func_index = func_entries.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<FuncEntry>>(),
-            |acc: Rc<HashMap<String, Rc<FuncEntry>>>, entry: Rc<FuncEntry>| {
-                v1_rt::rc_map_insert(acc, entry.name.clone(), entry.clone())
-            },
+            |acc: _, entry: _| v1_rt::rc_map_insert(acc, entry.name.clone(), entry.clone()),
         );
         let scc_result = build_scc_index(func_entries.clone(), func_index.clone(), si.clone());
         let parser_always_advancing =
             infer_all_parser_always_advancing(func_index.clone(), si.clone());
         let full_scc_index = func_entries.iter().cloned().fold(
             scc_result.index.clone(),
-            |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: Rc<FuncEntry>| match v1_rt::map_get(
+            |acc: Rc<HashMap<String, Rc<SccInfo>>>, entry: _| match v1_rt::map_get(
                 &acc,
                 entry.name.clone(),
             ) {
@@ -10484,7 +10473,7 @@ pub fn build_complexity_report(
         );
         let fan_in = func_entries.iter().cloned().fold(
             v1_rt::rc_empty_map::<String, i64>(),
-            |acc: Rc<HashMap<String, i64>>, entry: Rc<FuncEntry>| {
+            |acc: Rc<HashMap<String, i64>>, entry: _| {
                 let callees = match v1_rt::map_get(&call_forward, entry.name.clone()) {
                     Some(cs) => cs.clone(),
                     std::option::Option::None => Rc::new(vec![]),
@@ -10517,10 +10506,7 @@ pub fn build_complexity_report(
                 fan_in: fan_in.clone(),
                 processed: v1_rt::rc_empty_map::<String, bool>(),
             }),
-            |acc: Rc<TopoBuildAcc>, func_name: String| match v1_rt::map_get(
-                &func_index,
-                func_name.clone(),
-            ) {
+            |acc: _, func_name: String| match v1_rt::map_get(&func_index, func_name.clone()) {
                 Some(entry) => {
                     let sr = get_or_compute_summary(
                         func_name.clone(),

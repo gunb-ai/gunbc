@@ -31,7 +31,7 @@ import v2.std.runtime {
   RuntimeValue,
   effect_handler_for_kind
 }
-import v2.std.witness { Holds, Violates }
+import v2.std.witness { Holds, Violates, Witness }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
@@ -69,27 +69,46 @@ fn effect_io_claim_payload() -> RuntimeValue {
   }
 }
 
+// THE DECLARED RESIDUAL (DESIGN 4b(3)). effect_io_pure_read_write_roundtrip threads the reason a
+// comparison could not be decided as a located Diagnostic. It dies HERE, because a `test fn`
+// returns Bool and v2.std.verification's BoolWitness carries no diagnostic channel -- so the claim
+// can fail, but cannot report why. One sanctioned collapse in one place, rather than one per arm.
+// RETIRED BY: a diagnostic-carrying witness modality beside BoolWitnessClaim, which is the
+// CAPABILITY that lets a failing claim carry its reason. No lesser artifact retires it.
+fn effect_io_roundtrip_decided(w: Witness<Bool>) -> Bool {
+  match w {
+    Holds { value: b } => b
+    Violates { diagnostic: _ } => false
+  }
+}
+
 test fn effect_io_pure_file_roundtrip_holds() -> Bool {
-  effect_io_pure_read_write_roundtrip(
-    backend: FileResourceBackend,
-    payload: effect_io_claim_payload(),
-    locator_arg: effect_io_claim_resource_a()
+  effect_io_roundtrip_decided(
+    w: effect_io_pure_read_write_roundtrip(
+      backend: FileResourceBackend,
+      payload: effect_io_claim_payload(),
+      locator_arg: effect_io_claim_resource_a()
+    )
   )
 }
 
 test fn effect_io_pure_http_roundtrip_holds() -> Bool {
-  effect_io_pure_read_write_roundtrip(
-    backend: HttpResourceBackend,
-    payload: effect_io_claim_payload(),
-    locator_arg: effect_io_claim_resource_a()
+  effect_io_roundtrip_decided(
+    w: effect_io_pure_read_write_roundtrip(
+      backend: HttpResourceBackend,
+      payload: effect_io_claim_payload(),
+      locator_arg: effect_io_claim_resource_a()
+    )
   )
 }
 
 test fn effect_io_pure_storage_roundtrip_holds() -> Bool {
-  effect_io_pure_read_write_roundtrip(
-    backend: StorageResourceBackend,
-    payload: effect_io_claim_payload(),
-    locator_arg: effect_io_claim_resource_a()
+  effect_io_roundtrip_decided(
+    w: effect_io_pure_read_write_roundtrip(
+      backend: StorageResourceBackend,
+      payload: effect_io_claim_payload(),
+      locator_arg: effect_io_claim_resource_a()
+    )
   )
 }
 
