@@ -133,11 +133,15 @@ itself a finding — the same class DESIGN §4b names when it says a knowingly-f
 canonical authority is premise contamination — and it is recorded here rather than fixed, because it
 belongs to the receipt authority's owner and not to this cut.
 
-**That finding may not live only here.** Cut B deletes this plan, so a finding whose only home is
-this file would be destroyed by its own program. Its persistent destination is a routed item against
-the receipt authority's owning lane, opened before Cut A lands; this file records it, but does not
-own it. If no owner accepts it, the alternative is repairing the stale recital before dissolution —
-what is not permitted is letting the plan's deletion silently take the finding with it.
+**That finding does not live only here — its destination exists.** Cut B deletes this plan, so a
+finding whose only home is this file would be destroyed by its own program. It was routed to
+`node://adhoc-8d0de08a-242` and landed as **gunbc#9858**, whose disposition is **deletion**: that
+lane reproduced the census independently rather than inheriting it, and established the discriminator
+— there is no *producer* at all, so the join is **unreachable rather than merely unoccupied**, which
+is what separates deleting a dead model from silencing a quiet guard. Its durable home is a receipt
+appended to the `reachability_read_as_occupancy` row of `gunbc.recurring_failure_mode`, projected into
+`docs/design-ledgers.md`, which survives this plan's dissolution. This file records the finding; it
+does not own it.
 
 The receipt remains the honest upgrade if that lane is ever restored, at which point it is the
 stronger observation.
