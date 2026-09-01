@@ -37,14 +37,30 @@ fn local_repo_wet_verdict_is_passed(v: LocalRepoWetVerdict) -> Bool {
   }
 }
 
+// THE SCHEDULED EXPECTATION IS SINGLE-ARMED, AND THAT IS THE HONEST WIDTH.
+//
+// It carried the full four-arm LocalRepoWetVerdict, so the roster could declare a member expected
+// to fail, refuse, or reach no verdict. The executing host could realize none of that: it mapped
+// Passed to true, the other three arms to false, and compared Bools -- so Failed, Refused and
+// Nonterminal were one state to production, and a roster row declaring any of them would have been
+// an authority claiming a behaviour the only executor cannot perform. DESIGN section 4b calls that
+// rung inflation and section 5 calls the collapse a widened failure arm; both are closed by making
+// the type as wide as the contract and no wider.
+//
+// The OBSERVED side keeps all four arms, because the four are real outcomes and the refusal must
+// say which one occurred. What is narrowed is only what a roster may DEMAND. Admitting an
+// expected-red member is a widening of this type, arriving with the executor arm that realizes it.
+type LocalRepoWetExpectation = | LocalRepoWetExpectPassed
+
 // ONE SCHEDULED IDENTITY. The entry and function are the two halves of the identity the executor is
-// asked to run; `expected` is what the roster says the terminal must be, so a witness enrolled as
-// an expected-red is not silently required to pass.
+// asked to run, and `entry` is not decoration: the host joins the authored path against the source
+// path the prepared subject actually resolved for the module, so a stale entry refuses instead of
+// sitting unread beside a module the executor found some other way.
 type LocalRepoWetScheduled {
   identity: String
   entry: String
   function: String
-  expected: LocalRepoWetVerdict
+  expected: LocalRepoWetExpectation
 }
 
 // ONE TERMINAL RECEIPT. `candidate` is the tree or commit the executor actually ran against.
@@ -106,7 +122,7 @@ fn local_repo_wet_forward_causes(
             concat(acc, [LocalRepoWetTerminalForeignEntry { identity: s.identity, observed: t.entry, required: s.entry }])
           } else if t.function != s.function {
             concat(acc, [LocalRepoWetTerminalForeignFunction { identity: s.identity, observed: t.function, required: s.function }])
-          } else if !local_repo_wet_verdict_is(a: t.observed, b: s.expected) {
+          } else if !local_repo_wet_expectation_met(expected: s.expected, observed: t.observed) {
             concat(acc, [LocalRepoWetTerminalVerdictNotExpected { identity: s.identity }])
           } else {
             acc
@@ -130,6 +146,21 @@ fn local_repo_wet_reverse_causes(
       concat(acc, [LocalRepoWetTerminalUnscheduled { identity: t.identity }])
     }
   })
+}
+
+// THE EXPECTATION MEETS THE OBSERVATION BY EXHAUSTIVE MATCH ON BOTH SIDES, never by collapsing
+// either to a Bool. One accepting cell today; adding an expectation arm forces every observed arm
+// beside it to be decided rather than defaulted.
+fn local_repo_wet_expectation_met(expected: LocalRepoWetExpectation, observed: LocalRepoWetVerdict) -> Bool {
+  match expected {
+    LocalRepoWetExpectPassed =>
+      match observed {
+        LocalRepoWetPassed => true
+        LocalRepoWetFailed => false
+        LocalRepoWetRefused { detail: _ } => false
+        LocalRepoWetNonterminal { detail: _ } => false
+      }
+  }
 }
 
 fn local_repo_wet_verdict_is(a: LocalRepoWetVerdict, b: LocalRepoWetVerdict) -> Bool {
@@ -198,13 +229,13 @@ fn local_repo_wet_identity_passed_on_candidate(
 // failure the ruling that ordered this lane forbids by name.
 fn local_repo_wet_schedule() -> List<LocalRepoWetScheduled> {
   [
-    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_refuses_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_refuses_by_real_execution", expected: LocalRepoWetPassed },
-    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", expected: LocalRepoWetPassed },
-    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution", expected: LocalRepoWetPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.clean_staged_index_admits_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "clean_staged_index_admits_by_real_execution", expected: LocalRepoWetPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unmerged_index_with_no_markers_refuses_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unmerged_index_with_no_markers_refuses_by_real_execution", expected: LocalRepoWetPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", expected: LocalRepoWetPassed },
-    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.space_and_tab_named_paths_admit_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "space_and_tab_named_paths_admit_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_refuses_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_refuses_by_real_execution", expected: LocalRepoWetExpectPassed },
+    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", expected: LocalRepoWetExpectPassed },
+    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution", expected: LocalRepoWetExpectPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.clean_staged_index_admits_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "clean_staged_index_admits_by_real_execution", expected: LocalRepoWetExpectPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unmerged_index_with_no_markers_refuses_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unmerged_index_with_no_markers_refuses_by_real_execution", expected: LocalRepoWetExpectPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", expected: LocalRepoWetExpectPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.space_and_tab_named_paths_admit_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "space_and_tab_named_paths_admit_by_real_execution", expected: LocalRepoWetExpectPassed },
   ]
 }
 

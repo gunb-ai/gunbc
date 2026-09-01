@@ -13,6 +13,9 @@ import v2.workflow.floor_terminal_ledger {
   RouteGapBeforeVerdict, RuntimeErroredBeforeVerdict, PanickedBeforeVerdict,
   NotAttemptedAfterAbort, ObservationUnreadableBeforeVerdict,
 }
+import v2.workflow.local_repo_wet_terminal {
+  LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused,
+}
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -51,16 +54,39 @@ import std.observation { Measured, MeasuredValue, MeasuredUnavailable, TimedMeas
 // joined to it. The pattern is the cost-debt one directly above: a nonstandard path becomes
 // admissible only when it carries the replacement observation, never because a roster says one
 // ought to exist.
-type HermeticRouteGapWetJoin {
-  route_gap_expectation_agreed: Bool
-  scheduled_route_live: Bool
-  wet_terminal_passed_on_candidate: Bool
+// THREE BOOLEANS WERE NOT THIS RECORD, THEY WERE THREE INDEPENDENT ASSERTIONS PACKAGED TOGETHER.
+// The shape above read `route_gap_expectation_agreed / scheduled_route_live /
+// wet_terminal_passed_on_candidate: Bool`, and nothing in it established that the three facts
+// concerned the SAME identity or the same tree -- a caller could author true/true/true while
+// supplying no route-gap row, no scheduled row, no terminal, no identity and no candidate. The
+// paragraph above says the conjunction only means something "at the SAME identity"; the record did
+// not carry an identity, so it could not say that, and the composition it describes was checked
+// nowhere. What is carried now is the evidence itself, and the completeness predicate does the
+// same-identity, same-candidate join the paragraph always claimed.
+type WetTerminalAdmitted {
+  identity: String
+  candidate: String
 }
 
-fn hermetic_route_gap_wet_join_complete(join: HermeticRouteGapWetJoin) -> Bool {
-  join.route_gap_expectation_agreed
-    && join.scheduled_route_live
-    && join.wet_terminal_passed_on_candidate
+type HermeticRouteGapWetEvidence
+  = HermeticRouteGapWetUnavailable
+  | HermeticRouteGapWetAdmitted { admitted: WetTerminalAdmitted, lane: LocalRepoWetJoin }
+
+fn hermetic_route_gap_wet_join_complete(
+  evidence: HermeticRouteGapWetEvidence,
+  identity: String,
+  candidate: String,
+) -> Bool {
+  match evidence {
+    HermeticRouteGapWetUnavailable => false
+    HermeticRouteGapWetAdmitted { admitted: a, lane: l } =>
+      (a.identity == identity)
+        && (a.candidate == candidate)
+        && match l {
+          LocalRepoWetJoinHolds => true
+          LocalRepoWetJoinRefused { causes: _ } => false
+        }
+  }
 }
 
 type ChangedWitnessExecutionStanding =
@@ -69,7 +95,7 @@ type ChangedWitnessExecutionStanding =
   | PlannedAndPassedWithCostDebtObserved { observation: ChangedWitnessCostObservation }
   | CostObservationMissingUnderVerdictOnly
   | PlannedWithoutTerminalVerdict
-  | HermeticRouteGapHeldAndWetPassed { join: HermeticRouteGapWetJoin }
+  | HermeticRouteGapHeldAndWetPassed { evidence: HermeticRouteGapWetEvidence, identity: String, candidate: String }
   | Declined { disposition: RequiredFloorDisposition }
   | MissingDisposition
 
@@ -214,7 +240,9 @@ fn changed_witness_planned_standing(
   terminal: ChangedWitnessTerminalReading,
   cost_policy: ChangedWitnessCostPolicy,
   cost: ChangedWitnessCostReading,
-  wet: HermeticRouteGapWetJoin,
+  wet: HermeticRouteGapWetEvidence,
+  identity: String,
+  candidate: String,
 ) -> ChangedWitnessExecutionStanding {
   match terminal {
     NotExecuted => PlannedWithoutTerminalVerdict {}
@@ -233,8 +261,8 @@ fn changed_witness_planned_standing(
         BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
         HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         RouteGapBeforeVerdict =>
-          if hermetic_route_gap_wet_join_complete(join: wet) {
-            HermeticRouteGapHeldAndWetPassed { join: wet }
+          if hermetic_route_gap_wet_join_complete(evidence: wet, identity: identity, candidate: candidate) {
+            HermeticRouteGapHeldAndWetPassed { evidence: wet, identity: identity, candidate: candidate }
           } else {
             PlannedWithoutTerminalVerdict {}
           }
@@ -248,15 +276,17 @@ fn changed_witness_planned_standing(
 
 fn changed_witness_execution_standing(
   reading: ChangedWitnessDispositionReading,
-  wet: HermeticRouteGapWetJoin,
+  wet: HermeticRouteGapWetEvidence,
+  identity: String,
+  candidate: String,
 ) -> ChangedWitnessExecutionStanding {
   match reading {
     NoDispositionRow => MissingDisposition {}
     DispositionRow { disposition: d, terminal: t, cost_policy: p, cost: c } =>
       match d {
-        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet)
+        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
         PlannedAsChangedWitness =>
-          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet)
+          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet, identity: identity, candidate: candidate)
         DeclinedLongModule { matched_prefix: _ } => Declined { disposition: d }
         DeclinedFixtureMember { matched_prefix: _ } => Declined { disposition: d }
         DeclinedOutsideRequiredGate => Declined { disposition: d }
@@ -279,7 +309,8 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedAndPassedWithCostDebtObserved { observation: _ } => false
     CostObservationMissingUnderVerdictOnly => true
     PlannedWithoutTerminalVerdict => true
-    HermeticRouteGapHeldAndWetPassed { join: j } => !hermetic_route_gap_wet_join_complete(join: j)
+    HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
+      !hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
     Declined { disposition: _ } => true
     MissingDisposition => true
   }

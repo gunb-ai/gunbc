@@ -940,7 +940,8 @@ pub(crate) fn changed_witness_projection_rows(
     terminal: &[ClaimTerminalRow],
     verdict_only: &HashSet<String>,
     observations: &HashMap<String, ChangedWitnessCostObservation>,
-    wet_admitted: &HashSet<String>,
+    wet_lane: &LocalRepoWetLaneOutcome,
+    candidate: &str,
 ) -> Vec<ChangedWitnessProjectionRow> {
     let dispositions: std::collections::HashMap<&str, &RequiredFloorDisposition> = disposition_rows
         .iter()
@@ -994,13 +995,18 @@ pub(crate) fn changed_witness_projection_rows(
                 let cost_missing = verdict_only_policy && reached_pass && observation.is_none();
                 // THE JOINED WET STANDING (`v2.workflow.floor_changed_witness`
                 // `HermeticRouteGapHeldAndWetPassed`). A hermetic route gap stays nonterminal on
-                // its own; it becomes admissible ONLY when the same identity also has a live
-                // scheduled route and a wet terminal that reached the expected verdict against
-                // THIS candidate. `wet_admitted` is that conjunction, computed by the lane —
-                // membership here is never enough on its own, which is why the set contains an
-                // identity only when all three facts held.
+                // its own; it becomes admissible ONLY when the SAME identity has a wet terminal
+                // that reached the expected verdict against THIS candidate, and only while the
+                // lane's own schedule-to-terminal join holds.
+                //
+                // THE CANDIDATE IS COMPARED, NOT ASSUMED. Membership in a set of identities says
+                // "it passed somewhere"; the pair the `.dag` evidence carries says where. The
+                // lane records the subject it ran against, and an admission from any other
+                // subject is refused here rather than silently accepted as this run's.
                 let wet_joined = matches!(outcome, Some(ClaimDisposition::RouteGapBeforeVerdict))
-                    && wet_admitted.contains(identity.as_str());
+                    && wet_lane.refusals.is_empty()
+                    && wet_lane.candidate == candidate
+                    && wet_lane.admitted.contains(identity.as_str());
                 let green = (reached_pass && !cost_missing)
                     || matches!(outcome, Some(ClaimDisposition::KnownRedHeld))
                     || wet_joined;
@@ -1051,9 +1057,70 @@ pub(crate) fn changed_witness_projection_rows(
 #[derive(Debug, Clone)]
 pub(crate) struct LocalRepoWetScheduledRow {
     pub identity: String,
+    /// The AUTHORED source path. Kept and JOINED, not decoration: the lane refuses if the prepared
+    /// subject resolved the module from a different file, so a stale entry cannot sit unread beside
+    /// a module the executor reached some other way.
+    pub entry: String,
     pub entry_module: String,
     pub function: String,
-    pub expect_passed: bool,
+}
+
+/// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
+///
+/// This used to be a `bool`. Passed / Failed / Refused / Nonterminal are four different facts with
+/// four different remedies, and folding them into "not passed" made a route with no arm
+/// indistinguishable from a witness that ran and disagreed — a widened failure arm wearing a
+/// precise one's name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LocalRepoWetObserved {
+    Passed,
+    Failed,
+    Refused(String),
+    Nonterminal(String),
+}
+
+impl LocalRepoWetObserved {
+    fn name(&self) -> &'static str {
+        match self {
+            LocalRepoWetObserved::Passed => "passed",
+            LocalRepoWetObserved::Failed => "failed",
+            LocalRepoWetObserved::Refused(_) => "refused",
+            LocalRepoWetObserved::Nonterminal(_) => "nonterminal",
+        }
+    }
+
+    fn detail(&self) -> &str {
+        match self {
+            LocalRepoWetObserved::Passed | LocalRepoWetObserved::Failed => "",
+            LocalRepoWetObserved::Refused(d) | LocalRepoWetObserved::Nonterminal(d) => d.as_str(),
+        }
+    }
+
+    /// The host realization of `local_repo_wet_expectation_met` for the one expectation arm
+    /// `LocalRepoWetExpectation` carries. Exhaustive on the observed side by construction.
+    fn meets_pass_expectation(&self) -> bool {
+        matches!(self, LocalRepoWetObserved::Passed)
+    }
+}
+
+fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> LocalRepoWetObserved {
+    use crate::cli_run::ClaimOutcome as O;
+    match outcome {
+        O::Pass => LocalRepoWetObserved::Passed,
+        O::Fail => LocalRepoWetObserved::Failed,
+        // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
+        // as reaching a verdict this lane disagrees with.
+        O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
+        O::CompletedOverBudget { .. } => {
+            LocalRepoWetObserved::Nonterminal("completed over budget".to_string())
+        }
+        O::NotAttempted { halted_by } => {
+            LocalRepoWetObserved::Nonterminal(format!("not attempted: {halted_by}"))
+        }
+        // THE ROUTE OR THE PROGRAM REFUSED. Each of these is a located typed refusal in its own
+        // right; the lane keeps the class and hands the reader its own diagnostic.
+        other => LocalRepoWetObserved::Refused(format!("{other:?}")),
+    }
 }
 
 /// WHAT THE LANE OBSERVED, kept as the two facts the changed-witness join needs and the refusals
@@ -1068,6 +1135,11 @@ pub(crate) struct LocalRepoWetScheduledRow {
 #[derive(Debug, Default)]
 pub(crate) struct LocalRepoWetLaneOutcome {
     pub scheduled: usize,
+    /// THE CANDIDATE EVERY ADMISSION IN THIS OUTCOME IS BOUND TO -- the prepared subject digest
+    /// the lane actually ran against. Carried rather than assumed: the `.dag` evidence
+    /// (`WetTerminalAdmitted`) is a pair, and a set of identities with no candidate beside it is
+    /// the "it passed SOMEWHERE" standing this whole lane exists to refuse.
+    pub candidate: String,
     pub admitted: HashSet<String>,
     pub refusals: Vec<String>,
 }
@@ -1110,6 +1182,7 @@ fn local_repo_wet_schedule(
         };
         let identity = str_field("identity")?;
         let function = str_field("function")?;
+        let entry = str_field("entry")?;
         // THE ENTRY MODULE IS DERIVED FROM THE IDENTITY, NOT FROM THE PATH. The identity is
         // `<module>.<function>` and the module is what the prepared subject is keyed by; the
         // roster's `entry` field is the file the local recipe names, which is a different
@@ -1123,15 +1196,18 @@ fn local_repo_wet_schedule(
                 ));
             }
         };
-        let expect_passed = match hermetic.field(&fields, "expected") {
+        // `LocalRepoWetExpectation` HAS ONE ARM, so there is nothing to collapse. A second arm
+        // reaching here refuses rather than defaulting: the widening that admits an expected-red
+        // member must arrive with the executor arm that realizes it, and this refusal is what
+        // stops the authority from claiming a behaviour production cannot perform.
+        match hermetic.field(&fields, "expected") {
             Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
                 match hermetic.resolve(*variant_name).as_str() {
-                    "LocalRepoWetPassed" => true,
-                    "LocalRepoWetFailed" | "LocalRepoWetRefused" | "LocalRepoWetNonterminal" => {
-                        false
-                    }
+                    "LocalRepoWetExpectPassed" => {}
                     other => {
-                        return Err(format!("local_repo_wet_schedule: unknown expected {other}"));
+                        return Err(format!(
+                            "local_repo_wet_schedule: expectation {other} has no executor arm in                              this lane; only LocalRepoWetExpectPassed is realizable today"
+                        ));
                     }
                 }
             }
@@ -1141,7 +1217,7 @@ fn local_repo_wet_schedule(
                     floor_value_shape(other)
                 ));
             }
-        };
+        }
         // A DUPLICATE REFUSES. The roster is joined to the receipts at identity grain, and a
         // repeated member would make one receipt answer for two rows.
         if !seen.insert(identity.clone()) {
@@ -1151,9 +1227,9 @@ fn local_repo_wet_schedule(
         }
         out.push(LocalRepoWetScheduledRow {
             identity,
+            entry,
             entry_module,
             function,
-            expect_passed,
         });
     }
     Ok(out)
@@ -1172,6 +1248,7 @@ pub(crate) fn run_local_repo_wet_lane(
 ) -> Result<LocalRepoWetLaneOutcome, String> {
     let mut outcome = LocalRepoWetLaneOutcome {
         scheduled: schedule.len(),
+        candidate: prepared.subject_digest.clone(),
         ..Default::default()
     };
     // Group by module so one scope is prepared per entry rather than per witness.
@@ -1183,6 +1260,26 @@ pub(crate) fn run_local_repo_wet_lane(
         }
     }
     for (module, rows) in &by_module {
+        // THE AUTHORED ENTRY IS JOINED AGAINST THE FILE PREPARATION ACTUALLY RESOLVED. Without
+        // this the roster could name any path at all: the module is derived from the identity, so
+        // a stale `entry` would sit unread beside a module the executor found by another route --
+        // three writable fields with only two of them load-bearing.
+        let resolved_file = prepared
+            .graph
+            .modules
+            .iter()
+            .find(|m| m.func_env.name.as_str() == module.as_str())
+            .map(|m| m.module.span.file.to_string());
+        if let Some(file) = resolved_file.as_deref() {
+            for row in rows {
+                if row.entry != file {
+                    outcome.refusals.push(format!(
+                        "{}: the roster's entry {:?} is not the source the prepared subject                          resolved for module {module} ({file})",
+                        row.identity, row.entry
+                    ));
+                }
+            }
+        }
         let scope = match claim_scope_for(prepared, module) {
             Ok(s) => s,
             Err(e) => {
@@ -1204,31 +1301,45 @@ pub(crate) fn run_local_repo_wet_lane(
             published.clone(),
         );
         for row in rows {
-            let observed = crate::cli_run::run_claim(&ctx, &row.function);
-            let passed = matches!(observed, crate::cli_run::ClaimOutcome::Pass);
-            let agrees = passed == row.expect_passed;
+            let observed =
+                local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function));
+            let agrees = observed.meets_pass_expectation();
             eprintln!(
-                "[local-repo-wet] identity={} expected={} observed={} agrees={}",
+                "[local-repo-wet] identity={} expected=passed observed={} agrees={}",
                 row.identity,
-                if row.expect_passed {
-                    "passed"
-                } else {
-                    "not-passed"
-                },
-                if passed { "passed" } else { "not-passed" },
+                observed.name(),
                 agrees
             );
-            if agrees && row.expect_passed {
+            if agrees {
                 outcome.admitted.insert(row.identity.clone());
-            } else if !agrees {
+            } else {
+                let detail = observed.detail();
+                let suffix = if detail.is_empty() {
+                    String::new()
+                } else {
+                    format!(" — {detail}")
+                };
                 outcome.refusals.push(format!(
-                    "{}: wet terminal did not reach the expected verdict (expected {}, observed {})",
+                    "{}: wet terminal did not reach the expected verdict (expected passed, \
+                     observed {}){suffix}",
                     row.identity,
-                    if row.expect_passed { "passed" } else { "not-passed" },
-                    if passed { "passed" } else { "not-passed" },
+                    observed.name(),
                 ));
             }
         }
+    }
+    // A NONEMPTY SCHEDULE THAT ADMITTED NOBODY AND REFUSED NOTHING IS THE LANE SILENTLY NOT
+    // RUNNING. Every path above either admits or refuses, so this state is unreachable today --
+    // and that is exactly why it is written as a refusal rather than left to be true by
+    // inspection: a future arm that returns early, skips a module, or filters the schedule would
+    // otherwise turn the whole lane into a permanently green decoration, which is the failure
+    // `std.witness_admission`'s route claim for this cadence would then be asserting.
+    if outcome.scheduled > 0 && outcome.admitted.is_empty() && outcome.refusals.is_empty() {
+        outcome.refusals.push(format!(
+            "the lane scheduled {} member(s) and produced neither an admission nor a refusal for \
+             any of them — the executor did not run",
+            outcome.scheduled
+        ));
     }
     eprintln!(
         "[local-repo-wet] scheduled={} admitted={} refusals={}",
@@ -2986,7 +3097,14 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
-    let required_gate_prefixes = {
+    // THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
+    // modules must become SEEDS of the prepared subject below. The first CI run of this lane
+    // refused seven times with `EntryModuleOutsidePreparedSubject`: the prepared graph is the
+    // required-gate closure plus the changed set, and the lane's members are on the discovery
+    // exclusion frontier, so nothing pulled them in. A lane that cannot reach its own members
+    // cannot support the route claim `std.witness_admission` makes for its cadence, so the
+    // schedule joins the seed list rather than the executor learning to run outside the subject.
+    let (required_gate_prefixes, local_repo_wet_schedule_rows) = {
         let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
         let (policy_prepared, _) = prepare_repository_closure(
             source_roots,
@@ -3000,10 +3118,12 @@ pub fn run_required_floor(
             None,
             None,
         );
-        floor_decode_module_prefix_roster(
+        let prefixes = floor_decode_module_prefix_roster(
             &policy_frame,
             "v2.workflow.required_floor.required_gate_prefixes",
-        )?
+        )?;
+        let schedule = local_repo_wet_schedule(&policy_frame)?;
+        (prefixes, schedule)
     };
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
@@ -3028,6 +3148,11 @@ pub fn run_required_floor(
                 .map(|m| m.to_string()),
         )
         .chain(changed_module_seeds.iter().cloned())
+        .chain(
+            local_repo_wet_schedule_rows
+                .iter()
+                .map(|row| row.entry_module.clone()),
+        )
         .collect();
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
@@ -4725,11 +4850,6 @@ pub fn run_required_floor(
         None
     };
 
-    // THE LANE'S SCHEDULE IS DECODED WHILE THIS FRAME IS STILL ALIVE, because the frame is
-    // dropped immediately below to release its caches before the fold. What travels forward is the
-    // decoded ROWS -- a handful of small records -- never the context that produced them.
-    let local_repo_wet_schedule_rows = local_repo_wet_schedule(&hermetic)?;
-
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
     // `hermetic` is the frame the manifest was folded in. It owns a scope AND the mutable
@@ -6305,7 +6425,8 @@ pub fn run_required_floor(
             &terminal_rows,
             &cost_debt_verdict_only,
             &cost_debt_observations,
-            &wet_lane.admitted,
+            &wet_lane,
+            &prepared.subject_digest,
         );
         emit_changed_witness_projection(&rows)?;
         outcome.changed_witness_rows = rows.len();
@@ -6639,6 +6760,20 @@ mod scope_fragment_memo_equivalence {
 mod changed_witness_projection_tests {
     use super::*;
 
+    /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
+    /// and admitted nobody. Named once so the wet witnesses below differ from the others by
+    /// exactly the fact under test.
+    fn no_wet_lane() -> LocalRepoWetLaneOutcome {
+        LocalRepoWetLaneOutcome {
+            scheduled: 0,
+            candidate: TEST_CANDIDATE.to_string(),
+            admitted: HashSet::new(),
+            refusals: Vec::new(),
+        }
+    }
+
+    const TEST_CANDIDATE: &str = "subject-8993beb0d2808db6";
+
     fn disposition(
         identity: &str,
         disposition: RequiredFloorDisposition,
@@ -6664,7 +6799,8 @@ mod changed_witness_projection_tests {
             terminal,
             &HashSet::new(),
             &HashMap::new(),
-            &HashSet::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         )
     }
 
@@ -6915,7 +7051,8 @@ mod changed_witness_projection_tests {
             )],
             &verdict_only_set(),
             &observation(505),
-            &HashSet::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -6965,7 +7102,8 @@ mod changed_witness_projection_tests {
             &[terminal("m.a", ClaimOutcome::Pass)],
             &verdict_only_set(),
             &HashMap::new(),
-            &HashSet::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(
             rows[0].standing,
@@ -6986,7 +7124,8 @@ mod changed_witness_projection_tests {
             &[terminal("m.a", ClaimOutcome::Fail)],
             &verdict_only_set(),
             &observation(505),
-            &HashSet::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(rows[0].standing, "planned-without-terminal-verdict");
         assert!(rows[0].blocks);
@@ -7014,36 +7153,57 @@ mod changed_witness_projection_tests {
                 ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
             },
         )];
-        let mut admitted = HashSet::new();
-        admitted.insert("m.a".to_string());
+        let admitting = |candidate: &str, refusals: Vec<String>| LocalRepoWetLaneOutcome {
+            scheduled: 1,
+            candidate: candidate.to_string(),
+            admitted: ["m.a".to_string()].into_iter().collect(),
+            refusals,
+        };
+        let project = |lane: &LocalRepoWetLaneOutcome| {
+            changed_witness_projection_rows(
+                &changed,
+                &dispositions,
+                &terminal,
+                &HashSet::new(),
+                &HashMap::new(),
+                lane,
+                TEST_CANDIDATE,
+            )
+        };
 
-        let with_wet = changed_witness_projection_rows(
-            &changed,
-            &dispositions,
-            &terminal,
-            &HashSet::new(),
-            &HashMap::new(),
-            &admitted,
-        );
-        let without_wet = changed_witness_projection_rows(
-            &changed,
-            &dispositions,
-            &terminal,
-            &HashSet::new(),
-            &HashMap::new(),
-            &HashSet::new(),
-        );
+        let with_wet = project(&admitting(TEST_CANDIDATE, Vec::new()));
         assert_eq!(with_wet.len(), 1);
-        assert_eq!(without_wet.len(), 1);
         assert_eq!(
             with_wet[0].standing,
             "hermetic-route-gap-held-and-wet-passed"
         );
         assert!(!with_wet[0].blocks);
+
+        // NO TERMINAL AT ALL.
+        let without_wet = project(&no_wet_lane());
         assert_eq!(without_wet[0].standing, "planned-without-terminal-verdict");
         assert!(
             without_wet[0].blocks,
             "a route gap with no wet terminal must still block"
+        );
+
+        // A TERMINAL FROM ANOTHER TREE. Set membership alone would accept this, which is exactly
+        // the "it passed somewhere" standing the candidate binding exists to refuse.
+        let foreign = project(&admitting("subject-0000000000000000", Vec::new()));
+        assert!(
+            foreign[0].blocks,
+            "an admission bound to another candidate must not green this run"
+        );
+
+        // THE LANE ITSELF DISAGREED. One member admitted while the lane's schedule and terminals
+        // do not join is a broken roster supplying evidence for its intact rows.
+        let refused = project(&admitting(
+            TEST_CANDIDATE,
+            vec!["m.b: wet terminal missing".to_string()],
+        ));
+        assert!(
+            refused[0].blocks,
+            "an admission under a refused lane join must not green this run"
         );
     }
 

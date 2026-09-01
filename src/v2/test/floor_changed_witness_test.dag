@@ -1,8 +1,13 @@
 module v2.test.floor_changed_witness
 
+import v2.workflow.local_repo_wet_terminal {
+  LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused, LocalRepoWetTerminalMissing,
+}
+
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
-  HermeticRouteGapWetJoin, HermeticRouteGapHeldAndWetPassed,
+  HermeticRouteGapWetEvidence, HermeticRouteGapWetUnavailable, HermeticRouteGapWetAdmitted,
+  WetTerminalAdmitted, HermeticRouteGapHeldAndWetPassed,
   hermetic_route_gap_wet_join_complete,
   PlannedAndPassed, PlannedAndKnownRedHeld, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
   ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
@@ -61,23 +66,23 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // outside the local-repo wet lane is in: no route-gap agreement, no scheduled route, no terminal.
 // Keeping it as one named constructor rather than an inline literal means the wet arm's own
 // witnesses below differ from these by exactly the fact under test.
-fn no_wet_join() -> HermeticRouteGapWetJoin {
-  HermeticRouteGapWetJoin {
-    route_gap_expectation_agreed: false,
-    scheduled_route_live: false,
-    wet_terminal_passed_on_candidate: false,
-  }
+fn no_wet_join() -> HermeticRouteGapWetEvidence {
+  HermeticRouteGapWetUnavailable {}
 }
 
 fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitnessExecutionStanding {
-  changed_witness_execution_standing(reading: reading, wet: no_wet_join())
+  changed_witness_execution_standing(
+    reading: reading, wet: no_wet_join(), identity: wet_identity, candidate: wet_candidate,
+  )
 }
 
 fn changed_standing_with_wet(
   reading: ChangedWitnessDispositionReading,
-  wet: HermeticRouteGapWetJoin,
+  wet: HermeticRouteGapWetEvidence,
 ) -> ChangedWitnessExecutionStanding {
-  changed_witness_execution_standing(reading: reading, wet: wet)
+  changed_witness_execution_standing(
+    reading: reading, wet: wet, identity: wet_identity, candidate: wet_candidate,
+  )
 }
 
 // EVERY READING IN THIS MODULE IS BUILT THROUGH ONE OF THE TWO CONSTRUCTORS BELOW, so a new
@@ -139,7 +144,7 @@ fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
       "planned-and-passed-with-cost-debt-observed"
     CostObservationMissingUnderVerdictOnly => "cost-observation-missing-under-verdict-only"
     PlannedWithoutTerminalVerdict => "planned-without-terminal-verdict"
-    HermeticRouteGapHeldAndWetPassed { join: _ } => "hermetic-route-gap-held-and-wet-passed"
+    HermeticRouteGapHeldAndWetPassed { evidence: _, identity: _, candidate: _ } => "hermetic-route-gap-held-and-wet-passed"
     Declined { disposition: _ } => "declined"
     MissingDisposition => "missing-disposition"
   }
@@ -458,7 +463,7 @@ test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
     PlannedAndKnownRedHeld => false
     CostObservationMissingUnderVerdictOnly => false
     PlannedWithoutTerminalVerdict => false
-    HermeticRouteGapHeldAndWetPassed { join: _ } => false
+    HermeticRouteGapHeldAndWetPassed { evidence: _, identity: _, candidate: _ } => false
     Declined { disposition: _ } => false
     MissingDisposition => false
   }
@@ -615,12 +620,20 @@ test fn an_observation_missing_its_gated_clock_reds() -> Bool {
 // ruling names by name is a_route_gap_with_no_live_route_still_blocks and its two siblings: an
 // implementation that made every route-gap standing nonblocking passes the first witness here and
 // fails all three of them.
-fn wet_join(agreed: Bool, live: Bool, passed: Bool) -> HermeticRouteGapWetJoin {
-  HermeticRouteGapWetJoin {
-    route_gap_expectation_agreed: agreed,
-    scheduled_route_live: live,
-    wet_terminal_passed_on_candidate: passed,
+data wet_identity: String = "test.claim.x.w_one"
+data wet_other_identity: String = "test.claim.x.w_other"
+data wet_candidate: String = "subject-8993beb0d2808db6"
+data wet_other_candidate: String = "subject-0000000000000000"
+
+fn wet_admitted(identity: String, candidate: String, lane: LocalRepoWetJoin) -> HermeticRouteGapWetEvidence {
+  HermeticRouteGapWetAdmitted {
+    admitted: WetTerminalAdmitted { identity: identity, candidate: candidate },
+    lane: lane,
   }
+}
+
+fn lane_refused() -> LocalRepoWetJoin {
+  LocalRepoWetJoinRefused { causes: [LocalRepoWetTerminalMissing { identity: wet_identity }] }
 }
 
 fn route_gap_reading() -> ChangedWitnessDispositionReading {
@@ -630,30 +643,49 @@ fn route_gap_reading() -> ChangedWitnessDispositionReading {
   )
 }
 
-fn standing_blocks_for(wet: HermeticRouteGapWetJoin) -> Bool {
+fn standing_blocks_for(wet: HermeticRouteGapWetEvidence) -> Bool {
   changed_witness_standing_blocks(
     standing: changed_standing_with_wet(reading: route_gap_reading(), wet: wet),
   )
 }
 
-test fn a_route_gap_with_all_three_facts_is_admitted() -> Bool {
-  match changed_standing_with_wet(reading: route_gap_reading(), wet: wet_join(agreed: true, live: true, passed: true)) {
-    HermeticRouteGapHeldAndWetPassed { join: j } => hermetic_route_gap_wet_join_complete(join: j)
+fn admitted_here() -> HermeticRouteGapWetEvidence {
+  wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: LocalRepoWetJoinHolds)
+}
+
+test fn a_route_gap_with_matching_evidence_is_admitted() -> Bool {
+  match changed_standing_with_wet(reading: route_gap_reading(), wet: admitted_here()) {
+    HermeticRouteGapHeldAndWetPassed { evidence: e, identity: i, candidate: c } =>
+      hermetic_route_gap_wet_join_complete(evidence: e, identity: i, candidate: c)
     _ => false
   }
-    && !standing_blocks_for(wet: wet_join(agreed: true, live: true, passed: true))
+    && !standing_blocks_for(wet: admitted_here())
 }
 
-test fn a_route_gap_with_no_live_route_still_blocks() -> Bool {
-  standing_blocks_for(wet: wet_join(agreed: true, live: false, passed: true))
+// THE EVIDENCE MUST BE ABOUT THIS IDENTITY. The prior shape could not express this test at all:
+// three booleans carry no identity, so a terminal admitted for a DIFFERENT witness satisfied them
+// exactly as well as the right one.
+test fn a_route_gap_whose_evidence_names_another_identity_still_blocks() -> Bool {
+  standing_blocks_for(
+    wet: wet_admitted(identity: wet_other_identity, candidate: wet_candidate, lane: LocalRepoWetJoinHolds),
+  )
 }
 
-test fn a_route_gap_with_no_wet_terminal_still_blocks() -> Bool {
-  standing_blocks_for(wet: wet_join(agreed: true, live: true, passed: false))
+// AND ABOUT THIS TREE. A terminal from another candidate is the standing that let a deleted
+// workflow read as coverage for months.
+test fn a_route_gap_whose_evidence_names_another_candidate_still_blocks() -> Bool {
+  standing_blocks_for(
+    wet: wet_admitted(identity: wet_identity, candidate: wet_other_candidate, lane: LocalRepoWetJoinHolds),
+  )
 }
 
-test fn a_route_gap_whose_expectation_did_not_agree_still_blocks() -> Bool {
-  standing_blocks_for(wet: wet_join(agreed: false, live: true, passed: true))
+// AND THE LANE ITSELF MUST BE HONEST. A per-identity admission is not enough while the lane's own
+// schedule and terminals disagree: one member may pass while another was never run, and accepting
+// the first would let a broken roster supply evidence for its intact rows.
+test fn a_route_gap_admitted_under_a_refused_lane_join_still_blocks() -> Bool {
+  standing_blocks_for(
+    wet: wet_admitted(identity: wet_identity, candidate: wet_candidate, lane: lane_refused()),
+  )
 }
 
 // THE UNCHANGED POLARITY. A route gap carrying none of the three facts -- every changed identity

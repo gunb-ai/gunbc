@@ -6,6 +6,7 @@ import v2.std.text { String }
 import v2.workflow.local_repo_wet_terminal {
   LocalRepoWetVerdict, LocalRepoWetPassed, LocalRepoWetFailed, LocalRepoWetRefused,
   LocalRepoWetNonterminal,
+  LocalRepoWetExpectation, LocalRepoWetExpectPassed,
   LocalRepoWetScheduled, LocalRepoWetTerminal,
   LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused,
   LocalRepoWetTerminalMissing, LocalRepoWetTerminalDuplicated,
@@ -29,7 +30,7 @@ data fixture_entry: String = "dag/test/claim/x_test.dag"
 data fixture_function: String = "w_holds"
 data fixture_identity: String = "test.claim.x.w_holds"
 
-fn scheduled_one(expected: LocalRepoWetVerdict) -> List<LocalRepoWetScheduled> {
+fn scheduled_one(expected: LocalRepoWetExpectation) -> List<LocalRepoWetScheduled> {
   [LocalRepoWetScheduled {
     identity: fixture_identity,
     entry: fixture_entry,
@@ -66,7 +67,7 @@ fn terminal_matching() -> LocalRepoWetTerminal {
 
 fn join_of(terminals: List<LocalRepoWetTerminal>) -> LocalRepoWetJoin {
   local_repo_wet_join(
-    scheduled: scheduled_one(expected: LocalRepoWetPassed),
+    scheduled: scheduled_one(expected: LocalRepoWetExpectPassed),
     terminals: terminals,
     candidate: fixture_candidate,
   )
@@ -191,22 +192,29 @@ test fn a_terminal_for_an_unscheduled_identity_refuses() -> Bool {
   }
 }
 
-// AN ENROLLED EXPECTED-RED IS NOT SILENTLY REQUIRED TO PASS. The roster carries the expected
-// verdict, so a witness scheduled as Failed holds when it fails and refuses when it passes -- the
-// same discrimination the hermetic known-red arm makes.
-test fn a_terminal_matching_a_non_passing_expectation_holds() -> Bool {
-  let t = terminal_one(
-    identity: fixture_identity, entry: fixture_entry, function: fixture_function,
-    candidate: fixture_candidate, observed: LocalRepoWetFailed,
-  )
+// EVERY NON-PASSING OBSERVATION REFUSES AGAINST THE ONLY EXPECTATION THIS LANE SUPPORTS, and the
+// three are checked SEPARATELY rather than as one representative. The host used to fold Failed,
+// Refused and Nonterminal into a single not-passed Bool; if this test asserted only one of them a
+// re-collapse would keep it green. The expectation type is single-armed on purpose -- widening it
+// is what admits an expected-red member, and that widening arrives with its executor arm.
+fn pass_expectation_refuses(observed: LocalRepoWetVerdict) -> Bool {
   match local_repo_wet_join(
-    scheduled: scheduled_one(expected: LocalRepoWetFailed),
-    terminals: [t],
+    scheduled: scheduled_one(expected: LocalRepoWetExpectPassed),
+    terminals: [terminal_one(
+      identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+      candidate: fixture_candidate, observed: observed,
+    )],
     candidate: fixture_candidate,
   ) {
-    LocalRepoWetJoinHolds => true
-    LocalRepoWetJoinRefused { causes: _ } => false
+    LocalRepoWetJoinHolds => false
+    LocalRepoWetJoinRefused { causes: _ } => true
   }
+}
+
+test fn every_non_passing_observation_refuses_the_pass_expectation() -> Bool {
+  pass_expectation_refuses(observed: LocalRepoWetFailed)
+    && pass_expectation_refuses(observed: LocalRepoWetRefused { detail: "the route had no arm" })
+    && pass_expectation_refuses(observed: LocalRepoWetNonterminal { detail: "interrupted by its budget" })
 }
 
 // THE NARROW PER-IDENTITY PREDICATE THE GATE CONSULTS, discriminated on all three of its facts.
