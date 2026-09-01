@@ -216,6 +216,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `mitigation_injected_where_judgment_declined`
 - `merge_region_excludes_shared_tail`
 - `sealing_property_erases_structure`
+- `restoration_promise_names_a_route_that_does_not_exist`
 - `accepted_source_emits_uncompilable_target`
 
 ## Building & checks
