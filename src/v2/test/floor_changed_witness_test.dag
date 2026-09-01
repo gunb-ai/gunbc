@@ -2,6 +2,8 @@ module v2.test.floor_changed_witness
 
 import v2.workflow.floor_changed_witness {
   ChangedWitnessExecutionStanding,
+  HermeticRouteGapWetJoin, HermeticRouteGapHeldAndWetPassed,
+  hermetic_route_gap_wet_join_complete,
   PlannedAndPassed, PlannedAndKnownRedHeld, PlannedWithoutTerminalVerdict, Declined, MissingDisposition,
   ChangedWitnessTerminalReading, TerminalOutcome, NotExecuted,
   ChangedWitnessDispositionReading, DispositionRow, NoDispositionRow,
@@ -55,8 +57,27 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // the PR that lands them is also the projection's first live positive control: each must
 // appear in its run's changed-witness lines with the terminal disposition preserved.
 
+// THE EXISTING WITNESSES ALL READ THE NO-WET JOIN, which is the state every changed identity
+// outside the local-repo wet lane is in: no route-gap agreement, no scheduled route, no terminal.
+// Keeping it as one named constructor rather than an inline literal means the wet arm's own
+// witnesses below differ from these by exactly the fact under test.
+fn no_wet_join() -> HermeticRouteGapWetJoin {
+  HermeticRouteGapWetJoin {
+    route_gap_expectation_agreed: false,
+    scheduled_route_live: false,
+    wet_terminal_passed_on_candidate: false,
+  }
+}
+
 fn changed_standing_of(reading: ChangedWitnessDispositionReading) -> ChangedWitnessExecutionStanding {
-  changed_witness_execution_standing(reading: reading)
+  changed_witness_execution_standing(reading: reading, wet: no_wet_join())
+}
+
+fn changed_standing_with_wet(
+  reading: ChangedWitnessDispositionReading,
+  wet: HermeticRouteGapWetJoin,
+) -> ChangedWitnessExecutionStanding {
+  changed_witness_execution_standing(reading: reading, wet: wet)
 }
 
 // EVERY READING IN THIS MODULE IS BUILT THROUGH ONE OF THE TWO CONSTRUCTORS BELOW, so a new
@@ -118,6 +139,7 @@ fn standing_kind(s: ChangedWitnessExecutionStanding) -> String {
       "planned-and-passed-with-cost-debt-observed"
     CostObservationMissingUnderVerdictOnly => "cost-observation-missing-under-verdict-only"
     PlannedWithoutTerminalVerdict => "planned-without-terminal-verdict"
+    HermeticRouteGapHeldAndWetPassed { join: _ } => "hermetic-route-gap-held-and-wet-passed"
     Declined { disposition: _ } => "declined"
     MissingDisposition => "missing-disposition"
   }
@@ -436,6 +458,7 @@ test fn the_published_observation_carries_both_clocks_and_the_line() -> Bool {
     PlannedAndKnownRedHeld => false
     CostObservationMissingUnderVerdictOnly => false
     PlannedWithoutTerminalVerdict => false
+    HermeticRouteGapHeldAndWetPassed { join: _ } => false
     Declined { disposition: _ } => false
     MissingDisposition => false
   }
@@ -586,4 +609,60 @@ test fn an_observation_missing_its_gated_clock_reds() -> Bool {
       )
     )
   ) == "cost-observation-missing-under-verdict-only"
+}
+
+// THE JOINED STANDING, discriminated on each of its three facts independently. The control the
+// ruling names by name is a_route_gap_with_no_live_route_still_blocks and its two siblings: an
+// implementation that made every route-gap standing nonblocking passes the first witness here and
+// fails all three of them.
+fn wet_join(agreed: Bool, live: Bool, passed: Bool) -> HermeticRouteGapWetJoin {
+  HermeticRouteGapWetJoin {
+    route_gap_expectation_agreed: agreed,
+    scheduled_route_live: live,
+    wet_terminal_passed_on_candidate: passed,
+  }
+}
+
+fn route_gap_reading() -> ChangedWitnessDispositionReading {
+  ordinary_changed_reading(
+    disposition: PlannedAsChangedWitness {},
+    terminal: TerminalOutcome { outcome: RouteGapBeforeVerdict {} },
+  )
+}
+
+fn standing_blocks_for(wet: HermeticRouteGapWetJoin) -> Bool {
+  changed_witness_standing_blocks(
+    standing: changed_standing_with_wet(reading: route_gap_reading(), wet: wet),
+  )
+}
+
+test fn a_route_gap_with_all_three_facts_is_admitted() -> Bool {
+  match changed_standing_with_wet(reading: route_gap_reading(), wet: wet_join(agreed: true, live: true, passed: true)) {
+    HermeticRouteGapHeldAndWetPassed { join: j } => hermetic_route_gap_wet_join_complete(join: j)
+    _ => false
+  }
+    && !standing_blocks_for(wet: wet_join(agreed: true, live: true, passed: true))
+}
+
+test fn a_route_gap_with_no_live_route_still_blocks() -> Bool {
+  standing_blocks_for(wet: wet_join(agreed: true, live: false, passed: true))
+}
+
+test fn a_route_gap_with_no_wet_terminal_still_blocks() -> Bool {
+  standing_blocks_for(wet: wet_join(agreed: true, live: true, passed: false))
+}
+
+test fn a_route_gap_whose_expectation_did_not_agree_still_blocks() -> Bool {
+  standing_blocks_for(wet: wet_join(agreed: false, live: true, passed: true))
+}
+
+// THE UNCHANGED POLARITY. A route gap carrying none of the three facts -- every changed identity
+// outside this lane -- keeps the standing and the block it always had, so the lane adds an arm
+// rather than widening the gate.
+test fn a_route_gap_with_no_wet_facts_at_all_still_blocks() -> Bool {
+  standing_blocks_for(wet: no_wet_join())
+    && match changed_standing_with_wet(reading: route_gap_reading(), wet: no_wet_join()) {
+      PlannedWithoutTerminalVerdict => true
+      _ => false
+    }
 }

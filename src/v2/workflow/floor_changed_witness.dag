@@ -39,12 +39,37 @@ import std.observation { Measured, MeasuredValue, MeasuredUnavailable, TimedMeas
 // THE STANDING IS A JOIN OF TWO FACTS THE RUN ALREADY HOLDS — the identity's
 // `RequiredFloorDisposition` and, where it executed, its terminal `ClaimDisposition` — restated
 // in no new vocabulary: the `Declined` arm CARRIES the disposition rather than renaming it.
+// THE THREE FACTS THAT TOGETHER REPLACE A VERDICT, and the reason they are one record rather than
+// three loose booleans at the call site: any two of them without the third is a different, and
+// wrong, claim. A route-gap agreement alone says only that the hermetic route could not reach the
+// identity. A scheduled route alone says a policy claims to run it. A wet terminal alone says
+// something passed somewhere. Only the conjunction, at the SAME identity, says the assertion
+// actually ran against THIS candidate and held.
+//
+// THIS IS NOT `RouteGapBeforeVerdict` REINTERPRETED AS A PASS. That outcome stays nonterminal and
+// stays blocking on its own; what changes is that a SECOND, independently produced terminal can be
+// joined to it. The pattern is the cost-debt one directly above: a nonstandard path becomes
+// admissible only when it carries the replacement observation, never because a roster says one
+// ought to exist.
+type HermeticRouteGapWetJoin {
+  route_gap_expectation_agreed: Bool
+  scheduled_route_live: Bool
+  wet_terminal_passed_on_candidate: Bool
+}
+
+fn hermetic_route_gap_wet_join_complete(join: HermeticRouteGapWetJoin) -> Bool {
+  join.route_gap_expectation_agreed
+    && join.scheduled_route_live
+    && join.wet_terminal_passed_on_candidate
+}
+
 type ChangedWitnessExecutionStanding =
     PlannedAndPassed
   | PlannedAndKnownRedHeld
   | PlannedAndPassedWithCostDebtObserved { observation: ChangedWitnessCostObservation }
   | CostObservationMissingUnderVerdictOnly
   | PlannedWithoutTerminalVerdict
+  | HermeticRouteGapHeldAndWetPassed { join: HermeticRouteGapWetJoin }
   | Declined { disposition: RequiredFloorDisposition }
   | MissingDisposition
 
@@ -189,6 +214,7 @@ fn changed_witness_planned_standing(
   terminal: ChangedWitnessTerminalReading,
   cost_policy: ChangedWitnessCostPolicy,
   cost: ChangedWitnessCostReading,
+  wet: HermeticRouteGapWetJoin,
 ) -> ChangedWitnessExecutionStanding {
   match terminal {
     NotExecuted => PlannedWithoutTerminalVerdict {}
@@ -206,7 +232,12 @@ fn changed_witness_planned_standing(
         BudgetRefusedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         BudgetTerminalWithoutSafetyCause => PlannedWithoutTerminalVerdict {}
         HostToolUnresolvedBeforeVerdict => PlannedWithoutTerminalVerdict {}
-        RouteGapBeforeVerdict => PlannedWithoutTerminalVerdict {}
+        RouteGapBeforeVerdict =>
+          if hermetic_route_gap_wet_join_complete(join: wet) {
+            HermeticRouteGapHeldAndWetPassed { join: wet }
+          } else {
+            PlannedWithoutTerminalVerdict {}
+          }
         RuntimeErroredBeforeVerdict => PlannedWithoutTerminalVerdict {}
         PanickedBeforeVerdict => PlannedWithoutTerminalVerdict {}
         NotAttemptedAfterAbort => PlannedWithoutTerminalVerdict {}
@@ -217,14 +248,15 @@ fn changed_witness_planned_standing(
 
 fn changed_witness_execution_standing(
   reading: ChangedWitnessDispositionReading,
+  wet: HermeticRouteGapWetJoin,
 ) -> ChangedWitnessExecutionStanding {
   match reading {
     NoDispositionRow => MissingDisposition {}
     DispositionRow { disposition: d, terminal: t, cost_policy: p, cost: c } =>
       match d {
-        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c)
+        Planned => changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet)
         PlannedAsChangedWitness =>
-          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c)
+          changed_witness_planned_standing(terminal: t, cost_policy: p, cost: c, wet: wet)
         DeclinedLongModule { matched_prefix: _ } => Declined { disposition: d }
         DeclinedFixtureMember { matched_prefix: _ } => Declined { disposition: d }
         DeclinedOutsideRequiredGate => Declined { disposition: d }
@@ -247,6 +279,7 @@ fn changed_witness_standing_blocks(standing: ChangedWitnessExecutionStanding) ->
     PlannedAndPassedWithCostDebtObserved { observation: _ } => false
     CostObservationMissingUnderVerdictOnly => true
     PlannedWithoutTerminalVerdict => true
+    HermeticRouteGapHeldAndWetPassed { join: j } => !hermetic_route_gap_wet_join_complete(join: j)
     Declined { disposition: _ } => true
     MissingDisposition => true
   }
