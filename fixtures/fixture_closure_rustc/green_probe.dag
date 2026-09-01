@@ -1,0 +1,8 @@
+module fixture.closure.rustc_green_probe
+
+// The positive control for the fixture-callable emitted-crate compilation route
+// (v1_compiler.emitted_closure_compile_host fixture_closure_rustc_verdict). No imports, so its
+// emitted closure is its own module plus the runtime -- the smallest subject that still proves
+// the crate writer, the manifest and the emitter reached a crate rustc accepts. Without it the
+// red arm beside it could pass for a reason that has nothing to do with its fixture.
+data rustc_green_probe_value: Int = 424242
