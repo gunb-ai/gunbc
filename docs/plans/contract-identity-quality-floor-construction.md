@@ -14,7 +14,7 @@ a decoration, and the graded consumer needs the identity cut to land first.
 
 ## 0. What the census found, so this plan does not re-invent
 
-- **Contract identity is not greenfield.** `gunbc.fleet.fleet_revision_acceptance` already carries
+- **Contract identity is not greenfield.** `gunbc.fleet_revision_acceptance` already carries
   `RequiredCiContractIdentity`, and its note already states the equality law this plan needs:
   identity names *which contract completed*, not what it did internally, because a `phases_run`
   field would make every phase added to the floor a breaking change to fleet admission. Every
@@ -124,15 +124,23 @@ The route is still not selected, for a materially different reason that the re-c
 | what downloads or renders it | **a workflow that no longer exists.** The module's prose describes an alert that downloads the artifact from a run id, in the present tense. `falsifier-alert.yml` was deleted in the 2026-08-15 CI bankruptcy, which DESIGN §4b rosters as a declared rung drop; only `witnesses.yml`, `fleet-converge.yml` and `fleet-desired.yml` remain. |
 | what Cut A would need to add an epoch | an epoch member in the schema, the decoder and the subject join — **after** first restoring a producer and an upload step. |
 | how fleet desired admission would obtain it | an artifact download bound to the triggering run id. The fleet lane has no such capability today. |
-| how absence, malformed content, subject mismatch, incomplete run and unavailable artifact refuse | every one of those causes would be new. |
-| delta size versus exact-commit observation | **strictly larger**, and it front-loads resurrecting a dead transport before the epoch becomes observable at all. |
+| how absence, malformed content, subject mismatch, incomplete run and unavailable artifact refuse | **partly already built, and an earlier draft overcharged this.** `gunbc.floor_component_receipt_document` already has typed `ReceiptMemberAbsent` and `ReceiptMemberMalformed` causes — including the duplicated-member, wrong-JSON-type and empty-string cases — plus the subject join. The genuinely missing causes are transport unavailability and any incomplete-run projection not already covered. |
+| delta size versus exact-commit observation | **strictly larger**, and the difference is not the typed causes — it is the live writer, the upload step, the run-bound download, the epoch carriage, transport unavailability, and any absent incomplete-run projection. It front-loads resurrecting a dead transport before the epoch becomes observable at all. |
 
 So the receipt route's obstacle is not that it was never built; it is that **its transport was
 deleted and its authority's prose still recites it in the present tense.** That stale recital is
 itself a finding — the same class DESIGN §4b names when it says a knowingly-false recital in a
 canonical authority is premise contamination — and it is recorded here rather than fixed, because it
-belongs to the receipt authority's owner and not to this cut. The receipt remains the honest upgrade
-if that lane is ever restored, at which point it is the stronger observation.
+belongs to the receipt authority's owner and not to this cut.
+
+**That finding may not live only here.** Cut B deletes this plan, so a finding whose only home is
+this file would be destroyed by its own program. Its persistent destination is a routed item against
+the receipt authority's owning lane, opened before Cut A lands; this file records it, but does not
+own it. If no owner accepts it, the alternative is repairing the stale recital before dissolution —
+what is not permitted is letting the plan's deletion silently take the finding with it.
+
+The receipt remains the honest upgrade if that lane is ever restored, at which point it is the
+stronger observation.
 
 ### What the selected route must name
 
@@ -148,6 +156,10 @@ or an embedded substring is not sufficient contract data** — the epoch is a st
 - **the parser** — a structural read of the env mapping, not a substring match;
 - **typed causes**, each distinct and each refusing on its own axis: epoch **absent**, **malformed**,
   **duplicated**, commit **unreadable**, path **unreadable**, epoch **undecodable**;
+- **the epoch carrier and its canonical wire representation** — the epoch is a declared version
+  value, carried as the string value of one top-level `env:` key emitted by the workflow authority.
+  Its canonical wire form is fixed by that authority (one member, one spelling, no alternate
+  encodings), so "the same epoch written two ways" is not a state the reader has to reconcile;
 - **the binding** — for a push-triggered run GitHub executes the workflow definition at `head_sha`,
   and the contract's name already resolves through that same artifact identity, so the bytes read are
   the workflow definition the observed run executed.
@@ -182,10 +194,20 @@ transition load-bearing.
 
 ### Acceptance receipt for Cut A
 
-- **Epoch control (the discriminating RED).** Hold naming surface, name, revision, evidence and
-  conclusion fixed; vary **only** the epoch. Required outcome: exactly one refusal, carrying the
-  exact contract-epoch mismatch cause — not a generic identity refusal, and not a `Bool`.
+- **Epoch control (the discriminating RED), designed around the fact that the epoch lives in the
+  tree.** The epoch is a structural member of a committed artifact, so *changing it changes the tree
+  and therefore the commit identity*. "Hold the revision fixed and vary only the observed epoch" is
+  not constructible against a real Git-backed read, and an earlier draft asked for exactly that. The
+  experiment is therefore **two commits whose trees differ only in the epoch member**, with both
+  revision-bearing propositions agreeing inside each case: in the matching case the declared epoch at
+  `event.head_sha` equals the required epoch; in the mismatching case it does not, and nothing else
+  differs. Required outcome: exactly one refusal carrying the exact contract-epoch mismatch cause and
+  both epoch values — not a generic identity refusal, and not a `Bool`.
   **Cardinality: exactly 1 refusal, 0 admissions.**
+  The RED traverses `fleet_desired_accepted_from_event`, so at least one real production-composition
+  execution is enrolled; a Git-backed reader test and a typed admission-seam test may carry the
+  cheaper axes, but they do not replace that execution.
+
 - **Paired control.** The same event at the matching epoch admits, through the same fold, with every
   other axis untouched. **Cardinality: exactly 1 admission, 0 refusals.**
 - **Oracle independence, stated at the grain that matters.** "Expected comes from the constructor,
@@ -227,6 +249,22 @@ one terminal reading, and the census decides it:
 **Terminal A.** The code is the universal machine identity of the generic breach. std keeps it, the
 typed breach structurally determines it, production consumes the sole authority, and the CLI literal
 disappears as an independently authored fact.
+
+### The inverse quality order — the law, not examples of it
+
+Elapsed time is a *cost*, so quality runs against it. Stated as a law, because without it a numerical
+ceiling has merely been renamed a quality floor:
+
+```
+quality(a) >= quality(b)   iff   elapsed(a) <= elapsed(b)
+
+meets the floor            iff   elapsed <= limit
+breaches the floor         iff   elapsed >  limit
+```
+
+Equality therefore belongs to the *admitted* side by the law itself, not by convention — which is
+also what the existing model already does, so the construction inherits the boundary rather than
+re-choosing it.
 
 ### Two binding modelling details
 
@@ -392,7 +430,7 @@ two-part falsifier below is shaped to catch.
 
 | kind | item |
 | --- | --- |
-| authority (A) | the canonical contract identity carrier; `gunbc.fleet.fleet_revision_acceptance` `RequiredCiContractIdentity` becomes an instance |
+| authority (A) | the canonical contract identity carrier; `gunbc.fleet_revision_acceptance` `RequiredCiContractIdentity` becomes an instance |
 | consumer (A) | `accept_required_ci_workflow_run` (the Required CI adjudication), reached in production through `fleet_desired_accepted_from_event` (the live fleet-desired composition) |
 | observation (A) | the declared epoch emitted into `WitnessFloorYamlArtifact`, plus the decoder and the exact-commit read at `event.head_sha` that makes the **observed** epoch real |
 | authority (B) | `std.evaluation_budget` — contract identity, bounded-clock policy, typed consequence |
