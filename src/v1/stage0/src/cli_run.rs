@@ -10900,8 +10900,13 @@ const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
 // subject + measurement events land on the #8163 RecordedObservation per-producer ledger
 // (target/floor-attempts/<attempt>/events/<producer>.jsonl). Dissolve-on: #8163 on main +
 // floor walk emits through that ledger with a dedicated producer identity; delete this append
-// path once FLOOR2 consumes the ledger green by execution. NOT serialized into the floor
-// component receipt — see floor_component_resource_checkpoint_note.
+// path once FLOOR2 consumes the ledger green by execution. This clause used to say the rows were
+// NOT serialized into the floor component receipt, citing floor_component_resource_checkpoint_note.
+// That note was a real declaration in gunbc.floor_component_receipt until the 2026-08-30 prose
+// bankruptcy sweep (#9752) turned module-scope commentary rows into 4c annotations, which are
+// uncitable by construction; the receipt pair itself was then deleted on 2026-09-01 as unreachable
+// residue of the 2026-08-15 CI cut. So the journal is now the only carrier of this identity,
+// without qualification.
 fn append_active_workset_phase_journal(state: &str, detail: &str) {
     let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
         return;
@@ -11098,14 +11103,19 @@ mod active_workset_kill_path_controls {
 
     /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. Durable
     /// in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset
-    /// rows (admitted without a matching completed), not the floor component receipt —
-    /// see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note.
+    /// rows (admitted without a matching completed). This used to add "not the floor component
+    /// receipt", citing two notes that were real declarations until #9752 converted them to
+    /// uncitable 4c annotations on 2026-08-30; the receipt pair was then deleted on 2026-09-01
+    /// as unreachable residue of the 2026-08-15 CI cut.
     #[test]
     fn admitted_entry_survives_without_completion() {
         with_active_workset_test_lock(|| {
             std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-admit-only");
-            let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
-            let function = "floor_component_receipt_run_incomplete_tail_holds";
+            // Opaque labels: this test exercises the in-memory registry, not any real
+            // witness, so the strings must not name a corpus entry that could be deleted
+            // out from under them (the pair named here previously did exactly that).
+            let entry = "<in-memory registry test entry>";
+            let function = "<in-memory registry test function>";
             active_workset_admit(entry, function);
             let snap = active_workset_snapshot();
             assert_eq!(
@@ -22310,6 +22320,25 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // rename+modify would fail-closed on its unavoidable line-1 change. An in-place
     // modify (`diff --git a/PATH b/PATH`, no `rename to`) still touches line 1 with no
     // added-side entry, so it stays fail-closed as before.
+    //
+    // DECLARED GAP (DESIGN §4b(3)) — copy destinations are NOT enrolled. A `copy to NEW`
+    // destination is new-at-path by the same argument as `rename to`: every declaration at
+    // NEW is a newly qualified identity that has never executed under that spelling. It is
+    // not matched here, so such a file would enroll only the declarations the copy's own
+    // edited lines reach. POPULATION: empty — the floor's observation is
+    // `extdeps.git`'s `git.Core.DiffUnified0` (`git diff -U0 <range>`), and git detects copies
+    // only under `-C`/`--find-copies` or `diff.renames=copies`, neither of which this
+    // argv nor the repo config sets. TRIGGER: copy detection becoming reachable — the argv
+    // gaining `-C`, or `diff.renames` being set to `copies` at any config scope — at which
+    // point the copy destination must be admitted here alongside `rename to`. SUFFICIENT FOR:
+    // the trigger is discharged only when EVERY copy destination the observation can emit is
+    // enrolled, including a copy whose SOURCE is untouched. Measured: under
+    // `diff.renames=copies`, git reports a copy only when the source file is itself modified in
+    // the same diff -- an identical copy of an unmodified file emits no `copy to` line until
+    // `--find-copies-harder` widens detection. So the obvious fixture (copy an untouched file,
+    // observe nothing) is a FALSE GREEN against this row; a copy alongside a source edit is the
+    // discriminating one. No branch is written for it today: an arm no diff can reach is
+    // permanently untested and would be cited as coverage it does not provide.
     let mut added = HashSet::new();
     let mut minus_is_null = false;
     for line in diff_text.lines() {
@@ -22484,8 +22513,9 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
             return;
         }
     };
-    // Host budget: the SAME single authority the MemoryGovernor schedules against
-    // (env -> cgroup memory.high -> memory.max -> Darwin hw.memsize). Unreadable -> the
+    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
+    // It is the minimum of an optional env request and observed cgroup lines; an env-only
+    // declaration is unverified and unreadable to consumers. Unreadable -> the
     // modeled law refuses (BudgetRefused), never a fabricated width.
     let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
     let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);

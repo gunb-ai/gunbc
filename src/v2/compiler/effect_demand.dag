@@ -185,7 +185,7 @@ fn effect_demand_key_in(key: EffectDemandKey, keys: List<EffectDemandKey>) -> Bo
 // EVERY accumulator in this module CONSES AND REVERSES ONCE rather than appending. Appending by
 // concatenating the accumulator with a one-item list copies the whole accumulator per item, which is
 // the quadratic fold DESIGN section 6's bare-minimum-cost rule says is always fixed regardless of the
-// realized n -- gunbc.repo_atlas_projection repo_atlas_cell_order_cost_note records the same idiom
+// realized n -- gunbc.repo_atlas_projection atlas_accumulate_cell records the same idiom
 // costing a lane an OOM and then 900 seconds. list_reverse of a cons-accumulated fold is exactly the
 // append-accumulated order, so every population below is in observation order by construction and
 // nothing about the census changes.
