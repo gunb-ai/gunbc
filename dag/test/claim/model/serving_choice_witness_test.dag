@@ -8,12 +8,13 @@ import std.measure {
   TokensPerSecond, tokens_per_second,
 }
 import gunbc.model.choice {
-  PrefillRateUnmeasured,
+  PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
+  PrefillObservation, prefill_rate_at_floor,
   NodeCapacity, QuantizedCandidate, ServingConstraints,
   CandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
   RejectionAxis, DoesNotFitMemory, ContextBelowFloor, PrefillBelowFloor,
   ServingChoice, ChoseCandidate, NoCandidateAdmissible, SelectionUnanswerable,
-  UnanswerableCause, UnresolvedCandidateCouldWin, CrossReleaseQualityOrderAbsent,
+  UnanswerableCause, UnresolvedCandidateCouldWin, CrossReleaseQualityOrderAbsent, QualityRankTie,
   ServingCandidateUnanswerable, MissingFact, KvFootprintUnmeasured, CapacityMalformed,
   evaluate_candidate, choose_serving_candidate,
   allocatable, firmware_carveout, kv_footprint,
@@ -47,8 +48,13 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
   weights: byte_size(count: 86720111200),
   quality_rank: 2,
   declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 160060), rate: tokens_per_second(count: 253) },
+    PrefillObservation { depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+  ],
   kv_per_token: Present { value: kv_per_token },
-  measured_prefill_rate: Present { value: tokens_per_second(count: 197) },
 }
 
 data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
@@ -57,8 +63,9 @@ data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
   weights: byte_size(count: 116100000000),
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: none,
+  prefill_observations: [],
   kv_per_token: Present { value: kv_per_token },
-  measured_prefill_rate: Present { value: tokens_per_second(count: 197) },
 }
 
 fn installed() -> List<QuantizedCandidate> {
@@ -138,12 +145,81 @@ test fn w_at_the_400k_floor_the_two_bit_build_is_chosen() -> Bool {
     candidates: installed(), capacity: node_capacity, constraints: floor_400k)) == "IQ2_XXS"
 }
 
-// THE DISCRIMINATING CONTROL. Drop the context floor and the selector must flip to the HIGHER
-// quality build -- proving it maximizes quality and is not simply always picking the smaller file.
-// Without this, every claim above is satisfied by a function that returns the first candidate.
-test fn w_without_the_context_floor_the_higher_quality_build_wins() -> Bool {
+// THE DISCRIMINATING CONTROL, on a CONSTRUCTED pair rather than the installed builds.
+//
+// It cannot use the real ones any more, and the reason is itself the point: the installed IQ3_S has
+// no retrieval receipt at any depth, so at a low floor it is UNANSWERABLE rather than a winner, and
+// the selector refuses instead of ranking. That is the honest state -- what was probed on the fleet
+// was whether the runtime ACCEPTS a num_ctx value, which a two-token request answers without ever
+// allocating the cache, so it established nothing about retrieval.
+//
+// These two are declared fixtures exercising the ordering rule, NOT fleet observations. They share a
+// release, so a maximum over them exists, and they differ only in quality_rank and weights. Without
+// this control every other claim here is satisfied by a function that returns its first argument.
+data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
+  model_name: "Fixture-Release" as NonEmptyStr,
+  quant_label: "LOW" as NonEmptyStr,
+  weights: byte_size(count: 20000000000),
+  quality_rank: 1,
+  declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+  ],
+  kv_per_token: Present { value: byte_size(count: 20000) },
+}
+
+data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
+  model_name: "Fixture-Release" as NonEmptyStr,
+  quant_label: "HIGH" as NonEmptyStr,
+  weights: byte_size(count: 30000000000),
+  quality_rank: 9,
+  declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
+  ],
+  kv_per_token: Present { value: byte_size(count: 20000) },
+}
+
+test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
   chosen_label(choice: choose_serving_candidate(
-    candidates: installed(), capacity: node_capacity, constraints: floor_8k)) == "UD-IQ3_S"
+    candidates: [fixture_low_rank, fixture_high_rank],
+    capacity: node_capacity, constraints: floor_8k)) == "HIGH"
+    && chosen_label(choice: choose_serving_candidate(
+      candidates: [fixture_high_rank, fixture_low_rank],
+      capacity: node_capacity, constraints: floor_8k)) == "HIGH"
+}
+
+// A DECLARATION IS NOT EVIDENCE. The installed IQ3_S declares 1,048,576 positions and has no
+// retrieval receipt; at a floor it FITS, it must come back unanswerable rather than admissible.
+// This is the rung error the publication layer removed, re-tested one module downstream where the
+// selector could have quietly reintroduced it.
+test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bool {
+  match evaluate_candidate(candidate: build_iq3_s, capacity: node_capacity, constraints: floor_8k) {
+    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: m } =>
+      match m {
+        SemanticContextUnverifiedAtFloor { floor: _, declared: d } =>
+          token_count_value(t: d) == 1048576
+        KvFootprintUnmeasured => false
+        PrefillRateUnmeasuredAtFloor { floor: _ } => false
+        CapacityMalformed { detail: _ } => false
+      }
+    ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
+    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+  }
+}
+
+// A prefill observation SHALLOWER than the floor does not qualify the floor: rate falls with depth
+// (253 -> 197 -> 135 measured on one realization), so a shallow reading flatters the candidate.
+test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool {
+  match prefill_rate_at_floor(
+    observations: [PrefillObservation { depth: token_count(count: 160060), rate: tokens_per_second(count: 253) }],
+    floor: token_count(count: 400000),
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 // When nothing is admissible the selector REFUSES and hands back every rejection, so the binding
@@ -168,7 +244,10 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
     && w_kv_at_the_context_floor_is_derived_from_architecture()
     && w_at_the_400k_floor_the_higher_quality_build_is_rejected_on_memory()
     && w_at_the_400k_floor_the_two_bit_build_is_chosen()
-    && w_without_the_context_floor_the_higher_quality_build_wins()
+    && w_the_higher_quality_candidate_wins_when_both_are_admissible()
+    && w_a_declared_context_never_qualifies_without_a_retrieval_receipt()
+    && w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor()
+    && w_tied_quality_ranks_refuse_in_both_roster_orders()
     && w_nothing_admissible_refuses_and_reports_every_rejection()
 }
 
@@ -184,8 +263,11 @@ data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
   weights: byte_size(count: 136700000000),
   quality_rank: 4,
   declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+  ],
   kv_per_token: none,
-  measured_prefill_rate: Present { value: tokens_per_second(count: 197) },
 }
 
 test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
@@ -193,7 +275,8 @@ test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
     ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: m } =>
       match m {
         KvFootprintUnmeasured => true
-        PrefillRateUnmeasured => false
+        PrefillRateUnmeasuredAtFloor { floor: _ } => false
+        SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
         CapacityMalformed { detail: _ } => false
       }
     ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
@@ -210,6 +293,7 @@ test fn w_selection_refuses_while_an_unresolved_candidate_could_win() -> Bool {
       match c {
         UnresolvedCandidateCouldWin { unresolved_count: n } => n == 1
         CrossReleaseQualityOrderAbsent { distinct_release_count: _ } => false
+        QualityRankTie { tied_count: _, rank: _ } => false
       }
     ChoseCandidate { verdict: _ } => false
     NoCandidateAdmissible { rejections: _ } => false
@@ -224,8 +308,11 @@ data other_release: QuantizedCandidate = QuantizedCandidate {
   weights: byte_size(count: 22600000000),
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
+  ],
   kv_per_token: Present { value: byte_size(count: 20000) },
-  measured_prefill_rate: Present { value: tokens_per_second(count: 900) },
 }
 
 test fn w_two_admissible_releases_refuse_for_want_of_a_cross_release_order() -> Bool {
@@ -235,6 +322,7 @@ test fn w_two_admissible_releases_refuse_for_want_of_a_cross_release_order() -> 
       match c {
         CrossReleaseQualityOrderAbsent { distinct_release_count: n } => n == 2
         UnresolvedCandidateCouldWin { unresolved_count: _ } => false
+        QualityRankTie { tied_count: _, rank: _ } => false
       }
     ChoseCandidate { verdict: _ } => false
     NoCandidateAdmissible { rejections: _ } => false
@@ -260,7 +348,8 @@ test fn w_malformed_capacity_is_unanswerable_not_a_memory_rejection() -> Bool {
           match m {
             CapacityMalformed { detail: _ } => true
             KvFootprintUnmeasured => false
-            PrefillRateUnmeasured => false
+            PrefillRateUnmeasuredAtFloor { floor: _ } => false
+            SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
           }
         ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
         ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
@@ -273,4 +362,54 @@ test fn w_all_answerability_claims_hold() -> Bool {
     && w_selection_refuses_while_an_unresolved_candidate_could_win()
     && w_two_admissible_releases_refuse_for_want_of_a_cross_release_order()
     && w_malformed_capacity_is_unanswerable_not_a_memory_rejection()
+}
+
+// A TIE HAS NO MAXIMUM. Two admissible candidates of the SAME release at the SAME rank must refuse
+// rather than yield to roster order. The second call reverses the roster: a tie-break by position
+// would return a different winner for the same inputs, which is why "stable under re-ordering" and
+// "keep the earlier one" cannot both be true.
+data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
+  model_name: "Fixture-Release" as NonEmptyStr,
+  quant_label: "TIED-A" as NonEmptyStr,
+  weights: byte_size(count: 20000000000),
+  quality_rank: 5,
+  declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+  ],
+  kv_per_token: Present { value: byte_size(count: 20000) },
+}
+
+data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
+  model_name: "Fixture-Release" as NonEmptyStr,
+  quant_label: "TIED-B" as NonEmptyStr,
+  weights: byte_size(count: 21000000000),
+  quality_rank: 5,
+  declared_context: token_count(count: 1048576),
+  semantic_context_verified_to: Present { value: token_count(count: 400060) },
+  prefill_observations: [
+    PrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+  ],
+  kv_per_token: Present { value: byte_size(count: 20000) },
+}
+
+fn is_tie_refusal(choice: ServingChoice) -> Bool {
+  match choice {
+    SelectionUnanswerable { cause: c, evaluations: _ } =>
+      match c {
+        QualityRankTie { tied_count: n, rank: r } => n == 2 && r == 5
+        UnresolvedCandidateCouldWin { unresolved_count: _ } => false
+        CrossReleaseQualityOrderAbsent { distinct_release_count: _ } => false
+      }
+    ChoseCandidate { verdict: _ } => false
+    NoCandidateAdmissible { rejections: _ } => false
+  }
+}
+
+test fn w_tied_quality_ranks_refuse_in_both_roster_orders() -> Bool {
+  is_tie_refusal(choice: choose_serving_candidate(
+    candidates: [fixture_tied_a, fixture_tied_b], capacity: node_capacity, constraints: floor_8k))
+    && is_tie_refusal(choice: choose_serving_candidate(
+      candidates: [fixture_tied_b, fixture_tied_a], capacity: node_capacity, constraints: floor_8k))
 }

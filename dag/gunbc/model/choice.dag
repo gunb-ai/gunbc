@@ -79,8 +79,34 @@ type QuantizedCandidate {
   weights: ByteSize
   quality_rank: Int
   declared_context: TokenCount
+  semantic_context_verified_to: TokenCount?
+  prefill_observations: List<PrefillObservation>
   kv_per_token: ByteSize?
-  measured_prefill_rate: TokensPerSecond?
+}
+
+// PREFILL RATE IS NOT A SCALAR, and this repository's own measurements falsified the scalar that
+// used to sit here. The same realization measured 253 tok/s at 160,060 tokens, 197 at 255,061 and
+// 135 at 400,060: attention cost grows with depth, so a single rate silently describes whichever
+// depth the measurer happened to use. A consumer asking "is this fast enough at my floor" needs an
+// observation AT OR BEYOND that floor; anything shallower flatters the candidate.
+type PrefillObservation {
+  depth: TokenCount
+  rate: TokensPerSecond
+}
+
+// The slowest rate observed at or beyond the floor, or Absent when nothing reaches that depth.
+// Slowest rather than fastest because a floor is a promise about the worst case a caller will meet.
+fn prefill_rate_at_floor(observations: List<PrefillObservation>, floor: TokenCount) -> TokensPerSecond? {
+  let deep = filter(observations, o => token_count_value(t: o.depth) >= token_count_value(t: floor))
+  fold(deep, none, (worst, o) =>
+    match worst {
+      Absent => Present { value: o.rate }
+      Present { value: w } =>
+        match tokens_per_second_count(r: o.rate) < tokens_per_second_count(r: w) {
+          true => Present { value: o.rate }
+          false => Present { value: w }
+        }
+    })
 }
 
 // KV scales with context and with how many sessions are simultaneously RESIDENT. Sessions parked to
@@ -113,13 +139,21 @@ type ServingConstraints {
 // and the answer would look identical to one where the better candidate genuinely lost.
 type MissingFact
   = KvFootprintUnmeasured
-  | PrefillRateUnmeasured
+  | PrefillRateUnmeasuredAtFloor { floor: TokenCount }
+  | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
   | CapacityMalformed { detail: String }
 
 fn missing_fact_wire(missing: MissingFact) -> String {
   match missing {
     KvFootprintUnmeasured => "kv-footprint-unmeasured"
-    PrefillRateUnmeasured => "prefill-rate-unmeasured"
+    PrefillRateUnmeasuredAtFloor { floor: f } =>
+      join(["no prefill observation at or beyond ", to_string(token_count_value(t: f))], "")
+    SemanticContextUnverifiedAtFloor { floor: f, declared: d } =>
+      join([
+        "retrieval unverified at ", to_string(token_count_value(t: f)),
+        "; the publisher declares ", to_string(token_count_value(t: d)),
+        " but a declaration is a claim, not evidence",
+      ], "")
     CapacityMalformed { detail: d } => join(["capacity-malformed: ", d], "")
   }
 }
@@ -140,6 +174,17 @@ type CandidateVerdict
 // Evaluated in a fixed order so the reported axis is deterministic: capability floors first, then
 // fit. A candidate that fails several axes reports the first, and the ordering puts the axis the
 // operator can act on soonest at the front.
+// EVALUATION ORDER IS LOAD-BEARING, not stylistic. Memory fit is decidable from weights, KV cost and
+// capacity alone, so it is settled FIRST: a candidate that cannot be resident does not need a
+// retrieval receipt or a prefill observation, and demanding evidence before rejecting it would turn
+// a decidable no into an unanswerable maybe. Only once a candidate could actually serve do we ask
+// whether it is EVIDENCED to serve at this floor.
+//
+// The context test consumes semantic_context_verified_to -- an observed retrieval depth -- and NEVER
+// declared_context. A publisher declaring 1,048,576 positions has made a claim about what the
+// architecture admits, not a measurement of what the model retrieves, and the gap between them is
+// exactly where silent degradation lives. Admitting on the declaration would reintroduce the rung
+// error the publication layer exists to prevent, one module downstream of where it was removed.
 fn evaluate_candidate(
   candidate: QuantizedCandidate,
   capacity: NodeCapacity,
@@ -159,48 +204,60 @@ fn evaluate_candidate(
         quant_label: candidate.quant_label,
         missing: KvFootprintUnmeasured,
       }
-      Present { value: per_token } => match candidate.measured_prefill_rate {
-        Absent => ServingCandidateUnanswerable {
-          model_name: candidate.model_name,
-          quant_label: candidate.quant_label,
-          missing: PrefillRateUnmeasured,
-        }
-        Present { value: prefill } => {
-      let required = resident_footprint(
-        weights: candidate.weights,
-        per_token: per_token,
-        context: constraints.context_floor,
-        hot_sessions: constraints.hot_sessions,
-      )
-      match token_count_value(t: candidate.declared_context) < token_count_value(t: constraints.context_floor) {
-        true => ServingCandidateRejected {
-          model_name: candidate.model_name,
-          quant_label: candidate.quant_label,
-          axis: ContextBelowFloor { declared: candidate.declared_context, floor: constraints.context_floor },
-        }
-        false => match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
+      Present { value: per_token } => {
+        let required = resident_footprint(
+          weights: candidate.weights,
+          per_token: per_token,
+          context: constraints.context_floor,
+          hot_sessions: constraints.hot_sessions,
+        )
+        match byte_size_count(b: required) > byte_size_count(b: room) {
           true => ServingCandidateRejected {
             model_name: candidate.model_name,
             quant_label: candidate.quant_label,
-            axis: PrefillBelowFloor {
-              measured: prefill,
-              floor: constraints.prefill_floor,
-            },
+            axis: DoesNotFitMemory { required: required, allocatable: room },
           }
-          false => match byte_size_count(b: required) > byte_size_count(b: room) {
-            true => ServingCandidateRejected {
+          false => match candidate.semantic_context_verified_to {
+            Absent => ServingCandidateUnanswerable {
               model_name: candidate.model_name,
               quant_label: candidate.quant_label,
-              axis: DoesNotFitMemory { required: required, allocatable: room },
+              missing: SemanticContextUnverifiedAtFloor {
+                floor: constraints.context_floor,
+                declared: candidate.declared_context,
+              },
             }
-            false => ServingCandidateAdmissible {
-              candidate: candidate,
-              resident: required,
-              headroom: byte_size(count: byte_size_count(b: room) - byte_size_count(b: required)),
-            }
+            Present { value: verified } =>
+              match token_count_value(t: verified) < token_count_value(t: constraints.context_floor) {
+                true => ServingCandidateRejected {
+                  model_name: candidate.model_name,
+                  quant_label: candidate.quant_label,
+                  axis: ContextBelowFloor { declared: verified, floor: constraints.context_floor },
+                }
+                false => match prefill_rate_at_floor(
+                  observations: candidate.prefill_observations,
+                  floor: constraints.context_floor,
+                ) {
+                  Absent => ServingCandidateUnanswerable {
+                    model_name: candidate.model_name,
+                    quant_label: candidate.quant_label,
+                    missing: PrefillRateUnmeasuredAtFloor { floor: constraints.context_floor },
+                  }
+                  Present { value: prefill } =>
+                    match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
+                      true => ServingCandidateRejected {
+                        model_name: candidate.model_name,
+                        quant_label: candidate.quant_label,
+                        axis: PrefillBelowFloor { measured: prefill, floor: constraints.prefill_floor },
+                      }
+                      false => ServingCandidateAdmissible {
+                        candidate: candidate,
+                        resident: required,
+                        headroom: byte_size(count: byte_size_count(b: room) - byte_size_count(b: required)),
+                      }
+                    }
+                }
+              }
           }
-        }
-      }
         }
       }
     }
@@ -246,6 +303,7 @@ type ServingChoice
 type UnanswerableCause
   = UnresolvedCandidateCouldWin { unresolved_count: Nat }
   | CrossReleaseQualityOrderAbsent { distinct_release_count: Nat }
+  | QualityRankTie { tied_count: Nat, rank: Int }
 
 fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
   match cause {
@@ -253,6 +311,8 @@ fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
       join(["unresolved candidates could change the optimum: ", to_string(n)], "")
     CrossReleaseQualityOrderAbsent { distinct_release_count: n } =>
       join(["no cross-release quality order exists over ", to_string(n), " distinct releases"], "")
+    QualityRankTie { tied_count: n, rank: r } =>
+      join([to_string(n), " admissible candidates share rank ", to_string(r), ", so no maximum exists"], "")
   }
 }
 
@@ -275,9 +335,21 @@ fn choose_serving_candidate(
         cause: CrossReleaseQualityOrderAbsent { distinct_release_count: distinct_release_count(verdicts: admissible) },
         evaluations: verdicts,
       }
-      false => match highest_quality(verdicts: admissible) {
+      false => match top_quality_rank(verdicts: admissible) {
         Absent => NoCandidateAdmissible { rejections: verdicts }
-        Present { value: best } => ChoseCandidate { verdict: best }
+        Present { value: rank } => {
+          let tied = verdicts_at_rank(verdicts: admissible, rank: rank)
+          match length(tied) > 1 {
+            true => SelectionUnanswerable {
+              cause: QualityRankTie { tied_count: length(tied), rank: rank },
+              evaluations: verdicts,
+            }
+            false => match first(tied) {
+              Absent => NoCandidateAdmissible { rejections: verdicts }
+              Present { value: best } => ChoseCandidate { verdict: best }
+            }
+          }
+        }
       }
     }
   }
@@ -320,19 +392,29 @@ fn verdict_model_name(verdict: CandidateVerdict) -> String {
 // empty. That row was unreachable from the only caller, which is exactly what made it dangerous: it
 // is a synthetic verdict a later consumer would read as a real rejection of a real model against a
 // real zero-byte capacity, and nothing in the type would mark it as invented. A failure arm must
-// refuse rather than fabricate, so emptiness is now carried in the RESULT and the caller turns it
-// into the honest NoCandidateAdmissible. The seed is `none`, which needs no candidate to exist.
+// refuse rather than fabricate, so emptiness is carried in the RESULT and the caller turns it into
+// the honest NoCandidateAdmissible.
 //
-// Ties keep the earlier candidate, so the result is stable under re-ordering of the input roster
-// rather than dependent on it.
-fn highest_quality(verdicts: List<CandidateVerdict>) -> CandidateVerdict? {
+// TIES ARE NOT BROKEN HERE. An earlier revision kept the earlier candidate and its annotation
+// claimed that made the result stable under re-ordering -- which is exactly backwards, since keeping
+// the earlier candidate is the one rule whose output DOES change when the roster is reversed. Two
+// candidates at equal rank have no maximum, and inventing one is the same fabrication this module
+// refuses across releases, applied within a release. So this returns the top rank and how many share
+// it, and the caller refuses when more than one does.
+fn top_quality_rank(verdicts: List<CandidateVerdict>) -> Int? {
   fold(verdicts, none, (best, v) =>
     match best {
-      Absent => Present { value: v }
+      Absent => Present { value: verdict_quality(verdict: v) }
       Present { value: b } =>
-        match verdict_quality(verdict: v) > verdict_quality(verdict: b) {
-          true => Present { value: v }
+        match verdict_quality(verdict: v) > b {
+          true => Present { value: verdict_quality(verdict: v) }
           false => Present { value: b }
         }
     })
 }
+
+fn verdicts_at_rank(verdicts: List<CandidateVerdict>, rank: Int) -> List<CandidateVerdict> {
+  filter(verdicts, v => verdict_quality(verdict: v) == rank)
+}
+
+

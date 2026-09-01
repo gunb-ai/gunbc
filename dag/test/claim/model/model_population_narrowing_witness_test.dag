@@ -196,10 +196,18 @@ test fn w_all_population_claims_hold() -> Bool {
     && w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
 }
 
-// THE RED ARM, kept enrolled. It asserts the FORBIDDEN edge -- that a channel-absent observation
-// removes the release from the open-weight population -- and must therefore evaluate FALSE. Without
-// it every claim above is a conjunction of things that happen to be true, and nothing demonstrates
-// the carrier can fail. If this ever returns true, the structural separation has been undone.
-test fn w_red_arm_forbidden_edge_must_evaluate_false() -> Bool {
-  !population_holds(population: root(), id: deepseek_v4_flash_id)
+// THE DISCRIMINATING CONTROL, kept enrolled. `population_holds` must not be constantly true, or
+// every claim above is a conjunction of things that hold by vacuity rather than by the structural
+// separation. It asserts both directions in one row: a release the root population does not carry
+// is NOT held, and the one it does carry IS. The forbidden edge -- a channel-absent observation
+// removing a release -- is asserted directly by RED 1 above; what was missing, and is supplied
+// here, is evidence that the membership predicate can answer false at all.
+test fn w_population_membership_discriminates_in_both_directions() -> Bool {
+  let stranger = ReleaseIdentity {
+    publisher: "nobody" as NonEmptyStr,
+    family: "Never-Discovered" as NonEmptyStr,
+    revision: "1" as NonEmptyStr,
+  }
+  !population_holds(population: root(), id: stranger)
+    && population_holds(population: root(), id: deepseek_v4_flash_id)
 }
