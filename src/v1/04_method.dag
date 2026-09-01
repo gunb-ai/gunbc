@@ -247,6 +247,26 @@ fn builtin_kernel_seed_diagnostics() -> List<ErrorNode> {
 // (the `kernel_type_set` shape in `std.types`), so the map is built once per thread and read
 // by key. Same keys, same value expressions, same answers -- the `set_ty` local is inlined at
 // its three uses because a `data` initializer has no let bindings.
+// A WRONG MONOMORPHIC SIGNATURE THAT LOOKS SPECIFIC IS WORSE THAN `params: []`, WHICH AT LEAST
+// ANNOUNCES THAT IT KNOWS NOTHING. That is the rule these 132 rows are authored under, and it
+// decided three questions in this change rather than one. It is why NamedTemplate was not extended
+// to name a record -- the arm accepts any string and answers with a well-formed FIELDLESS node, so
+// filesystem_read's return would have typechecked against nothing instead of refusing. It is why
+// concat stays BINARY rather than being declared signature-less: the signature is expressible and
+// true, and erasing a fact that holds is a different failure from asserting one that does not. And
+// it is why the type half is DERIVED from std.algebra wherever std.algebra declares it, instead of
+// being re-authored here beside the authority that already answers.
+//
+// EVERY ROW IS CONVERTED, WITH NO REMAINDER, and that is a section 3 requirement rather than
+// tidiness: a registry where some rows declare parameters and some do not cannot distinguish a
+// NULLARY builtin from an UNDECLARED one, which is the state this change exists to close. The
+// forty-five nullary rows here say `params: []` and mean it.
+//
+// PROVENANCE IS NOT UNIFORM ACROSS THESE ROWS AND THE PR BODY GRADES IT. Type derived from
+// std.algebra for the twenty it also declares; name agreed by two sites whose provenance is NOT
+// independent (this repository's own call sites and its own emitted runtime text were written to
+// match each other); name declared against a disagreement; name evidenced by a single call site.
+// One word "declared" covering all four would be the rung inflation the ladder names.
 data builtin_function_registry: Map<String, BuiltinSignature> = {
   "count": derived_signature(names: ["xs"], method: "count", returns: int_type),
   "string_length": BuiltinSignature { params: [BuiltinParam { name: "s", ty: NamedTemplate { name: "String" } }], returns: int_type },
