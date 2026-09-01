@@ -123,6 +123,7 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **Blocking emit-stage diagnostics on main** — declared 2026-08-25
 - **Corpus-wide lens enforcement censuses** — declared 2026-08-11
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
+- **Non-literal kernel-String refusal at the structural text boundary** — declared 2026-08-30
 - **Fabric CI evidence lane as a required merge block** — declared 2026-08-31
 
 **The floor first, the differentiator above it.** gunbc must first hold the ordinary compiler floor — names resolve, applications bind in exact bijection, values inhabit declared types, fields exist, closed variants eliminate exhaustively — and a failure there is a below-baseline safety regression, never compensated by higher-order capability. The differentiating claim begins above that floor: because the substrate carries causal, cardinality, algebraic, effect, ownership, cost, and realization facts structurally, the same ladder applies to classes ordinary compilers leave to tests, review, profiling, or production postmortems — a possibly-empty collection flowing into a nonempty consumer, recursion without a descent proof, a non-idempotent effect under automatic retry, a computation exceeding its declared complexity bound, a realization that does not preserve modeled behavior.
@@ -202,10 +203,12 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `remediation_mutated_view`
 - `diagnostic_name_mechanism_silent`
 - `identity_absent_graph_traversal`
+- `generated_binding_shadows_bare_render`
 - `resolved_reference_outside_execution_closure`
 - `surface_shorthand_preempts_resolved_identity`
 - `meaning_fork`
 - `externalized_degradation`
+- `mistyped_body_radiates_nonlocal_diagnostics`
 - `instrument_output_read_as_subject_content`
 - `executed_conjunct_discriminates_nothing`
 

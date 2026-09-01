@@ -226,9 +226,10 @@ use crate::v1_std_core::CompilerDiagnostic::{
 };
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
-    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprError, ExprFieldAccess, ExprForEach, ExprIf,
-    ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch, ExprMethodCall,
-    ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar, NoExprData,
+    ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprElaboratedLiteral, ExprError, ExprFieldAccess,
+    ExprForEach, ExprIf, ExprIndex, ExprLambda, ExprLet, ExprListLit, ExprLiteral, ExprMatch,
+    ExprMethodCall, ExprRecordLit, ExprReturn, ExprSlice, ExprStringInterp, ExprUnaryOp, ExprVar,
+    NoExprData,
 };
 use crate::v1_std_core::FieldAccessStyle::{
     EnumAccessor, OptionalUnwrap, StoredField, TupleFirst, TupleSecond,
@@ -877,62 +878,17 @@ pub fn emit_rust_dag_string_to_host_via_seam(dag_expr: String) -> String {
     dag_expr
 }
 
-pub fn rust_host_string_seam_fn_emit(name: String) -> Option<String> {
-    if (name.clone() == "host_string_text_from_rust_host".to_string()) {
-        Some(v1_rt::concat(
-            v1_rt::concat(
-                v1_rt::concat(
-                    "pub fn host_string_text_from_rust_host(host: String) -> String {\n"
-                        .to_string(),
-                    "    host.chars().fold(v1_rt::freemonoid_empty::<i64>(), ".to_string(),
-                ),
-                "|acc, ch| v1_rt::list_snoc_item(acc, v1_rt::code_point(ch.to_string())))\n"
-                    .to_string(),
-            ),
-            "}\n".to_string(),
-        ))
-    } else {
-        if (name.clone() == "host_string_text_to_rust_host".to_string()) {
-            Some(v1_rt::concat(v1_rt::concat("pub fn host_string_text_to_rust_host(text: String) -> String {\n".to_string(), "    v1_rt::fold_list(text, String::new(), |acc, cp| v1_rt::concat(acc, v1_rt::from_code_point(cp)))\n".to_string()), "}\n".to_string()))
-        } else {
-            std::option::Option::None
-        }
-    }
-}
-
 pub fn rust_host_string_op_fn_emit(name: String) -> Option<String> {
-    if (name.clone() == "string_is_empty".to_string()) {
+    if (name.clone() == "trim".to_string()) {
         Some(v1_rt::concat(
             v1_rt::concat(
-                "pub fn string_is_empty(s: String) -> bool {\n".to_string(),
-                "    s.is_empty()\n".to_string(),
+                "pub fn trim(s: String) -> String {\n".to_string(),
+                "    v1_rt::trim(s)\n".to_string(),
             ),
             "}\n".to_string(),
         ))
     } else {
-        if (name.clone() == "string_head".to_string()) {
-            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_head(s: String) -> Rc<CharResult> {\n".to_string(), "    match s.chars().next() {\n".to_string()), "        Some(c) => Rc::new(CharResult::CharFound { value: c as i64 }),\n".to_string()), "        None => Rc::new(CharResult::CharAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
-        } else {
-            if (name.clone() == "string_tail".to_string()) {
-                Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn string_tail(s: String) -> Rc<ListTailResult<Char>> {\n".to_string(), "    let mut __it = s.chars();\n".to_string()), "    match __it.next() {\n".to_string()), "        Some(_) => Rc::new(ListTailResult::TailFound { tail: Rc::new(__it.map(|c| c as i64).collect::<Vec<i64>>()) }),\n".to_string()), "        None => Rc::new(ListTailResult::TailAbsent),\n".to_string()), "    }\n".to_string()), "}\n".to_string()))
-            } else {
-                if (name.clone() == "fold_source".to_string()) {
-                    Some(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("pub fn fold_source<R: Clone>(src: String, algebra: Rc<SourceFold<R>>) -> R {\n".to_string(), "    let mut __acc = (algebra.init)(src.clone());\n".to_string()), "    for _ in src.chars() {\n".to_string()), "        __acc = if (algebra.is_done)(__acc.clone()) { __acc } else { (algebra.step)(__acc) };\n".to_string()), "    }\n".to_string()), "    __acc\n".to_string()), "}\n".to_string()))
-                } else {
-                    if (name.clone() == "trim".to_string()) {
-                        Some(v1_rt::concat(
-                            v1_rt::concat(
-                                "pub fn trim(s: String) -> String {\n".to_string(),
-                                "    v1_rt::trim(s)\n".to_string(),
-                            ),
-                            "}\n".to_string(),
-                        ))
-                    } else {
-                        std::option::Option::None
-                    }
-                }
-            }
-        }
+        std::option::Option::None
     }
 }
 
@@ -17317,212 +17273,204 @@ pub fn emit_fn_def(
                 std::option::Option::None => "".to_string(),
             };
         }
-        match rust_host_string_seam_fn_emit(name.clone()) {
-            Some(seam_fn) => {
-                let _unused = seam_fn.clone();
-                "".to_string()
+        let type_params = function_type_params(params.clone());
+        let value_params = function_value_params(params.clone());
+        if function_type_params_have_collision(type_params.clone()) {
+            return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
+        }
+        let generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.iter().cloned() {
+                __result.push(crate::v1_std_core::generic_param_name_at(
+                    p.clone(),
+                    si.clone(),
+                ));
             }
-            std::option::Option::None => {
-                let type_params = function_type_params(params.clone());
-                let value_params = function_value_params(params.clone());
-                if function_type_params_have_collision(type_params.clone()) {
-                    return v1_rt::concat(v1_rt::concat("compile_error!(\"type param name collides with a value param in fn '".to_string(), name.clone()), "' — a value param shares its name with a declared type param; rename the value param or dissolve via ParamKind/params-slot partition\");\n".to_string());
+            __result
+        });
+        let body_emit_info = crate::v1_compiler_infer_emit_info::emit_info_with_fn_return(
+            crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
+                emit_info.clone(),
+                generic_param_names.clone(),
+                scope.type_env.clone(),
+            ),
+            Some(inferred.clone()),
+        );
+        let value_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in value_params.iter().cloned() {
+                __result.push(p.name.clone());
+            }
+            __result
+        });
+        let ret_name = crate::v1_std_core::authored_name_at(si.clone(), inferred.clone());
+        let return_is_bare_generic = ((Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.iter().cloned() {
+                if (g.clone() == ret_name.clone()) {
+                    __result.push(g);
                 }
-                let generic_param_names = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in type_params.iter().cloned() {
-                        __result.push(crate::v1_std_core::generic_param_name_at(
-                            p.clone(),
-                            si.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let body_emit_info = crate::v1_compiler_infer_emit_info::emit_info_with_fn_return(
-                    crate::v1_compiler_infer_emit_info::emit_info_with_fn_type_context(
-                        emit_info.clone(),
-                        generic_param_names.clone(),
-                        scope.type_env.clone(),
-                    ),
-                    Some(inferred.clone()),
-                );
-                let value_param_names = Rc::new({
-                    let mut __result = Vec::new();
-                    for p in value_params.iter().cloned() {
-                        __result.push(p.name.clone());
-                    }
-                    __result
-                });
-                let ret_name = crate::v1_std_core::authored_name_at(si.clone(), inferred.clone());
-                let return_is_bare_generic = ((Rc::new({
-                    let mut __result = Vec::new();
-                    for g in generic_param_names.iter().cloned() {
-                        if (g.clone() == ret_name.clone()) {
-                            __result.push(g);
-                        }
-                    }
-                    __result
-                })
-                .len() as i64)
-                    > 0);
-                let body_is_param_ref = ((Rc::new({
-                    let mut __result = Vec::new();
-                    for n in value_param_names.iter().cloned() {
-                        if (n.clone() == body.name.clone()) {
-                            __result.push(n);
-                        }
-                    }
-                    __result
-                })
-                .len() as i64)
-                    > 0);
-                let self_derived_clone_param_names = v1_fn_body_derived_clone_param_names(
-                    params.clone(),
-                    inferred.clone(),
-                    body.clone(),
-                    emit_info.clone(),
-                    shared_types.clone(),
-                    si.clone(),
-                );
-                let call_forwarding_clone_param_names = v1_call_forwarding_clone_bound_param_names(
-                    generic_param_names.clone(),
-                    body.clone(),
-                    emit_info.fn_decl_items.clone(),
-                    emit_info.clone(),
-                    shared_types.clone(),
-                    si.clone(),
-                );
-                let derived_clone_param_names_with_rc_match =
-                    crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                        self_derived_clone_param_names.clone(),
-                        call_forwarding_clone_param_names.clone(),
-                    );
-                let module_path = scope.type_env.clone().module_path.clone();
-                let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0) && crate::v1_compiler_trait_derive_emit::trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path.clone())) {
-                generic_param_names.clone()
-            } else {
-                derived_clone_param_names_with_rc_match.clone()
-            };
-                let self_eq_param_names = v1_fn_body_equality_bound_param_names(
-                    body.clone(),
-                    generic_param_names.clone(),
-                    si.clone(),
-                );
-                let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
-                    generic_param_names.clone(),
-                    body.clone(),
-                    emit_info.fn_decl_items.clone(),
-                    si.clone(),
-                );
-                let eq_param_names =
-                    crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
-                        self_eq_param_names.clone(),
-                        call_forwarding_eq_param_names.clone(),
-                    );
-                let map_key_param_names = v1_fn_signature_map_key_param_names(
+            }
+            __result
+        })
+        .len() as i64)
+            > 0);
+        let body_is_param_ref = ((Rc::new({
+            let mut __result = Vec::new();
+            for n in value_param_names.iter().cloned() {
+                if (n.clone() == body.name.clone()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        })
+        .len() as i64)
+            > 0);
+        let self_derived_clone_param_names = v1_fn_body_derived_clone_param_names(
+            params.clone(),
+            inferred.clone(),
+            body.clone(),
+            emit_info.clone(),
+            shared_types.clone(),
+            si.clone(),
+        );
+        let call_forwarding_clone_param_names = v1_call_forwarding_clone_bound_param_names(
+            generic_param_names.clone(),
+            body.clone(),
+            emit_info.fn_decl_items.clone(),
+            emit_info.clone(),
+            shared_types.clone(),
+            si.clone(),
+        );
+        let derived_clone_param_names_with_rc_match =
+            crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+                self_derived_clone_param_names.clone(),
+                call_forwarding_clone_param_names.clone(),
+            );
+        let module_path = scope.type_env.clone().module_path.clone();
+        let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0) && crate::v1_compiler_trait_derive_emit::trait_derive_emit_fn_clone_bound_keyed_carrier_module(module_path.clone())) {
+            generic_param_names.clone()
+        } else {
+            derived_clone_param_names_with_rc_match.clone()
+        };
+        let self_eq_param_names = v1_fn_body_equality_bound_param_names(
+            body.clone(),
+            generic_param_names.clone(),
+            si.clone(),
+        );
+        let call_forwarding_eq_param_names = v1_call_forwarding_equality_bound_param_names(
+            generic_param_names.clone(),
+            body.clone(),
+            emit_info.fn_decl_items.clone(),
+            si.clone(),
+        );
+        let eq_param_names = crate::v1_compiler_trait_bound_witness::v1_union_bound_param_names(
+            self_eq_param_names.clone(),
+            call_forwarding_eq_param_names.clone(),
+        );
+        let map_key_param_names = v1_fn_signature_map_key_param_names(
+            value_params.clone(),
+            inferred.clone(),
+            generic_param_names.clone(),
+            si.clone(),
+        );
+        let returns_fn_field_record = type_has_fn_fields(
+            rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
+            emit_info.clone(),
+        );
+        let returns_arrow_or_fn_field_record =
+            (((inferred.params.clone().len() as i64) > 0) || returns_fn_field_record.clone());
+        let static_param_names = if returns_fn_field_record.clone() {
+            generic_param_names.clone()
+        } else {
+            Rc::new(vec![])
+        };
+        let bounds_by_param = v1_fn_bounds_by_param(
+            clone_param_names.clone(),
+            eq_param_names.clone(),
+            map_key_param_names.clone(),
+            static_param_names.clone(),
+        );
+        let needs_bound = (((((clone_param_names.clone().len() as i64) > 0)
+            || ((eq_param_names.clone().len() as i64) > 0))
+            || ((map_key_param_names.clone().len() as i64) > 0))
+            || ((static_param_names.clone().len() as i64) > 0));
+        let type_params_str = if needs_bound.clone() {
+            crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_bounds(
+                type_params.clone(),
+                bounds_by_param.clone(),
+                si.clone(),
+            )
+        } else {
+            emit_type_params(type_params.clone(), si.clone())
+        };
+        let params_str = emit_params(
+            value_params.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            si.clone(),
+            emit_info.read_only_params.clone(),
+            emit_info.variant_to_enum.clone(),
+            scope.type_env.clone(),
+            returns_arrow_or_fn_field_record.clone(),
+        );
+        let ret_str = emit_inferred(
+            inferred.clone(),
+            generic_param_names.clone(),
+            shared_types.clone(),
+            si.clone(),
+            emit_info.variant_to_enum.clone(),
+            scope.type_env.clone(),
+        );
+        let body_scope =
+            crate::v1_compiler_infer::build_params_scope(scope.clone(), value_params.clone());
+        let depth = 0;
+        let use_tco = crate::v1_compiler_emit::is_tco_eligible(
+            name.clone(),
+            body.clone(),
+            registry.clone(),
+            si.clone(),
+        );
+        let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
+            name.clone(),
+            body.clone(),
+            registry.clone(),
+            si.clone(),
+        ) && (use_tco.clone() == false));
+        if rust_host_seam_is_unrealized(
+            scope.module_name.clone(),
+            name.clone(),
+            body.clone(),
+            si.clone(),
+        ) {
+            {
+                let kw = rust_items().func_keyword.clone();
+                return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(1)), "panic!(\"unrealized host seam '".to_string()), name.clone()), "' in ".to_string()), scope.module_name.clone()), ": this declaration's whole body is a self-call, so it has no behaviour on this target. ".to_string()), "It compiles as a refusal rather than as recursion. Give it a row in ".to_string()), "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}".to_string());
+            }
+        }
+        if use_tco.clone() {
+            {
+                let tco_params_str = emit_tco_params(
                     value_params.clone(),
-                    inferred.clone(),
-                    generic_param_names.clone(),
-                    si.clone(),
-                );
-                let returns_fn_field_record = type_has_fn_fields(
-                    rust_fn_sig_leaf_name(si.clone(), inferred.clone()),
-                    emit_info.clone(),
-                );
-                let returns_arrow_or_fn_field_record = (((inferred.params.clone().len() as i64)
-                    > 0)
-                    || returns_fn_field_record.clone());
-                let static_param_names = if returns_fn_field_record.clone() {
-                    generic_param_names.clone()
-                } else {
-                    Rc::new(vec![])
-                };
-                let bounds_by_param = v1_fn_bounds_by_param(
-                    clone_param_names.clone(),
-                    eq_param_names.clone(),
-                    map_key_param_names.clone(),
-                    static_param_names.clone(),
-                );
-                let needs_bound = (((((clone_param_names.clone().len() as i64) > 0)
-                    || ((eq_param_names.clone().len() as i64) > 0))
-                    || ((map_key_param_names.clone().len() as i64) > 0))
-                    || ((static_param_names.clone().len() as i64) > 0));
-                let type_params_str = if needs_bound.clone() {
-                    crate::v1_compiler_trait_derive_emit::v1_emit_type_params_with_bounds(
-                        type_params.clone(),
-                        bounds_by_param.clone(),
-                        si.clone(),
-                    )
-                } else {
-                    emit_type_params(type_params.clone(), si.clone())
-                };
-                let params_str = emit_params(
-                    value_params.clone(),
                     generic_param_names.clone(),
                     shared_types.clone(),
                     si.clone(),
-                    emit_info.read_only_params.clone(),
                     emit_info.variant_to_enum.clone(),
                     scope.type_env.clone(),
-                    returns_arrow_or_fn_field_record.clone(),
                 );
-                let ret_str = emit_inferred(
-                    inferred.clone(),
-                    generic_param_names.clone(),
-                    shared_types.clone(),
-                    si.clone(),
-                    emit_info.variant_to_enum.clone(),
-                    scope.type_env.clone(),
-                );
-                let body_scope = crate::v1_compiler_infer::build_params_scope(
-                    scope.clone(),
+                let body_str = emit_typed_tco_body(
+                    body.clone(),
+                    name.clone(),
                     value_params.clone(),
-                );
-                let depth = 0;
-                let use_tco = crate::v1_compiler_emit::is_tco_eligible(
-                    name.clone(),
-                    body.clone(),
                     registry.clone(),
-                    si.clone(),
+                    body_scope.clone(),
+                    (depth.clone() + 1),
+                    shared_types.clone(),
+                    body_emit_info.clone(),
                 );
-                let needs_stacker = (crate::v1_compiler_emit::is_self_recursive(
-                    name.clone(),
-                    body.clone(),
-                    registry.clone(),
-                    si.clone(),
-                ) && (use_tco.clone() == false));
-                if rust_host_seam_is_unrealized(
-                    scope.module_name.clone(),
-                    name.clone(),
-                    body.clone(),
-                    si.clone(),
-                ) {
-                    {
-                        let kw = rust_items().func_keyword.clone();
-                        return v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(rust_visibility_prefix(), kw.clone()), " ".to_string()), crate::v1_compiler_emit::emit_ident(name.clone(), RenderTarget::Rust)), type_params_str.clone()), "(".to_string()), params_str.clone()), ")".to_string()), ret_str.clone()), " {\n".to_string()), crate::v1_compiler_emit_core_support::make_indent(1)), "panic!(\"unrealized host seam '".to_string()), name.clone()), "' in ".to_string()), scope.module_name.clone()), ": this declaration's whole body is a self-call, so it has no behaviour on this target. ".to_string()), "It compiles as a refusal rather than as recursion. Give it a row in ".to_string()), "extdeps.languages.rust.emit rt_function_registry and a body in v1.runtime_rust, or delete its consumers.\")\n}".to_string());
-                    }
-                }
-                if use_tco.clone() {
-                    {
-                        let tco_params_str = emit_tco_params(
-                            value_params.clone(),
-                            generic_param_names.clone(),
-                            shared_types.clone(),
-                            si.clone(),
-                            emit_info.variant_to_enum.clone(),
-                            scope.type_env.clone(),
-                        );
-                        let body_str = emit_typed_tco_body(
-                            body.clone(),
-                            name.clone(),
-                            value_params.clone(),
-                            registry.clone(),
-                            body_scope.clone(),
-                            (depth.clone() + 1),
-                            shared_types.clone(),
-                            body_emit_info.clone(),
-                        );
-                        let kw = rust_items().func_keyword.clone();
+                let kw = rust_items().func_keyword.clone();
+                v1_rt::concat(
+                    v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
                                 v1_rt::concat(
@@ -17533,58 +17481,52 @@ pub fn emit_fn_def(
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             v1_rt::concat(
-                                                                v1_rt::concat(
-                                                                    v1_rt::concat(
-                                                                        rust_visibility_prefix(),
-                                                                        kw.clone(),
-                                                                    ),
-                                                                    " ".to_string(),
-                                                                ),
-                                                                crate::v1_compiler_emit::emit_ident(
-                                                                    name.clone(),
-                                                                    RenderTarget::Rust,
-                                                                ),
+                                                                rust_visibility_prefix(),
+                                                                kw.clone(),
                                                             ),
-                                                            type_params_str.clone(),
+                                                            " ".to_string(),
                                                         ),
-                                                        "(".to_string(),
+                                                        crate::v1_compiler_emit::emit_ident(
+                                                            name.clone(),
+                                                            RenderTarget::Rust,
+                                                        ),
                                                     ),
-                                                    tco_params_str.clone(),
+                                                    type_params_str.clone(),
                                                 ),
-                                                ")".to_string(),
+                                                "(".to_string(),
                                             ),
-                                            ret_str.clone(),
+                                            tco_params_str.clone(),
                                         ),
-                                        " {\n".to_string(),
+                                        ")".to_string(),
                                     ),
-                                    crate::v1_compiler_emit_core_support::make_indent(
-                                        (depth.clone() + 1),
-                                    ),
+                                    ret_str.clone(),
                                 ),
-                                body_str.clone(),
+                                " {\n".to_string(),
                             ),
-                            "\n}".to_string(),
-                        )
-                    }
-                } else {
-                    {
-                        let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
-                        emit_fn_def_non_tco(
-                            name.clone(),
-                            type_params_str.clone(),
-                            params_str.clone(),
-                            ret_str.clone(),
-                            body.clone(),
-                            registry.clone(),
-                            body_scope.clone(),
-                            depth.clone(),
-                            shared_types.clone(),
-                            body_emit_info.clone(),
-                            needs_stacker.clone(),
-                            return_is_unit.clone(),
-                        )
-                    }
-                }
+                            crate::v1_compiler_emit_core_support::make_indent((depth.clone() + 1)),
+                        ),
+                        body_str.clone(),
+                    ),
+                    "\n}".to_string(),
+                )
+            }
+        } else {
+            {
+                let return_is_unit = return_type_is_unit(inferred.clone(), si.clone());
+                emit_fn_def_non_tco(
+                    name.clone(),
+                    type_params_str.clone(),
+                    params_str.clone(),
+                    ret_str.clone(),
+                    body.clone(),
+                    registry.clone(),
+                    body_scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    body_emit_info.clone(),
+                    needs_stacker.clone(),
+                    return_is_unit.clone(),
+                )
             }
         }
     }
@@ -35281,74 +35223,106 @@ pub fn emit_data_def_body(
                     .to_string(),
             }
         } else {
-            if (crate::v1_compiler_emit::has_nested_records_node(
-                type_node.clone(),
-                scope.type_env.clone().source_indices.clone(),
-            ) && !data_value_has_cross_refs(value.clone()))
-            {
-                match (*crate::v1_compiler_emit::emit_data_value_json(
-                    value.clone(),
-                    scope.type_env.clone().source_indices.clone(),
-                ))
-                .clone()
-                {
-                    EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
-                        v1_rt::concat(
-                            "            compile_error!(\"".to_string(),
-                            crate::v1_compiler_emit_core_support::escape_string_literal_body(
-                                r.clone(),
-                            ),
-                        ),
-                        "\")".to_string(),
+            if match (*value.expr_data.clone()).clone() {
+                ExprData::ExprElaboratedLiteral { .. } => true,
+                _ => false,
+            } {
+                v1_rt::concat(
+                    "            ".to_string(),
+                    emit_typed_expr(
+                        value.clone(),
+                        registry.clone(),
+                        scope.clone(),
+                        depth.clone(),
+                        shared_types.clone(),
+                        emit_info.clone(),
+                        1024,
                     ),
-                    EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(
-                                "            serde_json::from_value(serde_json::json!(".to_string(),
-                                json_str.clone(),
-                            ),
-                            "))\n".to_string(),
-                        ),
-                        "                .expect(\"valid data definition\")".to_string(),
-                    ),
-                }
+                )
             } else {
+                if (crate::v1_compiler_emit::has_nested_records_node(
+                    type_node.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) && !data_value_has_cross_refs(value.clone()))
                 {
-                    let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
-                        type_node.clone(),
+                    match (*crate::v1_compiler_emit::emit_data_value_json(
+                        value.clone(),
                         scope.type_env.clone().source_indices.clone(),
-                    );
-                    if is_map.clone() {
-                        match (*value.expr_data.clone()).clone() {
-                            ExprData::ExprRecordLit { parent_enum: _, .. } => {
-                                let key_is_string = map_literal_key_is_string(
-                                    type_node.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
-                                );
-                                let inserts = Rc::new({
-                                    let mut __result = Vec::new();
-                                    for f in value.children.clone().iter().cloned() {
-                                        __result.push({
-                                let val_str = emit_typed_expr(crate::v1_std_core::field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
+                    ))
+                    .clone()
+                    {
+                        EmitterOutcome::Refused { reason: r, .. } => v1_rt::concat(
+                            v1_rt::concat(
+                                "            compile_error!(\"".to_string(),
+                                crate::v1_compiler_emit_core_support::escape_string_literal_body(
+                                    r.clone(),
+                                ),
+                            ),
+                            "\")".to_string(),
+                        ),
+                        EmitterOutcome::Emitted { json: json_str, .. } => v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    "            serde_json::from_value(serde_json::json!("
+                                        .to_string(),
+                                    json_str.clone(),
+                                ),
+                                "))\n".to_string(),
+                            ),
+                            "                .expect(\"valid data definition\")".to_string(),
+                        ),
+                    }
+                } else {
+                    {
+                        let is_map = crate::v1_compiler_infer_types::node_is_keyed_collection(
+                            type_node.clone(),
+                            scope.type_env.clone().source_indices.clone(),
+                        );
+                        if is_map.clone() {
+                            match (*value.expr_data.clone()).clone() {
+                                ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                                    let key_is_string = map_literal_key_is_string(
+                                        type_node.clone(),
+                                        scope.type_env.clone().source_indices.clone(),
+                                    );
+                                    let inserts = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for f in value.children.clone().iter().cloned() {
+                                            __result.push({
+                                    let val_str = emit_typed_expr(crate::v1_std_core::field_init_node_value(f.clone()), registry.clone(), scope.clone(), depth.clone(), shared_types.clone(), emit_info.clone(), 1024);
 v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(".to_string(), emit_rust_map_literal_key(crate::v1_std_core::field_init_node_name_at(f.clone(), scope.type_env.clone().source_indices.clone()), key_is_string.clone())), ", ".to_string()), val_str.clone()), ");".to_string())
 });
-                                    }
-                                    __result
-                                });
-                                let inserts_str = inserts.clone().join(&"\n".to_string());
-                                v1_rt::concat(
+                                        }
+                                        __result
+                                    });
+                                    let inserts_str = inserts.clone().join(&"\n".to_string());
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            "            let mut __m = HashMap::new();\n"
-                                                .to_string(),
-                                            inserts_str.clone(),
+                                            v1_rt::concat(
+                                                "            let mut __m = HashMap::new();\n"
+                                                    .to_string(),
+                                                inserts_str.clone(),
+                                            ),
+                                            "\n".to_string(),
                                         ),
-                                        "\n".to_string(),
-                                    ),
-                                    "            Rc::new(__m)".to_string(),
-                                )
+                                        "            Rc::new(__m)".to_string(),
+                                    )
+                                }
+                                _ => {
+                                    let val_str = emit_typed_expr(
+                                        value.clone(),
+                                        registry.clone(),
+                                        scope.clone(),
+                                        depth.clone(),
+                                        shared_types.clone(),
+                                        emit_info.clone(),
+                                        1024,
+                                    );
+                                    v1_rt::concat("            ".to_string(), val_str.clone())
+                                }
                             }
-                            _ => {
+                        } else {
+                            {
                                 let val_str = emit_typed_expr(
                                     value.clone(),
                                     registry.clone(),
@@ -35358,76 +35332,68 @@ v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("            __m.insert(
                                     emit_info.clone(),
                                     1024,
                                 );
-                                v1_rt::concat("            ".to_string(), val_str.clone())
-                            }
-                        }
-                    } else {
-                        {
-                            let val_str = emit_typed_expr(
-                                value.clone(),
-                                registry.clone(),
-                                scope.clone(),
-                                depth.clone(),
-                                shared_types.clone(),
-                                emit_info.clone(),
-                                1024,
-                            );
-                            let is_already_wrapped = match (*value.expr_data.clone()).clone() {
-                                ExprData::ExprRecordLit { parent_enum: _, .. } => true,
-                                ExprData::ExprListLit => true,
-                                ExprData::ExprVar {
-                                    binding_kind: bk, ..
-                                } => {
-                                    let vname = crate::v1_std_core::expr_var_name_at(
-                                        value.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    );
-                                    match effective_variant_parent(
-                                        vname.clone(),
-                                        bk.clone(),
-                                        value.inferred.clone(),
-                                        emit_info.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
-                                    ) {
-                                        Some(enum_name) => variant_ref_self_wraps(
+                                let is_already_wrapped = match (*value.expr_data.clone()).clone() {
+                                    ExprData::ExprRecordLit { parent_enum: _, .. } => true,
+                                    ExprData::ExprListLit => true,
+                                    ExprData::ExprVar {
+                                        binding_kind: bk, ..
+                                    } => {
+                                        let vname = crate::v1_std_core::expr_var_name_at(
+                                            value.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        );
+                                        match effective_variant_parent(
                                             vname.clone(),
-                                            enum_name.clone(),
-                                            shared_types.clone(),
-                                        ),
-                                        std::option::Option::None => {
-                                            value_inferred_type_is_rc_wrapped(
-                                                value.clone(),
+                                            bk.clone(),
+                                            value.inferred.clone(),
+                                            emit_info.clone(),
+                                            scope.type_env.clone().source_indices.clone(),
+                                        ) {
+                                            Some(enum_name) => variant_ref_self_wraps(
+                                                vname.clone(),
+                                                enum_name.clone(),
                                                 shared_types.clone(),
-                                                scope.clone(),
-                                                emit_info.clone(),
-                                            )
+                                            ),
+                                            std::option::Option::None => {
+                                                value_inferred_type_is_rc_wrapped(
+                                                    value.clone(),
+                                                    shared_types.clone(),
+                                                    scope.clone(),
+                                                    emit_info.clone(),
+                                                )
+                                            }
                                         }
                                     }
-                                }
-                                _ => value_inferred_type_is_rc_wrapped(
-                                    value.clone(),
-                                    shared_types.clone(),
-                                    scope.clone(),
-                                    emit_info.clone(),
-                                ),
-                            };
-                            let wrap_start = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                                rust_shared_wrap_ctor_prefix()
-                            } else {
-                                "".to_string()
-                            };
-                            let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone()) {
-                                rust_shared_wrap_ctor_suffix()
-                            } else {
-                                "".to_string()
-                            };
-                            v1_rt::concat(
+                                    _ => value_inferred_type_is_rc_wrapped(
+                                        value.clone(),
+                                        shared_types.clone(),
+                                        scope.clone(),
+                                        emit_info.clone(),
+                                    ),
+                                };
+                                let wrap_start =
+                                    if (needs_rc.clone() && !is_already_wrapped.clone()) {
+                                        rust_shared_wrap_ctor_prefix()
+                                    } else {
+                                        "".to_string()
+                                    };
+                                let wrap_end = if (needs_rc.clone() && !is_already_wrapped.clone())
+                                {
+                                    rust_shared_wrap_ctor_suffix()
+                                } else {
+                                    "".to_string()
+                                };
                                 v1_rt::concat(
-                                    v1_rt::concat("            ".to_string(), wrap_start.clone()),
-                                    val_str.clone(),
-                                ),
-                                wrap_end.clone(),
-                            )
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            "            ".to_string(),
+                                            wrap_start.clone(),
+                                        ),
+                                        val_str.clone(),
+                                    ),
+                                    wrap_end.clone(),
+                                )
+                            }
                         }
                     }
                 }
