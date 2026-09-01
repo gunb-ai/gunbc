@@ -1,0 +1,20 @@
+module test.claim.tail_drop_probe
+import std.types { String, Int, List }
+type TailProbeRow {
+  identity: String
+  authored: String
+  evidence: List<String>
+}
+data probe_lane_a: TailProbeRow = TailProbeRow {
+  identity: "probe_lane_a",
+  authored: "a",
+data probe_lane_b: TailProbeRow = TailProbeRow {
+  identity: "probe_lane_b",
+  authored: "b",
+  evidence: [],
+}
+data probe_roster: List<TailProbeRow> = [
+  probe_lane_a,
+  probe_lane_b,
+]
+fn probe_count() -> Int { length(xs: probe_roster) }
