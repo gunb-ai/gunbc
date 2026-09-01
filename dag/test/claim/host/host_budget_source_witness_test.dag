@@ -80,7 +80,7 @@ data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWi
 //
 // The arm went away for a different reason than this note: capping a host-shared reading at one
 // fleet's declared slot line was a substitution, not a bound (gunbc.host_budget_source
-// host_budget_unreadable_cgroup_receipt_note). The lesson survives the arm, which is why this row
+// host_budget_source_seed_mirror_disposition). The lesson survives the arm, which is why this row
 // does — a fixture derived from the tree under test is inert whatever it is measuring.
 
 data all_sources: List<HostBudgetSource> = [
