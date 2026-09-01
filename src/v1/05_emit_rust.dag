@@ -177,6 +177,7 @@ import v1.compiler.infer_emit_info {
   is_enum_in_summaries, find_variant_parent, is_known_variant,
   variant_belongs_to_enum, variant_summary_key,
   collect_type_node_import_surface_names
+  collect_type_node_import_surface_occurrences, TypeSurfaceOccurrence
 }
 import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
@@ -1062,8 +1063,23 @@ fn is_machine_width_phantom_token(name: String) -> Bool {
   name == "Word8" || name == "Word16" || name == "Word32" || name == "Word64" || name == "Word128"
 }
 
-fn rust_type_arg_renders_as_unit(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
-  is_width_nat_type_literal(n: n) || is_machine_width_phantom_token(name: type_leaf_name_for_collapse(n: n, source_indices: source_indices)) || is_value_variant_type_arg(generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, name: type_leaf_name_for_collapse(n: n, source_indices: source_indices))
+// A type argument's Rust identity is decided from the declaration visible in this module, never
+// from the syntactic position that happened to render it. Unit variants admitted by the resolver's
+// identity-bearing phantom index already receive distinct zero-sized Rust marker declarations;
+// erasing those markers to `()` makes distinct source types identical in the projection.
+fn rust_type_arg_identity_spelling(n: Node, generic_param_names: List<String>, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> String? {
+  let name = type_leaf_name_for_collapse(n: n, source_indices: source_indices)
+  if generic_param_names |> any(g => g == name) {
+    none
+  } else {
+    match lookup_unit_variant_phantom_type(env: env, variant_name: name) {
+      Present { value: _ } => Present { value: name }
+      Absent =>
+        if is_width_nat_type_literal(n: n) || is_machine_width_phantom_token(name: name) {
+          Present { value: "()" }
+        } else { none }
+    }
+  }
 }
 
 fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, variant_to_enum: Map<String, String>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1080,17 +1096,17 @@ fn type_node_has_value_variant_arg(n: Node, generic_param_names: List<String>, v
 }
 
 fn render_rust_phantom_opaque_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, scope: InferScope, imports: List<Node>, registry: Map<String, ItemInfo>, module_name: String, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex, variant_to_enum: Map<String, String>) -> String {
-  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
-    "()"
-  } else {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+    Present { value: identity } => identity
+    Absent =>
     render_rust_alias_rhs_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, scope: scope, imports: imports, registry: registry, module_name: module_name, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index, variant_to_enum: variant_to_enum)
   }
 }
 
 fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
-  if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
-    "()"
-  } else {
+  match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env) {
+    Present { value: identity } => identity
+    Absent =>
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
 }
@@ -1098,8 +1114,8 @@ fn render_rust_phantom_opaque_applied_decl_arg(n: Node, generic_param_names: Lis
 fn render_rust_applied_type_arg(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if rust_type_node_is_arrow(n: n) {
     render_rust_arrow_type_in_scope(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-  } else if rust_type_arg_renders_as_unit(n: n, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
-    "()"
+  } else if rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env) != none {
+    rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: env).value
   } else if type_node_has_unbound_type_variable(n: n, generic_param_names: generic_param_names, source_indices: source_indices) {
     "_"
   } else {
@@ -1368,8 +1384,8 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
           let typed_arg = render_rust_decl_type_container_arg(arg: arg, source_indices: source_indices, env: env)
           if peel {
             render_rust_phantom_opaque_applied_decl_arg(n: typed_arg, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
-          } else if rust_type_arg_renders_as_unit(n: typed_arg, generic_param_names: generic_param_names, variant_to_enum: variant_to_enum, source_indices: source_indices) {
-            "()"
+          } else if rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env) != none {
+            rust_type_arg_identity_spelling(n: typed_arg, generic_param_names: generic_param_names, source_indices: source_indices, env: env).value
           } else {
             match rust_render_checkpoint_scalar_bare(n: typed_arg, source_indices: source_indices, shared_types: shared_types, env: env) {
               Present { value: scalar } => scalar
@@ -1583,6 +1599,9 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
   if n.connective == NoConnective && n.children |> count == 0 && (generic_param_names |> any(g => g == name)) {
     to_pascal(name: name)
   } else if n.connective == NoConnective && n.children |> count == 0 {
+    match rust_type_arg_identity_spelling(n: n, generic_param_names: generic_param_names, source_indices: source_indices, env: scope.type_env) {
+      Present { value: identity } => identity
+      Absent =>
     match rust_exact_reference_spelling(n: n, source_indices: source_indices, env: scope.type_env) {
       Present { value: exact } => exact
       Absent =>
@@ -1602,6 +1621,7 @@ fn render_rust_alias_rhs_type(n: Node, generic_param_names: List<String>, shared
           }
         }
       }
+    }
     }
     }
   } else if n.connective == NoConnective && n.children |> count > 0 {
@@ -3798,6 +3818,21 @@ fn collect_item_type_surface_names(item: Node, source_indices: Map<String, Newli
   concat(from_ann, concat(from_params, from_inferred))
 }
 
+fn collect_item_type_surface_occurrences(item: Node, source_indices: Map<String, NewlineIndex>) -> List<TypeSurfaceOccurrence> {
+  let from_ann = match item.type_annotation {
+    Present { value: t } => collect_type_node_import_surface_occurrences(n: t, applied_argument: false, source_indices: source_indices)
+    Absent => []
+  }
+  let from_params = item.params |> flat_map(p =>
+    collect_type_node_import_surface_occurrences(n: param_node_type_expr(n: p), applied_argument: false, source_indices: source_indices)
+  )
+  let from_inferred = match item.inferred {
+    Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: false, source_indices: source_indices)
+    _ => []
+  }
+  concat(from_ann, concat(from_params, from_inferred))
+}
+
 fn emit_scrutinee_type_name(scrutinee: Node, source_indices: Map<String, NewlineIndex>) -> String {
   emit_inferred_type_leaf_name(n: scrutinee, source_indices: source_indices)
 }
@@ -4605,7 +4640,7 @@ type ReferenceDerivedUseLinePlan {
 // (gunbc compile --source-root src/v1 --source-root dag --entry src/v1/compile.dag). The predicate
 // is unchanged: emitted_source_token_set holds exactly the tokens the list holds, so emit_map_has
 // answers what `any` answered, for the same names in the same order.
-fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
+fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, type_env: TypeEnv, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> ReferenceDerivedUseLinePlan {
   {
     let module_source = match typed_modules |> filter(tm => authored_name_at(source_indices: source_indices, node: tm.module) == this_module_name) |> first {
       Present { value: tm } => module_authored_source_text(module: tm.module, source_indices: source_indices)
@@ -4614,6 +4649,10 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
     let value_names = unique_strings(items: items |> flat_map(item => collect_value_ref_names(n: item, source_indices: source_indices, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)))
     let item_emit_surface_names = items |> flat_map(item => collect_item_emit_surface_names(item: item, source_indices: source_indices, emit_info: emit_info))
     let type_surface_names = unique_strings(items: item_emit_surface_names)
+    let applied_type_argument_names = unique_strings(items: items
+      |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: source_indices))
+      |> filter(occurrence => occurrence.applied_argument)
+      |> map(occurrence => occurrence.name))
     let type_position_set = type_surface_names |> fold(init: empty_map(), f: (acc, nm) => map_insert(acc, nm, true))
     let field_surface_names = collect_items_field_import_surface_names(surface_names: item_emit_surface_names, emit_info: emit_info)
     let variant_payload_structs = expand_variant_payload_struct_imports(names: type_surface_names, type_summaries: emit_info.type_summaries, variant_to_enum: emit_info.variant_to_enum)
@@ -4672,7 +4711,7 @@ fn reference_derived_use_line_plan(items: List<Node>, unlisted_type_names: List<
           Absent => false
         }
       )
-      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
+      let block = emit_specific_import_block(import_module: provider, mod_name: module_to_filename(name: provider), filtered_names: names, type_position_names: applied_type_argument_names, type_env: type_env, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
       let block_lines = if block == "" { [] } else { block |> split(delimiter: "\n") }
       let emitted_here = block_lines |> flat_map(l => imported_names_in_use_line(line: l))
       let fallback = names |> flat_map(nm =>
@@ -4756,8 +4795,8 @@ fn qualified_type_reference_use_lines(rows: List<ReferenceDerivedCandidateRow>, 
   ))
 }
 
-fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
-  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
+fn reference_derived_use_lines(items: List<Node>, unlisted_type_names: List<String>, this_module_name: String, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, type_env: TypeEnv, local_type_names: List<String>, already_imported_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, shared_types: Set<String>, emitted_source: String) -> List<String> {
+  let plan = reference_derived_use_line_plan(items: items, unlisted_type_names: unlisted_type_names, this_module_name: this_module_name, registry: registry, emit_info: emit_info, type_env: type_env, local_type_names: local_type_names, already_imported_names: already_imported_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index, shared_types: shared_types, emitted_source: emitted_source)
   plan.lines
 }
 
@@ -4820,7 +4859,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: wire_context_items, imports: wire_context_imports, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
     |> join(separator: "\n\n")
   let prelude = emit_prelude(imported_names: prelude_imported_names, local_type_names: local_type_names)
-  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
+  let imports_str = emit_imports(imports: module_imports(n: m), type_env: scope.type_env, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index, supplement_items: typed_module.items)
   let dag_import_lines = if imports_str == "" { [] } else { imports_str |> split(delimiter: "\n") }
   let carrier_import_lines = if module_needs_faithful_carrier_imports(
     items: typed_module.items,
@@ -4847,6 +4886,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       this_module_name: authored_name(env: scope.type_env, node: m),
       registry: registry,
       emit_info: emit_info,
+      type_env: scope.type_env,
       local_type_names: local_type_names,
       already_imported_names: already_imported_names,
       export_sets: export_sets,
@@ -5674,8 +5714,10 @@ fn is_emittable_parametric_type_alias_item(item: Node, item_text: String, source
   }
 }
 
-fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>) -> String {
-  if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+fn import_variant_parent_for_name(n: String, import_module: String, registry: Map<String, ItemInfo>, type_summaries: Map<String, TypeSummary>, typed_modules: List<TypedModule>, export_sets: Map<String, Map<String, Bool>>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, imported_enums: List<String>, import_module_enums: List<String>, marker_type_names: List<String>) -> String {
+  if marker_type_names |> any(name => name == n) {
+    ""
+  } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
     ""
   } else if import_module_enums |> any(e => e == n) {
     ""
@@ -5712,15 +5754,18 @@ fn import_variant_parent_for_name(n: String, import_module: String, registry: Ma
   }
 }
 
-fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
+fn emit_specific_import_block(import_module: String, mod_name: String, filtered_names: List<String>, type_position_names: List<String>, type_env: TypeEnv, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
   let type_summaries = emit_info.type_summaries
   let deduped_names = unique_strings(items: filtered_names |> filter(n => local_names |> all(ln => ln != n)))
+  let marker_type_names = unique_strings(items: type_position_names |> filter(n => is_phantom_unit_variant_type_arg(env: type_env, variant_name: n)))
   if deduped_names |> count == 0 {
     ""
   } else {
     let import_module_enums = import_module_enum_scope(import_module: import_module, registry: registry, type_summaries: type_summaries, export_sets: export_sets, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index)
     let top_level = deduped_names |> filter(n =>
-      if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
+      if marker_type_names |> any(name => name == n) {
+        true
+      } else if is_import_graph_type_name(name: n, import_module: import_module, typed_modules: typed_modules, registry: registry, export_sets: export_sets, type_summaries: type_summaries, source_indices: source_indices, module_index: module_index) {
         true
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
         import_module_enums |> any(e => e == n)
@@ -5732,11 +5777,11 @@ fn emit_specific_import_block(import_module: String, mod_name: String, filtered_
     )
     let imported_enums = deduped_names |> filter(n => import_module_enums |> any(e => e == n))
     let all_parents = deduped_names |> map(n =>
-      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums)
+      import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, marker_type_names: marker_type_names)
     ) |> filter(p => p != "")
     let parent_list = unique_strings(items: all_parents)
     let non_variant_top = top_level |> filter(n =>
-      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums) != "" {
+      if import_variant_parent_for_name(n: n, import_module: import_module, registry: registry, type_summaries: type_summaries, typed_modules: typed_modules, export_sets: export_sets, source_indices: source_indices, module_index: module_index, imported_enums: imported_enums, import_module_enums: import_module_enums, marker_type_names: marker_type_names) != "" {
         false
       } else if is_known_variant(type_summaries: type_summaries, name: n) {
         import_module_enums |> any(e => e == n)
@@ -6145,10 +6190,14 @@ fn dedupe_rust_import_lines(lines: List<String>) -> List<String> {
   strip_repeated_use_symbols(lines: covered)
 }
 
-fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>) -> String {
+fn emit_imports(imports: List<Node>, type_env: TypeEnv, emit_info: EmitGraphInfo, registry: Map<String, ItemInfo>, local_names: List<String>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex, supplement_items: List<Node>) -> String {
   if imports |> count == 0 {
     ""
   } else {
+    let applied_type_argument_names = unique_strings(items: supplement_items
+      |> flat_map(item => collect_item_type_surface_occurrences(item: item, source_indices: source_indices))
+      |> filter(occurrence => occurrence.applied_argument)
+      |> map(occurrence => occurrence.name))
     let import_modules = unique_strings(items: imports |> map(imp => authored_name_at(source_indices: source_indices, node: imp)))
     let import_lines = import_modules |> flat_map(import_module =>
       let mod_imports = imports |> filter(imp => authored_name_at(source_indices: source_indices, node: imp) == import_module)
@@ -6167,6 +6216,8 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
           import_module: import_module,
           mod_name: mod_name,
           filtered_names: merged_specific,
+          type_position_names: applied_type_argument_names,
+          type_env: type_env,
           emit_info: emit_info,
           registry: registry,
           local_names: local_names,
@@ -6187,6 +6238,8 @@ fn emit_imports(imports: List<Node>, emit_info: EmitGraphInfo, registry: Map<Str
           import_module: import_module,
           mod_name: mod_name,
           filtered_names: merged_specific,
+          type_position_names: applied_type_argument_names,
+          type_env: type_env,
           emit_info: emit_info,
           registry: registry,
           local_names: local_names,

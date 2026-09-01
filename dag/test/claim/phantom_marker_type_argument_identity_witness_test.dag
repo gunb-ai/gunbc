@@ -1,0 +1,25 @@
+module test.claim.phantom_marker_type_argument_identity_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Distinct zero-payload variants used as type arguments are distinct declared
+// identities, even though neither carries a runtime value.  This fixture drives
+// the real Rust emitter and requires both identities to remain writable in the
+// projection.  The pre-fix emitter rendered both arguments as `()`, so the two
+// includes were absent and this witness was red.  The excludes keep a future
+// position-dependent collapse from satisfying the positive strings beside an
+// erased spelling.
+fn w_distinct_phantom_markers_remain_distinct() -> Bool {
+  compile_dag_rust_emit_check(
+    "module phantom_marker_identity\n\ntype Quantity = Time | Memory\n\ntype Measure<Q> {\n  count: Int\n}\n\ntype DistinctMeasures {\n  time: Measure<Time>\n  memory: Measure<Memory>\n}\n",
+    "src/phantom_marker_identity.rs",
+    ["Measure<Time>", "Measure<Memory>"],
+    ["Measure<()>"]
+  )
+}
+
+test fn distinct_phantom_markers_do_not_render_identically() -> Bool {
+  w_distinct_phantom_markers_remain_distinct()
+}
