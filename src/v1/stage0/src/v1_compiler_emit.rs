@@ -2665,6 +2665,16 @@ pub fn shell_emission_refusal_fact(refusal: Rc<ShellEmissionRefusal>) -> String 
 }
 }
 
+pub fn shell_field_authors_from_key(
+    ch: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match child_from_key(ch.clone(), source_indices.clone()) {
+        Some(_) => true,
+        std::option::Option::None => false,
+    }
+}
+
 pub fn shell_output_channel_of_field(
     ch: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -2727,7 +2737,7 @@ pub fn bind_shell_operation(
         });
         let declared_count = (declared.clone().len() as i64);
         let bound_count = (bound.clone().len() as i64);
-        let unmodeled = Rc::new({
+        let unresolved = Rc::new({
             let mut __result = Vec::new();
             for ch in declared.iter().cloned() {
                 if match shell_bind_result_field(ch.clone(), source_indices.clone()) {
@@ -2738,36 +2748,58 @@ pub fn bind_shell_operation(
                 }
             }
             __result
+        });
+        let authored_unresolved = Rc::new({
+            let mut __result = Vec::new();
+            for ch in unresolved.iter().cloned() {
+                if shell_field_authors_from_key(ch.clone(), source_indices.clone()) {
+                    __result.push(ch);
+                }
+            }
+            __result
         })
         .first()
         .cloned();
-        if (declared_count.clone() < 2) {
-            Rc::new(BoundOperation::ShellBound {
-                transport: t.clone(),
-                result_fields: bound.clone(),
-            })
-        } else {
-            if (bound_count.clone() == declared_count.clone()) {
-                Rc::new(BoundOperation::ShellBound {
-                    transport: t.clone(),
-                    result_fields: bound.clone(),
-                })
-            } else {
-                match unmodeled.clone() {
-                    Some(ch) => Rc::new(BoundOperation::BindingRefused {
-                        cause: Rc::new(TransportBindingRefusal::ShellBindingRefused {
-                            refusal: Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
-                                key: shell_output_channel_of_field(
-                                    ch.clone(),
-                                    source_indices.clone(),
-                                ),
-                            }),
-                        }),
+        match authored_unresolved.clone() {
+            Some(ch) => Rc::new(BoundOperation::BindingRefused {
+                cause: Rc::new(TransportBindingRefusal::ShellBindingRefused {
+                    refusal: Rc::new(ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                        key: shell_output_channel_of_field(ch.clone(), source_indices.clone()),
                     }),
-                    std::option::Option::None => Rc::new(BoundOperation::ShellBound {
+                }),
+            }),
+            std::option::Option::None => {
+                if (declared_count.clone() < 2) {
+                    Rc::new(BoundOperation::ShellBound {
                         transport: t.clone(),
                         result_fields: bound.clone(),
-                    }),
+                    })
+                } else {
+                    if (bound_count.clone() == declared_count.clone()) {
+                        Rc::new(BoundOperation::ShellBound {
+                            transport: t.clone(),
+                            result_fields: bound.clone(),
+                        })
+                    } else {
+                        match unresolved.clone().first().cloned() {
+                            Some(ch) => Rc::new(BoundOperation::BindingRefused {
+                                cause: Rc::new(TransportBindingRefusal::ShellBindingRefused {
+                                    refusal: Rc::new(
+                                        ShellEmissionRefusal::ShellOutputKeyNotModeled {
+                                            key: shell_output_channel_of_field(
+                                                ch.clone(),
+                                                source_indices.clone(),
+                                            ),
+                                        },
+                                    ),
+                                }),
+                            }),
+                            std::option::Option::None => Rc::new(BoundOperation::ShellBound {
+                                transport: t.clone(),
+                                result_fields: bound.clone(),
+                            }),
+                        }
+                    }
                 }
             }
         }
