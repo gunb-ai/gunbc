@@ -857,6 +857,7 @@ fn witness_exclusion_row_is_offline(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     FixtureExplicitRoster => false
     NoConsumer => false
@@ -871,6 +872,7 @@ fn witness_exclusion_row_is_fixture(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     NoConsumer => false
@@ -884,6 +886,7 @@ fn witness_exclusion_row_is_discovery_selection(row: WitnessExclusionRow) -> Boo
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -896,6 +899,7 @@ fn witness_exclusion_row_is_rehomed_bin_wet(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => true
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
@@ -910,6 +914,7 @@ fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Boo
     FalsifierSubstrateLongLane => true
     FalsifierRehomedBinWet => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     DiscoverySelection => false
     FalsifierSelfHostWet => false
     QuarantineProbeExpectRed => false
@@ -923,6 +928,7 @@ fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     BinWitnessWet => true
     DiscoverySelection => false
+    LocalRepoWetLane => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
@@ -937,6 +943,7 @@ fn witness_exclusion_row_is_known_red(row: WitnessExclusionRow) -> Bool {
   match row.classification {
     QuarantineProbeExpectRed => true
     DiscoverySelection => false
+    LocalRepoWetLane => false
     FalsifierSelfHostWet => false
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
@@ -954,6 +961,7 @@ fn witness_exclusion_row_is_falsifier_wet(row: WitnessExclusionRow) -> Bool {
     FalsifierSubstrateLongLane => false
     DiscoverySelection => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false
@@ -969,6 +977,7 @@ fn witness_exclusion_row_is_no_consumer(row: WitnessExclusionRow) -> Bool {
     FalsifierRehomedBinWet => false
     FalsifierSubstrateLongLane => false
     BinWitnessWet => false
+    LocalRepoWetLane => false
     QuarantineProbeExpectRed => false
     OfflineLocalRecipe => false
     FixtureExplicitRoster => false

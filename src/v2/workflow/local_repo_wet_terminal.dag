@@ -178,3 +178,38 @@ fn local_repo_wet_identity_passed_on_candidate(
     }
   }
 }
+
+// THE LANE'S COMPLETE ROSTER. Membership is by EXECUTION PROPERTY: every member's real effects are
+// confined to a temporary directory and a local git repository, which the required lane can run in
+// its own checkout. That is what makes std.witness_admission's LocalRepoWetLane route claim true for
+// this population and false for BinWitnessWet, whose members also download ISOs, fetch over the
+// network, build with real cargo and provision remote hosts.
+//
+// THE ROSTER DOES NOT LAND EMPTY, and that is deliberate rather than incidental. An empty roster
+// would make the lane's coverage claim vacuously true and leave nothing proving the executor runs
+// anything at all -- a gate permanently green by construction, which DESIGN section 4b calls a
+// decoration rather than a wall. These seven were chosen because they are the members already on
+// main whose effects are local-repo only, and because they have executed NOWHERE since falsifier.yml
+// was deleted at 611fd02770 on 2026-08-15: scheduling them repays standing debt rather than only
+// serving the change that needed the lane.
+//
+// EACH WAS MEASURED WET BEFORE BEING SCHEDULED, not assumed runnable from its exclusion note. A
+// member the executor cannot actually run would make this lane's route claim false, which is the
+// failure the ruling that ordered this lane forbids by name.
+fn local_repo_wet_schedule() -> List<LocalRepoWetScheduled> {
+  [
+    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_refuses_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_refuses_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "divergent_generated_artifact_merge_under_true_driver_silently_drops_theirs_red_control_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.generated_artifact_merge_driver_real_execution.one_sided_generated_artifact_change_merges_clean_by_real_execution", entry: "dag/test/claim/generated_artifact_merge_driver_real_execution_witness_test.dag", function: "one_sided_generated_artifact_change_merges_clean_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.clean_staged_index_admits_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "clean_staged_index_admits_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unmerged_index_with_no_markers_refuses_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unmerged_index_with_no_markers_refuses_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "unclaimed_text_blob_with_markers_refuses_red_control_by_real_execution", expected: LocalRepoWetPassed },
+    LocalRepoWetScheduled { identity: "test.claim.commit_writer_heal_admission_real_execution.space_and_tab_named_paths_admit_by_real_execution", entry: "dag/test/claim/commit_writer_heal_admission_real_execution_witness_test.dag", function: "space_and_tab_named_paths_admit_by_real_execution", expected: LocalRepoWetPassed },
+  ]
+}
+
+// The identity projection the executor and the changed-witness gate both read, so neither authors a
+// second list beside this one.
+fn local_repo_wet_scheduled_identities() -> List<String> {
+  local_repo_wet_schedule() |> map(s => s.identity)
+}
