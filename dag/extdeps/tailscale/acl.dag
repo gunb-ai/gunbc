@@ -260,10 +260,14 @@ fn tag_dashboard_admin_plane_holds(policy: TailscaleAclPolicy) -> Bool {
 fn dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: TailscaleAclPolicy) -> Bool {
   let ci_grants = policy.grants |> filter(g => grant_src_is_tag_ci(g: g))
   (length(ci_grants) == 1)
-    && selector_list_contains(
-      items: ci_grants.first().dst,
-      needle: sel_ipv4(address: dashboard_cutover_mac_ip)
-    )
+    && match ci_grants.first() {
+      Present { value: only } =>
+        selector_list_contains(
+          items: only.dst,
+          needle: sel_ipv4(address: dashboard_cutover_mac_ip)
+        )
+      Absent => false
+    }
 }
 
 fn ssh_rule_matches(

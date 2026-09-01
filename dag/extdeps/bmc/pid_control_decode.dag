@@ -375,11 +375,14 @@ type CurveDecode
 fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<IndexedDecimal>) -> CurveDecode {
   let unpaired_reading = filter(readings, r => indexed_decimal_entries_with(entries: outputs, index: r.index).length() == 0)
   let unpaired_output = filter(outputs, o => indexed_decimal_entries_with(entries: readings, index: o.index).length() == 0)
-  if unpaired_reading.length() > 0 {
-    CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: unpaired_reading.first().index } }
-  } else if unpaired_output.length() > 0 {
-    CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: unpaired_output.first().index } }
-  } else {
+  match unpaired_reading.first() {
+    Present { value: stray_reading } =>
+      CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: stray_reading.index } }
+    Absent =>
+      match unpaired_output.first() {
+        Present { value: stray_output } =>
+          CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: stray_output.index } }
+        Absent =>
     CurveDecoded {
       points: sort_by(
         map(readings, r =>
@@ -392,6 +395,7 @@ fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<
         point => point.index,
       ),
     }
+      }
   }
 }
 

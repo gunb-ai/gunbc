@@ -32,6 +32,9 @@ test fn w_ampere_catalog_rows_share_cited_l1_geometry() -> Bool {
 test fn w_ampere_l1_citations_cover_all_fields() -> Bool {
   let citations = altra_max_m12830_catalog.l1_cache_citations
   list_length(items: citations) == 3
-    && citations.first().authority == ampere_altra_rev_a1_datasheet_authority
+    && match citations.first() {
+      Present { value: h0 } => h0.authority == ampere_altra_rev_a1_datasheet_authority
+      Absent => false
+    }
 }
 

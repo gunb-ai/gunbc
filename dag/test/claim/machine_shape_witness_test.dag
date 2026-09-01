@@ -73,7 +73,10 @@ fn shape_from_rtx5090_catalog() -> MachineShape {
 
 test fn catalog_derivation_matches_row() -> Bool {
   let shape = shape_from_rtx5090_catalog()
-  let memory = shape.domains.first().memory
+  match domains.first() {
+    Present { value: h0 } => let memory = shape.h0.memory
+    Absent => false
+  }
   let device = memory.skip(n: list_length(items: memory) - 1).first()
   match machine_shape_domain_lane_count(shape: shape) {
     Present { value: lanes } =>
@@ -106,14 +109,26 @@ fn shape_from_m5_catalog() -> MachineShape {
 }
 
 test fn gpu_sm_cache_levels_integrated_when_cited() -> Bool {
-  let memory = shape_from_rtx5090_catalog().domains.first().memory
+  match domains.first() {
+    Present { value: h0 } => let memory = shape_from_rtx5090_catalog().h0.memory
+    Absent => false
+  }
   list_length(items: memory) == 3
-    && byte_size_count(b: memory.first().capacity) == rtx5090_sm_register_bytes
-    && byte_size_count(b: memory.skip(n: 1).first().capacity) == rtx5090_sm_shared_bytes
+    && match memory.first() {
+      Present { value: h0 } => byte_size_count(b: h0.capacity) == rtx5090_sm_register_bytes
+      Absent => false
+    }
+    && match memory.skip(n: 1).first() {
+      Present { value: h0 } => byte_size_count(b: h0.capacity) == rtx5090_sm_shared_bytes
+      Absent => false
+    }
 }
 
 test fn gpu_sm_cache_absent_when_ungranted() -> Bool {
-  list_length(items: shape_from_m5_catalog().domains.first().memory) == 1
+  match domains.first() {
+    Present { value: h0 } => list_length(items: shape_from_m5_catalog().h0.memory) == 1
+    Absent => false
+  }
 }
 
 test fn energy_derived_not_stored() -> Bool {

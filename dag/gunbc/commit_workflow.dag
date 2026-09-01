@@ -861,14 +861,20 @@ fn commit_writer_blob_coverage_refusals(
     } else if count(matching_index) > 1 {
       []
     } else {
-      let index_entry = matching_index.first()
-      if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
-        []
-      } else {
-        [CommitWriterIndexBlobIdentityMismatchRefusal {
+      match matching_index.first() {
+        Present { value: index_entry } =>
+          if git_object_id_eq(left: index_entry.oid, right: blob.indexed_oid) {
+            []
+          } else {
+            [CommitWriterIndexBlobIdentityMismatchRefusal {
+              path: blob.path,
+              index_oid: index_entry.oid,
+              observed_index_oid: blob.indexed_oid,
+            }]
+          }
+        Absent => [CommitWriterExtraBlobObservationRefusal {
           path: blob.path,
-          index_oid: index_entry.oid,
-          observed_index_oid: blob.indexed_oid,
+          indexed_oid: blob.indexed_oid,
         }]
       }
     },
@@ -2500,12 +2506,14 @@ fn demand_check_count(check: CommitCheckKind, rows: List<EnrollmentWitnessDemand
 }
 
 fn first_duplicate_commit_check(roster: List<CommitCheckEnrollment>) -> DuplicateCommitCheck {
-  if roster.count() == 0 {
-    NoDuplicateCommitCheck
-  } else if commit_check_count(check: roster.first().check, roster: roster) > 1 {
-    DuplicateCommitCheckFound { check: roster.first().check }
-  } else {
-    first_duplicate_commit_check(roster: roster.skip(n: 1))
+  match roster.first() {
+    Absent => NoDuplicateCommitCheck
+    Present { value: head } =>
+      if commit_check_count(check: head.check, roster: roster) > 1 {
+        DuplicateCommitCheckFound { check: head.check }
+      } else {
+        first_duplicate_commit_check(roster: roster.skip(n: 1))
+      }
   }
 }
 
@@ -2729,10 +2737,10 @@ fn project_enrollment_witness_demands_unchecked(
   roster: List<CommitCheckEnrollment>,
   discoveries: List<EntryDeclarationDiscovery>,
 ) -> EnrollmentDemandOutcome {
-  if roster.count() == 0 {
-    DemandQualified { rows: [] }
-  } else {
-    let check = roster.first().check
+  match roster.first() {
+    Absent => DemandQualified { rows: [] }
+    Present { value: head } =>
+    let check = head.check
     match project_one_enrollment_witness_demand(
       check: check,
       discoveries: discoveries
@@ -2798,9 +2806,16 @@ fn project_enrollment_witness_demands(
           if demand_rows_match_roster(roster: roster, rows: rows) {
             DemandQualified { rows: rows }
           } else {
-            DemandIncomplete {
-              check: roster.first().check,
-              cause: "projected demand check set does not equal input roster" as NonEmptyStr
+            match roster.first() {
+              Present { value: head } =>
+                DemandIncomplete {
+                  check: head.check,
+                  cause: "projected demand check set does not equal input roster" as NonEmptyStr
+                }
+              Absent =>
+                DemandRosterAmbiguous {
+                  cause: "empty commit check roster names no check for an incomplete projection" as NonEmptyStr
+                }
             }
           }
     }

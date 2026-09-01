@@ -162,7 +162,10 @@ test fn exact_prepared_artifact_set_serves() -> Bool {
     PreparedFloorSubjectReady { identity: identity, entries: entries } =>
       identity == prepared_claim_subject_identity(request: request)
         && entries.count() == 2
-        && entries.first().witness.entry == witness_a().entry
+        && match entries.first() {
+          Present { value: h0 } => h0.witness.entry == witness_a().entry
+          Absent => false
+        }
     PreparedFloorSubjectRefused { cause: _ } => false
   }
 }
@@ -174,7 +177,10 @@ test fn missing_prepared_identity_refuses() -> Bool {
   ) {
     PreparedFloorSubjectRefused {
       cause: PreparedFloorMissingProbeIdentities { missing: missing }
-    } => missing.count() == 1 && missing.first().entry == witness_b().entry
+    match missing.first() {
+      Present { value: h0 } => } => missing.count() == 1 && h0.entry == witness_b().entry
+      Absent => false
+    }
     _ => false
   }
 }
@@ -248,7 +254,10 @@ test fn unexpected_probe_identity_refuses() -> Bool {
   ) {
     PreparedFloorSubjectRefused {
       cause: PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected }
-    } => unexpected.count() == 1 && unexpected.first().entry == witness_extra().entry
+    match unexpected.first() {
+      Present { value: h0 } => } => unexpected.count() == 1 && h0.entry == witness_extra().entry
+      Absent => false
+    }
     _ => false
   }
 }

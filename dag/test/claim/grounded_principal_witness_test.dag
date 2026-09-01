@@ -60,7 +60,10 @@ test fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
   length(grounded) == 6
     && length(composed) == 6
     && composed == grounded
-    && grounded.first().grant.command_path == deploy_access_apt_get_binary_path
+    && match grounded.first() {
+      Present { value: h0 } => h0.grant.command_path == deploy_access_apt_get_binary_path
+      Absent => false
+    }
     && !any(grounded, c => c.grant.command_path == "/usr/bin/bash")
     && any(
       grounded,
@@ -87,7 +90,10 @@ test fn witness_gha_runner_context_is_not_os_account() -> Bool {
 }
 
 test fn witness_operator_secret_binding_uses_fleet_gcp_member() -> Bool {
-  operator_tailscale_acl_secret_bindings.first().member == fleet_operator_gcp_iam_member()
+  match operator_tailscale_acl_secret_bindings.first() {
+    Present { value: h0 } => h0.member == fleet_operator_gcp_iam_member()
+    Absent => false
+  }
     && operator_principal_member() == fleet_operator_gcp_iam_member()
 }
 

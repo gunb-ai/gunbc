@@ -805,8 +805,12 @@ fn spark_serving_enable_linger_argv_matches_expected(argv: List<String>) -> Bool
   ) {
     SparkServingInstallRemoteCommandsPresent { steps: expected } =>
       if expected.length() == 1 {
-        match remote_operation_argv(operation: expected.first().operation) {
-          Present { value: words } => join(argv, "\0") == join(words, "\0")
+        match expected.first() {
+          Present { value: only } =>
+            match remote_operation_argv(operation: only.operation) {
+              Present { value: words } => join(argv, "\0") == join(words, "\0")
+              Absent => false
+            }
           Absent => false
         }
       } else {

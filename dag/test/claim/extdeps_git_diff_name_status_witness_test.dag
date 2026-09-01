@@ -32,14 +32,23 @@ test fn w_modified_single_entry() -> Bool {
   let raw = join_name_status_tokens(["M", "file.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "file.txt"
-    && match entries.first().old_path {
-      Absent => true
-      Present { value: _ } => false
+    && match entries.first() {
+      Present { value: h0 } => h0.path == "file.txt"
+      Absent => false
     }
-    && match entries.first().status {
-      DiffModifiedStatus => true
-      _ => false
+    && match entries.first() {
+      Present { value: h0 } => match h0.old_path {
+          Absent => true
+          Present { value: _ } => false
+        }
+      Absent => false
+    }
+    && match entries.first() {
+      Present { value: h0 } => match h0.status {
+          DiffModifiedStatus => true
+          _ => false
+        }
+      Absent => false
     }
 }
 
@@ -47,9 +56,12 @@ test fn w_added_entry() -> Bool {
   let raw = join_name_status_tokens(["A", "new_file.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && match entries.first().status {
-      DiffAddedStatus => true
-      _ => false
+    && match entries.first() {
+      Present { value: h0 } => match h0.status {
+          DiffAddedStatus => true
+          _ => false
+        }
+      Absent => false
     }
 }
 
@@ -57,10 +69,16 @@ test fn w_deleted_entry() -> Bool {
   let raw = join_name_status_tokens(["D", "gone.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "gone.txt"
-    && match entries.first().status {
-      DiffDeletedStatus => true
-      _ => false
+    && match entries.first() {
+      Present { value: h0 } => h0.path == "gone.txt"
+      Absent => false
+    }
+    && match entries.first() {
+      Present { value: h0 } => match h0.status {
+          DiffDeletedStatus => true
+          _ => false
+        }
+      Absent => false
     }
 }
 
@@ -68,14 +86,23 @@ test fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["R100", "old_name.txt", "new_name.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "new_name.txt"
-    && match entries.first().old_path {
-      Present { value: old } => old == "old_name.txt"
+    && match entries.first() {
+      Present { value: h0 } => h0.path == "new_name.txt"
       Absent => false
     }
-    && match entries.first().status {
-      DiffRenamedStatus { similarity: sim } => percent_count(p: sim) == 100
-      _ => false
+    && match entries.first() {
+      Present { value: h0 } => match h0.old_path {
+          Present { value: old } => old == "old_name.txt"
+          Absent => false
+        }
+      Absent => false
+    }
+    && match entries.first() {
+      Present { value: h0 } => match h0.status {
+          DiffRenamedStatus { similarity: sim } => percent_count(p: sim) == 100
+          _ => false
+        }
+      Absent => false
     }
 }
 
@@ -83,14 +110,23 @@ test fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["C87", "source.txt", "copy.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && entries.first().path == "copy.txt"
-    && match entries.first().old_path {
-      Present { value: old } => old == "source.txt"
+    && match entries.first() {
+      Present { value: h0 } => h0.path == "copy.txt"
       Absent => false
     }
-    && match entries.first().status {
-      DiffCopiedStatus { similarity: sim } => percent_count(p: sim) == 87
-      _ => false
+    && match entries.first() {
+      Present { value: h0 } => match h0.old_path {
+          Present { value: old } => old == "source.txt"
+          Absent => false
+        }
+      Absent => false
+    }
+    && match entries.first() {
+      Present { value: h0 } => match h0.status {
+          DiffCopiedStatus { similarity: sim } => percent_count(p: sim) == 87
+          _ => false
+        }
+      Absent => false
     }
 }
 
@@ -103,12 +139,27 @@ test fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
   ])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 4
-    && entries.first().path == "a.txt"
-    && entries.skip(n: 1).first().path == "b.txt"
-    && entries.skip(n: 2).first().path == "c.txt"
-    && entries.skip(n: 3).first().path == "new_d.txt"
-    && match entries.skip(n: 3).first().old_path {
-      Present { value: old } => old == "old_d.txt"
+    && match entries.first() {
+      Present { value: h0 } => h0.path == "a.txt"
+      Absent => false
+    }
+    && match entries.skip(n: 1).first() {
+      Present { value: h0 } => h0.path == "b.txt"
+      Absent => false
+    }
+    && match entries.skip(n: 2).first() {
+      Present { value: h0 } => h0.path == "c.txt"
+      Absent => false
+    }
+    && match entries.skip(n: 3).first() {
+      Present { value: h0 } => h0.path == "new_d.txt"
+      Absent => false
+    }
+    && match entries.skip(n: 3).first() {
+      Present { value: h0 } => match h0.old_path {
+          Present { value: old } => old == "old_d.txt"
+          Absent => false
+        }
       Absent => false
     }
 }
@@ -117,9 +168,12 @@ test fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["X", "weird.txt"])
   let entries = well_formed_entries(raw: raw)
   entries.length() == 1
-    && match entries.first().status {
-      DiffUnknownGitStatus { raw: token } => token == "X"
-      _ => false
+    && match entries.first() {
+      Present { value: h0 } => match h0.status {
+          DiffUnknownGitStatus { raw: token } => token == "X"
+          _ => false
+        }
+      Absent => false
     }
     && git_diff_status_entries_any_unknown(entries: entries)
 }
@@ -127,9 +181,12 @@ test fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
 test fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt"])
   let entries = well_formed_entries(raw: raw)
-  match entries.first().status {
-    DiffUnknownGitStatus { raw: token } => token == "Rxx"
-    _ => false
+    match entries.first() {
+    Present { value: h0 } => match h0.status {
+        DiffUnknownGitStatus { raw: token } => token == "Rxx"
+        _ => false
+      }
+    Absent => false
   }
     && git_diff_status_entries_any_unknown(entries: entries)
 }

@@ -358,12 +358,21 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
         DemandQualified { rows: right } =>
           left.count() == 1
             && right.count() == 1
-            && left.first().declarations.count() == 2
+            && match left.first() {
+              Present { value: h0 } => h0.declarations.count() == 2
+              Absent => false
+            }
             && nth_declaration_name(rows: left, row: 0, declaration: 0) == "beta_holds"
             && nth_declaration_name(rows: left, row: 0, declaration: 1) == "alpha_holds"
             && declaration_ref_lists_eq(
-              left: left.first().declarations,
-              right: right.first().declarations
+              match left.first() {
+                Present { value: h0 } => left: h0.declarations,
+                Absent => false
+              }
+              match right.first() {
+                Present { value: h0 } => right: h0.declarations
+                Absent => false
+              }
             )
         DemandMissing { check: _, cause: _ } => false
         DemandAmbiguous { check: _, cause: _ } => false
@@ -387,10 +396,22 @@ test fn commit_check_demand_gate_and_fmt_rows_stay_typed_and_empty() -> Bool {
   match project_enrollment_witness_demands_unchecked(roster: roster, discoveries: []) {
     DemandQualified { rows } =>
       rows.count() == 2
-        && rows.first().declarations.count() == 0
-        && rows.skip(n: 1).first().declarations.count() == 0
-        && commit_check_kind_eq(a: rows.first().check, b: gate)
-        && commit_check_kind_eq(a: rows.skip(n: 1).first().check, b: fmt)
+        && match rows.first() {
+          Present { value: h0 } => h0.declarations.count() == 0
+          Absent => false
+        }
+        && match rows.skip(n: 1).first() {
+          Present { value: h0 } => h0.declarations.count() == 0
+          Absent => false
+        }
+        && match rows.first() {
+          Present { value: h0 } => commit_check_kind_eq(a: h0.check, b: gate)
+          Absent => false
+        }
+        && match rows.skip(n: 1).first() {
+          Present { value: h0 } => commit_check_kind_eq(a: h0.check, b: fmt)
+          Absent => false
+        }
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false

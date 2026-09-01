@@ -51,8 +51,14 @@ test fn install_media_fetch_absent_plans_mirror_order() -> Bool {
     FetchRequired { install_path: p, mirror_order: mirrors } =>
       p == srv3_ubuntu_install_media_install_path
         && mirrors == ubuntu_install_media_mirror_rows
-        && mirrors.first().host == ReleasesUbuntuCom
-        && mirrors.skip(n: 1).first().host == CdimageUbuntuCom
+        && match mirrors.first() {
+          Present { value: h0 } => h0.host == ReleasesUbuntuCom
+          Absent => false
+        }
+        && match mirrors.skip(n: 1).first() {
+          Present { value: h0 } => h0.host == CdimageUbuntuCom
+          Absent => false
+        }
     _ => false
   }
 }

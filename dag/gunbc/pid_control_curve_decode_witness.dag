@@ -53,8 +53,12 @@ fn the_deployed_curve_decodes_paired() -> Bool {
   let third = point_at(points: points, index: 3)
   points.length() == 9
     && third.length() == 1
-    && exact_decimal_wire(d: measure_count(m: third.first().reading)) == "66"
-    && exact_decimal_wire(d: third.first().output.magnitude) == "44"
+    && match third.first() {
+      Present { value: p } =>
+        exact_decimal_wire(d: measure_count(m: p.reading)) == "66"
+          && exact_decimal_wire(d: p.output.magnitude) == "44"
+      Absent => false
+    }
 }
 
 // PAIRING IS BY KEY IDENTITY, NOT BY POSITION, and this is the discriminator that proves it: the
@@ -69,9 +73,15 @@ fn pairing_survives_a_reordered_output_object() -> Bool {
   let zeroth = point_at(points: points, index: 0)
   points.length() == 4
     && third.length() == 1
-    && exact_decimal_wire(d: third.first().output.magnitude) == "44"
+    && match third.first() {
+      Present { value: p } => exact_decimal_wire(d: p.output.magnitude) == "44"
+      Absent => false
+    }
     && zeroth.length() == 1
-    && exact_decimal_wire(d: zeroth.first().output.magnitude) == "22"
+    && match zeroth.first() {
+      Present { value: p } => exact_decimal_wire(d: p.output.magnitude) == "22"
+      Absent => false
+    }
 }
 
 // A NON-CANONICAL KEY IS NOT AN INDEX THE DAEMON ASKS FOR. phosphor-pid-control requests the exact
@@ -111,9 +121,16 @@ data reordered_reading_curve_text: String = "\{\"reading\": \{\"2\": 62, \"0\": 
 fn member_order_does_not_change_the_semantic_curve() -> Bool {
   let points = decoded_points(text: reordered_reading_curve_text)
   points.length() == 3
-    && points.first().index == 0
-    && exact_decimal_wire(d: measure_count(m: points.first().reading)) == "40"
-    && exact_decimal_wire(d: measure_count(m: points.skip(n: 2).first().reading)) == "62"
+    && match points.first() {
+      Present { value: p } =>
+        p.index == 0
+          && exact_decimal_wire(d: measure_count(m: p.reading)) == "40"
+      Absent => false
+    }
+    && match points.skip(n: 2).first() {
+      Present { value: p } => exact_decimal_wire(d: measure_count(m: p.reading)) == "62"
+      Absent => false
+    }
 }
 
 // A KEY THAT IS NOT AN INDEX AT ALL REFUSES RATHER THAN BEING SKIPPED. A skipped key is a curve

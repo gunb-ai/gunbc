@@ -38,7 +38,10 @@ fn sudo_nopasswd_grant_list_line_admits_probe(
   if length(xs: parts) != 2 {
     false
   } else {
-    parts.skip(n: 1).first().trim() == probe as String
+    match parts.skip(n: 1).first() {
+      Present { value: tail } => tail.trim() == probe as String
+      Absent => false
+    }
   }
 }
 

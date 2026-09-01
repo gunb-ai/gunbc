@@ -44,18 +44,42 @@ fn cpu_catalog_shape() -> MachineShape {
 }
 
 test fn w_cpu_cache_levels_integrated_into_memory_shape() -> Bool {
-  let memory = cpu_catalog_shape().domains.first().memory
+  match domains.first() {
+    Present { value: h0 } => let memory = cpu_catalog_shape().h0.memory
+    Absent => false
+  }
   list_length(items: memory) == 3
-    && memory.first().id == ampere_l1_level
-    && byte_size_count(b: memory.first().capacity) == ampere_l1_bytes_per_core
-    && match memory.first().transfer_grain {
-      Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
+    && match memory.first() {
+      Present { value: h0 } => h0.id == ampere_l1_level
       Absent => false
     }
-    && memory.skip(n: 1).first().id == ampere_l2_level
-    && byte_size_count(b: memory.skip(n: 1).first().capacity) == ampere_l2_bytes_per_core
-    && memory.skip(n: 2).first().id == ampere_l3_level
-    && byte_size_count(b: memory.skip(n: 2).first().capacity) == ampere_l3_bytes
+    && match memory.first() {
+      Present { value: h0 } => byte_size_count(b: h0.capacity) == ampere_l1_bytes_per_core
+      Absent => false
+    }
+    && match memory.first() {
+      Present { value: h0 } => match h0.transfer_grain {
+          Present { value: grain } => byte_size_count(b: grain) == ampere_cache_line_bytes
+          Absent => false
+        }
+      Absent => false
+    }
+    && match memory.skip(n: 1).first() {
+      Present { value: h0 } => h0.id == ampere_l2_level
+      Absent => false
+    }
+    && match memory.skip(n: 1).first() {
+      Present { value: h0 } => byte_size_count(b: h0.capacity) == ampere_l2_bytes_per_core
+      Absent => false
+    }
+    && match memory.skip(n: 2).first() {
+      Present { value: h0 } => h0.id == ampere_l3_level
+      Absent => false
+    }
+    && match memory.skip(n: 2).first() {
+      Present { value: h0 } => byte_size_count(b: h0.capacity) == ampere_l3_bytes
+      Absent => false
+    }
 }
 
 test fn w_cpu_catalog_lane_count_matches_threads() -> Bool {

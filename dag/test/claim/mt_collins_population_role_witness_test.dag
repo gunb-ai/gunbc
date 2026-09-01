@@ -81,8 +81,14 @@ test fn w_the_source_pairs_all_resolve() -> Bool {
   match mt_collins_channel_population_roles {
     PopulationRolesResolved { roles: rs } =>
       list_length(items: rs) == 16
-        && rs.first().connector_used_at_one_dpc == 1
-        && rs.first().additional_connector_at_two_dpc == 2
+        && match rs.first() {
+          Present { value: h0 } => h0.connector_used_at_one_dpc == 1
+          Absent => false
+        }
+        && match rs.first() {
+          Present { value: h0 } => h0.additional_connector_at_two_dpc == 2
+          Absent => false
+        }
         && rs.last().connector_used_at_one_dpc == 25
         && rs.last().additional_connector_at_two_dpc == 26
         && fold(rs, init: true, f: fn(acc, r) {

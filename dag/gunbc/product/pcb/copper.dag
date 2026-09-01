@@ -78,11 +78,15 @@ fn select_copper_layer(a: AdmittedStackup, ordinal: Int) -> LayerSelection {
   if ordinal < 0 || ordinal >= n {
     LayerOutsideStackup { requested: ordinal, layer_count: n }
   } else {
-    mint_layer_ref(
-      stackup_authority: admitted_stackup_authority(a: a),
-      ordinal: ordinal,
-      function: nth_layer_function(layers: layers, ordinal: ordinal),
-    )
+    match nth_layer_function(layers: layers, ordinal: ordinal) {
+      Present { value: function } =>
+        mint_layer_ref(
+          stackup_authority: admitted_stackup_authority(a: a),
+          ordinal: ordinal,
+          function: function,
+        )
+      Absent => LayerOutsideStackup { requested: ordinal, layer_count: n }
+    }
   }
 }
 
@@ -108,8 +112,11 @@ fn scan_for_ordinal(layers: List<CopperLayer>, ordinal: Int) -> LayerScan {
   )
 }
 
-fn nth_layer_function(layers: List<CopperLayer>, ordinal: Int) -> CopperLayerFunction {
-  scan_for_ordinal(layers: layers, ordinal: ordinal).picked.first().function
+fn nth_layer_function(layers: List<CopperLayer>, ordinal: Int) -> Optional<CopperLayerFunction> {
+  match scan_for_ordinal(layers: layers, ordinal: ordinal).picked.first() {
+    Present { value: picked } => Present { value: picked.function }
+    Absent => Absent
+  }
 }
 
 fn copper_layer_ordinal(r: CopperLayerRef) -> Int {

@@ -78,68 +78,115 @@ fn both_hosts_decode_completely() -> Bool {
 // ONE DEMAND, TWO ACTUATORS -- the structural claim of the model, read off the deployed document
 // rather than asserted about it.
 fn the_shape_is_one_demand_feeding_two_actuators() -> Bool {
-  let program = srv3_programs().first()
-  thermal_controllers(program: program).length() == 1
-    && flat_map(program.zones, zone => zone.actuator_controllers).length() == 2
+  match srv3_programs().first() {
+    Present { value: program } =>
+      thermal_controllers(program: program).length() == 1
+        && flat_map(program.zones, zone => zone.actuator_controllers).length() == 2
+    Absent => false
+  }
 }
 
 // THE TWO ACTUATORS DIFFER EXACTLY WHERE THE ACOUSTIC OUTCOME LIVES: the feed-forward offset and
 // the output floor. Everything else about them is the same. These are the numbers that made the
 // fleet quiet, so they are pinned by value.
 fn the_actuators_carry_the_offsets_that_made_it_quiet() -> Bool {
-  let program = srv3_programs().first()
-  let fan1 = actuator_named(program: program, name: "FAN1")
-  let chassis = actuator_named(program: program, name: "CHASSIS")
-  fan1.length() == 1
-    && chassis.length() == 1
-    && exact_decimal_wire(d: fan1.first().feed_forward.offset.magnitude) == "-8"
-    && exact_decimal_wire(d: fan1.first().output_limits.minimum.magnitude) == "3"
-    && exact_decimal_wire(d: chassis.first().feed_forward.offset.magnitude) == "35"
-    && exact_decimal_wire(d: chassis.first().output_limits.minimum.magnitude) == "40"
-    && exact_decimal_wire(d: chassis.first().slew.negative_coefficient) == "-3"
+  match srv3_programs().first() {
+    Present { value: program } =>
+    let fan1 = actuator_named(program: program, name: "FAN1")
+    let chassis = actuator_named(program: program, name: "CHASSIS")
+    fan1.length() == 1
+      && chassis.length() == 1
+      && match fan1.first() {
+        Present { value: a } =>
+          exact_decimal_wire(d: a.feed_forward.offset.magnitude) == "-8"
+            && exact_decimal_wire(d: a.output_limits.minimum.magnitude) == "3"
+        Absent => false
+      }
+      && match chassis.first() {
+        Present { value: a } =>
+          exact_decimal_wire(d: a.feed_forward.offset.magnitude) == "35"
+            && exact_decimal_wire(d: a.output_limits.minimum.magnitude) == "40"
+            && exact_decimal_wire(d: a.slew.negative_coefficient) == "-3"
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // THE CHASSIS ACTUATOR DRIVES THREE FANS AND FAN1 DRIVES ONE, which is the wiring fact the
 // document states and the reason one offset cannot serve both.
 fn the_actuator_endpoint_populations_differ() -> Bool {
-  let program = srv3_programs().first()
-  actuator_named(program: program, name: "FAN1").first().inputs.length() == 1
-    && actuator_named(program: program, name: "CHASSIS").first().inputs.length() == 3
+  match srv3_programs().first() {
+    Present { value: program } =>
+      match actuator_named(program: program, name: "FAN1").first() {
+        Present { value: fan1 } => fan1.inputs.length() == 1
+        Absent => false
+      }
+        && match actuator_named(program: program, name: "CHASSIS").first() {
+          Present { value: chassis } => chassis.inputs.length() == 3
+          Absent => false
+        }
+    Absent => false
+  }
 }
 
 fn the_deployed_curve_survives_the_whole_program_decode() -> Bool {
-  let program = srv3_programs().first()
-  let demand = thermal_controllers(program: program).first()
-  demand.curve.length() == 9
-    && demand.name == "TEMP_SOC"
-    && exact_decimal_wire(d: demand.failsafe_output.magnitude) == "75"
+  match srv3_programs().first() {
+    Present { value: program } =>
+      match thermal_controllers(program: program).first() {
+        Present { value: demand } =>
+          demand.curve.length() == 9
+            && demand.name == "TEMP_SOC"
+            && exact_decimal_wire(d: demand.failsafe_output.magnitude) == "75"
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // THE TWO HOSTS AGREE ON THE COEFFICIENT THEY SPELL DIFFERENTLY. srv3 writes minThermalOutput as
 // 30.0 and srv4 writes it as 30; a decoder comparing lexemes would report two different programs.
 fn the_two_hosts_agree_on_the_coefficient_they_spell_differently() -> Bool {
-  let srv3_zone = srv3_programs().first().zones.first()
-  let srv4_zone = srv4_programs().first().zones.first()
-  exact_decimal_wire(d: srv3_zone.minimum_thermal_output.magnitude)
-    == exact_decimal_wire(d: srv4_zone.minimum_thermal_output.magnitude)
+  match srv3_programs().first() {
+    Present { value: srv3 } =>
+      match srv4_programs().first() {
+        Present { value: srv4 } =>
+          match srv3.zones.first() {
+            Present { value: srv3_zone } =>
+              match srv4.zones.first() {
+                Present { value: srv4_zone } =>
+                  exact_decimal_wire(d: srv3_zone.minimum_thermal_output.magnitude)
+                    == exact_decimal_wire(d: srv4_zone.minimum_thermal_output.magnitude)
+                Absent => false
+              }
+            Absent => false
+          }
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
 // THE THREE-STATE D-BUS BOUNDS FIELD IS EXERCISED BY THE REAL DOCUMENT, not only by a fixture: at
 // least one captured sensor entry does not state it, which is why the third state exists.
 fn a_captured_sensor_leaves_the_dbus_bounds_unstated() -> Bool {
-  let program = srv4_programs().first()
+  match srv4_programs().first() {
+    Present { value: program } =>
   filter(program.sensors, sensor =>
     match sensor.dbus_bounds {
       DbusBoundsUnstated => true
       DbusBoundsIgnored => false
       DbusBoundsUsed => false
     }).length() > 0
+    Absent => false
+  }
 }
 
 // A TEMPERATURE SENSOR HAS NOTHING TO DRIVE AND A FAN SENSOR DOES, which the model carries as a
 // coproduct rather than an absent string.
 fn writability_follows_the_sensor_role() -> Bool {
-  let program = srv3_programs().first()
+  match srv3_programs().first() {
+    Present { value: program } =>
   let temps = filter(program.sensors, sensor =>
     match sensor.role { TemperatureSensor => true  FanTachometerSensor => false })
   let fans = filter(program.sensors, sensor =>
@@ -148,6 +195,8 @@ fn writability_follows_the_sensor_role() -> Bool {
     && fans.length() > 0
     && all(temps, sensor => match sensor.actuation { SensorReadOnly => true  SensorDrivesOutput { write_path } => false })
     && all(fans, sensor => match sensor.actuation { SensorDrivesOutput { write_path } => true  SensorReadOnly => false })
+    Absent => false
+  }
 }
 
 fn bmc_fan_program_decode_witness() -> ProcessExit {

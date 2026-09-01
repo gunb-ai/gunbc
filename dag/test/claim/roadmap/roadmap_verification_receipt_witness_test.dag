@@ -106,7 +106,14 @@ test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
   ) {
     VerificationEvidenceForSubject { receipt: found } =>
       count(found.executions) == 1
-        && found.executions.first().command.args.first() == "run"
+        && match found.executions.first() {
+      Present { value: h0 } =>
+        match h0.command.args.first() {
+          Present { value: a0 } => a0 == "run"
+          Absent => false
+        }
+      Absent => false
+    }
         && verification_evidence_moves_lamp(
           evidence: VerificationEvidenceForSubject { receipt: found },
         )

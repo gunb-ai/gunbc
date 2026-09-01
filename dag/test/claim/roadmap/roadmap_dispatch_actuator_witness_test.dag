@@ -481,9 +481,18 @@ test fn witness_tmux_attempt_panes_parse_alive_and_exit() -> Bool {
   ) {
     AttemptPanesParsed { panes } =>
       count(panes) == 2
-        && !panes.first().dead
-        && panes.skip(n: 1).first().dead
-        && panes.skip(n: 1).first().exit_code == Present { value: 7 }
+        && match panes.first() {
+          Present { value: h0 } => !h0.dead
+          Absent => false
+        }
+        && match panes.skip(n: 1).first() {
+          Present { value: h0 } => h0.dead
+          Absent => false
+        }
+        && match panes.skip(n: 1).first() {
+          Present { value: h0 } => h0.exit_code == Present { value: 7 }
+          Absent => false
+        }
     AttemptPanesParseRefused { line_number: _, raw: _, reason: _ } => false
   }
 }
@@ -565,8 +574,14 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
     TmuxLsParsed { entries } => {
       let filtered = filter_dispatch_tmux_sessions(entries: entries)
       count(filtered) == 1
-        && filtered.first().session_name == "gunbc-dispatch-node-4"
-        && filtered.first().windows == 2
+        && match filtered.first() {
+          Present { value: h0 } => h0.session_name == "gunbc-dispatch-node-4"
+          Absent => false
+        }
+        && match filtered.first() {
+          Present { value: h0 } => h0.windows == 2
+          Absent => false
+        }
     }
     TmuxLsParseRefused { line_number: _, raw: _, reason: _ } => false
   }

@@ -90,8 +90,14 @@ test fn w_each_attestation_carries_its_own_authority_and_wording() -> Bool {
   list_length(items: ampere_max) == 1
     && list_length(items: ampere_classic) == 1
     && list_length(items: ocp) == 1
-    && ampere_max.first().wording == "device seated in ILM4926 socket"
-    && ocp.first().wording == "ILM4926"
+    && match ampere_max.first() {
+      Present { value: h0 } => h0.wording == "device seated in ILM4926 socket"
+      Absent => false
+    }
+    && match ocp.first() {
+      Present { value: h0 } => h0.wording == "ILM4926"
+      Absent => false
+    }
 }
 
 // THE OPEN QUESTION IS MODELLED, NOT ASSUMED AWAY. No cited document expands

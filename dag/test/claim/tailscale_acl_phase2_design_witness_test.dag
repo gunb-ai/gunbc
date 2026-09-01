@@ -3,13 +3,22 @@ module test.claim.tailscale_acl_phase2_design_witness
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_secret_homed_in_gunbai_secrets() -> Bool {
-  operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
-    && operator_tailscale_acl_secret_bindings.first().secret == (tailscale_acl_ephemeral_token_secret_id as String)
+  match operator_tailscale_acl_secret_bindings.first() {
+    Present { value: h0 } => h0.project == bmc_secrets_project_id
+    Absent => false
+  }
+    && match operator_tailscale_acl_secret_bindings.first() {
+      Present { value: h0 } => h0.secret == (tailscale_acl_ephemeral_token_secret_id as String)
+      Absent => false
+    }
 }
 
 test fn witness_operator_user_principal_accessor_only() -> Bool {
   operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
-    && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
+    && match operator_tailscale_acl_secret_bindings.first() {
+      Present { value: h0 } => h0.role == role_secretmanager_secret_accessor
+      Absent => false
+    }
     && operator_principal_member() == fleet_operator_gcp_iam_member()
     && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email() as String)
     && tailscale_acl_operator_email() == fleet_operator_email

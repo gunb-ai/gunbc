@@ -53,7 +53,10 @@ test fn bootstrap_grants_zero_bindings_for_bmc_secret() -> Bool {
     && grant_is_signed(grant: bmc_wif_canary_grant)
     && bmc_wif_signed_grants().length() == 1
     && bmc_wif_bootstrap_bindings().length() == 1
-    && bmc_wif_bootstrap_bindings().first().members.length() == 1
+    && match bmc_wif_bootstrap_bindings().first() {
+      Present { value: h0 } => h0.members.length() == 1
+      Absent => false
+    }
 }
 
 test fn unsigned_grant_row_count_matches_zero_derived_bindings() -> Bool {
@@ -112,7 +115,10 @@ test fn secret_ref_login_handler_added_beside_factory_login_not_over_it() -> Boo
 
 test fn bmc_smoke_workflow_scopes_id_token_write_to_its_single_designated_job() -> Bool {
   bmc_token_smoke_workflow.jobs.length() == 1
-    && bmc_token_smoke_workflow.jobs.first().id == bmc_token_smoke_job().id
+    && match jobs.first() {
+      Present { value: h0 } => bmc_token_smoke_workflow.h0.id == bmc_token_smoke_job().id
+      Absent => false
+    }
     && match bmc_token_smoke_workflow.permissions {
          Present { value: perms } => match perms.id_token { Present { value: _ } => true, Absent => false }
          Absent => false

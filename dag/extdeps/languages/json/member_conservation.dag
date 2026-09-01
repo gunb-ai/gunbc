@@ -198,13 +198,14 @@ fn first_path_mismatch(partition_path: NonEmptyStr, occurrences: List<JsonMember
 // object and still report every source member as covered.
 fn conservation_verdict(partition: ObjectMemberPartition) -> ConservationVerdict {
   let stray_source = first_path_mismatch(partition_path: partition.object_path, occurrences: partition.source)
-  if stray_source.length() > 0 {
-    PartitionSourcePathMismatch {
-      partition_path: partition.object_path,
-      occurrence_path: stray_source.first().identity.object_path,
-      ordinal: stray_source.first().identity.ordinal,
-    }
-  } else {
+  match stray_source.first() {
+    Present { value: stray } =>
+      PartitionSourcePathMismatch {
+        partition_path: partition.object_path,
+        occurrence_path: stray.identity.object_path,
+        ordinal: stray.identity.ordinal,
+      }
+    Absent =>
   let lost_or_repeated = fold(
     partition.source,
     init: MembersConserved { member_count: partition.source.length() },
@@ -370,13 +371,14 @@ fn element_conservation_verdict(partition: ArrayElementPartition) -> Conservatio
     array_path: partition.array_path,
     occurrences: partition.source,
   )
-  if stray_source.length() > 0 {
-    PartitionSourcePathMismatch {
-      partition_path: partition.array_path,
-      occurrence_path: stray_source.first().identity.array_path,
-      ordinal: stray_source.first().identity.index,
-    }
-  } else {
+  match stray_source.first() {
+    Present { value: stray } =>
+      PartitionSourcePathMismatch {
+        partition_path: partition.array_path,
+        occurrence_path: stray.identity.array_path,
+        ordinal: stray.identity.index,
+      }
+    Absent =>
     let lost_or_repeated = fold(
       partition.source,
       init: MembersConserved { member_count: partition.source.length() },

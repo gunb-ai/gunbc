@@ -160,7 +160,10 @@ test fn two_install_effects_realize_as_two_commands_not_one_fused_argv() -> Bool
   ) {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
-        && remote_operations_argv_only(operations: map(sts, st => st.operation)).first().length() == 5
+        && match remote_operations_argv_only(operations: map(sts, st => st.operation)).first() {
+      Present { value: h0 } => h0.length() == 5
+      Absent => false
+    }
         && spark_serving_enable_linger_argv_matches_expected(argv: remote_operations_argv_only(operations: map(sts, st => st.operation)).first())
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
