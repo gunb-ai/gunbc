@@ -46,7 +46,10 @@ not-`ProcessExit` refusal prints the value, which is not a CLI).
 
 So the host binding is REQUIRED, and it is the piece to rebuild:
 
-1. `dag/gunbc/scm/cli.dag` — one entry per verb returning `CliWireResponse`, composing
+1. DONE for read verbs. Still to do for WRITE verbs (`init`, `add`, `commit`, `checkout`):
+   they need `Document` builders, which only log and status have today, and `save_repository`
+   goes through `Filesystem.Write`, so they are host-effect entries rather than pure reads.
+   Original note: `dag/gunbc/scm/cli.dag` — one entry per verb returning `CliWireResponse`, composing
    `load_repository` -> verb -> render, with a `RenderCapability { color: false, tier: Ascii,
    cursor_addressable: false }` for a plain terminal. Write verbs (`init`, `add`, `commit`,
    `checkout`) need their own `Document` builders; only log/status have them today.
@@ -54,6 +57,43 @@ So the host binding is REQUIRED, and it is the piece to rebuild:
    evaluates the entry and writes the `CliWirePrintable { bytes, exit }` bytes to stdout,
    refusing on `CliWireUnprintable { cause }`. `serve_wire_fields` / `classify_exit` in
    `cli_run.rs` are the precedent for reading wire values out of an evaluated `Value`.
+
+## LANDED — the read side reaches an operator
+
+`dag/gunbc/scm/cli.dag` (`scm_log`, `scm_status`) plus the `run_verb` outcome-seam binding.
+Receipts, by execution against `dag/test/fixture/scm_repository_load/empty_repository.json`:
+
+    $ gunbc run --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=<fixture>
+    no commits yet
+    exit 0
+
+    $ gunbc run --entry dag/gunbc/scm/cli.dag --function scm_status --arg path=<fixture>
+    nothing checked out
+    0 commits
+      nothing staged
+
+    $ gunbc run --entry dag/gunbc/scm/cli.dag --function scm_log --arg path=/tmp/no-such-repo
+    cannot read repository at /tmp/no-such-repo
+      No such file or directory (os error 2)
+    repository unavailable
+    exit 1
+
+The third is the load-bearing one: bytes printed AND a nonzero exit, the case an absorbing
+implementation turns into silence or a spurious 0.
+
+### Evidence boundary, stated rather than implied
+
+Enrolled and executing in CI (`rust-unit-tests`, `cargo test -p v1-compiler --lib`): the five
+`cli_wire_outcome_tests` covering the total map — bytes with the response's own exit, a rendered
+answer that still fails, a renderer refusal not reading as empty success, the non-wire
+fall-through, and the inherited `ExitFailure { code: 0 }` refusal.
+
+NOT enrolled: the end-to-end runs above are a MANUAL receipt. An integration test that executes
+the binary would live in `src/v1/tests/`, which `clippy --all-targets` compiles and no CI step
+runs (DESIGN: no CI step executes test targets outside `--lib`). A `.dag` witness cannot stand in
+either — `scm_log` reads a file, and the SCM witnesses are `SubstrateInputsOnly`, refusing at the
+hermetic boundary. So the class is `mitigatable` on the e2e path and the next-rung trigger is a
+CI step that runs an integration target, not another test file.
 
 ## Constraints learned the hard way
 
