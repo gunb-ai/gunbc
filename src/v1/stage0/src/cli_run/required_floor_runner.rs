@@ -940,6 +940,7 @@ pub(crate) fn changed_witness_projection_rows(
     terminal: &[ClaimTerminalRow],
     verdict_only: &HashSet<String>,
     observations: &HashMap<String, ChangedWitnessCostObservation>,
+    wet_admitted: &HashSet<String>,
 ) -> Vec<ChangedWitnessProjectionRow> {
     let dispositions: std::collections::HashMap<&str, &RequiredFloorDisposition> = disposition_rows
         .iter()
@@ -991,8 +992,18 @@ pub(crate) fn changed_witness_projection_rows(
                 ) || (verdict_only_policy
                     && matches!(outcome, Some(ClaimDisposition::PassedOverBudget)));
                 let cost_missing = verdict_only_policy && reached_pass && observation.is_none();
+                // THE JOINED WET STANDING (`v2.workflow.floor_changed_witness`
+                // `HermeticRouteGapHeldAndWetPassed`). A hermetic route gap stays nonterminal on
+                // its own; it becomes admissible ONLY when the same identity also has a live
+                // scheduled route and a wet terminal that reached the expected verdict against
+                // THIS candidate. `wet_admitted` is that conjunction, computed by the lane —
+                // membership here is never enough on its own, which is why the set contains an
+                // identity only when all three facts held.
+                let wet_joined = matches!(outcome, Some(ClaimDisposition::RouteGapBeforeVerdict))
+                    && wet_admitted.contains(identity.as_str());
                 let green = (reached_pass && !cost_missing)
-                    || matches!(outcome, Some(ClaimDisposition::KnownRedHeld));
+                    || matches!(outcome, Some(ClaimDisposition::KnownRedHeld))
+                    || wet_joined;
                 ChangedWitnessProjectionRow {
                     identity: identity.clone(),
                     cost: observation,
@@ -1003,6 +1014,7 @@ pub(crate) fn changed_witness_projection_rows(
                             "planned-and-passed-with-cost-debt-observed"
                         }
                         _ if reached_pass => "planned-and-passed",
+                        _ if wet_joined => "hermetic-route-gap-held-and-wet-passed",
                         _ => {
                             // "No terminal Passed verdict stands", deliberately covering a failed
                             // or refused verdict too — each of those already reds the floor by its
@@ -1030,6 +1042,201 @@ pub(crate) fn changed_witness_projection_rows(
             },
         })
         .collect()
+}
+
+/// ONE SCHEDULED ROW of the local-repo wet lane, decoded from
+/// `v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule`. The `.dag` declaration is the
+/// authority for membership and for the verdict each member is expected to reach; this struct is
+/// its host realization, never its origin.
+#[derive(Debug, Clone)]
+pub(crate) struct LocalRepoWetScheduledRow {
+    pub identity: String,
+    pub entry_module: String,
+    pub function: String,
+    pub expect_passed: bool,
+}
+
+/// WHAT THE LANE OBSERVED, kept as the two facts the changed-witness join needs and the refusals
+/// that make the lane's own honesty checkable.
+///
+/// `admitted` is the conjunction the gate consults: a terminal for THIS candidate, for this exact
+/// identity, whose observed verdict is the one the roster expected. `refusals` carries every way
+/// the schedule and the receipts failed to agree — a scheduled member with no receipt, a receipt
+/// for a member nobody scheduled, a verdict that was not the expected one. The lane reds the floor
+/// on any of them, because a lane whose roster and receipts disagree cannot support the route claim
+/// `std.witness_admission` makes for its cadence.
+#[derive(Debug, Default)]
+pub(crate) struct LocalRepoWetLaneOutcome {
+    pub scheduled: usize,
+    pub admitted: HashSet<String>,
+    pub refusals: Vec<String>,
+}
+
+/// Decode the lane's schedule from its `.dag` authority.
+fn local_repo_wet_schedule(
+    hermetic: &v1_interpreter::InterpContext,
+) -> Result<Vec<LocalRepoWetScheduledRow>, String> {
+    let value = v1_interpreter::run_in_context(
+        hermetic,
+        "v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule",
+        false,
+    )
+    .map_err(|e| format!("local_repo_wet_schedule: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|e| format!("local_repo_wet_schedule: {e}"))?;
+    let mut out: Vec<LocalRepoWetScheduledRow> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "LocalRepoWetScheduled") {
+            return Err(format!(
+                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let str_field = |name: &str| -> Result<String, String> {
+            match hermetic.field(&fields, name) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "local_repo_wet_schedule: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let identity = str_field("identity")?;
+        let function = str_field("function")?;
+        // THE ENTRY MODULE IS DERIVED FROM THE IDENTITY, NOT FROM THE PATH. The identity is
+        // `<module>.<function>` and the module is what the prepared subject is keyed by; the
+        // roster's `entry` field is the file the local recipe names, which is a different
+        // question (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
+        let entry_module = match identity.strip_suffix(&format!(".{function}")) {
+            Some(m) if !m.is_empty() => m.to_string(),
+            _ => {
+                return Err(format!(
+                    "local_repo_wet_schedule: identity {identity:?} does not end in .{function} \
+                     — the roster's identity and function disagree"
+                ));
+            }
+        };
+        let expect_passed = match hermetic.field(&fields, "expected") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                match hermetic.resolve(*variant_name).as_str() {
+                    "LocalRepoWetPassed" => true,
+                    "LocalRepoWetFailed" | "LocalRepoWetRefused" | "LocalRepoWetNonterminal" => {
+                        false
+                    }
+                    other => {
+                        return Err(format!("local_repo_wet_schedule: unknown expected {other}"));
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "local_repo_wet_schedule: expected must be a typed variant, got {}",
+                    floor_value_shape(other)
+                ));
+            }
+        };
+        // A DUPLICATE REFUSES. The roster is joined to the receipts at identity grain, and a
+        // repeated member would make one receipt answer for two rows.
+        if !seen.insert(identity.clone()) {
+            return Err(format!(
+                "local_repo_wet_schedule: duplicate scheduled identity: {identity}"
+            ));
+        }
+        out.push(LocalRepoWetScheduledRow {
+            identity,
+            entry_module,
+            function,
+            expect_passed,
+        });
+    }
+    Ok(out)
+}
+
+/// RUN THE LANE, WET, AGAINST THIS CANDIDATE.
+///
+/// The frame is built over the SAME prepared subject the floor already holds, in
+/// `ExecutionMode::Wet`, so the members execute their real effects against the very tree being
+/// evaluated. That is what makes the terminal candidate-bound by construction: there is no receipt
+/// to carry from elsewhere and no artifact handoff that could answer for another tree.
+pub(crate) fn run_local_repo_wet_lane(
+    prepared: &PreparedRepository,
+    schedule: &[LocalRepoWetScheduledRow],
+    published: Option<Rc<HashSet<String>>>,
+) -> Result<LocalRepoWetLaneOutcome, String> {
+    let mut outcome = LocalRepoWetLaneOutcome {
+        scheduled: schedule.len(),
+        ..Default::default()
+    };
+    // Group by module so one scope is prepared per entry rather than per witness.
+    let mut by_module: Vec<(String, Vec<&LocalRepoWetScheduledRow>)> = Vec::new();
+    for row in schedule {
+        match by_module.iter_mut().find(|(m, _)| m == &row.entry_module) {
+            Some((_, rows)) => rows.push(row),
+            None => by_module.push((row.entry_module.clone(), vec![row])),
+        }
+    }
+    for (module, rows) in &by_module {
+        let scope = match claim_scope_for(prepared, module) {
+            Ok(s) => s,
+            Err(e) => {
+                // A SCHEDULED MEMBER THE SUBJECT CANNOT REACH IS A REFUSAL, never a skip: it
+                // would leave the lane claiming a route for something it never ran.
+                for row in rows {
+                    outcome.refusals.push(format!(
+                        "{}: scheduled module {module} has no scope in this subject: {e}",
+                        row.identity
+                    ));
+                }
+                continue;
+            }
+        };
+        let ctx = crate::cli_run::evaluation_frame(
+            &scope,
+            v1_interpreter::ExecutionMode::Wet,
+            None,
+            published.clone(),
+        );
+        for row in rows {
+            let observed = crate::cli_run::run_claim(&ctx, &row.function);
+            let passed = matches!(observed, crate::cli_run::ClaimOutcome::Pass);
+            let agrees = passed == row.expect_passed;
+            eprintln!(
+                "[local-repo-wet] identity={} expected={} observed={} agrees={}",
+                row.identity,
+                if row.expect_passed {
+                    "passed"
+                } else {
+                    "not-passed"
+                },
+                if passed { "passed" } else { "not-passed" },
+                agrees
+            );
+            if agrees && row.expect_passed {
+                outcome.admitted.insert(row.identity.clone());
+            } else if !agrees {
+                outcome.refusals.push(format!(
+                    "{}: wet terminal did not reach the expected verdict (expected {}, observed {})",
+                    row.identity,
+                    if row.expect_passed { "passed" } else { "not-passed" },
+                    if passed { "passed" } else { "not-passed" },
+                ));
+            }
+        }
+    }
+    eprintln!(
+        "[local-repo-wet] scheduled={} admitted={} refusals={}",
+        outcome.scheduled,
+        outcome.admitted.len(),
+        outcome.refusals.len()
+    );
+    Ok(outcome)
 }
 
 /// Print the projection — one `[changed-witness]` line per CHANGED identity (never one per
@@ -4518,6 +4725,11 @@ pub fn run_required_floor(
         None
     };
 
+    // THE LANE'S SCHEDULE IS DECODED WHILE THIS FRAME IS STILL ALIVE, because the frame is
+    // dropped immediately below to release its caches before the fold. What travels forward is the
+    // decoded ROWS -- a handful of small records -- never the context that produced them.
+    let local_repo_wet_schedule_rows = local_repo_wet_schedule(&hermetic)?;
+
     // THE MANIFEST'S WORLD DIES HERE, before the fold rather than at the end of the function.
     //
     // `hermetic` is the frame the manifest was folded in. It owns a scope AND the mutable
@@ -6070,6 +6282,22 @@ pub fn run_required_floor(
     // closes — refusing is the only arm that does not widen. A local run (no GITHUB_SHA, so no
     // CI diff baseline to resolve) reports the projection NOT EVALUATED, loudly, rather than
     // fabricating an empty changed set.
+    // THE LOCAL-REPO WET LANE RUNS BEFORE THE CHANGED-SET PROJECTION READS IT, in this same
+    // process and over this same prepared subject, which is what binds its terminals to the
+    // candidate under evaluation rather than to whatever tree produced them elsewhere. Its
+    // refusals red the floor on their own: a lane whose roster and receipts disagree cannot
+    // support the route claim `std.witness_admission` makes for its cadence.
+    let wet_lane =
+        run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone())?;
+    for refusal in &wet_lane.refusals {
+        eprintln!("required-floor: LOCAL-REPO-WET REFUSAL {refusal}");
+    }
+    if !wet_lane.refusals.is_empty() {
+        return Err(format!(
+            "local-repo wet lane: {} refusal(s) — the lane's schedule and its terminals disagree",
+            wet_lane.refusals.len()
+        ));
+    }
     if let Some(changed_witnesses) = changed_witnesses {
         let rows = changed_witness_projection_rows(
             &changed_witnesses,
@@ -6077,6 +6305,7 @@ pub fn run_required_floor(
             &terminal_rows,
             &cost_debt_verdict_only,
             &cost_debt_observations,
+            &wet_lane.admitted,
         );
         emit_changed_witness_projection(&rows)?;
         outcome.changed_witness_rows = rows.len();
@@ -6435,6 +6664,7 @@ mod changed_witness_projection_tests {
             terminal,
             &HashSet::new(),
             &HashMap::new(),
+            &HashSet::new(),
         )
     }
 
@@ -6685,6 +6915,7 @@ mod changed_witness_projection_tests {
             )],
             &verdict_only_set(),
             &observation(505),
+            &HashSet::new(),
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -6734,6 +6965,7 @@ mod changed_witness_projection_tests {
             &[terminal("m.a", ClaimOutcome::Pass)],
             &verdict_only_set(),
             &HashMap::new(),
+            &HashSet::new(),
         );
         assert_eq!(
             rows[0].standing,
@@ -6754,9 +6986,65 @@ mod changed_witness_projection_tests {
             &[terminal("m.a", ClaimOutcome::Fail)],
             &verdict_only_set(),
             &observation(505),
+            &HashSet::new(),
         );
         assert_eq!(rows[0].standing, "planned-without-terminal-verdict");
         assert!(rows[0].blocks);
+    }
+
+    /// A CHANGED IDENTITY WHOSE HERMETIC ROUTE GAPPED IS ADMITTED ONLY WITH ITS WET TERMINAL, and
+    /// this pair is the discrimination: the SAME row, the same outcome, differing only in whether
+    /// the lane admitted the identity against this candidate. The projection realizes
+    /// `v2.workflow.floor_changed_witness` `HermeticRouteGapHeldAndWetPassed`, whose own arms
+    /// execute in `v2/test/floor_changed_witness_test.dag`; this control is the host half.
+    #[test]
+    fn a_route_gap_is_admitted_with_a_wet_terminal_and_blocks_without_one() {
+        let changed = ["m.a".to_string()];
+        let dispositions = [disposition(
+            "m.a",
+            RequiredFloorDisposition::PlannedAsChangedWitness,
+        )];
+        // THE OUTCOME MUST BE A REAL ROUTE GAP, not a pass: `claim_disposition` maps
+        // `HostEffectRefused` onto `RouteGapBeforeVerdict`, and that is the only outcome the joined
+        // arm applies to. A fixture that passed here would assert nothing about the join.
+        let terminal = [terminal(
+            "m.a",
+            ClaimOutcome::HostEffectRefused {
+                operation: "Dir".to_string(),
+                ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
+            },
+        )];
+        let mut admitted = HashSet::new();
+        admitted.insert("m.a".to_string());
+
+        let with_wet = changed_witness_projection_rows(
+            &changed,
+            &dispositions,
+            &terminal,
+            &HashSet::new(),
+            &HashMap::new(),
+            &admitted,
+        );
+        let without_wet = changed_witness_projection_rows(
+            &changed,
+            &dispositions,
+            &terminal,
+            &HashSet::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+        );
+        assert_eq!(with_wet.len(), 1);
+        assert_eq!(without_wet.len(), 1);
+        assert_eq!(
+            with_wet[0].standing,
+            "hermetic-route-gap-held-and-wet-passed"
+        );
+        assert!(!with_wet[0].blocks);
+        assert_eq!(without_wet[0].standing, "planned-without-terminal-verdict");
+        assert!(
+            without_wet[0].blocks,
+            "a route gap with no wet terminal must still block"
+        );
     }
 
     /// A cost-debt row planned by the changed override is NOT stale, and an ordinarily planned
