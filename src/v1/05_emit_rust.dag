@@ -186,7 +186,7 @@ import std.induction { SubValueUnknown, InductiveField }
 import v1.compiler.emit {
   BlockEmitState, TcoFrame, TcoReassignInput, InterpPart, rust_literal_for_pattern,
   emit_literal, emit_bin_op_symbol, emit_keyword, emit_node_type, render_node_type,
-  emit_container, emit_map_type, render_tuple_parts, emit_ident, emit_let_binding,
+  emit_container, emit_keyed_container_type, keyed_container_has_target_inhabitant, render_tuple_parts, emit_ident, emit_let_binding,
   emit_let_binding_annotated, emit_return, emit_unary_op, emit_lambda, emit_error_expr,
   emit_lambda_params, emit_null_coalesce, emit_list_lit_expr, emit_shared_expr,
   emit_typed_cast_shared, emit_string_literal, emit_simple_expr, escape_rust_interp_text,
@@ -359,7 +359,17 @@ fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, 
         let key_str = render_rust_type(n: key_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let val_str = render_rust_type(n: val_node, shared_types: shared_types, source_indices: source_indices, emit_info: emit_info)
         let tn = authored_name_at(source_indices: source_indices, node: n)
-        let base = emit_map_type(key_type: key_str, val_type: val_str, target: Rust)
+        let base = emit_keyed_container_type(
+          container_name: tn,
+          key_type: key_str,
+          val_type: val_str,
+          fallback_base: coerce_primitive_type(
+            target: Rust,
+            dag_name: tn,
+            decl_file: type_reference_decl_file(n: n)
+          ),
+          target: Rust
+        )
         render_rust_shared_type_with_optional(n: n, type_name: tn, rendered: base, shared_types: shared_types)
       Absent => render_node_type(n: n, target: Rust, shared_types: shared_types, source_indices: source_indices)
     }
@@ -1382,7 +1392,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         } else if node_is_keyed_collection(n: n, source_indices: source_indices) {
           match arg_list |> first {
             Present { value: k } => match arg_list |> skip(1) |> first {
-              Present { value: v } => emit_map_type(key_type: k, val_type: v, target: Rust)
+              Present { value: v } => emit_keyed_container_type(container_name: name, key_type: k, val_type: v, fallback_base: base, target: Rust)
               Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
             }
             Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
@@ -1556,7 +1566,7 @@ fn rust_alias_rhs_applied_container_or_base(n: Node, leaf: String, base: String,
   if node_is_keyed_collection(n: n, source_indices: source_indices) {
     match arg_list |> first {
       Present { value: k } => match arg_list |> skip(1) |> first {
-        Present { value: v } => emit_map_type(key_type: k, val_type: v, target: Rust)
+        Present { value: v } => emit_keyed_container_type(container_name: leaf, key_type: k, val_type: v, fallback_base: base, target: Rust)
         Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
       }
       Absent => concat(base, "<", arg_list |> join(separator: ", "), ">")
@@ -12525,6 +12535,9 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       }
     Present { value: tn } =>
       let si = scope.type_env.source_indices
+      if keyed_container_has_target_inhabitant(container_name: tn, target: Rust) {
+        return "panic!(\"record-shaped carrier has no realization in the selected Rust target inhabitant\")"
+      }
       let tn_is_known_struct = map_contains_key(emit_info.type_summaries, tn)
       let ctor_name = if tn_is_known_struct { tn }
         else {
