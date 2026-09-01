@@ -460,30 +460,44 @@ pub struct TransitionAdmission {
 /// PR, including gunbc#9792 run 33398398650 (5 stale admission(s) after verdict=FloorClean).
 /// Removed by their own dissolve-on trigger, exactly as the seven shrinks above. The roster is
 /// empty and remains fail-closed for any new namespace delta.
-/// NINTH, AND THIS ONE IS AN ADDITION RATHER THAN A SHRINK (2026-08-31). The two rows below are
-/// the SPARK-PAIR-0 P0-C3a consolidation's own adjudication, carried across main's eighth
-/// dissolution, which emptied the roster. They are NOT stale: the required run that reported the
-/// five BootArtifact rows stale reported `0 unadjudicated delta(s)` on the same line, and that
-/// zero is these two rows doing their job. They dissolve when this PR merges, by the same trigger
-/// as every shrink above.
+/// NINTH DISSOLUTION (2026-09-01). The SPARK-PAIR-0 P0-C3a consolidation merged, so base and head
+/// both carry the linger-probe relocation into `gunbc.spark.serving_observe`. The required run on
+/// gunbc#9832 reported both of its rows as `CONSUMED ADMISSION ... already satisfied at the base --
+/// consumed by its own merge; deletion is owed on the roster's next touch`. This IS that next
+/// touch, so they are removed here by their own trigger rather than left to be re-observed
+/// consumed on every unrelated PR.
+///
+/// TENTH, AND AN ADDITION RATHER THAN A SHRINK (2026-09-01). RLM-2b (`node://adhoc-104e11ac-69a`,
+/// gunbc#9832): ONE relocation, rostered by its author under the rule this ledger states -- a run
+/// carrying a real namespace delta refuses it as UNADJUDICATED until its author adds a row here.
+/// `fleet_converge_plan_spark_typed_actions_wire_path` is the on-disk path of one of the three
+/// members of the plan BUNDLE DIGEST, and the digest is computed in `gunbc.fleet_converge_plan`
+/// while the path constant was declared in `gunbc.fleet_converge_plan_cli`. That split is what the
+/// PR's persisted-member work made untenable: the manifest admission must name the path it is
+/// judging, and a transport module cannot be the authority for a member of an identity the plan
+/// module mints. The constant therefore moves to the module that owns the digest -- same spelling,
+/// same value, one declaring module, no second declaration left behind and no requalification. The
+/// two deltas below are the CLI's own call sites now resolving to the new declarer; both were
+/// reported with `closure blast radius: 0 module(s)`. They dissolve when this PR merges, by the
+/// same trigger as every shrink above.
 pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
     TransitionAdmission {
-        label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
+        label: "RLM-2b: plan bundle-member path joins the module that mints the digest 2026-09-01",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_converge_slice_wet",
-            in_declaration: "spark_serving_probe_linger",
-            spelling: "spark_serving_linger_probe_words",
-            target: "gunbc.spark.serving_observe",
+            module: "gunbc.fleet_converge_plan_cli",
+            in_declaration: "fleet_converge_apply_bound_wet",
+            spelling: "fleet_converge_plan_spark_typed_actions_wire_path",
+            target: "gunbc.fleet_converge_plan",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },
     TransitionAdmission {
-        label: "SPARK-PAIR-0 P0-C3a: linger probe argv consolidates into gunbc.spark.serving_observe 2026-08-30",
+        label: "RLM-2b: plan bundle-member path joins the module that mints the digest 2026-09-01",
         subject: AdmissionSubject::Binding {
-            module: "gunbc.spark.serving_durability_transaction",
-            in_declaration: "spark_serving_observe_linger_enabled",
-            spelling: "spark_serving_linger_probe_words",
-            target: "gunbc.spark.serving_observe",
+            module: "gunbc.fleet_converge_plan_cli",
+            in_declaration: "write_fleet_converge_plan_artifact_wet",
+            spelling: "fleet_converge_plan_spark_typed_actions_wire_path",
+            target: "gunbc.fleet_converge_plan",
         },
         disposition: NamespaceDeltaDisposition::TargetChanged,
     },

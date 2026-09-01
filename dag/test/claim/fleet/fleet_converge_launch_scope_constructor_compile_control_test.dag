@@ -42,10 +42,24 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 
 // THIS CARRIER READS THE LIVE TREE AND SAYS SO. compile_dag_diagnostic_census resolves its synthetic
 // source against the live checkout's module index, so ReadsLiveTree is the truthful declaration and
-// a SubstrateInputsOnly relabel would be a fabricated fact about a live-tree read. An earlier cut
-// declined to enroll this probe at all because the required floor DECLINED every ReadsLiveTree
-// identity before the fold; that rationale is stale -- v2.workflow.required_floor deleted the
-// DeclinedLiveTree arm at the root, so these identities are routed and executed.
+// a SubstrateInputsOnly relabel would be a fabricated fact about a live-tree read.
+//
+// WHY AND EXACTLY HOW THIS EXECUTES, because an earlier cut of this comment stopped one step short
+// and recreated the conflation the whole file exists to disprove. That cut declined to enroll the
+// probe because the required floor DECLINED every ReadsLiveTree identity, then -- when
+// v2.workflow.required_floor deleted the DeclinedLiveTree arm at the root -- concluded "so these
+// identities are routed and executed". The premise is true and the conclusion does not follow.
+// ReadsLiveTree no longer causes the decline, but this module's PREFIX is still outside
+// required_gate_prefixes, which admits only compiler-oriented prefixes and no test.claim.fleet_*
+// prefix at all. A module outside those prefixes is DeclinedOutsideRequiredGate on an ordinary run.
+//
+// WHAT ACTUALLY MAKES IT RUN is the changed-witness projection: a new or changed witness identity
+// outside the static gate prefixes is selected and reaches a semantic verdict, with disposition
+// PlannedAsChangedWitness rather than the ordinary decline. So this file executes on the PR that
+// introduces or changes it, and an UNCHANGED fleet witness is not thereby guaranteed to execute on
+// every future PR. That is sufficient to adjudicate an exact candidate and is NOT a standing
+// post-merge wall, which is precisely why the launch-scope rung language is stated against THIS
+// TREE and carries an expiry rather than claiming a permanent guarantee.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 // ---------------------------------------------------------------------------
@@ -166,30 +180,67 @@ fn class_count(c: CompileDiagnosticCensus, wanted: String) -> Int {
   }
 }
 
-// THE EXCESS-FIELD ROW SHAPE, ONCE. Runnable, no net change either in total or blocking, no
-// FieldNotFound at all, and -- the part totals cannot give -- an EMPTY added/removed identity delta
-// against the valid constructor compiled in this same run.
-fn admitted_with_no_diagnostic_change(c: CompileDiagnosticCensus) -> Bool {
+// THE EXACT IDENTITY THE COMPILER WOULD REPORT IF THE INSERTED FIELD WERE JUDGED. Each row names its
+// own, so the assertion is about THE FIELD IT INSERTED rather than about the class as a whole.
+fn field_not_found_identity(field: String) -> String {
+  join(["FieldNotFound|", field, "|true"], "")
+}
+
+// THE EXCESS-FIELD ROW SHAPE, ONCE.
+//
+// A CLASS-WIDE `FieldNotFound == 0` WOULD BE THE WRONG ASSERTION HERE, and an earlier cut made it.
+// These probes compile against the LIVE TREE, so a future unrelated corpus diagnostic of that class
+// would redden a row that has nothing to do with it -- an assertion about the corpus wearing the
+// name of an assertion about this field. What the row must establish is narrower and stronger: the
+// exact identity naming THE INSERTED FIELD is absent, and the added/removed identity multiset
+// against the same-run baseline is empty, which catches a new diagnostic naming that field even at
+// an unchanged total (a +1 and a -1 cancel).
+fn admitted_with_no_diagnostic_change(c: CompileDiagnosticCensus, inserted_field: String) -> Bool {
   census_ran(c: c)
     && census_ran(c: census_valid)
     && total_count(c: c) == total_count(c: census_valid)
     && blocking_total(c: c) == blocking_total(c: census_valid)
-    && class_count(c: c, wanted: "FieldNotFound") == 0
+    && count_of_identity(
+         rows: census_rows_or_empty(c: c),
+         id: field_not_found_identity(field: inserted_field),
+       ) == 0
     && identity_deltas_empty(a: census_valid, b: c)
 }
 
 // ---------------------------------------------------------------------------
-// (ii) HARNESS SIGHT -- ASSERTED FIRST, because every row after it is conditional on it. This probe
-// closes over almost nothing, so unlike the launch probes it sits on a genuinely empty baseline and
-// the absolute assertion is honest here.
+// (ii) HARNESS SIGHT -- ASSERTED FIRST, because every row after it is conditional on it.
+//
+// THE ABSOLUTE THAT IS HONEST HERE IS THE BLOCKING ONE, AND ONLY THAT ONE. This probe closes over
+// almost nothing, so its BLOCKING census really is empty but for the diagnostic the mutation causes
+// -- blocking == 0 clean, blocking == 1 mutated, and the exact sentinel identity present exactly
+// once. Its TOTAL is not zero and asserting so would be false: the census module's own closure
+// contributes 95 nonblocking counts (DeclaredTypeInhabitanceUndecided on list elements,
+// WhereRefinementUnenforced on non_empty) to BOTH sides. Measured, not assumed.
+//
+// So the residue is pinned by DIFFERENCE instead, which is strictly stronger than the absolute would
+// have been: total is clean + 1 exactly, and the identity multiset delta between the two is empty
+// except the sentinel. That is what forbids matching nonblocking residue on both sides from being
+// read as "nothing happened" -- every other identity is required equal, not merely equal in sum.
 // ---------------------------------------------------------------------------
-data sentinel_field_not_found_identity: String = "FieldNotFound|__launch_excess_field_probe|true"
+// The absolutes on this pair are honest where they would not be on a launch probe: this source
+// closes over almost nothing, so its census really is empty but for the one diagnostic the mutation
+// causes. Asserting total == 0 on the clean side rather than only blocking == 0 is what stops
+// matching NONBLOCKING residue on both sides from being read as "nothing happened".
+data sentinel_field_not_found_identity: String = field_not_found_identity(field: "__launch_excess_field_probe")
+
+// THE EXACT IDENTITY AN UNRESOLVED INITIALIZER PRODUCES, measured rather than guessed: the census
+// reports it as InternalError naming the function. Naming it here is what turns "one more blocking
+// diagnostic appeared" into "the diagnostic that appeared is the one about this initializer".
+data undefined_initializer_identity: String = "InternalError|function:totally_undefined_fn_zz|true"
 
 test fn the_census_can_see_fieldnotfound_on_a_plain_product_literal() -> Bool {
   census_ran(c: census_plain_product_sentinel)
-    && class_count(c: census_plain_product_sentinel, wanted: "FieldNotFound") == 1
     && blocking_total(c: census_plain_product_sentinel) == 1
-    && count_of_identity(rows: census_rows_or_empty(c: census_plain_product_sentinel), id: sentinel_field_not_found_identity) == 1
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_plain_product_sentinel),
+         id: sentinel_field_not_found_identity,
+       ) == 1
+    && total_count(c: census_plain_product_sentinel) == total_count(c: census_plain_product_clean) + 1
 }
 
 // AND THE PAIRED CLEAN PRODUCT, so the row above is the FIELD and not the probe module refusing for
@@ -197,7 +248,10 @@ test fn the_census_can_see_fieldnotfound_on_a_plain_product_literal() -> Bool {
 test fn the_same_plain_product_without_the_field_carries_nothing_blocking() -> Bool {
   census_ran(c: census_plain_product_clean)
     && blocking_total(c: census_plain_product_clean) == 0
-    && count_of_identity(rows: census_rows_or_empty(c: census_plain_product_clean), id: sentinel_field_not_found_identity) == 0
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_plain_product_clean),
+         id: sentinel_field_not_found_identity,
+       ) == 0
     && identity_deltas_empty_except(
          a: census_plain_product_clean,
          b: census_plain_product_sentinel,
@@ -244,27 +298,30 @@ test fn the_admissible_launch_constructor_is_accepted() -> Bool {
 }
 
 test fn a_launch_literal_carrying_runner_slots_is_admitted_with_no_diagnostic_change() -> Bool {
-  admitted_with_no_diagnostic_change(c: census_slots)
+  admitted_with_no_diagnostic_change(c: census_slots, inserted_field: "observed_slots")
 }
 
 test fn a_launch_literal_carrying_caps_is_admitted_with_no_diagnostic_change() -> Bool {
-  admitted_with_no_diagnostic_change(c: census_caps)
+  admitted_with_no_diagnostic_change(c: census_caps, inserted_field: "observed_caps")
 }
 
 test fn a_launch_literal_carrying_fabric_cells_is_admitted_with_no_diagnostic_change() -> Bool {
-  admitted_with_no_diagnostic_change(c: census_fabric)
+  admitted_with_no_diagnostic_change(c: census_fabric, inserted_field: "observed_fabric_cells")
 }
 
 test fn a_launch_literal_carrying_activation_readiness_is_admitted_with_no_diagnostic_change() -> Bool {
-  admitted_with_no_diagnostic_change(c: census_activation)
+  admitted_with_no_diagnostic_change(c: census_activation, inserted_field: "observed_activation_readiness")
 }
 
 test fn a_launch_literal_carrying_all_four_foreign_axes_is_admitted_with_no_diagnostic_change() -> Bool {
-  admitted_with_no_diagnostic_change(c: census_all_four)
+  admitted_with_no_diagnostic_change(c: census_all_four, inserted_field: "observed_slots")
+    && count_of_identity(rows: census_rows_or_empty(c: census_all_four), id: field_not_found_identity(field: "observed_caps")) == 0
+    && count_of_identity(rows: census_rows_or_empty(c: census_all_four), id: field_not_found_identity(field: "observed_fabric_cells")) == 0
+    && count_of_identity(rows: census_rows_or_empty(c: census_all_four), id: field_not_found_identity(field: "observed_activation_readiness")) == 0
 }
 
 test fn an_arbitrary_nowhere_declared_field_on_the_launch_arm_is_also_admitted() -> Bool {
-  admitted_with_no_diagnostic_change(c: census_sentinel)
+  admitted_with_no_diagnostic_change(c: census_sentinel, inserted_field: "__launch_excess_field_probe")
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +337,20 @@ test fn an_arbitrary_nowhere_declared_field_on_the_launch_arm_is_also_admitted()
 // ---------------------------------------------------------------------------
 test fn an_excess_field_initializer_is_analysed_even_though_the_field_is_discarded() -> Bool {
   census_ran(c: census_undefined_initializer)
-    && class_count(c: census_undefined_initializer, wanted: "FieldNotFound") == 0
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_undefined_initializer),
+         id: field_not_found_identity(field: "__launch_excess_field_probe"),
+       ) == 0
     && total_count(c: census_undefined_initializer) == total_count(c: census_valid) + 1
     && blocking_total(c: census_undefined_initializer) == blocking_total(c: census_valid) + 1
+    && count_of_identity(rows: census_rows_or_empty(c: census_valid), id: undefined_initializer_identity) == 0
+    && count_of_identity(
+         rows: census_rows_or_empty(c: census_undefined_initializer),
+         id: undefined_initializer_identity,
+       ) == 1
+    && identity_deltas_empty_except(
+         a: census_valid,
+         b: census_undefined_initializer,
+         except_id: undefined_initializer_identity,
+       )
 }

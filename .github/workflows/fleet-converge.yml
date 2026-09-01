@@ -212,7 +212,7 @@ jobs:
           RLM_EXPECTED_REVISION: ${{ github.event.inputs.expected_revision }}
         if: github.event.inputs.mode == 'plan'
         timeout-minutes: 5
-      - name: Fleet converge plan — scope:launch-environment (caps, timer retirement, fabric cells)
+      - name: Fleet converge plan — scope:launch-environment (legacy fleet-converge timer retirement)
         id: launch_environment_plan
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

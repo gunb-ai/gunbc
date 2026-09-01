@@ -229,20 +229,33 @@ type TimerRetirementMemberAt = NonEmptyStr
 // never selected. Rendering the unselected families as refusals would make every fabric-only plan
 // operationally red for reasons no operator can act on.
 //
-// SO NEITHER STATE IS REPRESENTED: the fabric-only arm carries NO POSITION for timers, caps, spark
-// or slots. There is no field to pass empty and no field to pass refused. That is the section 5
-// construction move: the bad state has no spelling rather than being checked for.
+// SO NEITHER STATE IS DECLARED: the fabric-only arm carries NO AUTHORITATIVE POSITION for timers,
+// caps, spark or slots. There is no declared field to pass empty and none to pass refused, so no
+// production constructor and no request-driven fold can supply or project one.
 //
-// WHAT THIS DOES NOT YET DO, STATED BECAUSE AN EARLIER REVISION OF THIS ANNOTATION CLAIMED IT DID.
-// It said "the fabric-only CLI branch cannot invoke those observers and then cannot reach them at
-// all", which describes the construction this type makes POSSIBLE and not any code that exists.
-// There is no fabric-only CLI branch today: the wet plan path observes timers, caps, slots and
-// fabric unconditionally and builds a FullHostConverge, and the wet apply path still routes through
-// the loose-family matchers below. So what this type currently buys is that the fabric-only request
-// CANNOT BE MISEXPRESSED once something constructs one -- not that anything constructs one yet. The
-// annotation is corrected rather than deleted because the overclaim is the point: a type that makes
-// a wall possible is not the wall, and describing the intended construction in the present tense is
-// how a reader concludes coverage exists that does not.
+// AND THE COMPILER DOES NOT MAKE THAT UNWRITABLE, WHICH THIS ANNOTATION HAS NOW BEEN WRONG ABOUT
+// TWICE, IN TWO DIFFERENT WAYS.
+//
+// The first overclaim was about CODE: an earlier revision said "the fabric-only CLI branch cannot
+// invoke those observers and then cannot reach them at all", describing the construction this type
+// makes POSSIBLE rather than anything that existed.
+//
+// The second overclaim was about the COMPILER, and it is this sentence's own former ending -- "the
+// bad state has no spelling rather than being checked for". That is FALSE, and it is false for
+// every payload-carrying arm in this file, not only for this one. Measured through
+// compile_dag_diagnostic_census on the acceptance path: a payload-carrying coproduct arm literal
+// receives NO EXCESS-FIELD JUDGMENT AT ALL, so `FabricExecutionCellsConverge { host, ...,
+// observed_slots: [] }` compiles, and so does the same literal carrying a field name declared on no
+// type anywhere in the corpus. The arm is not projected to its arm record, the record-literal
+// construction roster comes back absent, and the unknown-field path declines to judge in silence.
+// The mechanism and its repair belong to the compiler-floor lane adhoc-0f99c6bc-193.
+//
+// SO STATE THE PROPERTY THAT IS TRUE. The arm declares no authoritative position for the excluded
+// axes, and the exact production constructors and request-driven folds do not supply or project
+// them; the current compiler does not prevent excess-field spelling. Both overclaims are corrected
+// in place rather than deleted, because the pattern is the lesson: a type that makes a wall possible
+// is not the wall, and neither is a declaration the compiler never checks. Reading a declaration
+// establishes intent, not acceptance.
 // THE LAUNCH-ENVIRONMENT SCOPE IS A NARROWER OBLIGATION, NOT A FILTERED FULL HOST. RLM-2 asks
 // whether the production instance can EXECUTE at an exact revision. CI runner capacity -- the
 // GitHub runner slot family and the runner service activation that follows it -- answers a
@@ -284,13 +297,37 @@ type TimerRetirementMemberAt = NonEmptyStr
 // answering over a resource set wider than the question, so the fix is to make the question's
 // resource set nameable.
 //
-// IT OMITS THE AXES RATHER THAN EXCUSING THEM, and that distinction is the whole of section 4b(4)
-// here. Selecting the slot family and then ignoring its refusals would leave the invalid state
-// writable and put a policy in front of it; passing empty slot and readiness populations would be
-// the empty-observation narrow this file already refuses one layer down, since an empty list is a
-// positive claim that the host HAS no slots and licenses removals. So LaunchEnvironmentConverge has
-// no runner-slot position and no activation position at all: a launch-environment plan that tried
-// to carry one has no constructor, and its terminal folds over exactly the three axes it selected.
+// IT OMITS THE AXES RATHER THAN EXCUSING THEM. Selecting the slot family and then ignoring its
+// refusals would leave the invalid state writable and put a policy in front of it; passing empty
+// slot and readiness populations would be the empty-observation narrow this file already refuses one
+// layer down, since an empty list is a positive claim that the host HAS no slots and licenses
+// removals. So LaunchEnvironmentConverge DECLARES no runner-slot position and no activation
+// position, and its terminal folds over the single axis it selects -- timer retirement.
+//
+// WHAT THAT DOES AND DOES NOT BUY, STATED EXACTLY, BECAUSE THIS SENTENCE PREVIOUSLY CLAIMED THE TOP
+// RUNG AND WAS WRONG. It said a launch-environment plan carrying a foreign axis "has no
+// constructor". The compiler admits one: see the excess-field measurement in the annotation above
+// the scope type. What holds instead, and what is executed rather than read off the declaration:
+//
+//   the arm declares only host and observed_timers, and the exact production constructors on this
+//   tree supply only those two -- mechanically closed over WHERE construction happens by
+//   test.claim.fleet_converge_launch_scope_constructor_site_census, which folds the parsed corpus
+//   and joins every production construction site against a declared roster at identity grain;
+//
+//   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
+//   subject, baseline, member-set fingerprint, plan body, counters, terminal, lease, apply shell or
+//   bundle identity -- executed as difference over production-shaped payloads by
+//   test.claim.fleet_converge_launch_scope_non_interference, each pair carrying an owning-scope
+//   control so the equality cannot be a dead fixture;
+//
+//   excess-field initializers are semantically analysed and are not runtime-evaluated.
+//
+// That is mechanically excluded from the authoritative launch-environment projection on this exact
+// tree. It is NOT structural impossibility, and the site census cannot see a field added inside one
+// of the two rostered constructors -- the field-NAME set of a record literal is not readable from
+// the substrate today. NEXT-RUNG TRIGGER, named as the capability: either the variant-local
+// excess-field compiler wall lands, or reflection exposes substrate-readable per-field record-literal
+// labels SUFFICIENT FOR a witness to assert the exact field-name set of a named construction site.
 type FleetConvergeScope
   = FullHost
   | LaunchEnvironment
@@ -561,7 +598,7 @@ fn fleet_converge_apply_admission_refusal_text(admission: FleetConvergeApplyAdmi
 //
 // THE ONE PROPERTY THE PAIRWISE FORM HAD FOR FREE AND THIS ONE MUST STATE: two scopes sharing a
 // wire spelling would compare equal. That is not left to inspection --
-// witness_every_scope_wire_is_distinct pins the wires pairwise distinct, which is the same fact
+// every_scope_wire_is_distinct pins the wires pairwise distinct, which is the same fact
 // fleet_converge_scope_of_wire's decode already depends on.
 fn fleet_converge_scope_matches(planned: FleetConvergeScope, observed: FleetConvergeScope) -> Bool {
   fleet_converge_scope_wire(scope: planned) == fleet_converge_scope_wire(scope: observed)

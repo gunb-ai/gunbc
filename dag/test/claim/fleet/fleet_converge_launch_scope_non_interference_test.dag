@@ -30,12 +30,25 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // WHAT THIS FILE MEASURES, AND WHY IT EXISTS AT ALL.
 //
 // AN EARLIER CUT OF THIS PR CLAIMED THE OMITTED AXES WERE UNCONSTRUCTIBLE. That claim was measured
-// and is FALSE. The seed's unknown-field check suppresses FieldNotFound when the named field exists
-// on the selected variant OR ON ANY SIBLING VARIANT OF THE SAME COPRODUCT, so
-// `LaunchEnvironmentConverge { host, observed_timers, observed_slots: ... }` COMPILES today --
-// observed_slots is a real field of FullHostConverge. Reading the type declaration establishes
-// nothing about that, which is exactly why the compile matrix in
-// test.claim.fleet_converge_launch_scope_constructor_compile_control exists and why it is written
+// and is FALSE, and the FIRST EXPLANATION OF WHY IT WAS FALSE WAS ALSO WRONG, so both are corrected
+// here rather than only the conclusion.
+//
+// The first reading blamed a sibling-variant rule: that the unknown-field check suppresses
+// FieldNotFound when the named field exists on any sibling arm of the same coproduct. That is too
+// narrow, and it is falsifiable by a probe this PR runs -- a field name declared on NO type anywhere
+// in the corpus is admitted just as readily, which no sibling rule can explain.
+//
+// THE ESTABLISHED MECHANISM IS BROADER: a payload-carrying coproduct arm literal receives NO
+// excess-field judgment at all. Arm projection returns the OWNER Disj rather than the arm record,
+// so the record-literal construction roster comes back absent, and the unknown-field path declines
+// to judge in silence rather than reporting. field_in_any_variant_named -- the disjunct the first
+// reading blamed -- is not on this path at all. Authority for this paragraph is the compiler-floor
+// lane's mechanism packet, adhoc-0f99c6bc-193 (session sharp-otter-269); it is cited rather than
+// re-derived, because a second derivation of one fact is a second authority for it.
+//
+// The asymmetry is the tell: presence checking reads the selected arm through variant_owner_node and
+// has no such hole, so the literal REFUSES a missing field and ADMITS an invented one. That pair is
+// executed in test.claim.fleet_converge_launch_scope_constructor_compile_control, which is written
 // as a substrate CHARACTERIZATION rather than as a wall.
 //
 // SO THE GUARANTEE IS RELOCATED, NOT ABANDONED. The property this file executes is:

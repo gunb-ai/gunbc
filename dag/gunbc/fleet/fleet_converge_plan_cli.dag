@@ -298,11 +298,17 @@ type FleetConvergeRequestObservation
   = FleetConvergeRequestObserved { request: FleetConvergeRequest }
   | FleetConvergeRequestUnobserved { reason: String }
 
-// THE LAUNCH-ENVIRONMENT ARM CALLS ONLY THE TIMER OBSERVER, and that is the construction rather
-// than a saved probe: the arm it builds has no slot, cap, activation or fabric field to put an
-// answer in, so running those probes here would produce values with nowhere to go. The refusals an
-// unreadable slot roster or a blocked fabric observation raise for their own scopes are therefore
-// not SUPPRESSED here -- they are unreachable, because this scope never took those obligations on.
+// THE LAUNCH-ENVIRONMENT ARM CALLS ONLY THE TIMER OBSERVER. That is the production fact this
+// annotation is entitled to state: this branch invokes observe_timer_members_wet and nothing else,
+// and constructs exactly the two reviewed fields. The refusals an unreadable slot roster or a
+// blocked fabric observation raise for their own scopes are therefore not SUPPRESSED here -- they
+// are never produced, because this scope never took those obligations on.
+//
+// AN EARLIER CUT SAID THE ARM "HAS NO FIELD TO PUT AN ANSWER IN", which reads as a claim about what
+// the compiler permits. It does not: a payload-carrying variant literal accepts any excess field
+// (see the excess-field measurement in gunbc.fleet_converge_plan above FleetConvergeScope, and the
+// compiler-floor lane adhoc-0f99c6bc-193). What holds is the narrower production fact above, and it
+// is what the site census and the non-interference matrix actually execute.
 func observe_fleet_converge_request_wet(scope_wire: String, host: NonEmptyStr) -> FleetConvergeRequestObservation
   uses net: Network
 {
