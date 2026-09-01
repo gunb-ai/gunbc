@@ -1101,12 +1101,30 @@ fn compile_phase_frontier_standing(series: List<CompilePhaseFrontierReceipt>) ->
 //
 // IT GATES NOTHING TODAY AND THAT IS DELIBERATE. Actuating it as a merge-blocking arm would refuse
 // every merge, because receipts are authored rarely and the live tree moves on every commit; the
-// non-blocking spelling is the inert-lens tier DESIGN 6 names. What it is FOR is the consumer that
-// arrives with (c) below: an execution surface exposing a real, readable cgroup memory limit
-// sufficient to run the whole-closure measurement of the receipt subject entry through
-// tools.emission_entry_instrument to completion. gunbc.whole_corpus_compile_admission and
-// gunbc.host_budget_source memory_stall_refusal are the authorities that price why that surface
-// does not exist here; the figures are theirs and are not transcribed into this module.
+// non-blocking spelling is the inert-lens tier DESIGN 6 names.
+//
+// WHAT IT IS FOR, AND THE CONDITIONS ARE TWO RATHER THAN ONE. This annotation named only the
+// budget condition when it landed, and that was a trigger pointing at something that is not what
+// blocks -- which gets SATISFIED WHILE THE CAPABILITY STAYS DEAD, the mirror of the 4b(3) failure
+// where a trigger names less than it restores. The BINDING condition is a receipt in the required
+// runners' COMPARISON EPOCH: without one, a live population has nothing it may legally be compared
+// against, and the series fold above refuses a cross-epoch comparison unless the predecessor is
+// reclassified. The ENABLING condition is the one first recorded: taking such a receipt means
+// measuring a whole-closure entry, which gunbc.whole_corpus_compile_admission refuses on budget --
+// so an execution surface exposing a real, readable cgroup memory limit makes the measurement
+// TAKEABLE and leaves the epoch condition standing. The figures behind that refusal belong to that
+// authority and to gunbc.host_budget_source memory_stall_refusal and are not transcribed here.
+//
+// AND THE CONSUMER IS BUILT, NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate
+// -- the live measured population joined to the latest receipt through this module's own fold and
+// ratchet -- witnessed and enrolled under the required floor's test.claim.self_host_ prefix, and
+// PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on a defect. When it is
+// unparked it must CONSUME this judgment rather than grow its own tree-identity comparison: this
+// answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the
+// PRECONDITION of that module's population question, since a regression comparison against a
+// receipt that does not describe this tree is meaningless. One module answering the precondition
+// and another consuming it is composition; two modules deciding tree identity is the section 3
+// fork this note exists to prevent.
 //
 // THE UNOBSERVED ARM REFUSES RATHER THAN WIDENS. A caller that cannot supply the tree under
 // judgment gets a typed refusal, never Covered and never a pass-shaped unknown: a coverage
