@@ -101,6 +101,7 @@ import gunbc.scm.load_standing {
   LoadUnsupportedProtocol,
   LoadDocumentMalformed,
   LoadIdentityCollision,
+  LoadRequiresNodeAtAuthoredSource,
 }
 import gunbc.scm.merge {
   MergeOutcome,
@@ -433,6 +434,7 @@ test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -
         LoadPartial => false
         LoadDocumentMalformed => false
         LoadIdentityCollision => false
+        LoadRequiresNodeAtAuthoredSource => false
       }
   }
 }

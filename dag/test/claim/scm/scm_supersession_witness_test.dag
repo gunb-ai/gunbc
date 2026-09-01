@@ -29,7 +29,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
 }
 import gunbc.scm.supersession {
   HeadSlot, SupersessionEvidence, SupersessionOutcome,
@@ -220,6 +220,7 @@ fn standing_name(s: LoadStanding) -> String {
     LoadUnsupportedProtocol => "protocol"
     LoadDocumentMalformed => "malformed"
     LoadIdentityCollision => "collision"
+    LoadRequiresNodeAtAuthoredSource => "source_occupied"
   }
 }
 

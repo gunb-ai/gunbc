@@ -93,7 +93,7 @@ import gunbc.scm.object_store {
   empty_store,
   find_node_record,
 }
-import gunbc.scm.commit_closure { table_unresolved_identities }
+import gunbc.scm.commit_closure { table_unresolved_identities, table_source_occupied_identities }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   DecodeAcc,
@@ -243,6 +243,7 @@ type RepositoryEnvelope {
 // two sibling arms below never had: an identity left as text is one nobody can resolve back.
 type RepositoryEncodeRefusal
   = RepositoryEncodeUncontainedTarget { target: ObjectId }
+  | RepositoryEncodeTargetIsAuthoredSource { target: ObjectId }
   | RepositoryCommitRootNotInStore { root: ObjectId }
   | RepositoryCheckoutNotInCommits { selected: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicated { reference: RepositoryCommitRef }
@@ -537,6 +538,20 @@ type RepositoryEncodeOutcome
 // is also the first. Pinning order here would additionally freeze an incidental traversal order into
 // the interface, which a later keyed or canonical representation of table_unresolved_identities should not
 // be forced to preserve.
+// THE WRONG-KIND POPULATION IS A SEPARATE REFUSAL, NOT A SILENT PASS. an_uncontained_target reads the
+// ABSENT population only, which is correct for what it names -- and it was the ONLY guard here, so a
+// requirement whose locator is occupied by an authored source walked straight through and got
+// published. The census separates the two populations precisely so both get read; wiring only the
+// absent half re-created the conflation one layer up.
+fn a_source_occupied_target(store: ObjectStore) -> ObjectId? {
+  fold(table_source_occupied_identities(store: store), init: none, f: fn(acc, id) {
+    match acc {
+      Present { value: _ } => acc
+      Absent => Present { value: id }
+    }
+  })
+}
+
 fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
   fold(table_unresolved_identities(store: store), init: none, f: fn(acc, id) {
     match acc {
@@ -548,6 +563,10 @@ fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
 
 fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcome {
   let acc = encode_object_table(store: repo.store)
+  match a_source_occupied_target(store: repo.store) {
+    Present { value: target } =>
+      RepositoryEncodeRefused { cause: RepositoryEncodeTargetIsAuthoredSource { target: target } }
+    Absent =>
   match an_uncontained_target(store: repo.store) {
     Present { value: target } =>
       RepositoryEncodeRefused { cause: RepositoryEncodeUncontainedTarget { target: target } }
@@ -579,6 +598,7 @@ fn encode_repository_checked(repo: RepositoryEnvelope) -> RepositoryEncodeOutcom
               }
           }
       }
+  }
   }
 }
 

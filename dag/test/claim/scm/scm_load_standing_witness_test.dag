@@ -20,7 +20,7 @@ import gunbc.scm.object_store {
 }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
   standing_loaded,
 }
 import std.decl_ref { DeclarationRef }
@@ -148,6 +148,7 @@ fn standing_tag(s: LoadStanding) -> Int {
     LoadUnsupportedProtocol => 2
     LoadDocumentMalformed => 3
     LoadIdentityCollision => 4
+    LoadRequiresNodeAtAuthoredSource => 5
   }
 }
 

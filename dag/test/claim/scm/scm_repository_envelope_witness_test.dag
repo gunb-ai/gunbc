@@ -42,7 +42,7 @@ import gunbc.scm.repository_envelope {
   empty_repository, encode_repository, decode_repository,
   repository_envelope_format_tag, repository_object_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
-  RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget,
+  RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget, RepositoryEncodeTargetIsAuthoredSource,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,
   RepositoryCommitParentNotInCommits,
   RepositoryCommitReferenceDuplicated, RepositoryCommitReferenceDuplicatedOnWire,
@@ -514,6 +514,7 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
     RepositoryEncodeRefused { cause: cause } =>
       match cause {
         RepositoryEncodeUncontainedTarget { target: _ } => "uncontained_target"
+        RepositoryEncodeTargetIsAuthoredSource { target: _ } => "target_is_authored_source"
         RepositoryCommitRootNotInStore { root: _ } => "commit_root"
         RepositoryCheckoutNotInCommits { selected: _ } => "checked_out"
         RepositoryCommitParentNotInCommits { parent: _ } => "commit_parent"
@@ -663,6 +664,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
           fold(table_unresolved_identities(store: store), init: false, f: fn(acc, id) {
             acc || object_id_eq(left: id, right: t)
           })
+        RepositoryEncodeTargetIsAuthoredSource { target: _ } => false
         RepositoryCommitRootNotInStore { root: _ } => false
         RepositoryCheckoutNotInCommits { selected: _ } => false
         RepositoryCommitParentNotInCommits { parent: _ } => false
@@ -1236,4 +1238,42 @@ test fn env_a_commit_root_that_is_a_node_mints() -> Bool {
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
   }
+}
+
+// A SOURCE-OCCUPIED TARGET REFUSES TO ENCODE, AND IT IS ITS OWN REFUSAL.
+//
+// The guard beside this one, an_uncontained_target, reads the ABSENT population -- correctly, for what
+// it names. It was the ONLY guard here, so a requirement whose locator is occupied by an authored
+// source walked straight through and got PUBLISHED. External review found it: the object model split
+// the census into two populations precisely so both would be read, and wiring only the absent half
+// re-created the conflation one layer up, in the repository encoder.
+//
+// The two refusals stay separate because their remedies are: one says fetch an object that is not
+// here, the other says something is here and it is the wrong kind, which no fetch repairs.
+test fn scm_env_a_source_occupied_target_refuses_to_encode_as_its_own_cause() -> Bool {
+  let occupied = match store_authored_source(store: empty_store(), text: "not a program\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+    SourceStored { store: with_file, source: file } =>
+      match insert_from_structure(
+        store: with_file,
+        kind: TypeNode { connective: Conj },
+        children: [
+          StoredEdge { label: Named { name: ^only_child }, target: SemanticNodeTarget { locator: file.locator } },
+        ],
+      ) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+        Stored { store: assembled, node: _ } => assembled
+      }
+  }
+  (store_object_count(store: occupied) == 2)
+    && (scm_env_encode_cause_tag(
+      outcome: encode_repository_checked(
+        repo: RepositoryEnvelope {
+          store: occupied,
+          commits: [],
+          commit_allocator: MintedIdAllocator { next_ordinal: 0 },
+          checked_out: none,
+        }
+      )
+    ) == "target_is_authored_source")
 }

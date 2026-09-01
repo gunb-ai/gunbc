@@ -13,7 +13,7 @@ module test.claim.scm_commit_closure_witness
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
 import std.types { Bool, Int, String, List, list_length }
-import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, Cardinality, Positional, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -45,8 +45,16 @@ import extdeps.languages.json.parse {
   JsonDocumentParsed,
   JsonDocumentUnreadable,
 }
-import gunbc.scm.json_member { MemberReadDuplicated, MemberReadWrongShape }
+import gunbc.scm.json_member {
+  MemberReadDuplicated,
+  MemberReadWrongShape,
+  MemberRead,
+  MemberArray,
+  MemberObject,
+  read_member,
+}
 import gunbc.scm.target_reference {
+  TargetReference,
   TargetContainedAt,
   TargetUncontained,
   TargetReferenceRefused,
@@ -881,4 +889,132 @@ test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool 
             != serialize_json(v: natural_image)
       }
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// THE SPELLING ITSELF, BECAUSE BYTE EQUALITY DOES NOT PIN IT.
+//
+// one_closure_has_one_image_however_its_store_was_assembled compares two serializations and requires
+// them equal. That catches a DISAGREEMENT between the two assembly routes, which is what the graft
+// defect produced -- and external review named the hole it leaves: if the encoder spelled EVERY
+// target uncontained, both images would still agree and the claim would still pass. Agreement is not
+// correctness; it is only consistency.
+//
+// So this reads the arm out of the document. The closure is complete, so the parent's child target
+// must carry "at" -- and decode_target_reference is the module's own reader, not a second parser
+// written here to grade the first one.
+fn target_arm_of_first_child(objects: List<JsonValue>) -> TargetReference? {
+  fold(objects, init: none, f: fn(found, entry) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match read_member(v: entry, key: "children") {
+          MemberArray { elements: edges } =>
+            fold(edges, init: none, f: fn(inner, edge) {
+              match inner {
+                Present { value: _ } => inner
+                Absent =>
+                  match read_member(v: edge, key: "target") {
+                    MemberObject { value: t } =>
+                      Present { value: decode_target_reference(target_value: t) }
+                    _ => none
+                  }
+              }
+            })
+          _ => none
+        }
+    }
+  })
+}
+
+fn document_objects(v: JsonValue) -> List<JsonValue> {
+  match read_member(v: v, key: "objects") {
+    MemberArray { elements: e } => e
+    _ => []
+  }
+}
+
+// A COMPLETE CLOSURE SPELLS ITS CHILD CONTAINED, whichever order its store was assembled in.
+test fn a_complete_closure_spells_its_child_contained() -> Bool {
+  let full = build_full_store()
+  let completed = build_grafted_then_completed_store()
+  match encode_complete_closure_document(
+    closure: CommitClosure { store: completed, root: full.root }
+  ) {
+    ClosureDocEncodeRefused { cause: _ } => false
+    ClosureDocEncoded { value: image } =>
+      match target_arm_of_first_child(objects: document_objects(v: image)) {
+        Absent => false
+        Present { value: arm } =>
+          match arm {
+            TargetContainedAt { reference: _ } => true
+            TargetUncontained { digest: _ } => false
+            TargetReferenceRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+// THE CONTROL. A genuinely partial closure must still spell its missing child UNCONTAINED -- without
+// this, the claim above is satisfied by an encoder that never emits the uncontained arm, which would
+// delete the partial-closure format outright.
+test fn a_partial_closure_spells_its_missing_child_uncontained() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    PartialClosureAdmitted { admitted: a } =>
+      match target_arm_of_first_child(
+        objects: document_objects(v: encode_admitted_partial_closure_document(admitted: a))
+      ) {
+        Absent => false
+        Present { value: arm } =>
+          match arm {
+            TargetUncontained { digest: _ } => true
+            TargetContainedAt { reference: _ } => false
+            TargetReferenceRefused { cause: _ } => false
+          }
+      }
+  }
+}
+
+// THE POSITIONAL CONTROL FOR THE CANONICALIZATION, and it is the half that says the sort is a RULE
+// rather than a habit.
+//
+// insert_from_structure now canonicalizes its children, and re_writing_the_same_bindings_in_another_
+// order_is_idempotent says two authored orders of the same NAMED bindings are one object. On its own
+// that claim is satisfied by sorting every child list unconditionally -- which would be wrong, and
+// silently so: under Cardinality and Instantiation the discipline is PositionalEdges, where position
+// IS the meaning and reordering names a different program. External review named this gap.
+//
+// The canonicalizer already answers correctly, because it dispatches on kind_edge_discipline and
+// returns positional items untouched. Nothing here executed that, so the rule was true and unwitnessed
+// -- and an unwitnessed rule is one a later local sort can quietly replace.
+test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
+  let fx = permutation_fixture()
+  fx.ok
+    && match insert_from_structure(
+      store: fx.store,
+      kind: TypeNode { connective: Cardinality },
+      children: [
+        StoredEdge { label: Positional, target: fx.alpha },
+        StoredEdge { label: Positional, target: fx.beta },
+      ],
+    ) {
+      LocatorCollision { identity: _, existing: _, incoming: _ } => false
+      Stored { store: once, node: first_ref } =>
+        match insert_from_structure(
+          store: once,
+          kind: TypeNode { connective: Cardinality },
+          children: [
+            StoredEdge { label: Positional, target: fx.beta },
+            StoredEdge { label: Positional, target: fx.alpha },
+          ],
+        ) {
+          LocatorCollision { identity: _, existing: _, incoming: _ } => false
+          Stored { store: _, node: second_ref } =>
+            !object_id_eq(left: first_ref.locator, right: second_ref.locator)
+        }
+    }
 }

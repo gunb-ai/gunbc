@@ -42,7 +42,7 @@ import std.decl_ref { DeclarationRef }
 import gunbc.scm.object_store { ObjectId, object_id_eq }
 import gunbc.scm.load_standing {
   LoadStanding, LoadComplete, LoadPartial, LoadUnsupportedProtocol,
-  LoadDocumentMalformed, LoadIdentityCollision,
+  LoadDocumentMalformed, LoadIdentityCollision, LoadRequiresNodeAtAuthoredSource,
 }
 
 // A NAMED PLACE HOLDING EXACTLY ONE GENERATION. The slot is the unit supersession destroys, so it
@@ -179,6 +179,8 @@ fn standing_permission_refusal(standing: LoadStanding) -> SupersessionRefusalCau
     LoadPartial => Present { value: StandingDoesNotPermit { standing: LoadPartial } }
     LoadUnsupportedProtocol =>
       Present { value: StandingDoesNotPermit { standing: LoadUnsupportedProtocol } }
+    LoadRequiresNodeAtAuthoredSource =>
+      Present { value: StandingDoesNotPermit { standing: LoadRequiresNodeAtAuthoredSource } }
     LoadIdentityCollision =>
       Present { value: StandingDoesNotPermit { standing: LoadIdentityCollision } }
   }
