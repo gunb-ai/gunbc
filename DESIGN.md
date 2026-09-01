@@ -215,6 +215,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `unbacked_execution_claim`
 - `mitigation_injected_where_judgment_declined`
 - `merge_region_excludes_shared_tail`
+- `one_refusal_two_destinations`
 
 ## Building & checks
 
