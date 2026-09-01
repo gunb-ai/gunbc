@@ -462,7 +462,7 @@ test fn witness_empty_calibration_cell_refuses() -> Bool {
   ) {
     ScheduleForecastKnown { forecast: _ } => false
     ScheduleForecastRefused { refusals } => any(refusals, refusal => match refusal {
-      NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps) == 1 && first(gaps).nodes == [n.node]
+      NoCalibrationSample { gaps, population_exclusions: _, assumptions: _, scenario_adjustment: _ } => count(gaps) == 1 && match first(gaps) { Present { value: gap } => gap.nodes == [n.node]  Absent => false }
       ForecastGraphEmpty => false
       DependencyCycle { nodes: _ } => false
       DependencyEndpointUnknown { nodes: _ } => false
