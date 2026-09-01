@@ -5,11 +5,12 @@ import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
 import extdeps.rustc
 import extdeps.rustc { rustc_version_verbose_release_line, rustc_version_verbose_field }
-import extdeps.cargo
+import extdeps.cargo_build
 import gunbc.self_host_compile_phase_frontier {
   CompilePhaseInvocation,
   self_host_compile_phase_frontier_receipts
 }
+import extdeps.languages.rust.compiler_phases { rustc_phase_classification_policy_digest }
 import gunbc.self_host_compile_phase_live_gate {
   LiveToolchainReading,
   LiveCompilePhaseObservation,
@@ -17,14 +18,11 @@ import gunbc.self_host_compile_phase_live_gate {
   LiveFrontierHeld,
   LiveFrontierRefused,
   LiveFrontierUnmeasured,
-  live_tree_frontier_verdict,
+  live_tree_verdict_for_measurement,
   live_frontier_verdict_text
 }
 import tools.emission_entry_instrument {
   EmissionMeasurement,
-  EmissionMeasured,
-  RustfmtParseObservation,
-  cargo_error_identity_rows,
   measure_entry_emission,
   emission_report_text
 }
@@ -107,45 +105,12 @@ fn read_live_toolchain() -> ToolchainReadingAttempt {
                 },
                 profile: live_gate_invocation_profile,
                 features: []
-              }
+              },
+              classification_policy_digest: rustc_phase_classification_policy_digest
             }
           }
         }
       }
-    }
-  }
-}
-
-type LiveObservationAttempt
-  = LiveObservationTaken { observation: LiveCompilePhaseObservation, measurement: EmissionMeasurement }
-  | LiveObservationNotTaken { cause: String, measurement: EmissionMeasurement }
-
-// The measurement crosses a function boundary before either consumer reads it, for the reason
-// `persist_measurement` records beside the instrument: a local binding is lowered by substitution
-// and would execute the whole wet pipeline twice, so the report and the verdict would describe two
-// different runs.
-fn live_observation(m: EmissionMeasurement, reading: LiveToolchainReading) -> LiveObservationAttempt {
-  match m {
-    EmissionMeasured {
-      subject: _,
-      emitted_files: _,
-      emit_diagnostics: _,
-      emitted_artifact_identity: _,
-      rustfmt_parse_observation: parse,
-      cargo_clean: _,
-      cargo_diagnostics: ds,
-      cargo_lines_scanned: _
-    } => LiveObservationTaken {
-      observation: LiveCompilePhaseObservation {
-        parse_observation: parse,
-        raw_error_diagnostic_identities: cargo_error_identity_rows(ds: ds),
-        toolchain: reading
-      },
-      measurement: m
-    }
-    measurement => LiveObservationNotTaken {
-      cause: "the emission instrument did not reach a cargo measurement, so no live census exists",
-      measurement: measurement
     }
   }
 }
@@ -160,35 +125,30 @@ fn write_gate_report(report: String, m: EmissionMeasurement, verdict_text: Strin
   ).success
 }
 
-fn adjudicate(report: String, attempt: LiveObservationAttempt) -> ProcessExit {
-  match attempt {
-    LiveObservationNotTaken { cause: c, measurement: m } =>
-      if !write_gate_report(report: report, m: m, verdict_text: concat("unmeasured\t", c)) {
-        exit_failure(reason: concat("check: the measurement was not taken and the report could not be written to ", report))
-      } else {
-        exit_failure(reason: concat("check: ", concat(c, concat(" — the stage that stopped it is named in ", report))))
-      }
-    LiveObservationTaken { observation: observation, measurement: m } => {
-      let verdict = live_tree_frontier_verdict(
-        series: self_host_compile_phase_frontier_receipts,
-        observation: observation
-      )
-      if !write_gate_report(report: report, m: m, verdict_text: live_frontier_verdict_text(verdict: verdict)) {
-        exit_failure(reason: concat("check: the verdict was reached and could not be written to ", report))
-      } else {
-        match verdict {
-          LiveFrontierHeld { live_identity_count: _ } => ExitSuccess
-          LiveFrontierRefused { identities: ids, reason: why } =>
-            exit_failure(
-              reason: concat(
-                concat("check: the live compile-phase frontier refused — ", why as String),
-                concat(concat(" (", to_string(count(ids))), concat(" identity/identities named in ", concat(report, ")")))
-              )
-            )
-          LiveFrontierUnmeasured { reason: why } =>
-            exit_failure(reason: concat("check: the live compile-phase frontier was not measured — ", why as String))
-        }
-      }
+// THE ACTUATOR NO LONGER DECIDES WHAT A MEASUREMENT MEANS. It hands the measurement to the pure
+// entry point and reports the verdict it gets back. That split is why deleting the measurement call
+// here cannot green anything: there would be no EmissionMeasurement to hand over, and the gate's
+// only other constructor for an observation does not exist.
+fn adjudicate(report: String, m: EmissionMeasurement, reading: LiveToolchainReading) -> ProcessExit {
+  let verdict = live_tree_verdict_for_measurement(
+    series: self_host_compile_phase_frontier_receipts,
+    m: m,
+    toolchain: reading
+  )
+  if !write_gate_report(report: report, m: m, verdict_text: live_frontier_verdict_text(verdict: verdict)) {
+    exit_failure(reason: concat("check: the verdict was reached and could not be written to ", report))
+  } else {
+    match verdict {
+      LiveFrontierHeld { live_identity_count: _ } => ExitSuccess
+      LiveFrontierRefused { identities: ids, reason: why } =>
+        exit_failure(
+          reason: concat(
+            concat("check: the live compile-phase frontier refused — ", why as String),
+            concat(concat(" (", to_string(count(ids))), concat(" identity/identities named in ", concat(report, ")")))
+          )
+        )
+      LiveFrontierUnmeasured { reason: why } =>
+        exit_failure(reason: concat("check: the live compile-phase frontier was not measured — ", why as String))
     }
   }
 }
@@ -200,10 +160,7 @@ fn check(report: String) -> ProcessExit {
     match read_live_toolchain() {
       ToolchainUnread { cause: c } => exit_failure(reason: concat("check: ", c))
       ToolchainRead { reading: reading } =>
-        adjudicate(
-          report: report,
-          attempt: live_observation(m: measure_entry_emission(entry: live_gate_entry), reading: reading)
-        )
+        adjudicate(report: report, m: measure_entry_emission(entry: live_gate_entry), reading: reading)
     }
   }
 }

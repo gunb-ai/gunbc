@@ -1,6 +1,7 @@
 module test.claim.self_host_compile_phase_live_gate_witness
 
 import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { content_hash_atom }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierReceipt,
@@ -11,8 +12,17 @@ import gunbc.self_host_compile_phase_frontier {
   ParseReached,
   CompilePhaseInvocation
 }
+import tools.emission_entry_instrument {
+  EmissionMeasurement,
+  EmissionSubjectUnestablished,
+  StageBinaries
+}
 import gunbc.self_host_compile_phase_live_gate {
   LiveToolchainReading,
+  LiveObservationTaken,
+  LiveObservationNotTaken,
+  live_observation_from_measurement,
+  live_tree_verdict_for_measurement,
   LiveCompilePhaseObservation,
   LiveFrontierHeld,
   LiveFrontierRefused,
@@ -45,7 +55,8 @@ fn toolchain_of(receipt: CompilePhaseFrontierReceipt) -> LiveToolchainReading {
   LiveToolchainReading {
     cargo_identity: receipt.subject.cargo_identity,
     rustc_identity: receipt.subject.rustc_identity,
-    invocation: receipt.subject.invocation
+    invocation: receipt.subject.invocation,
+    classification_policy_digest: receipt.subject.classification_policy_digest
   }
 }
 
@@ -163,7 +174,8 @@ test fn a_live_observation_from_another_host_target_is_unmeasured_not_held() -> 
             target: concat(latest.subject.invocation.target, "-not-this-host"),
             profile: latest.subject.invocation.profile,
             features: latest.subject.invocation.features
-          }
+          },
+          classification_policy_digest: latest.subject.classification_policy_digest
         }
       }
       match live_tree_frontier_verdict(series: self_host_compile_phase_frontier_receipts, observation: foreign) {
@@ -218,6 +230,103 @@ test fn a_non_validating_receipt_series_refuses_the_live_tree() -> Bool {
       ) {
         LiveFrontierRefused { identities: _, reason: why } =>
           string_contains(s: why as String, pattern: "does not validate")
+        verdict => false
+      }
+  }
+}
+
+// THE SIXTH COMPARISON INPUT, WITNESSED SEPARATELY BECAUSE IT IS THE ONE THAT CANNOT FIRE ON THE
+// REAL PATH TODAY. Both receipts and the actuator name one live symbol for the classification
+// policy, so on main the two sides are equal by construction. That makes the guard exactly the kind
+// of conjunct that can be deleted without reddening anything -- unless its RED is authored, which
+// is what this is. The perturbation is authorable here even though it is unreachable in production,
+// because a reading is a value a fixture may build; the frontier's own duplicate-population wall
+// carries the same shape and the same justification.
+test fn a_live_observation_folded_under_another_classification_policy_is_unmeasured() -> Bool {
+  match latest_receipt() {
+    Absent => false
+    Present { value: latest } => {
+      let reading = toolchain_of(receipt: latest)
+      let foreign = LiveToolchainReading {
+        cargo_identity: reading.cargo_identity,
+        rustc_identity: reading.rustc_identity,
+        invocation: reading.invocation,
+        classification_policy_digest: content_hash_atom(value: "not-the-frontier-classification-policy" as NonEmptyStr)
+      }
+      match live_comparability(latest: latest, live: foreign) {
+        LiveIncomparable { reason: why } => string_contains(s: why as String, pattern: "classification policy")
+        LiveComparable => false
+      }
+    }
+  }
+}
+
+// THE FALSIFIER FOR THE GATE BEING QUIETLY DISCONNECTED, AND IT IS THE MOST IMPORTANT ONE HERE.
+//
+// The catastrophic arm is not a missed regression, it is a MEASUREMENT FAILURE READ AS A CLEAN
+// TREE. An empty census against a nonempty receipt is a strict removal, which this ratchet reads as
+// progress and greens -- so an OOM, a killed instrument, a truncated diagnostic stream, a missing
+// artifact, or the actuator's measurement call simply being deleted would each render as the
+// emitted compiler having been repaired. There is no count in the verdict for a reviewer to notice
+// was suspiciously good.
+//
+// The wall is that an observation has exactly one constructor and it is the EmissionMeasured arm.
+// This drives an unreached measurement through the real entry point and requires Unmeasured. It
+// goes red if anyone gives LiveCompilePhaseObservation a second way in, which is the change that
+// would re-open the arm.
+data unreached_measurement: EmissionMeasurement = EmissionSubjectUnestablished {
+  entry: "src/v2/compiler/00_compile.dag",
+  stage: StageBinaries,
+  cause: "planted: the instrument never reached cargo"
+}
+
+test fn a_measurement_that_never_reached_cargo_is_unmeasured_and_never_held() -> Bool {
+  match latest_receipt() {
+    Absent => false
+    Present { value: latest } =>
+      match live_tree_verdict_for_measurement(
+        series: self_host_compile_phase_frontier_receipts,
+        m: unreached_measurement,
+        toolchain: toolchain_of(receipt: latest)
+      ) {
+        LiveFrontierUnmeasured { reason: why } => string_contains(s: why as String, pattern: "absent census is not an empty one")
+        verdict => false
+      }
+  }
+}
+
+// The same fact one level down, so the wall is pinned at the constructor rather than only at the
+// verdict: no observation is produced at all, which is what makes the empty-census spelling
+// unwritable rather than merely unwritten.
+test fn an_unreached_measurement_yields_no_observation_at_all() -> Bool {
+  match latest_receipt() {
+    Absent => false
+    Present { value: latest } =>
+      match live_observation_from_measurement(
+        m: unreached_measurement,
+        toolchain: toolchain_of(receipt: latest)
+      ) {
+        LiveObservationNotTaken { cause: _ } => true
+        LiveObservationTaken { observation: _ } => false
+      }
+  }
+}
+
+// THE CONTROL THAT MAKES THE TWO ABOVE MEAN SOMETHING, and it is the one that would catch the wall
+// being tightened into "nothing is ever measurable". A completed measurement whose census is
+// genuinely EMPTY is the success state this whole frontier is aiming at -- the emitted compiler
+// finally compiling -- and it must hold rather than refuse. So the distinction being enforced is
+// measurement-ABSENT versus census-EMPTY, exactly as claimed, and not a blanket suspicion of small
+// populations. Without this probe, "always answer Unmeasured" would pass every test above.
+test fn an_empty_census_from_a_completed_measurement_still_holds() -> Bool {
+  match latest_receipt() {
+    Absent => false
+    Present { value: latest } =>
+      match live_tree_frontier_verdict(
+        series: self_host_compile_phase_frontier_receipts,
+        observation: observation_of(receipt: latest, identities: [])
+      ) {
+        LiveFrontierHeld { live_identity_count: n } => n == 0
         verdict => false
       }
   }

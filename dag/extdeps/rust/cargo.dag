@@ -1,7 +1,7 @@
 module extdeps.cargo
 
 import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
-import std.types { Bool, FilePathParts, NonEmptyStr, String, List }
+import std.types { FilePathParts, NonEmptyStr, String, List }
 import std.workspace_artifact { WorkspaceFootprint, WorkspaceArtifact, FootprintProvenance, CitedUpstream, RegenerableFromSource, LocalCacheState }
 
 import extdeps.external_authority { ExternalAuthority }
@@ -152,24 +152,5 @@ fn cargo_workspace_footprint(target_dir_patterns: List<String>, cargo_home_patte
         reason: LocalCacheState
       }]
     )
-  }
-}
-
-// `cargo --version` prints ONE line naming the release, the short commit hash and the commit date.
-// It is cargo's own self-report and is bound here rather than derived from the rustc reading beside
-// it: the two binaries are separately versioned, and a toolchain can carry a cargo that a rustc
-// release line does not name.
-service cargo.Identity {
-  operation Version {
-    input {}
-    output {
-      success: Bool from "exit_success"
-      stdout: String from "stdout"
-    }
-    transport shell { argv: ["cargo", "--version"] }
-    exit {
-      0 => Unit
-      nonzero => String "cargo did not report its version"
-    }
   }
 }

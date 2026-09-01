@@ -1,8 +1,14 @@
 module gunbc.self_host_compile_phase_live_gate
 
 import std.types { Bool, Int, String, NonEmptyStr }
+import std.content_hash { Fnv1a64Structural }
 import extdeps.languages.rust.compiler_phases { RustcPhase, rustc_phase_name }
-import tools.emission_entry_instrument { RustfmtParseObservation }
+import tools.emission_entry_instrument {
+  RustfmtParseObservation,
+  EmissionMeasurement,
+  EmissionMeasured,
+  cargo_error_identity_rows
+}
 import gunbc.self_host_compile_phase_frontier {
   RustcPhaseBoard,
   CompilePhaseInvocation,
@@ -12,6 +18,8 @@ import gunbc.self_host_compile_phase_frontier {
   CompilePhaseFrontierValidated,
   CompilePhaseFrontierInvalid,
   compile_phase_frontier_standing,
+  CompilePhaseReceiptSubject,
+  comparison_inputs_same,
   PersistedPhaseBoardFold,
   phase_board_from_census_identities,
   PhaseRatchetHeld,
@@ -52,18 +60,69 @@ type LiveToolchainReading {
   cargo_identity: NonEmptyStr
   rustc_identity: NonEmptyStr
   invocation: CompilePhaseInvocation
+  classification_policy_digest: Fnv1a64Structural
 }
 
 type LiveComparability
   = LiveComparable
   | LiveIncomparable { reason: NonEmptyStr }
 
-// EQUALITY, FIELD BY FIELD, AND THE ERROR DIRECTION IS THE POINT. The live toolchain strings are
-// composed from the toolchain's own self-report; if that composition is wrong by one character the
-// answer is Incomparable, which the gate reports as UNMEASURED and exits nonzero on. No spelling
-// error in this derivation can produce a green.
+// THE EPOCH DECISION IS DELEGATED, NOT REIMPLEMENTED. Which fields constitute a comparison epoch
+// is the frontier's fact, and `comparison_inputs_same` is where it is answered when the series fold
+// decides whether two receipts may be counted against one another. A second list here -- five
+// fields, or six, chosen by hand -- would be a second authority for the epoch, and it would drift
+// silently the day the subject gains a field: the new field would be a comparison input for the
+// series and not for the live tree, and this module would stay green while checking less than it
+// claims. So this asks that function rather than re-deciding.
+//
+// THE PROBE SUBJECT LISTS EVERY FIELD ON PURPOSE, AND THAT IS THE STRUCTURAL HALF. Building it by
+// naming each field means a field ADDED to CompilePhaseReceiptSubject stops this module compiling
+// until someone decides how the live side sources it. Inheriting the record wholesale, or copying
+// it with an update, would compile fine and quietly compare the new field to itself -- the drift
+// above, arriving without a diagnostic. The refusal to compile IS the enforcement.
+//
+// WHY THE NON-EPOCH FIELDS ARE TAKEN FROM THE RECEIPT AND WHY THAT IS NOT A FABRICATION. This value
+// is never persisted, never rendered, and never presented as an observation; it exists only as the
+// right-hand argument to the epoch predicate. The fields `comparison_inputs_same` does not read --
+// the revision, the tree object, and the artifact, compiler and assembler digests -- are precisely
+// the ones that SHOULD differ between the receipt's tree and the live one, so carrying live values
+// there would assert a difference the predicate is required to ignore. Sourcing them from the
+// receipt keeps the record what its name says it is: a probe about the epoch and about nothing else.
+fn epoch_probe_subject(latest: CompilePhaseFrontierReceipt, live: LiveToolchainReading) -> CompilePhaseReceiptSubject {
+  CompilePhaseReceiptSubject {
+    source_revision: latest.subject.source_revision,
+    git_tree_object: latest.subject.git_tree_object,
+    emitted_artifact_identity: latest.subject.emitted_artifact_identity,
+    compiler_identity: latest.subject.compiler_identity,
+    assembler_identity: latest.subject.assembler_identity,
+    cargo_identity: live.cargo_identity,
+    rustc_identity: live.rustc_identity,
+    invocation: live.invocation,
+    classification_policy_digest: live.classification_policy_digest,
+    comparison_epoch: latest.subject.comparison_epoch
+  }
+}
+
+// ONE OF THE COMPARED INPUTS CANNOT DISCRIMINATE ON THE REAL PATH TODAY, AND SAYING SO IS THE
+// HONEST PART. Both persisted receipts spell `classification_policy_digest:
+// rustc_phase_classification_policy_digest` -- the live SYMBOL, not a snapshot of its value -- and
+// the actuator supplies that same symbol, so the two sides are equal by construction and a policy
+// change moves both at once. It is also why such a change does not in fact strand an old board: a
+// receipt's board is not stored, it is re-derived at load by `phase_board_from_census_identities`
+// from the receipt's raw identities, so a new policy reclassifies BOTH populations uniformly rather
+// than only the live one. It is compared here for the case that makes it load-bearing -- the first
+// receipt to record a LITERAL digest for a historical epoch, which is the honest way to record one
+// and the point at which the two sides can differ. Its RED is authorable now, and is authored,
+// against a perturbed reading rather than against a fabricated receipt.
+//
+// THE ERROR DIRECTION IS THE POINT. The live toolchain strings are composed from the toolchain's
+// own self-report; if that composition is wrong by one character the answer is Incomparable, which
+// the gate reports as UNMEASURED and exits nonzero on. No spelling error in this derivation can
+// produce a green.
 fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainReading) -> LiveComparability {
-  if latest.subject.cargo_identity != live.cargo_identity {
+  if comparison_inputs_same(a: latest.subject, b: epoch_probe_subject(latest: latest, live: live)) {
+    LiveComparable
+  } else if latest.subject.cargo_identity != live.cargo_identity {
     LiveIncomparable {
       reason: concat(
         concat("the live cargo identity is not the latest receipt's: live=", live.cargo_identity as String),
@@ -91,12 +150,27 @@ fn live_comparability(latest: CompilePhaseFrontierReceipt, live: LiveToolchainRe
         concat(" receipt=", latest.subject.invocation.profile)
       ) as NonEmptyStr
     }
+  } else if latest.subject.classification_policy_digest != live.classification_policy_digest {
+    LiveIncomparable {
+      reason: concat(
+        concat("the live phase-classification policy is not the latest receipt's: live=", live.classification_policy_digest.digest as String),
+        concat(" receipt=", latest.subject.classification_policy_digest.digest as String)
+      ) as NonEmptyStr
+    }
   } else if latest.subject.invocation.features != live.invocation.features {
     LiveIncomparable {
       reason: "the live feature selection is not the latest receipt's" as NonEmptyStr
     }
   } else {
-    LiveComparable
+    // THE RESIDUAL ARM, AND IT REFUSES RATHER THAN NARROWING. The authority said the epochs differ
+    // and every reason this module can spell says they agree, which means the frontier compares
+    // something this module has no sentence for -- a field added to the subject since these arms
+    // were written. Rendering that as Comparable would be the absorbing fallback: the gate would
+    // proceed on an epoch the authority just rejected, and the newer the field the more likely it
+    // is the one that mattered. So the arm names its own ignorance and stops the line.
+    LiveIncomparable {
+      reason: "the frontier's comparison inputs differ between the live observation and the latest receipt on a field this gate cannot name, which means the receipt subject has gained a comparison input the live side does not yet source" as NonEmptyStr
+    }
   }
 }
 
@@ -118,6 +192,64 @@ type LiveCompilePhaseObservation {
   parse_observation: RustfmtParseObservation
   raw_error_diagnostic_identities: List<String>
   toolchain: LiveToolchainReading
+}
+
+// THE OBSERVATION IS CONSTRUCTIBLE ONLY FROM A COMPLETED MEASUREMENT, AND THAT IS A WALL RATHER
+// THAN A CONVENTION. An emission that never reached cargo carries no census, and the tempting
+// spelling -- hand the fold an empty identity list and let it proceed -- is the one arm that would
+// be catastrophically wrong here: an empty census against a nonempty receipt is a STRICT REMOVAL,
+// which this ratchet correctly reads as progress and greens. So a killed instrument, an OOM, a
+// truncated JSON stream or a missing artifact would each render as the compiler having been fixed.
+//
+// Routing every construction through this function is what makes that unwritable. The observation
+// is built in the EmissionMeasured arm and nowhere else, so "the measurement did not happen" cannot
+// arrive at the fold wearing the shape of "the measurement found nothing". The actuator no longer
+// owns this decision, which also means deleting the actuator's measurement call cannot silently
+// produce a green: with no measurement there is no observation, and with no observation there is no
+// verdict to be Held.
+type LiveObservationAttempt
+  = LiveObservationTaken { observation: LiveCompilePhaseObservation }
+  | LiveObservationNotTaken { cause: NonEmptyStr }
+
+fn live_observation_from_measurement(
+  m: EmissionMeasurement,
+  toolchain: LiveToolchainReading
+) -> LiveObservationAttempt {
+  match m {
+    EmissionMeasured {
+      subject: _,
+      emitted_files: _,
+      emit_diagnostics: _,
+      emitted_artifact_identity: _,
+      rustfmt_parse_observation: parse,
+      cargo_clean: _,
+      cargo_diagnostics: ds,
+      cargo_lines_scanned: _
+    } => LiveObservationTaken {
+      observation: LiveCompilePhaseObservation {
+        parse_observation: parse,
+        raw_error_diagnostic_identities: cargo_error_identity_rows(ds: ds),
+        toolchain: toolchain
+      }
+    }
+    measurement => LiveObservationNotTaken {
+      cause: "the emission instrument did not reach a cargo measurement, so there is no live census -- and an absent census is not an empty one" as NonEmptyStr
+    }
+  }
+}
+
+// The verdict for a measurement, which is the only entry point a consumer should use: it cannot be
+// handed an observation that no measurement produced.
+fn live_tree_verdict_for_measurement(
+  series: List<CompilePhaseFrontierReceipt>,
+  m: EmissionMeasurement,
+  toolchain: LiveToolchainReading
+) -> LiveFrontierVerdict {
+  match live_observation_from_measurement(m: m, toolchain: toolchain) {
+    LiveObservationNotTaken { cause: why } => LiveFrontierUnmeasured { reason: why }
+    LiveObservationTaken { observation: observation } =>
+      live_tree_frontier_verdict(series: series, observation: observation)
+  }
 }
 
 fn live_phase_board(observation: LiveCompilePhaseObservation) -> PersistedPhaseBoardFold {
