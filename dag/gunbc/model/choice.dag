@@ -90,15 +90,59 @@ type QuantizedCandidate {
 // 135 at 400,060: attention cost grows with depth, so a single rate silently describes whichever
 // depth the measurer happened to use. A consumer asking "is this fast enough at my floor" needs an
 // observation AT OR BEYOND that floor; anything shallower flatters the candidate.
+// THE OPERATING REGIME A LATENCY NUMBER WAS MEASURED UNDER. Fresh prefill, warm continuation and a
+// restored session are not the same quantity measured with different luck -- they differ by three
+// orders of magnitude on this fleet, because a fresh 400k prefill pays for every token while a warm
+// continuation pays only for the appended turn. A rate carried without its regime therefore silently
+// answers a question it never measured, and the direction of the error is always flattering: warm
+// numbers are the fast ones, so an unlabelled roster drifts toward claiming warm performance for
+// cold requests.
+//
+// RestoredSession is enumerated but deliberately has no evidence behind it yet. It is the parked
+// case -- state reloaded after eviction or slot reassignment -- and naming it here means a future
+// observation must say which of the three it is rather than defaulting into WarmContinuation.
+type ServingRegime = FreshSessionPrefill | WarmContinuation | RestoredSession
+
+fn serving_regime_wire(regime: ServingRegime) -> String {
+  match regime {
+    FreshSessionPrefill => "fresh-session-prefill"
+    WarmContinuation => "warm-continuation"
+    RestoredSession => "restored-session"
+  }
+}
+
+fn same_regime(a: ServingRegime, b: ServingRegime) -> Bool {
+  match a {
+    FreshSessionPrefill => match b { FreshSessionPrefill => true  WarmContinuation => false  RestoredSession => false }
+    WarmContinuation    => match b { FreshSessionPrefill => false WarmContinuation => true   RestoredSession => false }
+    RestoredSession     => match b { FreshSessionPrefill => false WarmContinuation => false  RestoredSession => true }
+  }
+}
+
 type PrefillObservation {
+  regime: ServingRegime
   depth: TokenCount
   rate: TokensPerSecond
 }
 
-// The slowest rate observed at or beyond the floor, or Absent when nothing reaches that depth.
-// Slowest rather than fastest because a floor is a promise about the worst case a caller will meet.
-fn prefill_rate_at_floor(observations: List<PrefillObservation>, floor: TokenCount) -> TokensPerSecond? {
-  let deep = filter(observations, o => token_count_value(t: o.depth) >= token_count_value(t: floor))
+// The slowest rate observed AT THE REQUESTED REGIME at or beyond the floor, or Absent when no such
+// observation exists. Slowest rather than fastest because a floor is a promise about the worst case
+// a caller will meet.
+//
+// REGIME MISMATCH IS ABSENT, NOT A FALLBACK TO WHATEVER WAS MEASURED. A candidate holding only
+// fresh-prefill observations, asked about a warm-continuation floor, is UNANSWERABLE -- it has not
+// failed the test, it has not taken it. Substituting the fresh number would refuse a candidate that
+// may serve warm perfectly well; substituting a warm number for a fresh question is the dangerous
+// direction and would admit one that cannot. Neither substitution is available here because the
+// filter is on regime equality, so the widening arm does not exist to be taken.
+fn prefill_rate_at_floor(
+  observations: List<PrefillObservation>,
+  floor: TokenCount,
+  regime: ServingRegime,
+) -> TokensPerSecond? {
+  let deep = filter(observations, o =>
+    same_regime(a: o.regime, b: regime)
+      && token_count_value(t: o.depth) >= token_count_value(t: floor))
   fold(deep, none, (worst, o) =>
     match worst {
       Absent => Present { value: o.rate }
@@ -130,6 +174,7 @@ type ServingConstraints {
   context_floor: TokenCount
   hot_sessions: Nat
   prefill_floor: TokensPerSecond
+  prefill_regime: ServingRegime
 }
 
 // ============================ THE DECISION ============================
@@ -144,15 +189,18 @@ type ServingConstraints {
 // rather than a different sentence. Prose whose content the type fixes is dead data (DESIGN 4c).
 type MissingFact
   = KvFootprintUnmeasured
-  | PrefillRateUnmeasuredAtFloor { floor: TokenCount }
+  | PrefillRateUnmeasuredAtFloor { floor: TokenCount, regime: ServingRegime }
   | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
   | CapacityMalformed
 
 fn missing_fact_wire(missing: MissingFact) -> String {
   match missing {
     KvFootprintUnmeasured => "kv-footprint-unmeasured"
-    PrefillRateUnmeasuredAtFloor { floor: f } =>
-      join(["no prefill observation at or beyond ", to_string(token_count_value(t: f))], "")
+    PrefillRateUnmeasuredAtFloor { floor: f, regime: g } =>
+      join([
+        "no ", serving_regime_wire(regime: g), " observation at or beyond ",
+        to_string(token_count_value(t: f)),
+      ], "")
     SemanticContextUnverifiedAtFloor { floor: f, declared: d } =>
       join([
         "retrieval unverified at ", to_string(token_count_value(t: f)),
@@ -239,11 +287,15 @@ fn evaluate_candidate(
                 false => match prefill_rate_at_floor(
                   observations: candidate.prefill_observations,
                   floor: constraints.context_floor,
+                  regime: constraints.prefill_regime,
                 ) {
                   Absent => ServingCandidateUnanswerable {
                     identity: candidate.identity,
                     quant_label: candidate.quant_label,
-                    missing: PrefillRateUnmeasuredAtFloor { floor: constraints.context_floor },
+                    missing: PrefillRateUnmeasuredAtFloor {
+                      floor: constraints.context_floor,
+                      regime: constraints.prefill_regime,
+                    },
                   }
                   Present { value: prefill } =>
                     match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
@@ -390,13 +442,6 @@ fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
   }
 }
 
-// How many DISTINCT releases the admissible set spans. Preference is ordinal within one release, so
-// more than one release means the maximum this function would return does not exist.
-//
-// The dedupe is the corpus's fold/any/append idiom rather than a call to guarantee_measurement's
-// distinct_string_count: std carries no distinct, and reaching into the guarantee-measurement module
-// for a list primitive would invert the layering -- a model-selection authority would then depend on
-// a measurement authority for something neither owns.
 // How many DISTINCT releases the admissible set spans, keyed by ReleaseIdentity rather than by a
 // display name. A name-keyed count is wrong in both directions: two revisions of one family share a
 // name and would merge, while one release referred to by an alias in one row and its canonical name
