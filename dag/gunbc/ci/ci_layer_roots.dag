@@ -25,11 +25,13 @@ import gunbc.explicit_witness_admission {
 }
 import std.witness_admission {
   WitnessConsumerCadence,
+  witness_consumer_cadence_eq,
   DiscoverySelection,
   FalsifierSelfHostWet,
   FalsifierRehomedBinWet,
   FalsifierSubstrateLongLane,
   BinWitnessWet,
+  LocalRepoWetLane,
   QuarantineProbeExpectRed,
   OfflineLocalRecipe,
   FixtureExplicitRoster,
@@ -928,19 +930,14 @@ fn witness_exclusion_row_is_substrate_long_lane(row: WitnessExclusionRow) -> Boo
   }
 }
 
+// ASKED OF THE CADENCE AUTHORITY, NOT RE-DECIDED HERE. The nine predicates around this one each
+// hand-match all ten arms, which is one comparison authored ten times over a coproduct whose own
+// module already answers it -- std.witness_admission.witness_consumer_cadence_eq. Adding an
+// eleventh instance of that shape would be the authored duplication DESIGN section 2 names, so
+// this row asks the existing authority instead. Collapsing the other nine is the same edit and a
+// separate cut: they are consumed by filters this change does not touch.
 fn witness_exclusion_row_is_local_repo_wet_lane(row: WitnessExclusionRow) -> Bool {
-  match row.classification {
-    LocalRepoWetLane => true
-    BinWitnessWet => false
-    DiscoverySelection => false
-    FalsifierSelfHostWet => false
-    FalsifierRehomedBinWet => false
-    FalsifierSubstrateLongLane => false
-    QuarantineProbeExpectRed => false
-    OfflineLocalRecipe => false
-    FixtureExplicitRoster => false
-    NoConsumer => false
-  }
+  witness_consumer_cadence_eq(a: row.classification, b: LocalRepoWetLane)
 }
 
 fn witness_exclusion_row_is_bin_witness_wet(row: WitnessExclusionRow) -> Bool {
