@@ -171,6 +171,7 @@ type MissingInstrument
   | ExactOccurrenceResidualCensus
   | PersistedBehavioralReceipt
   | PersistedPromotionOutcome
+  | LiveTreeCompilePhaseMeasurement
 
 fn missing_instrument_label(i: MissingInstrument) -> String {
   match i {
@@ -181,6 +182,7 @@ fn missing_instrument_label(i: MissingInstrument) -> String {
     ExactOccurrenceResidualCensus => "the exact occurrence and import-declaration residual an XL-2 rehearsal produces (XL-5's population)"
     PersistedBehavioralReceipt => "a persisted behavioral receipt over a discriminating corpus"
     PersistedPromotionOutcome => "a persisted PromotionOutcome over a named candidate"
+    LiveTreeCompilePhaseMeasurement => "a compile-phase board measured on the TREE UNDER JUDGMENT and joined to the receipt series by tree identity, which is what gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage consumes -- gated on an in-epoch receipt first and an affordable whole-closure measurement second, both named in this instrument's obstacle"
   }
 }
 
@@ -255,6 +257,10 @@ fn missing_instrument_obstacle(i: MissingInstrument) -> InstrumentObstacle {
     ExactOccurrenceResidualCensus => NotBuilt
     PersistedBehavioralReceipt => NotBuilt
     PersistedPromotionOutcome => NotBuilt
+    LiveTreeCompilePhaseMeasurement => RefusedByAuthority {
+      authority: decl_ref(module_path: "gunbc.whole_corpus_compile_admission", decl_name: "whole_corpus_compile_admission"),
+      why: "TWO CONDITIONS STAND BETWEEN THIS MILESTONE AND ITS EVIDENCE, AND THE ROW LEADS WITH THE BINDING ONE, because a trigger naming a capability that is not what blocks gets SATISFIED WHILE THE CAPABILITY STAYS DEAD -- the mirror of the 4b(3) failure where a trigger names less than it restores. (1) BINDING: no receipt exists in the required runners' COMPARISON EPOCH, so a live population has nothing it may legally be compared against; the frontier's own series fold refuses a cross-epoch comparison without a reclassified predecessor, and that refusal is correct. (2) ENABLING, and not the same fact: taking such a receipt means measuring a whole-closure entry, which this authority refuses on budget. The instrument that would take it (tools.emission_entry_instrument measure_entry_emission) EXISTS AND RUNS -- the refusal is about the execution surface, not a missing tool -- and the receipts behind it live on this authority and on gunbc.host_budget_source memory_stall_refusal, not transcribed here. Delivering a cgroup-limited runner alone therefore does NOT retire this row: it makes the measurement takeable and leaves the epoch condition standing. AND THE LIVE ARM ITSELF IS NOT MISSING. gunbc#9857 carries gunbc.self_host_compile_phase_live_gate -- the live measured population joined to the latest receipt through the frontier's own fold and ratchet -- BUILT, WITNESSED at twelve witnesses already enrolled under the required floor's test.claim.self_host_ prefix, and PARKED BY OPERATOR DIRECTIVE ON FUNDING GROUNDS rather than blocked on any defect. 'We chose not to fund this' and 'we cannot do this' are different states with different remedies, and reporting the second where the first is true is the same inflation in the other direction. WHEN THAT PR IS UNPARKED IT MUST CONSUME THE COVERAGE JUDGMENT RATHER THAN RE-DERIVE IT: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage answers whether the latest receipt speaks for the tree under judgment AT ALL, which is the PRECONDITION of the live gate's population question -- a regression comparison against a receipt that does not describe this tree is meaningless. One module answering the precondition and another consuming it is composition; the live gate growing its own tree-identity comparison is the section 3 fork." as NonEmptyStr
+    }
   }
 }
 
@@ -445,19 +451,9 @@ fn milestone_status(m: ProgramMilestone) -> MilestoneStanding {
         )
       )
     SelfHostRatchetGateEnrolled =>
-      match compile_phase_frontier_standing(series: self_host_compile_phase_frontier_receipts) {
-        CompilePhaseFrontierValidated { latest: _ } => standing_from_evidence(e: observe_outstanding(
-          subject: self_host_compile_phase_ratchet_enrolment.witness,
-          outstanding: []
-        ))
-        CompilePhaseFrontierEmpty => standing_from_evidence(e: observe_outstanding(
-          subject: self_host_compile_phase_ratchet_enrolment.witness,
-          outstanding: ["ratchet has no persisted baseline to gate"]
-        ))
-        CompilePhaseFrontierInvalid { reason } => standing_from_evidence(e: observe_outstanding(
-          subject: self_host_compile_phase_ratchet_enrolment.witness,
-          outstanding: [reason as String]
-        ))
+      NotDerivable {
+        why: "THIS MILESTONE CLAIMS A MERGE-BLOCKING GATE AGAINST S2'S IDENTITY-GRAIN POPULATION, and until 2026-09-01 it rendered Clear whenever the PERSISTED RECEIPT SERIES validated. Those are different facts. phase_board_series_ratchet folds authored receipts against each other, so what the enrolled witness blocks a merge on is the COHERENCE OF THE SERIES -- an incoherent receipt, a broken prefix link, an unadmitted regression left open. Nothing in it reads the tree being merged, so a regression introduced by the diff under judgment is invisible to it and the merge is blocked on nothing that measures the change. Rendering Clear there was DESIGN 4b(1) rung inflation on the compiler's own self-description, and the inflated class never ranks for climbing. WHAT SURVIVES AND IS REPORTED ELSEWHERE: the series ratchet is real, executes on the required floor, and its standing is carried by SelfHostWholeCorpusPopulationDerived and SelfHostCorpusEmitsCleanly, both of which say RECEIPT in their subject. WHAT IS MISSING is the join to the live tree: gunbc.self_host_compile_phase_frontier compile_phase_frontier_coverage is the typed judgment that decides it, it refuses rather than widens when the tree under judgment is unobserved, and it is wired to nothing that gates. Derivable once a board measured on the tree under judgment can be supplied to it." as NonEmptyStr,
+        cause: needs(i: LiveTreeCompilePhaseMeasurement)
       }
     NamespaceWaveAdmissionEnrolled =>
       standing_from_evidence(
@@ -711,6 +707,7 @@ data all_missing_instruments: List<MissingInstrument> = [
   ExactOccurrenceResidualCensus,
   PersistedBehavioralReceipt,
   PersistedPromotionOutcome,
+  LiveTreeCompilePhaseMeasurement,
 ]
 
 fn missing_instrument_eq(a: MissingInstrument, b: MissingInstrument) -> Bool {
