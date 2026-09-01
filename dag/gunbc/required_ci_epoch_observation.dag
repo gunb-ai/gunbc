@@ -152,7 +152,7 @@ func observe_required_ci_epoch_at_commit(
 ) -> RequiredCiEpochObservation {
   let commit_probe = git.Plumbing.CatFileExists(
     address: address,
-    object: concat(head_sha as String, "^{commit}"),
+    object: concat(head_sha as String, "^\{commit\}"),
   )
   if commit_probe.exit_code != 0 {
     RequiredCiEpochUnobservable {

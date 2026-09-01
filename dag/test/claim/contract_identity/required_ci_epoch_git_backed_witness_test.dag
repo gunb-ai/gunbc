@@ -1,13 +1,14 @@
 module test.claim.contract_identity.required_ci_epoch_git_backed_witness
 
 import std.types { Bool, String, Int, NonEmptyStr, FilePath, GitRef }
-import std.logic { Bool }
 import extdeps.git
+import std.algebra { trim }
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
 import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success }
-import extdeps.github.workflow_run_event { WorkflowRunEvent, CommitSha }
+import extdeps.github.workflow_run_event { WorkflowRunEvent }
+import std.types { CommitSha }
 import extdeps.languages.yaml.types { YamlValue, yaml_mapping, yaml_string, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
@@ -87,8 +88,9 @@ type EpochCommitPair {
   setup_ok: Bool
 }
 
-// Two parentless commits, each written from a private index, so neither shares any history with the
-// other and the ONLY thing that can differ between their trees is the one blob this function writes.
+// The two commits are consecutive in one repository, and the only write between them is this
+// function's single blob -- so "the trees differ only in the epoch member" is a property of what is
+// written, not a claim about two independently authored fixtures.
 func commit_epoch_fixture(repo: FilePath, epoch: String, branch: String) -> String {
   let written = Filesystem.Write(
     path: fixture_repo_file(repo: repo, name: artifact_path(a: WitnessFloorYamlArtifact)),
