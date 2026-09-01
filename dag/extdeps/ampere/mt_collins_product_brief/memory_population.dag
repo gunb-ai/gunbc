@@ -189,33 +189,110 @@ type MtCollinsChannelPopulationRole {
   additional_connector_at_two_dpc: Nat
 }
 
-// The role rows are a JOIN, not a second transcription. Exactly one member of every pair above
-// appears in the 16-DIMM row, so the assignment is total and the else-arm is the complementary
-// case rather than a default. Writing the 16 rows out literally would have been a parallel
-// authority over the same mapping, free to drift from both the pairs and the population rows.
+// The role rows are a JOIN, not a second transcription: writing the 16 rows out literally would
+// have been a parallel authority over the same mapping, free to drift from both the pair rows and
+// the population rows.
+//
+// The join REQUIRES that exactly one member of each pair appears in the 16-DIMM row, and it
+// establishes that requirement rather than assuming it. An earlier form of this function tested
+// only the left member and let the else-arm carry every other case, so a pair with NEITHER member
+// in the row, or with BOTH, still produced a plausible role - DESIGN section 5's absorbing
+// fallback, where the failure arm widens instead of refusing. Both states are authorable: they
+// need only a drift in the pair rows or in the 16-DIMM row, and the general helper accepts any
+// pair a caller hands it. So the outcome is a coproduct and the two non-XOR cases refuse with the
+// pair and a typed cause located in them.
+type MtCollinsPopulationRoleRefusalCause
+  = NeitherMemberAtOneDpc
+  | BothMembersAtOneDpc
+
+type MtCollinsPopulationRoleRefusal {
+  processor_socket: Nat
+  memory_controller: Nat
+  table_left_connector: Nat
+  table_right_connector: Nat
+  cause: MtCollinsPopulationRoleRefusalCause
+}
+
+type MtCollinsPopulationRoleOutcome
+  = PopulationRoleResolved { role: MtCollinsChannelPopulationRole }
+  | PopulationRoleRefused { refusal: MtCollinsPopulationRoleRefusal }
+
 fn mt_collins_connector_at_one_dpc(connector: Nat) -> Bool {
   fold(mt_collins_population_16_dimms.connectors, init: false, f: (acc, c) => acc || (c == connector))
 }
 
-fn mt_collins_population_role_of_pair(pair: MtCollinsChannelConnectorPair) -> MtCollinsChannelPopulationRole {
-  if mt_collins_connector_at_one_dpc(connector: pair.table_left_connector) {
-    MtCollinsChannelPopulationRole {
-      processor_socket: pair.processor_socket,
-      memory_controller: pair.memory_controller,
-      connector_used_at_one_dpc: pair.table_left_connector,
-      additional_connector_at_two_dpc: pair.table_right_connector,
-    }
+fn mt_collins_population_role_refusal(pair: MtCollinsChannelConnectorPair, cause: MtCollinsPopulationRoleRefusalCause) -> MtCollinsPopulationRoleRefusal {
+  MtCollinsPopulationRoleRefusal {
+    processor_socket: pair.processor_socket,
+    memory_controller: pair.memory_controller,
+    table_left_connector: pair.table_left_connector,
+    table_right_connector: pair.table_right_connector,
+    cause: cause,
+  }
+}
+
+fn mt_collins_population_role_of_pair(pair: MtCollinsChannelConnectorPair) -> MtCollinsPopulationRoleOutcome {
+  let left_at_one_dpc = mt_collins_connector_at_one_dpc(connector: pair.table_left_connector)
+  let right_at_one_dpc = mt_collins_connector_at_one_dpc(connector: pair.table_right_connector)
+  if left_at_one_dpc && right_at_one_dpc {
+    PopulationRoleRefused { refusal: mt_collins_population_role_refusal(pair: pair, cause: BothMembersAtOneDpc) }
   } else {
-    MtCollinsChannelPopulationRole {
-      processor_socket: pair.processor_socket,
-      memory_controller: pair.memory_controller,
-      connector_used_at_one_dpc: pair.table_right_connector,
-      additional_connector_at_two_dpc: pair.table_left_connector,
+    if left_at_one_dpc {
+      PopulationRoleResolved {
+        role: MtCollinsChannelPopulationRole {
+          processor_socket: pair.processor_socket,
+          memory_controller: pair.memory_controller,
+          connector_used_at_one_dpc: pair.table_left_connector,
+          additional_connector_at_two_dpc: pair.table_right_connector,
+        }
+      }
+    } else {
+      if right_at_one_dpc {
+        PopulationRoleResolved {
+          role: MtCollinsChannelPopulationRole {
+            processor_socket: pair.processor_socket,
+            memory_controller: pair.memory_controller,
+            connector_used_at_one_dpc: pair.table_right_connector,
+            additional_connector_at_two_dpc: pair.table_left_connector,
+          }
+        }
+      } else {
+        PopulationRoleRefused { refusal: mt_collins_population_role_refusal(pair: pair, cause: NeitherMemberAtOneDpc) }
+      }
     }
   }
 }
 
-data mt_collins_channel_population_roles: List<MtCollinsChannelPopulationRole> = fold(mt_collins_channel_connector_pairs, init: [], f: (acc, pair) => concat(acc, [mt_collins_population_role_of_pair(pair: pair)]))
+// The AGGREGATE refuses as a whole. A List<MtCollinsChannelPopulationRole> beside a list of
+// refusals would let a consumer read fifteen good roles and never learn the sixteenth pair failed
+// the partition, which is the same widening one level up. So the standing is a coproduct: either
+// every pair resolved, or nobody gets roles and the refusals are what the carrier holds.
+type MtCollinsPopulationRoleTally {
+  roles: List<MtCollinsChannelPopulationRole>
+  refusals: List<MtCollinsPopulationRoleRefusal>
+}
+
+type MtCollinsChannelPopulationRoleStanding
+  = PopulationRolesResolved { roles: List<MtCollinsChannelPopulationRole> }
+  | PopulationRolesRefused { refusals: List<MtCollinsPopulationRoleRefusal> }
+
+fn mt_collins_tally_population_role(tally: MtCollinsPopulationRoleTally, pair: MtCollinsChannelConnectorPair) -> MtCollinsPopulationRoleTally {
+  match mt_collins_population_role_of_pair(pair: pair) {
+    PopulationRoleResolved { role: r } => MtCollinsPopulationRoleTally { roles: concat(tally.roles, [r]), refusals: tally.refusals }
+    PopulationRoleRefused { refusal: f } => MtCollinsPopulationRoleTally { roles: tally.roles, refusals: concat(tally.refusals, [f]) }
+  }
+}
+
+fn mt_collins_population_role_standing(pairs: List<MtCollinsChannelConnectorPair>) -> MtCollinsChannelPopulationRoleStanding {
+  let tally = fold(pairs, init: MtCollinsPopulationRoleTally { roles: [], refusals: [] }, f: (acc, pair) => mt_collins_tally_population_role(tally: acc, pair: pair))
+  if tally.refusals.length() == 0 {
+    PopulationRolesResolved { roles: tally.roles }
+  } else {
+    PopulationRolesRefused { refusals: tally.refusals }
+  }
+}
+
+data mt_collins_channel_population_roles: MtCollinsChannelPopulationRoleStanding = mt_collins_population_role_standing(pairs: mt_collins_channel_connector_pairs)
 
 // HOW THE MAPPING WAS ESTABLISHED, AND THE CHECK THAT DISCRIMINATES IT. An earlier revision of
 // this file recorded a channel-count agreement as corroboration. That check is worthless here
