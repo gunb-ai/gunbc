@@ -813,26 +813,70 @@ fn is_optional_value(v: &Value, ctx: &InterpContext) -> bool {
 /// `None` = the roster has no row for this spelling (not an algebra method, or a free-call-only
 /// builtin); `Some(false)` = declared non-optional. A spelling whose rows DISAGREE is refused by
 /// the caller rather than resolved by majority — a mixed roster is a modelling defect, not an input.
-fn algebra_row_returns_optional(method: &str) -> Option<Result<bool, ()>> {
-    let mut optional = false;
-    let mut plain = false;
-    for t in crate::std_algebra::all_algebra_field_templates().iter() {
-        if t.name != method {
-            continue;
-        }
-        if matches!(
-            *t.return_type,
-            crate::std_algebra::AlgebraTypeTemplate::OptionalOf { .. }
-        ) {
-            optional = true;
-        } else {
-            plain = true;
-        }
-    }
-    match (optional, plain) {
-        (false, false) => None,
-        (true, true) => Some(Err(())),
-        (o, _) => Some(Ok(o)),
+/// THE ALGEBRA IS RECEIVER-KEYED AND A SPELLING IS NOT. `get` is declared in three profiles with
+/// two different shapes; `count`, `length` and `reverse` are declared in four each. Selecting rows
+/// by METHOD SPELLING ALONE over `all_algebra_field_templates()` therefore either refuses a valid
+/// row because a different profile gives that spelling a different shape, or -- where the shapes
+/// happen not to disagree -- validates against a row that is not the one the receiver selected.
+/// The receiver's own carrier answers which profile applies, and `kernel_algebra_profile()` is the
+/// authority that maps a carrier spelling to it, so the profile is derived from the value at hand
+/// rather than searched for by name. A receiver whose carrier has no profile row (a record, a
+/// variant, a scalar) yields `None` and the judgement declines rather than guessing.
+fn receiver_algebra_profile(v: &Value) -> Option<crate::std_algebra::AlgebraProfile> {
+    let spelling = match v {
+        Value::List(_) => "List",
+        Value::Map(_) => "Map",
+        Value::Set(_) => "Set",
+        Value::Str(_) => "String",
+        _ => return None,
+    };
+    crate::std_algebra::kernel_algebra_profile()
+        .get(spelling)
+        .cloned()
+}
+
+/// The one row the receiver's profile declares for this spelling, or `None` when the profile has
+/// no row for it. Never a scan across profiles: two rows for one spelling in ONE profile would be
+/// a modelling defect in that profile, and there are none.
+fn algebra_row_for_receiver(
+    method: &str,
+    profile: Option<crate::std_algebra::AlgebraProfile>,
+) -> Option<Rc<crate::std_algebra::AlgebraFieldTemplate>> {
+    let profile = profile?;
+    crate::std_algebra::algebra_templates_for_profile(profile)
+        .iter()
+        .find(|t| t.name == method)
+        .cloned()
+}
+
+/// What a declared return template says about the result's `Optional`-ness, in BOTH directions.
+///
+/// The naive symmetric rule -- "a row that does not declare `OptionalOf` must not return an
+/// Optional" -- is WRONG and would be the over-refusal this file already made once. `ReceiverSelf`,
+/// `ReceiverElement`, `ReceiverKey`, `ReceiverValue` and `AlgebraTypeVariable` are all satisfiable
+/// BY an Optional at runtime: `[Absent] |> reverse` is a list of Optionals, and `fold` over an
+/// Optional accumulator returns one. Only a template naming a CONCRETE non-Optional shape
+/// constrains the result in the negative direction, so only those refuse.
+enum DeclaredOptionality {
+    MustBeOptional,
+    MustNotBeOptional,
+    Unconstrained,
+}
+
+fn declared_optionality(t: &crate::std_algebra::AlgebraTypeTemplate) -> DeclaredOptionality {
+    use crate::std_algebra::AlgebraTypeTemplate as T;
+    match t {
+        T::OptionalOf { .. } => DeclaredOptionality::MustBeOptional,
+        T::NamedTemplate { .. }
+        | T::ContainerOf { .. }
+        | T::TupleOf { .. }
+        | T::WitnessOf { .. }
+        | T::CallableOf { .. } => DeclaredOptionality::MustNotBeOptional,
+        T::ReceiverSelf
+        | T::ReceiverElement
+        | T::ReceiverKey
+        | T::ReceiverValue
+        | T::AlgebraTypeVariable { .. } => DeclaredOptionality::Unconstrained,
     }
 }
 
@@ -906,22 +950,19 @@ fn param_declares_required_value(
 /// silently producing a value the emitted mirror would never produce.
 fn algebra_result_matches_declared_optionality(
     method: &str,
+    profile: Option<crate::std_algebra::AlgebraProfile>,
     value: Value,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    match algebra_row_returns_optional(method) {
-        None => Ok(value),
-        Some(Err(())) => Err(InterpError::TypeError {
-            msg: format!(
-                "algebra roster disagrees with itself about `{}`: some rows declare \
-                 `OptionalOf` and some do not, so the interpreter cannot derive the method's \
-                 optionality from dag/std/algebra.dag",
-                method
-            ),
-        }),
-        Some(Ok(false)) => Ok(value),
-        Some(Ok(true)) => {
-            if is_optional_value(&value, ctx) {
+    let row = match algebra_row_for_receiver(method, profile) {
+        Some(row) => row,
+        None => return Ok(value),
+    };
+    let is_opt = is_optional_value(&value, ctx);
+    match declared_optionality(&row.return_type) {
+        DeclaredOptionality::Unconstrained => Ok(value),
+        DeclaredOptionality::MustBeOptional => {
+            if is_opt {
                 Ok(value)
             } else {
                 Err(InterpError::TypeError {
@@ -933,6 +974,21 @@ fn algebra_result_matches_declared_optionality(
                         value.type_label()
                     ),
                 })
+            }
+        }
+        DeclaredOptionality::MustNotBeOptional => {
+            if is_opt {
+                Err(InterpError::TypeError {
+                    msg: format!(
+                        "interpreter arm for `{}` produced an `Optional` where dag/std/algebra.dag \
+                         declares a concrete non-optional return; the emitted realization returns \
+                         the bare value here, so wrapping it would be the same divergence read \
+                         from the other side",
+                        method
+                    ),
+                })
+            } else {
+                Ok(value)
             }
         }
     }
@@ -9629,9 +9685,10 @@ fn eval_algebra_method_inner(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
+    let receiver_profile = receiver_algebra_profile(&receiver);
     let produced: InterpResult<Value> =
         v1_algebra_method_arms!(v1_algebra_dispatch, method, receiver, args, env, ctx);
-    algebra_result_matches_declared_optionality(method, produced?, ctx)
+    algebra_result_matches_declared_optionality(method, receiver_profile, produced?, ctx)
 }
 
 pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {

@@ -150,3 +150,30 @@ test fn a_present_optional_against_none_is_ordinary_false() -> Bool {
 test fn a_present_optional_is_unequal_to_none() -> Bool {
   Present { value: "x" } != none
 }
+
+// THE OPTIONALITY JUDGEMENT NOW SELECTS THE ROW THE RECEIVER SELECTS, AND ITS OWN RED IS NOT
+// AUTHORABLE HERE. It used to scan all_algebra_field_templates() by METHOD SPELLING and fold the
+// hits into one boolean. The algebra is receiver-keyed and a spelling is not: 23 spellings are
+// declared in more than one profile, and three of them declare DIFFERENT return templates --
+// `join` is ReceiverSelf in two profiles and NamedTemplate { name: "String" } in the collection
+// profile, `member` and `get` likewise. So a spelling scan either refuses a valid row because a
+// sibling profile shapes it differently, or judges against a row the receiver never selected. The
+// judgement now derives the profile from the receiver value's own carrier through
+// kernel_algebra_profile and takes that profile's single row.
+//
+// It also judges BOTH directions now: a row declaring a concrete non-optional return refuses an
+// Optional result, which the old boolean could not express. The naive symmetric rule was NOT
+// implemented and the reason is the over-refusal this file already made once -- ReceiverSelf,
+// ReceiverElement, ReceiverKey, ReceiverValue and AlgebraTypeVariable are all satisfiable BY an
+// Optional at runtime, so only a template naming a concrete shape constrains the negative
+// direction.
+//
+// NO ENROLLED RED EXISTS FOR EITHER HALF AND THAT IS MEASURED, NOT ASSUMED: zero spellings in
+// dag/std/algebra.dag declare mixed optionality across profiles today, so the old scan happened to
+// reach the right optionality for every live spelling and no accepted program can distinguish the
+// two selections. The discrimination is therefore MUTATION-MEASURED: with the `join` arm altered
+// to return optional_present(..), `["a", "b"] |> join(",")` refuses with "produced an `Optional`
+// where dag/std/algebra.dag declares a concrete non-optional return", and passes again unaltered.
+// NEXT-RUNG TRIGGER: a spelling whose profiles disagree about optionality entering the algebra, or
+// a fixture harness able to present synthetic algebra rows to the judgement -- at which point the
+// red becomes authorable and enrolls here rather than being re-measured by hand.
