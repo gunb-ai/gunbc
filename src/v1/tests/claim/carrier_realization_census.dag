@@ -1,14 +1,14 @@
 module v1.tests.claim.carrier_realization_census
 
 import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
-import v1.compiler.emit_rust { is_host_text_carrier_type }
+import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params }
 import v1.compiler.emit_core_support { is_type_def_item }
 import v1.compiler.infer_types { is_coproduct_type, child_type_node }
 import v1.compiler.coercion { type_realization_decision, type_reference_decl_file, decl_identity_file }
 import v1.compiler.artifact { Rust }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 import v1.compiler.infer_env { TypeEnv, lookup_type_for }
-import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved }
+import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow }
 import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
 import std.types { List, String, Map, Bool }
 
@@ -194,33 +194,80 @@ fn typed_decision_row(
   }
 }
 
-// KNOWN OPEN DEFECT IN THE OCCURRENCE SET, recorded here rather than in a plan because it is the
-// one thing that makes this instrument's output untrustworthy today and a reader of the rows must
-// meet it before the rows. THE WALK ADMITS NON-CARRIER NODES. On the first typed subject its
-// authored_name column holds `fn` for every function-typed declaration field -- child_type_node of
-// an arrow field yields the arrow node itself -- and single-letter generic PARAMETER names, because
-// item.params over a type declaration yields its type parameters rather than a signature's value
-// parameters. The pre-reconcile census hit the identical class and its repair did not carry over
-// here, which is the point: this is a property of the WALK, and it must be re-established at every
-// grain the walk changes rather than assumed to travel with the fix.
+// THE OCCURRENCE SET, AND THE TWO ADMISSIONS THAT WERE REPAIRED HERE. The first landing of this
+// module recorded that the walk admitted non-carrier nodes and declined to repair it until the
+// repair could be measured. Both admissions are now closed, and each was established from the
+// PARSER rather than inferred from the census's own output, because a walk defect diagnosed from
+// the instrument's rows is diagnosed by the instrument under suspicion.
 //
-// It is not repaired in the change that lands this module, deliberately. The repair is only
-// verifiable against the calibration control -- the diagnostic-producing subset of the divergence
-// rows must equal the arm-A sites the design already counted -- and an occurrence-set edit made
-// without that control is how this instrument produced two published-and-withdrawn readings. NO
-// COUNT FROM THIS CENSUS IS PUBLISHABLE UNTIL THAT CONTROL RUNS, and while the walk admits `fn`
-// nodes no count would mean anything anyway.
+// (1) AN ARROW NODE IS NOT A TYPE REFERENCE. child_type_node of a function-typed field yields the
+// arrow node itself, whose authored name is the keyword `fn`, so every such field contributed one
+// row naming a carrier that does not exist while contributing NO row for the type references the
+// arrow actually contains. An arrow is now DESCENDED, never reported: its children are the type
+// positions, and they are what the emitter renders.
+//
+// (2) A GENERIC TYPE PARAMETER IS NOT A SIGNATURE PARAMETER, and the first note had this subject
+// wrong in a way worth recording. It said item.params over a TYPE DECLARATION yields type
+// parameters; measured, no type declaration contributes a signature row at all -- the guard on
+// item.body already excludes them. The real source is FUNCTION declarations:
+// v1.compiler.parse parse_fn_body_from_prefix builds `all_params = concat(type_params, params)`,
+// so a fn item's params field carries its generic parameters FIRST and its value parameters after.
+// `fn list_head<T>(xs: FreeMonoid<T>)` therefore contributed a row for T. The split authority is
+// v1.compiler.emit_rust function_value_params, which the emitter itself uses to render signatures;
+// it is IMPORTED here for the same reason the carrier predicate is -- a second copy of the
+// value/generic split would be a fork of the decision the census exists to observe.
+//
+// WHAT THIS STILL DOES NOT LICENSE: a published count. The calibration control -- the
+// diagnostic-producing subset of the divergence rows joined to the design's arm-A sites by source
+// declaration and enclosing declaration, never by line -- has not run, and until it does the
+// divergence figure is a measurement of this walk rather than of the emitter.
 
 fn no_typed_rows() -> List<TypedCarrierRow> {
   []
 }
 
+// The one place a node becomes rows. An arrow contributes its type positions and never itself;
+// every other node contributes exactly one row.
+//
+// AN ARROW'S POSITIONS ARE ITS PARAMS AND ITS RESOLVED RETURN, NOT ITS CHILDREN, and this is
+// taken from the emitter rather than guessed: v1.compiler.emit_rust render_rust_arrow_type_in_scope
+// renders exactly `n.params |> param_node_type_expr` plus the node behind `n.inferred`. A first
+// attempt here descended into n.children, which is EMPTY for an arrow -- so every function-typed
+// position silently contributed no row at all, trading a row that named a carrier that does not
+// exist for the absence of the rows that do. Measured on the v2.std.text closure: `fold_list`'s
+// `cons: fn(A, T) -> A` produced nothing until the descent matched the renderer.
+//
+// The arrow test is a match rather than `n.connective == Arrow`, because a variant name followed
+// by `{` parses as a record construction, so the equality form makes the if-block's own brace read
+// as Arrow's constructor. v1.compiler.emit_rust rust_type_node_is_arrow is named for the same
+// reason, and v1.compiler.resolve takes the same shape.
+fn typed_occurrence_rows(
+  module_file: String, enclosing: String, position_kind: String, n: Node, env: TypeEnv, si: Map<String, NewlineIndex>
+) -> List<TypedCarrierRow> {
+  let node_is_arrow = match n.connective { Arrow => true  _ => false }
+  if node_is_arrow {
+    let param_rows = n.params |> fold(init: no_typed_rows(), f: (acc, p) => concat(acc, typed_occurrence_rows(
+      module_file: module_file, enclosing: enclosing, position_kind: concat(position_kind, "/fn_type_param"),
+      n: param_node_type_expr(n: p), env: env, si: si)))
+    let return_rows = match n.inferred {
+      Present { value: Resolved { node: rt } } => typed_occurrence_rows(
+        module_file: module_file, enclosing: enclosing, position_kind: concat(position_kind, "/fn_type_return"),
+        n: rt, env: env, si: si)
+      _ => no_typed_rows()
+    }
+    concat(param_rows, return_rows)
+  } else {
+    [typed_decision_row(
+      module_file: module_file, enclosing: enclosing, position_kind: position_kind, n: n, env: env, si: si)]
+  }
+}
+
 fn typed_field_rows(
   module_file: String, enclosing: String, fields: List<Node>, env: TypeEnv, si: Map<String, NewlineIndex>
 ) -> List<TypedCarrierRow> {
-  fields |> fold(init: no_typed_rows(), f: (acc, fld) => concat(acc, [typed_decision_row(
+  fields |> fold(init: no_typed_rows(), f: (acc, fld) => concat(acc, typed_occurrence_rows(
     module_file: module_file, enclosing: enclosing, position_kind: "declaration_field",
-    n: child_type_node(ch: fld), env: env, si: si)]))
+    n: child_type_node(ch: fld), env: env, si: si)))
 }
 
 fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
@@ -236,9 +283,9 @@ fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, si: Map<String
   let param_rows_t = if item.body == none {
     no_typed_rows()
   } else {
-    item.params |> fold(init: no_typed_rows(), f: (acc, prm) => concat(acc, [typed_decision_row(
+    function_value_params(params: item.params) |> fold(init: no_typed_rows(), f: (acc, prm) => concat(acc, typed_occurrence_rows(
       module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_param",
-      n: param_node_type_expr(n: prm), env: env, si: si)]))
+      n: param_node_type_expr(n: prm), env: env, si: si)))
   }
   concat(decl_rows, param_rows_t)
 }
