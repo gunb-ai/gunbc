@@ -12,8 +12,9 @@ import gunbc.model.publication {
 //
 // THE INVARIANT: failure to enter a later population must never remove membership from an earlier
 // one. Open weights exist regardless of whether a packager packaged them, a runtime loads them, a
-// host fits them, or they answer well. Those are downstream verdicts about a REALIZATION; none is a
-// fact about the release.
+// host fits them, or they answer well. Whether any packager packaged the release is still a fact
+// about the release; whether a particular artifact loads, fits or answers well is a verdict about a
+// REALIZATION, and no such verdict is representable at this grain -- see PopulationStage.
 //
 // HOW IT IS MADE STRUCTURAL RATHER THAN CHECKED. A narrowed population is not authored -- it is
 // CONSTRUCTED FROM A PARENT by filtering, and it retains the parent. Members of a stage are a subset
@@ -23,26 +24,28 @@ import gunbc.model.publication {
 // regression to be written into. A lens checking this afterwards would be a second representation of
 // something the construction already guarantees.
 
-// The ordered stages. Each names what it is a verdict about, and every one below the first is a
-// verdict about a REALIZATION of the release rather than about the release.
+// The ordered stages. Each names what it is a verdict about, and BOTH are verdicts about the
+// RELEASE -- which is the grain this population's members are keyed at.
+//
+// WHY THE LATER STAGES ARE NOT HERE. Runtime compatibility, single- and multi-node feasibility,
+// context qualification and coding qualification are verdicts about a REALIZATION -- one artifact,
+// one quantization, one runtime -- and this repository's own measurements falsify keying them by
+// release: DeepSeek V4 Flash 0731 at IQ2_XXS is single-node feasible at a 400k floor while the SAME
+// release at IQ3_S is not. A `List<ModelRelease>` cannot retain that distinction, so a stage keyed
+// here would answer "DeepSeek V4 is in" for both and lose the only fact the measurement produced.
+// Enumerating them anyway would be rung inflation: a stage name that reads as a modeled verdict
+// while the carrier underneath cannot hold the verdict's subject.
+//
+// NEXT-RUNG TRIGGER: a RealizationIdentity distinguishing artifact x quantization x runtime, and a
+// RealizationPopulation whose members carry it. Those stages belong to that carrier, not this one.
 type PopulationStage
   = OpenWeightStage
   | LocallyPackagedStage
-  | RuntimeCompatibleStage
-  | SingleNodeFeasibleStage
-  | MultiNodeFeasibleStage
-  | ContextQualifiedStage
-  | CodingQualifiedStage
 
 fn population_stage_wire(stage: PopulationStage) -> String {
   match stage {
     OpenWeightStage => "open-weight"
     LocallyPackagedStage => "locally-packaged"
-    RuntimeCompatibleStage => "runtime-compatible"
-    SingleNodeFeasibleStage => "single-node-feasible"
-    MultiNodeFeasibleStage => "multi-node-feasible"
-    ContextQualifiedStage => "context-qualified"
-    CodingQualifiedStage => "coding-qualified"
   }
 }
 
@@ -135,7 +138,7 @@ fn open_weight_completeness(population: ModelPopulation) -> CompletenessVerdict 
           "completeness about the open-weight universe was asked of the ",
           population_stage_wire(stage: population.stage),
           " stage, which is a narrowing of ", population_stage_wire(stage: p),
-          " -- a later stage is a verdict about realizations and under-reports the universe",
+          " -- a narrowed stage is a filtered subset and under-reports the universe",
         ], ""),
       }
     DiscoveredRoot { sources: sources } =>

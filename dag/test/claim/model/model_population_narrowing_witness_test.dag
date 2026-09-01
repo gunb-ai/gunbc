@@ -14,7 +14,7 @@ import gunbc.model.publication {
 }
 import gunbc.model.population {
   ModelPopulation,
-  LocallyPackagedStage, SingleNodeFeasibleStage,
+  LocallyPackagedStage,
   ReleaseDiscoverySource,
   PublisherReleaseCatalog, SingleDistributorCatalog,
   open_weight_population, narrow_population,
@@ -122,10 +122,16 @@ test fn w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable() -
     && population_holds(population: root(), id: deepseek_v4_flash_id)
 }
 
-// RED 3 -- not fitting one host was read as the model being unavailable.
-test fn w_single_node_infeasibility_does_not_remove_from_the_open_weight_population() -> Bool {
-  let feasible = narrow_population(parent: root(), stage: SingleNodeFeasibleStage, admits: [])
-  length(feasible.members) == 0
+// RED 3 -- a narrowing that admits NOTHING must still leave the root intact. This is the general
+// form of the original error: not fitting one host was read as the model being unavailable.
+//
+// The specific single-node verdict is no longer expressible as a population stage, because it is a
+// verdict about a REALIZATION and this population is keyed by release -- see PopulationStage. The
+// invariant it was witnessing is the one asserted here, and it is the stronger statement: NO
+// narrowing, empty or otherwise, reaches back into its parent.
+test fn w_an_empty_narrowing_does_not_remove_from_the_open_weight_population() -> Bool {
+  let admitted_nothing = narrow_population(parent: root(), stage: LocallyPackagedStage, admits: [])
+  length(admitted_nothing.members) == 0
     && population_holds(population: root(), id: deepseek_v4_flash_id)
 }
 
@@ -188,7 +194,7 @@ test fn w_a_narrowed_stage_refuses_completeness_about_the_open_weight_universe()
 test fn w_all_population_claims_hold() -> Bool {
   w_ollama_local_absence_does_not_remove_from_the_open_weight_population()
     && w_ollama_cloud_presence_does_not_imply_local_weights_are_unavailable()
-    && w_single_node_infeasibility_does_not_remove_from_the_open_weight_population()
+    && w_an_empty_narrowing_does_not_remove_from_the_open_weight_population()
     && w_narrowing_cannot_introduce_a_member_the_parent_lacked()
     && w_a_closed_weight_release_is_excluded_from_the_open_weight_population()
     && w_completeness_refuses_when_every_source_is_a_single_distributor()

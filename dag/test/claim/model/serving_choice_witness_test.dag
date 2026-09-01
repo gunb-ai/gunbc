@@ -10,7 +10,7 @@ import std.measure {
 import gunbc.model.publication { ReleaseIdentity }
 import gunbc.model.choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
-  PrefillObservation, prefill_rate_at_floor,
+  FreshPrefillObservation, prefill_rate_at_floor,
   FreshSessionPrefill, WarmContinuation, serving_regime_wire,
   NodeCapacity, QuantizedCandidate, ServingConstraints,
   CandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
@@ -73,10 +73,10 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 2,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 160060), rate: tokens_per_second(count: 253) },
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 160060), rate: tokens_per_second(count: 253) },
+    FreshPrefillObservation { depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
   ],
   kv_per_token: Present { value: kv_per_token },
 }
@@ -88,7 +88,7 @@ data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: none,
-  prefill_observations: [],
+  fresh_prefill_observations: [],
   kv_per_token: Present { value: kv_per_token },
 }
 
@@ -189,8 +189,8 @@ data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 1,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
   kv_per_token: Present { value: byte_size(count: 20000) },
 }
@@ -202,8 +202,8 @@ data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 9,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
   ],
   kv_per_token: Present { value: byte_size(count: 20000) },
 }
@@ -240,8 +240,7 @@ test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bo
 // (253 -> 197 -> 135 measured on one realization), so a shallow reading flatters the candidate.
 test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool {
   match prefill_rate_at_floor(
-    observations: [PrefillObservation {
-      regime: FreshSessionPrefill,
+    observations: [FreshPrefillObservation {
       depth: token_count(count: 160060),
       rate: tokens_per_second(count: 253),
     }],
@@ -282,10 +281,11 @@ test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
 // This is the arm that matters commercially, because the substitution is flattering in exactly one
 // direction: warm numbers are the fast ones, so letting a warm receipt answer a fresh question would
 // admit a realization that cannot serve a cold request at the floor. Here neither substitution is
-// available, because the filter is regime equality and there is no widening arm to take.
+// available. And the refusal is now STRUCTURAL rather than filtered: an observation carries no
+// regime field at all, so a warm rate is not merely unmatched here, it is unwritable anywhere. The
+// non-fresh arms of prefill_rate_at_floor have nothing to read.
 test fn w_a_fresh_prefill_receipt_does_not_answer_a_warm_continuation_floor() -> Bool {
-  let deep_fresh = [PrefillObservation {
-    regime: FreshSessionPrefill,
+  let deep_fresh = [FreshPrefillObservation {
     depth: token_count(count: 400060),
     rate: tokens_per_second(count: 135),
   }]
@@ -353,8 +353,8 @@ data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 4,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
   ],
   kv_per_token: none,
 }
@@ -398,8 +398,8 @@ data other_release: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
   ],
   kv_per_token: Present { value: byte_size(count: 20000) },
 }
@@ -464,8 +464,8 @@ data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
   kv_per_token: Present { value: byte_size(count: 20000) },
 }
@@ -477,8 +477,8 @@ data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
-  prefill_observations: [
-    PrefillObservation { regime: FreshSessionPrefill, depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
+  fresh_prefill_observations: [
+    FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
   kv_per_token: Present { value: byte_size(count: 20000) },
 }

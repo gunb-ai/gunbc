@@ -24,8 +24,16 @@ import std.measure {
 //
 // WHAT IT REFUSES TO DO: pick silently when nothing fits. A refusal names the BINDING AXIS per
 // candidate, which is what makes "would more hardware help" a derivable question instead of a
-// debate. If every candidate is bound by memory, more nodes help; if they are bound by a context
-// floor no published artifact reaches, more nodes buy nothing and the floor is the thing to move.
+// debate.
+//
+// IT IS NOT, HOWEVER, AN ANSWER TO THAT QUESTION. A memory rejection proves only that more USABLE
+// memory would remove this rejection -- not that another node supplies memory this realization can
+// use, which depends on distributed-runtime and topology facts this axis does not carry. The
+// hardware question is the counterfactual, and it is answered by running this function twice:
+//
+//     choose(current_supply)  versus  choose(current_supply + proposed_supply)
+//
+// A rejection census is the INPUT to that comparison, never a substitute for it.
 
 // ============================ CAPACITY, at the three grains that actually differ ============================
 
@@ -81,7 +89,7 @@ type QuantizedCandidate {
   quality_rank: Int
   declared_context: TokenCount
   semantic_context_verified_to: TokenCount?
-  prefill_observations: List<PrefillObservation>
+  fresh_prefill_observations: List<FreshPrefillObservation>
   kv_per_token: ByteSize?
 }
 
@@ -111,16 +119,23 @@ fn serving_regime_wire(regime: ServingRegime) -> String {
   }
 }
 
-fn same_regime(a: ServingRegime, b: ServingRegime) -> Bool {
-  match a {
-    FreshSessionPrefill => match b { FreshSessionPrefill => true  WarmContinuation => false  RestoredSession => false }
-    WarmContinuation    => match b { FreshSessionPrefill => false WarmContinuation => true   RestoredSession => false }
-    RestoredSession     => match b { FreshSessionPrefill => false WarmContinuation => false  RestoredSession => true }
-  }
-}
-
-type PrefillObservation {
-  regime: ServingRegime
+// AN OBSERVATION CARRIES NO REGIME FIELD, and that absence is the wall.
+//
+// Enumerating three regimes on the observation would make `{ regime: WarmContinuation, rate: 500 }`
+// an ordinary writable record: the fast number, mintable by anyone, with nothing behind it. The
+// discrimination would be real and the PROVENANCE would be fiction, which is the flattering
+// direction of the error this split exists to close.
+//
+// A warm or restored rate is only a fact about serving if something attests the reuse it claims --
+// the same realization, a cache/session identity, the reused-token population, the concurrency
+// condition it held under. This repository can produce none of those today. So the only regime an
+// observation can be about is the one whose provenance needs no receipt: a fresh prefill measures
+// itself. Warm and restored floors are therefore UNANSWERABLE rather than answered, and no edit to
+// this module short of building the receipt can change that.
+//
+// NEXT-RUNG TRIGGER: a PrefixReuseReceipt carrier produced by the observation layer, at which point
+// a WarmPrefillObservation may be constructed FROM one and not otherwise.
+type FreshPrefillObservation {
   depth: TokenCount
   rate: TokensPerSecond
 }
@@ -129,20 +144,29 @@ type PrefillObservation {
 // observation exists. Slowest rather than fastest because a floor is a promise about the worst case
 // a caller will meet.
 //
-// REGIME MISMATCH IS ABSENT, NOT A FALLBACK TO WHATEVER WAS MEASURED. A candidate holding only
-// fresh-prefill observations, asked about a warm-continuation floor, is UNANSWERABLE -- it has not
-// failed the test, it has not taken it. Substituting the fresh number would refuse a candidate that
-// may serve warm perfectly well; substituting a warm number for a fresh question is the dangerous
-// direction and would admit one that cannot. Neither substitution is available here because the
-// filter is on regime equality, so the widening arm does not exist to be taken.
+// REGIME MISMATCH IS ABSENT, NOT A FALLBACK TO WHATEVER WAS MEASURED. A candidate asked about a
+// warm-continuation floor is UNANSWERABLE -- it has not failed the test, it has not taken it.
+// Substituting the fresh number would refuse a candidate that may serve warm perfectly well;
+// substituting a warm number for a fresh question is the dangerous direction and would admit one
+// that cannot. Neither substitution is available here: the non-fresh arms have no observation to
+// read at all, so the widening arm does not exist to be taken.
 fn prefill_rate_at_floor(
-  observations: List<PrefillObservation>,
+  observations: List<FreshPrefillObservation>,
   floor: TokenCount,
   regime: ServingRegime,
 ) -> TokensPerSecond? {
-  let deep = filter(observations, o =>
-    same_regime(a: o.regime, b: regime)
-      && token_count_value(t: o.depth) >= token_count_value(t: floor))
+  match regime {
+    WarmContinuation => none
+    RestoredSession => none
+    FreshSessionPrefill => slowest_fresh_rate_at_floor(observations: observations, floor: floor)
+  }
+}
+
+fn slowest_fresh_rate_at_floor(
+  observations: List<FreshPrefillObservation>,
+  floor: TokenCount,
+) -> TokensPerSecond? {
+  let deep = filter(observations, o => token_count_value(t: o.depth) >= token_count_value(t: floor))
   fold(deep, none, (worst, o) =>
     match worst {
       Absent => Present { value: o.rate }
@@ -212,8 +236,8 @@ fn missing_fact_wire(missing: MissingFact) -> String {
 }
 
 // Why a candidate was rejected, at the grain that tells you what to change. One axis per arm, so a
-// census over rejections partitions cleanly into "buy hardware", "lower a floor", "wait for a
-// better artifact".
+// census over rejections says which INPUT would have to move -- usable memory, a declared floor, a
+// published artifact -- without claiming which purchase moves it.
 type RejectionAxis
   = DoesNotFitMemory { required: ByteSize, allocatable: ByteSize }
   | ContextBelowFloor { declared: TokenCount, floor: TokenCount }
@@ -285,7 +309,7 @@ fn evaluate_candidate(
                   axis: ContextBelowFloor { declared: verified, floor: constraints.context_floor },
                 }
                 false => match prefill_rate_at_floor(
-                  observations: candidate.prefill_observations,
+                  observations: candidate.fresh_prefill_observations,
                   floor: constraints.context_floor,
                   regime: constraints.prefill_regime,
                 ) {
