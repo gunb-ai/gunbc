@@ -10900,8 +10900,11 @@ const FLOOR_PHASE_JOURNAL_ENV: &str = "GUNBC_FLOOR_PHASE_JOURNAL";
 // subject + measurement events land on the #8163 RecordedObservation per-producer ledger
 // (target/floor-attempts/<attempt>/events/<producer>.jsonl). Dissolve-on: #8163 on main +
 // floor walk emits through that ledger with a dedicated producer identity; delete this append
-// path once FLOOR2 consumes the ledger green by execution. NOT serialized into the floor
-// component receipt — see floor_component_resource_checkpoint_note.
+// path once FLOOR2 consumes the ledger green by execution. This clause used to say the rows
+// were NOT serialized into the floor component receipt, citing two notes that resolved in
+// neither the receipt module nor anywhere else; that receipt pair (gunbc.floor_component_receipt
+// and its document module) was deleted on 2026-09-01 as unreachable residue of the 2026-08-15
+// CI cut, so the journal is now the only carrier of this identity, without qualification.
 fn append_active_workset_phase_journal(state: &str, detail: &str) {
     let Some(path) = std::env::var_os(FLOOR_PHASE_JOURNAL_ENV) else {
         return;
@@ -11098,14 +11101,18 @@ mod active_workset_kill_path_controls {
 
     /// SIGKILL / step-cap / panic paths never run `active_workset_complete`. Durable
     /// in-flight identity for that class is the GUNBC_FLOOR_PHASE_JOURNAL active-workset
-    /// rows (admitted without a matching completed), not the floor component receipt —
-    /// see floor_component_resource_checkpoint_note and floor_component_phase_journal_scaffold_note.
+    /// rows (admitted without a matching completed). This used to add "not the floor component
+    /// receipt", citing two notes that resolved nowhere; the receipt pair was deleted on
+    /// 2026-09-01 as unreachable residue of the 2026-08-15 CI cut.
     #[test]
     fn admitted_entry_survives_without_completion() {
         with_active_workset_test_lock(|| {
             std::env::set_var("GUNBC_FLOOR_WALK_ATTEMPT_ID", "kill-control-admit-only");
-            let entry = "dag/test/claim/floor_component_receipt_witness_test.dag";
-            let function = "floor_component_receipt_run_incomplete_tail_holds";
+            // Opaque labels: this test exercises the in-memory registry, not any real
+            // witness, so the strings must not name a corpus entry that could be deleted
+            // out from under them (the pair named here previously did exactly that).
+            let entry = "<in-memory registry test entry>";
+            let function = "<in-memory registry test function>";
             active_workset_admit(entry, function);
             let snap = active_workset_snapshot();
             assert_eq!(
