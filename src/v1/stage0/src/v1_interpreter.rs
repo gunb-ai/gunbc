@@ -784,6 +784,160 @@ fn optional_absent(ctx: &InterpContext) -> Value {
     }
 }
 
+/// Whether a value already carries the `Optional` contract, i.e. is one of the two constructors
+/// `optional_present`/`optional_absent` build. Used only to REFUSE a disagreeing arm — never to
+/// decide whether to wrap, which is a call-site fact (see `RawMapLookup`).
+fn is_optional_value(v: &Value, ctx: &InterpContext) -> bool {
+    match v {
+        Value::Variant {
+            type_name,
+            variant_name,
+            ..
+        } => {
+            *type_name == ctx.sym("Optional")
+                && (*variant_name == ctx.sym("Present") || *variant_name == ctx.sym("Absent"))
+        }
+        _ => false,
+    }
+}
+
+/// ONE AUTHORITY FOR `Optional`-VALUEDNESS: the `AlgebraFieldTemplate` rows projected from
+/// `dag/std/algebra.dag`. `first`/`last`/`get`/`lookup`/`map_get` each declare
+/// `return_type: OptionalOf { inner: ReceiverElement }` there, and that row is what makes the Rust
+/// emit arm produce `Option<T>`. Before this function existed the interpreter arms answered the
+/// same question by hand and answered it differently — `first` returned the RAW element (or
+/// `Value::Null`), so `xs |> first == Present { value: x }` was false interpreted and true emitted:
+/// DESIGN.md §5 silent wrongness, which is outside the ladder rather than low on it. Both arms now
+/// read this row, so a single definition cannot disagree with itself.
+///
+/// `None` = the roster has no row for this spelling (not an algebra method, or a free-call-only
+/// builtin); `Some(false)` = declared non-optional. A spelling whose rows DISAGREE is refused by
+/// the caller rather than resolved by majority — a mixed roster is a modelling defect, not an input.
+fn algebra_row_returns_optional(method: &str) -> Option<Result<bool, ()>> {
+    let mut optional = false;
+    let mut plain = false;
+    for t in crate::std_algebra::all_algebra_field_templates().iter() {
+        if t.name != method {
+            continue;
+        }
+        if matches!(
+            *t.return_type,
+            crate::std_algebra::AlgebraTypeTemplate::OptionalOf { .. }
+        ) {
+            optional = true;
+        } else {
+            plain = true;
+        }
+    }
+    match (optional, plain) {
+        (false, false) => None,
+        (true, true) => Some(Err(())),
+        (o, _) => Some(Ok(o)),
+    }
+}
+
+/// What an argument value is, with respect to the `Optional` contract.
+enum OptionalArg {
+    NotOptional(Value),
+    Present(Value),
+    Absent,
+}
+
+fn classify_optional_arg(val: Value, ctx: &InterpContext) -> OptionalArg {
+    match &val {
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } if *type_name == ctx.sym("Optional") => {
+            if *variant_name == ctx.sym("Present") {
+                OptionalArg::Present(
+                    fields_get(fields, ctx.sym("value"))
+                        .cloned()
+                        .unwrap_or(Value::Null),
+                )
+            } else if *variant_name == ctx.sym("Absent") {
+                OptionalArg::Absent
+            } else {
+                OptionalArg::NotOptional(val)
+            }
+        }
+        _ => OptionalArg::NotOptional(val),
+    }
+}
+
+/// Whether a declared parameter is a VALUE parameter whose type is required (not `T?`, and not an
+/// `Optional<T>` carrier spelled without the cardinality flag). The two spellings name one carrier,
+/// so the predicate asks both — the same pairing `05_emit_rust`'s
+/// `rust_call_arg_fail_closed_unwrap` makes, and for the same reason: unwrapping into
+/// `witness_from_optional(opt: Optional<T>)` would strip the very value the callee exists to
+/// inspect.
+///
+/// A FREE TYPE VARIABLE DECLARES NOTHING ABOUT CARDINALITY, so it is not a required formal. For
+/// `fn outcome_accepted<T>(value: T)`, `T` instantiating to `Optional<Node>` is a legitimate
+/// instantiation and not a cardinality escape; treating it as required both unwrapped `Present`
+/// into the callee (a SILENT corruption of the very kind this repair exists to remove — the callee
+/// declared `Outcome<Optional<Node>>` and would have received `Outcome<Node>`) and refused `Absent`
+/// outright. That is the already-rostered `mitigation_injected_where_judgment_declined` shape, and
+/// this predicate is the producer its row names as the trigger: it distinguishes a free type
+/// variable from a declared non-optional formal, reading the fn's own declared type-parameter list
+/// rather than guessing from the spelling of a name.
+fn param_declares_required_value(
+    param: &Rc<Node>,
+    pname: &str,
+    type_param_names: &[String],
+    ctx: &InterpContext,
+) -> bool {
+    match param.children.first() {
+        Some(type_expr) => {
+            let type_name = authored_name_at(ctx.si(), type_expr.clone());
+            type_name != pname
+                && type_expr.return_cardinality != Cardinality::CardOptional
+                && type_name != "Optional"
+                && !type_param_names.iter().any(|t| t == &type_name)
+        }
+        None => false,
+    }
+}
+
+/// The wall that keeps the two realizations from drifting apart again: whatever an algebra arm
+/// computes, the value it hands back must inhabit the return type its roster row declares. An arm
+/// that reverts to the raw element refuses here, loudly and located by method name, instead of
+/// silently producing a value the emitted mirror would never produce.
+fn algebra_result_matches_declared_optionality(
+    method: &str,
+    value: Value,
+    ctx: &InterpContext,
+) -> InterpResult<Value> {
+    match algebra_row_returns_optional(method) {
+        None => Ok(value),
+        Some(Err(())) => Err(InterpError::TypeError {
+            msg: format!(
+                "algebra roster disagrees with itself about `{}`: some rows declare \
+                 `OptionalOf` and some do not, so the interpreter cannot derive the method's \
+                 optionality from dag/std/algebra.dag",
+                method
+            ),
+        }),
+        Some(Ok(false)) => Ok(value),
+        Some(Ok(true)) => {
+            if is_optional_value(&value, ctx) {
+                Ok(value)
+            } else {
+                Err(InterpError::TypeError {
+                    msg: format!(
+                        "interpreter arm for `{}` produced {} where dag/std/algebra.dag declares \
+                         `Optional<..>`; the emitted realization returns an Optional here, so \
+                         returning the bare value would be a silent semantic divergence",
+                        method,
+                        value.type_label()
+                    ),
+                })
+            }
+        }
+    }
+}
+
 /// Whether a `raw_map_lookup` result already carries the `Optional<V>` contract (a
 /// `.dag`-authored `Map.lookup` closure returns `Optional<V>` by construction) or is a bare
 /// storage read still needing the wrap (native `Value::Map`/field storage, miss = `Value::Null`).
@@ -3747,7 +3901,8 @@ pub struct InterpContext {
     // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns
     // / EvalCallMemo.keepalive_fns), and the cache dies with the ctx (as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
-    param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    param_name_cache:
+        std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>, Vec<String>)>>>,
     param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprVar arm: eval_var rebuilt the name String from its span
     // (expr_var_name_at) and re-interned it (ctx.sym) per read. The interned Symbol is memoized
@@ -4661,7 +4816,22 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let c = Rc::new((filtered, all));
+            // A `fn f<T>(v: T)` node carries `params = concat(type_params, value_params)`
+            // (`v1.compiler.parse` `parse_fn_body_from_prefix`), and a TYPE parameter is exactly
+            // the entry whose declared type is its own name -- the same shape `filtered` uses to
+            // drop them from the positional list. Naming that set is what lets the coercion below
+            // tell a declared non-optional formal from a FREE type variable.
+            let type_params: Vec<String> = fn_node
+                .params
+                .iter()
+                .enumerate()
+                .filter(|(i, p)| match p.children.first() {
+                    Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) == all[*i],
+                    None => true,
+                })
+                .map(|(i, _)| all[i].clone())
+                .collect();
+            let c = Rc::new((filtered, all, type_params));
             ctx.param_name_cache_keepalive
                 .borrow_mut()
                 .push(fn_node.clone());
@@ -4671,6 +4841,7 @@ fn call_function_inner(
     };
     let param_names: &Vec<String> = &cached_params.0;
     let all_param_names: &Vec<String> = &cached_params.1;
+    let type_param_names: &Vec<String> = &cached_params.2;
 
     let mut bindings = HashMap::new();
     if !args.is_empty() {
@@ -4760,6 +4931,43 @@ fn call_function_inner(
             if let Some(default_node) = param_node_default_value(param.clone()) {
                 let default_val = eval_expr(&default_node, env, ctx)?;
                 bindings.insert(ctx.sym(pname), default_val);
+            }
+        }
+    }
+
+    // OPTIONAL INTO A REQUIRED PARAMETER — the interpreted half of a rule the emitted half already
+    // had. `05_emit_rust`'s `rust_call_arg_fail_closed_unwrap` sees an `Optional<T>` argument meet a
+    // parameter declared `T` and emits
+    // `.expect("fail-closed: an optional value flowed into non-optional parameter N of F ..")`.
+    // The interpreter had NO such coercion, and did not need one only because `first`/`last`/`get`
+    // handed back the RAW element instead of the `Optional` their `dag/std/algebra.dag` rows
+    // declare. Constructing that Optional without supplying this is the same silent wrongness
+    // pointed the other way: `parse_int(s: fields.first())` would receive a `Present { .. }`
+    // variant. Present unwraps; ABSENT STOPS THE LINE, typed and located, where the emitted arm
+    // panics.
+    for (i, param) in fn_node.params.iter().enumerate() {
+        let pname = &all_param_names[i];
+        if !param_declares_required_value(param, pname, type_param_names, ctx) {
+            continue;
+        }
+        let key = ctx.sym(pname);
+        let Some(val) = bindings.get(&key).cloned() else {
+            continue;
+        };
+        match classify_optional_arg(val, ctx) {
+            OptionalArg::NotOptional(_) => {}
+            OptionalArg::Present(inner) => {
+                bindings.insert(key, inner);
+            }
+            OptionalArg::Absent => {
+                return Err(InterpError::CallContractMismatch {
+                    callee: fn_node.name.clone(),
+                    detail: format!(
+                        "an optional value flowed into non-optional parameter {} ('{}') \
+                         (empty Optional at runtime)",
+                        i, pname
+                    ),
+                })
             }
         }
     }
@@ -5471,6 +5679,9 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
             if let Some(detail) = cross_family_content_hash_straddle(&left, &right) {
                 return Err(InterpError::CrossRepresentationEquality { detail });
             }
+            if let Some(detail) = optional_against_bare_straddle(&left, &right, ctx) {
+                return Err(InterpError::CrossRepresentationEquality { detail });
+            }
         }
         let result = if matches!(op, BinOp::Eq) {
             equal
@@ -5510,6 +5721,56 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
             ),
         }),
     }
+}
+
+/// An `Optional<T>` meeting a bare `T` under `==` / `!=`.
+///
+/// `Value::eq` cannot decide these — a `Present { value: "x" }` is simply not equal to `"x"` — so
+/// the comparison SILENTLY ANSWERS FALSE, which DESIGN §5 forbids outright: a failure arm must
+/// refuse, never fabricate a plausible answer. It became reachable when `first`/`last`/`get`
+/// started constructing the `Optional` their `dag/std/algebra.dag` rows declare, because every
+/// consumer written against the old raw-element answer now compares across representations.
+/// Measured before this wall: `["schema-v2", "body"].first() == "schema-v2"` returned `false`, and
+/// nine such sites are merge-admission receipt schema checks, where a quiet `false` rejects a valid
+/// receipt with no diagnostic.
+///
+/// ONE SHAPE IS NOT A STRADDLE: Optional against Optional is an ordinary comparison of one
+/// representation with itself.
+///
+/// THE `x == none` IDIOM IS A STRADDLE AND REFUSING IT IS THE POINT, which is the opposite of what
+/// this function first did. `none` evaluates to the host `Value::Null` carrier, so the carve-out
+/// that spared it looked like protecting a working test. It was measured, and it was not working:
+/// `[].first() == none` answered FALSE, because a constructed `Absent` variant is not `Value::Null`.
+/// Sparing it preserved a silent false — the very class this wall exists to stop — so the spare is
+/// deleted and the two-carrier case refuses with its own sentence.
+///
+/// It stays NARROW by construction rather than by exception. A declared `T?` field whose absent
+/// state IS `Value::Null` still compares `Null == Null` and never reaches here; only a CONSTRUCTED
+/// `Optional` meeting the Null carrier fires, which is exactly the un-migrated population.
+fn optional_against_bare_straddle(a: &Value, b: &Value, ctx: &InterpContext) -> Option<String> {
+    let (a_opt, b_opt) = (is_optional_value(a, ctx), is_optional_value(b, ctx));
+    if a_opt == b_opt {
+        return None;
+    }
+    if matches!(a, Value::Null) || matches!(b, Value::Null) {
+        return Some(format!(
+            "{} vs {} — a constructed `Absent`/`Present` and the host Null carrier are two \
+             representations of ABSENCE, so `==` would silently fabricate `false` (DESIGN §5): \
+             measured, `[].first() == none` answered false. Eliminate the `Optional` with `match` \
+             (`Present {{ value: v }}` / `Absent`) instead of testing it against `none`.",
+            describe_repr(a),
+            describe_repr(b),
+        ));
+    }
+    Some(format!(
+        "{} vs {} — an `Optional<T>` and a bare `T` are two representations of one value, \
+         so `==` would silently fabricate `false` (DESIGN §5). `dag/std/algebra.dag` declares \
+         `first`/`last`/`get`/`lookup`/`map_get` as returning `Optional<..>`; eliminate it with \
+         `match` (`Present {{ value: v }}` / `Absent`) and compare `v`, or compare against an \
+         `Optional` on both sides.",
+        describe_repr(a),
+        describe_repr(b),
+    ))
 }
 
 fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String> {
@@ -6887,7 +7148,22 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
 
         v1_native_intercept_arms!(v1_native_intercept_dispatch, func_name, args, env, ctx);
 
-        if let Some(result) = eval_builtin(&func_name, &args, ctx)? {
+        // A BUILTIN'S REFUSAL MUST SAY WHERE IT IS. `eval_builtin` receives a name and values and
+        // has no span, so an argument-shape refusal read `parse_int expects a string argument, got
+        // Variant` with no file and no line — typed but UNLOCATED, which DESIGN §5 does not admit:
+        // every path fails with a typed, LOCATED diagnostic. It became load-bearing when
+        // constructing the `Optional` for `first`/`last`/`get` started routing Optionals into
+        // builtins, whose registry declares a return type and no parameter list, so no coercion can
+        // be derived for them and the refusal is the only signal a reader gets. The call node is in
+        // scope here and carries the span, so the location is attached at the one seam that knows
+        // it. NARROW BY CONSTRUCTION: this locates refusals raised by builtin dispatch only, and
+        // the general interpreter-wide locator is a separate class with its own trigger.
+        if let Some(result) = eval_builtin(&func_name, &args, ctx).map_err(|e| match e {
+            InterpError::TypeError { msg } => InterpError::TypeError {
+                msg: format!("{}:{}: {}", node.span.file, node.span.start, msg),
+            },
+            other => other,
+        })? {
             return Ok(result);
         }
     }
@@ -8053,8 +8329,38 @@ fn eval_field_access(
             Ok(items) => Ok(items.get(1).cloned().unwrap_or(Value::Null)),
             Err(_) => extract_field(&base_val, &field_name, env, ctx),
         },
+        // `opt.value` is `FieldAccessStyle::OptionalUnwrap`, decided once in 04_lookup's
+        // `field_summary_for_type`. The emitted mirror realizes that row as `.unwrap()`, so the
+        // absent case must STOP in both realizations; returning `Value::Null` here let an absent
+        // optional flow on as a plausible value with no diagnostic (DESIGN.md §5). The
+        // `Present { value: .. }` arm is what keeps the 176 emitted unwrap sites reading the
+        // payload now that `first`/`last`/`get`/`lookup` construct a real Optional.
         Some(FieldAccessStyle::OptionalUnwrap) => match &base_val {
-            Value::Null => Ok(Value::Null),
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } if *type_name == ctx.sym("Optional") && *variant_name == ctx.sym("Present") => {
+                Ok(fields_get(fields, ctx.sym("value"))
+                    .cloned()
+                    .unwrap_or(Value::Null))
+            }
+            Value::Variant {
+                type_name,
+                variant_name,
+                ..
+            } if *type_name == ctx.sym("Optional") && *variant_name == ctx.sym("Absent") => {
+                Err(InterpError::TypeError {
+                    msg: "`.value` projected an absent Optional; there is no value to read \
+                          (the emitted realization panics on the same read)"
+                        .to_string(),
+                })
+            }
+            Value::Null => Err(InterpError::TypeError {
+                msg: "`.value` projected an absent Optional carried in the raw value-or-Null \
+                      representation; there is no value to read"
+                    .to_string(),
+            }),
             _ => Ok(base_val),
         },
         Some(FieldAccessStyle::EnumAccessor) => extract_field(&base_val, &field_name, env, ctx),
@@ -8739,7 +9045,8 @@ macro_rules! v1_algebra_method_arms {
                 let key = $args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "lookup requires a key argument".to_string(),
                 })?;
-                raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                let raw = raw_map_lookup(&$receiver, key, $env, $ctx)?;
+                Ok(map_lookup_as_optional(raw, $ctx))
             },
 
             arm "method_call.map" { "map" } => list_method_with_closure("map", $receiver, $args, $env, $ctx, |items, f, $env, $ctx| {
@@ -8959,14 +9266,25 @@ macro_rules! v1_algebra_method_arms {
                 },
             },
 
+            // `first`/`last` are declared `OptionalOf { inner: ReceiverElement }` in
+            // dag/std/algebra.dag. The Optional is CONSTRUCTED here, decided by the call site
+            // (empty vs non-empty), never inferred from the element's shape — a stored
+            // `Element = Optional<T>` head must come back as `Present { value: Absent }`, which is
+            // exactly the case the old raw `unwrap_or(Value::Null)` collapsed into `Absent`.
             arm "method_call.first" { "first" } => {
                 let items = expect_list(&$receiver, "first")?;
-                Ok(items.front().cloned().unwrap_or(Value::Null))
+                Ok(match items.front().cloned() {
+                    Some(v) => optional_present(v, $ctx),
+                    None => optional_absent($ctx),
+                })
             },
 
             arm "method_call.last" { "last" } => {
                 let items = expect_list(&$receiver, "last")?;
-                Ok(items.last().cloned().unwrap_or(Value::Null))
+                Ok(match items.last().cloned() {
+                    Some(v) => optional_present(v, $ctx),
+                    None => optional_absent($ctx),
+                })
             },
 
             arm "method_call.reverse" { "reverse" } => {
@@ -9057,20 +9375,21 @@ macro_rules! v1_algebra_method_arms {
                 Ok(map_lookup_as_optional(raw, $ctx))
             },
 
+            // Same roster row as `first`/`last` (`get: OptionalOf { inner: ReceiverElement }`),
+            // so every branch constructs the Optional rather than leaking the raw storage read.
             arm "method_call.get" { "get" } => {
-                if matches!(&$receiver, Value::Str(_)) {
-                    let key = $args.first().ok_or_else(|| InterpError::TypeError {
-                        msg: "get requires a key argument".to_string(),
-                    })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
-                } else if let Ok(items) = expect_list(&$receiver, "get") {
+                if let Ok(items) = expect_list(&$receiver, "get") {
                     let idx = expect_int($args.first(), "get")?;
-                    Ok(list_get_at_or_null(&items, idx))
+                    Ok(match list_index_in_bounds(&items, idx) {
+                        Some(v) => optional_present(v, $ctx),
+                        None => optional_absent($ctx),
+                    })
                 } else {
                     let key = $args.first().ok_or_else(|| InterpError::TypeError {
                         msg: "get requires a key argument".to_string(),
                     })?;
-                    raw_map_lookup(&$receiver, key, $env, $ctx).map(RawMapLookup::into_raw)
+                    let raw = raw_map_lookup(&$receiver, key, $env, $ctx)?;
+                    Ok(map_lookup_as_optional(raw, $ctx))
                 }
             },
 
@@ -9266,7 +9585,9 @@ fn eval_algebra_method_inner(
     env: &Rc<Env>,
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
-    v1_algebra_method_arms!(v1_algebra_dispatch, method, receiver, args, env, ctx)
+    let produced: InterpResult<Value> =
+        v1_algebra_method_arms!(v1_algebra_dispatch, method, receiver, args, env, ctx);
+    algebra_result_matches_declared_optionality(method, produced?, ctx)
 }
 
 pub fn fixture_now_secs(ctx: &InterpContext) -> Result<u64, crate::recorded_fixture::FixtureError> {
@@ -15048,7 +15369,10 @@ macro_rules! v1_builtin_arms {
                 [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                     let items = expect_list(list_val, "get")?;
                     let idx = expect_int(Some(idx_val), "get")?;
-                    Ok(Some(list_get_at_or_null(&items, idx)))
+                    Ok(Some(match list_index_in_bounds(&items, idx) {
+                        Some(v) => optional_present(v, $ctx),
+                        None => optional_absent($ctx),
+                    }))
                 }
                 _ => Ok(None),
             },
@@ -17201,8 +17525,14 @@ fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
     }
 }
 
-fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
-    items.get(idx as usize).cloned().unwrap_or(Value::Null)
+/// In-bounds read, with the ABSENCE left for the caller to construct as an `Optional`. The
+/// or-Null form this replaced could not distinguish an out-of-range index from a stored
+/// `Value::Null`, which is the same collapse `first` used to make.
+fn list_index_in_bounds(items: &RrbVector<Value>, idx: i64) -> Option<Value> {
+    if idx < 0 {
+        return None;
+    }
+    items.get(idx as usize).cloned()
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
