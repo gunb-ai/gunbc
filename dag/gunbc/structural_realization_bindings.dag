@@ -24,6 +24,7 @@ fn peano_literal_homomorphism(module_path: String, nat: String, zero: String, su
   LiteralHomomorphism {
     source_kind: KernelIntLiteral,
     destination: decl_ref(module_path: module_path, decl_name: nat),
+    element: none,
     producer: PeanoUnfold {
       zero: decl_ref(module_path: module_path, decl_name: zero),
       succ: decl_ref(module_path: module_path, decl_name: succ),
@@ -36,6 +37,7 @@ fn boolean_literal_homomorphism(module_path: String, bool_decl: String, true_var
   LiteralHomomorphism {
     source_kind: KernelBoolLiteral,
     destination: decl_ref(module_path: module_path, decl_name: bool_decl),
+    element: none,
     producer: BooleanUnfold {
       true_variant: decl_ref(module_path: module_path, decl_name: true_variant),
       false_variant: decl_ref(module_path: module_path, decl_name: false_variant)
@@ -50,16 +52,21 @@ fn boolean_literal_homomorphism(module_path: String, bool_decl: String, true_var
 // monoid over that alphabet (std.string_type / v2.std.text both declare `type String =
 // FreeMonoid<Char>`), and the literal-to-carrier map is the unique monoid homomorphism reading the
 // literal's Unicode scalars (D76) -- the same grounding operator Ruling 3 (2026-07-15) records for
-// the String -> FreeMonoid identity in std.coercion. Keyed on the exact v2.std.text declaration:
-// the kernel string_type and std.string_type String carry NO row, and v2.std.node Symbol (host
-// String, lexeme-backed, RustStdString row in gunbc.rust_source_type_bindings) must never acquire
-// one -- a native realization takes the kernel literal directly, per the module note above.
+// the String -> FreeMonoid identity in std.coercion. KEYED ON THE STRUCTURE, not a module spelling:
+// String is a container-alias spelling (std.types container_template_alias_rows), so the resolver
+// deliberately peels every `type X = FreeMonoid<Char>` declaration to the one structural carrier
+// and no nominal brand survives to key on -- the row's destination is std.algebra.FreeMonoid with
+// element std.types.Char, which is what every text-typed boundary presents after the peel (see the
+// destination-key note in std.literal_elaboration). v2.std.node Symbol (host String, lexeme-backed,
+// RustStdString row in gunbc.rust_source_type_bindings) and the kernel String never present that
+// structure and must never acquire a row -- a native realization takes the kernel literal directly.
 data literal_homomorphism_rows: List<LiteralHomomorphism> = [
   peano_literal_homomorphism(module_path: "v2.std.nat", nat: "Nat", zero: "Zero", succ: "Succ", prev_field: "prev"),
   boolean_literal_homomorphism(module_path: "v2.std.logic", bool_decl: "Bool", true_variant: "True", false_variant: "False"),
   LiteralHomomorphism {
     source_kind: KernelStringLiteral,
-    destination: decl_ref(module_path: "v2.std.text", decl_name: "String"),
+    destination: decl_ref(module_path: "std.algebra", decl_name: "FreeMonoid"),
+    element: Present { value: decl_ref(module_path: "std.types", decl_name: "Char") },
     producer: UnicodeScalarSequenceUnfold
   }
 ]

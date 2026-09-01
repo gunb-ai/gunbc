@@ -7968,9 +7968,10 @@ fn rust_body_is_bare_self_call(name: String, body: Node, source_indices: Map<Str
 }
 
 // THE SEAM'S DISPOSITION AT THIS TARGET, ASKED OF THE REALIZATION REGISTRY RATHER THAN A NAME
-// LITERAL. rust_host_string_seam_fn_emit above answers for two seams by spelling their Rust bodies
-// out in the emitter, which is both hand-written target code in a compiler stage and a bare-name
-// key. This asks the same registry the CALL SITES ask, so a seam's declaration is suppressed here
+// LITERAL. A name-keyed seam emitter (the deleted rust_host_string_seam_fn_emit) answered for two
+// seams by spelling their Rust bodies out in the emitter -- both hand-written target code in a
+// compiler stage and a bare-name key. This asks the same registry the CALL SITES ask, so a seam's
+// declaration is suppressed here
 // exactly when a call to it lowers to a bridge, and the two answers cannot drift.
 //
 // THE REFUSAL IS A BODY, NOT A compile_error!, AND THE DENOMINATOR IS WHY. This wall first emitted

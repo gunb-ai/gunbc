@@ -99,10 +99,33 @@ type LiteralUnfolding
   | BooleanUnfold { true_variant: DeclarationRef, false_variant: DeclarationRef }
   | UnicodeScalarSequenceUnfold
 
+// THE DESTINATION KEY SURVIVES RESOLUTION. `destination` names the declaration the resolved
+// boundary type actually presents. For a nominal destination (v2.std.nat.Nat, v2.std.logic.Bool)
+// that is the declaration itself and `element` is Absent. For the text carrier the resolver
+// deliberately peels every `type X = FreeMonoid<Char>` spelling to the one structural carrier
+// (String is a container-alias spelling, `std.types` `container_template_alias_rows`, so no
+// nominal brand survives the peel BY DESIGN) -- keying a row on the alias module's spelling would
+// key it on information resolution has already, correctly, discarded. The row therefore keys on
+// the STRUCTURE: destination = std.algebra.FreeMonoid with element = std.types.Char, which is
+// exactly what every text-typed boundary presents after the peel, and is the identity the
+// homomorphism is true OF (a string over an alphabet IS the free monoid over that alphabet).
+// FreeMonoid over any other element (a plain list) carries no row and stays DirectLiteral.
 type LiteralHomomorphism {
   source_kind: LiteralSourceKind
   destination: DeclarationRef
+  element: DeclarationRef?
   producer: LiteralUnfolding
+}
+
+fn homomorphism_element_eq(a: DeclarationRef?, b: DeclarationRef?) -> Bool {
+  match a {
+    Present { value: ae } =>
+      match b {
+        Present { value: be } => declaration_ref_eq(a: ae, b: be)
+        Absent => false
+      }
+    Absent => match b { Present { value: _ } => false  Absent => true }
+  }
 }
 
 type LiteralHomomorphismLookup
@@ -113,11 +136,13 @@ type LiteralHomomorphismLookup
 fn literal_homomorphism_for(
   rows: List<LiteralHomomorphism>,
   source_kind: LiteralSourceKind,
-  destination: DeclarationRef
+  destination: DeclarationRef,
+  element: DeclarationRef?
 ) -> LiteralHomomorphismLookup {
   let matching = rows |> filter(r =>
     literal_source_kind_eq(a: r.source_kind, b: source_kind)
-      && declaration_ref_eq(a: r.destination, b: destination))
+      && declaration_ref_eq(a: r.destination, b: destination)
+      && homomorphism_element_eq(a: r.element, b: element))
   let n = matching |> count
   if n == 0 {
     LiteralHomomorphismAbsent
@@ -157,12 +182,13 @@ fn elaborate_literal_at(
   rows: List<LiteralHomomorphism>,
   source_kind: LiteralSourceKind,
   destination: DeclarationRef,
+  element: DeclarationRef?,
   destination_realizes_natively: Bool
 ) -> LiteralElaborationOutcome {
   if destination_realizes_natively {
     DirectLiteral
   } else {
-    match literal_homomorphism_for(rows: rows, source_kind: source_kind, destination: destination) {
+    match literal_homomorphism_for(rows: rows, source_kind: source_kind, destination: destination, element: element) {
       LiteralHomomorphismFound { row: row } => ViaHomomorphism { homomorphism: row }
       LiteralHomomorphismAbsent => DirectLiteral
       LiteralHomomorphismAmbiguous { row_count: n } =>

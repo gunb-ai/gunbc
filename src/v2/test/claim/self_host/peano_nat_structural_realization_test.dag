@@ -113,7 +113,7 @@ test fn int_to_decimal_is_the_machine_integer_formatter() -> Bool {
 // ---------------------------------------------------------------------------------------------
 
 test fn peano_row_is_found_by_exact_destination() -> Bool {
-  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat")) {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none) {
     LiteralHomomorphismFound { row: r } =>
       match r.producer {
         PeanoUnfold { zero: z, succ: s, prev_field: p } =>
@@ -128,7 +128,7 @@ test fn peano_row_is_found_by_exact_destination() -> Bool {
 
 // Same spelling, different declaration: the native std.nat Nat has no row and is Direct.
 test fn same_spelling_native_declaration_is_direct() -> Bool {
-  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "std.nat", decl_name: "Nat"), destination_realizes_natively: true) {
+  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: true) {
     DirectLiteral => true
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => false
@@ -136,7 +136,7 @@ test fn same_spelling_native_declaration_is_direct() -> Bool {
 }
 
 test fn peano_destination_elaborates_via_the_homomorphism() -> Bool {
-  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: false) {
     DirectLiteral => false
     ViaHomomorphism { homomorphism: h } => (h.destination.decl_name as String) == "Nat"
     LiteralElaborationRefused { cause: _ } => false
@@ -146,7 +146,7 @@ test fn peano_destination_elaborates_via_the_homomorphism() -> Bool {
 // THE ROW-REMOVAL FALSIFIER. With no rows the same boundary is Direct -- the literal stays a bare
 // kernel digit, which against an Rc<Nat> parameter is precisely the E0308 shape the census held.
 test fn removing_the_row_returns_the_literal_to_direct() -> Bool {
-  match elaborate_literal_at(rows: [], source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: [], source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: false) {
     DirectLiteral => true
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => false
@@ -160,7 +160,7 @@ test fn removing_the_row_returns_the_literal_to_direct() -> Bool {
 // (Bool::True / Bool::False in the emitted bytes) is asserted only on the emitted path, in
 // test.claim.self_host_peano_literal_operator_realization_witness_test.
 test fn bool_row_is_found_by_exact_destination() -> Bool {
-  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool")) {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool"), element: none) {
     LiteralHomomorphismFound { row: r } =>
       match r.producer {
         BooleanUnfold { true_variant: t, false_variant: f } => (t.decl_name as String) == "True" && (f.decl_name as String) == "False"
@@ -173,7 +173,7 @@ test fn bool_row_is_found_by_exact_destination() -> Bool {
 }
 
 test fn removing_the_bool_row_returns_the_literal_to_direct() -> Bool {
-  match elaborate_literal_at(rows: [], source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool"), destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: [], source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "v2.std.logic", decl_name: "Bool"), element: none, destination_realizes_natively: false) {
     DirectLiteral => true
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => false
@@ -181,7 +181,7 @@ test fn removing_the_bool_row_returns_the_literal_to_direct() -> Bool {
 }
 
 test fn prelude_bool_destination_is_direct() -> Bool {
-  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "std.types", decl_name: "Bool"), destination_realizes_natively: true) {
+  match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: KernelBoolLiteral, destination: decl_ref(module_path: "std.types", decl_name: "Bool"), element: none, destination_realizes_natively: true) {
     DirectLiteral => true
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => false
@@ -190,7 +190,7 @@ test fn prelude_bool_destination_is_direct() -> Bool {
 
 // A kernel STRING literal into the Peano Nat has no row: the source kind is part of the key.
 test fn source_kind_is_part_of_the_key() -> Bool {
-  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat")) {
+  match literal_homomorphism_for(rows: literal_homomorphism_rows, source_kind: KernelStringLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none) {
     LiteralHomomorphismFound { row: _ } => false
     LiteralHomomorphismAbsent => true
     LiteralHomomorphismAmbiguous { row_count: _ } => false
@@ -200,7 +200,7 @@ test fn source_kind_is_part_of_the_key() -> Bool {
 // Two rows for one key refuse rather than picking one.
 test fn duplicated_row_refuses() -> Bool {
   let doubled = concat(literal_homomorphism_rows, literal_homomorphism_rows)
-  match elaborate_literal_at(rows: doubled, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), destination_realizes_natively: false) {
+  match elaborate_literal_at(rows: doubled, source_kind: KernelIntLiteral, destination: decl_ref(module_path: "v2.std.nat", decl_name: "Nat"), element: none, destination_realizes_natively: false) {
     DirectLiteral => false
     ViaHomomorphism { homomorphism: _ } => false
     LiteralElaborationRefused { cause: _ } => true

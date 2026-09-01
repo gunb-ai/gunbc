@@ -125,7 +125,7 @@ import v1.compiler.infer_env {
   qualify_borrowed_type_names, qualify_borrowed_inferred, qualified_all_but_last,
   env_with_type_variable_bindings, GlobalBareCandidate, node_with_inferred, node_with_children,
   ServiceCensusEntry, qualify_decl_reference_positions,
-  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration,
+  lookup_binding_by_name, binding_declares_name, type_reference_declaration_ref, type_reference_declaration, declaration_file_of,
   listed_import_required_bare_call_blocked,
   effective_visible_binding, unit_variant_index_shadow_insert,
   build_unit_variant_index, UnitVariantContribution
@@ -5240,8 +5240,14 @@ fn literal_boundary_elaboration(lit: LiteralValue, expected: Node?, scope: Infer
           Absent => LiteralBoundaryPlain
           Present { value: destination } =>
             let kind = literal_source_kind_of(value: lit)
-            let natively = decl_file_realizes_natively(decl_file: type_reference_decl_file(n: exp))
-            match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, destination_realizes_natively: natively) {
+            let element = if exp.children |> count == 1 {
+              match exp.children |> first {
+                Present { value: arg } => type_reference_declaration_ref(n: arg, source_indices: scope.type_env.source_indices, env: scope.type_env)
+                Absent => none
+              }
+            } else { none }
+            let natively = decl_file_realizes_natively(decl_file: declaration_file_of(d: destination, env: scope.type_env))
+            match elaborate_literal_at(rows: literal_homomorphism_rows, source_kind: kind, destination: destination, element: element, destination_realizes_natively: natively) {
               DirectLiteral => LiteralBoundaryPlain
               ViaHomomorphism { homomorphism: h } =>
                 LiteralBoundaryElaborated {
