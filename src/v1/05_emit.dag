@@ -1106,7 +1106,7 @@ type ShellResultField {
 // the file refusals are facts about files, and a shared carrier would be one
 // name over two contracts.
 type ShellEmissionRefusal
-  = ShellOutputKeyNotModeled { key: String }
+  = | ShellOutputKeyNotModeled { key: String }
 
 // The single authority for which declared output keys the shell realization can
 // answer. Read by the binding; there is no second list.
