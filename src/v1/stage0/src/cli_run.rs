@@ -1921,7 +1921,7 @@ fn collect_module_binding_manifest_rows(source_roots: &[String]) -> Vec<ModuleBi
 /// `resolve_imports_transitively` — the same BFS over `extract_import_paths` on the same module
 /// index the floor uses, so a `.dag` witness can compile an arbitrary in-memory program without
 /// a second resolver.
-fn resolve_virtual_source_with_imports(
+pub(crate) fn resolve_virtual_source_with_imports(
     entry_path: &str,
     entry_content: &str,
     module_index: &HashMap<String, String>,
@@ -38830,6 +38830,21 @@ pub use emitted_closure_compile_host::{
     required_ci_emit_compile_probe_root, required_emit_compile_entries,
     retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
     EmitCompileSelection, MutationVerdict,
+};
+
+/// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
+/// IN THE LIST ABOVE.
+///
+/// `pub(crate)` under `#[cfg(test)]`: the generated `compiler_tests` module is a sibling module in
+/// this crate, so it needs crate visibility to reach the route and needs nothing wider. Putting
+/// these names in the production list would place them on the emitted seed's exported surface --
+/// PublicSurfaceGrowth against a seed frozen for growth. An internal test function does not become
+/// public surface merely because Rust needs a path to it.
+#[cfg(test)]
+pub(crate) use emitted_closure_compile_host::{
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
+    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
+    fixture_discrimination_report, run_fixture_closure_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.
