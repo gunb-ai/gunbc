@@ -529,11 +529,25 @@ data heterogeneous_child_list_stall: GuaranteeStall = GuaranteeStall {
 //
 // THE ROSTER IS HAND-MAINTAINED AND THAT IS A REAL WEAKNESS, stated rather than buried. A row
 // added above and not added here is invisible to the fold -- the same staleness these rows warn
-// about, one level up. It is not derivable today: nothing in .dag enumerates a module's own
-// declarations, so the alternative is not a better roster but no consumer at all, which is the
-// state being repaired. TRIGGER: v1_compiler.declaration_index grows a modeled surface projecting
-// a module's declarations of one type, at which point this list is DERIVED and an unenrolled row
-// has no spelling.
+// about, one level up. Declaration IDENTITIES are derivable today: v2.std.decl_index
+// data_decl_type_facts enumerates every top-level data declaration with its declared type. The
+// VALUES needed by this List<GuaranteeStall> are not. DeclFact.node is an initializer-identity
+// projection. gunbc.seed_closed_vocabulary_wildcard_census files the NotVariantValue answer for
+// initializer forms outside that projection's ExprRecordLit and ExprVar arms as
+// FabricatedSubstitution. Independently, a measured ExprRecordLit takes
+// marshal_plain_record_projection, whose marshal_field_initializer_projection path collapses field
+// values needed to reconstruct the GuaranteeStall, including primitive string and list payloads
+// nested under ClimbBlocker and StallPopulation, to NotVariantValue through
+// variant_value_from_typechecked_expr; no census row currently files that field-value site. So the
+// alternative today is still this authored roster or no consumer, but
+// declaration enumeration is no longer the blocker.
+// TRIGGER: fail-closed typed data-value reflection enumerates exactly every top-level data
+// declaration in gunbc.guarantee_rung_drop whose declared type is GuaranteeStall, and no declaration
+// outside that module, and projects each fully evaluated value in deterministic source order,
+// SUFFICIENT FOR reconstructing every field of every GuaranteeStall row and refusing any initializer
+// form or field value it cannot project rather than substituting NotVariantValue. At that point this
+// list is DERIVED and an unenrolled row has no spelling. A declaration-identity,
+// initializer-shape, or corpus-wide GuaranteeStall surface alone does not satisfy the trigger.
 data all_guarantee_stalls: List<GuaranteeStall> = [
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
