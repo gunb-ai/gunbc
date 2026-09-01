@@ -2050,19 +2050,6 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
-    check: CommitWitnessClaim {
-      entry: "dag/test/claim/long/fleet_converge_launch_scope_constructor_site_census_test.dag",
-      check_fns: [
-        "the_production_corpus_walk_is_nonempty_and_sees_this_construction_shape",
-        "every_production_launch_constructor_is_on_the_declared_roster",
-        "the_two_rostered_declarations_carry_exactly_two_constructions_between_them"
-      ],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
-    },
-    surfaces: [FalsifierCadenceJob]
-  },
-  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }

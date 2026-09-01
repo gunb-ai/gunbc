@@ -1,4 +1,4 @@
-module test.claim.long.fleet_converge_launch_scope_constructor_site_census
+module test.claim.fleet_converge_launch_scope_constructor_site_census
 
 import v2.std.decl_index { DeclFact, decl_facts }
 import v2.std.node { Atom, Edge, Named, Node, NodeFold, Positional, Symbol, TypeNode, fold_node }
@@ -56,16 +56,14 @@ import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
 // that rather than assuming it.
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
-// ONE PASS OVER THE CORPUS, COUNTING BOTH TARGETS. An earlier cut folded the corpus once per
-// target, so the sentinel row below - which needs the launch count AND the FullHostConverge control
-// - paid two full corpus folds where one suffices. Measured on the floor cost artifact of run
-// 33459143928: that row cost 19342ms against 13532ms for the single-fold rows, so the second fold
-// was ~5.8s of pure duplicate traversal. The pair is carried in the fold state instead.
-type ConstructionCounts {
-  launch: Int
-  sentinel: Int
-  self_is_launch: Bool
-  self_is_sentinel: Bool
+// ONE FOLD PER TARGET. An earlier cut of this module carried BOTH counts in a single fold state so
+// the corpus was traversed once for two targets. That was reverted: only the sentinel row needs two
+// counts, so under the pair fold the two single-target rows computed a FullHostConverge count they
+// never read. Work that is unnecessary by construction for a consumer is DESIGN 2 redundancy
+// whatever the realized n, and DESIGN 6 bare-minimum-cost does not price per-site exceptions.
+type ConstructionCount {
+  constructions: Int
+  self_is_target: Bool
 }
 
 fn edge_is_construction(e: Edge) -> Bool {
@@ -77,8 +75,8 @@ fn edge_is_construction(e: Edge) -> Bool {
 
 // THE DOTTED SUFFIXES ARE BUILT ONCE, NOT PER NODE. An earlier cut evaluated "." + (target as
 // String) inside the fold's init arm, which runs for EVERY Atom node in the production corpus, so a
-// two-token concatenation was allocated corpus-many times to compare against a constant. DESIGN 6
-// bare-minimum-cost: the realized n here is the whole corpus, and hoisting is free.
+// two-token concatenation was allocated corpus-many times to compare against a constant. The fold
+// receives the finished strings instead.
 data launch_bare: String = ^LaunchEnvironmentConverge as String
 data launch_dotted: String = "." + launch_bare
 data sentinel_bare: String = ^FullHostConverge as String
@@ -88,102 +86,93 @@ fn spelling_names(spelling: String, bare: String, dotted: String) -> Bool {
   spelling == bare || ends_with(spelling, dotted)
 }
 
-fn construction_fold_pair(n: Node) -> ConstructionCounts {
+fn construction_fold(n: Node, bare: String, dotted: String) -> ConstructionCount {
   fold_node(
     n: n,
     algebra: NodeFold {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } =>
-            ConstructionCounts {
-              launch: 0,
-              sentinel: 0,
-              self_is_launch: spelling_names(spelling: s as String, bare: launch_bare, dotted: launch_dotted),
-              self_is_sentinel: spelling_names(spelling: s as String, bare: sentinel_bare, dotted: sentinel_dotted),
+            ConstructionCount {
+              constructions: 0,
+              self_is_target: spelling_names(spelling: s as String, bare: bare, dotted: dotted),
             }
-          _ => ConstructionCounts { launch: 0, sentinel: 0, self_is_launch: false, self_is_sentinel: false }
+          _ => ConstructionCount { constructions: 0, self_is_target: false }
         }
       },
       step: fn(acc, e, child) {
-        ConstructionCounts {
-          launch: acc.launch + child.launch
-            + (if edge_is_construction(e: e) && child.self_is_launch { 1 } else { 0 }),
-          sentinel: acc.sentinel + child.sentinel
-            + (if edge_is_construction(e: e) && child.self_is_sentinel { 1 } else { 0 }),
-          self_is_launch: acc.self_is_launch,
-          self_is_sentinel: acc.self_is_sentinel,
+        ConstructionCount {
+          constructions: acc.constructions + child.constructions
+            + (if edge_is_construction(e: e) && child.self_is_target { 1 } else { 0 }),
+          self_is_target: acc.self_is_target,
         }
       }
     }
   )
 }
 
+fn construction_count(n: Node, bare: String, dotted: String) -> Int {
+  construction_fold(n: n, bare: bare, dotted: dotted).constructions
+}
+
 // decl_facts SKIPS test .dag files, so this population IS the production corpus -- the filter is a
 // property of the walk rather than a path convention this file re-implements.
 data production_roots: List<String> = ["dag", "src/v1", "src/v2"]
 
-// THE WALK AND THE FOLD ARE BOTH HOISTED, AND THE FOLD NOW RUNS ONCE. decl_facts over the production
-// corpus and the skeleton fold of ~3000 modules are the two dominant terms of this module -- ~7.7s
-// and ~5.8s respectively on the run-33459143928 cost artifact. Every row below reads this one
-// derived population, so no row pays a traversal another row already paid.
-// WHY THIS MODULE IS CADENCE-HOMED RATHER THAN PER-PR, with the measurement that decided it.
-// This is the only whole-production-corpus decl_facts walk in dag/test/claim: every other decl_facts
-// consumer outside test/claim/long walks a FIXTURE pool, record_construction_census_witness_test --
-// itself a record-construction census -- among them. On the required floor run 33459143928 at head
-// 1ac3485 the three rows below cost 13532ms, 14044ms and 19342ms, against 488ms for the next-worst
-// row in the whole 3426-row population; they were the three most expensive witnesses in the run and
-// exhausted the batch budget, interrupting eight cheap sibling rows that cost 6-10ms each. The cost
-// is subject shape and not a defect: n IS the production corpus, and both terms -- the decl_facts
-// walk and one linear fold_node pass per declaration -- scale with it.
-// THE THREE CONSTANT-FACTOR DEFECTS THAT WERE REAL WERE FIXED FIRST, not priced in: the copied
-// accumulator, the per-target double fold, and the per-node suffix concatenation, all described
-// above. The double fold is the one with a visible receipt -- pre-fix the sentinel row cost 1.43x
-// its siblings (19342ms vs 13532ms) because it folded the corpus twice; post-fix all three rows
-// measure within 0.8% of each other (82823ms, 82163ms, 82128ms, each standalone in its own process
-// on an arm64 session container, which is ~6x slower than the CI runner and is NOT a floor-comparable
-// figure). Re-homing an unfixed cost shape would have priced the defect in instead of removing it.
-// ENROLLMENT: the three check_fns ride surfaces: [FalsifierCadenceJob] in gunbc.commit_workflow
-// commit_gate_roster, landed in the same change as the move here. That pairing is load-bearing, not
-// bookkeeping -- test/claim/long is excluded from floor discovery at dir grain, and
-// falsifier_cadence_surface_note records that of the 63 files under the two long/ dirs only 9 are
-// enrolled while the rest are enrolled NOWHERE, so a move without the enrollment converts deferred
-// into unscheduled. The eight compile-control rows stay per-PR as the cheap grain for this concern.
-// WHERE THE REASON LIVES, AND WHY IT IS HERE: CommitCheckEnrollment carries entry, check_fns, kind,
-// span and surfaces, and no per-row reason or measured-wall field. The typed carrier that does have
-// those fields, gunbc.ci_layer_roots RehomedBinWetRow, is explicitly NOT this shape --
-// falsifier_cadence_surface_note states it models the bin_witness_wet per-row budget overflow and
-// not CommitWitnessClaim rows -- so borrowing it would be authority substitution. The rationale is
-// therefore homed on the subject it describes. Minting a per-row justification field on the
-// enrollment carrier is a real modeling question and is deliberately NOT decided here.
+// THIS MODULE EXCEEDS THE REQUIRED FLOOR'S PER-WITNESS BUDGET AND HAS NO AVAILABLE REMEDY. Stated
+// plainly because the alternative is to imply a plan that does not exist. It is the only
+// whole-production-corpus decl_facts walk in dag/test/claim -- every other decl_facts consumer here
+// walks a FIXTURE pool, record_construction_census_witness_test, itself a record-construction
+// census, among them. The cost is subject shape rather than a defect: n IS the production corpus,
+// and both dominant terms, the decl_facts walk and one linear fold_node pass per declaration, scale
+// with it. The three constant-factor defects that WERE real are fixed above and did not change that.
+// THE FLOOR'S OWN REMEDY SENTENCE IS "reduce the cost, or move it to a lane declaring its own
+// ceiling, so the witness reaches a verdict", and on this tree NEITHER ARM IS REACHABLE. Reducing a
+// whole-corpus walk below the per-witness budget is not available while the subject is the corpus.
+// The second arm cannot be performed at all: the required floor's disposition assignment tests
+// changed-witness membership BEFORE the long-home decline and continues past it, so the very edit
+// that moves a witness to such a lane puts it in the changed set, which selects it, which refuses it
+// on the budget the move exists to escape. Both blockers are filed outside this module and neither
+// is this module's to fix.
+// NO RE-HOME IS CLAIMED HERE, AND NONE IS PENDING. An earlier revision of this file moved the module
+// under test/claim/long and enrolled these three check_fns on FalsifierCadenceJob. That was reverted
+// on measurement: that surface has no executing realization -- .github/workflows/falsifier.yml was
+// deleted at 611fd02770, and gunbc.deleted_cadence_reference_census records the cadence as deleted --
+// so the enrollment would have been a bare de-enrollment onto a dark lane while reading as coverage.
+// These witnesses therefore stay where they are, cost-bound and refused by the floor, which is the
+// honest state rather than a scheduled one.
+// NO COST FIGURES ARE QUOTED IN THIS FILE, DELIBERATELY. An annotation cannot be read by any
+// Accepted program, so nothing can turn a stale or wrong number in one red; DESIGN 4c forbids an
+// annotation standing as evidence for a machine claim. The measurements live in the floor's own
+// required_floor_claim_cost artifact and its INTERRUPTED-BEFORE-VERDICT diagnostic, which are
+// re-derivable by naming the run rather than by copying its numbers into prose.
 data production_facts: List<DeclFact> = decl_facts(pool_roots: production_roots)
 
 type SiteCount {
   qualified_name: String
-  launch: Int
-  sentinel: Int
+  constructions: Int
 }
 
-fn site_count_of(fact: DeclFact) -> SiteCount {
-  let counts = construction_fold_pair(n: fact.node)
+fn launch_site_count_of(fact: DeclFact) -> SiteCount {
   SiteCount {
     qualified_name: fact.qualified_name,
-    launch: counts.launch,
-    sentinel: counts.sentinel,
+    constructions: construction_count(n: fact.node, bare: launch_bare, dotted: launch_dotted),
   }
 }
 
-data corpus_site_counts: List<SiteCount> = map(production_facts, fact => site_count_of(fact: fact))
+data launch_site_counts: List<SiteCount> = map(production_facts, fact => launch_site_count_of(fact: fact))
 
 // A COPIED ACCUMULATOR IS NOT USED HERE, AND THAT IS DELIBERATE. An earlier cut grew this list with
 // concat(acc, [name]) inside a fold, which copies the accumulator on every append. The realized
 // result has two elements, so the realized cost was negligible -- and it is fixed anyway, because
 // DESIGN 6's standing rule prices a proven cost-shape defect regardless of the realized n: "n is
 // small here" is not a time-stable fact, since the roster this feeds is expected to grow.
-data launch_constructor_sites: List<String> = map(filter(corpus_site_counts, s => s.launch > 0), s => s.qualified_name)
+data launch_constructor_sites: List<String> = map(filter(launch_site_counts, s => s.constructions > 0), s => s.qualified_name)
 
-data launch_construction_total: Int = fold(corpus_site_counts, init: 0, f: (acc, s) => acc + s.launch)
+data launch_construction_total: Int = fold(launch_site_counts, init: 0, f: (acc, s) => acc + s.constructions)
 
-data sentinel_construction_total: Int = fold(corpus_site_counts, init: 0, f: (acc, s) => acc + s.sentinel)
+// The sentinel is folded SEPARATELY, and only the one row that reads it pays for it.
+data sentinel_construction_total: Int = fold(production_facts, init: 0, f: (acc, fact) => acc + construction_count(n: fact.node, bare: sentinel_bare, dotted: sentinel_dotted))
 
 // THE DECLARED ROSTER. Two production constructors and no others: the scoped plan fold, and the wet
 // observer branch that builds a request from a decoded scope wire. Both are reviewed in this PR and
