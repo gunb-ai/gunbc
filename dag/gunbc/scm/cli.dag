@@ -24,7 +24,9 @@ import std.symbols { Ascii }
 import extdeps.render.surface { RenderTarget, PlainTerminal }
 import gunbc.cli_wire { CliWireResponse }
 import gunbc.scm.authoring { empty_proposal }
-import gunbc.scm.read_command { scm_read_log, scm_read_status }
+import gunbc.scm.log { CommitLog }
+import gunbc.scm.status { RepositoryStatus }
+import gunbc.scm.read_command { ScmReadResult, scm_read_log, scm_read_status }
 import gunbc.scm.render { scm_log_cli_response, scm_status_cli_response }
 
 data plain_terminal_capability: RenderCapability = RenderCapability {
@@ -35,12 +37,22 @@ data plain_terminal_capability: RenderCapability = RenderCapability {
 
 data plain_terminal_target: RenderTarget = PlainTerminal
 
-fn scm_log(path: String) -> CliWireResponse {
+// THE COMPOSITION IS SPLIT FROM THE READ so the composition is WITNESSABLE. `scm_log` reads a
+// file, and the SCM witnesses are SubstrateInputsOnly -- they refuse at the hermetic boundary --
+// so a claim can never call it. `scm_log_response` takes the read's RESULT and is pure, which
+// makes this module's actual decisions (which target, which capability) reachable by a witness
+// that constructs a result in substrate. Without the split, changing `plain_terminal_capability`
+// to `color: true` would turn nothing red.
+fn scm_log_response(result: ScmReadResult<CommitLog>) -> CliWireResponse {
   scm_log_cli_response(
-    result: scm_read_log(path: path),
+    result: result,
     target: plain_terminal_target,
     capability: plain_terminal_capability
   )
+}
+
+fn scm_log(path: String) -> CliWireResponse {
+  scm_log_response(result: scm_read_log(path: path))
 }
 
 // STATUS OF A REPOSITORY WITH NOTHING STAGED. `repository_status` needs a pending `Proposal`,
@@ -48,10 +60,14 @@ fn scm_log(path: String) -> CliWireResponse {
 // does not carry what is staged. `empty_proposal()` is therefore the honest argument for this
 // entry, and it is a REAL limitation rather than a placeholder: a verb that reports staged roles
 // needs a staging authority to exist first, and none does.
-fn scm_status(path: String) -> CliWireResponse {
+fn scm_status_response(result: ScmReadResult<RepositoryStatus>) -> CliWireResponse {
   scm_status_cli_response(
-    result: scm_read_status(path: path, pending: empty_proposal()),
+    result: result,
     target: plain_terminal_target,
     capability: plain_terminal_capability
   )
+}
+
+fn scm_status(path: String) -> CliWireResponse {
+  scm_status_response(result: scm_read_status(path: path, pending: empty_proposal()))
 }

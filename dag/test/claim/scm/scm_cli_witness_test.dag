@@ -1,0 +1,101 @@
+module test.claim.scm.scm_cli_witness
+
+// WHAT THIS MODULE DECIDES, AND THEREFORE WHAT MUST BE HELD TO EXECUTION.
+//
+// `gunbc.scm.cli` makes exactly two choices the render layer leaves open: which RenderTarget and
+// which RenderCapability a terminal invocation gets. `gunbc.scm.render` is already witnessed
+// against PlainTerminal and an ASCII no-colour capability by test.claim.scm.scm_render_witness,
+// but nothing held gunbc.scm.cli to passing THOSE -- setting `color: true` on
+// `plain_terminal_capability` would have turned no claim red.
+//
+// These claims call the PURE half (`scm_log_response` / `scm_status_response`) rather than the
+// path-taking verbs, because the verbs read a file and this witness family is SubstrateInputsOnly:
+// a file-reading claim refuses at the hermetic boundary before producing a verdict.
+import std.types { String }
+import std.symbols { Ascii }
+import gunbc.cli_wire { CliWireResponse, CliWirePrintable, CliWireUnprintable }
+import std.process { ExitSuccess, ExitFailure }
+import std.render { RenderCapability }
+import gunbc.scm.read_command { ScmReadAnswered, ScmReadRepositoryUnavailable }
+import gunbc.scm.repository_load { RepositoryFileUnreadable }
+import gunbc.scm.repository_envelope { empty_repository }
+import gunbc.scm.log { repository_log }
+import gunbc.scm.status { repository_status }
+import gunbc.scm.authoring { empty_proposal }
+import gunbc.scm.cli { scm_log_response, scm_status_response, plain_terminal_capability }
+
+// THE BYTES PIN THE CAPABILITY. This is the same expected string the render-level witness pins for
+// PlainTerminal + ASCII no-colour, so an equal answer here is evidence that gunbc.scm.cli passes
+// that target and that capability -- not merely that it passes something. A colour-enabled
+// capability renders different bytes and turns this red.
+test fn cli_log_renders_the_plain_terminal_bytes_for_an_unavailable_repository() -> Bool {
+  match scm_log_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+    }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: _ } =>
+      b == "cannot read repository at repo.json\n  No such file or directory\n"
+  }
+}
+
+// A REFUSED READ STILL FAILS, through this module's composition and not only the render layer's.
+test fn cli_log_exits_failure_for_an_unavailable_repository() -> Bool {
+  match scm_log_response(
+    result: ScmReadRepositoryUnavailable {
+      cause: RepositoryFileUnreadable { path: "repo.json", error: "No such file or directory" },
+    }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => false
+        ExitFailure { code: _, reason: _ } => true
+      }
+  }
+}
+
+// AN EMPTY REPOSITORY ANSWERED, so it prints and succeeds. The pair with the claim above is the
+// distinction a caller needs: "no commits" is not "no repository".
+test fn cli_log_answers_and_succeeds_for_an_empty_repository() -> Bool {
+  match scm_log_response(
+    result: ScmReadAnswered { path: "repo.json", answer: repository_log(envelope: empty_repository()) }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: b, exit: e } =>
+      b == "no commits yet\n"
+        && match e {
+             ExitSuccess => true
+             ExitFailure { code: _, reason: _ } => false
+           }
+  }
+}
+
+test fn cli_status_answers_and_succeeds_for_an_empty_repository() -> Bool {
+  match scm_status_response(
+    result: ScmReadAnswered {
+      path: "repo.json",
+      answer: repository_status(envelope: empty_repository(), pending: empty_proposal()),
+    }
+  ) {
+    CliWireUnprintable { cause: _ } => false
+    CliWirePrintable { bytes: _, exit: e } =>
+      match e {
+        ExitSuccess => true
+        ExitFailure { code: _, reason: _ } => false
+      }
+  }
+}
+
+// THE CAPABILITY ROW ITSELF, stated so a change to it is a change to a claim. Bytes already pin it
+// indirectly; this says which property is load-bearing and why, so a reader editing the row learns
+// it is a contract rather than a default.
+test fn the_declared_terminal_capability_is_ascii_without_colour_or_cursor_addressing() -> Bool {
+  plain_terminal_capability.color == false
+    && plain_terminal_capability.cursor_addressable == false
+    && match plain_terminal_capability.tier {
+         Ascii => true
+         _ => false
+       }
+}
