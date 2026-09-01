@@ -5,6 +5,7 @@ import std.contract_identity { ContractEpoch }
 import gunbc.required_ci_epoch_observation {
   RequiredCiEpochObservation,
   RequiredCiEpochObserved,
+  RequiredCiEpochUnobservable,
   RequiredCiEpochAbsent,
   RequiredCiEpochDuplicated,
   RequiredCiEpochMalformed,
@@ -38,28 +39,28 @@ test fn witness_epoch_observed_carries_the_exact_value() -> Bool {
 // disjunction so a regression names which axis broke.
 test fn witness_epoch_absent_refuses_on_its_own_axis() -> Bool {
   match required_ci_epoch_from_workflow_source(src: src_absent) {
-    RequiredCiEpochAbsent => true
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent } => true
     _ => false
   }
 }
 
 test fn witness_epoch_duplicated_refuses_and_counts() -> Bool {
   match required_ci_epoch_from_workflow_source(src: src_duplicated) {
-    RequiredCiEpochDuplicated { occurrences: n } => n == 2
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } } => n == 2
     _ => false
   }
 }
 
 test fn witness_empty_epoch_is_malformed_not_observed() -> Bool {
   match required_ci_epoch_from_workflow_source(src: src_empty_value) {
-    RequiredCiEpochMalformed { detail: _ } => true
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
     _ => false
   }
 }
 
 test fn witness_non_string_epoch_is_malformed_not_observed() -> Bool {
   match required_ci_epoch_from_workflow_source(src: src_non_string) {
-    RequiredCiEpochMalformed { detail: _ } => true
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
     _ => false
   }
 }

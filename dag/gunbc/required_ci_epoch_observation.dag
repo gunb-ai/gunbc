@@ -1,8 +1,12 @@
 module gunbc.required_ci_epoch_observation
 
-import std.types { Bool, Int, List, NonEmptyStr, String }
+import std.types { Bool, FilePath, GitRef, Int, List, NonEmptyStr, String }
 import std.contract_identity { ContractEpoch }
 import gunbc.required_ci_contract_epoch { required_ci_contract_epoch_env_key }
+import extdeps.git.plumbing
+import extdeps.git.plumbing { GitRepositoryAddress, GitWorktreeAt }
+import std.algebra { trim }
+import gunbc.generated_artifact { GeneratedArtifact, WitnessFloorYamlArtifact, artifact_path }
 import extdeps.languages.yaml.types { YamlValue, YamlKeyValue, YamlMapping, YamlString }
 import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIngestRejected }
 
@@ -24,14 +28,21 @@ import extdeps.languages.yaml.ingest { ingest_yaml_source, IngestedYaml, YamlIng
 // of a document, and a test can hand this function exactly the document that exhibits one. The read
 // itself is the caller's effect, and its two failure modes stay separate arms here because a commit
 // that cannot be read and a path that does not exist in a readable commit have different remedies.
-type RequiredCiEpochObservation
-  = RequiredCiEpochObserved { epoch: ContractEpoch }
-  | RequiredCiEpochCommitUnreadable { detail: String }
+// THE FAILURE ARMS ARE THEIR OWN COPRODUCT so a consumer that must refuse can carry the exact axis
+// that failed WITHOUT carrying a success arm it would then have to prove impossible. Nesting the
+// whole observation inside a refusal would put RequiredCiEpochObserved somewhere it can never occur,
+// which is the state-space conflation this corpus rosters as its own failure mode.
+type RequiredCiEpochUnobserved
+  = RequiredCiEpochCommitUnreadable { detail: String }
   | RequiredCiEpochPathUnreadable { detail: String }
   | RequiredCiEpochDocumentUnparsable { detail: String }
   | RequiredCiEpochAbsent
   | RequiredCiEpochDuplicated { occurrences: Int }
   | RequiredCiEpochMalformed { detail: String }
+
+type RequiredCiEpochObservation
+  = RequiredCiEpochObserved { epoch: ContractEpoch }
+  | RequiredCiEpochUnobservable { cause: RequiredCiEpochUnobserved }
 
 fn yaml_top_level_entries(doc: YamlValue) -> List<YamlKeyValue> {
   match doc {
@@ -68,30 +79,100 @@ fn epoch_from_entry(kv: YamlKeyValue) -> RequiredCiEpochObservation {
   match kv.value {
     YamlString { value: s } =>
       if s == "" {
-        RequiredCiEpochMalformed { detail: "epoch member is the empty string" }
+        RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is the empty string" } }
       } else {
         RequiredCiEpochObserved { epoch: s as ContractEpoch }
       }
-    _ => RequiredCiEpochMalformed { detail: "epoch member is not a string" }
+    _ => RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: "epoch member is not a string" } }
   }
 }
 
 fn required_ci_epoch_from_workflow_source(src: String) -> RequiredCiEpochObservation {
   match ingest_yaml_source(src: src) {
-    YamlIngestRejected { reason: r } => RequiredCiEpochDocumentUnparsable { detail: r }
+    YamlIngestRejected { reason: r } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: r } }
     IngestedYaml { value: doc } => {
       let hits = epoch_entries_in(entries: yaml_env_entries(doc: doc))
       let n = hits.length()
       if n == 0 {
-        RequiredCiEpochAbsent
+        RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
       } else if n > 1 {
-        RequiredCiEpochDuplicated { occurrences: n }
+        RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } }
       } else {
         match first(hits) {
           Present { value: kv } => epoch_from_entry(kv: kv)
-          Absent => RequiredCiEpochAbsent
+          Absent => RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
         }
       }
     }
   }
+}
+
+// The operator-facing line for each way the epoch could fail to be observed. It lives here rather
+// than at the consumer because the vocabulary is this module's: a consumer rendering these arms
+// would be a second authority over what they mean, and would drift the first time an arm is added.
+fn required_ci_epoch_unobserved_message(cause: RequiredCiEpochUnobserved) -> String {
+  match cause {
+    RequiredCiEpochCommitUnreadable { detail: d } =>
+      concat("the triggering commit could not be read: ", d)
+    RequiredCiEpochPathUnreadable { detail: d } =>
+      concat("the workflow path could not be read at the triggering commit: ", d)
+    RequiredCiEpochDocumentUnparsable { detail: d } =>
+      concat("the workflow document at the triggering commit does not parse: ", d)
+    RequiredCiEpochAbsent =>
+      "the workflow at the triggering commit declares no contract epoch"
+    RequiredCiEpochDuplicated { occurrences: _ } =>
+      "the workflow at the triggering commit declares the contract epoch more than once"
+    RequiredCiEpochMalformed { detail: d } =>
+      concat("the contract epoch at the triggering commit is malformed: ", d)
+  }
+}
+
+// THE EFFECTFUL HALF, kept to one small boundary. It reads the workflow artifact AT THE TRIGGERING
+// COMMIT and hands the bytes to the pure fold above, so the only thing the effect decides is which
+// bytes are read -- never what they mean. The ref is the event's head_sha rather than any ambient
+// checkout, which is the whole content of "observed at the exact commit that ran".
+//
+// THE REPOSITORY IS A PARAMETER, NOT THE PROCESS WORKING DIRECTORY, which is why this reads through
+// extdeps.git.plumbing rather than extdeps.git Core.Show: Show inherits whatever checkout the
+// process happens to occupy, so a fixture could not hand it a repository of its own and the
+// discriminating experiment -- two commits whose trees differ only in the epoch member -- would have
+// no place to exist. Address-taking is one axis (extdeps.git.plumbing GitRepositoryAddress), so
+// production passes its own worktree and the witness passes the fixture, over ONE code path.
+//
+// THE TWO READ FAILURES ARE SEPARATED BY GIT'S OWN QUESTION, NOT BY ITS PROSE. A commit that cannot
+// be read and a path absent from a readable commit have different remedies, and `cat-file blob`
+// reports both with a `fatal: path ...` line -- measured, on this repository, for an absent path and
+// for a well-formed but unknown commit. Classifying them by substring would be a heuristic over
+// upstream wording. `cat-file -e` answers commit presence with an exit code, which is the question
+// git designed it to answer, so the two causes are decided by two typed probes rather than by
+// reading one error message twice.
+func observe_required_ci_epoch_at_commit(
+  address: GitRepositoryAddress,
+  head_sha: GitRef,
+) -> RequiredCiEpochObservation {
+  let commit_probe = git.Plumbing.CatFileExists(
+    address: address,
+    object: concat(head_sha as String, "^{commit}"),
+  )
+  if commit_probe.exit_code != 0 {
+    RequiredCiEpochUnobservable {
+      cause: RequiredCiEpochCommitUnreadable { detail: trim(commit_probe.stderr) },
+    }
+  } else {
+    let blob = git.Plumbing.CatFileBlob(
+      address: address,
+      object: concat(head_sha as String, concat(":", required_ci_workflow_file_path() as String)),
+    )
+    if blob.exit_code != 0 {
+      RequiredCiEpochUnobservable {
+        cause: RequiredCiEpochPathUnreadable { detail: trim(blob.stderr) },
+      }
+    } else {
+      required_ci_epoch_from_workflow_source(src: blob.content)
+    }
+  }
+}
+
+fn required_ci_workflow_file_path() -> FilePath {
+  artifact_path(a: WitnessFloorYamlArtifact) as FilePath
 }
