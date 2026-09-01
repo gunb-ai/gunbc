@@ -45,7 +45,7 @@ import gunbc.host_converge_slice1 {
   HostConvergeSlice1TasksConverged,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
-import gunbc.fleet_host_budget { declared_runner_count_for }
+import gunbc.runner_slot_allocation { gunbc_runner_slots_per_host }
 import std.disposition { Scaffold, Terminal }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -157,7 +157,7 @@ test fn witness_cross_check_allows_under_count_for_width_increase() -> Bool {
 }
 
 test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
-  let declared = declared_runner_count_for(host: operator_host_srv3)
+  let declared = gunbc_runner_slots_per_host(host: operator_host_srv3)
   let excess_units: List<NonEmptyStr> = map(
     runner_index_seq(n: declared + 1),
     i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as NonEmptyStr,
