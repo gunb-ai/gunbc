@@ -2346,6 +2346,107 @@ mod compiler_tests {
         assert_eq!(rendered, "Vec<i64>");
     }
 
+    fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let optional_type = shaped_type_node("Node", Vec::new());
+        let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
+            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
+            ..(*optional_type).clone()
+        });
+        let arg = named_type_node("child");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::Resolved {
+                    node: optional_type,
+                },
+            )),
+            ..(*arg).clone()
+        })
+    }
+
+    fn callee_with_one_param(
+        param_type_name: &str,
+    ) -> Option<std::rc::Rc<crate::v1_compiler_infer_items::ItemInfo>> {
+        let param = shaped_type_node("value", vec![named_type_node(param_type_name)]);
+        Some(std::rc::Rc::new(crate::v1_compiler_infer_items::ItemInfo {
+            name: "outcome_accepted".to_string(),
+            module_name: "v2.std.diagnostic".to_string(),
+            kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
+            service_names: std::rc::Rc::new(Vec::new()),
+            resource_names: std::rc::Rc::new(Vec::new()),
+            params: std::rc::Rc::new(vec![param]),
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+        }))
+    }
+
+    #[test]
+    fn generic_parameter_declines_the_fail_closed_unwrap() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let arg = optional_typed_arg_node();
+        let generic = crate::v1_compiler_emit_rust::rust_call_arg_fail_closed_unwrap(
+            "child.clone()".to_string(),
+            arg.clone(),
+            callee_with_one_param("T"),
+            0,
+            "outcome_accepted".to_string(),
+            source_indices.clone(),
+        );
+        assert_eq!(
+            generic, "child.clone()",
+            "a type-variable parameter cannot say the instantiation is non-optional, so no unwrap may be injected"
+        );
+        let concrete = crate::v1_compiler_emit_rust::rust_call_arg_fail_closed_unwrap(
+            "child.clone()".to_string(),
+            arg,
+            callee_with_one_param("Node"),
+            0,
+            "node_locus".to_string(),
+            source_indices,
+        );
+        assert!(
+            concrete.contains(".expect("),
+            "a concrete non-optional parameter must still take the unwrap: {}",
+            concrete
+        );
+    }
+
+    #[test]
+    fn witness_carrier_declines_a_non_witness_expected_type() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let shared = std::rc::Rc::new(im::OrdSet::new());
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let witness_of_node = shaped_type_node("Witness", vec![named_type_node("Node")]);
+        let outcome_of_witness = shaped_type_node("Outcome", vec![witness_of_node.clone()]);
+        let emit_with_outcome =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                expected_type: Some(outcome_of_witness),
+                ..(*empty_emit).clone()
+            });
+        assert!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_from_expected_type(
+                emit_with_outcome,
+                shared.clone(),
+                source_indices.clone()
+            )
+            .is_none(),
+            "an expected type whose head is not Witness is not evidence about a witness carrier"
+        );
+        let emit_with_witness =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                expected_type: Some(witness_of_node),
+                ..(*empty_emit).clone()
+            });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_from_expected_type(
+                emit_with_witness,
+                shared,
+                source_indices
+            ),
+            Some("Node".to_string()),
+            "a Witness-headed expected type still answers with its carrier"
+        );
+    }
+
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).
     fn get_rss_bytes() -> u64 {
         #[cfg(target_os = "macos")]
