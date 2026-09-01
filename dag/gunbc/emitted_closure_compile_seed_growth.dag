@@ -163,6 +163,32 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // the capability exists, the evidence does not execute. Nothing here claims a rung for the
 // text-boundary class, which stays exactly where its own row puts it.
 //
+// THE #[ignore] IS A MEASURED DECISION WITH A REVERSAL CONDITION, NOT NEGLECT, and it is written
+// down because a decision to NOT RUN something is exactly the kind that goes silently stale -- read
+// in six months, an ignore with no reasoning beside it is indistinguishable from an oversight.
+//
+// THE MEASUREMENT, one BuildBuddy runner, one run, warm target directory, so the two figures are
+// comparable: the discriminator alone is 184.65s (`test result: ok`, pair PASSED); the default
+// `--lib` suite that runs on every push and pull request is 456.28s. Un-ignoring it is therefore
+// roughly +40% on that suite, fleet-wide, per push. NOT MEASURED COLD, and stated rather than
+// estimated: a cold runner pays the dependency graph first. WHAT THE 185s IS, so nobody prices a
+// black box: two emitted-crate cargo builds -- the control's closure is 6 files, the red's is 17,
+// both linking the seed crate. It is rustc doing the work that makes the arm mean anything, not
+// test logic, so it cannot be optimised away without removing the subject.
+//
+// THE ARGUMENT THAT DECIDES IT IS A RUNG ARGUMENT AND NOT A COST ONE. Un-ignoring would move this
+// evidence from AVAILABLE to EXECUTES-ON-A-NON-BLOCKING-JOB. That is a real honesty improvement and
+// it is still not an acceptance path, because `rust-unit-tests` is not a `needs` of the required
+// aggregate. DESIGN 4b(1) establishes a rung by evidence executing on the REAL ACCEPTANCE PATH, so
+// BOTH STATES LEAVE A NEXT-RUNG TRIGGER NAMING THIS CAPABILITY UNFIRED. The ignore therefore costs
+// NOTHING in rung terms and saves 40% of a per-push suite, which is the whole argument.
+//
+// THE CONDITION THAT REVERSES IT, named so this is re-decided rather than inherited: when
+// `rust-unit-tests` is promoted into the required aggregate. At that point the cost and the WALL
+// arrive together -- the evidence would execute on an acceptance path and could block a merge --
+// and the trade this row prices no longer holds. Nothing else reverses it: not the suite getting
+// faster, not the roster growing, and not a lane wanting to cite this as coverage.
+//
 // AN EARLIER REVISION OF THIS PARAGRAPH CITED TWO `claim_executor` MODES THAT NO LONGER EXIST
 // (`--fixture-closure-compile`, `--fixture-closure-pair`) AND SAID THE PAIR'S VERDICT JOINED
 // `--required-emit-compile`'s EXIT STATUS. Those modes were withdrawn under the approval's
