@@ -21,6 +21,23 @@ import tools.prose_citation_census {
   prose_citation_qualified,
 }
 
+// THE ADMITTED SHAPE OF THIS FILE, recorded here because it is a boundary an operator drew and
+// nothing in the language enforces it. The ScaffoldAdmitted disposition of 2026-09-01 admits
+// PERSISTENT REQUIRED-FLOOR ENROLMENT of this module OVER AUTHORED IN-MEMORY FIXTURES, and explicitly
+// does NOT admit live-instrument invocation or git, filesystem or corpus acquisition during these
+// controls. The full scope and boundary sit beside the disposition they qualify, in
+// tools.prose_citation_census.
+//
+// TODAY THAT HOLDS BY CONSTRUCTION RATHER THAN BY DISCIPLINE: the import list above names only pure
+// functions and types, so these controls CANNOT acquire anything -- there is no acquirer in scope to
+// call. That is the property worth preserving, and it is preserved by what this file imports.
+//
+// SO THE RULE FOR A LATER AUTHOR IS ABOUT THE IMPORT LINE, NOT ABOUT THE TEST BODY: adding
+// filesystem_read, a git.Inspect operation, data_decl_type_facts, or either live entry point to this
+// module leaves the admitted scope and needs a new disposition. It would also put a live-tree read
+// inside a required-floor witness, which is the cost shape v2.workflow.floor_cost_debt exists for.
+// Both consequences follow from one edit that would otherwise look like adding a test.
+//
 // THE DISCRIMINATING CONTROLS for the prose-citation census, run against the REAL recogniser on
 // specimens rather than against a re-derived copy of its rule. Nothing here reads git or the corpus:
 // the recogniser is pure over (path, text, retired index) precisely so these can exercise the decision
