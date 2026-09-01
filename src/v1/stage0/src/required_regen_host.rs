@@ -1114,6 +1114,74 @@ fn is_compared_generated_basename(basename: &str) -> bool {
     basename.ends_with(".rs")
 }
 
+/// WHAT MAY BE WRITTEN INTO THE COMMITTED SEED, ASKED AT THE MUTATION BOUNDARY.
+///
+/// The installer used to ask nothing. It copied `candidate_src/<basename>` to
+/// `stage0_src/<basename>` for whatever roster it was handed, and the only thing keeping a
+/// non-Rust artifact out of that roster was `is_compared_generated_basename` — a predicate
+/// upstream, in a different function, answering a DIFFERENT question ("what does the drift
+/// comparison denominate?"). Install admissibility had no authority of its own; it was a
+/// consequence of the comparator's denominator, which is exactly the shape DESIGN section 3
+/// forbids: one fact with no home, inferred from another fact that is free to move.
+///
+/// It is not hypothetical that a non-`.rs` artifact reaches the candidate tree. The emitter
+/// produces a bare `Cargo.toml` (`v1.compiler.emit_rust`), `write_emitted_tree` writes it
+/// through verbatim, `observe_complete_candidate_artifact_population` sees it, and
+/// `produce_candidate_manifest` gives it a `GeneratedSurface` row declared by
+/// `v1.compiler.emit_rust`. Every stage between the emitter and this copy admits it. The `.rs`
+/// filter on the compared population is the sole reason it never becomes an install target, and
+/// a widening of that denominator — the natural next step the moment a non-Rust generated
+/// artifact wants drift coverage — would silently turn it into one.
+///
+/// So the boundary asks for itself, and refuses rather than widening (DESIGN section 5):
+///
+/// - a path that is not a bare basename cannot address anything outside `stage0_src`;
+/// - a non-`.rs` artifact is not a member of the generated Rust population this seed tree holds;
+/// - a hand-maintained mirror is authored, never installed — the remedy for an emitted/committed
+///   divergence there is `verify_hand_maintained`'s declared-divergence roster, not a copy over
+///   the author's bytes.
+///
+/// REFUSES NOTHING TODAY, BY MEASUREMENT AND BY CONSTRUCTION. Every install roster is a subset
+/// of `drifted`, which is computed by `compare_generated_surfaces` over
+/// `committed_generated_basenames`/`generated_basenames_from_emit` — both already `.rs`-only and
+/// both already hand-maintained-excluded. The live corpus is this wall's positive control; its
+/// discriminating RED is authored in `install_target_admission_refuses_non_rust_artifacts`,
+/// which hands the installer the `Cargo.toml` the emitter really produces.
+///
+/// RUNG, HONESTLY: mechanically preventable. The invalid state stays writable — the plan
+/// projection hands this function a `Vec<String>`, so a non-installable path is expressible right
+/// up to the call — and safety depends on this admission executing. The attainable ceiling is
+/// structural impossibility: membership is decidable and fully modeled, so the state has no
+/// constructor once `v2.workflow.regen_convergence_transaction` `regen_stage_plan_surface_paths`
+/// projects a typed surface identity (declaring module + projected path, as the same module's
+/// `RegenSurfaceIdentity` already carries for the candidate manifest) instead of a
+/// `List<String>`, and the installer takes that type rather than `&[String]`. That
+/// projection is the next-rung trigger; this admission dissolves with it, while the RED below
+/// stays enrolled as the regression control the climb does not retire (DESIGN 4b(4)).
+fn admit_install_target(basename: &str) -> Result<(), String> {
+    if basename.is_empty() || emit_path_basename(basename) != basename {
+        return Err(format!(
+            "InstallTargetNotABareBasename: {basename} is not a bare stage0 basename, so the \
+             install destination is not inside the committed generated surface"
+        ));
+    }
+    if !is_compared_generated_basename(basename) {
+        return Err(format!(
+            "InstallTargetOutsideGeneratedRustPopulation: {basename} is not a generated Rust \
+             surface. The candidate tree carries non-Rust emitted artifacts (the emitter's bare \
+             Cargo.toml among them); none of them is installable into the committed seed"
+        ));
+    }
+    if HAND_MAINTAINED_STAGE0_FILES.contains(&basename) {
+        return Err(format!(
+            "InstallTargetHandMaintained: {basename} is a hand-maintained stage0 mirror. An \
+             emitted/committed divergence there is adjudicated by verify_hand_maintained, never \
+             by installing over the authored bytes"
+        ));
+    }
+    Ok(())
+}
+
 /// THE EMITTED ROSTER IS READ FROM THE EMITTER'S DECLARATION, NOT FROM WHAT IT HANDED BACK.
 ///
 /// This used to walk the keys of the returned map -- the files this emit RENDERED. That was the
@@ -3677,22 +3745,6 @@ fn host_name() -> String {
     "unreadable".to_string()
 }
 
-/// Install the candidate's drifted mirrors into the committed seed — the manual step of the
-/// recipe, performed from the SAME candidate tree the regen just wrote and judged.
-fn install_candidate_paths(
-    candidate_src: &Path,
-    stage0_src: &Path,
-    basenames: &[String],
-) -> Result<(), String> {
-    for basename in basenames {
-        let from = candidate_src.join(basename);
-        let to = stage0_src.join(basename);
-        fs::copy(&from, &to)
-            .map_err(|e| format!("install {} -> {}: {e}", from.display(), to.display()))?;
-    }
-    Ok(())
-}
-
 fn round_cost_entry(source_roots: &[String]) -> Result<String, String> {
     source_roots
         .iter()
@@ -4687,6 +4739,13 @@ where
     Build: FnMut(&Path) -> Result<CargoBuildObservation, String>,
     SeedDigest: FnMut() -> Result<String, String>,
 {
+    // THE FIRST THING THE INSTALL BOUNDARY DOES, over the WHOLE roster, before a digest is read
+    // or a journal is written. A per-file check inside the copy loop would refuse the fourth
+    // entry with three already installed -- a partial mutation whose only remedy is the
+    // checkpoint restore, i.e. a widen dressed as a refusal.
+    for basename in basenames {
+        admit_install_target(basename)?;
+    }
     let changed_before = git_changed_stage0_paths(workspace)?
         .into_iter()
         .collect::<BTreeSet<_>>();
@@ -5403,6 +5462,110 @@ mod regen_convergence_host_instrument_tests {
         rows.iter()
             .map(|(path, module, _)| ((*path).to_string(), (*module).to_string()))
             .collect()
+    }
+
+    /// THE DISCRIMINATING RED FOR `admit_install_target`, and the reason the wall is not a
+    /// decoration: the forbidden state is authorable here even though no production roster can
+    /// currently express it.
+    ///
+    /// Each negative arm passes an EMPTY admitted manifest. Without the boundary admission the
+    /// call still returns `Err` — `CandidateManifestPopulationMismatch`, from the re-admit loop —
+    /// so a test asserting only "it refused" would be permanently green and carry no information.
+    /// It is the CAUSE that discriminates: these arms pass only if the install boundary answered
+    /// before the manifest was consulted at all.
+    #[test]
+    fn install_target_admission_refuses_non_rust_artifacts() {
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+        // The path the emitter really produces: `v1.compiler.emit_rust` returns a `TextFile` at
+        // the bare path "Cargo.toml", `write_emitted_tree` writes it into the candidate tree
+        // verbatim (it is not rustfmt-normalizable), and `produce_candidate_manifest` rows it as
+        // a `GeneratedSurface` declared by `v1.compiler.emit_rust`. It is on disk in every real
+        // candidate tree; only the comparator's `.rs` denominator kept it off the install roster.
+        fs::write(
+            candidate.join("Cargo.toml"),
+            "[package]\nname = \"gunbc\"\n",
+        )
+        .unwrap();
+        let subject_before = fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap();
+
+        for (basename, cause) in [
+            ("Cargo.toml", "InstallTargetOutsideGeneratedRustPopulation"),
+            ("../Cargo.toml", "InstallTargetNotABareBasename"),
+            ("cli_run.rs", "InstallTargetHandMaintained"),
+        ] {
+            let refused = install_convergence_stage_with_backend(
+                &model,
+                &workspace,
+                &stage0,
+                &candidate,
+                &[basename.to_string()],
+                &HashMap::new(),
+                &HashMap::new(),
+                1,
+                RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
+                "seed-0",
+                "generation-0",
+                "tree-0",
+                "manifest-0",
+                "closure-0",
+                &subject,
+                |_| -> Result<CargoBuildObservation, String> {
+                    panic!("a refused install must never reach the seed build")
+                },
+                || -> Result<String, String> {
+                    panic!("a refused install must never reach a seed digest")
+                },
+            )
+            .unwrap_err();
+            assert!(
+                refused.contains(cause),
+                "installing {basename} refused with {refused}, expected {cause}"
+            );
+        }
+
+        // The refusal is BEFORE the mutation boundary, not a rollback of one: no artifact landed,
+        // and no authoritative byte moved and came back.
+        assert!(!stage0.join("Cargo.toml").exists());
+        assert!(!stage0.join("cli_run.rs").exists());
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
+            subject_before
+        );
+
+        // POSITIVE CONTROL. The same entry point, one generated Rust surface, installs — so the
+        // arms above measure the artifact kind and not a call that refuses everything.
+        let rows = [("fixture_subject.rs", "fixture.subject", "// new subject\n")];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+        install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PromoteGenerationInputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "generation-input-cut",
+            &subject,
+            |_| {
+                Ok(CargoBuildObservation {
+                    compiled_crates: 1,
+                    compiled_packages: vec!["fixture-seed".to_string()],
+                })
+            },
+            || Ok("seed-1".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            fs::read_to_string(stage0.join("fixture_subject.rs")).unwrap(),
+            "// new subject\n"
+        );
     }
 
     #[test]
