@@ -30,7 +30,6 @@ import v2.std.logic { Bool }
 import std.process { ExitSuccess, ProcessExit, exit_failure }
 import v2.std.node { Symbol }
 import v2.std.optional { Absent, Present }
-import v2.std.text { String }
 import v2.std.diagnostic { Accepted, NonEmptyDiagnostics, Rejected }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.workflow.body_lowering_retention_census {

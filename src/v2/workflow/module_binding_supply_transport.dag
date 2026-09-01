@@ -15,7 +15,6 @@ import tools.host_prelude {
   witness_bin_ensure_built_typed,
   witness_bin_release_path
 }
-import v2.std.text { String }
 
 // Executing consumer for the module-binding supply carrier. Emits BOTH manifests into one overlay
 // source root and runs the consistency witness against them: --emit-module-binding-manifest

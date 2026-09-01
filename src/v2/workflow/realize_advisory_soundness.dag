@@ -2,7 +2,6 @@ module v2.workflow.realize_advisory_soundness
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { String }
 
 // P4 consumption gate (2026-07-22): the realize_pack advisory logger emits per-subject pairs
 // (derived space bound vs governor-observed peak) as receipt lines every corpus run — computed
