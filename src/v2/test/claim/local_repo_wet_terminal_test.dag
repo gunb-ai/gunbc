@@ -1,0 +1,343 @@
+module v2.test.claim.local_repo_wet_terminal_test
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.workflow.local_repo_wet_terminal {
+  LocalRepoWetVerdict, LocalRepoWetPassed, LocalRepoWetFailed, LocalRepoWetRefused,
+  LocalRepoWetNonterminal, LocalRepoWetCompletedOverBudget,
+  LocalRepoWetExpectation, LocalRepoWetExpectPassed,
+  LocalRepoWetScheduled, LocalRepoWetTerminal,
+  LocalRepoWetJoin, LocalRepoWetJoinHolds, LocalRepoWetJoinRefused,
+  LocalRepoWetTerminalMissing, LocalRepoWetTerminalDuplicated,
+  LocalRepoWetTerminalForeignCandidate, LocalRepoWetTerminalForeignEntry,
+  LocalRepoWetTerminalForeignFunction, LocalRepoWetTerminalVerdictNotExpected,
+  LocalRepoWetTerminalUnscheduled,
+  LocalRepoWetExecution, LocalRepoWetExecutorNotInvoked, LocalRepoWetExecutorRan,
+  LocalRepoWetFinalization, LocalRepoWetFinalizationHolds, LocalRepoWetFinalizationRefused,
+  LocalRepoWetFinalizationRefusal, LocalRepoWetExecutorAbsent,
+  LocalRepoWetExecutionForeignCandidate, LocalRepoWetFinalizationJoinCause,
+  local_repo_wet_join, local_repo_wet_identity_passed_on_candidate, local_repo_wet_finalize,
+}
+
+// THE ACCEPTANCE MATRIX FOR THE WET TERMINAL JOIN, one arm per refusal, each discriminating on its
+// own cause rather than on "the join refused". An implementation that made every route-gap standing
+// nonblocking would pass a single disjunction and fail these.
+//
+// THE FIXTURES ARE BUILT BY ONE CONSTRUCTOR PER AXIS, so each red below differs from the green in
+// exactly one field. A fixture set assembled by hand per test would let two axes move at once and
+// still look like a one-axis experiment.
+
+data fixture_candidate: String = "candidate-tree-aaaa"
+data fixture_other_candidate: String = "candidate-tree-bbbb"
+data fixture_entry: String = "dag/test/claim/x_test.dag"
+data fixture_function: String = "w_holds"
+data fixture_identity: String = "test.claim.x.w_holds"
+
+fn scheduled_one(expected: LocalRepoWetExpectation) -> List<LocalRepoWetScheduled> {
+  [LocalRepoWetScheduled {
+    identity: fixture_identity,
+    entry: fixture_entry,
+    function: fixture_function,
+    expected: expected,
+  }]
+}
+
+fn terminal_one(
+  identity: String,
+  entry: String,
+  function: String,
+  candidate: String,
+  observed: LocalRepoWetVerdict,
+) -> LocalRepoWetTerminal {
+  LocalRepoWetTerminal {
+    identity: identity,
+    entry: entry,
+    function: function,
+    candidate: candidate,
+    observed: observed,
+  }
+}
+
+fn terminal_matching() -> LocalRepoWetTerminal {
+  terminal_one(
+    identity: fixture_identity,
+    entry: fixture_entry,
+    function: fixture_function,
+    candidate: fixture_candidate,
+    observed: LocalRepoWetPassed,
+  )
+}
+
+fn join_of(terminals: List<LocalRepoWetTerminal>) -> LocalRepoWetJoin {
+  local_repo_wet_join(
+    scheduled: scheduled_one(expected: LocalRepoWetExpectPassed),
+    terminals: terminals,
+    candidate: fixture_candidate,
+  )
+}
+
+fn refused_with_one(j: LocalRepoWetJoin, f: fn(LocalRepoWetJoinRefusal) -> Bool) -> Bool {
+  match j {
+    LocalRepoWetJoinHolds => false
+    LocalRepoWetJoinRefused { causes: cs } =>
+      cs.length() == 1 && match first(cs) { Absent => false, Present { value: c } => f(c) }
+  }
+}
+
+// THE POSITIVE CONTROL. One scheduled identity, one terminal for the same candidate, entry,
+// function and expected verdict: the join holds and nothing is claimed beyond it.
+test fn a_matching_terminal_for_this_candidate_holds() -> Bool {
+  match join_of(terminals: [terminal_matching()]) {
+    LocalRepoWetJoinHolds => true
+    LocalRepoWetJoinRefused { causes: _ } => false
+  }
+}
+
+// THE EMPTY POSITIVE CONTROL. No rows in, no causes out -- an empty lane is honest, not a hole.
+test fn an_empty_schedule_and_no_terminals_holds() -> Bool {
+  match local_repo_wet_join(scheduled: [], terminals: [], candidate: fixture_candidate) {
+    LocalRepoWetJoinHolds => true
+    LocalRepoWetJoinRefused { causes: _ } => false
+  }
+}
+
+test fn a_scheduled_identity_with_no_terminal_refuses_as_missing() -> Bool {
+  refused_with_one(j: join_of(terminals: []), f: fn(c) {
+    match c { LocalRepoWetTerminalMissing { identity: i } => i == fixture_identity, _ => false }
+  })
+}
+
+test fn a_terminal_from_another_candidate_refuses_as_foreign_candidate() -> Bool {
+  let t = terminal_one(
+    identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+    candidate: fixture_other_candidate, observed: LocalRepoWetPassed,
+  )
+  refused_with_one(j: join_of(terminals: [t]), f: fn(c) {
+    match c {
+      LocalRepoWetTerminalForeignCandidate { identity: _, observed: o, required: r } =>
+        o == fixture_other_candidate && r == fixture_candidate
+      _ => false
+    }
+  })
+}
+
+test fn a_terminal_naming_another_entry_refuses_as_foreign_entry() -> Bool {
+  let t = terminal_one(
+    identity: fixture_identity, entry: "dag/test/claim/other_test.dag", function: fixture_function,
+    candidate: fixture_candidate, observed: LocalRepoWetPassed,
+  )
+  refused_with_one(j: join_of(terminals: [t]), f: fn(c) {
+    match c { LocalRepoWetTerminalForeignEntry { identity: _, observed: _, required: r } => r == fixture_entry, _ => false }
+  })
+}
+
+test fn a_terminal_naming_another_function_refuses_as_foreign_function() -> Bool {
+  let t = terminal_one(
+    identity: fixture_identity, entry: fixture_entry, function: "w_something_else",
+    candidate: fixture_candidate, observed: LocalRepoWetPassed,
+  )
+  refused_with_one(j: join_of(terminals: [t]), f: fn(c) {
+    match c { LocalRepoWetTerminalForeignFunction { identity: _, observed: _, required: r } => r == fixture_function, _ => false }
+  })
+}
+
+test fn a_failed_wet_terminal_refuses_as_verdict_not_expected() -> Bool {
+  let t = terminal_one(
+    identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+    candidate: fixture_candidate, observed: LocalRepoWetFailed,
+  )
+  refused_with_one(j: join_of(terminals: [t]), f: fn(c) {
+    match c { LocalRepoWetTerminalVerdictNotExpected { identity: i } => i == fixture_identity, _ => false }
+  })
+}
+
+test fn a_refused_wet_terminal_refuses_as_verdict_not_expected() -> Bool {
+  let t = terminal_one(
+    identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+    candidate: fixture_candidate, observed: LocalRepoWetRefused { detail: "host effect refused" },
+  )
+  refused_with_one(j: join_of(terminals: [t]), f: fn(c) {
+    match c { LocalRepoWetTerminalVerdictNotExpected { identity: i } => i == fixture_identity, _ => false }
+  })
+}
+
+test fn a_nonterminal_wet_outcome_refuses_as_verdict_not_expected() -> Bool {
+  let t = terminal_one(
+    identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+    candidate: fixture_candidate, observed: LocalRepoWetNonterminal { detail: "panicked" },
+  )
+  refused_with_one(j: join_of(terminals: [t]), f: fn(c) {
+    match c { LocalRepoWetTerminalVerdictNotExpected { identity: i } => i == fixture_identity, _ => false }
+  })
+}
+
+test fn two_terminals_for_one_identity_refuse_as_duplicated() -> Bool {
+  refused_with_one(j: join_of(terminals: [terminal_matching(), terminal_matching()]), f: fn(c) {
+    match c { LocalRepoWetTerminalDuplicated { identity: i, occurrences: n } => i == fixture_identity && n == 2, _ => false }
+  })
+}
+
+// THE REVERSE JOIN. A terminal nobody scheduled is refused, which is what makes the join a set
+// equality: without it an executor could supply evidence for a row the roster never described.
+test fn a_terminal_for_an_unscheduled_identity_refuses() -> Bool {
+  let stray = terminal_one(
+    identity: "test.claim.x.w_not_scheduled", entry: fixture_entry, function: fixture_function,
+    candidate: fixture_candidate, observed: LocalRepoWetPassed,
+  )
+  match join_of(terminals: [terminal_matching(), stray]) {
+    LocalRepoWetJoinHolds => false
+    LocalRepoWetJoinRefused { causes: cs } =>
+      cs.length() == 1 && match first(cs) {
+        Absent => false
+        Present { value: c } =>
+          match c { LocalRepoWetTerminalUnscheduled { identity: i } => i == "test.claim.x.w_not_scheduled", _ => false }
+      }
+  }
+}
+
+// EVERY NON-PASSING OBSERVATION REFUSES AGAINST THE ONLY EXPECTATION THIS LANE SUPPORTS, and the
+// three are checked SEPARATELY rather than as one representative. The host used to fold Failed,
+// Refused and Nonterminal into a single not-passed Bool; if this test asserted only one of them a
+// re-collapse would keep it green. The expectation type is single-armed on purpose -- widening it
+// is what admits an expected-red member, and that widening arrives with its executor arm.
+fn pass_expectation_refuses(observed: LocalRepoWetVerdict) -> Bool {
+  match local_repo_wet_join(
+    scheduled: scheduled_one(expected: LocalRepoWetExpectPassed),
+    terminals: [terminal_one(
+      identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+      candidate: fixture_candidate, observed: observed,
+    )],
+    candidate: fixture_candidate,
+  ) {
+    LocalRepoWetJoinHolds => false
+    LocalRepoWetJoinRefused { causes: _ } => true
+  }
+}
+
+test fn every_non_passing_observation_refuses_the_pass_expectation() -> Bool {
+  pass_expectation_refuses(observed: LocalRepoWetFailed)
+    && pass_expectation_refuses(observed: LocalRepoWetRefused { detail: "the route had no arm" })
+    && pass_expectation_refuses(observed: LocalRepoWetNonterminal { detail: "interrupted by its budget" })
+    && pass_expectation_refuses(observed: LocalRepoWetCompletedOverBudget { detail: "Cpu 640ms over the 500ms line" })
+}
+
+// THE NARROW PER-IDENTITY PREDICATE THE GATE CONSULTS, discriminated on all three of its facts.
+test fn the_gate_predicate_admits_only_an_exact_identity_candidate_and_pass() -> Bool {
+  local_repo_wet_identity_passed_on_candidate(
+    identity: fixture_identity, terminals: [terminal_matching()], candidate: fixture_candidate,
+  )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: fixture_identity, terminals: [terminal_matching()], candidate: fixture_other_candidate,
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: "test.claim.x.w_other", terminals: [terminal_matching()], candidate: fixture_candidate,
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: fixture_identity,
+      terminals: [terminal_one(
+        identity: fixture_identity, entry: fixture_entry, function: fixture_function,
+        candidate: fixture_candidate, observed: LocalRepoWetFailed,
+      )],
+      candidate: fixture_candidate,
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: fixture_identity, terminals: [], candidate: fixture_candidate,
+    )
+    && !local_repo_wet_identity_passed_on_candidate(
+      identity: fixture_identity,
+      terminals: [terminal_matching(), terminal_matching()],
+      candidate: fixture_candidate,
+    )
+}
+
+// THE INVOCATION ARM, one cell per state of `LocalRepoWetExecution` against a nonempty schedule.
+// These are the fixture side of the wall; the executing side is the required floor itself, which
+// holds an execution value that is `NotInvoked` until the executor returns and hands this fold the
+// answer either way.
+
+fn finalize_of(execution: LocalRepoWetExecution) -> LocalRepoWetFinalization {
+  local_repo_wet_finalize(
+    scheduled: scheduled_one(expected: LocalRepoWetExpectPassed),
+    execution: execution,
+    candidate: fixture_candidate,
+  )
+}
+
+fn finalize_refused_with_one(f: LocalRepoWetFinalization, p: fn(LocalRepoWetFinalizationRefusal) -> Bool) -> Bool {
+  match f {
+    LocalRepoWetFinalizationHolds => false
+    LocalRepoWetFinalizationRefused { causes: cs } =>
+      cs.length() == 1 && match first(cs) { Absent => false, Present { value: c } => p(c) }
+  }
+}
+
+// THE DISCRIMINATING RED FOR THE DELETED INVOCATION. A schedule with members and no executor call
+// refuses BY NAME, naming how many members went unrun -- which is what the old shape could not say,
+// because with nothing invoked there are no terminals and a join over zero terminals and zero
+// members holds.
+test fn a_nonempty_schedule_with_no_executor_invocation_refuses_as_executor_absent() -> Bool {
+  finalize_refused_with_one(finalize_of(execution: LocalRepoWetExecutorNotInvoked), p: c =>
+    match c {
+      LocalRepoWetExecutorAbsent { scheduled: n } => n == 1
+      LocalRepoWetExecutionForeignCandidate { observed: _, required: _ } => false
+      LocalRepoWetFinalizationJoinCause { cause: _ } => false
+    })
+}
+
+// THE OPPOSITE CELL OF THE SAME ARM: absence is a refusal because members were scheduled, not
+// because absence is refused unconditionally. Without this the arm above would also pass an
+// implementation that refuses every not-invoked execution, including the vacuous one.
+test fn an_empty_schedule_with_no_executor_invocation_holds() -> Bool {
+  match local_repo_wet_finalize(scheduled: [], execution: LocalRepoWetExecutorNotInvoked, candidate: fixture_candidate) {
+    LocalRepoWetFinalizationHolds => true
+    LocalRepoWetFinalizationRefused { causes: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE WALL. The executor ran, against this candidate, and produced the one
+// terminal the schedule demands: finalization holds. A wall that refused here would be permanently
+// red and equally uninformative.
+test fn an_executor_that_ran_this_candidate_completely_holds() -> Bool {
+  match finalize_of(execution: LocalRepoWetExecutorRan { candidate: fixture_candidate, terminals: [terminal_matching()] }) {
+    LocalRepoWetFinalizationHolds => true
+    LocalRepoWetFinalizationRefused { causes: _ } => false
+  }
+}
+
+// A RUN AGAINST ANOTHER TREE IS NOT THIS TREE'S EVIDENCE, and it is refused before the join so the
+// reader is sent to the receipt's provenance rather than to a roster that is not at fault.
+test fn an_executor_that_ran_another_candidate_refuses_as_foreign_candidate() -> Bool {
+  finalize_refused_with_one(
+    finalize_of(execution: LocalRepoWetExecutorRan { candidate: fixture_other_candidate, terminals: [terminal_matching()] }),
+    p: c =>
+      match c {
+        LocalRepoWetExecutorAbsent { scheduled: _ } => false
+        LocalRepoWetExecutionForeignCandidate { observed: o, required: r } =>
+          o == fixture_other_candidate && r == fixture_candidate
+        LocalRepoWetFinalizationJoinCause { cause: _ } => false
+      })
+}
+
+// AN INVOKED EXECUTOR STILL ANSWERS TO THE JOIN. The invocation wall is added beside the
+// completeness join, never in front of it: an executor that ran and skipped a member reaches the
+// same missing-terminal cause it always did, now carried as a finalization cause.
+test fn an_executor_that_ran_but_skipped_a_member_still_refuses_as_missing() -> Bool {
+  finalize_refused_with_one(
+    finalize_of(execution: LocalRepoWetExecutorRan { candidate: fixture_candidate, terminals: [] }),
+    p: c =>
+      match c {
+        LocalRepoWetExecutorAbsent { scheduled: _ } => false
+        LocalRepoWetExecutionForeignCandidate { observed: _, required: _ } => false
+        LocalRepoWetFinalizationJoinCause { cause: j } =>
+          match j {
+            LocalRepoWetTerminalMissing { identity: i } => i == fixture_identity
+            LocalRepoWetTerminalDuplicated { identity: _, occurrences: _ } => false
+            LocalRepoWetTerminalForeignCandidate { identity: _, observed: _, required: _ } => false
+            LocalRepoWetTerminalForeignEntry { identity: _, observed: _, required: _ } => false
+            LocalRepoWetTerminalForeignFunction { identity: _, observed: _, required: _ } => false
+            LocalRepoWetTerminalVerdictNotExpected { identity: _ } => false
+            LocalRepoWetTerminalUnscheduled { identity: _ } => false
+          }
+      })
+}
