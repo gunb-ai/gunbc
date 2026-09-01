@@ -59,19 +59,33 @@ fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
   acc.result
 }
 
-fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+// One walk owns both the import-surface name and the position in which that
+// occurrence was found.  Consumers that only need names project `name`; the
+// Rust use-line classifier additionally consumes `applied_argument` rather
+// than rebuilding a second walk over the same type tree.
+type TypeSurfaceOccurrence {
+  name: String
+  applied_argument: Bool
+}
+
+fn collect_type_node_import_surface_occurrences(n: Node, applied_argument: Bool, source_indices: Map<String, NewlineIndex>) -> List<TypeSurfaceOccurrence> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
   let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
-  let own = if name != "" && name != "Dynamic" && !is_tv { [name] } else { [] }
+  let own = if name != "" && name != "Dynamic" && !is_tv { [TypeSurfaceOccurrence { name: name, applied_argument: applied_argument }] } else { [] }
+  let children_are_applied_arguments = name != "" && peeled.connective == NoConnective && peeled.children |> count > 0
   let child_names = peeled.children |> flat_map(ch =>
-    collect_type_node_import_surface_names(n: child_type_node(ch: ch), source_indices: source_indices)
+    collect_type_node_import_surface_occurrences(n: child_type_node(ch: ch), applied_argument: children_are_applied_arguments, source_indices: source_indices)
   )
   let inferred_names = match peeled.inferred {
-    Present { value: Resolved { node: rt } } => collect_type_node_import_surface_names(n: rt, source_indices: source_indices)
+    Present { value: Resolved { node: rt } } => collect_type_node_import_surface_occurrences(n: rt, applied_argument: applied_argument, source_indices: source_indices)
     _ => []
   }
-  dedupe_nonempty_strings(items: concat(own, concat(child_names, inferred_names)))
+  concat(own, concat(child_names, inferred_names))
+}
+
+fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+  dedupe_nonempty_strings(items: collect_type_node_import_surface_occurrences(n: n, applied_argument: false, source_indices: source_indices) |> map(o => o.name))
 }
 
 // fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup

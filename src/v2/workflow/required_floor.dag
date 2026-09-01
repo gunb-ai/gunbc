@@ -8,6 +8,7 @@ import v2.workflow.floor_expected_red { floor_expected_red_roster }
 import v2.workflow.floor_non_verdict { floor_non_verdict_roster }
 import v2.workflow.floor_route_gap { floor_route_gap_roster }
 import v2.workflow.floor_cost_debt { floor_cost_debt_roster, floor_cost_debt_holds }
+import v2.workflow.local_repo_wet_terminal { local_repo_wet_schedule }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 import std.nat { Nat }
 import std.measure {
@@ -366,6 +367,11 @@ fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> Long
 // "the failure surfaces only from a full CI run". It cost a ~30-minute fold to learn, on a
 // change whose whole subject is the cost of folds.
 //
+// `v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule` is the FIFTH, on the same terms
+// and with the same diagnostic, and it cost the same full-CI fold to learn. It is reported here
+// as the fifth data point for the derivation named above rather than as a fifth apology; the
+// import is reachability only, and the host still calls the schedule by its real qualified name.
+//
 // FOUR OCCURRENCES IS NOT FOUR CARELESS AUTHORS. Each of us read a file that says, in prose, at
 // the exact place we were editing, that this edge must be added by hand -- and the prose did not
 // stop any of us, because a reader adding a roster is thinking about the roster's CONTENT while
@@ -524,6 +530,7 @@ fn required_gate_prefixes() -> List<String> {
     "test.claim.v1_dag_parse_witness",
     "test.claim.generic_lambda_parameter_binding_witness",
     "test.claim.arity_zero_import_refusal_witness",
+    "test.claim.prose_citation_census_witness",
     "test.claim.bare_name_",
     "test.claim.legacy_binding_",
     "test.claim.compiler_frontend_program_status_witness",
