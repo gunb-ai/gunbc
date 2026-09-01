@@ -22320,9 +22320,15 @@ fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
     // only under `-C`/`--find-copies` or `diff.renames=copies`, neither of which this
     // argv nor the repo config sets. TRIGGER: copy detection becoming reachable — the argv
     // gaining `-C`, or `diff.renames` being set to `copies` at any config scope — at which
-    // point the copy destination must be admitted here alongside `rename to`. No branch is
-    // written for it today: an arm no diff can reach is permanently untested and would be
-    // cited as coverage it does not provide.
+    // point the copy destination must be admitted here alongside `rename to`. SUFFICIENT FOR:
+    // the trigger is discharged only when EVERY copy destination the observation can emit is
+    // enrolled, including a copy whose SOURCE is untouched. Measured: under
+    // `diff.renames=copies`, git reports a copy only when the source file is itself modified in
+    // the same diff -- an identical copy of an unmodified file emits no `copy to` line until
+    // `--find-copies-harder` widens detection. So the obvious fixture (copy an untouched file,
+    // observe nothing) is a FALSE GREEN against this row; a copy alongside a source edit is the
+    // discriminating one. No branch is written for it today: an arm no diff can reach is
+    // permanently untested and would be cited as coverage it does not provide.
     let mut added = HashSet::new();
     let mut minus_is_null = false;
     for line in diff_text.lines() {
@@ -22497,8 +22503,9 @@ pub fn emit_realize_advisory_for_rows(source_roots: &[String], rows: &[Discovery
             return;
         }
     };
-    // Host budget: the SAME single authority the MemoryGovernor schedules against
-    // (env -> cgroup memory.high -> memory.max -> Darwin hw.memsize). Unreadable -> the
+    // Host planning ceiling: the SAME single authority the MemoryGovernor schedules against.
+    // It is the minimum of an optional env request and observed cgroup lines; an env-only
+    // declaration is unverified and unreadable to consumers. Unreadable -> the
     // modeled law refuses (BudgetRefused), never a fabricated width.
     let (budget_opt, budget_source) = crate::memory_governor::read_host_budget_bytes();
     let budget_bytes: Option<i64> = budget_opt.map(|b| b as i64);
