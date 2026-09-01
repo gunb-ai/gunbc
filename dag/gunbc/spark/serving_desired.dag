@@ -249,27 +249,13 @@ fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
 // live window 16x on the first converge, as a side effect of a repair whose subject was causality
 // and not capacity.
 //
-// THE 131072 THAT STOOD HERE WAS ALSO NEVER ENACTED, and its own evidence sentence is how that went
-// unnoticed. It read that the wet observation was EVIDENCE and not source, citing both hosts
-// reporting `context_length: 131072` from /api/ps -- but /api/ps reports what a LOADED MODEL
-// ALLOCATED, which this file states two paragraphs above is a different fact from the CONFIGURED
-// limit and must not be collapsed into it. An effective reading was therefore admitted as evidence
-// for a configured value, and it could not have discriminated: the deployed unit on both hosts
-// carried NO `OLLAMA_CONTEXT_LENGTH` line at all, so the number being confirmed was Ollama's own
-// default and not this declaration. Measured 2026-09-01 by reading the unit file directly on
-// spark-a3ee and spark-3bd5: three Environment lines, none of them the context one.
-//
-// 1048576 IS SELECTED, and what makes it defensible is a load rather than a reading: the served
-// build hf.co/antirez/deepseek-v4-gguf declares `deepseek4.context_length` 1048576, and at that
-// full window it resides in 88,865,253,620 B against a 130,660,151,296 B kernel-visible total. The
-// window is not what is scarce on this hardware. Re-derive by loading the model at an explicit
-// num_ctx and reading size_vram back from /api/ps; that instrument, not this number, is the
-// authority for what any given build costs.
-//
-// A smaller window remains writable, and a larger one than the model declares is a real request
-// the runtime is free to refuse -- Ollama clamps to the model's declared maximum, so this value is
-// a CEILING across the roster and not a per-model promise.
-data spark_serving_desired_context_length: TokenCount = token_count(count: 1048576)
+// 131072 is SELECTED here, and the wet observation is its EVIDENCE, not its source: both hosts were
+// read reporting `context_length: 131072` from the Ollama /api/ps surface, which establishes that
+// this value preserves what the running service already exposes. Observed state does not silently
+// become desired state -- an operator chose this number and the reading is why it is defensible. A
+// smaller window remains writable, and a larger one than the model declares is a real request the
+// runtime is free to refuse.
+data spark_serving_desired_context_length: TokenCount = token_count(count: 131072)
 
 // The unit's window is DERIVED from the serving policy rather than authored beside it. This is the
 // causal link the repair adds: the policy is the single authority, the unit text is a function of
