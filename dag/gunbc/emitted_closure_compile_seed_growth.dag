@@ -156,8 +156,9 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // the cli_run re-export list are MODIFIED rather than added, and claim_executor gains argv arms
 // and two mode bodies inside an existing function -- ExistingSeedItemModified in both files, so
 // listing them would net a modification into an addition census. THE ROSTER IS EXACT AGAINST THE
-// FILE AS OF THIS LANE: 74 declarations counted at every indent by the rule stated above, 74
-// rows, zero stale, zero unaccounted. Re-derive it rather than trusting it; the paragraph above
+// FILE AS OF THIS LANE: 75 declarations counted at every indent by the rule stated above, 75
+// rows, zero stale, zero unaccounted (74 at first push; fixture_closure_reached_rustc is the
+// fail-closed repair review 58120 required). Re-derive it rather than trusting it; the paragraph above
 // records what happens when nobody does.
 
 // HAND-RUST RECEIPT FOR THE REQUIRED-PATH ROOT CORRECTION. Additions: PROBE_ROOT_DIR_NAME,
@@ -211,6 +212,7 @@ data emitted_closure_compile_seed_growth_justification: SeedGrowthJustification 
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "write_probe_crate_files", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "FixtureClosureOutcome", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_compiled", field: WholeDeclaration },
+    DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_reached_rustc", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_attributed_line", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_closure_summary", field: WholeDeclaration },
     DeclarationRef { module_path: "v1_compiler.emitted_closure_compile_host", decl_name: "fixture_rust_module", field: WholeDeclaration },

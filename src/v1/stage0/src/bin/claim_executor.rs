@@ -418,10 +418,10 @@ fn run() -> Result<ExitCode, ExitCode> {
             {
                 eprintln!("fixture-closure-compile: {path} attributed {attributed}");
             }
-            if matches!(
-                outcome,
-                v1_compiler::cli_run::FixtureClosureOutcome::CrateNotWritten { .. }
-            ) {
+            // AN ARM IS ANSWERED ONLY IF RUSTC REACHED A VERDICT ON IT. A red is answered; a
+            // fixture gunbc refused, an unwritten crate and a cargo run that never completed are
+            // not, and this mode must not exit successfully over any of them (review 58120).
+            if !v1_compiler::cli_run::fixture_closure_reached_rustc(&outcome) {
                 unanswered += 1;
             }
         }

@@ -979,6 +979,34 @@ pub fn fixture_closure_compiled(outcome: &FixtureClosureOutcome) -> bool {
     }
 }
 
+/// DID THIS ARM REACH A RUSTC VERDICT AT ALL -- which is a different question from whether it
+/// compiled, and the one a caller must ask before reading a red as evidence.
+///
+/// TRUE only for a cargo run that COMPLETED and reported its own exit status. A red (`status`
+/// non-zero) is reached: rustc ran and refused, which is half of what a discriminator is for.
+/// Everything else answered nothing about the emitted bytes and must not be counted as if it had:
+///
+/// - `SourceRefused` -- gunbc refused the fixture, so nothing was emitted and rustc had no subject;
+/// - `CrateNotWritten` -- the closure never reached disk;
+/// - `NotAttempted` -- the toolchain was never invoked;
+/// - `DidNotComplete` -- cargo was killed or failed to spawn, reporting no status of its own.
+///
+/// THIS EXISTS BECAUSE THE CALL SITE GOT IT WRONG (review 58120). `--fixture-closure-compile`
+/// counted only `CrateNotWritten` as unanswered and therefore exited SUCCESSFULLY on a fixture
+/// gunbc rejected and on a cargo run that never finished -- a mode reporting success without
+/// reaching rustc, which is the fail-open §5 forbids and which contradicted this module's own
+/// outcome separation. A predicate beside the carrier, rather than a `matches!` at each caller,
+/// is what stops the next caller from enumerating a different subset of the same arms.
+pub fn fixture_closure_reached_rustc(outcome: &FixtureClosureOutcome) -> bool {
+    match outcome {
+        FixtureClosureOutcome::Measured { cargo, .. } => {
+            matches!(cargo, CargoVerdict::Completed { .. })
+        }
+        FixtureClosureOutcome::SourceRefused { .. }
+        | FixtureClosureOutcome::CrateNotWritten { .. } => false,
+    }
+}
+
 /// The diagnostic line attributing a red to the fixture's OWN emitted module, if there is one.
 ///
 /// A CALLER MUST BE ABLE TO SEPARATE "RUSTC REFUSED THIS FIXTURE" FROM "THE CLOSURE WAS ALREADY
@@ -1158,8 +1186,8 @@ pub fn run_fixture_closure_discrimination(probe_root: &Path) -> FixtureDiscrimin
 /// a pass here would let the route's evidence green while nothing reached rustc at all.
 pub fn fixture_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
     fixture_closure_compiled(&pair.green)
+        && fixture_closure_reached_rustc(&pair.red)
         && !fixture_closure_compiled(&pair.red)
-        && matches!(&pair.red, FixtureClosureOutcome::Measured { .. })
         && fixture_closure_attributed_line(&pair.red).is_some()
 }
 
