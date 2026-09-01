@@ -1,0 +1,209 @@
+module tools.compile_phase_frontier_live_gate
+
+import std.types { Bool, Int, String, NonEmptyStr }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.rustc
+import extdeps.rustc { rustc_version_verbose_release_line, rustc_version_verbose_field }
+import extdeps.cargo
+import gunbc.self_host_compile_phase_frontier {
+  CompilePhaseInvocation,
+  self_host_compile_phase_frontier_receipts
+}
+import gunbc.self_host_compile_phase_live_gate {
+  LiveToolchainReading,
+  LiveCompilePhaseObservation,
+  LiveFrontierVerdict,
+  LiveFrontierHeld,
+  LiveFrontierRefused,
+  LiveFrontierUnmeasured,
+  live_tree_frontier_verdict,
+  live_frontier_verdict_text
+}
+import tools.emission_entry_instrument {
+  EmissionMeasurement,
+  EmissionMeasured,
+  RustfmtParseObservation,
+  cargo_error_identity_rows,
+  measure_entry_emission,
+  emission_report_text
+}
+
+// THE GATE VERB FOR THE LIVE TREE. `gunbc.self_host_compile_phase_frontier` ratchets the persisted
+// receipt series against itself; this actuator supplies the tree as the current row so a regression
+// reddens when it is introduced rather than when someone next authors a receipt.
+//
+//   gunbc run --source-root dag --source-root src/v2 \
+//     --entry dag/gunbc/instruments/compile_phase_frontier_live_gate.dag --function check \
+//     --arg report=/tmp/live-frontier.tsv
+//
+// THE EXIT STATUS ANSWERS ABOUT THE SUBJECT, WHICH IS THE ONE PLACE THIS DIFFERS FROM THE
+// INSTRUMENT IT CALLS. `tools.emission_entry_instrument` `measure` deliberately reports whether the
+// INSTRUMENT completed, because an observation that found errors is a successful observation. A
+// gate is the other question, so here a regression, a non-validating series and a measurement that
+// could not be taken ALL exit nonzero. Nothing about being unable to measure widens to a pass.
+
+// The profile and feature selection are not read from the host because nothing on the host carries
+// them: they are properties of the invocation `measure_entry_emission` makes, and the authority for
+// that invocation is `cargo.Build.CheckManifestMessages` — a default-profile `cargo check` with no
+// feature selection. Spelling them here as the receipts spell them is what lets the comparability
+// check refuse when a future instrument change silently moves either.
+data live_gate_invocation_profile: String = "check/dev"
+
+data live_gate_entry: String = "src/v2/compiler/00_compile.dag"
+
+type ToolchainReadingAttempt
+  = ToolchainRead { reading: LiveToolchainReading }
+  | ToolchainUnread { cause: String }
+
+// The receipt's rustc identity is COMPOSED from rustc's own keyed verbose report rather than
+// matched loosely against it. Every field is read by key, and a key rustc stops emitting yields
+// Absent and refuses the reading — the composition can fail, and it cannot fail quietly.
+fn compose_rustc_identity(stdout: String) -> String? {
+  match rustc_version_verbose_field(stdout: stdout, key: "commit-hash") {
+    Absent => none
+    Present { value: commit } =>
+      match rustc_version_verbose_field(stdout: stdout, key: "host") {
+        Absent => none
+        Present { value: host } =>
+          match rustc_version_verbose_field(stdout: stdout, key: "LLVM version") {
+            Absent => none
+            Present { value: llvm } => Present {
+              value: concat(
+                concat(trim(s: rustc_version_verbose_release_line(stdout: stdout)), concat("; commit ", commit)),
+                concat(concat("; host ", host), concat("; LLVM ", llvm))
+              )
+            }
+          }
+      }
+  }
+}
+
+fn read_live_toolchain() -> ToolchainReadingAttempt {
+  let rustc_reading = rustc.Identity.VersionVerbose()
+  let cargo_reading = cargo.Identity.Version()
+  if !rustc_reading.success {
+    ToolchainUnread { cause: "rustc did not report its version, so the live observation has no comparison epoch" }
+  } else if !cargo_reading.success {
+    ToolchainUnread { cause: "cargo did not report its version, so the live observation has no comparison epoch" }
+  } else {
+    match compose_rustc_identity(stdout: rustc_reading.stdout) {
+      Absent => ToolchainUnread {
+        cause: "rustc's verbose version report is missing commit-hash, host or LLVM version, so its identity cannot be composed"
+      }
+      Present { value: rustc_identity } => {
+        let cargo_identity = trim(s: cargo_reading.stdout)
+        if rustc_identity == "" || cargo_identity == "" {
+          ToolchainUnread { cause: "a toolchain version report was empty" }
+        } else {
+          ToolchainRead {
+            reading: LiveToolchainReading {
+              cargo_identity: cargo_identity as NonEmptyStr,
+              rustc_identity: rustc_identity as NonEmptyStr,
+              invocation: CompilePhaseInvocation {
+                target: match rustc_version_verbose_field(stdout: rustc_reading.stdout, key: "host") {
+                  Present { value: host } => host
+                  Absent => ""
+                },
+                profile: live_gate_invocation_profile,
+                features: []
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+type LiveObservationAttempt
+  = LiveObservationTaken { observation: LiveCompilePhaseObservation, measurement: EmissionMeasurement }
+  | LiveObservationNotTaken { cause: String, measurement: EmissionMeasurement }
+
+// The measurement crosses a function boundary before either consumer reads it, for the reason
+// `persist_measurement` records beside the instrument: a local binding is lowered by substitution
+// and would execute the whole wet pipeline twice, so the report and the verdict would describe two
+// different runs.
+fn live_observation(m: EmissionMeasurement, reading: LiveToolchainReading) -> LiveObservationAttempt {
+  match m {
+    EmissionMeasured {
+      subject: _,
+      emitted_files: _,
+      emit_diagnostics: _,
+      emitted_artifact_identity: _,
+      rustfmt_parse_observation: parse,
+      cargo_clean: _,
+      cargo_diagnostics: ds,
+      cargo_lines_scanned: _
+    } => LiveObservationTaken {
+      observation: LiveCompilePhaseObservation {
+        parse_observation: parse,
+        raw_error_diagnostic_identities: cargo_error_identity_rows(ds: ds),
+        toolchain: reading
+      },
+      measurement: m
+    }
+    measurement => LiveObservationNotTaken {
+      cause: "the emission instrument did not reach a cargo measurement, so no live census exists",
+      measurement: measurement
+    }
+  }
+}
+
+fn write_gate_report(report: String, m: EmissionMeasurement, verdict_text: String) -> Bool {
+  Filesystem.Write(
+    path: report,
+    content: concat(
+      concat("subject_entry\t", concat(live_gate_entry, "\n")),
+      concat(concat(verdict_text, "\n\n"), emission_report_text(m: m))
+    )
+  ).success
+}
+
+fn adjudicate(report: String, attempt: LiveObservationAttempt) -> ProcessExit {
+  match attempt {
+    LiveObservationNotTaken { cause: c, measurement: m } =>
+      if !write_gate_report(report: report, m: m, verdict_text: concat("unmeasured\t", c)) {
+        exit_failure(reason: concat("check: the measurement was not taken and the report could not be written to ", report))
+      } else {
+        exit_failure(reason: concat("check: ", concat(c, concat(" — the stage that stopped it is named in ", report))))
+      }
+    LiveObservationTaken { observation: observation, measurement: m } => {
+      let verdict = live_tree_frontier_verdict(
+        series: self_host_compile_phase_frontier_receipts,
+        observation: observation
+      )
+      if !write_gate_report(report: report, m: m, verdict_text: live_frontier_verdict_text(verdict: verdict)) {
+        exit_failure(reason: concat("check: the verdict was reached and could not be written to ", report))
+      } else {
+        match verdict {
+          LiveFrontierHeld { live_identity_count: _ } => ExitSuccess
+          LiveFrontierRefused { identities: ids, reason: why } =>
+            exit_failure(
+              reason: concat(
+                concat("check: the live compile-phase frontier refused — ", why as String),
+                concat(concat(" (", to_string(count(ids))), concat(" identity/identities named in ", concat(report, ")")))
+              )
+            )
+          LiveFrontierUnmeasured { reason: why } =>
+            exit_failure(reason: concat("check: the live compile-phase frontier was not measured — ", why as String))
+        }
+      }
+    }
+  }
+}
+
+fn check(report: String) -> ProcessExit {
+  if report == "" {
+    exit_failure(reason: "check: --arg report=<path> is required — the verdict is written, not printed")
+  } else {
+    match read_live_toolchain() {
+      ToolchainUnread { cause: c } => exit_failure(reason: concat("check: ", c))
+      ToolchainRead { reading: reading } =>
+        adjudicate(
+          report: report,
+          attempt: live_observation(m: measure_entry_emission(entry: live_gate_entry), reading: reading)
+        )
+    }
+  }
+}
