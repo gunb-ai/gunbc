@@ -69,6 +69,9 @@ pub fn required_lane_cross_process_content_judged_module_identities_for_ci() -> 
     // The weaker column still has content provenance: `subject_digest_for_closure` keys the
     // artifact by closure-content digest plus compiler-transform digest, and disk lookup verifies
     // both the request key and stored semantic digest. It does not prove judgment by this run.
+    // Required CI does not arm `GUNBC_RESOLVED_GRAPH_CACHE_DIR`, so this split has no reachable
+    // nonempty arm there today: its expected empty column must be read beside the in-run column,
+    // and its presence is not evidence that disk provenance has been exercised.
     entry_resolve::required_lane_cross_process_content_judged_module_identities()
 }
 
