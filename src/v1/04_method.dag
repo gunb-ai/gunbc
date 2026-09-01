@@ -64,6 +64,15 @@ fn algebra_param_templates_in(profile: AlgebraProfile, method: String) -> List<A
   }
 }
 
+// THE UNPAIRED FALLBACK IS A FABRICATED SUBSTITUTION AND NOTHING CHECKS IT. If a row declares more
+// names than std.algebra declares templates, this yields a type variable spelled
+// unpaired_declared_parameter rather than refusing, because a .dag data initializer has no refusal
+// channel -- the registry is a `data` value and there is nowhere for a diagnostic to go at
+// construction. That is DESIGN section 5's fabricated-plausible-output arm, named here rather than
+// hidden: the line does not stop, it produces a plausible-looking type and carries on. The marker
+// is greppable and appears in the emitted mirror, but NO CONSUMER ASSERTS ITS ABSENCE today, and an
+// unchecked marker is an inert lens, not a wall. The declared drop for this is
+// gunbc.rung_drop builtin_signature_arity_pairing_fabricates.
 fn pair_declared_names(names: List<String>, templates: List<AlgebraTypeTemplate>) -> List<BuiltinParam> {
   names |> enumerate |> map(pair =>
     BuiltinParam {
@@ -82,6 +91,17 @@ fn derived_signature(names: List<String>, method: String, returns: Node) -> Buil
   }
 }
 
+// THE PROFILE HERE IS DECLARED, NOT DERIVED, and the distinction is the point of this change. get
+// is declared in three algebra profiles with two signatures -- (Self, Int) -> Element? in
+// free_monoid_collection, (Self, Key) -> Value? in the two function profiles -- so the algebra does
+// not answer which one a name-keyed registry means. The collection profile is chosen because the
+// registry's own prior return type for get was Optional<collection_element>, which matches that arm
+// and not the other. That is a COMPATIBILITY argument reading the structure being replaced, not a
+// derivation from the algebra, and it is written as a declared choice so a later reader can reopen
+// it against the algebra instead of finding a rule that looks derived. Measured before authoring:
+// no call site reaches this row with a map receiver -- every free call passes a list and an index,
+// and method-position calls resolve through the receiver-keyed profile path, with
+// func_sig_from_global_bare short-circuiting every algebra method name before the registry.
 fn derived_signature_in(profile: AlgebraProfile, names: List<String>, method: String, returns: Node) -> BuiltinSignature {
   BuiltinSignature {
     params: pair_declared_names(names: names, templates: algebra_param_templates_in(profile: profile, method: method)),
