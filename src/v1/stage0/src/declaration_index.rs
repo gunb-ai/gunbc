@@ -941,8 +941,10 @@ pub fn index_get<'a>(
 /// Identity-grain complement of a required lane's semantic-resolution population.
 ///
 /// Both inputs name observations made by the lane: `admitted_module_identities` comes from
-/// source-root ingest, while `judged_module_identities` comes from sources that completed strict
-/// semantic resolution and typechecking without a blocking diagnostic. The broader parse-sweep
+/// source-root ingest, while `judged_module_identities` names modules for which the lane completed
+/// strict semantic resolution and typechecking to a typed verdict, whether positive or negative.
+/// A module that aborts before producing a typed result is not judged. The caller keeps in-run
+/// judgments distinct from content-addressed cross-process judgments. The broader parse-sweep
 /// index is deliberately not a denominator, and import edges are deliberately absent: neither
 /// establishes that the lane judged a module.
 pub fn modules_unresolved_by_lane(

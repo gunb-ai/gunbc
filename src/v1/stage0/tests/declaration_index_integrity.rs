@@ -28,7 +28,6 @@ use v1_compiler::cli_run::declaration_index::{
     corpus_findings, index_findings, index_get, index_population, planted_control_findings_against,
     DeclarationIndex, DeclarationIntegrityKind, ModuleDeclarationRecord,
 };
-
 use v1_compiler::cli_run::{
     compile_dag_multi_module_fixture, run_dag_parse_sweep, MultiModuleCompileFixtureOutcome,
 };
