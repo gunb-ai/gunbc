@@ -11,6 +11,7 @@ import gunbc.fleet_converge_plan {
   fleet_converge_scope_of_wire,
   fleet_converge_scope_wire,
   fleet_converge_plan_body_path,
+  fleet_converge_plan_content_hash_path,
   fleet_converge_plan_apply_shell_path,
   fleet_converge_plan_spark_typed_actions_wire_path,
   fleet_converge_plan_subject_host_path,
@@ -117,6 +118,7 @@ data fleet_converge_persisted_member_paths: List<String> = [
   fleet_converge_plan_generation_path,
   fleet_converge_plan_content_hash_path,
   fleet_converge_plan_body_path,
+  fleet_converge_plan_content_hash_path,
   fleet_converge_plan_apply_shell_path,
   fleet_converge_plan_spark_typed_actions_wire_path,
 ]
