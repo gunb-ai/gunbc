@@ -7,8 +7,12 @@ import tools.self_host_module_behavioral_transport_roster { compiler_module_beha
 // src/v2/compiler/use_site_verdict.dag via gunbc --entry, assembles a seed-linked v1_compiled crate
 // (entry self-emitted + seed-retained dep shim + v1-compiler path dep), runs cargo build + witness
 // (plain + --inject-fault), and equals-eval on use_site_verdict_test claims (the two supplementary
-// claim_runs the roster row declares). Live host effects — nightly falsifier Wet batch when
-// frontier row is SelfEmitted with binding.
+// claim_runs the roster row declares). Live host effects, so it is CLASSIFIED onto the falsifier
+// Wet batch when the frontier row is SelfEmitted with binding -- and classification is membership,
+// not execution (corrected 2026-09-01, matching tools.namespace_import_closure_behavioral_transport
+// nic_doc): falsifier.yml was deleted at 611fd02770 (#8283, 2026-08-15) and std.witness_admission
+// witness_cadence_has_scheduled_route answers FalsifierSelfHostWet false, so nothing runs this
+// receipt today. Censused as PremiseInvalidated in gunbc.deleted_cadence_reference_census.
 
 test fn self_host_use_site_verdict_behavioral_receipt_holds() -> Bool {
   compiler_module_behavioral_receipt_for(module_path: "src/v2/compiler/use_site_verdict.dag")

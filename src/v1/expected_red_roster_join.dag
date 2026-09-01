@@ -46,10 +46,28 @@ type WitnessEvalVerdict
   | HostEffectRefused { operation: String, ground: HermeticEffectGround }
   | BudgetExceeded { elapsed_ms: Int, budget_ms: Int, kind: String, completion: BudgetVerdictCompletion }
 
+// WHY A SUPPRESSED ROW IS ITS OWN DISPOSITION AND NOT A NotEvaluated REASON. NotEvaluated says
+// the identity was ATTEMPTED and produced no verdict -- host tool missing, hermetic route gap,
+// budget interrupt. A suppressed row was never attempted at all: the floor removed it from the
+// roster BEFORE the fold, because its module is outside the required gate or the cost-debt roster
+// withholds it. Same absence of a verdict, different fact and a different remedy -- one needs a
+// route or a budget, the other needs a gate roster edit or a debt to clear -- so collapsing them
+// would be the state-space conflation DESIGN section 5 names.
+//
+// AND THE REASON THIS EXISTS AT ALL: without it the suppressed rows were not in the report,
+// which made the run_note's "every enrolled identity" sentence FALSE on its own face. Measured
+// 2026-09-01 on head 4c6c509e: 73 enrolled, 26 in the join, 39 outside the gate and 8 withheld --
+// so the artifact a reader consults for the roster's standing described 26 of 73 while saying it
+// described all of them, and a merge decision was taken on it that night.
+type ExpectedRedSuppressionGround
+  = OutsideRequiredGate
+  | WithheldCostDebt
+
 type ExpectedRedJoinDisposition
   = StillRed
   | NowPasses
   | NotEvaluated { reason: String }
+  | Suppressed { ground: ExpectedRedSuppressionGround }
 
 type ExpectedRedRosterJoinRow {
   identity: String
@@ -93,6 +111,27 @@ fn is_now_passes(disposition: ExpectedRedJoinDisposition) -> Bool {
   }
 }
 
+fn is_suppressed(disposition: ExpectedRedJoinDisposition) -> Bool {
+  match disposition {
+    Suppressed { ground: _ } => true,
+    _ => false
+  }
+}
+
+fn suppression_ground_label(ground: ExpectedRedSuppressionGround) -> String {
+  match ground {
+    OutsideRequiredGate => "suppressed_outside_required_gate"
+    WithheldCostDebt => "suppressed_withheld_cost_debt"
+  }
+}
+
+fn suppression_ground_detail(ground: ExpectedRedSuppressionGround) -> String {
+  match ground {
+    OutsideRequiredGate => "enrolled, but its module is outside the required gate and was never loaded, so this run could not attempt it -- dormant, not deleted"
+    WithheldCostDebt => "enrolled, but the cost-debt roster withholds it from execution in this run -- dormant, not deleted"
+  }
+}
+
 fn is_not_evaluated(disposition: ExpectedRedJoinDisposition) -> Bool {
   match disposition {
     NotEvaluated { reason: _ } => true,
@@ -110,6 +149,10 @@ fn expected_red_roster_join_now_passes(report: ExpectedRedRosterJoinReport) -> I
 
 fn expected_red_roster_join_not_evaluated(report: ExpectedRedRosterJoinReport) -> Int {
   report.rows |> filter(row => is_not_evaluated(disposition: row.disposition)) |> count
+}
+
+fn expected_red_roster_join_suppressed(report: ExpectedRedRosterJoinReport) -> Int {
+  report.rows |> filter(row => is_suppressed(disposition: row.disposition)) |> count
 }
 
 type VerdictClassification {
@@ -176,7 +219,18 @@ fn disposition_label(disposition: ExpectedRedJoinDisposition) -> String {
   match disposition {
     StillRed => "still_red",
     NowPasses => "now_passes",
-    NotEvaluated { reason: _ } => "not_evaluated"
+    NotEvaluated { reason: _ } => "not_evaluated",
+    Suppressed { ground: _ } => "suppressed"
+  }
+}
+
+// The reason column for EITHER absence-of-verdict arm, so the TSV carries one reason field and
+// the disposition column says which kind of absence it is.
+fn disposition_reason(disposition: ExpectedRedJoinDisposition) -> String {
+  match disposition {
+    NotEvaluated { reason: reason } => reason,
+    Suppressed { ground: ground } => suppression_ground_label(ground: ground),
+    _ => ""
   }
 }
 
@@ -184,6 +238,27 @@ fn not_evaluated_reason(disposition: ExpectedRedJoinDisposition) -> String {
   match disposition {
     NotEvaluated { reason: reason } => reason,
     _ => ""
+  }
+}
+
+// Pure equivalent of recording a pre-fold suppression: the row for `identity` becomes Suppressed
+// with its ground, all other rows unchanged. Called BEFORE the fold, so a later record_observed
+// for the same identity cannot exist -- a suppressed identity is by construction not executed.
+fn record_suppressed(report: ExpectedRedRosterJoinReport, identity: String, ground: ExpectedRedSuppressionGround) -> ExpectedRedRosterJoinReport {
+  ExpectedRedRosterJoinReport {
+    run_head: report.run_head,
+    run_note: report.run_note,
+    rows: report.rows |> map(row =>
+      if row.identity == identity {
+        ExpectedRedRosterJoinRow {
+          identity: row.identity,
+          disposition: Suppressed { ground: ground },
+          detail: suppression_ground_detail(ground: ground)
+        }
+      } else {
+        row
+      }
+    )
   }
 }
 

@@ -1,0 +1,109 @@
+module test.claim.mt_collins_population_role_witness
+
+import std.logic { Bool }
+import std.types { list_length }
+import std.nat { Nat }
+import extdeps.ampere.mt_collins_product_brief.memory_population {
+  MtCollinsChannelConnectorPair,
+  MtCollinsChannelPopulationRoleStanding,
+  MtCollinsPopulationRoleOutcome,
+  MtCollinsPopulationRoleRefusalCause,
+  BothMembersAtOneDpc,
+  NeitherMemberAtOneDpc,
+  PopulationRoleRefused,
+  PopulationRoleResolved,
+  PopulationRolesRefused,
+  PopulationRolesResolved,
+  mt_collins_channel_connector_pairs,
+  mt_collins_channel_population_roles,
+  mt_collins_population_role_of_pair,
+  mt_collins_population_role_standing,
+}
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// A pair the source does not contain, used only to drive the refusal arms. Neither of these
+// connectors reaches the acceptance path from any authored row; they exist so the two invalid
+// states are AUTHORABLE as fixture input, which is the boundary that decides whether the refusal
+// is a wall or a decoration.
+fn probe_pair(left: Nat, right: Nat) -> MtCollinsChannelConnectorPair {
+  MtCollinsChannelConnectorPair {
+    processor_socket: 0,
+    memory_controller: 0,
+    table_left_connector: left,
+    table_right_connector: right,
+  }
+}
+
+fn outcome_refuses_with(outcome: MtCollinsPopulationRoleOutcome, cause: MtCollinsPopulationRoleRefusalCause) -> Bool {
+  match outcome {
+    PopulationRoleRefused { refusal: f } => match f.cause {
+      NeitherMemberAtOneDpc => match cause { NeitherMemberAtOneDpc => true  BothMembersAtOneDpc => false }
+      BothMembersAtOneDpc => match cause { NeitherMemberAtOneDpc => false  BothMembersAtOneDpc => true }
+    }
+    PopulationRoleResolved { role: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED, ARM ONE. {J2, J4}: neither connector appears in the 16-DIMM row. The
+// superseded form of this join tested only the left member, so it answered J4 as the 1DPC
+// connector for a pair with no 1DPC member at all. The refusal must be the NEITHER cause
+// specifically - answering BOTH here would mean the function reached the right verdict from the
+// wrong reading.
+test fn w_a_pair_with_no_one_dpc_member_refuses() -> Bool {
+  outcome_refuses_with(outcome: mt_collins_population_role_of_pair(pair: probe_pair(left: 2, right: 4)), cause: NeitherMemberAtOneDpc)
+}
+
+// THE DISCRIMINATING RED, ARM TWO. {J1, J3}: both connectors appear in the 16-DIMM row. The
+// superseded form returned J3 as "additional at 2DPC" while J3 is already populated at 1DPC - a
+// plausible role that contradicts the row it was derived from.
+test fn w_a_pair_with_two_one_dpc_members_refuses() -> Bool {
+  outcome_refuses_with(outcome: mt_collins_population_role_of_pair(pair: probe_pair(left: 1, right: 3)), cause: BothMembersAtOneDpc)
+}
+
+// THE AGGREGATE REFUSES AS A WHOLE, which is the property a per-pair refusal alone does not give.
+// Fifteen sound pairs beside one broken pair must not yield fifteen roles: the standing carries
+// refusals and NO roles, so a consumer cannot read past the deficit.
+test fn w_one_bad_pair_withholds_every_role() -> Bool {
+  let drifted = concat(mt_collins_channel_connector_pairs, [probe_pair(left: 2, right: 4)])
+  match mt_collins_population_role_standing(pairs: drifted) {
+    PopulationRolesRefused { refusals: fs } => list_length(items: fs) == 1
+    PopulationRolesResolved { roles: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL. Without it the two reds above are satisfied by a function that refuses
+// everything. The real 16 source pairs resolve, all 16 of them, and the roles carry the exact
+// values the deleted literal table carried - including the four descending pairs per socket where
+// the role order inverts against the printed left-to-right order.
+test fn w_the_source_pairs_all_resolve() -> Bool {
+  match mt_collins_channel_population_roles {
+    PopulationRolesResolved { roles: rs } =>
+      list_length(items: rs) == 16
+        && rs.first().connector_used_at_one_dpc == 1
+        && rs.first().additional_connector_at_two_dpc == 2
+        && rs.last().connector_used_at_one_dpc == 25
+        && rs.last().additional_connector_at_two_dpc == 26
+        && fold(rs, init: true, f: fn(acc, r) {
+          acc && (r.connector_used_at_one_dpc < r.additional_connector_at_two_dpc)
+        })
+    PopulationRolesRefused { refusals: _ } => false
+  }
+}
+
+// THE INVERSION IS REAL, asserted where it would be lost. MCU7 on socket 0 prints J16 then J15,
+// and its role is J15 at 1DPC with J16 added at 2DPC. A join that quietly took the printed left
+// member would pass every other assertion here and fail this one.
+test fn w_a_descending_pair_inverts_against_printed_order() -> Bool {
+  match mt_collins_population_role_of_pair(pair: MtCollinsChannelConnectorPair {
+    processor_socket: 0,
+    memory_controller: 7,
+    table_left_connector: 16,
+    table_right_connector: 15,
+  }) {
+    PopulationRoleResolved { role: r } =>
+      r.connector_used_at_one_dpc == 15 && r.additional_connector_at_two_dpc == 16
+    PopulationRoleRefused { refusal: _ } => false
+  }
+}

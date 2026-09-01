@@ -26,6 +26,44 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime
 // symbol it has not established exists.
 
+// KEYED-CARRIER TYPE REALIZATION, THE DISCRIMINATING RED. render_node_type used to decide that
+// every two-argument container was the literal `map` carrier, so an authored PartialFunction was
+// rendered as the Rust map inhabitant even though its declaration is the open-support structural
+// carrier below. The fixture differs from the control after it only in the carrier declaration.
+test fn w_partial_function_type_position_keeps_its_declared_structural_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.partial_function_type_probe\nimport std.algebra { PartialFunction }\nimport std.types { Int, String }\nfn probe(f: PartialFunction<String, Int>) -> PartialFunction<String, Int> { f }\n",
+    "src/test_claim_partial_function_type_probe.rs",
+    ["PartialFunction<String, i64>"],
+    ["HashMap<String, i64>"]
+  )
+}
+
+// THE POSITIVE CONTROL. Map's declaration carries the finite-map algebra whose Rust inhabitant is
+// HashMap. A repair that merely stopped all two-argument containers reaching a target realization
+// makes the RED above green and this row red.
+test fn w_map_type_position_still_uses_its_declared_host_realization() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_type_realization_probe\nimport std.types { Int, String, Map }\nfn probe(m: Map<String, Int>) -> Map<String, Int> { m }\n",
+    "src/test_claim_map_type_realization_probe.rs",
+    ["HashMap<String, i64>"],
+    ["PartialFunction<String, i64>", "FinitelySupportedFunction<String, i64>"]
+  )
+}
+
+// CONSTRUCTION MUST CONSULT THE SAME TARGET FACT. A deficient record literal cannot construct the
+// native HashMap inhabitant from an arbitrary lookup closure. Rust emission therefore retains the
+// function signature's declared host map and emits a loud refusal expression for this unreachable
+// seed fallback, instead of silently constructing the structural algebra carrier under that type.
+test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_record_shape_probe\nimport std.types { Int, String, Map }\nimport v2.std.optional { Present }\nfn probe(m: Map<String, Int>, key: String, value: Int) -> Map<String, Int> { Map { lookup: fn(candidate) { if candidate == key { Present { value: value } } else { m.lookup(candidate) } } } }\n",
+    "src/test_claim_map_record_shape_probe.rs",
+    ["HashMap<String, i64>", "record-shaped carrier has no realization"],
+    ["FinitelySupportedFunction", "Map {\n"]
+  )
+}
+
 // THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
 // redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
 // restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not

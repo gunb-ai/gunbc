@@ -938,6 +938,59 @@ pub fn index_get<'a>(
     index.modules.get(module_path)
 }
 
+/// Identity-grain complement of a required lane's semantic-resolution population.
+///
+/// Both inputs name observations made by the lane: `admitted_module_identities` comes from
+/// source-root ingest, while `judged_module_identities` names modules for which the lane completed
+/// strict semantic resolution and typechecking to a typed verdict, whether positive or negative.
+/// A module that aborts before producing a typed result is not judged. The caller keeps in-run
+/// judgments distinct from content-addressed cross-process judgments. The broader parse-sweep
+/// index is deliberately not a denominator, and import edges are deliberately absent: neither
+/// establishes that the lane judged a module.
+pub fn modules_unresolved_by_lane(
+    admitted_module_identities: Vec<String>,
+    judged_module_identities: &[String],
+) -> Vec<String> {
+    module_identity_difference(admitted_module_identities, judged_module_identities)
+}
+
+fn module_identity_difference(
+    declared_module_identities: Vec<String>,
+    judged_module_identities: &[String],
+) -> Vec<String> {
+    let judged: BTreeSet<&str> = judged_module_identities
+        .iter()
+        .map(String::as_str)
+        .collect();
+    declared_module_identities
+        .into_iter()
+        .filter(|identity| !judged.contains(identity.as_str()))
+        .collect()
+}
+
+#[cfg(test)]
+mod lane_resolution_join_tests {
+    use super::module_identity_difference;
+
+    #[test]
+    fn identical_populations_have_empty_difference() {
+        let declared = vec!["probe.alpha".to_string(), "probe.beta".to_string()];
+        assert_eq!(
+            module_identity_difference(declared.clone(), &declared),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn difference_enumerates_the_missing_identity() {
+        let declared = vec!["probe.alpha".to_string(), "probe.beta".to_string()];
+        assert_eq!(
+            module_identity_difference(declared, &["probe.alpha".to_string()]),
+            vec!["probe.beta".to_string()]
+        );
+    }
+}
+
 pub fn index_records(index: &DeclarationIndex) -> Vec<&ModuleDeclarationRecord> {
     index.modules.values().collect()
 }
