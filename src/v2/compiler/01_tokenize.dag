@@ -616,20 +616,44 @@ fn lex_walk(source: v2.std.text.String, file: Symbol, rules: LexRuleSet) -> Outc
   }
 }
 
-fn tokenize(text: v2.std.text.String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
+// THE ONE SOURCE-TEXT INGRESS, AND THE ONLY PLACE HOST TEXT BECOMES STRUCTURAL TEXT IN THIS MODULE.
+//
+// `text` is host-valued ON PURPOSE and its spelling is not an oversight: the filesystem REPORTS
+// source text, so what reaches this parameter is what a read returned. v2.compiler.source_authority
+// hands over exactly the value it hashed, and the read boundary performs no lexical interpretation
+// — deciding what a character IS belongs to the lexer, which is here.
+//
+// `chars` is the SAME scalar decomposition the literal elaborator uses. v1.compiler.infer
+// unfold_scalar_sequence_image builds the UnicodeScalarSequenceUnfold image by calling it, so the
+// runtime converter and the literal elaborator are two producers deriving one meaning from one
+// authority rather than two loops that agree by coincidence. Scalar values, never UTF-8 bytes and
+// never UTF-16 code units — an ad hoc byte loop would agree with this on ASCII and diverge on the
+// first non-ASCII source file, which is precisely the divergence a shared authority forecloses.
+//
+// EXACTLY ONCE, ABOVE EVERYTHING. Both arms below read the converted value, so no lexical callback,
+// prefix operation, walk state or fold ever receives the host form. A second conversion further in
+// would be a second answer to a question already answered.
+//
+// THIS AUTHORIZES ONE CONVERSION AT ONE INGRESS AND NOTHING WIDER. It is not permission for
+// arbitrary host Strings to inhabit structural text: gunbc.rung_drop's
+// text_boundary_identity_wall stands, its subject is the non-literal host value crossing an exact
+// structural-text boundary through permissive compatibility, and this named morphism does not
+// retire it. A green ingress here is not that wall coming down.
+fn tokenize(text: String, file: Symbol, rules: LexRules) -> Outcome<TokenStream> {
+  let source = chars(s: text)
   let at = Textual {
     file: file,
     extent: WholeFile
   }
   match rules {
     VoidLexRules =>
-      if is_empty(xs: text) {
+      if is_empty(xs: source) {
         v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }
     ModeledLexRules { root: rule_set } =>
-      lex_walk(source: text, file: file, rules: rule_set)
+      lex_walk(source: source, file: file, rules: rule_set)
   }
 }
 

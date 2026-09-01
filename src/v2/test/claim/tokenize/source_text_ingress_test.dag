@@ -1,0 +1,77 @@
+module v2.test.tokenize.source_text_ingress
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE EXECUTING EVIDENCE FOR THE ONE SOURCE-TEXT INGRESS (operator ruling, 2026-09-01, arm B).
+//
+// v2.compiler.tokenize takes host-valued text because the filesystem REPORTS source text, and
+// converts it to the structural character carrier exactly once, above every lexical operation,
+// through the same scalar decomposition the literal elaborator uses. These rows are what make that
+// sentence checkable rather than asserted.
+//
+// WHAT EACH ROW WOULD RED ON, because a row whose failure mode is unstated is decoration:
+//   the scalar rows red if the ingress ever reads UTF-8 BYTES instead of Unicode scalars — the
+//   substitution that agrees on ASCII and diverges on the first non-ASCII source file, which is
+//   why the non-ASCII row exists and why an ASCII-only battery would have been permanently green
+//   by construction against the defect it was meant to catch;
+//   the agreement row reds if the ingress conversion is removed, since a host value would then
+//   reach the walk directly and the two sides would stop agreeing.
+//
+// THIS DOES NOT WITNESS text_boundary_identity_wall AND MUST NOT BE READ AS DOING SO. That row's
+// subject is an arbitrary non-literal host value crossing an exact structural-text boundary
+// through permissive compatibility. These rows exercise ONE named morphism at ONE ingress. The
+// wall stands; a green here is not it coming down.
+
+data ingress_ascii_host: String = "ab"
+
+// U+00E9 LATIN SMALL LETTER E WITH ACUTE. One scalar, 233. Two bytes in UTF-8 (195, 169), so a
+// byte-grained decomposition answers length 2 with head 195 and this row separates the two.
+data ingress_non_ascii_host: String = "é"
+
+// U+1F600 GRINNING FACE. One scalar, 128512 — above the Basic Multilingual Plane, so a UTF-16
+// code-unit decomposition answers length 2 (a surrogate pair) and neither of the smaller rows
+// would have caught it.
+data ingress_astral_host: String = "😀"
+
+data ingress_ascii_structural: String = Cons { head: 97, tail: Cons { head: 98, tail: std.algebra.Empty } }
+
+test fn source_text_ingress_converts_at_scalar_grain() -> Bool {
+
+  // ASCII: the ingress decomposition equals the structural literal, element for element.
+  let ascii_agrees = is_prefix_of(prefix: chars(s: ingress_ascii_host), xs: ingress_ascii_structural, eq: fn(a, b) { a == b })
+    && length(xs: chars(s: ingress_ascii_host)) == 2
+
+  // NON-ASCII: one scalar, valued 233. Byte grain would answer 2 and 195.
+  let non_ascii_scalar = match string_head(s: chars(s: ingress_non_ascii_host)) {
+    CharFound { value: c } => c == 233
+    CharAbsent => false
+  }
+  let non_ascii_length = length(xs: chars(s: ingress_non_ascii_host)) == 1
+
+  // ASTRAL: one scalar, valued 128512. UTF-16 code units would answer 2.
+  let astral_scalar = match string_head(s: chars(s: ingress_astral_host)) {
+    CharFound { value: c } => c == 128512
+    CharAbsent => false
+  }
+  let astral_length = length(xs: chars(s: ingress_astral_host)) == 1
+
+  // The empty source is the monoid identity, not a one-element sequence carrying nothing.
+  let empty_is_identity = string_is_empty(s: chars(s: ""))
+
+  ascii_agrees && non_ascii_scalar && non_ascii_length && astral_scalar && astral_length && empty_is_identity
+}
+
+test fn source_text_ingress_accepts_host_text_at_the_public_boundary() -> Bool {
+  // The public argument is host-valued by ruling. An empty host source under VoidLexRules is the
+  // accepted arm; a non-empty one is the refusal. Both read the CONVERTED value, so this row also
+  // fails if the conversion is moved below the match.
+  let empty_accepted = match tokenize(text: "", file: ^source_text_ingress_file, rules: VoidLexRules) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+  let non_empty_refused = match tokenize(text: ingress_ascii_host, file: ^source_text_ingress_file, rules: VoidLexRules) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+  }
+  empty_accepted && non_empty_refused
+}
