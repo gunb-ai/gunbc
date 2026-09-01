@@ -17,7 +17,6 @@ import gunbc.scm.object_table_json {
   ObjectTableUnknownLabelTag,
   ObjectTableEdgeTargetUnresolved,
   ObjectTableEdgeTargetIsAuthoredSource,
-  ObjectTableEdgeTargetIsAuthoredSource,
   ObjectTableObjectCollision,
   object_table_load_standing,
 }
@@ -248,11 +247,13 @@ type ClosureDocLoadOutcome
 // DESIGN section 3 -- one name, two materially different contracts -- and it would have been THIS
 // module's policy broken by this module. Named by external review of gunbc#9891.
 //
-// ONE TAG, NOT TWO, AND THE REASON IS THAT NO v2 DOCUMENT EXISTS TO BE COMPATIBLE WITH. A decoder
-// that supported both would say so by admitting both tags; there is nothing to admit. The only
-// producer of these bytes is a witness rebuilt from source every run, so there is no durable
-// artifact whose v2 spelling has to keep loading, and inventing a compatibility arm for an empty
-// population would be machinery with no consumer.
+// ONE TAG, NOT TWO, AND THE POPULATION WAS COUNTED RATHER THAN ASSUMED EMPTY. A decoder supporting
+// both versions would say so by admitting both tags. The closure document has no durable instances:
+// its only producer is a witness rebuilt from source every run. The REPOSITORY envelope beside it
+// does have some -- checked-in fixtures under dag/test/fixture/scm_repository_load -- and those are
+// versioned test inputs updated with the schema they exercise, not data whose old spelling anyone
+// is owed. Neither is a live population that a compatibility arm would serve, and an arm with no
+// consumer is machinery this repository refuses to carry.
 data closure_document_format_tag: String = "gunbc-scm-commit-closure-v3"
 
 // WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.

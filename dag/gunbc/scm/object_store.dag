@@ -449,8 +449,28 @@ fn insert_admission(store: ObjectStore, object: ScmObject) -> InsertAdmission {
 // Record equality is the substrate's own structural equality over both fields. StoredEdge is a
 // label and a derived child identity, so comparing the child LISTS compares the whole subtree by
 // its already-derived identities -- no re-walk, no digest projection, no hand-written pairwise fold.
+// EQUALITY IS OVER WHAT THE IDENTITY IS DERIVED FROM, AND THE TARGET'S ARM IS NOT PART OF THAT.
+//
+// This was `left.children == right.children`, the substrate's structural equality, which was exactly
+// right while a StoredEdge held a bare locator. It stopped being right when the target became a
+// NodeTarget: `NodeTargetResolved(r)` and `NodeTargetUnresolved(l)` over the SAME locator are
+// different values structurally and the same object by content, because content_hash_of_children
+// consumes only the locator. Structural equality therefore reported "different record" for two
+// records the identity rule cannot distinguish, and insert_admission turned that into a
+// LocatorCollision -- a fabricated refusal, for a store that was being asked to do something
+// perfectly ordinary.
+//
+// Found by a control, not by review: the file arm of the merge role claim passed and its NODE
+// control failed, because merge reassembles the root from resolved children and re-inserts it over a
+// record whose children were unresolved.
+//
+// So the comparison is over the label and the LOCATOR -- the same two things
+// labeled_children_of_stored hands to the identity fold, which is what keeps this from being a
+// second, drifting definition of what makes two records the same.
 fn records_equal(left: ObjectRecord, right: ObjectRecord) -> Bool {
-  (left.kind == right.kind) && (left.children == right.children)
+  (left.kind == right.kind)
+    && (labeled_children_of_stored(children: left.children)
+      == labeled_children_of_stored(children: right.children))
 }
 
 // CROSS-KIND IS A COLLISION, NOT AN EQUALITY. A node and a file under one locator are two different

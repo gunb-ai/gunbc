@@ -85,7 +85,11 @@ fn ls_full() -> LsBuilt {
 
 fn ls_grafted() -> ObjectStore {
   let full = ls_full()
-  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
+  match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.root),
+  ) {
     Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
@@ -99,7 +103,7 @@ fn ls_grafted() -> ObjectStore {
 // left is the standing, which is what the three tests below vary. A helper that also varied the
 // generation would report false for the wrong reason (DESIGN: a control that does not flip).
 fn ls_slot() -> HeadSlot {
-  HeadSlot { slot: "head", generation: ls_full().root }
+  HeadSlot { slot: "head", generation: node_target_locator(target: ls_full().root) }
 }
 
 fn ls_other_generation() -> ObjectId {
@@ -215,7 +219,7 @@ test fn an_unresolved_position_is_malformed_not_fetchable() -> Bool {
 test fn an_honest_collision_is_its_own_standing_and_never_supersedes() -> Bool {
   let collision = closure_document_load_standing(
     cause: ClosureDocObjectTableRefused {
-      cause: ObjectTableObjectCollision { identity: ls_full().root }
+      cause: ObjectTableObjectCollision { identity: node_target_locator(target: ls_full().root) }
     }
   )
   let malformed = closure_document_load_standing(

@@ -524,7 +524,40 @@ fn scm_env_encode_cause_tag(outcome: RepositoryEncodeOutcome) -> String {
 }
 
 // A commit whose root is not in the store at all.
+// A COMMIT WHOSE ROOT THE STORE DOES NOT HOLD, BUILT BY SWAPPING THE STORE RATHER THAN THE DOCUMENT.
+//
+// It used to be built by rewriting the encoded root to an uncontained digest and decoding that back.
+// That route is closed: decode now RESOLVES a commit root against the object table and refuses when
+// the table does not carry it, so the rewritten document no longer produces a repository at all --
+// it produces a refusal, which is asserted on its own below.
+//
+// The state is still reachable, and this is what reaches it. A commit is minted against a store that
+// DOES hold its root, so the reference is honestly branded; the envelope is then rebuilt around a
+// different store that does not hold it. A SemanticNodeObjectRef says its object was a node in SOME
+// store, never in THIS one, so this is exactly the residual the brand leaves open and exactly what
+// the encode-side check is for.
 fn scm_env_absent_root_repository() -> RepositoryEnvelope {
+  let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
+  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let minted = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: orphan.store),
+    root: orphan.identity,
+    message: "dangling",
+    parent: none,
+  )
+  RepositoryEnvelope {
+    store: held.store,
+    commits: minted.commits,
+    commit_allocator: minted.commit_allocator,
+    checked_out: none,
+  }
+}
+
+// THE DOCUMENT ROUTE, NOW A DECODE REFUSAL AND CARRYING ITS OWN CAUSE. An envelope whose commit root
+// names an object the table does not carry is refused when it is read, not admitted and noticed at
+// the next write -- and "the table does not carry it" is a different cause, with a different remedy,
+// from "the table carries a FILE there".
+fn scm_env_rewritten_root_document() -> JsonValue {
   let orphan = scm_env_put(store: empty_store(), n: scm_env_program_two())
   let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
   let valid = scm_env_minted_or(
@@ -533,7 +566,7 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
     message: "dangling",
     parent: none,
   )
-  let rewritten = scm_env_commit_members_mapped(
+  scm_env_commit_members_mapped(
     v: encode_repository(repo: valid),
     f: c => scm_env_with(
       v: c,
@@ -546,10 +579,23 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
       ]),
     ),
   )
-  match decode_repository(v: rewritten) {
-    RepositoryDecoded { envelope: e } => e
-    RepositoryDecodeRefused { cause: _ } => empty_repository()
-  }
+}
+
+test fn scm_env_a_commit_root_absent_from_the_object_table_refuses_to_decode() -> Bool {
+  scm_env_decode_cause_tag(outcome: decode_repository(v: scm_env_rewritten_root_document()))
+    == "commit_root_absent"
+}
+
+// CONTROL, one fact apart: the same document with its root left alone decodes.
+test fn scm_env_the_same_document_with_its_own_root_decodes() -> Bool {
+  let held = scm_env_put(store: empty_store(), n: scm_env_program_one())
+  let valid = scm_env_minted_or(
+    repo: scm_env_repository_with_store(store: held.store),
+    root: held.identity,
+    message: "dangling",
+    parent: none,
+  )
+  scm_env_decode_cause_tag(outcome: decode_repository(v: encode_repository(repo: valid))) == "decoded"
 }
 
 // A checkout naming an object that IS in the store but is NOT any commit's root.
