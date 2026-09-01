@@ -76,6 +76,8 @@ import gunbc.scm.checkout {
   checkout,
   CheckedOut,
   CheckoutRefused,
+  MissingObject,
+  ObjectIsAuthoredSource,
 }
 import gunbc.scm.commit_closure { CommitClosure }
 import gunbc.scm.object_table_json {
@@ -835,3 +837,147 @@ test fn scm_image_an_atom_carrying_its_identity_still_loads() -> Bool {
 
 
 
+
+// ------------------------------------------------------------------------------------------------
+// A DOCUMENT CAN POINT A PROGRAM'S EDGE AT A FILE, AND THAT IS THE PRODUCTION PATH TO THE
+// AUTHORED-SOURCE REFUSAL.
+//
+// gunbc#9891 added `ObjectIsAuthoredSource` to checkout, and the reachability argument for it was a
+// CALL-GRAPH argument: checkout_object is called from production, and the decoder is a production
+// producer of authored objects, therefore the arm is production-reachable. Side-chat review cautioned
+// that the two halves might not meet -- authored objects decode, but a CHECKOUT might never be able
+// to land on one, because every edge the ENCODER emits was derived from a node record. That caution
+// is correct about the encoder and wrong about the decoder, and the difference is worth executing
+// rather than reasoning about.
+//
+// The decoder resolves `{"target": {"at": "<n>"}}` through the position map, and the position map now
+// holds authored entries alongside node entries. So a document may name an authored entry as a node's
+// CHILD, which no encoder would ever emit and which is exactly the input this repository does not
+// control. The claim below builds that document by hand and checks that checkout refuses with the
+// authored-source cause rather than with MissingObject -- the two have opposite remedies, and the
+// object in question is present.
+fn scm_image_authored_entry() -> JsonValue {
+  json_object(members: [json_kv(key: "source", value: json_string(s: "not a program\n"))])
+}
+
+fn scm_image_node_entry_targeting(position: String) -> JsonValue {
+  json_object(
+    members: [
+      json_kv(
+        key: "kind",
+        value: json_object(
+          members: [
+            json_kv(key: "kind", value: json_string(s: "type")),
+            json_kv(key: "connective", value: json_string(s: "conj")),
+          ]
+        )
+      ),
+      json_kv(
+        key: "children",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(key: "label", value: json_string(s: "positional")),
+                json_kv(
+                  key: "target",
+                  value: json_object(members: [json_kv(key: "at", value: json_string(s: position))])
+                ),
+              ]
+            )
+          ]
+        )
+      ),
+    ]
+  )
+}
+
+// Position 0 is the file, position 1 is a node whose only child targets position 0, and the root is
+// position 1. Children-before-parents is the order the decoder requires, so this document is
+// well-formed by the format's own rules -- it is not a malformed image, it is a legitimate one that
+// says something the model must refuse to reconstruct.
+fn scm_image_program_over_a_file_document() -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(
+        key: "objects",
+        value: json_array(
+          elements: [scm_image_authored_entry(), scm_image_node_entry_targeting(position: "0")]
+        )
+      ),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])
+      ),
+    ]
+  )
+}
+
+fn scm_image_checkout_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
+  match loaded {
+    ClosureDocRefused { cause: _ } => "document_refused"
+    ClosureDocLoaded { store: store, root: root } =>
+      match checkout(store: store, commit: commit_of_root(root: root)) {
+        CheckedOut { program: _ } => "checked_out"
+        CheckoutRefused { cause: c } =>
+          match c {
+            MissingObject { identity: _ } => "missing"
+            ObjectIsAuthoredSource { identity: _ } => "authored_source"
+          }
+      }
+  }
+}
+
+// THE DOCUMENT LOADS -- it is not refused at decode, which is the half that makes this a checkout
+// claim rather than another decoder claim -- and the CHECKOUT then refuses naming the authored
+// source. Against a checkout that reported MissingObject for a present file this goes red, and
+// against one that reconstructed the node with the file dropped it goes red too.
+test fn scm_image_a_child_edge_naming_a_file_refuses_at_checkout() -> Bool {
+  scm_image_checkout_cause_tag(
+    loaded: decode_closure_document(v: scm_image_program_over_a_file_document())
+  ) == "authored_source"
+}
+
+// CONTROL, and it is the one that makes the claim above about the FILE rather than about the
+// document shape: the identical document with a node at position 0 instead of a file checks out.
+// Without it, a decoder that refused this shape for any reason would satisfy the claim above.
+fn scm_image_program_over_a_node_document() -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+      json_kv(
+        key: "objects",
+        value: json_array(
+          elements: [
+            json_object(
+              members: [
+                json_kv(
+                  key: "kind",
+                  value: json_object(
+                    members: [
+                      json_kv(key: "kind", value: json_string(s: "type")),
+                      json_kv(key: "connective", value: json_string(s: "conj")),
+                    ]
+                  )
+                ),
+                json_kv(key: "children", value: json_array(elements: [])),
+              ]
+            ),
+            scm_image_node_entry_targeting(position: "0"),
+          ]
+        )
+      ),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "1"))])
+      ),
+    ]
+  )
+}
+
+test fn scm_image_the_same_document_shape_checks_out_over_a_node() -> Bool {
+  scm_image_checkout_cause_tag(
+    loaded: decode_closure_document(v: scm_image_program_over_a_node_document())
+  ) == "checked_out"
+}
