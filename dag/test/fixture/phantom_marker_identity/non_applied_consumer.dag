@@ -1,6 +1,6 @@
 module test.fixture.phantom_marker_identity.non_applied_consumer
 
-import test.fixture.phantom_marker_identity.non_applied_provider { Quantity, Time }
+import std.measure { Quantity, Time }
 
 type NonAppliedMarkerField {
   value: Time

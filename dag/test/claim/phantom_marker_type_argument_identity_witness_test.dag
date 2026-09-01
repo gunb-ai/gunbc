@@ -1,6 +1,8 @@
 module test.claim.phantom_marker_type_argument_identity_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+import std.dissolution { DissolutionCondition, unbound_dissolution }
+import std.types { NonEmptyStr }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -125,8 +127,8 @@ test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> 
   compile_dag_rust_emit_check(
     "module phantom_marker_non_applied_parent_honesty\n\nimport test.fixture.phantom_marker_identity.non_applied_consumer { NonAppliedMarkerField, non_applied_field_as_parent }\n\ntype Subject { value: NonAppliedMarkerField }\n",
     "src/test_fixture_phantom_marker_identity_non_applied_consumer.rs",
-    ["pub value: Time", "-> Quantity", "Quantity::{Time}"],
-    ["pub use crate::test_fixture_phantom_marker_identity_non_applied_provider::{Time}"]
+    ["pub value: Time", "-> Quantity", "Quantity::\{Time}"],
+    ["pub use crate::std_measure::\{Time}"]
   )
 }
 
@@ -138,8 +140,29 @@ test fn non_applied_unit_variant_keeps_its_modeled_parent_relation_visible() -> 
 // stop at emitted text, while emitted_closure_compile_host is wired to the live
 // required-entry roster and offers no fixture-callable operation.
 //
-// NEXT-RUNG TRIGGER (capability, not artifact): a fixture-callable emitted-crate
-// compilation route sufficient to execute a two-arm emitter discriminator to
-// rustc termination over a synthetic emitted closure and report each arm's
-// diagnostic. Route owner: node://adhoc-da8c65c0-b3b.
-data non_applied_marker_meaning_discriminator_ceiling: String = "Executed but not enrolled: source-to-emitted-text honesty is covered here; the meaning-level broad E0308 versus positional E0573 discriminator awaits a fixture-callable emitted-crate compilation route owned by node://adhoc-da8c65c0-b3b."
+// The carrier below makes the enrollment standing, currently enrolled boundary,
+// trigger, and routed owner separately readable facts. In particular, an executed
+// scratch discriminator cannot be mistaken for enrolled coverage.
+type PhantomMarkerMeaningDiscriminatorEnrollmentStanding
+  = MeaningDiscriminatorExecutedNotEnrolled
+  | MeaningDiscriminatorEnrolled
+
+type PhantomMarkerMeaningDiscriminatorEnrolledBoundary
+  = SourceToEmittedTextHonestyOnly
+  | EmittedCrateMeaningDiscriminator
+
+type PhantomMarkerMeaningDiscriminatorRouteOwner = NonEmptyStr where brand("PhantomMarkerMeaningDiscriminatorRouteOwner")
+
+type PhantomMarkerMeaningDiscriminatorCeiling {
+  standing: PhantomMarkerMeaningDiscriminatorEnrollmentStanding
+  enrolled_boundary: PhantomMarkerMeaningDiscriminatorEnrolledBoundary
+  next_rung_trigger: DissolutionCondition
+  route_owner: PhantomMarkerMeaningDiscriminatorRouteOwner
+}
+
+data non_applied_marker_meaning_discriminator_ceiling: PhantomMarkerMeaningDiscriminatorCeiling = PhantomMarkerMeaningDiscriminatorCeiling {
+  standing: MeaningDiscriminatorExecutedNotEnrolled,
+  enrolled_boundary: SourceToEmittedTextHonestyOnly,
+  next_rung_trigger: unbound_dissolution(description: "dissolve-on: a fixture-callable emitted-crate compilation route runs unconditionally on an acceptance path, executes this meaning discriminator's two arms to rustc termination over their synthetic emitted closure, and compares the reported diagnostics. A callable route or ignored test alone does not fire this trigger."),
+  route_owner: "node://adhoc-da8c65c0-b3b" as PhantomMarkerMeaningDiscriminatorRouteOwner,
+}
