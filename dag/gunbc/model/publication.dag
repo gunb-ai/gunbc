@@ -121,11 +121,18 @@ fn release_identity(subject: ModelRelease) -> ReleaseIdentity {
   }
 }
 
-fn release_is_open_weight(subject: ModelRelease) -> Bool {
+// The single eliminator for ModelRelease's weight-availability axis. `release_identity` above stays
+// a match because it PROJECTS a field whose value differs per arm; this one CLASSIFIES, and a
+// classification re-matched at each predicate is one fact written twice.
+fn model_release_fold<T>(subject: ModelRelease, open_weight: T, closed_weight: T) -> T {
   match subject {
-    OpenWeightRelease { identity: _, publication: _, declared_context: _ } => true
-    ClosedWeightRelease { identity: _, declared_context: _ } => false
+    OpenWeightRelease { identity: _, publication: _, declared_context: _ } => open_weight
+    ClosedWeightRelease { identity: _, declared_context: _ } => closed_weight
   }
+}
+
+fn release_is_open_weight(subject: ModelRelease) -> Bool {
+  model_release_fold(subject: subject, open_weight: true, closed_weight: false)
 }
 
 // ===========================================================================================

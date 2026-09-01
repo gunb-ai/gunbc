@@ -10,6 +10,7 @@ import std.measure {
 import gunbc.model.publication { ReleaseIdentity }
 import std.content_hash {
   ContentHash, sha256_hex_digest, as_content_hash_cryptographic, content_hash_of_value,
+  content_hash_from_structural_digest,
 }
 import gunbc.model.choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
@@ -23,6 +24,9 @@ import gunbc.model.choice {
   MemoryFitEvidence, MemoryFitEstablished, MemoryFitRefusedForMemory, MemoryFitContradicted,
   MemoryFitAttemptFailedOtherwise, MemoryFitUnobserved,
   MemoryFitContradictedAtConfiguration, MemoryAttemptFailedForNonMemoryCause,
+  EvidenceIdentityIncomparable, MemoryFitIdentityIncomparable,
+  RealizationComparison, RealizationSame, RealizationDifferent, RealizationIncomparable,
+  compare_serving_realization,
   FreshSessionPrefill, WarmContinuation, serving_regime_wire,
   QuantizedCandidate, ServingConstraints,
   CandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
@@ -30,7 +34,7 @@ import gunbc.model.choice {
   ServingChoice, ChoseCandidate, NoCandidateAdmissible, SelectionUnanswerable,
   UnanswerableCause, UnresolvedCandidateCouldWin, CrossReleaseQualityOrderAbsent, QualityRankTie,
   ServingCandidateUnanswerable, MissingFact, MemoryFitUnobservedAtConfiguration,
-  evaluate_candidate, choose_serving_candidate, verdict_is_admissible,
+  evaluate_candidate, choose_serving_candidate, verdict_is_admissible, verdict_is_unanswerable,
 }
 
 // THE FIXTURE IS MEASURED, not invented. Every number here was read off the running nodes or
@@ -310,6 +314,7 @@ test fn w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolve
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
         MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
         MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        EvidenceIdentityIncomparable { axis: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
       }
     ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
@@ -337,13 +342,7 @@ test fn w_the_real_roster_refuses_while_the_higher_rank_is_unresolved() -> Bool 
   }
 }
 
-fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
-  match verdict {
-    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => true
-    ServingCandidateAdmissible { candidate: _, fit: _ } => false
-    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
-  }
-}
+
 
 // THE POSITIVE CONTROL FOR THE FOOTPRINT AXIS: the 2-bit build IS resident-established at the floor,
 // so the refusal above is not a footprint carrier that answers nothing. Its qualifying reading is
@@ -367,6 +366,7 @@ test fn w_the_two_bit_build_is_resident_established_at_the_floor() -> Bool {
     MemoryFitRefusedForMemory { by: _ } => false
     MemoryFitContradicted { served: _, refused: _ } => false
     MemoryFitAttemptFailedOtherwise { by: _ } => false
+    MemoryFitIdentityIncomparable { axis: _ } => false
     MemoryFitUnobserved => false
   }
 }
@@ -386,6 +386,7 @@ test fn w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint() -> B
 
 fn is_unobserved(evidence: MemoryFitEvidence) -> Bool {
   match evidence {
+    MemoryFitIdentityIncomparable { axis: _ } => false
     MemoryFitUnobserved => true
     MemoryFitEstablished { by: _ } => false
     MemoryFitRefusedForMemory { by: _ } => false
@@ -413,6 +414,7 @@ fn iq2_xxs_answers_for(r: ServingRealizationIdentity, node: NonEmptyStr) -> Bool
     MemoryFitRefusedForMemory { by: _ } => false
     MemoryFitContradicted { served: _, refused: _ } => false
     MemoryFitAttemptFailedOtherwise { by: _ } => false
+    MemoryFitIdentityIncomparable { axis: _ } => false
     MemoryFitUnobserved => false
   }
 }
@@ -562,6 +564,7 @@ test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bo
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
         MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
         MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        EvidenceIdentityIncomparable { axis: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
       }
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
@@ -673,6 +676,7 @@ test fn w_a_warm_floor_over_fresh_only_receipts_is_unanswerable() -> Bool {
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
         MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
         MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        EvidenceIdentityIncomparable { axis: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
       }
     ServingCandidateAdmissible { candidate: _, fit: _ } => false
@@ -686,6 +690,7 @@ fn is_semantic_gap(missing: MissingFact) -> Bool {
     MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
     MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
     MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+    EvidenceIdentityIncomparable { axis: _ } => false
     PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
   }
 }
@@ -747,6 +752,7 @@ test fn w_only_a_typed_memory_refusal_rejects_on_memory() -> Bool {
       match m {
         MemoryAttemptFailedForNonMemoryCause { cause: c } =>
           (c as String) == "chat template rendering failed"
+        EvidenceIdentityIncomparable { axis: _ } => false
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
         MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
@@ -772,6 +778,7 @@ fn is_contradiction_refusal(verdict: CandidateVerdict) -> Bool {
           token_count_value(t: f) == 400000 && n == 1
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
         MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        EvidenceIdentityIncomparable { axis: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
       }
@@ -866,6 +873,7 @@ fn is_unobserved_verdict(verdict: CandidateVerdict) -> Bool {
         MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => true
         MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
         MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        EvidenceIdentityIncomparable { axis: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
       }
@@ -926,6 +934,96 @@ fn quiet_rate_at(node: NonEmptyStr, hot: Nat) -> TokensPerSecond? {
   )
 }
 
+// ================= AN UNANSWERABLE COMPARISON IS NOT A DIFFERENT REALIZATION =================
+//
+// THE DEFECT, and it was committed one line under a comment warning against it: cross-family digest
+// pairs were collapsed to `false`. An sha256 reading and an fnv1a reading of the SAME artifact then
+// compared "different", the evidence silently left the population, and the candidate came back
+// UNOBSERVED -- which reads as "nobody measured this" when the truth is "a measurement is held and
+// cannot be lined up". Unknown is not rejected, and unanswerable is not unobserved.
+//
+// The fixture below is exactly that pair: identical release, quantization, runtime and resolved
+// configuration; the artifact digest differs only in HASH FAMILY.
+fn structural_digest(hex: String) -> ContentHash {
+  match content_hash_from_structural_digest(digest: hex) {
+    Present { value: h } => h
+    Absent => content_hash_of_value(value: "malformed structural digest" as NonEmptyStr)
+  }
+}
+
+fn r_iq2_xxs_structural_artifact() -> ServingRealizationIdentity {
+  realization(
+    release_id: r_iq2_xxs.release_id,
+    quant: r_iq2_xxs.quant_label,
+    artifact: structural_digest(hex: "32af248f4cab44ff"),
+    runtime: ollama_runtime,
+    config: serial_config,
+  )
+}
+
+test fn w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved() -> Bool {
+  let cross_family = with_memory_observations(base: build_iq2_xxs, observations: [
+    served(r: r_iq2_xxs_structural_artifact(), node: serving_node, instrument: ps_instrument,
+      depth: 400000, sessions: 1, resident: 87692389907),
+  ])
+  match evaluate_candidate(candidate: cross_family, node: serving_node, constraints: floor_400k) {
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      match m {
+        EvidenceIdentityIncomparable { axis: a } => (a as String) == "artifact digest"
+        MemoryFitUnobservedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
+        MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
+      }
+    ServingCandidateAdmissible { candidate: _, fit: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+  }
+}
+
+// THE THREE STATES ARE ALL REACHABLE, and the ordering rule holds: a definite mismatch on any axis
+// SETTLES the question and beats an undecided one, because these are plainly not the same
+// realization whatever a second axis could not decide. Only when every other axis matches does the
+// undecided one become load-bearing and block the answer.
+test fn w_realization_comparison_reaches_all_three_states_and_different_wins() -> Bool {
+  let cross_family = r_iq2_xxs_structural_artifact()
+  let other_release_cross_family = realization(
+    release_id: qwen_release,
+    quant: r_iq2_xxs.quant_label,
+    artifact: structural_digest(hex: "32af248f4cab44ff"),
+    runtime: ollama_runtime,
+    config: serial_config,
+  )
+  is_same(c: compare_serving_realization(a: r_iq2_xxs, b: r_iq2_xxs))
+    && is_different(c: compare_serving_realization(a: r_iq2_xxs, b: r_qwen))
+    && is_incomparable(c: compare_serving_realization(a: r_iq2_xxs, b: cross_family))
+    && is_different(c: compare_serving_realization(a: r_iq2_xxs, b: other_release_cross_family))
+}
+
+fn is_same(c: RealizationComparison) -> Bool {
+  match c {
+    RealizationSame => true
+    RealizationDifferent => false
+    RealizationIncomparable { axis: _ } => false
+  }
+}
+
+fn is_different(c: RealizationComparison) -> Bool {
+  match c {
+    RealizationSame => false
+    RealizationDifferent => true
+    RealizationIncomparable { axis: _ } => false
+  }
+}
+
+fn is_incomparable(c: RealizationComparison) -> Bool {
+  match c {
+    RealizationSame => false
+    RealizationDifferent => false
+    RealizationIncomparable { axis: _ } => true
+  }
+}
+
 test fn w_all_serving_choice_claims_hold() -> Bool {
   w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved()
     && w_the_real_roster_refuses_while_the_higher_rank_is_unresolved()
@@ -947,6 +1045,8 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
     && w_a_refusal_generalizes_to_no_easier_point_but_a_success_does()
     && w_the_concurrency_axis_carries_the_same_asymmetry()
     && w_a_prefill_reading_at_lower_concurrency_or_another_node_does_not_qualify()
+    && w_a_cross_family_digest_refuses_rather_than_reading_as_unobserved()
+    && w_realization_comparison_reaches_all_three_states_and_different_wins()
 }
 
 // ======================= THE ANSWERABILITY CLAIMS =======================
@@ -974,6 +1074,7 @@ test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
           token_count_value(t: f) == 400000 && n == 1
         MemoryFitContradictedAtConfiguration { floor: _, sessions: _ } => false
         MemoryAttemptFailedForNonMemoryCause { cause: _ } => false
+        EvidenceIdentityIncomparable { axis: _ } => false
         PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
       }

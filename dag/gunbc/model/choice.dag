@@ -145,23 +145,109 @@ fn serving_realization_identity(
 }
 
 // A CROSS-FAMILY DIGEST PAIR IS NOT EQUAL AND NOT UNEQUAL -- it is incomparable, and the shared
-// authority says so with a third arm rather than a false. Collapsing it to false here would make an
-// sha256 reading and an fnv1a reading of the SAME artifact look like different artifacts, so the
-// evidence would silently stop qualifying with nothing to say why.
-fn digest_equal(a: ContentHash, b: ContentHash) -> Bool {
+// authority says so with a third arm rather than a false.
+//
+// THE PREDECESSOR WROTE THAT SENTENCE AND THEN COLLAPSED THE THIRD ARM TO `false` ANYWAY, which is
+// the fail-open this module exists to close, committed one line under its own warning. The damage is
+// specific: an sha256 reading and an fnv1a reading of the SAME artifact compare "different", the
+// evidence stops qualifying, and the candidate comes back UNOBSERVED -- a state that reads as "we
+// never measured this" when the truth is "we hold a measurement we cannot line up". Unknown is not
+// rejected, and unanswerable is not unobserved either.
+//
+// So identity comparison carries three states and the selector refuses on the third.
+type RealizationComparison
+  = RealizationSame
+  | RealizationDifferent
+  | RealizationIncomparable { axis: NonEmptyStr }
+
+// WHY `Different` BEATS `Incomparable` WHEN BOTH APPEAR. A definite mismatch on any axis settles the
+// question: these are not the same realization, whatever a second axis could not decide. An
+// incomparable axis only blocks the answer when every other axis MATCHED, because that is the only
+// case where the undecided axis is load-bearing. Ordering it the other way would refuse pairs that
+// are plainly distinct and turn every stale-family digest in the roster into a global stall.
+fn realization_comparison_then(
+  earlier: RealizationComparison,
+  later: RealizationComparison,
+) -> RealizationComparison {
+  match earlier {
+    RealizationDifferent => RealizationDifferent
+    RealizationIncomparable { axis: a } =>
+      match later {
+        RealizationDifferent => RealizationDifferent
+        RealizationSame => RealizationIncomparable { axis: a }
+        RealizationIncomparable { axis: _ } => RealizationIncomparable { axis: a }
+      }
+    RealizationSame => later
+  }
+}
+
+fn compare_digest_axis(axis: NonEmptyStr, a: ContentHash, b: ContentHash) -> RealizationComparison {
   match compare_content_hash(left: a, right: b) {
-    ContentHashEqual => true
-    ContentHashDifferent => false
-    ContentHashCrossFamilyIncomparable => false
+    ContentHashEqual => RealizationSame
+    ContentHashDifferent => RealizationDifferent
+    ContentHashCrossFamilyIncomparable => RealizationIncomparable { axis: axis }
+  }
+}
+
+fn compare_bool_axis(same: Bool) -> RealizationComparison {
+  match same {
+    true => RealizationSame
+    false => RealizationDifferent
+  }
+}
+
+fn compare_serving_realization(
+  a: ServingRealizationIdentity,
+  b: ServingRealizationIdentity,
+) -> RealizationComparison {
+  realization_comparison_then(
+    earlier: realization_comparison_then(
+      earlier: realization_comparison_then(
+        earlier: compare_bool_axis(same: release_identity_equal(a: a.release_id, b: b.release_id)),
+        later: compare_bool_axis(same: (a.quant_label as String) == (b.quant_label as String)),
+      ),
+      later: compare_digest_axis(
+        axis: "artifact digest" as NonEmptyStr,
+        a: a.artifact_digest, b: b.artifact_digest),
+    ),
+    later: realization_comparison_then(
+      earlier: compare_bool_axis(same: serving_runtime_equal(a: a.runtime, b: b.runtime)),
+      later: compare_digest_axis(
+        axis: "resolved runtime configuration digest" as NonEmptyStr,
+        a: a.runtime_config.argv_digest, b: b.runtime_config.argv_digest),
+    ),
+  )
+}
+
+// The single eliminator for RealizationComparison. Every consumer projects through it rather than
+// re-matching the three arms, so "what does each arm mean here" is answered in one place.
+fn realization_comparison_fold<T>(
+  comparison: RealizationComparison,
+  same: T,
+  different: T,
+  incomparable: T,
+) -> T {
+  match comparison {
+    RealizationSame => same
+    RealizationDifferent => different
+    RealizationIncomparable { axis: _ } => incomparable
   }
 }
 
 fn serving_realization_equal(a: ServingRealizationIdentity, b: ServingRealizationIdentity) -> Bool {
-  release_identity_equal(a: a.release_id, b: b.release_id)
-    && (a.quant_label as String) == (b.quant_label as String)
-    && digest_equal(a: a.artifact_digest, b: b.artifact_digest)
-    && serving_runtime_equal(a: a.runtime, b: b.runtime)
-    && digest_equal(a: a.runtime_config.argv_digest, b: b.runtime_config.argv_digest)
+  realization_comparison_fold(
+    comparison: compare_serving_realization(a: a, b: b),
+    same: true, different: false, incomparable: false)
+}
+
+// The incomparable axis, or absent when the pair was decidable. This is what a refusal reports, so
+// the operator learns WHICH axis could not be lined up rather than that something went wrong.
+fn incomparable_axis(comparison: RealizationComparison) -> NonEmptyStr? {
+  match comparison {
+    RealizationIncomparable { axis: a } => Present { value: a }
+    RealizationSame => none
+    RealizationDifferent => none
+  }
 }
 
 type QuantizedCandidate {
@@ -370,6 +456,7 @@ type MemoryFitEvidence
   | MemoryFitRefusedForMemory { by: OllamaRunnerMemoryObservation }
   | MemoryFitContradicted { served: OllamaRunnerMemoryObservation, refused: OllamaRunnerMemoryObservation }
   | MemoryFitAttemptFailedOtherwise { by: OllamaRunnerMemoryObservation }
+  | MemoryFitIdentityIncomparable { axis: NonEmptyStr }
   | MemoryFitUnobserved
 
 // SUCCESS AND REFUSAL DO NOT GENERALIZE IN THE SAME DIRECTION, and treating them as one qualifying
@@ -387,6 +474,24 @@ type MemoryFitEvidence
 //
 // The asymmetry is not a policy choice; it is what the observations mean. Monotonicity carries
 // downward from a success and does not carry downward from a failure.
+// AN EVIDENCE ROW THIS CANDIDATE CANNOT BE COMPARED AGAINST STOPS THE LINE. It is not skipped and
+// it is not counted as a different realization: skipping it would silently shrink the population the
+// verdict is drawn from, which is how a held measurement turns into "unobserved". The axis that
+// could not be lined up is carried out so the refusal names what to fix.
+fn first_incomparable_axis(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+  node: NonEmptyStr,
+) -> NonEmptyStr? {
+  let on_this_node = filter(observations, o => (o.node as String) == (node as String))
+  fold(on_this_node, none, (found, o) =>
+    match found {
+      Present { value: a } => Present { value: a }
+      Absent => incomparable_axis(
+        comparison: compare_serving_realization(a: o.realization, b: realization))
+    })
+}
+
 fn served_qualifying_observations(
   observations: List<OllamaRunnerMemoryObservation>,
   realization: ServingRealizationIdentity,
@@ -434,28 +539,41 @@ fn failed_otherwise_at_exact_point(
       && outcome_is_other_failure(o: o))
 }
 
-fn outcome_is_served(o: OllamaRunnerMemoryObservation) -> Bool {
-  match o.outcome {
-    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => true
-    RunnerRefusedForMemory { detail: _ } => false
-    RunnerFailedForOtherCause { cause: _ } => false
+// THE SINGLE ELIMINATOR FOR RunnerAttemptOutcome. Three sibling predicates each re-matched all three
+// arms, which is three representations of one classification: adding a fourth outcome would have to
+// be remembered in three places, and a predicate that forgot it would silently answer false. One
+// catamorphism, every predicate a projection through it -- the same move `fold_node` makes for the
+// compiler's seven stages, at this coproduct's scale.
+//
+// It is not a parallel `Kind` enum, deliberately. Minting AttemptServed / AttemptRefused / ... beside
+// the constructors would be a second name for one variant set, which is the nicknaming section 3
+// forbids; a fold introduces no vocabulary at all.
+fn runner_attempt_fold<T>(
+  outcome: RunnerAttemptOutcome,
+  served: T,
+  refused_for_memory: T,
+  failed_otherwise: T,
+) -> T {
+  match outcome {
+    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => served
+    RunnerRefusedForMemory { detail: _ } => refused_for_memory
+    RunnerFailedForOtherCause { cause: _ } => failed_otherwise
   }
+}
+
+fn outcome_is_served(o: OllamaRunnerMemoryObservation) -> Bool {
+  runner_attempt_fold(outcome: o.outcome,
+    served: true, refused_for_memory: false, failed_otherwise: false)
 }
 
 fn outcome_is_memory_refusal(o: OllamaRunnerMemoryObservation) -> Bool {
-  match o.outcome {
-    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => false
-    RunnerRefusedForMemory { detail: _ } => true
-    RunnerFailedForOtherCause { cause: _ } => false
-  }
+  runner_attempt_fold(outcome: o.outcome,
+    served: false, refused_for_memory: true, failed_otherwise: false)
 }
 
 fn outcome_is_other_failure(o: OllamaRunnerMemoryObservation) -> Bool {
-  match o.outcome {
-    RunnerServed { reported_total_buffer: _, reported_gpu_buffer: _ } => false
-    RunnerRefusedForMemory { detail: _ } => false
-    RunnerFailedForOtherCause { cause: _ } => true
-  }
+  runner_attempt_fold(outcome: o.outcome,
+    served: false, refused_for_memory: false, failed_otherwise: true)
 }
 
 // The SHALLOWEST qualifying attempt, because it is the one closest to the configuration actually
@@ -483,6 +601,22 @@ fn shallowest_of(
 }
 
 fn memory_fit_evidence(
+  observations: List<OllamaRunnerMemoryObservation>,
+  realization: ServingRealizationIdentity,
+  floor: TokenCount,
+  hot_sessions: Nat,
+  node: NonEmptyStr,
+) -> MemoryFitEvidence {
+  match first_incomparable_axis(
+    observations: observations, realization: realization, node: node) {
+    Present { value: axis } => MemoryFitIdentityIncomparable { axis: axis }
+    Absent => decidable_memory_fit_evidence(
+      observations: observations, realization: realization,
+      floor: floor, hot_sessions: hot_sessions, node: node)
+  }
+}
+
+fn decidable_memory_fit_evidence(
   observations: List<OllamaRunnerMemoryObservation>,
   realization: ServingRealizationIdentity,
   floor: TokenCount,
@@ -537,6 +671,7 @@ type MissingFact
   = MemoryFitUnobservedAtConfiguration { floor: TokenCount, sessions: Nat }
   | MemoryFitContradictedAtConfiguration { floor: TokenCount, sessions: Nat }
   | MemoryAttemptFailedForNonMemoryCause { cause: NonEmptyStr }
+  | EvidenceIdentityIncomparable { axis: NonEmptyStr }
   | PrefillRateUnmeasuredAtFloor { floor: TokenCount, regime: ServingRegime }
   | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
 
@@ -558,6 +693,13 @@ fn missing_fact_wire(missing: MissingFact) -> String {
       join([
         "the only qualifying runner attempt failed for a cause that is not memory (",
         (c as String), "), which decides nothing about whether this realization fits",
+      ], "")
+    EvidenceIdentityIncomparable { axis: a } =>
+      join([
+        "evidence on this node carries a ", (a as String),
+        " that cannot be compared with this candidate's -- the two are from different hash ",
+        "families, so whether they describe the same realization is UNANSWERABLE. This is not ",
+        "an absence of measurement: a reading is held and cannot be lined up",
       ], "")
     PrefillRateUnmeasuredAtFloor { floor: f, regime: g } =>
       join([
@@ -655,6 +797,8 @@ fn evaluate_candidate(
     hot_sessions: constraints.hot_sessions,
     node: node,
   ) {
+    MemoryFitIdentityIncomparable { axis: a } =>
+      unanswerable(candidate: candidate, missing: EvidenceIdentityIncomparable { axis: a })
     MemoryFitUnobserved => unanswerable(candidate: candidate, missing: MemoryFitUnobservedAtConfiguration {
       floor: constraints.context_floor,
       sessions: constraints.hot_sessions,
@@ -736,12 +880,26 @@ fn semantic_context_verified_to(
   }
 }
 
-fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
+// The single eliminator for CandidateVerdict, for the reason runner_attempt_fold exists.
+fn candidate_verdict_fold<T>(
+  verdict: CandidateVerdict,
+  admissible: T,
+  rejected: T,
+  unanswerable: T,
+) -> T {
   match verdict {
-    ServingCandidateAdmissible { candidate: _, fit: _ } => true
-    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
-    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
+    ServingCandidateAdmissible { candidate: _, fit: _ } => admissible
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => rejected
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => unanswerable
   }
+}
+
+fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
+  candidate_verdict_fold(verdict: verdict, admissible: true, rejected: false, unanswerable: false)
+}
+
+fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
+  candidate_verdict_fold(verdict: verdict, admissible: false, rejected: false, unanswerable: true)
 }
 
 // QUALITY IS ORDINAL WITHIN ONE RELEASE, and this carrier says so structurally. A bare Int rank
@@ -851,13 +1009,7 @@ fn choose_serving_candidate(
   }
 }
 
-fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
-  match verdict {
-    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => true
-    ServingCandidateAdmissible { candidate: _, fit: _ } => false
-    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
-  }
-}
+
 
 // How many DISTINCT releases the admissible set spans, keyed by ReleaseIdentity rather than by a
 // display name. A name-keyed count is wrong in both directions: two revisions of one family share a
