@@ -10119,7 +10119,18 @@ crate::v1_compiler_infer_types::resolve_type_variables_from_template(t.clone(), 
             });
             let arm_body_types = Rc::new({
                 let mut __result = Vec::new();
-                for ar in arm_infer_results.iter().cloned() {
+                for ar in Rc::new({
+                    let mut __result = Vec::new();
+                    for ar in arm_infer_results.iter().cloned() {
+                        if !arm_body_diverges(crate::v1_std_core::arm_body(ar.typed_arm.clone())) {
+                            __result.push(ar);
+                        }
+                    }
+                    __result
+                })
+                .iter()
+                .cloned()
+                {
                     __result.push(ar.body_type.clone());
                 }
                 __result
@@ -16861,6 +16872,17 @@ pub fn classify_terminal_per_field(
 pub struct BodyTerminal {
     pub expr: Rc<Node>,
     pub let_prov: Rc<HashMap<String, Rc<HashMap<String, Rc<SubValueRelation>>>>>,
+}
+
+pub fn arm_body_diverges(body: Rc<Node>) -> bool {
+    match (*body.expr_data.clone()).clone() {
+        ExprData::ExprReturn => true,
+        ExprData::ExprBlock => match body.children.clone().last().cloned() {
+            Some(last_stmt) => arm_body_diverges(last_stmt.clone()),
+            std::option::Option::None => false,
+        },
+        _ => false,
+    }
 }
 
 pub fn unwrap_body_terminal(

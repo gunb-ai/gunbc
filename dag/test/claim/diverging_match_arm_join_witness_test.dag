@@ -1,0 +1,89 @@
+module test.claim.diverging_match_arm_join_witness
+
+// The discriminating RED for the diverging-arm join defect, kept verbatim as the
+// reproduction that found it. Before `v1.compiler.infer` excluded diverging arms
+// from the match's join, `probe_cell` below could not be authored at all: the
+// `let` bound from a match whose sibling arm `return`s was typed as the union of
+// the binding AND the function's return coproduct, so passing the binding to a
+// parameter declared `Cell` refused with `value does not inhabit its declared
+// type at the direct call argument ... declared 'Product(Cell)', produced
+// 'Coproduct(ProbeResult)'`. The file is therefore its own regression control:
+// if the join ever re-admits a diverging arm, this module stops resolving and
+// every witness here goes red at resolve rather than at assertion (DESIGN 4b(4)
+// -- the evidence stays enrolled after the climb).
+
+type ProbeCell { n: Int }
+
+type ProbeResult
+  = ProbeOk { cell: ProbeCell }
+  | ProbeUnknown { why: Int }
+
+fn probe_cell_of(xs: List<ProbeCell>) -> Optional<ProbeCell> {
+  first(xs)
+}
+
+fn probe_takes_cell(cell: ProbeCell) -> Int {
+  cell.n
+}
+
+fn probe_cell(xs: List<ProbeCell>) -> ProbeResult {
+  let cell = match probe_cell_of(xs: xs) {
+    Absent => return ProbeUnknown { why: 0 }
+    Present { value } => value
+  }
+  ProbeOk { cell: ProbeCell { n: probe_takes_cell(cell: cell) } }
+}
+
+// The diverging arm must not widen the binding, and the surviving arm's own type
+// must still be the one that flows: a present cell reaches the parameter declared
+// `ProbeCell` and its field is read.
+test fn a_diverging_arm_does_not_widen_the_binding_type() -> Bool {
+  match probe_cell(xs: [ProbeCell { n: 7 }]) {
+    ProbeOk { cell } => cell.n == 7
+    ProbeUnknown { why: _ } => false
+  }
+}
+
+// The diverging arm is still REACHED and still returns early -- excluding it from
+// the type join must not exclude it from evaluation. Without this the fix could be
+// satisfied by dropping the arm entirely.
+test fn the_diverging_arm_still_returns_early() -> Bool {
+  match probe_cell(xs: []) {
+    ProbeOk { cell: _ } => false
+    ProbeUnknown { why } => why == 0
+  }
+}
+
+// A block whose terminal statement is the `return` diverges too, so the join must
+// look through the block rather than at its expr_data alone.
+fn probe_cell_block(xs: List<ProbeCell>) -> ProbeResult {
+  let cell = match probe_cell_of(xs: xs) {
+    Absent => {
+      return ProbeUnknown { why: 1 }
+    }
+    Present { value } => value
+  }
+  ProbeOk { cell: ProbeCell { n: probe_takes_cell(cell: cell) } }
+}
+
+test fn a_block_terminating_in_return_also_diverges() -> Bool {
+  match probe_cell_block(xs: [ProbeCell { n: 3 }]) {
+    ProbeOk { cell } => cell.n == 3
+    ProbeUnknown { why: _ } => false
+  }
+}
+
+// POSITIVE CONTROL, and it is the one that keeps the fix from being a hole: a
+// match with NO diverging arm still joins every arm, so both arms must agree.
+// This is the ordinary path the change must leave untouched.
+fn probe_no_divergence(xs: List<ProbeCell>) -> Int {
+  let cell = match probe_cell_of(xs: xs) {
+    Absent => ProbeCell { n: 0 }
+    Present { value } => value
+  }
+  probe_takes_cell(cell: cell)
+}
+
+test fn a_match_without_a_diverging_arm_still_joins_every_arm() -> Bool {
+  probe_no_divergence(xs: []) == 0 && probe_no_divergence(xs: [ProbeCell { n: 5 }]) == 5
+}

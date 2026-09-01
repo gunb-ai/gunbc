@@ -6263,7 +6263,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           body_type: resolved_type(n: body_typed)
         }
       )
-      let arm_body_types = arm_infer_results |> map(ar => ar.body_type)
+      let arm_body_types = arm_infer_results |> filter(ar => !arm_body_diverges(body: arm_body(n: ar.typed_arm))) |> map(ar => ar.body_type)
       let unified_arm_type = match arm_body_types |> first {
         Present { value: first_type } =>
           arm_body_types |> skip(1) |> fold(init: first_type, f: (acc, t) =>
@@ -9500,6 +9500,18 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
 type BodyTerminal {
   expr: Node
   let_prov: Map<String, Map<String, SubValueRelation>>
+}
+
+fn arm_body_diverges(body: Node) -> Bool {
+  match body.expr_data {
+    ExprReturn => true
+    ExprBlock =>
+      match body.children |> last {
+        Present { value: last_stmt } => arm_body_diverges(body: last_stmt)
+        Absent => false
+      }
+    _ => false
+  }
 }
 
 fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRelation>>, type_env: TypeEnv) -> BodyTerminal {
