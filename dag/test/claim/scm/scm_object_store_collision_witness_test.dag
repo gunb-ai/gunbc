@@ -24,6 +24,7 @@ import gunbc.scm.object_store {
   the_empty_file_is_its_own_object,
   a_file_under_a_nodes_locator_refuses,
   the_same_file_stores_cleanly_under_its_own_identity,
+  every_authored_identity_is_tagged,
 }
 
 // One locator, two different canonical records -- refused, and the refusal names both records so a
@@ -83,4 +84,10 @@ test fn a_file_under_a_nodes_locator_is_refused() -> Bool {
 // being unstorable at all.
 test fn the_file_fixture_stores_cleanly_on_its_own() -> Bool {
   the_same_file_stores_cleanly_under_its_own_identity()
+}
+
+// Both authored arms derive through the same tagged combinator, so neither identity is the bare atom
+// digest of its own tag. Red against the revision where the empty arm skipped the tagging.
+test fn no_authored_identity_is_an_untagged_digest() -> Bool {
+  every_authored_identity_is_tagged()
 }

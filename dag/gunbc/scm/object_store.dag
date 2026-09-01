@@ -103,9 +103,26 @@ fn authored_source_content(text: String) -> AuthoredSourceContent {
   }
 }
 
+// ONE RULE, APPLIED TWICE, AND THE FIRST CUT DID NOT DO THAT. The empty arm hashed its tag directly
+// through content_hash_atom while the text arm went through content_hash_tagged_structural, so the
+// tagging invariant the comment above states held for one arm and not the other -- an untagged
+// digest sitting in a family whose whole claim is that its members are tagged. Named by external
+// review 58068 on gunbc#9891 as a consistency nit; it is fixed rather than argued because a stated
+// invariant with one exception is worse than no invariant, and the exception is the arm a reader is
+// least likely to check.
+//
+// Both arms now apply the SAME combinator under DIFFERENT tags. The empty arm's payload is its own
+// tag, which is degenerate and deliberately so: what the payload must not be is some file's content,
+// because then an empty file and a file holding that content would collide BY CONSTRUCTION rather
+// than by accident. Distinct tags are what keep the two arms apart, and the shared combinator is
+// what makes "tagged" true of the family rather than of most of it.
 fn authored_source_identity(content: AuthoredSourceContent) -> ObjectId {
   match content {
-    AuthoredSourceEmpty => content_hash_atom(value: authored_source_empty_tag)
+    AuthoredSourceEmpty =>
+      content_hash_tagged_structural(
+        tag: authored_source_empty_tag,
+        payload: content_hash_atom(value: authored_source_empty_tag),
+      )
     AuthoredSourceText(text) =>
       content_hash_tagged_structural(
         tag: authored_source_text_tag,
@@ -758,4 +775,17 @@ fn the_same_file_stores_cleanly_under_its_own_identity() -> Bool {
     LocatorCollision { identity: _, existing: _, incoming: _ } => false
     Stored { store: store, identity: _ } => store_object_count(store: store) == 1
   }
+}
+
+// THE TAGGING INVARIANT, EXECUTED RATHER THAN ASSERTED IN PROSE. Every authored identity is the
+// tagged combination, so no arm's identity equals the bare atom digest of its own tag. This is the
+// discriminating claim for review 58068's nit: against the first cut, where the empty arm WAS that
+// bare digest, it goes red -- which is what makes it evidence rather than a restatement of the
+// comment above authored_source_identity.
+fn every_authored_identity_is_tagged() -> Bool {
+  let empty = authored_source_identity(content: AuthoredSourceEmpty)
+  let text = authored_source_identity(content: authored_source_content(text: "hello\n"))
+  !object_id_eq(left: empty, right: content_hash_atom(value: authored_source_empty_tag))
+    && !object_id_eq(left: text, right: content_hash_atom(value: authored_source_text_tag))
+    && !object_id_eq(left: empty, right: text)
 }
