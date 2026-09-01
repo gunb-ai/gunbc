@@ -1,6 +1,6 @@
 module v2.workflow.floor_wet_route
 
-import v2.std.algebra { any, filter, fold_list, length, list_append }
+import v2.std.algebra { any, contains, filter, fold_list, length, list_append }
 import v2.std.collection { List }
 import std.types { Int, EpochSecs, Seconds, Milliseconds, NonEmptyStr }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
@@ -356,22 +356,18 @@ fn wet_receipt_rows_join_roster_exactly(
   let every_roster_id_present = fold_list(
     xs: roster_identities,
     empty: true,
-    cons: fn(acc, id) { acc && wet_route_list_contains(xs: row_ids, needle: id) }
+    cons: fn(acc, id) { acc && contains(xs: row_ids, item: id, eq: string_eq) }
   )
   let every_row_on_roster = fold_list(
     xs: row_ids,
     empty: true,
-    cons: fn(acc, id) { acc && wet_route_list_contains(xs: roster_identities, needle: id) }
+    cons: fn(acc, id) { acc && contains(xs: roster_identities, item: id, eq: string_eq) }
   )
   every_roster_id_present && every_row_on_roster && length(xs: rows) == length(xs: roster_identities)
 }
 
-fn wet_route_list_contains(xs: List<String>, needle: String) -> Bool {
-  fold_list(
-    xs: xs,
-    empty: false,
-    cons: fn(acc, x) { acc || x == needle }
-  )
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
 }
 
 // THE PER-IDENTITY VERDICT PROJECTIONS (parent ruling 2026-08-30, walls 1 and 3). The
@@ -408,7 +404,7 @@ fn wet_receipt_unexpected_red_identities(
     cons: fn(acc, row) {
       match row.outcome {
         WetAssertionFalse =>
-          if wet_route_list_contains(xs: expected_red_identities, needle: row.identity) {
+          if contains(xs: expected_red_identities, item: row.identity, eq: string_eq) {
             acc
           } else {
             list_append(left: acc, right: [row.identity])
@@ -439,7 +435,7 @@ fn wet_receipt_held_identities(
     cons: fn(acc, row) {
       match row.outcome {
         WetAssertionFalse =>
-          if wet_route_list_contains(xs: expected_red_identities, needle: row.identity) {
+          if contains(xs: expected_red_identities, item: row.identity, eq: string_eq) {
             list_append(left: acc, right: [row.identity])
           } else {
             acc
@@ -470,7 +466,7 @@ fn wet_receipt_now_passing_identities(
     cons: fn(acc, row) {
       match row.outcome {
         WetPass =>
-          if wet_route_list_contains(xs: expected_red_identities, needle: row.identity) {
+          if contains(xs: expected_red_identities, item: row.identity, eq: string_eq) {
             list_append(left: acc, right: [row.identity])
           } else {
             acc
@@ -818,5 +814,5 @@ fn floor_wet_route_identities() -> List<String> {
 // Membership at identity grain, the shape `floor_cost_debt_holds` established: the site
 // disposition asks this once per offered identity.
 fn floor_wet_route_holds(name: String) -> Bool {
-  wet_route_list_contains(xs: floor_wet_route_identities(), needle: name)
+  contains(xs: floor_wet_route_identities(), item: name, eq: string_eq)
 }
