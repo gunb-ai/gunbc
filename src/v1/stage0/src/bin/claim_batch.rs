@@ -738,6 +738,8 @@ fn run() -> Result<ExitCode, ExitCode> {
             rows.len()
         );
         let index = process_shared_index(&source_roots);
+        // The one authority for module-path ↔ file, reused rather than re-derived (DESIGN §3).
+        let module_path_index = v1_compiler::cli_run::build_module_path_index(&source_roots);
         let whole_tree_published_keys =
             match precompute_whole_tree_published_mock_keys(&source_roots) {
                 Ok(keys) if keys.is_empty() => None,
@@ -765,6 +767,11 @@ fn run() -> Result<ExitCode, ExitCode> {
                         identity: row.identity.clone(),
                         outcome_wire: "resolve-failed",
                         wall_ms: 0,
+                        // NOTHING RESOLVED, SO NOTHING IS OBSERVED. Copying the roster's own
+                        // entry and function in here would fabricate the observation the
+                        // consumer's foreign-resolution join exists to check.
+                        observed_entry_rel: None,
+                        observed_function: None,
                     });
                     any_failed = true;
                     continue;
@@ -778,6 +785,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                         identity: row.identity.clone(),
                         outcome_wire: "closure-subject-failed",
                         wall_ms: 0,
+                        observed_entry_rel: None,
+                        observed_function: None,
                     });
                     any_failed = true;
                     continue;
@@ -791,6 +800,21 @@ fn run() -> Result<ExitCode, ExitCode> {
                 whole_tree_published_keys.clone(),
             );
             ctx.set_witness_eval_budget(eval_budget_ms);
+            // WHAT THIS RUN ACTUALLY RESOLVED, read from the node the interpreter's own lookup
+            // SELECTS for this name — the same selection `run_claim` is about to execute, not a
+            // second derivation and not the roster row echoed back. Recorded BEFORE the call so
+            // it describes the declaration that ran even when the run then fails.
+            //
+            // `None` when the name selects nothing, or when the module index cannot name
+            // exactly one module for the selected node's file: an unobservable resolution is
+            // absent, never guessed.
+            let selected = ctx.selected_function_identity(&row.function, &module_path_index);
+            let observed_function = selected
+                .as_ref()
+                .map(|s| format!("{}.{}", s.module_path, s.decl_name));
+            let observed_entry_rel = selected
+                .as_ref()
+                .map(|s| v1_compiler::cli_run::workspace_relative_repo_path(&s.source_file));
             let (outcome, receipt) = run_claim_measured(&ctx, &closure_subject, &row.function);
             // The RAW typed outcome, kept at wire grain (one of cli_run::WET_OUTCOME_WIRES):
             // an assertion that ran and returned false and an infrastructure failure that
@@ -819,6 +843,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 identity: row.identity.clone(),
                 outcome_wire,
                 wall_ms,
+                observed_entry_rel,
+                observed_function,
             });
             v1_compiler::v1_interpreter::eval_call_memo_frame_exit(&ctx);
         }

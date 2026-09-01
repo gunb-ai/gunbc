@@ -3834,6 +3834,11 @@ pub struct SelectedFunctionIdentity {
     pub module_path: String,
     pub decl_name: String,
     pub bare_name_ambiguous: bool,
+    /// The source file the SELECTED node was authored in, read off its span — not the file a
+    /// caller asked for. A wet receipt records this as its observed entry, and the difference
+    /// is the whole point: copying the roster's entry back into the receipt would make the
+    /// consumer's foreign-entry join tautological.
+    pub source_file: String,
 }
 
 /// The module path a source file authors, or `None` when the index cannot name exactly one.
@@ -4406,6 +4411,7 @@ impl InterpContext {
             decl_name: authored_name_at(self.source_indices.clone(), node.clone()),
             bare_name_ambiguous: !name.contains('.')
                 && self.indexes.ambiguous_bare_function_names.contains(name),
+            source_file: file.to_string(),
         })
     }
 }

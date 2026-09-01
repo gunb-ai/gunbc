@@ -248,6 +248,20 @@ pub struct WetReceiptIdentityRow {
     /// validated on read, unknown wires refuse as ContractMismatch.
     pub outcome: String,
     pub wall_ms: u64,
+    /// WHAT THE LANE ACTUALLY RESOLVED AND ACTUALLY INVOKED, recorded at the producer from the
+    /// node the interpreter's own lookup SELECTED (`selected_function_identity`) — never copied
+    /// back from the roster row that asked for it. The distinction is the whole value: a
+    /// recopied entry and function make every downstream foreign-entry / foreign-function join
+    /// tautological, so the receipt would agree with the roster by construction and a witness
+    /// executing out of a different file would receipt as if it had not.
+    ///
+    /// `None` is the honest reading for a row that never reached a resolved declaration (entry
+    /// resolve failed, closure subject failed): there is no observation to record, and a
+    /// fabricated one would be exactly the plausible output DESIGN §5 forbids.
+    #[serde(default)]
+    pub observed_entry_rel: Option<String>,
+    #[serde(default)]
+    pub observed_function: Option<String>,
 }
 
 /// Read the committed envelope pair. Fail-closed on shape: a malformed envelope, an invalid
@@ -342,11 +356,18 @@ pub fn wet_receipt_tsv_projection(envelope: &WetReceiptEnvelope) -> String {
         envelope.run_id,
         envelope.head_sha
     ));
-    out.push_str("# identity\toutcome\twall_ms\n");
+    out.push_str("# identity\toutcome\twall_ms\tobserved_entry_rel\tobserved_function\n");
     for row in &envelope.rows {
+        // `-` renders the ABSENCE of an observation, which is a real state (a row that never
+        // reached a resolved declaration), not a default standing in for one. The projection is
+        // re-derived and compared byte-for-byte on read, so the rendering is decided here once.
         out.push_str(&format!(
-            "{}\t{}\t{}\n",
-            row.identity, row.outcome, row.wall_ms
+            "{}\t{}\t{}\t{}\t{}\n",
+            row.identity,
+            row.outcome,
+            row.wall_ms,
+            row.observed_entry_rel.as_deref().unwrap_or("-"),
+            row.observed_function.as_deref().unwrap_or("-")
         ));
     }
     out
@@ -845,6 +866,30 @@ pub(crate) fn wet_lane_receipt_standing(
             };
         }
     }
+    // THE OBSERVED-RESOLUTION JOIN. `observed_function` is the qualified name of the node the
+    // lane's interpreter actually selected; the row's `identity` is what the roster asked for.
+    // Comparing them catches a witness that executed out of a different declaration than the
+    // one routed — the bare-name precedence collision this corpus has already shipped once,
+    // where a reference bound to a homonym in another module and the run reported under the
+    // requested name. It is not tautological because the two sides have different producers:
+    // one is read off the selected node's span, the other is authored in the roster.
+    //
+    // A row that reached no declaration carries no observation and is not judged here; its
+    // outcome already says so, and `wet_receipt_no_verdict_identities` blocks on it.
+    for row in &e.rows {
+        if let Some(observed) = row.observed_function.as_deref() {
+            if observed != row.identity {
+                return WetLaneReceiptStanding::ContractMismatch {
+                    detail: format!(
+                        "row {} was executed as `{observed}` — the lane resolved a different \
+                         declaration than the routed identity names, so the receipt does not \
+                         attest the witness the roster asked for",
+                        row.identity
+                    ),
+                };
+            }
+        }
+    }
     let age_secs = evaluated_tree_commit_secs.saturating_sub(e.executed_at_unix_secs);
     if age_secs > staleness_budget_secs {
         return WetLaneReceiptStanding::Expired { age_secs };
@@ -860,11 +905,12 @@ pub(crate) fn wet_lane_receipt_standing(
 pub(crate) fn wet_receipt_identity_verdicts(
     envelope: &WetReceiptEnvelope,
     expected_red: &BTreeSet<String>,
-) -> (Vec<String>, Vec<String>, Vec<String>, Vec<String>) {
+) -> WetIdentityVerdicts {
     let mut unexpected_red = Vec::new();
     let mut held = Vec::new();
     let mut now_passing = Vec::new();
     let mut no_verdict = Vec::new();
+    let mut cost_debt = Vec::new();
     for row in &envelope.rows {
         let enrolled = expected_red.contains(&row.identity);
         match (row.outcome.as_str(), enrolled) {
@@ -872,6 +918,23 @@ pub(crate) fn wet_receipt_identity_verdicts(
             ("pass", true) => now_passing.push(row.identity.clone()),
             ("assertion-false", true) => held.push(row.identity.clone()),
             ("assertion-false", false) => unexpected_red.push(row.identity.clone()),
+            // COST IS NOT A VERDICT, and this wire used to fall through to `no_verdict`
+            // below. `completed-over-budget` is minted only over a PASS: the witness ran to
+            // completion and was then found over the line, so the verdict is known and the
+            // elapsed figure is exact — the opposite of `budget-interrupted`, where the
+            // deadline preempted the answer. The dry side of this same runner has drawn that
+            // line for `ClaimOutcome::CompletedOverBudget` since it grew
+            // `completed_over_cost_requirement`; the wet side had not, so a routed identity
+            // that answered and cost too much read as "correctness unknown" and sent the
+            // reader to debug a witness that is not broken. It still blocks — this route
+            // enrolls no cost-debt population — but it blocks with a cost remedy, and being a
+            // completion it is roster drift when enrolled exactly as a plain pass is.
+            ("completed-over-budget", enrolled_here) => {
+                cost_debt.push(row.identity.clone());
+                if enrolled_here {
+                    now_passing.push(row.identity.clone());
+                }
+            }
             // Every other wire is a way of producing NO subject verdict, and it blocks
             // regardless of enrollment: an enrollment asserts the witness reaches its
             // subject and answers, so it cannot hold an infrastructure failure. Only an
@@ -880,7 +943,25 @@ pub(crate) fn wet_receipt_identity_verdicts(
             _ => no_verdict.push(format!("{} ({})", row.identity, row.outcome)),
         }
     }
-    (unexpected_red, held, now_passing, no_verdict)
+    WetIdentityVerdicts {
+        unexpected_red,
+        held,
+        now_passing,
+        no_verdict,
+        cost_debt,
+    }
+}
+
+/// The five per-identity populations, named rather than positional: four of them block and
+/// each carries a different remedy — repair the witness, retire the roster row, restore the
+/// execution, pay the cost — so a caller that mixes two up sends the reader somewhere useless.
+/// A five-wide tuple made that mix-up a silent argument-order edit.
+pub(crate) struct WetIdentityVerdicts {
+    pub(crate) unexpected_red: Vec<String>,
+    pub(crate) held: Vec<String>,
+    pub(crate) now_passing: Vec<String>,
+    pub(crate) no_verdict: Vec<String>,
+    pub(crate) cost_debt: Vec<String>,
 }
 
 /// THE PUBLICATION TRANSACTION, observed for THIS run (host realization of
@@ -1007,6 +1088,10 @@ pub struct WetLaneExecutedReceipt {
     /// 2026-08-30, wall 1).
     pub outcome_wire: &'static str,
     pub wall_ms: u128,
+    /// The observed resolution — see `WetReceiptIdentityRow::observed_entry_rel`. Read from
+    /// the selected node, not from the roster row.
+    pub observed_entry_rel: Option<String>,
+    pub observed_function: Option<String>,
 }
 
 /// The closed wire vocabulary for a wet row's outcome. A committed envelope carrying any
@@ -1091,7 +1176,7 @@ pub fn write_wet_receipt_envelope(
     let mut sorted: Vec<&WetLaneExecutedReceipt> = rows.iter().collect();
     sorted.sort_by(|a, b| a.identity.cmp(&b.identity));
     let envelope = WetReceiptEnvelope {
-        schema_version: 1,
+        schema_version: 2,
         subject_digest: subject_digest.to_string(),
         executor_contract_digest: executor_contract_digest.to_string(),
         attempt_seq: prior_attempt_seq + 1,
@@ -1105,6 +1190,8 @@ pub fn write_wet_receipt_envelope(
                 identity: row.identity.clone(),
                 outcome: row.outcome_wire.to_string(),
                 wall_ms: row.wall_ms as u64,
+                observed_entry_rel: row.observed_entry_rel.clone(),
+                observed_function: row.observed_function.clone(),
             })
             .collect(),
     };
@@ -1230,6 +1317,8 @@ mod wet_lane_receipt_tests {
             identity: "test.claim.x.holds".to_string(),
             outcome_wire: "pass",
             wall_ms: 42,
+            observed_entry_rel: Some("dag/test/claim/x_test.dag".to_string()),
+            observed_function: Some("test.claim.x.holds".to_string()),
         }]
     }
 
@@ -1308,7 +1397,7 @@ mod wet_lane_receipt_tests {
 
     fn fixture_envelope() -> WetReceiptEnvelope {
         WetReceiptEnvelope {
-            schema_version: 1,
+            schema_version: 2,
             subject_digest: "subject-d".to_string(),
             executor_contract_digest: "exec-d".to_string(),
             attempt_seq: 1,
@@ -1320,6 +1409,8 @@ mod wet_lane_receipt_tests {
                 identity: "test.claim.x.holds".to_string(),
                 outcome: "pass".to_string(),
                 wall_ms: 42,
+                observed_entry_rel: Some("dag/test/claim/x_test.dag".to_string()),
+                observed_function: Some("test.claim.x.holds".to_string()),
             }],
         }
     }
@@ -1332,7 +1423,7 @@ mod wet_lane_receipt_tests {
     fn standing_fresh_exact_subject_is_the_one_clean_arm() {
         let e = fixture_envelope();
         let standing =
-            wet_lane_receipt_standing(Some(&e), "subject-d", "exec-d", &roster(), 1001, 1, 100, 10);
+            wet_lane_receipt_standing(Some(&e), "subject-d", "exec-d", &roster(), 1001, 2, 100, 10);
         assert_eq!(
             standing,
             WetLaneReceiptStanding::FreshExactSubject { age_secs: 1 }
@@ -1342,10 +1433,10 @@ mod wet_lane_receipt_tests {
 
     #[test]
     fn standing_missing_and_subject_mismatch_and_failed_block() {
-        assert!(wet_lane_receipt_standing(None, "d", "e", &roster(), 1, 1, 100, 10).blocks());
+        assert!(wet_lane_receipt_standing(None, "d", "e", &roster(), 1, 2, 100, 10).blocks());
         let e = fixture_envelope();
         let mismatch =
-            wet_lane_receipt_standing(Some(&e), "other-d", "exec-d", &roster(), 1001, 1, 100, 10);
+            wet_lane_receipt_standing(Some(&e), "other-d", "exec-d", &roster(), 1001, 2, 100, 10);
         assert!(matches!(
             mismatch,
             WetLaneReceiptStanding::SubjectMismatch {
@@ -1359,7 +1450,7 @@ mod wet_lane_receipt_tests {
             "other-exec",
             &roster(),
             1001,
-            1,
+            2,
             100,
             10,
         );
@@ -1454,7 +1545,7 @@ mod wet_lane_receipt_tests {
             "exec-d",
             &roster(),
             1001,
-            1,
+            2,
             100,
             10,
         );
@@ -1463,22 +1554,25 @@ mod wet_lane_receipt_tests {
             WetLaneReceiptStanding::FreshExactSubject { .. }
         ));
         let empty: BTreeSet<String> = BTreeSet::new();
+        let v = wet_receipt_identity_verdicts(&failed, &empty);
         let (unexpected, held, now_passing, no_verdict) =
-            wet_receipt_identity_verdicts(&failed, &empty);
+            (v.unexpected_red, v.held, v.now_passing, v.no_verdict);
         assert_eq!(unexpected, vec!["test.claim.x.holds".to_string()]);
         assert!(held.is_empty());
         assert!(now_passing.is_empty());
         assert!(no_verdict.is_empty());
         let enrolled: BTreeSet<String> = ["test.claim.x.holds".to_string()].into();
+        let v = wet_receipt_identity_verdicts(&failed, &enrolled);
         let (unexpected, held, now_passing, no_verdict) =
-            wet_receipt_identity_verdicts(&failed, &enrolled);
+            (v.unexpected_red, v.held, v.now_passing, v.no_verdict);
         assert!(unexpected.is_empty());
         assert_eq!(held, vec!["test.claim.x.holds".to_string()]);
         assert!(now_passing.is_empty());
         assert!(no_verdict.is_empty());
         let passing = fixture_envelope();
+        let v = wet_receipt_identity_verdicts(&passing, &enrolled);
         let (unexpected, held, now_passing, no_verdict) =
-            wet_receipt_identity_verdicts(&passing, &enrolled);
+            (v.unexpected_red, v.held, v.now_passing, v.no_verdict);
         assert!(unexpected.is_empty());
         assert!(held.is_empty());
         assert_eq!(now_passing, vec!["test.claim.x.holds".to_string()]);
@@ -1486,8 +1580,9 @@ mod wet_lane_receipt_tests {
         // An infrastructure outcome is never held by an assertion-false enrollment.
         let mut hollow = fixture_envelope();
         hollow.rows[0].outcome = "runtime-error".to_string();
+        let v = wet_receipt_identity_verdicts(&hollow, &enrolled);
         let (unexpected, held, now_passing, no_verdict) =
-            wet_receipt_identity_verdicts(&hollow, &enrolled);
+            (v.unexpected_red, v.held, v.now_passing, v.no_verdict);
         assert!(unexpected.is_empty());
         assert!(held.is_empty());
         assert!(now_passing.is_empty());
@@ -1495,6 +1590,36 @@ mod wet_lane_receipt_tests {
             no_verdict,
             vec!["test.claim.x.holds (runtime-error)".to_string()]
         );
+        // COST IS NOT A VERDICT, and the two budget wires are the discriminating pair:
+        // `completed-over-budget` reached its verdict (the arm is minted only over a pass), so
+        // it is cost debt AND — being a completion — roster drift when enrolled;
+        // `budget-interrupted` never reached one, so it stays no-verdict and is not cost debt.
+        // Each is asserted absent from the other's population, so re-collapsing them fails
+        // here in both directions rather than in neither.
+        let mut over = fixture_envelope();
+        over.rows[0].outcome = "completed-over-budget".to_string();
+        let v = wet_receipt_identity_verdicts(&over, &enrolled);
+        assert_eq!(v.cost_debt, vec!["test.claim.x.holds".to_string()]);
+        assert!(v.no_verdict.is_empty());
+        assert_eq!(v.now_passing, vec!["test.claim.x.holds".to_string()]);
+        assert!(v.held.is_empty());
+        assert!(v.unexpected_red.is_empty());
+        let v_unenrolled = wet_receipt_identity_verdicts(&over, &empty);
+        assert_eq!(
+            v_unenrolled.cost_debt,
+            vec!["test.claim.x.holds".to_string()]
+        );
+        assert!(v_unenrolled.now_passing.is_empty());
+        assert!(v_unenrolled.no_verdict.is_empty());
+        let mut interrupted = fixture_envelope();
+        interrupted.rows[0].outcome = "budget-interrupted".to_string();
+        let v = wet_receipt_identity_verdicts(&interrupted, &enrolled);
+        assert!(v.cost_debt.is_empty());
+        assert_eq!(
+            v.no_verdict,
+            vec!["test.claim.x.holds (budget-interrupted)".to_string()]
+        );
+        assert!(v.now_passing.is_empty());
     }
 }
 
@@ -7433,21 +7558,33 @@ pub fn run_required_floor(
                 let envelope = wet_route_envelope
                     .as_ref()
                     .expect("admitted standing entails an envelope");
-                let (unexpected_red, held, now_passing, no_verdict) =
-                    wet_receipt_identity_verdicts(envelope, &wet_expected_red);
+                let WetIdentityVerdicts {
+                    unexpected_red,
+                    held,
+                    now_passing,
+                    no_verdict,
+                    cost_debt,
+                } = wet_receipt_identity_verdicts(envelope, &wet_expected_red);
                 eprintln!(
                     "[floor-wet-route] verdicts: unexpected_red={} held={} now_passing={} \
-                     no_verdict={} (held identities are enrolled expected-reds observed by \
-                     the lane; they retire only by an observed pass)",
+                     no_verdict={} cost_debt={} (held identities are enrolled expected-reds \
+                     observed by the lane; they retire only by an observed pass. cost_debt \
+                     rows REACHED their verdict and then exceeded the line — a cost, not a \
+                     defect)",
                     unexpected_red.len(),
                     held.len(),
                     now_passing.len(),
-                    no_verdict.len()
+                    no_verdict.len(),
+                    cost_debt.len()
                 );
                 for id in &held {
                     eprintln!("[floor-wet-route] known-red-held identity={id}");
                 }
-                if !unexpected_red.is_empty() || !now_passing.is_empty() || !no_verdict.is_empty() {
+                if !unexpected_red.is_empty()
+                    || !now_passing.is_empty()
+                    || !no_verdict.is_empty()
+                    || !cost_debt.is_empty()
+                {
                     let transaction_valid = wet_receipt_publication_transaction_valid_for_this_run(
                         &wet_route_receipt_json_rel_path,
                         &wet_route_receipt_tsv_rel_path,
@@ -7496,6 +7633,17 @@ pub fn run_required_floor(
                                  verdict for these rows, which no assertion-false \
                                  enrollment can hold; repair the lane or the witness route",
                                 no_verdict.join(", ")
+                            ));
+                        }
+                        if !cost_debt.is_empty() {
+                            outcome.wet_route_standing_blocking.push(format!(
+                                "wet completed-over-budget for [{}] — these rows REACHED \
+                                 their verdict and then exceeded the lane's line, so the \
+                                 figure is exact and the debt is a COST, not a defect: \
+                                 reduce the cost, or move the row to a lane declaring its \
+                                 own ceiling. Do not enroll it as expected-red, which \
+                                 asserts a failure it does not exhibit",
+                                cost_debt.join(", ")
                             ));
                         }
                     }

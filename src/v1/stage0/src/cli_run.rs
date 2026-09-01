@@ -63,8 +63,9 @@ mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
 pub use entry_resolve::{
-    load_sources_for_entry, process_shared_index, resolve_entry_graph, resolve_entry_with_index,
-    resolve_stage_totals, source_root_ingest_content_hash_fnv1a64, whole_tree_resolved_ctx,
+    build_module_path_index, load_sources_for_entry, process_shared_index, resolve_entry_graph,
+    resolve_entry_with_index, resolve_stage_totals, source_root_ingest_content_hash_fnv1a64,
+    whole_tree_resolved_ctx,
 };
 mod live_read_decode;
 pub(crate) use live_read_decode::*;
@@ -3802,8 +3803,9 @@ fn truncate_histogram_label(s: &str, max: usize) -> String {
     }
 }
 
-/// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`).
-fn workspace_relative_repo_path(path: &str) -> String {
+/// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`), and for
+/// the wet lane's observed-entry receipt field, which records a selected node's span file.
+pub fn workspace_relative_repo_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
     let p = Path::new(&norm);
     if p.is_absolute() {

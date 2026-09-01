@@ -2,7 +2,8 @@ module v2.test.floor_wet_route
 
 import v2.workflow.floor_wet_route {
   WetRouteRow,
-  WetLaneOutcome, WetPass, WetAssertionFalse, WetRuntimeError,
+  WetLaneOutcome, WetPass, WetAssertionFalse, WetRuntimeError, WetCompletedOverBudget, WetResolveFailed,
+  WetBudgetInterrupted,
   WetReceiptIdentityRow, WetReceiptEnvelope,
   WetLaneReceiptStanding,
   ReceiptFreshExactSubject, ReceiptMissing, ReceiptExpired, ReceiptSubjectMismatch,
@@ -20,10 +21,12 @@ import v2.workflow.floor_wet_route {
   wet_receipt_held_identities,
   wet_receipt_now_passing_identities,
   wet_receipt_no_verdict_identities,
-  wet_route_identity_reds_block,
+  wet_receipt_cost_debt_identities,
+  wet_receipt_rows_executed_the_identity_they_claim,
+  wet_route_identity_rows_block,
   WetReceiptPublicationTransaction,
   wet_receipt_publication_transaction_valid,
-  wet_route_identity_reds_block_with_publication,
+  wet_route_identity_rows_block_with_publication,
   floor_wet_route_receipt_schema_version,
   floor_wet_route_receipt_staleness_budget_secs,
   floor_wet_route_publication_skew_secs,
@@ -35,7 +38,7 @@ import v2.std.algebra { filter, fold_list, length }
 import v2.std.collection { List }
 import std.types { EpochSecs }
 import v2.std.logic { Bool }
-import v2.std.optional { Optional, Absent, Present }
+import v2.std.optional { Optional, Absent, Present, optional_absent, optional_present }
 import v2.std.text { String }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -64,8 +67,8 @@ fn fixture_roster_identities() -> List<String> {
 
 fn fixture_rows(alpha: WetLaneOutcome, beta: WetLaneOutcome) -> List<WetReceiptIdentityRow> {
   [
-    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: alpha, wall_ms: 305558 },
-    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: beta, wall_ms: 12 }
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: alpha, wall_ms: 305558, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: beta, wall_ms: 12, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.beta_holds") }
   ]
 }
 
@@ -122,7 +125,7 @@ test fn wet_route_unexpected_red_blocks_and_is_named() -> Bool {
   let standing = standing_at(envelope: Present { value: fixture_envelope(rows: rows) }, tree_secs: 1000001)
   length(xs: unexpected) == 1
     && fold_list(xs: unexpected, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
-    && wet_route_identity_reds_block(unexpected_red: unexpected, now_passing: [], no_verdict: [])
+    && wet_route_identity_rows_block(unexpected_red: unexpected, now_passing: [], no_verdict: [], cost_debt: [])
     && !wet_route_standing_blocks_floor(standing: standing)
 }
 
@@ -138,7 +141,7 @@ test fn wet_route_enrolled_red_is_held_not_blocking() -> Bool {
     && length(xs: held) == 1
     && fold_list(xs: held, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
     && length(xs: now_passing) == 0
-    && !wet_route_identity_reds_block(unexpected_red: unexpected, now_passing: now_passing, no_verdict: [])
+    && !wet_route_identity_rows_block(unexpected_red: unexpected, now_passing: now_passing, no_verdict: [], cost_debt: [])
 }
 
 // Arm three — now passing: an enrolled identity the receipt observes PASSING blocks until
@@ -151,7 +154,7 @@ test fn wet_route_enrolled_pass_is_now_passing_and_blocks() -> Bool {
   length(xs: held) == 0
     && length(xs: now_passing) == 1
     && fold_list(xs: now_passing, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
-    && wet_route_identity_reds_block(unexpected_red: [], now_passing: now_passing, no_verdict: [])
+    && wet_route_identity_rows_block(unexpected_red: [], now_passing: now_passing, no_verdict: [], cost_debt: [])
 }
 
 // Arm four — no subject verdict: an infrastructure failure is never held by an
@@ -159,8 +162,8 @@ test fn wet_route_enrolled_pass_is_now_passing_and_blocks() -> Bool {
 // witness reaches its subject and answers.
 test fn wet_route_no_verdict_outcome_blocks_even_when_enrolled() -> Bool {
   let rows = [
-    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1 },
-    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetRuntimeError {}, wall_ms: 2 }
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetRuntimeError {}, wall_ms: 2, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.beta_holds") }
   ]
   let enrolled = ["test.claim.fixture.beta_holds"]
   let no_verdict = wet_receipt_no_verdict_identities(rows: rows)
@@ -168,7 +171,80 @@ test fn wet_route_no_verdict_outcome_blocks_even_when_enrolled() -> Bool {
   length(xs: no_verdict) == 1
     && fold_list(xs: no_verdict, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
     && length(xs: held) == 0
-    && wet_route_identity_reds_block(unexpected_red: [], now_passing: [], no_verdict: no_verdict)
+    && wet_route_identity_rows_block(unexpected_red: [], now_passing: [], no_verdict: no_verdict, cost_debt: [])
+}
+
+// Arm five — COST IS NOT A VERDICT, and this is the pair that discriminates the two budget
+// arms. `WetCompletedOverBudget` means the witness ran to completion and was then found over
+// the line: the seed mints that arm only over a pass, so the verdict is known and the elapsed
+// figure is exact. `WetBudgetInterrupted` means the deadline preempted the answer: no verdict
+// exists and the figure is a lower bound. They land in DIFFERENT populations and each is
+// asserted absent from the other's, so collapsing them back into one — which is what this
+// module did until the canonical floor's own split was read against it — fails this witness in
+// both directions rather than in neither.
+test fn wet_route_completed_over_budget_is_cost_debt_not_no_verdict() -> Bool {
+  let over = [
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetCompletedOverBudget {}, wall_ms: 900, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.beta_holds") }
+  ]
+  let interrupted = [
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetBudgetInterrupted {}, wall_ms: 900, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.beta_holds") }
+  ]
+  let over_cost = wet_receipt_cost_debt_identities(rows: over)
+  let over_no_verdict = wet_receipt_no_verdict_identities(rows: over)
+  let interrupted_cost = wet_receipt_cost_debt_identities(rows: interrupted)
+  let interrupted_no_verdict = wet_receipt_no_verdict_identities(rows: interrupted)
+  length(xs: over_cost) == 1
+    && fold_list(xs: over_cost, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
+    && length(xs: over_no_verdict) == 0
+    && length(xs: interrupted_cost) == 0
+    && length(xs: interrupted_no_verdict) == 1
+    && wet_route_identity_rows_block(unexpected_red: [], now_passing: [], no_verdict: [], cost_debt: over_cost)
+}
+
+// Arm six — and because completing over budget IS a completion, an ENROLLED identity that
+// completes over budget is roster drift exactly as a plain pass is. Held is the arm it must
+// not reach: an expected-red enrollment asserts a failure this row does not exhibit, so
+// holding it here would let a cost debt retire a red that never came back.
+test fn wet_route_enrolled_over_budget_is_now_passing_not_held() -> Bool {
+  let rows = [
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetCompletedOverBudget {}, wall_ms: 900, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.beta_holds") }
+  ]
+  let enrolled = ["test.claim.fixture.beta_holds"]
+  let held = wet_receipt_held_identities(rows: rows, expected_red_identities: enrolled)
+  let now_passing = wet_receipt_now_passing_identities(rows: rows, expected_red_identities: enrolled)
+  let unexpected = wet_receipt_unexpected_red_identities(rows: rows, expected_red_identities: enrolled)
+  length(xs: held) == 0
+    && length(xs: unexpected) == 0
+    && length(xs: now_passing) == 1
+    && fold_list(xs: now_passing, empty: true, cons: fn(acc, id) { acc && id == "test.claim.fixture.beta_holds" })
+}
+
+// Arm seven — THE OBSERVED-RESOLUTION JOIN, with the control that makes it discriminating.
+// A receipt whose row records that the lane resolved a DIFFERENT declaration than the routed
+// identity refuses at envelope grain, even though every other fact — subject, executor
+// contract, roster membership, freshness — is exact. The positive control is the same envelope
+// with the honest observation, which stays fresh: without it this witness would pass over an
+// envelope that refuses for any reason at all.
+test fn wet_route_foreign_observed_resolution_refuses() -> Bool {
+  let honest = fixture_rows(alpha: WetPass {}, beta: WetPass {})
+  let foreign = [
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetPass {}, wall_ms: 2, observed_entry_rel: optional_present(value: "dag/test/claim/other_test.dag"), observed_function: optional_present(value: "test.claim.other.beta_holds") }
+  ]
+  let unobserved = [
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_absent(), observed_function: optional_absent() },
+    WetReceiptIdentityRow { identity: "test.claim.fixture.beta_holds", outcome: WetResolveFailed {}, wall_ms: 0, observed_entry_rel: optional_absent(), observed_function: optional_absent() }
+  ]
+  let foreign_standing = standing_at(envelope: Present { value: fixture_envelope(rows: foreign) }, tree_secs: 1000001)
+  let honest_standing = standing_at(envelope: Present { value: fixture_envelope(rows: honest) }, tree_secs: 1000001)
+  wet_receipt_rows_executed_the_identity_they_claim(rows: honest)
+    && !wet_receipt_rows_executed_the_identity_they_claim(rows: foreign)
+    && wet_receipt_rows_executed_the_identity_they_claim(rows: unobserved)
+    && wet_route_standing_blocks_floor(standing: foreign_standing)
+    && !wet_route_standing_blocks_floor(standing: honest_standing)
 }
 
 // THE COVERAGE-BY-ILLUSION CONTROL: routed with no envelope ever committed must refuse,
@@ -254,7 +330,7 @@ test fn wet_route_subject_mismatch_blocks_and_carries_both_digests() -> Bool {
 // is exact in both directions, and an inexact roster blocks before any verdict is read.
 test fn wet_route_roster_inexact_blocks() -> Bool {
   let one_row_only = [
-    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1 }
+    WetReceiptIdentityRow { identity: "test.claim.fixture.alpha_holds", outcome: WetPass {}, wall_ms: 1, observed_entry_rel: optional_present(value: "dag/test/claim/fixture_test.dag"), observed_function: optional_present(value: "test.claim.fixture.alpha_holds") }
   ]
   let standing = standing_at(
     envelope: Present { value: fixture_envelope(rows: one_row_only) },
@@ -471,34 +547,39 @@ test fn wet_route_identity_reds_waived_only_under_valid_publication_transaction(
     diff_confined_to_receipt_namespace: true,
     attempt_seq_advances: false
   }
-  !wet_route_identity_reds_block_with_publication(
+  !wet_route_identity_rows_block_with_publication(
     unexpected_red: unexpected,
     now_passing: [],
     no_verdict: [],
+    cost_debt: [],
     publication_transaction_valid: wet_receipt_publication_transaction_valid(t: valid)
   )
-    && !wet_route_identity_reds_block_with_publication(
+    && !wet_route_identity_rows_block_with_publication(
       unexpected_red: [],
       now_passing: ["test.claim.fixture.alpha_holds"],
       no_verdict: [],
+      cost_debt: [],
       publication_transaction_valid: wet_receipt_publication_transaction_valid(t: valid)
     )
-    && !wet_route_identity_reds_block_with_publication(
+    && !wet_route_identity_rows_block_with_publication(
       unexpected_red: [],
       now_passing: [],
       no_verdict: ["test.claim.fixture.beta_holds"],
+      cost_debt: [],
       publication_transaction_valid: wet_receipt_publication_transaction_valid(t: valid)
     )
-    && wet_route_identity_reds_block_with_publication(
+    && wet_route_identity_rows_block_with_publication(
       unexpected_red: unexpected,
       now_passing: [],
       no_verdict: [],
+      cost_debt: [],
       publication_transaction_valid: wet_receipt_publication_transaction_valid(t: stray_path)
     )
-    && wet_route_identity_reds_block_with_publication(
+    && wet_route_identity_rows_block_with_publication(
       unexpected_red: unexpected,
       now_passing: [],
       no_verdict: [],
+      cost_debt: [],
       publication_transaction_valid: wet_receipt_publication_transaction_valid(t: replayed)
     )
 }
@@ -515,10 +596,11 @@ test fn wet_route_publication_transaction_waives_no_envelope_standing() -> Bool 
   let missing = standing_at(envelope: Absent, tree_secs: 1000000)
   wet_route_standing_blocks_floor(standing: expired)
     && wet_route_standing_blocks_floor(standing: missing)
-    && !wet_route_identity_reds_block_with_publication(
+    && !wet_route_identity_rows_block_with_publication(
       unexpected_red: [],
       now_passing: [],
       no_verdict: [],
+      cost_debt: [],
       publication_transaction_valid: false
     )
 }

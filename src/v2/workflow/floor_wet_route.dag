@@ -170,11 +170,27 @@ type WetLaneOutcome =
   | WetResolveFailed
   | WetClosureSubjectFailed
 
-// One identity's row inside the envelope: the lane's verdict and its measured wall.
+// One identity's row inside the envelope: the lane's verdict, its measured wall, and WHAT THE
+// LANE ACTUALLY RESOLVED AND INVOKED.
+//
+// THE OBSERVED PAIR IS NOT THE ROSTER ROW ECHOED BACK, and that is the whole reason it exists.
+// The producer reads it from the declaration the interpreter's own lookup SELECTED for the
+// routed name (the seed's `selected_function_identity`), so `observed_function` is the
+// qualified name of the node that ran and `observed_entry_rel` is the file it was authored in.
+// Copying the roster's `entry_rel`/`function` into the receipt would make every downstream
+// foreign-resolution join agree by construction — a witness that executed out of a different
+// declaration (the bare-name precedence collision this corpus has shipped once already) would
+// receipt as though it had not.
+//
+// `Absent` is the honest reading for a row that never reached a resolved declaration — entry
+// resolve or closure subject failed. There is no observation, and a fabricated one is the
+// plausible output §5 forbids; the row's own outcome already carries why.
 type WetReceiptIdentityRow = {
   identity: String,
   outcome: WetLaneOutcome,
-  wall_ms: Milliseconds
+  wall_ms: Milliseconds,
+  observed_entry_rel: Optional<String>,
+  observed_function: Optional<String>
 }
 
 // THE COMMITTED RECEIPT ENVELOPE (`floor_wet_route_receipt_json_rel_path`). One attempt,
@@ -231,7 +247,7 @@ type WetLaneReceiptStanding =
 // `ReceiptContractMismatch` — the producer and consumer no longer share a contract, and
 // guessing across versions would be an absorbing read.
 fn floor_wet_route_receipt_schema_version() -> Int {
-  1
+  2
 }
 
 // WHAT THE AGE AXIS IS FOR, because it is NOT redundant with the subject axis and reading it
@@ -347,12 +363,16 @@ fn wet_lane_receipt_standing(
                 ReceiptExecutorSnapshotDifferent { receipt_digest: e.executor_contract_digest, computed_digest: computed_executor_contract_digest }
               } else {
               if wet_receipt_rows_join_roster_exactly(rows: e.rows, roster_identities: roster_identities) {
+                if !wet_receipt_rows_executed_the_identity_they_claim(rows: e.rows) {
+                  ReceiptContractMismatch { detail: "a row records an observed resolution that is not the identity it claims — the lane executed a different declaration than the routed identity names" }
+                } else {
                 let raw_age = wet_time_scalar(x: evaluated_tree_commit_unix_secs) - wet_time_scalar(x: e.executed_at_unix_secs)
                 let age = if raw_age < 0 { 0 } else { raw_age }
                 if age > wet_time_scalar(x: floor_wet_route_receipt_staleness_budget_secs()) {
                   ReceiptExpired { age_secs: age }
                 } else {
                   ReceiptFreshExactSubject { age_secs: age }
+                }
                 }
               } else {
                 ReceiptRosterInexact { detail: "the envelope's identity rows are not exactly the routed roster" }
@@ -389,6 +409,30 @@ fn wet_receipt_rows_join_roster_exactly(
 
 fn string_eq(a: String, b: String) -> Bool {
   a == b
+}
+
+// THE OBSERVED-RESOLUTION JOIN. `observed_function` is the qualified name of the declaration
+// the lane's interpreter actually SELECTED; `identity` is what the roster asked for. The two
+// sides have different producers — one read off the selected node, one authored in the roster —
+// so comparing them is a real check and not a restatement: it catches a witness that executed
+// out of a different declaration than the one routed, which is a shape this corpus has shipped
+// (a bare reference binding to a homonym in another module while the run reported under the
+// requested name).
+//
+// A row with no observation is NOT judged here. Nothing resolved, so there is nothing to
+// disagree with; the row's own outcome already says it produced no verdict, and
+// `wet_receipt_no_verdict_identities` blocks on it.
+fn wet_receipt_rows_executed_the_identity_they_claim(rows: List<WetReceiptIdentityRow>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, row) {
+      match row.observed_function {
+        Absent => acc
+        Present { value: observed } => acc && observed == row.identity
+      }
+    }
+  )
 }
 
 // THE PER-IDENTITY VERDICT PROJECTIONS (parent ruling 2026-08-30, walls 1 and 3). The
@@ -492,11 +536,16 @@ fn wet_receipt_now_passing_identities(
           } else {
             acc
           }
+        WetCompletedOverBudget =>
+          if contains(xs: expected_red_identities, item: row.identity, eq: string_eq) {
+            list_append(left: acc, right: [row.identity])
+          } else {
+            acc
+          }
         WetAssertionFalse => acc
         WetNotBool => acc
         WetRuntimeError => acc
         WetBudgetInterrupted => acc
-        WetCompletedOverBudget => acc
         WetHostToolUnresolved => acc
         WetHostEffectRefused => acc
         WetPanicked => acc
@@ -508,8 +557,20 @@ fn wet_receipt_now_passing_identities(
   )
 }
 
-// Every way of producing no subject verdict, spelled arm-by-arm so an eventual twelfth
+// Every way of producing no subject verdict, spelled arm-by-arm so an eventual thirteenth
 // outcome must be classified here, never absorbed.
+//
+// `WetCompletedOverBudget` IS NOT ONE OF THEM, and it used to be. The witness ran to completion
+// and the seed only ever mints that arm over a PASS, so the verdict is known and the elapsed
+// figure is exact — the opposite of `WetBudgetInterrupted`, where the deadline preempted the
+// answer and the figure is a lower bound. The canonical floor already draws that line at the
+// same grain (`required_floor_runner` routes `ClaimOutcome::CompletedOverBudget` to
+// `completed_over_cost_requirement`, never to `interrupted_before_verdict`, and says in its own
+// words that a cost is not a defect). Holding a cost debt in the no-verdict population sent the
+// reader to the wrong remedy: it read as "correctness unknown" over a row that demonstrably
+// answered, so the fix it invites is to debug a witness that is not broken instead of to pay
+// down its cost. The row still blocks — this route enrolls no cost-debt population — but it
+// blocks as `wet_receipt_cost_debt_identities` with a cost remedy.
 fn wet_receipt_no_verdict_identities(rows: List<WetReceiptIdentityRow>) -> List<String> {
   fold_list(
     xs: rows,
@@ -521,7 +582,7 @@ fn wet_receipt_no_verdict_identities(rows: List<WetReceiptIdentityRow>) -> List<
         WetNotBool => list_append(left: acc, right: [row.identity])
         WetRuntimeError => list_append(left: acc, right: [row.identity])
         WetBudgetInterrupted => list_append(left: acc, right: [row.identity])
-        WetCompletedOverBudget => list_append(left: acc, right: [row.identity])
+        WetCompletedOverBudget => acc
         WetHostToolUnresolved => list_append(left: acc, right: [row.identity])
         WetHostEffectRefused => list_append(left: acc, right: [row.identity])
         WetPanicked => list_append(left: acc, right: [row.identity])
@@ -533,14 +594,49 @@ fn wet_receipt_no_verdict_identities(rows: List<WetReceiptIdentityRow>) -> List<
   )
 }
 
+// THE COST-DEBT POPULATION: rows that reached their verdict and then exceeded the lane's line.
+// A cost is not a verdict, so this axis is orthogonal to the three above — an identity appears
+// here and, if it is enrolled as expected-red, in `wet_receipt_now_passing_identities` as well,
+// because completing over budget is a completion and the seed mints the arm only over a pass.
+// This route enrolls no cost-debt roster, so every row here blocks; what the population buys is
+// that the diagnostic names a cost remedy rather than a correctness one.
+fn wet_receipt_cost_debt_identities(rows: List<WetReceiptIdentityRow>) -> List<String> {
+  fold_list(
+    xs: rows,
+    empty: [],
+    cons: fn(acc, row) {
+      match row.outcome {
+        WetCompletedOverBudget => list_append(left: acc, right: [row.identity])
+        WetPass => acc
+        WetAssertionFalse => acc
+        WetNotBool => acc
+        WetRuntimeError => acc
+        WetBudgetInterrupted => acc
+        WetHostToolUnresolved => acc
+        WetHostEffectRefused => acc
+        WetPanicked => acc
+        WetNotAttempted => acc
+        WetResolveFailed => acc
+        WetClosureSubjectFailed => acc
+      }
+    }
+  )
+}
+
 // THE PER-IDENTITY BLOCKING POLARITY, STATED ONCE: an unexpected red, an enrolled row now
-// passing, or any row with no subject verdict blocks; held rows are counted and do not.
-fn wet_route_identity_reds_block(
+// passing, any row with no subject verdict, or any row carrying cost debt blocks; held rows are
+// counted and do not. The four populations stay separate all the way to the diagnostic because
+// their remedies differ — repair, retire a roster row, restore an execution, pay a cost.
+fn wet_route_identity_rows_block(
   unexpected_red: List<String>,
   now_passing: List<String>,
-  no_verdict: List<String>
+  no_verdict: List<String>,
+  cost_debt: List<String>
 ) -> Bool {
-  length(xs: unexpected_red) != 0 || length(xs: now_passing) != 0 || length(xs: no_verdict) != 0
+  length(xs: unexpected_red) != 0
+    || length(xs: now_passing) != 0
+    || length(xs: no_verdict) != 0
+    || length(xs: cost_debt) != 0
 }
 
 // THE ONE SANCTIONED BRIDGE from a refined time scalar to plain Int arithmetic, and a
@@ -750,7 +846,7 @@ fn wet_route_disposition_blocks_floor(disposition: WetFloorGateDisposition) -> B
 // `BootstrapLeaseNotApplicable`, so a leased envelope is visible only to consumers that
 // evaluate `wet_seed_bootstrap_admission` against the envelope's own facts and consume
 // `wet_route_gate_disposition` directly (the required floor runner does exactly that). The
-// per-identity polarity is `wet_route_identity_reds_block` above, decided from the same
+// per-identity polarity is `wet_route_identity_rows_block` above, decided from the same
 // envelope's rows once the disposition admits.
 fn wet_route_standing_blocks_floor(standing: WetLaneReceiptStanding) -> Bool {
   wet_route_disposition_blocks_floor(
@@ -781,19 +877,21 @@ fn wet_receipt_publication_transaction_valid(t: WetReceiptPublicationTransaction
 // receipt-confined refresh PR could not resolve them in the same diff by construction.
 // Envelope-level standings are never waived: an expired or mismatched envelope advances
 // nothing and blocks a publication PR exactly as it blocks any other run.
-fn wet_route_identity_reds_block_with_publication(
+fn wet_route_identity_rows_block_with_publication(
   unexpected_red: List<String>,
   now_passing: List<String>,
   no_verdict: List<String>,
+  cost_debt: List<String>,
   publication_transaction_valid: Bool
 ) -> Bool {
   if publication_transaction_valid {
     false
   } else {
-    wet_route_identity_reds_block(
+    wet_route_identity_rows_block(
       unexpected_red: unexpected_red,
       now_passing: now_passing,
-      no_verdict: no_verdict
+      no_verdict: no_verdict,
+      cost_debt: cost_debt
     )
   }
 }
