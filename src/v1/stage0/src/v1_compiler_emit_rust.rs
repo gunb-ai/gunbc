@@ -117,13 +117,14 @@ use crate::v1_compiler_emit::FileVerb::{
 pub use crate::v1_compiler_emit::{
     bind_operation_transport, child_from_key, compute_service_fields,
     effective_operation_transport, emit_bin_op_symbol, emit_container, emit_data_value_json,
-    emit_error_expr, emit_ident, emit_keyword, emit_lambda, emit_lambda_params, emit_let_binding,
-    emit_let_binding_annotated, emit_list_lit_expr, emit_literal, emit_map_type, emit_node_type,
-    emit_null_coalesce, emit_return, emit_shared_expr, emit_shared_tco_expr, emit_simple_expr,
-    emit_string_literal, emit_typed_cast_shared, emit_typed_if_shared, emit_typed_let_shared,
-    emit_unary_op, escape_rust_interp_text, extract_modifier_names, has_nested_records_node,
-    has_service_items, is_null_coalesce, is_self_recursive, is_tco_eligible,
-    is_tco_identity_passthrough, lookup_item, module_emit_scope, order_typed_call_args,
+    emit_error_expr, emit_ident, emit_keyed_container_type, emit_keyword, emit_lambda,
+    emit_lambda_params, emit_let_binding, emit_let_binding_annotated, emit_list_lit_expr,
+    emit_literal, emit_node_type, emit_null_coalesce, emit_return, emit_shared_expr,
+    emit_shared_tco_expr, emit_simple_expr, emit_string_literal, emit_typed_cast_shared,
+    emit_typed_if_shared, emit_typed_let_shared, emit_unary_op, escape_rust_interp_text,
+    extract_modifier_names, has_nested_records_node, has_service_items, is_null_coalesce,
+    is_self_recursive, is_tco_eligible, is_tco_identity_passthrough,
+    keyed_container_has_target_inhabitant, lookup_item, module_emit_scope, order_typed_call_args,
     render_node_type, render_tuple_parts, rust_literal_for_pattern, scope_after_expr,
     seed_bindings, service_fallback_transport, service_field_ctors, service_field_decls,
     tco_reassign_core, transport_binding_refusal_fact, unwrap_single_field_product,
@@ -609,9 +610,17 @@ pub fn render_rust_type_without_applied_binding(
                                     source_indices.clone(),
                                     n.clone(),
                                 );
-                                let base = crate::v1_compiler_emit::emit_map_type(
+                                let base = crate::v1_compiler_emit::emit_keyed_container_type(
+                                    tn.clone(),
                                     key_str.clone(),
                                     val_str.clone(),
+                                    crate::v1_compiler_coercion::coerce_primitive_type(
+                                        RenderTarget::Rust,
+                                        tn.clone(),
+                                        crate::v1_compiler_coercion::type_reference_decl_file(
+                                            n.clone(),
+                                        ),
+                                    ),
                                     RenderTarget::Rust,
                                 );
                                 render_rust_shared_type_with_optional(
@@ -2516,7 +2525,7 @@ if peel.clone() {
                                                                 if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
                                                     match arg_list.clone().first().cloned() {
     Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
-    Some(v) => crate::v1_compiler_emit::emit_map_type(k.clone(), v.clone(), RenderTarget::Rust),
+    Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(name.clone(), k.clone(), v.clone(), base.clone(), RenderTarget::Rust),
     std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), arg_list.clone().join(&", ".to_string())), ">".to_string()),
 },
     std::option::Option::None => v1_rt::concat(v1_rt::concat(v1_rt::concat(base.clone(), "<".to_string()), arg_list.clone().join(&", ".to_string())), ">".to_string()),
@@ -2925,9 +2934,13 @@ pub fn rust_alias_rhs_applied_container_or_base(
     if crate::v1_compiler_infer_types::node_is_keyed_collection(n.clone(), source_indices.clone()) {
         match arg_list.clone().first().cloned() {
             Some(k) => match arg_list.clone().iter().cloned().skip(1 as usize).next() {
-                Some(v) => {
-                    crate::v1_compiler_emit::emit_map_type(k.clone(), v.clone(), RenderTarget::Rust)
-                }
+                Some(v) => crate::v1_compiler_emit::emit_keyed_container_type(
+                    leaf.clone(),
+                    k.clone(),
+                    v.clone(),
+                    base.clone(),
+                    RenderTarget::Rust,
+                ),
                 std::option::Option::None => v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(base.clone(), "<".to_string()),
@@ -29376,6 +29389,12 @@ pub fn emit_typed_record_lit(
             }
             Some(tn) => {
                 let si = scope.type_env.clone().source_indices.clone();
+                if crate::v1_compiler_emit::keyed_container_has_target_inhabitant(
+                    tn.clone(),
+                    RenderTarget::Rust,
+                ) {
+                    return "panic!(\"record-shaped carrier has no realization in the selected Rust target inhabitant\")".to_string();
+                }
                 let tn_is_known_struct =
                     v1_rt::map_contains_key(&emit_info.type_summaries.clone(), tn.clone());
                 let ctor_name = if tn_is_known_struct.clone() {
