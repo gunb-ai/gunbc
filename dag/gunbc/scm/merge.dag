@@ -21,9 +21,7 @@ import v2.std.dependency {
 
 import gunbc.scm.object_store {
   ObjectId,
-  NodeTarget,
-  NodeTargetResolved,
-  NodeTargetUnresolved,
+  SemanticNodeTarget,
   node_target_locator,
   ObjectStore,
   StoreOutcome,
@@ -636,7 +634,7 @@ fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> Mer
 // it will fail to compile here instead of arriving as a fourth spelling of "missing". Found by
 // external review of gunbc#9891, which is also the review that added the arm this consumer ignored.
 fn root_edge_for(store: ObjectStore, acc: MergeRootAcc, role: Symbol, object: ObjectId) -> MergeRootAcc {
-  match checkout_node_target(store: store, target: NodeTargetUnresolved(object)) {
+  match checkout_node_target(store: store, target: SemanticNodeTarget { locator: object }) {
     CheckoutRefused { cause: cause } =>
       MergeRootAcc {
         edges: acc.edges,
@@ -766,7 +764,7 @@ fn finish_merge(
             Stored { store: store, node: node } =>
               Merged {
                 store: store,
-                commit: Commit { root: NodeTargetResolved(node) },
+                commit: Commit { root: node_target_of(reference: node) },
                 roles: applied.roles,
               }
           }

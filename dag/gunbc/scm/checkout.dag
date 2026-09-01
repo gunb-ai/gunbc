@@ -15,15 +15,15 @@ import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
   SemanticNodeObjectRef,
-  NodeTarget,
-  NodeTargetResolved,
-  NodeTargetUnresolved,
+  SemanticNodeTarget,
   ObjectStore,
   StoredEdge,
   NodeRecordFound,
   NodeRecordAbsent,
   NodeRecordIsAuthoredSource,
   find_node_record,
+  resolve_node_target,
+  node_target_of,
 }
 
 // A COMMIT IS A ROOT IDENTITY AND NOTHING ELSE. No parent, no author, no timestamp, no message, no
@@ -32,7 +32,7 @@ import gunbc.scm.object_store {
 // and a single timeline. Keeping the commit to its root is what lets two commits be compared,
 // deduplicated and reconstructed without consulting any history at all.
 type Commit {
-  root: NodeTarget
+  root: SemanticNodeTarget
 }
 
 // AN AUTHORED SOURCE AT A PROGRAM POSITION IS ITS OWN REFUSAL, NOT A MISSING OBJECT.
@@ -86,20 +86,21 @@ fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEd
   }
 }
 
-// AN UNCONTAINED TARGET IS RESOLVED HERE, NOT PREJUDGED ABSENT. The arm records that the DOCUMENT
-// did not carry the object; it does not record that this store lacks it, and a graft may have
-// supplied it since. So both arms go through the same lookup and the uncontained one keeps the two
-// negatives apart -- absent, or a file -- exactly as the resolved arm does.
-fn checkout_node_target(store: ObjectStore, target: NodeTarget) -> CheckoutOutcome {
-  match target {
-    NodeTargetResolved(reference) => checkout_object(store: store, identity: reference)
-    NodeTargetUnresolved(locator) =>
-      match find_node_record(store: store, identity: locator) {
-        NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
-        NodeRecordIsAuthoredSource { identity: i } =>
-          CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
-        NodeRecordFound(record) => checkout_record(store: store, record: record)
-      }
+// A TARGET IS RESOLVED HERE, NEVER PREJUDGED. The edge states that a semantic node is REQUIRED at a
+// locator; it says nothing about whether this store satisfies that, and a graft may have supplied it
+// since the edge was written. So the target goes through the store's own three-way resolve and the
+// two negatives stay apart -- absent, or occupied by a file -- because they are different facts with
+// different remedies and only one of them can be repaired by fetching.
+//
+// This used to match on a two-armed target and route the resolved arm straight to checkout_object.
+// That arm is gone: it carried store-relative evidence inside a canonical record, and this function
+// re-resolved it anyway, which was one of the four proofs that it never belonged there.
+fn checkout_node_target(store: ObjectStore, target: SemanticNodeTarget) -> CheckoutOutcome {
+  match resolve_node_target(store: store, target: target) {
+    NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
+    NodeRecordIsAuthoredSource { identity: i } =>
+      CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+    NodeRecordFound(record) => checkout_record(store: store, record: record)
   }
 }
 
@@ -149,7 +150,7 @@ fn checkout(store: ObjectStore, commit: Commit) -> CheckoutOutcome {
 // and reconstruct identically. Round-trip equality is therefore asserted on content identity, never
 // on occurrence provenance -- and asserting it on provenance would be asserting the one property the
 // model says must not matter.
-fn commit_of_root(root: NodeTarget) -> Commit {
+fn commit_of_root(root: SemanticNodeTarget) -> Commit {
   Commit { root: root }
 }
 
@@ -217,7 +218,7 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitR
   match commit_at_reference(commits: repo.commits, reference: reference) {
     Absent => CheckoutReferenceUnresolved { reference: reference }
     Present { value: selected } =>
-      match checkout(store: repo.store, commit: commit_of_root(root: NodeTargetResolved(selected.root))) {
+      match checkout(store: repo.store, commit: commit_of_root(root: node_target_of(reference: selected.root))) {
         CheckoutRefused { cause: cause } =>
           CheckoutProgramUnreconstructable { reference: reference, cause: cause }
         CheckedOut { program: program } =>

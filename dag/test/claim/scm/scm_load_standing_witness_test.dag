@@ -14,7 +14,7 @@ import std.types { Bool, Int, List }
 import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
-  NodeTarget, NodeTargetResolved, NodeTargetUnresolved, node_target_locator,
+  SemanticNodeTarget, node_target_locator,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision,
   empty_store, copy_object, store_node,
 }
@@ -68,17 +68,17 @@ fn ls_parent() -> Node {
   )
 }
 
-type LsBuilt { store: ObjectStore, root: NodeTarget }
+type LsBuilt { store: ObjectStore, root: SemanticNodeTarget }
 
 fn ls_full() -> LsBuilt {
   match store_node(store: empty_store(), n: ls_child()) {
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-      LsBuilt { store: empty_store(), root: NodeTargetUnresolved(i) }
+      LsBuilt { store: empty_store(), root: SemanticNodeTarget { locator: i } }
     Stored { store: s1, node: _ } =>
       match store_node(store: s1, n: ls_parent()) {
         LocatorCollision { identity: i, existing: _, incoming: _ } =>
-          LsBuilt { store: empty_store(), root: NodeTargetUnresolved(i) }
-        Stored { store: s2, node: p } => LsBuilt { store: s2, root: NodeTargetResolved(p) }
+          LsBuilt { store: empty_store(), root: SemanticNodeTarget { locator: i } }
+        Stored { store: s2, node: p } => LsBuilt { store: s2, root: node_target_of(reference: p) }
       }
   }
 }

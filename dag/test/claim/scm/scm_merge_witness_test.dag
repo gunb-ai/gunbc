@@ -22,9 +22,7 @@ import gunbc.scm.object_store {
   SourceStoreOutcome,
   SourceStored,
   SourceLocatorCollision,
-  NodeTarget,
-  NodeTargetResolved,
-  NodeTargetUnresolved,
+  SemanticNodeTarget,
   empty_store,
   store_node,
   store_authored_source,
@@ -92,10 +90,10 @@ fn store_or_empty(outcome: StoreOutcome) -> ObjectStore {
   }
 }
 
-fn root_or(outcome: StoreOutcome, fallback: ObjectId) -> NodeTarget {
+fn root_or(outcome: StoreOutcome, fallback: ObjectId) -> SemanticNodeTarget {
   match outcome {
-    Stored { store: _, node: node } => NodeTargetResolved(node)
-    LocatorCollision { identity: _, existing: _, incoming: _ } => NodeTargetUnresolved(fallback)
+    Stored { store: _, node: node } => node_target_of(reference: node)
+    LocatorCollision { identity: _, existing: _, incoming: _ } => SemanticNodeTarget { locator: fallback }
   }
 }
 
@@ -119,10 +117,10 @@ fn source_store_or_empty(outcome: SourceStoreOutcome) -> ObjectStore {
   }
 }
 
-fn source_root_or(outcome: SourceStoreOutcome, fallback: ObjectId) -> NodeTarget {
+fn source_root_or(outcome: SourceStoreOutcome, fallback: ObjectId) -> SemanticNodeTarget {
   match outcome {
-    SourceStored { store: _, source: source } => NodeTargetUnresolved(source.locator)
-    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => NodeTargetUnresolved(fallback)
+    SourceStored { store: _, source: source } => SemanticNodeTarget { locator: source.locator }
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => SemanticNodeTarget { locator: fallback }
   }
 }
 
@@ -731,19 +729,19 @@ test fn merge_a_target_root_that_is_a_node_does_not_refuse() -> Bool {
 fn merge_witness_role_over_a_file_fixture() -> Fixture {
   match store_authored_source(store: empty_store(), text: "not a program\n") {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
-      Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(fallback_id()) } }
+      Fixture { store: empty_store(), target: Commit { root: SemanticNodeTarget { locator: fallback_id() } } }
     SourceStored { store: with_file, source: file } =>
       match insert_from_structure(
         store: with_file,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^s }, target: NodeTargetUnresolved(file.locator) },
+          StoredEdge { label: Named { name: ^s }, target: SemanticNodeTarget { locator: file.locator } },
         ],
       ) {
         LocatorCollision { identity: i, existing: _, incoming: _ } =>
-          Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(i) } }
+          Fixture { store: empty_store(), target: Commit { root: SemanticNodeTarget { locator: i } } }
         Stored { store: assembled, node: root } =>
-          Fixture { store: assembled, target: Commit { root: NodeTargetResolved(root) } }
+          Fixture { store: assembled, target: Commit { root: node_target_of(reference: root) } }
       }
   }
 }
@@ -760,19 +758,19 @@ test fn merge_a_role_whose_value_is_a_file_refuses_as_authored_source() -> Bool 
 fn merge_witness_role_over_a_node_fixture() -> Fixture {
   match store_node(store: empty_store(), n: merge_witness_leaf(name: ^child)) {
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-      Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(i) } }
+      Fixture { store: empty_store(), target: Commit { root: SemanticNodeTarget { locator: i } } }
     Stored { store: with_child, node: child } =>
       match insert_from_structure(
         store: with_child,
         kind: TypeNode { connective: Conj },
         children: [
-          StoredEdge { label: Named { name: ^s }, target: NodeTargetUnresolved(child.locator) },
+          StoredEdge { label: Named { name: ^s }, target: SemanticNodeTarget { locator: child.locator } },
         ],
       ) {
         LocatorCollision { identity: i, existing: _, incoming: _ } =>
-          Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(i) } }
+          Fixture { store: empty_store(), target: Commit { root: SemanticNodeTarget { locator: i } } }
         Stored { store: assembled, node: root } =>
-          Fixture { store: assembled, target: Commit { root: NodeTargetResolved(root) } }
+          Fixture { store: assembled, target: Commit { root: node_target_of(reference: root) } }
       }
   }
 }

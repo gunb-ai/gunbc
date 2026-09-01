@@ -46,9 +46,7 @@ import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
   StoredEdge,
-  NodeTarget,
-  NodeTargetResolved,
-  NodeTargetUnresolved,
+  SemanticNodeTarget,
   node_target_locator,
   ObjectStore,
   NodeRecordFound,
@@ -168,25 +166,25 @@ fn structurally_same(left: Node, right: Node) -> Bool {
 // 64-bit value. This carrier keeps the claims readable while making a collision VISIBLE rather than
 // absorbed: `collided` is asserted false across the whole fixture set by its own claim below, so a
 // fixture that started colliding would surface instead of quietly reshaping every other claim.
-// THE FIXTURE CARRIES A NodeTarget, AND THE COLLISION ARM IS WHY IT IS NOT THE BRANDED REFERENCE.
+// THE FIXTURE CARRIES A SemanticNodeTarget, AND THE COLLISION ARM IS WHY IT IS NOT THE BRANDED REFERENCE.
 //
 // A SemanticNodeObjectRef is `sole_constructor` -- only the store mints one -- so this arm, which
 // has no stored node, has nothing to put there and no way to fabricate one. That refusal is the
-// wall working: the fixture cannot assert a node reference it never obtained. NodeTarget is the
+// wall working: the fixture cannot assert a node reference it never obtained. SemanticNodeTarget is the
 // type that CAN say what is true in both arms -- resolved to a node, or a bare locator whose kind
 // nothing established -- and it is exactly what commit_of_root takes.
 type Put {
   store: ObjectStore
-  identity: NodeTarget
+  identity: SemanticNodeTarget
   collided: Bool
 }
 
 fn put_node(store: ObjectStore, n: Node) -> Put {
   match store_node(store: store, n: n) {
     Stored { store: s, node: i } =>
-      Put { store: s, identity: NodeTargetResolved(i), collided: false }
+      Put { store: s, identity: node_target_of(reference: i), collided: false }
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-      Put { store: empty_store(), identity: NodeTargetUnresolved(i), collided: true }
+      Put { store: empty_store(), identity: SemanticNodeTarget { locator: i }, collided: true }
   }
 }
 

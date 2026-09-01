@@ -86,14 +86,14 @@ import gunbc.scm.object_store {
   NodeRecordIsAuthoredSource,
   ObjectId,
   ObjectStore,
-  NodeTarget,
+  SemanticNodeTarget,
   SemanticNodeObjectRef,
   node_target_locator,
   scm_object_ref_locator,
   empty_store,
   find_node_record,
 }
-import gunbc.scm.commit_closure { uncontained_targets }
+import gunbc.scm.commit_closure { table_unresolved_identities }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   DecodeAcc,
@@ -324,7 +324,7 @@ type RepositoryCommitMint
 // refusal to appear and the wrong owner to name in it.
 fn mint_repository_commit(
   repository: RepositoryEnvelope,
-  root: NodeTarget,
+  root: SemanticNodeTarget,
   message: String,
   parent: RepositoryCommitRef?,
 ) -> RepositoryCommitMint {
@@ -535,10 +535,10 @@ type RepositoryEncodeOutcome
 // and nothing downstream depends on which. Naming it `first_` promised a stable ordering the witness
 // does not check -- and could not cheaply check, since with a single uncontained object every member
 // is also the first. Pinning order here would additionally freeze an incidental traversal order into
-// the interface, which a later keyed or canonical representation of uncontained_targets should not
+// the interface, which a later keyed or canonical representation of table_unresolved_identities should not
 // be forced to preserve.
 fn an_uncontained_target(store: ObjectStore) -> ObjectId? {
-  fold(uncontained_targets(store: store), init: none, f: fn(acc, id) {
+  fold(table_unresolved_identities(store: store), init: none, f: fn(acc, id) {
     match acc {
       Present { value: _ } => acc
       Absent => Present { value: id }

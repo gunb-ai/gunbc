@@ -61,9 +61,7 @@ import gunbc.scm.object_store {
   LocatorCollision,
   SourceStored,
   SourceLocatorCollision,
-  NodeTarget,
-  NodeTargetResolved,
-  NodeTargetUnresolved,
+  SemanticNodeTarget,
   node_target_locator,
   empty_store,
   object_id_eq,
@@ -194,14 +192,14 @@ fn scm_image_shared_program() -> Node {
 
 type ScmImagePut {
   store: ObjectStore
-  identity: NodeTarget
+  identity: SemanticNodeTarget
 }
 
 fn scm_image_put(store: ObjectStore, n: Node) -> ScmImagePut {
   match store_node(store: store, n: n) {
-    Stored { store: s, node: node } => ScmImagePut { store: s, identity: NodeTargetResolved(node) }
+    Stored { store: s, node: node } => ScmImagePut { store: s, identity: node_target_of(reference: node) }
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-      ScmImagePut { store: store, identity: NodeTargetUnresolved(i) }
+      ScmImagePut { store: store, identity: SemanticNodeTarget { locator: i } }
   }
 }
 
@@ -743,11 +741,11 @@ fn scm_image_insert_children(kind: NodeKind, children: List<StoredEdge>, fallbac
 // carry; the assembly rule under test consumes the locator either way, so the claim is unchanged
 // while the fixture stops asserting a kind it did not establish.
 fn scm_image_named_stored(name: Symbol, target: ObjectId) -> StoredEdge {
-  StoredEdge { label: Named { name: name }, target: NodeTargetUnresolved(target) }
+  StoredEdge { label: Named { name: name }, target: SemanticNodeTarget { locator: target } }
 }
 
 fn scm_image_positional_stored(target: ObjectId) -> StoredEdge {
-  StoredEdge { label: Positional, target: NodeTargetUnresolved(target) }
+  StoredEdge { label: Positional, target: SemanticNodeTarget { locator: target } }
 }
 
 // NAMED children permuted: the SAME identity, and it is the identity the ordinary content_hash of
@@ -1058,7 +1056,7 @@ fn scm_image_checkout_cause_tag(loaded: ClosureDocLoadOutcome) -> String {
 // decode could tell a node's child from a file, so the store was built with the file wired into a
 // child edge and the fault surfaced one layer later, at the consumer.
 //
-// A child edge now carries a NodeTarget, whose resolved arm is a SemanticNodeObjectRef, so the
+// A child edge now carries a SemanticNodeTarget, whose resolved arm is a SemanticNodeObjectRef, so the
 // decoder cannot write the file there at all -- it has to resolve the position, discover an authored
 // entry, and refuse. So the cause is `ObjectTableEdgeTargetIsAuthoredSource`, owned by the layer
 // reading the document, and the store that would have carried the lie is never built. The claim goes
@@ -1421,7 +1419,7 @@ test fn scm_image_a_role_whose_value_is_a_node_merges() -> Bool {
 // asserting the refusal rather than the round trip.
 type SourceRoundTrip {
   store: ObjectStore
-  root: NodeTarget
+  root: SemanticNodeTarget
   empty_locator: ObjectId
   text_locator: ObjectId
   ok: Bool
@@ -1432,17 +1430,17 @@ fn scm_image_source_round_trip_fixture() -> SourceRoundTrip {
     SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
       SourceRoundTrip {
         store: empty_store(),
-        root: NodeTargetUnresolved(content_hash(n: closure_doc_atom(identity: ^unused))),
+        root: SemanticNodeTarget { locator: content_hash(n: closure_doc_atom(identity: ^unused)) },
         empty_locator: content_hash(n: closure_doc_atom(identity: ^unused)),
         text_locator: content_hash(n: closure_doc_atom(identity: ^unused)),
         ok: false,
       }
     SourceStored { store: with_empty, source: empty_ref } =>
-      match store_authored_source(store: with_empty, text: "a nonempty file\n") {
+      match store_authored_source(store: with_empty, text: "a \"quoted\" file\n") {
         SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
           SourceRoundTrip {
             store: empty_store(),
-            root: NodeTargetUnresolved(empty_ref.locator),
+            root: SemanticNodeTarget { locator: empty_ref.locator },
             empty_locator: empty_ref.locator,
             text_locator: empty_ref.locator,
             ok: false,
@@ -1452,7 +1450,7 @@ fn scm_image_source_round_trip_fixture() -> SourceRoundTrip {
             LocatorCollision { identity: _, existing: _, incoming: _ } =>
               SourceRoundTrip {
                 store: empty_store(),
-                root: NodeTargetUnresolved(empty_ref.locator),
+                root: SemanticNodeTarget { locator: empty_ref.locator },
                 empty_locator: empty_ref.locator,
                 text_locator: text_ref.locator,
                 ok: false,
@@ -1460,7 +1458,7 @@ fn scm_image_source_round_trip_fixture() -> SourceRoundTrip {
             Stored { store: full, node: root } =>
               SourceRoundTrip {
                 store: full,
-                root: NodeTargetResolved(root),
+                root: node_target_of(reference: root),
                 empty_locator: empty_ref.locator,
                 text_locator: text_ref.locator,
                 ok: true,
@@ -1488,20 +1486,41 @@ fn scm_image_content_matches(store: ObjectStore, locator: ObjectId, text: String
   }
 }
 
+// THE DURABLE LEG, AND IT IS LOAD-BEARING BY DATAFLOW RATHER THAN BY THIS COMMENT.
+//
+// Both source claims below used to hand decode_closure_document the value encode returned, in memory.
+// That executes the codec but NOT the wire: the payload carries a newline, and inside a JsonString a
+// newline is just a character -- its escaping and re-parsing are never exercised, so a defect at the
+// serialize/parse boundary would leave both claims green. Review named this precisely and it was
+// right; the earlier commit message calling this route a round trip through the wire overstated it.
+//
+// The only successful arm returns the REPARSED value, so a claim physically cannot read reconstructed
+// content from anything but text that was serialized and parsed back. An unreadable parse is false.
+// AN UNREADABLE PARSE IS ABSENT, NOT A DECODE REFUSAL. Manufacturing some ClosureDocRefusal arm here
+// would report a decoder verdict for something the decoder never saw -- a fabricated plausible output
+// of exactly the kind DESIGN section 5 forbids, and it would make a serializer defect arrive wearing
+// the decoder's name. The option has no arm to lie in: Absent means the text did not parse, and every
+// caller answers false to it.
+fn scm_image_reload_through_text(store: ObjectStore, root: SemanticNodeTarget) -> ClosureDocLoadOutcome? {
+  match parse_json_document(s: serialize_json(v: encode_closure_document(store: store, root: root))) {
+    JsonDocumentUnreadable { gap: _ } => none
+    JsonDocumentParsed { value: reparsed } => Present { value: decode_closure_document(v: reparsed) }
+  }
+}
+
 test fn scm_image_an_authored_source_survives_the_wire_in_both_arms() -> Bool {
   let fx = scm_image_source_round_trip_fixture()
   fx.ok
-    && match decode_closure_document(
-      v: encode_closure_document(store: fx.store, root: fx.root)
-    ) {
-      ClosureDocRefused { cause: _ } => false
-      ClosureDocLoaded { store: back, root: _ } =>
+    && match scm_image_reload_through_text(store: fx.store, root: fx.root) {
+      Absent => false
+      Present { value: ClosureDocRefused { cause: _ } } => false
+      Present { value: ClosureDocLoaded { store: back, root: _ } } =>
         (store_object_count(store: back) == store_object_count(store: fx.store))
           && scm_image_content_matches(store: back, locator: fx.empty_locator, text: "")
           && scm_image_content_matches(
             store: back,
             locator: fx.text_locator,
-            text: "a nonempty file\n",
+            text: "a \"quoted\" file\n",
           )
     }
 }
@@ -1516,11 +1535,10 @@ test fn scm_image_the_two_authored_arms_stay_distinct_across_the_wire() -> Bool 
   let fx = scm_image_source_round_trip_fixture()
   fx.ok
     && !object_id_eq(left: fx.empty_locator, right: fx.text_locator)
-    && match decode_closure_document(
-      v: encode_closure_document(store: fx.store, root: fx.root)
-    ) {
-      ClosureDocRefused { cause: _ } => false
-      ClosureDocLoaded { store: back, root: _ } =>
+    && match scm_image_reload_through_text(store: fx.store, root: fx.root) {
+      Absent => false
+      Present { value: ClosureDocRefused { cause: _ } } => false
+      Present { value: ClosureDocLoaded { store: back, root: _ } } =>
         match scm_image_content_at(store: back, locator: fx.empty_locator) {
           Absent => false
           Present { value: empty_content } =>

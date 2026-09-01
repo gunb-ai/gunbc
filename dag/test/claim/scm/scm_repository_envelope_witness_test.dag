@@ -29,12 +29,12 @@ import v2.std.node {
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
   SourceStored, SourceLocatorCollision,
-  NodeTarget, NodeTargetResolved, NodeTargetUnresolved, node_target_locator,
+  SemanticNodeTarget, node_target_locator,
   empty_store, object_id_eq, store_node, store_object_count,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
   store_authored_source,
 }
-import gunbc.scm.commit_closure { uncontained_targets }
+import gunbc.scm.commit_closure { table_unresolved_identities }
 import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom, RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit,
@@ -125,13 +125,13 @@ fn scm_env_program_two() -> Node {
   )
 }
 
-type ScmEnvPut { store: ObjectStore, identity: NodeTarget }
+type ScmEnvPut { store: ObjectStore, identity: SemanticNodeTarget }
 
 fn scm_env_put(store: ObjectStore, n: Node) -> ScmEnvPut {
   match store_node(store: store, n: n) {
-    Stored { store: s, node: n } => ScmEnvPut { store: s, identity: NodeTargetResolved(n) }
+    Stored { store: s, node: n } => ScmEnvPut { store: s, identity: node_target_of(reference: n) }
     LocatorCollision { identity: i, existing: _, incoming: _ } =>
-      ScmEnvPut { store: store, identity: NodeTargetUnresolved(i) }
+      ScmEnvPut { store: store, identity: SemanticNodeTarget { locator: i } }
   }
 }
 
@@ -148,7 +148,7 @@ fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn scm_env_minted_or(repo: RepositoryEnvelope, root: NodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn scm_env_minted_or(repo: RepositoryEnvelope, root: SemanticNodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
@@ -660,7 +660,7 @@ fn scm_env_named_target_is_uncontained(outcome: RepositoryEncodeOutcome, store: 
     RepositoryEncodeRefused { cause: c } =>
       match c {
         RepositoryEncodeUncontainedTarget { target: t } =>
-          fold(uncontained_targets(store: store), init: false, f: fn(acc, id) {
+          fold(table_unresolved_identities(store: store), init: false, f: fn(acc, id) {
             acc || object_id_eq(left: id, right: t)
           })
         RepositoryCommitRootNotInStore { root: _ } => false
@@ -1205,7 +1205,7 @@ test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> 
     SourceStored { store: store, source: file } =>
       match mint_repository_commit(
         repository: scm_env_repository_with_store(store: store),
-        root: NodeTargetUnresolved(file.locator),
+        root: SemanticNodeTarget { locator: file.locator },
         message: "root is a file",
         parent: none,
       ) {

@@ -103,37 +103,48 @@ fn scm_object_ref_locator(reference: ScmObjectRef) -> ObjectId {
   }
 }
 
-// A CHILD EDGE HAS TWO HONEST STATES, AND ONE BRAND CANNOT CARRY BOTH.
+// A CHILD EDGE CARRIES A REQUIREMENT, NOT EVIDENCE ABOUT SOME STORE.
 //
-// The obvious cut -- `target: SemanticNodeObjectRef` -- is wrong for a reason the partial-closure
-// model makes unavoidable: a document may deliberately omit an object it references, so a decoder
-// holds an edge whose target is NOT in the table and whose kind is therefore unknown. Branding it
-// anyway would need a mint that records a CLAIM rather than evidence, and the only place to put
-// that mint is an exported function -- the importable forge factory this module already recorded
-// once, as the way a `sole_constructor` wall gets reopened by the helper written to prove it.
+// An earlier revision of this module made the target a two-armed sum -- Resolved(SemanticNodeObjectRef)
+// beside Unresolved(ObjectId) -- reasoning that a partial closure must be able to reference an object
+// it does not carry, so one brand could not cover both states. The premise was right and the
+// conclusion was wrong, and external review (the designated SCM reviewer, at 5ba7ade) is what made
+// the difference visible.
 //
-// So the target names which state it is in. A target resolved against a store IS a node reference
-// and can never be a file; an UNRESOLVED target is a bare locator whose kind nothing has
-// established yet, and every consumer that needs a program from it must resolve it and handle both
-// negatives. Neither arm can be read as the other, and no forge exists in either direction.
+// What a child edge states is a PROPOSITION: "a semantic node is required at locator L." Whether any
+// particular store satisfies it is an OBSERVATION, and observations do not belong inside the object
+// whose identity is derived from its content. The four facts that were offered here as evidence the
+// resolved arm was harmless are in fact the proof it never belonged: the content hash ignores which
+// arm was stored, records_equal must ignore it to avoid fabricating collisions, the wire has no
+// spelling for it, and every safe consumer re-resolves both arms against the store anyway. A
+// dimension that identity, equality, serialization and every consumer all erase is not record
+// content -- it is transient store-relative provenance that was being carried inside the record.
 //
-// The arms are named for what is KNOWN rather than for where it came from. An earlier spelling said
-// "uncontained", which is a fact about one DOCUMENT, and the same shape is needed by merge, whose
-// role values are bare locators with no document anywhere in sight.
-type NodeTarget
-  = NodeTargetResolved(SemanticNodeObjectRef)
-  | NodeTargetUnresolved(ObjectId)
+// Carrying it there was not merely redundant, it was WRONG, and the defect it produced is executed by
+// test.claim.scm_commit_closure_witness `a_node_requirement_over_a_file_is_not_a_fetchable_absence`:
+// an authored source occupying L made the requirement unsatisfied, the Bool that consumers read
+// reported it as simply absent, completeness called it fetchable, and the kind-blind encoder emitted
+// the CONTAINED spelling for it -- so an admitted partial closure produced bytes this same build
+// refuses at decode. No fetch could repair it, because L was occupied rather than empty.
+//
+// So the proposition is a plain record, publicly constructible because stating a requirement forges
+// nothing, and the store alone answers it -- through find_node_record, whose three arms already
+// separate "no object here" from "a file is here" from "here is the program".
+type SemanticNodeTarget {
+  locator: ObjectId
+}
 
-fn node_target_locator(target: NodeTarget) -> ObjectId {
-  match target {
-    NodeTargetResolved(reference) => reference.locator
-    NodeTargetUnresolved(locator) => locator
-  }
+fn node_target_locator(target: SemanticNodeTarget) -> ObjectId {
+  target.locator
+}
+
+fn node_target_of(reference: SemanticNodeObjectRef) -> SemanticNodeTarget {
+  SemanticNodeTarget { locator: reference.locator }
 }
 
 type StoredEdge {
   label: EdgeLabel
-  target: NodeTarget
+  target: SemanticNodeTarget
 }
 
 type ObjectRecord sole_constructor {
@@ -359,12 +370,20 @@ fn store_holds_node_at(store: ObjectStore, locator: ObjectId) -> Bool {
   }
 }
 
-// A CHILD EDGE IS RESOLVED, NEVER READ. Both arms end at the same question -- does THIS store hold a
-// semantic node under that locator -- and asking it here is what stops a consumer from treating the
-// resolved arm as self-evidently present (it may name a node from another store) or the uncontained
-// arm as self-evidently absent (a later graft may have supplied it).
-fn store_contains_node_target(store: ObjectStore, target: NodeTarget) -> Bool {
-  store_holds_node_at(store: store, locator: node_target_locator(target: target))
+// A CHILD EDGE IS RESOLVED THREE WAYS, NEVER TWO.
+//
+// This replaces store_contains_node_target, which answered Bool. That Bool is the whole defect the
+// branded-reference recut was supposed to close and did not: "false" meant BOTH "no object is here"
+// and "a file is here", and every consumer read it as the first. Completeness put a wrong-kind
+// locator into the fetchable population, and encoding -- whose position index is over objects, not
+// over nodes -- then found something at that locator and emitted the CONTAINED spelling. The two
+// answers must not be merged, so the Bool is deleted rather than kept beside this: a caller that only
+// needs presence at a LOCATOR calls store_contains, which is honestly kind-agnostic.
+//
+// find_node_record already carries the three arms, so this mints no second authority for the
+// question -- it is the same observation asked of a requirement rather than of a bare identity.
+fn resolve_node_target(store: ObjectStore, target: SemanticNodeTarget) -> NodeRecordLookup {
+  find_node_record(store: store, identity: target.locator)
 }
 
 fn store_contains(store: ObjectStore, identity: ObjectId) -> Bool {
@@ -449,16 +468,20 @@ fn insert_admission(store: ObjectStore, object: ScmObject) -> InsertAdmission {
 // Record equality is the substrate's own structural equality over both fields. StoredEdge is a
 // label and a derived child identity, so comparing the child LISTS compares the whole subtree by
 // its already-derived identities -- no re-walk, no digest projection, no hand-written pairwise fold.
-// EQUALITY IS OVER WHAT THE IDENTITY IS DERIVED FROM, AND THE TARGET'S ARM IS NOT PART OF THAT.
+// EQUALITY IS OVER WHAT THE IDENTITY IS DERIVED FROM.
 //
-// This was `left.children == right.children`, the substrate's structural equality, which was exactly
-// right while a StoredEdge held a bare locator. It stopped being right when the target became a
-// NodeTarget: `NodeTargetResolved(r)` and `NodeTargetUnresolved(l)` over the SAME locator are
-// different values structurally and the same object by content, because content_hash_of_children
-// consumes only the locator. Structural equality therefore reported "different record" for two
-// records the identity rule cannot distinguish, and insert_admission turned that into a
-// LocatorCollision -- a fabricated refusal, for a store that was being asked to do something
-// perfectly ordinary.
+// This was `left.children == right.children`, the substrate's structural equality, which was right
+// while a StoredEdge held a bare locator. It stopped being right when the target briefly became a
+// two-armed sum: Resolved(r) and Unresolved(l) over the SAME locator were structurally different and
+// the same object by content, because content_hash_of_children consumes only the locator. Structural
+// equality reported "different record" for two records the identity rule cannot distinguish, and
+// insert_admission turned that into a LocatorCollision -- a fabricated refusal for an ordinary write.
+//
+// THE SUM IS GONE NOW and the projection below is kept anyway, deliberately. It is no longer
+// defending against the arm; it is stating that equality is over the identity PREIMAGE, which is what
+// content_hash_of_children folds. Comparing the final digest instead would suppress the honest
+// hash-collision refusal, and comparing raw structure again would re-admit any future field that the
+// preimage does not consume.
 //
 // Found by a control, not by review: the file arm of the merge role claim passed and its NODE
 // control failed, because merge reassembles the root from resolved children and re-inserts it over a
@@ -636,7 +659,7 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
               StoreEdgeAcc {
                 store: child_store,
                 edges: concat(
-                  [StoredEdge { label: edge.label, target: NodeTargetResolved(child_node) }],
+                  [StoredEdge { label: edge.label, target: node_target_of(reference: child_node) }],
                   acc.edges,
                 ),
                 collision: none,
