@@ -83,7 +83,8 @@ type SparkServingRelease {
 // identity domains.
 type OllamaServingLaunchProfile {
   bind: SparkServingBindListen
-  configured_context: TokenCount
+  default_context: TokenCount
+  serving_slots: Nat
 }
 
 // The identity is DERIVED from the release, never authored. It previously carried a NonEmptyStr

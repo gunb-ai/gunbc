@@ -2,6 +2,10 @@ module gunbc.spark.serving_desired
 
 import std.types { String, Bool, List, NonEmptyStr }
 import std.measure { TokenCount, token_count }
+import std.nat { Nat }
+import gunbc.guarantee_rung_drop {
+  GuaranteeRungDrop, MechanicallyPreventable, Mitigatable, DeletedWithoutReplacement,
+}
 import product.placement_supply { HostIdentity }
 import gunbc.spark.cell_role { spark_serving_cell_hosts }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
@@ -237,32 +241,69 @@ data spark_serving_fleet_desired: SparkServingFleetDesired = spark_serving_fleet
 fn spark_serving_desired_launch_profile() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
     bind: spark_serving_desired_bind_listen,
-    configured_context: spark_serving_desired_context_length,
+    default_context: spark_serving_desired_context_length,
+    serving_slots: spark_serving_desired_serving_slots_value,
   }
 }
 
-// THE CONFIGURED CONTEXT WINDOW, AUTHORED AS THE MIGRATION DECISION.
+// THE SERVER'S DEFAULT CONTEXT WINDOW, AUTHORED AS THE MIGRATION DECISION.
 //
-// The 8192 that stood here was never enacted: nothing rendered the capacity policy into the unit,
-// so the declaration sat beside a process it did not configure. Making the carrier causal without
-// reselecting the value would therefore not have preserved behavior -- it would have SHRUNK the
-// live window 16x on the first converge, as a side effect of a repair whose subject was causality
-// and not capacity.
+// TWO VALUES STOOD HERE BEFORE AND NEITHER WAS EVER ENACTED. The 8192 was never rendered into the
+// unit at all. The 131072 that replaced it was rendered by this module's own renderer and still did
+// not reach either host: read directly on 2026-09-01, the deployed user unit on spark-a3ee and
+// spark-3bd5 carried three Environment lines and no OLLAMA_CONTEXT_LENGTH among them.
 //
-// 131072 is SELECTED here, and the wet observation is its EVIDENCE, not its source: both hosts were
-// read reporting `context_length: 131072` from the Ollama /api/ps surface, which establishes that
-// this value preserves what the running service already exposes. Observed state does not silently
-// become desired state -- an operator chose this number and the reading is why it is defensible. A
-// smaller window remains writable, and a larger one than the model declares is a real request the
-// runtime is free to refuse.
-data spark_serving_desired_context_length: TokenCount = token_count(count: 131072)
+// THE EVIDENCE SENTENCE IS WHY THAT WENT UNNOTICED FOR SO LONG, and it is the more useful half of
+// this history. It read that the wet observation was EVIDENCE and not source, citing both hosts
+// reporting `context_length: 131072` from /api/ps. But /api/ps reports what a LOADED RUNNER holds,
+// which extdeps.ollama.server_env states is a different fact from the server default and must not be
+// collapsed into it. An effective reading was admitted as evidence for a configured value, and it
+// could not have discriminated: with no assignment on either host the number being confirmed was the
+// runtime's own automatic default. A declaration cited its own absence as confirmation.
+//
+// 1048576 IS SELECTED, and what makes it defensible is a load rather than a reading: the served
+// build declares `deepseek4.context_length` 1048576 and at that full window its runner reports
+// 88,865,253,620 bytes of buffer. Re-derive by loading at an explicit num_ctx and reading /api/ps
+// back; that instrument, not this number, is the authority for what any build costs.
+//
+// A smaller default remains writable. A larger one than a model declares is a real request the
+// runtime is free to refuse -- Ollama clamps to the model's declared maximum, so this is a CEILING
+// ACROSS THE ROSTER and never a per-model promise.
+data spark_serving_desired_context_length: TokenCount = token_count(count: 1048576)
+
+// HOW MANY REQUESTS ONE LOADED MODEL SERVES CONCURRENTLY -- the P1b row, now authored.
+//
+// THE NOTE ABOVE SAID THIS TRADED AGAINST CONTEXT "BECAUSE THE SLOT COUNT DIVIDES THE CONTEXT
+// WINDOW". That sentence is deleted rather than softened, because it is false. Measured on one host,
+// one model, changing only OLLAMA_NUM_PARALLEL: at one slot the runner reported context_length
+// 1048576 and 88,865,253,620 bytes of buffer; at two slots it reported context_length 1048576 and
+// 90,543,761,652. Each slot receives its own full window. THE COUNT MULTIPLIES MEMORY; IT DOES NOT
+// DIVIDE CONTEXT. The two axes do trade inside one budget, but multiplicatively.
+//
+// WHY THE VALUE IS NOT 1. Unset, the runtime chose a single slot, and a single slot SERIALIZES: on
+// 2026-09-01 a ~61,000-token prefill occupied one host for roughly two hundred seconds while every
+// other caller queued, and the queue was read as a latency regression in the model rather than as
+// contention. That is not a throughput cost, it is a head-of-line block, and the harness workload
+// this cell exists to serve is concurrent by construction.
+//
+// WHAT THIS VALUE IS NOT EVIDENCE FOR, and the reason a rung drop is filed below rather than a
+// footnote written here: the per-slot price is a property of the REALIZATION. The measured
+// 1,678,508,032 bytes is a compressed-cache figure for one DeepSeek build; an architecture without
+// that compression pays far more per slot, and llama4:scout in particular declares a window far
+// beyond this ceiling with no such compression. A count chosen against one model's per-slot cost is
+// not evidence for another's, and this row applies to every realization the cell loads.
+data spark_serving_desired_serving_slots_value: Nat = 4
 
 // The unit's window is DERIVED from the serving policy rather than authored beside it. This is the
 // causal link the repair adds: the policy is the single authority, the unit text is a function of
 // it, and the unit's content identity is a function of the text -- so a policy change cannot fail
 // to reach the file, and cannot reach it without producing a member delta.
-fn spark_serving_desired_configured_context() -> TokenCount {
-  spark_serving_desired_launch_profile().configured_context
+fn spark_serving_desired_serving_slots() -> Nat {
+  spark_serving_desired_launch_profile().serving_slots
+}
+
+fn spark_serving_desired_default_context() -> TokenCount {
+  spark_serving_desired_launch_profile().default_context
 }
 
 fn spark_serving_terminal_intent() -> SparkServingIntent {
@@ -282,4 +323,38 @@ fn spark_serving_automation_principal_login() -> NonEmptyStr {
 
 fn spark_serving_automation_principal() -> NamedPrincipal {
   NamedPrincipal { login: spark_serving_automation_principal_login() }
+}
+
+
+// ============================================================================================
+// THE DECLARED RUNG DROP for both fleet-global values above (DESIGN 4b(3)).
+// ============================================================================================
+//
+// WHY ONE ROW AND NOT TWO. The context ceiling and the slot count are the same defect in two
+// spellings: a value measured on one node, one artifact, one runtime configuration and one
+// concurrency condition, then applied to two hosts and every realization the cell can load. Two
+// rows would be two places to update when one restoration discharges both, and the restoration IS
+// shared -- neither value becomes qualified until per-realization observation exists.
+//
+// WHAT WAS ACTUALLY MEASURED, so the gap between evidence and scope is legible rather than implied:
+// spark-a3ee, the hf.co/antirez/deepseek-v4-gguf IQ2_XXS build, Ollama 0.32.9, one resident session,
+// buffer figures read from /api/ps. That is one cell of a matrix whose other axes are the six other
+// resident models, the second host, and every concurrency above one.
+//
+// THE TRIGGER NAMES THE CAPABILITY AND NOT AN ARTIFACT. A per-realization observation table is not
+// sufficient by itself: while a global default exists, an unmeasured realization still INHERITS
+// these numbers automatically, so measuring some of the roster leaves the same unqualified
+// inheritance for the rest. The capability is that no realization can be served at a configuration
+// it has not been observed at -- which requires both the observations and the removal of automatic
+// inheritance.
+data spark_serving_fleet_global_configuration_drop: GuaranteeRungDrop = GuaranteeRungDrop {
+  subject: "the serving cell's default context window and concurrent slot count, applied fleet-wide from single-realization evidence",
+  previous: MechanicallyPreventable,
+  temporary: Mitigatable,
+  reason: DeletedWithoutReplacement,
+  population: [
+    "gunbc.spark.serving_desired spark_serving_desired_context_length",
+    "gunbc.spark.serving_desired spark_serving_desired_serving_slots_value",
+  ],
+  restoration_trigger: "no realization can be served at a configuration it has not been observed at: a per-realization runner-memory observation exists for every model the cell loads, at the configuration selected for it, AND the fleet-global default no longer confers an unmeasured realization automatic admission -- an unobserved realization must refuse rather than inherit. An observation table alone does not discharge this row, because inheritance is the half that makes an unmeasured model's admission silent",
 }

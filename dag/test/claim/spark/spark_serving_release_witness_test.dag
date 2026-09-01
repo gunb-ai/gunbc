@@ -80,14 +80,16 @@ fn witness_bind() -> SparkServingBindListen {
 fn profile_base() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
     bind: witness_bind(),
-    configured_context: token_count(count: 4096),
+    default_context: token_count(count: 4096),
+    serving_slots: 4,
   }
 }
 
 fn profile_other_window() -> OllamaServingLaunchProfile {
   OllamaServingLaunchProfile {
     bind: witness_bind(),
-    configured_context: token_count(count: 8192),
+    default_context: token_count(count: 8192),
+    serving_slots: 4,
   }
 }
 
@@ -107,8 +109,8 @@ test fn release_identity_is_derived_not_authored() -> Bool {
 
 test fn launch_profile_window_does_not_change_release_identity() -> Bool {
   digest_of(spec: release_base()) == digest_of(spec: release_base())
-    && token_count_value(t: profile_base().configured_context)
-       != token_count_value(t: profile_other_window().configured_context)
+    && token_count_value(t: profile_base().default_context)
+       != token_count_value(t: profile_other_window().default_context)
 }
 
 fn refusal_specimen() -> SparkServingReconciliation {

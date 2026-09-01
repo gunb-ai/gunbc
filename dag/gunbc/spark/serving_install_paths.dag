@@ -56,7 +56,8 @@ type SparkServingUserUnitSpec {
   exec_subcommand: NonEmptyStr
   restart: NonEmptyStr
   wanted_by: NonEmptyStr
-  configured_context: TokenCount
+  default_context: TokenCount
+  serving_slots: Nat
 }
 
 // THE MODEL STORE PATHS, derived from the same models root the unit's OLLAMA_MODELS points at, so
@@ -311,14 +312,15 @@ fn spark_serving_user_unit_path() -> FilePath {
   ) as FilePath
 }
 
-// `configured_context` is a PARAMETER rather than a literal here for the same reason
+// `default_context` is a PARAMETER rather than a literal here for the same reason
 // `bind_host_port` is: it is desired state, and its authority is the occurrence's launch profile
-// (gunbc.spark.serving_desired spark_serving_desired_configured_context). Spelling a number here
+// (gunbc.spark.serving_desired spark_serving_desired_default_context). Spelling a number here
 // would make this module a second authority for the window and would put the declared profile back
 // out of the unit's reach -- exactly the defect this change closes.
 fn spark_serving_user_unit_spec(
   bind_host_port: NonEmptyStr,
-  configured_context: TokenCount,
+  default_context: TokenCount,
+  serving_slots: Nat,
 ) -> SparkServingUserUnitSpec {
   SparkServingUserUnitSpec {
     description: "gunbc Spark serving (Ollama gpt-oss:20b)" as NonEmptyStr,
@@ -332,7 +334,8 @@ fn spark_serving_user_unit_spec(
     exec_subcommand: "serve" as NonEmptyStr,
     restart: "on-failure" as NonEmptyStr,
     wanted_by: "default.target" as NonEmptyStr,
-    configured_context: configured_context,
+    default_context: default_context,
+    serving_slots: serving_slots,
   }
 }
 

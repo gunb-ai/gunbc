@@ -14,7 +14,8 @@ import gunbc.spark.serving_unit_render {
 }
 import gunbc.spark.serving_desired {
   spark_serving_desired_bind_host_port,
-  spark_serving_desired_configured_context,
+  spark_serving_desired_default_context,
+  spark_serving_desired_serving_slots,
 }
 
 // THE CONFIGURED CONTEXT WINDOW IS CAUSAL, AND THESE ARE THE ARMS THAT GO RED IF IT STOPS BEING SO.
@@ -32,7 +33,8 @@ import gunbc.spark.serving_desired {
 fn spec_with_window(window: TokenCount) -> SparkServingUserUnitSpec {
   spark_serving_user_unit_spec(
     bind_host_port: spark_serving_desired_bind_host_port() as NonEmptyStr,
-    configured_context: window,
+    default_context: window,
+    serving_slots: spark_serving_desired_serving_slots(),
   )
 }
 
@@ -68,6 +70,6 @@ test fn the_configured_window_changes_the_unit_content_identity() -> Bool {
 // argument and returns one fixed text.
 test fn the_desired_unit_is_rendered_at_the_declared_window() -> Bool {
   spark_serving_desired_user_unit_text()
-    == text_with_window(window: spark_serving_desired_configured_context())
+    == text_with_window(window: spark_serving_desired_default_context())
     && spark_serving_desired_user_unit_text() != text_with_window(window: token_count(count: 4096))
 }
