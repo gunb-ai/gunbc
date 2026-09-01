@@ -124,8 +124,8 @@ test fn alias_root_does_not_borrow_applied_child_marker_identity() -> Bool {
   compile_dag_rust_emit_check(
     "module phantom_marker_alias_position\n\ntype Quantity = Time | Memory\n\ntype Box<Q> { value: Int }\n\ntype AppliedAlias = Box<Time>\ntype BareAlias = Time\n\nfn bare_alias_as_parent(value: BareAlias) -> Quantity { value }\n",
     "src/phantom_marker_alias_position.rs",
-    ["pub type AppliedAlias = Rc<Box<Time>>", "pub type BareAlias = ()", "-> Quantity"],
-    ["pub type AppliedAlias = Rc<Box<()>>", "pub type BareAlias = Time"]
+    ["pub type AppliedAlias = Rc<Box<Time>>", "pub type BareAlias =", "-> Quantity"],
+    ["pub type AppliedAlias = Rc<Box<()>>", "pub type BareAlias = Time", "pub type BareAlias = Memory"]
   )
 }
 
