@@ -14,7 +14,8 @@ import v2.compiler.effect_demand {
   SeamRealizedByBridge,
   SeamRefusalObservedInClosure,
   SeamStanding,
-  SeamUnrealized,
+  SeamUnrealizedNoProjectedPrimitive,
+  SeamUnrealizedNoRegistryBinding,
   SeamUnrostered,
   effect_demand_seam_roster,
   effect_demand_seam_runtime_registry,
@@ -24,6 +25,7 @@ import v2.compiler.effect_demand {
   SeamRuntimeBindingAmbiguous,
   seam_unrealized_without_executed_evidence,
   seam_unrostered_rows,
+  seam_no_registry_binding_rows,
   DemandAgreement,
   DemandProducer,
   EffectRealizationKey,
@@ -835,7 +837,8 @@ test fn effect_demand_witness_realization_keys_on_the_projected_primitive() -> B
   ) {
     SeamRealizedByBridge { bridge } => bridge == "rc_empty_map",
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealized => false
+    SeamUnrealizedNoProjectedPrimitive => false,
+    SeamUnrealizedNoRegistryBinding { primitive } => false
   }
 }
 
@@ -846,7 +849,8 @@ test fn effect_demand_witness_declaration_name_is_not_the_realization_key() -> B
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealized => true
+    SeamUnrealizedNoProjectedPrimitive => true,
+    SeamUnrealizedNoRegistryBinding { primitive } => true
   }
 }
 
@@ -857,7 +861,8 @@ test fn effect_demand_witness_an_unrostered_seam_cannot_resolve_a_realization() 
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealized => true
+    SeamUnrealizedNoProjectedPrimitive => true,
+    SeamUnrealizedNoRegistryBinding { primitive } => true
   }
 }
 
@@ -869,7 +874,8 @@ test fn effect_demand_witness_executed_evidence_implies_unrealized() -> Bool {
         SeamRefusalObservedInClosure { closure_entry } => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
           SeamRealizedByBridge { bridge } => true,
           SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-          SeamUnrealized => false
+          SeamUnrealizedNoProjectedPrimitive => false,
+          SeamUnrealizedNoRegistryBinding { primitive } => false
         },
         SeamEvidenceDerivedNotExercised { reason } => false
       }
@@ -883,7 +889,8 @@ test fn effect_demand_witness_unrostered_implies_unrealized() -> Bool {
     predicate: fn(seam) {
       match seam.projection {
         SeamUnrostered => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
-          SeamUnrealized => false,
+          SeamUnrealizedNoProjectedPrimitive => false,
+          SeamUnrealizedNoRegistryBinding { primitive } => false,
           SeamRealizedByBridge { bridge } => true,
           SeamRuntimeBindingAmbiguous { primitive, bridges } => true
         },
@@ -903,7 +910,11 @@ test fn effect_demand_witness_derived_seams_are_a_strict_subset_of_unrealized() 
           SeamRefusalObservedInClosure { closure_entry } => true,
           SeamEvidenceDerivedNotExercised { reason } => false
         },
-        SeamUnrealized => match seam.evidence {
+        SeamUnrealizedNoProjectedPrimitive => match seam.evidence {
+          SeamRefusalObservedInClosure { closure_entry } => true,
+          SeamEvidenceDerivedNotExercised { reason } => false
+        },
+        SeamUnrealizedNoRegistryBinding { primitive } => match seam.evidence {
           SeamRefusalObservedInClosure { closure_entry } => true,
           SeamEvidenceDerivedNotExercised { reason } => false
         }
@@ -922,7 +933,8 @@ test fn effect_demand_witness_a_realized_seam_carries_no_refusal_evidence() -> B
           SeamEvidenceDerivedNotExercised { reason } => false
         },
         SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-        SeamUnrealized => false
+        SeamUnrealizedNoProjectedPrimitive => false,
+        SeamUnrealizedNoRegistryBinding { primitive } => false
       }
     }
   )
@@ -953,7 +965,8 @@ test fn effect_demand_witness_roster_realization_comes_from_the_registry() -> Bo
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => false,
-    SeamUnrealized => true
+    SeamUnrealizedNoProjectedPrimitive => true,
+    SeamUnrealizedNoRegistryBinding { primitive } => true
   }
 }
 
@@ -968,7 +981,8 @@ test fn effect_demand_witness_registry_binds_each_realized_seam_to_its_cited_bri
       match seam_realization_for(projection: ProjectedPrimitive { primitive: cited.primitive }, registry: effect_demand_seam_runtime_registry) {
         SeamRealizedByBridge { bridge } => bridge != cited.bridge,
         SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
-        SeamUnrealized => true
+        SeamUnrealizedNoProjectedPrimitive => true,
+        SeamUnrealizedNoRegistryBinding { primitive } => true
       }
     }
   )
@@ -984,7 +998,8 @@ test fn effect_demand_witness_two_bridges_for_one_primitive_select_none() -> Boo
   ) {
     SeamRealizedByBridge { bridge } => false,
     SeamRuntimeBindingAmbiguous { primitive, bridges } => length(xs: bridges) == 2,
-    SeamUnrealized => false
+    SeamUnrealizedNoProjectedPrimitive => false,
+    SeamUnrealizedNoRegistryBinding { primitive } => false
   }
 }
 
@@ -1003,7 +1018,8 @@ test fn effect_demand_witness_an_ambiguous_binding_is_neither_realized_nor_unrea
         SeamRuntimeBinding { primitive: primitive_identity_slug(name: "empty_map"), bridge: "a_second_claimant" }
       ]) {
         SeamRealizedByBridge { bridge } => true,
-        SeamUnrealized => true,
+        SeamUnrealizedNoProjectedPrimitive => true,
+        SeamUnrealizedNoRegistryBinding { primitive } => true,
         SeamRuntimeBindingAmbiguous { primitive, bridges } => false
       }
     }
@@ -1017,7 +1033,89 @@ test fn effect_demand_witness_the_authored_registry_binds_at_most_one_bridge_per
       match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
         SeamRuntimeBindingAmbiguous { primitive, bridges } => true,
         SeamRealizedByBridge { bridge } => false,
-        SeamUnrealized => false
+        SeamUnrealizedNoProjectedPrimitive => false,
+        SeamUnrealizedNoRegistryBinding { primitive } => false
+      }
+    }
+  )
+}
+
+// THE DISCRIMINATOR FOR THE SPLIT, IN BOTH DIRECTIONS, because one direction alone passes under the
+// collapse it is meant to detect. A rostered seam whose primitive has no bridge must NOT answer
+// NoProjectedPrimitive, and an unrostered seam must NOT answer NoRegistryBinding; under the previous
+// single arm both of these were the same value, so either assertion alone would have been green
+// against the very defect. decl_facts is the live specimen for the first: it projects a primitive and
+// the authored registry binds only three, none of them this one.
+test fn effect_demand_witness_a_rostered_seam_with_no_bridge_is_not_reported_unrostered() -> Bool {
+  match seam_realization_for(
+    projection: ProjectedPrimitive { primitive: primitive_identity_slug(name: "decl_facts") },
+    registry: effect_demand_seam_runtime_registry
+  ) {
+    SeamUnrealizedNoRegistryBinding { primitive } => primitive.slug == primitive_identity_slug(name: "decl_facts").slug,
+    SeamUnrealizedNoProjectedPrimitive => false,
+    SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false
+  }
+}
+
+test fn effect_demand_witness_an_unrostered_seam_is_not_reported_as_an_unbound_primitive() -> Bool {
+  match seam_realization_for(
+    projection: SeamUnrostered,
+    registry: effect_demand_seam_runtime_registry
+  ) {
+    SeamUnrealizedNoProjectedPrimitive => true,
+    SeamUnrealizedNoRegistryBinding { primitive } => false,
+    SeamRealizedByBridge { bridge } => false,
+    SeamRuntimeBindingAmbiguous { primitive, bridges } => false
+  }
+}
+
+// THE TWO POPULATIONS ARE JOINED AT IDENTITY GRAIN, NEVER BY COUNT. Membership is decided by the
+// projection arm each row carries, so a row cannot inhabit both lists and no literal is asserted here:
+// today the split is 6 unrostered and 5 rostered-but-unbound, and both numbers move as seams are
+// disposed or bridges are bound, which is exactly why the law is stated over identities instead.
+test fn effect_demand_witness_the_two_unrealized_populations_are_disjoint_by_projection() -> Bool {
+  !any(
+    xs: seam_no_registry_binding_rows(roster: effect_demand_seam_roster, registry: effect_demand_seam_runtime_registry),
+    predicate: fn(seam) {
+      match seam.projection {
+        SeamUnrostered => true,
+        ProjectedPrimitive { primitive } => false
+      }
+    }
+  ) && !any(
+    xs: seam_unrostered_rows(roster: effect_demand_seam_roster),
+    predicate: fn(seam) {
+      match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+        SeamUnrealizedNoRegistryBinding { primitive } => true,
+        SeamUnrealizedNoProjectedPrimitive => false,
+        SeamRealizedByBridge { bridge } => false,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => false
+      }
+    }
+  )
+}
+
+// EVERY ROSTER ROW LANDS IN EXACTLY THE CLASS ITS PROJECTION DECIDES, over the live population rather
+// than over a fixture, so a roster row added with a projection that disagrees with its derivation
+// cannot pass quietly.
+test fn effect_demand_witness_no_projected_primitive_holds_exactly_of_the_unrostered_rows() -> Bool {
+  !any(
+    xs: effect_demand_seam_roster,
+    predicate: fn(seam) {
+      match seam.projection {
+        SeamUnrostered => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+          SeamUnrealizedNoProjectedPrimitive => false,
+          SeamUnrealizedNoRegistryBinding { primitive } => true,
+          SeamRealizedByBridge { bridge } => true,
+          SeamRuntimeBindingAmbiguous { primitive, bridges } => true
+        },
+        ProjectedPrimitive { primitive } => match seam_realization(seam: seam, registry: effect_demand_seam_runtime_registry) {
+          SeamUnrealizedNoProjectedPrimitive => true,
+          SeamUnrealizedNoRegistryBinding { primitive: unbound } => false,
+          SeamRealizedByBridge { bridge } => false,
+          SeamRuntimeBindingAmbiguous { primitive: ambiguous, bridges } => false
+        }
       }
     }
   )

@@ -1062,10 +1062,20 @@ type SeamProjection
 // it, so the refusal is located and countable rather than silent. Realized and unrealized both remain
 // positive answers, and ambiguous is neither -- which is why every consumer folds this coproduct
 // directly instead of asking a realized/unrealized boolean whose negation would swallow the fourth arm.
+// UNREALIZED IS TWO FACTS, NOT ONE. A seam with no projected primitive and a seam whose projected
+// primitive has no registry row are materially different and were spelled identically, so no consumer
+// could rank them and neither could ever be fixed -- state_space_conflation on this mechanism's own
+// failure arm. The split is decidable from the two authorities this module already holds: the roster
+// says whether a primitive is projected, and the registry says whether one is bound. It deliberately
+// stops there. WHY the registry lacks a row -- whether the Rust bridge lacks the primitive entirely or
+// merely lacks the binding -- is a claim about the HOST, and an arm asserting it would be a second
+// authority about the bridge's contents that can disagree with the bridge. A row that can lie is worse
+// than a bare arm, so that distinction is not a variant here.
 type SeamRealization
   = SeamRealizedByBridge { bridge: String }
   | SeamRuntimeBindingAmbiguous { primitive: PrimitiveIdentity, bridges: List<String> }
-  | SeamUnrealized
+  | SeamUnrealizedNoProjectedPrimitive
+  | SeamUnrealizedNoRegistryBinding { primitive: PrimitiveIdentity }
 
 // PER-SEAM EVIDENCE STANDING, because 11 unrealized seams do not carry one rung between them. Five of
 // them were refused by the wall inside the v2 compiler's own emitted closure: that is executing
@@ -1122,7 +1132,7 @@ fn seam_realization_for(
   registry: List<SeamRuntimeBinding>
 ) -> SeamRealization {
   match projection {
-    SeamUnrostered => SeamUnrealized,
+    SeamUnrostered => SeamUnrealizedNoProjectedPrimitive,
     ProjectedPrimitive { primitive } => seam_realization_from_matches(
       primitive: primitive,
       matches: list_reverse(xs: fold_list(
@@ -1136,7 +1146,7 @@ fn seam_realization_for(
 
 fn seam_realization_from_matches(primitive: PrimitiveIdentity, matches: List<String>) -> SeamRealization {
   match matches {
-    Empty => SeamUnrealized,
+    Empty => SeamUnrealizedNoRegistryBinding { primitive: primitive },
     Cons { head, tail } => match tail {
       Empty => SeamRealizedByBridge { bridge: head },
       Cons { head: second, tail: rest } => SeamRuntimeBindingAmbiguous { primitive: primitive, bridges: matches }
@@ -1157,10 +1167,38 @@ fn seam_unrealized_without_executed_evidence(
     empty: Empty,
     cons: fn(acc, seam) {
       match seam_realization(seam: seam, registry: registry) {
-        SeamUnrealized => match seam.evidence {
+        SeamUnrealizedNoProjectedPrimitive => match seam.evidence {
           SeamEvidenceDerivedNotExercised { reason } => Cons { head: seam, tail: acc },
           SeamRefusalObservedInClosure { closure_entry } => acc
         },
+        SeamUnrealizedNoRegistryBinding { primitive } => match seam.evidence {
+          SeamEvidenceDerivedNotExercised { reason } => Cons { head: seam, tail: acc },
+          SeamRefusalObservedInClosure { closure_entry } => acc
+        },
+        SeamRealizedByBridge { bridge } => acc,
+        SeamRuntimeBindingAmbiguous { primitive, bridges } => acc
+      }
+    }
+  ))
+}
+
+// THE SECOND UNREALIZED POPULATION, DERIVED RATHER THAN AUTHORED. seam_unrostered_rows answers from
+// the roster alone; this one exists only because the registry is the other half of the join, so it
+// takes the registry as an argument rather than closing over the authored one -- the same reason
+// seam_realization_for does. A row lands here exactly when a primitive IS projected and the registry
+// answers with no bridge, which is the population that would silently merge into the unrostered one
+// under the old single arm.
+fn seam_no_registry_binding_rows(
+  roster: List<SeamStanding>,
+  registry: List<SeamRuntimeBinding>
+) -> List<SeamStanding> {
+  list_reverse(xs: fold_list(
+    xs: roster,
+    empty: Empty,
+    cons: fn(acc, seam) {
+      match seam_realization(seam: seam, registry: registry) {
+        SeamUnrealizedNoRegistryBinding { primitive } => Cons { head: seam, tail: acc },
+        SeamUnrealizedNoProjectedPrimitive => acc,
         SeamRealizedByBridge { bridge } => acc,
         SeamRuntimeBindingAmbiguous { primitive, bridges } => acc
       }
