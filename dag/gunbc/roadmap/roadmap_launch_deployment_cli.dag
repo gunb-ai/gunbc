@@ -130,7 +130,7 @@ fn rlm_workflow_file_path() -> String {
 // 
 // THE PRINCIPAL IS OBSERVED, NOT ASSUMED. Footprint, provider and dispatch preflights are only
 // meaningful as the belt's effective service principal (gunbc.roadmap_belt_actuate
-// belt_footprint_admission_note), so the receipt run records `whoami` and the join refuses when it
+// BeltFootprintRoot), so the receipt run records `whoami` and the join refuses when it
 // is not the emitted ServiceUser. If srv1's runner principal is not that user, the wet run produces
 // an Incomplete receipt naming `principal`, and the repair is a modeled execution-as-principal
 // step, not a relaxation here.

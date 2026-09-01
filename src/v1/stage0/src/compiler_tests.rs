@@ -415,6 +415,51 @@ mod compiler_tests {
     }
 
     #[test]
+    fn emit_import_lines_follow_resolved_binding_identity() {
+        let result = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn(|| {
+                let textlike = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_textlike.dag".to_string(),
+                    content: "module probe.textlike\ntype String = StringLeaf | StringNode { next: String }\ntype Carrier = CarrierOne | CarrierTwo\n".to_string(),
+                });
+                let logiclike = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_logiclike.dag".to_string(),
+                    content: "module probe.logiclike\ntype Bool = ProbeTrue | ProbeFalse\n".to_string(),
+                });
+                let victim = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: "probe_victim.dag".to_string(),
+                    content: "module probe.victim\nimport probe.textlike { String, Carrier }\nimport probe.logiclike { Bool }\ntype Holder { tag: String, load: Carrier, flag: Bool }\nfn keep(h: Holder) -> String { h.tag }\n".to_string(),
+                });
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![textlike, logiclike, victim]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let victim_out = result.files.iter().find(|f| f.path.contains("probe_victim")).expect("victim module must emit");
+                assert!(
+                    !victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("String")),
+                    "a name the resolver answers with the structureless kernel scalar must not emit a structural use-line shadow (the 139-row std::string::String vs Rc<im::Vector<i64>> family); emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("Carrier")),
+                    "a non-kernel imported type must keep its use-line -- positive control that the drop is keyed on the resolved kernel identity, not on the import list; emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.lines().any(|l| l.contains("pub use") && l.contains("Bool")),
+                    "a kernel-SPELLED name whose kernel binding is structural (Bool = True | False) must keep its use-line -- the control that stops a blanket kernel-name drop; emitted:\n{}",
+                    victim_out.content
+                );
+                assert!(
+                    victim_out.content.contains("pub tag:") && victim_out.content.contains("pub load:"),
+                    "the probe fields must still emit at all; emitted:\n{}",
+                    victim_out.content
+                );
+            })
+            .expect("failed to spawn thread")
+            .join();
+        result.expect("emit_import_lines_follow_resolved_binding_identity panicked");
+    }
+
+    #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
         // (resolve_node_bounded masked boundary). module_b references `Widget`
@@ -2427,6 +2472,142 @@ mod compiler_tests {
             "applied-type base must not emit namespace dots in generic position"
         );
         assert_eq!(rendered, "Vec<i64>");
+    }
+
+    fn optional_typed_arg_node() -> std::rc::Rc<crate::v1_std_core::Node> {
+        let optional_type = shaped_type_node("Node", Vec::new());
+        let optional_type = std::rc::Rc::new(crate::v1_std_core::Node {
+            return_cardinality: crate::v1_std_core::Cardinality::CardOptional,
+            ..(*optional_type).clone()
+        });
+        let arg = named_type_node("child");
+        std::rc::Rc::new(crate::v1_std_core::Node {
+            inferred: Some(std::rc::Rc::new(
+                crate::v1_std_core::InferredNode::Resolved {
+                    node: optional_type,
+                },
+            )),
+            ..(*arg).clone()
+        })
+    }
+
+    fn callee_with_one_param(
+        param_type_name: &str,
+    ) -> Option<std::rc::Rc<crate::v1_compiler_infer_items::ItemInfo>> {
+        let param = shaped_type_node("value", vec![named_type_node(param_type_name)]);
+        Some(std::rc::Rc::new(crate::v1_compiler_infer_items::ItemInfo {
+            name: "outcome_accepted".to_string(),
+            module_name: "v2.std.diagnostic".to_string(),
+            kind: crate::v1_compiler_infer_items::ItemKind::FnItem,
+            service_names: std::rc::Rc::new(im::Vector::new()),
+            resource_names: std::rc::Rc::new(im::Vector::new()),
+            params: std::rc::Rc::new(vec![param].into()),
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+        }))
+    }
+
+    #[test]
+    fn generic_parameter_declines_the_fail_closed_unwrap() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let arg = optional_typed_arg_node();
+        let generic = crate::v1_compiler_emit_rust::rust_call_arg_fail_closed_unwrap(
+            "child.clone()".to_string(),
+            arg.clone(),
+            callee_with_one_param("T"),
+            0,
+            "outcome_accepted".to_string(),
+            source_indices.clone(),
+        );
+        assert_eq!(
+            generic, "child.clone()",
+            "a type-variable parameter cannot say the instantiation is non-optional, so no unwrap may be injected"
+        );
+        let concrete = crate::v1_compiler_emit_rust::rust_call_arg_fail_closed_unwrap(
+            "child.clone()".to_string(),
+            arg,
+            callee_with_one_param("Node"),
+            0,
+            "node_locus".to_string(),
+            source_indices,
+        );
+        assert!(
+            concrete.contains(".expect("),
+            "a concrete non-optional parameter must still take the unwrap: {}",
+            concrete
+        );
+    }
+
+    #[test]
+    fn witness_carrier_declines_a_non_witness_expected_type() {
+        let source_indices = std::rc::Rc::new(HashMap::new());
+        let shared = std::rc::Rc::new(im::OrdSet::new());
+        let shared2 = shared.clone();
+        let source_indices2 = source_indices.clone();
+        let empty_emit = crate::v1_compiler_infer_emit_info::empty_emit_graph_info();
+        let witness_of_node = shaped_type_node("Witness", vec![named_type_node("Node")]);
+        let outcome_of_witness = shaped_type_node("Outcome", vec![witness_of_node.clone()]);
+        let emit_with_outcome =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                expected_type: Some(outcome_of_witness),
+                ..(*empty_emit).clone()
+            });
+        assert!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_from_expected_type(
+                emit_with_outcome,
+                shared.clone(),
+                source_indices.clone()
+            )
+            .is_none(),
+            "an expected type whose head is not Witness is not evidence about a witness carrier"
+        );
+        let emit_with_witness =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                expected_type: Some(witness_of_node),
+                ..(*empty_emit).clone()
+            });
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_from_expected_type(
+                emit_with_witness,
+                shared,
+                source_indices
+            ),
+            Some("Node".to_string()),
+            "a Witness-headed expected type still answers with its carrier"
+        );
+        let no_fields: Vec<std::rc::Rc<crate::v1_std_core::Node>> = Vec::new();
+        let mut variants = HashMap::new();
+        variants.insert("Holds".to_string(), "Witness".to_string());
+        variants.insert("Violates".to_string(), "Witness".to_string());
+        let emit_with_variants =
+            std::rc::Rc::new(crate::v1_compiler_infer_emit_info::EmitGraphInfo {
+                variant_to_enum: std::rc::Rc::new(variants),
+                ..(*empty_emit).clone()
+            });
+        assert!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
+                "Violates".to_string(),
+                shaped_type_node("Witness", vec![named_type_node("Holds")]),
+                std::rc::Rc::new(no_fields.clone().into()),
+                shared2.clone(),
+                emit_with_variants.clone(),
+                source_indices2.clone()
+            )
+            .is_none(),
+            "the Violates fallback must decline a non-Witness resolved type too, or the fabrication only moves one frame down"
+        );
+        assert_eq!(
+            crate::v1_compiler_emit_rust::rust_witness_type_arg_for_variant(
+                "Violates".to_string(),
+                shaped_type_node("Witness", vec![named_type_node("Node")]),
+                std::rc::Rc::new(no_fields.into()),
+                shared2,
+                empty_emit,
+                source_indices2
+            ),
+            Some("Node".to_string()),
+            "a Witness-headed resolved type still answers the Violates fallback"
+        );
     }
 
     /// Return current process RSS in bytes (macOS via mach_task_basic_info).

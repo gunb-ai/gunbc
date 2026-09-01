@@ -2,7 +2,6 @@ module v2.workflow.floor_route_gap
 
 import v2.std.algebra { Cons, Empty, list_flat_map }
 import v2.std.collection { List }
-import v2.std.text { String }
 
 // THE EXPECTATION IS TYPED AT THE TWO FACTS THE INTERPRETER OBSERVES. An identity-only row
 // says merely that some route gap once existed; it cannot object when the witness reaches a
