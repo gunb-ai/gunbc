@@ -5,6 +5,8 @@ import extdeps.git.object_store { GitObjectId, git_object_id_from_untagged_hex, 
 import extdeps.github.workflow_runs { WorkflowRunConclusion, Success, Failure, Cancelled }
 import extdeps.github.workflow_run_event { WorkflowRunEvent }
 import gunbc.generated_artifact { WitnessFloorYamlArtifact, artifact_path }
+import gunbc.required_ci_contract_epoch { required_ci_contract_epoch }
+import gunbc.required_ci_epoch_observation { RequiredCiEpochObservation, RequiredCiEpochObserved }
 import gunbc.fleet_revision_acceptance {
   RequiredCiContractIdentity,
   required_ci_contract,
@@ -36,6 +38,13 @@ import gunbc.fleet_revision_acceptance {
   admit_fleet_revision,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+
+// The epoch dimension is exercised by its own two REDs; every other admission witness here
+// holds it at the required value so a refusal in this file names the dimension it is about.
+fn fixture_epoch_match() -> RequiredCiEpochObservation {
+  RequiredCiEpochObserved { epoch: required_ci_contract_epoch }
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -104,7 +113,7 @@ fn pull_request_run(head_sha: String) -> WorkflowRunEvent {
 }
 
 fn ci_admits(e: WorkflowRunEvent) -> Bool {
-  match accept_required_ci_workflow_run(event: e, evidence: github_evidence) {
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), event: e, evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: _ } => true
     RequiredCiRefused { cause: _ } => false
   }
@@ -123,7 +132,7 @@ fn oid(hex: String) -> GitObjectId? { git_object_id_from_untagged_hex(hex: hex) 
 // refusing producers would satisfy. This row fails when a wall is TOO STRICT -- the failure mode a
 // wall-shaped change actually has, and the one invisible in production.
 test fn an_eligible_trunk_push_satisfies_both_propositions_and_the_join_accepts() -> Bool {
-  match accept_required_ci_workflow_run(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: ci } =>
       match observe_default_branch_revision(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
         DefaultBranchAdmitted { observed: br } =>
@@ -190,7 +199,7 @@ test fn a_push_to_a_topic_branch_is_refused_by_the_branch_fact() -> Bool {
 // infer from holding both; the refusal carries BOTH revisions because "which two" is the entire
 // content of the finding.
 test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both() -> Bool {
-  match accept_required_ci_workflow_run(event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), event: trunk_push(head_sha: sha_a), evidence: github_evidence) {
     RequiredCiAdmitted { succeeded: ci } =>
       match observe_default_branch_revision(event: trunk_push(head_sha: sha_b), evidence: github_evidence) {
         DefaultBranchAdmitted { observed: br } =>
@@ -221,7 +230,7 @@ test fn required_ci_for_one_revision_and_a_branch_at_another_refuses_naming_both
 // nothing on the wire establishes it. Both producers refuse an undecodable value rather than
 // building a carrier around it, so no consumer is handed a revision that is not one.
 test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
-  match accept_required_ci_workflow_run(
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
     event: trunk_push(head_sha: "not-a-sha"),
     evidence: github_evidence,
   ) {
@@ -241,7 +250,7 @@ test fn an_undecodable_head_sha_refuses_on_both_producers() -> Bool {
 // collapse into one and still pass, making refusals undebuggable since the remedies differ: wrong
 // producer, wrong repo, an untrusted fork's head, not finished.
 test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
-  match accept_required_ci_workflow_run(
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
     event: ev(
       activity: "completed",
       workflow_path: ".github/workflows/fleet-converge.yml",
@@ -258,7 +267,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
       p == ".github/workflows/fleet-converge.yml" && q == artifact_path(a: WitnessFloorYamlArtifact)
     _ => false
   }
-    && match accept_required_ci_workflow_run(
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -275,7 +284,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
         o == "other/fork"
       _ => false
     }
-    && match accept_required_ci_workflow_run(
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -292,7 +301,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
         o == "someone/fork"
       _ => false
     }
-    && match accept_required_ci_workflow_run(
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
       event: ev(
         activity: "requested",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -315,7 +324,7 @@ test fn each_required_ci_identity_fact_refuses_with_its_own_cause() -> Bool {
 // state most likely read as "nothing happened" -- and exactly the state that must not be mistaken
 // for a floor that ran.
 test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
-  match accept_required_ci_workflow_run(
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
     event: ev(
       activity: "completed",
       workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -335,7 +344,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
       }
     _ => false
   }
-    && match accept_required_ci_workflow_run(
+    && match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
       event: ev(
         activity: "completed",
         workflow_path: artifact_path(a: WitnessFloorYamlArtifact),
@@ -362,7 +371,7 @@ test fn only_a_successful_conclusion_admits_and_the_others_are_named() -> Bool {
 // about a run that was never the floor sends a reader to investigate a failure that does not
 // exist, ending in confusion rather than a fix.
 test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bool {
-  match accept_required_ci_workflow_run(
+  match accept_required_ci_workflow_run(observed_epoch: fixture_epoch_match(), 
     event: ev(
       activity: "completed",
       workflow_path: ".github/workflows/fleet-converge.yml",
@@ -385,7 +394,8 @@ test fn a_failed_run_of_the_wrong_workflow_refuses_as_the_wrong_workflow() -> Bo
 // phase roster: the fleet asks whether the exact contract succeeded for the exact revision, and
 // adding a phase to the floor must not break fleet admission.
 test fn the_contract_identity_is_the_emitted_workflow_not_a_phase_roster() -> Bool {
-  required_ci_contract().workflow_path == artifact_path(a: WitnessFloorYamlArtifact)
-    && required_ci_contract().workflow_path == ".github/workflows/witnesses.yml"
-    && required_ci_contract().repository_full_name == "gunb-ai/gunbc"
+  (required_ci_contract().name as String) == artifact_path(a: WitnessFloorYamlArtifact)
+    && (required_ci_contract().name as String) == ".github/workflows/witnesses.yml"
+    && (required_ci_contract().surface as String) == "gunb-ai/gunbc"
+    && (required_ci_contract().epoch as String) == (required_ci_contract_epoch as String)
 }
