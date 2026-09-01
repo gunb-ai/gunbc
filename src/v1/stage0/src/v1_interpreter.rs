@@ -5679,6 +5679,9 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
             if let Some(detail) = cross_family_content_hash_straddle(&left, &right) {
                 return Err(InterpError::CrossRepresentationEquality { detail });
             }
+            if let Some(detail) = optional_against_bare_straddle(&left, &right, ctx) {
+                return Err(InterpError::CrossRepresentationEquality { detail });
+            }
         }
         let result = if matches!(op, BinOp::Eq) {
             equal
@@ -5718,6 +5721,56 @@ fn eval_binop(op: &BinOp, left: Value, right: Value, ctx: &InterpContext) -> Int
             ),
         }),
     }
+}
+
+/// An `Optional<T>` meeting a bare `T` under `==` / `!=`.
+///
+/// `Value::eq` cannot decide these — a `Present { value: "x" }` is simply not equal to `"x"` — so
+/// the comparison SILENTLY ANSWERS FALSE, which DESIGN §5 forbids outright: a failure arm must
+/// refuse, never fabricate a plausible answer. It became reachable when `first`/`last`/`get`
+/// started constructing the `Optional` their `dag/std/algebra.dag` rows declare, because every
+/// consumer written against the old raw-element answer now compares across representations.
+/// Measured before this wall: `["schema-v2", "body"].first() == "schema-v2"` returned `false`, and
+/// nine such sites are merge-admission receipt schema checks, where a quiet `false` rejects a valid
+/// receipt with no diagnostic.
+///
+/// ONE SHAPE IS NOT A STRADDLE: Optional against Optional is an ordinary comparison of one
+/// representation with itself.
+///
+/// THE `x == none` IDIOM IS A STRADDLE AND REFUSING IT IS THE POINT, which is the opposite of what
+/// this function first did. `none` evaluates to the host `Value::Null` carrier, so the carve-out
+/// that spared it looked like protecting a working test. It was measured, and it was not working:
+/// `[].first() == none` answered FALSE, because a constructed `Absent` variant is not `Value::Null`.
+/// Sparing it preserved a silent false — the very class this wall exists to stop — so the spare is
+/// deleted and the two-carrier case refuses with its own sentence.
+///
+/// It stays NARROW by construction rather than by exception. A declared `T?` field whose absent
+/// state IS `Value::Null` still compares `Null == Null` and never reaches here; only a CONSTRUCTED
+/// `Optional` meeting the Null carrier fires, which is exactly the un-migrated population.
+fn optional_against_bare_straddle(a: &Value, b: &Value, ctx: &InterpContext) -> Option<String> {
+    let (a_opt, b_opt) = (is_optional_value(a, ctx), is_optional_value(b, ctx));
+    if a_opt == b_opt {
+        return None;
+    }
+    if matches!(a, Value::Null) || matches!(b, Value::Null) {
+        return Some(format!(
+            "{} vs {} — a constructed `Absent`/`Present` and the host Null carrier are two \
+             representations of ABSENCE, so `==` would silently fabricate `false` (DESIGN §5): \
+             measured, `[].first() == none` answered false. Eliminate the `Optional` with `match` \
+             (`Present {{ value: v }}` / `Absent`) instead of testing it against `none`.",
+            describe_repr(a),
+            describe_repr(b),
+        ));
+    }
+    Some(format!(
+        "{} vs {} — an `Optional<T>` and a bare `T` are two representations of one value, \
+         so `==` would silently fabricate `false` (DESIGN §5). `dag/std/algebra.dag` declares \
+         `first`/`last`/`get`/`lookup`/`map_get` as returning `Optional<..>`; eliminate it with \
+         `match` (`Present {{ value: v }}` / `Absent`) and compare `v`, or compare against an \
+         `Optional` on both sides.",
+        describe_repr(a),
+        describe_repr(b),
+    ))
 }
 
 fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String> {
