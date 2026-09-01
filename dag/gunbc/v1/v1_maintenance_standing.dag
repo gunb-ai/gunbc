@@ -441,3 +441,55 @@ data v1_seed_standing: SeedLifecycleStanding = SemanticsFrozen { maintenance: Ma
 // the carrier that actually governs v1 admissions.
 
 data v1_maintenance_typecheck_progress_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST, recorded in the same PR as the change it admits, because an admission written afterwards is indistinguishable from an author's own classification. THE RULING, verbatim and relayed through the requesting session's parent (snappy-dove-250, import/namespace manager) on 2026-08-25: 'ah yeah - we need to fix the typecheckmoduleresult issue'. There is no PR review or transcript to point at; the relay is the record and this row is the citation, stated plainly rather than dressed up as pointing at a document that does not exist -- the same shape as v1_maintenance_purpose_ruling_note above.\n\nTHE DEFECT, at the grain that makes it a defect rather than an improvement. v1.compiler.infer typecheck_module has an early return: when build_type_env yields error diagnostics it hands back a TypedModule whose items list is EMPTY and never reaches item analysis. The seed therefore renders two different facts as one value -- a module that COMPLETED item checking and legitimately has no items, and a module that was ABANDONED before item checking started. Every downstream reader of TypedModule.items receives the same empty list for both, so a consumer wanting the distinction must infer it from 'items is empty AND there are error diagnostics', and that inference is unreliable in the direction that matters: a module that completed and has item-level errors presents identically. This is the state-space conflation DESIGN names, in the seed, on a carrier read by the whole back end.\n\nWHY THE FIELD LANDS ON TypedModule AND NOT ON TypecheckModuleResult, since the ruling names the result type and the change does not edit it. realize_module destructures the result and inserts only .typed into the module index; a progress field on the result alone would be discarded one line after it was set, which is this same defect one level out. The result type is where the issue was NOTICED; the carrier that survives the destructure is where the fact has to live.\n\nTHE EXHIBITED COST, because a defect with no demonstrated victim is a preference. A demand oracle built in this lane to score resolution producers read TypedModule.items to derive per-module demand, and was found DEAD as a scoring instrument for exactly this reason: an abandoned module reports total_arm1=1, which is indistinguishable from a genuine single-ask module, so the instrument's error is ANTI-CORRELATED with the defect it was built to find -- the modules most likely to abandon are the ones whose demand it most understates. That oracle was discarded rather than repaired, which is the measured price of the conflation and is why this is not speculative hardening.\n\nWHY IT SERVES THE V2 SELF-HOST PROGRAM, which is the whole admission test. The v2 resolution work this lane exists to do reads seed-produced TypedModule values to measure and compare producers. An instrument that cannot tell 'not checked' from 'nothing to check' cannot score a producer, and the program's next steps (one closure authority, exact denotation) are measurement-gated. This repairs the seed's report of its own progress; it adds no language behavior, no compatibility obligation, no escape hatch, and completes no seed feature.\n\nTHE SCOPE LIMIT, stated because this row will be cited and its limit is the part most likely to be dropped in the citing. THE RULING ADMITS THIS CHANGE ONLY. It does NOT settle whether PublicSurfaceGrowth means a NEW EXPORTED DECLARATION or ANY CHANGE TO EXPORTED SURFACE -- this change adds a coproduct and a record field to a type the seed exports, so it sits squarely on that unresolved boundary and was ruled admissible without the boundary being drawn. Nobody may cite this row as the answer to that question. A later proposal that needs the boundary decided must route it for its own ruling; treating this admission as precedent for a general reading of PublicSurfaceGrowth would be the authority-substitution failure DESIGN names -- borrowing one authority's answer to settle a question it never addressed. The five refused classes are untouched and still dominate every admission, including this one."
+
+// THE EXCESS-FIELD FLOOR ADMISSION, recorded in the same PR as the change it admits, per the
+// typecheck-progress row's own rule: an admission written afterwards is indistinguishable from an
+// author's own classification. It is placed here rather than in the PR body because this carrier
+// governs v1 admissions and a PR body is not an authority.
+//
+// NO OPERATOR RULING IS CITED, and that is stated plainly rather than dressed up. The two
+// admissions above each relay a verbatim operator or parent sentence; this one has none. What it
+// has instead is DOCUMENTARY: DESIGN section 4b names "fields exist" in the ordinary compiler floor
+// v1 must hold, and calls a failure there a below-baseline safety regression never compensated by
+// higher-order capability. A reader who wants an operator sentence here will not find one, and
+// should weigh the row accordingly.
+//
+// NEWLANGUAGEBEHAVIOR IS THE HARD QUESTION AND IT IS ANSWERED HERE RATHER THAN OMITTED, because a
+// refusal dominates every admission. LITERALLY, programs that compiled before this change now
+// refuse, so the seed's accepted language is strictly smaller. THE ARGUMENT FOR ADMISSION: the
+// admitted class is named DefectRepairDiagnosticsMayMove and it contemplates exactly this -- the
+// standing requires a specific incorrect behavior the seed exhibits TODAY, evidenced, which is what
+// separates it from hardening a dead arm (refused above for the argv fabricator, which exhibited
+// nothing). The behavior is exhibited and measured: a record literal on a payload-carrying
+// coproduct arm accepted a field declared NOWHERE in the program, while the byte-identical mistake
+// on a product type refused. No behavior is ADDED; a judgment the floor already performed for
+// product types is extended to the constructor form that was silently skipping it.
+//
+// THE COUNTER-ARGUMENT, preserved because whoever overturns this should not reconstruct it: any
+// refusal-widening shrinks the accepted language, so "no behavior is added" is an authored reading
+// rather than a derived one, and a sufficiently strict reader of NewLanguageBehavior refuses every
+// floor repair -- which would make DESIGN 4b's floor-first mandate unimplementable in the seed.
+// Nothing mechanically holds the distinction.
+//
+// THE OTHER FOUR. NewCompatibilityObligation: no -- nothing is kept working for an old caller; the
+// four corpus literals are repaired, not accommodated. NewEscapeHatchOrAdmissionRow: no, and the
+// direction is opposite -- this adds a wall and adds no flag, env var or mode that skips it.
+// SeedFeatureCompletion: no -- the seed gains no capability and compiles strictly less than before;
+// two functions are DELETED and the emitted mirror shrinks by 68 lines net. PublicSurfaceGrowth:
+// no, and unlike the typecheck-progress row this one does not sit on the unresolved boundary --
+// `field_in_any_variant_named` and `record_lit_construction_field_names` are REMOVED from the
+// emitted seed's exported declarations and nothing is added.
+//
+// WHY IT SERVES THE V2 SELF-HOST PROGRAM. v2 is emitted and checked BY this seed, so a floor the
+// seed does not hold is a floor v2's own sources are not held to: three of the four literals this
+// refused sit in dag/gunbc and the fourth in src/v2/test/claim, each having silently discarded an
+// authored field. A seed that accepts constructions its own corpus meant differently cannot be the
+// instrument that validates the successor.
+//
+// THE SCOPE LIMIT. This row admits THIS change. It does not settle NewLanguageBehavior's boundary
+// for refusal-widening generally, and nobody may cite it as the answer to that question -- routing
+// a later floor repair for its own classification is the cost of not having drawn the boundary
+// here. The five refused classes are untouched and still dominate every admission, including this
+// one.
+
+data v1_maintenance_excess_field_floor_admission_note: String = "AN ADMISSION UNDER THE 2026-08-20 PURPOSE TEST for the record-literal excess-field floor repair (lane adhoc-0f99c6bc-193, PR gunbc#9846), recorded in the same PR as the change it admits. INSTANCE: DefectRepairDiagnosticsMayMove. NO OPERATOR RULING IS CITED -- unlike the two admissions above, which relay verbatim sentences, this one rests on DESIGN section 4b naming 'fields exist' in the ordinary compiler floor and calling a failure there a below-baseline safety regression. THE DEFECT, exhibited today and measured rather than read: a record literal naming a payload-carrying coproduct arm received NO excess-field judgment at all, so `Circle { radius: 1, nowhere: 2 }` -- a field declared nowhere in the program -- compiled with zero FieldNotFound, while the byte-identical mistake on a product type refused. The asymmetry that hid it, on ONE literal: the same arm literal omitting a required field reported MissingField == 1 while the invented field reported FieldNotFound == 0, so the construction refused what was ABSENT and accepted what was INVENTED. MECHANISM: variant_arm_type_projection projects an arm out of its owner only when the arm carries no payload, so lookup_type_by_name handed infer_record_lit_structural the owner coproduct, record_lit_construction_field_names required Conj and answered none, and the unknown-field arm's Absent => [] was silence; presence checking never had the hole because it reads the arm through variant_owner_node. THE EXHIBITED COST, because a defect with no demonstrated victim is a preference: four corpus literals had silently discarded an authored field -- two Disposition declarations naming SingleAuthority, which is a NULLARY arm of ConstructionMechanism and not a Disposition arm at all, one Terminal literal carrying an `authority` field the type does not declare, and one BoolWitnessClaim carrying a `label`. Each was analysed and then dropped, which is why nothing downstream ever looked wrong. CLASSIFICATION AGAINST THE FIVE REFUSED CLASSES is carried in the annotation above this row, including the NewLanguageBehavior question and its counter-argument, and is not restated here. SCOPE LIMIT: this row admits THIS change and does not settle NewLanguageBehavior's boundary for refusal-widening generally; a later floor repair routes for its own classification."
