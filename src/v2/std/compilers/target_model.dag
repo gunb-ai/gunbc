@@ -9,8 +9,10 @@ import std.dissolution {
 import std.algebra {
   Cons,
   Empty,
-  FreeMonoid
+  FreeMonoid,
+  FreeSemigroup
 }
+import v2.std.text { string_replace }
 import v2.std.algebra {
   Equal,
   Greater,
@@ -571,11 +573,27 @@ fn produced_decl_render_from_rows(
   )
 }
 
+// THE TRANSFORM IS DECLARED ROWS, NOT A FUNCTION VALUE -- the same dissolution the render
+// closure field underwent (ServeCacheValueNotPortable): a fn value is origin-bound, cannot be
+// serialized, compared, or carried by an emitted mirror, and every transform in the corpus
+// decomposes into this four-arm spelling algebra. Escapes apply in list order (a backslash rule
+// must precede the rules that introduce backslashes).
+type EmitSpellingEscape {
+  from: String
+  to: String
+}
+
+type TokenClassEmitTransform
+  = EmitSpellingIdentity
+  | EmitSpellingConstant { value: String }
+  | EmitSpellingWrap { prefix: String, suffix: String }
+  | EmitSpellingQuote { prefix: String, open: String, close: String, escapes: List<EmitSpellingEscape> }
+
 type TargetModel {
   bundle: Node
   lex: LexRules
   binding_spellings: Map<Symbol, String>
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>
   authority_source_text: String
   runtime_row: TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
@@ -595,13 +613,13 @@ fn target_model_selection_priority(target: TargetModel) -> Outcome<Node> {
   )
 }
 
-data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
+data target_model_emit_transforms_empty: Map<Symbol, TokenClassEmitTransform> = empty_map()
 
 fn target_model_make_with_emit_transforms(
   bundle: Node,
   lex: LexRules,
   binding_spellings: Map<Symbol, String>,
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>,
+  token_class_emit_transforms: Map<Symbol, TokenClassEmitTransform>,
   authority_source_text: String,
   runtime_row: TargetEmitHostRuntimeRow
 ) -> TargetModel {
@@ -967,11 +985,37 @@ fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
 
+// The needle is handed to string_replace as the nonempty carrier it demands; an escape row whose
+// `from` is empty names no occurrence (the same reasoning that makes string_split's delimiter a
+// FreeSemigroup), so the fold passes the spelling through unchanged. Below ceiling: the rung-4
+// shape declares `from` itself as FreeSemigroup<Char> so the empty row is unwritable; the climb
+// trigger is char-level literal sugar in the .dag realization, without which producers cannot
+// author the nonempty carrier from an escape row's quoted spelling.
+fn apply_emit_spelling_escapes(spelling: String, escapes: List<EmitSpellingEscape>) -> String {
+  fold_list(
+    xs: escapes,
+    empty: spelling,
+    cons: fn(acc, rule) {
+      match rule.from {
+        Cons { head: h, tail: t } =>
+          string_replace(source: acc, needle: FreeSemigroup { head: h, tail: t }, replacement: rule.to)
+        Empty => acc
+      }
+    }
+  )
+}
+
 fn apply_emit_spelling_transform(
-  transform: fn(String) -> String,
+  transform: TokenClassEmitTransform,
   spelling: String
 ) -> String {
-  transform(spelling)
+  match transform {
+    EmitSpellingIdentity => spelling
+    EmitSpellingConstant { value: v } => v
+    EmitSpellingWrap { prefix: p, suffix: s } => concat(p, concat(spelling, s))
+    EmitSpellingQuote { prefix: p, open: o, close: c, escapes: es } =>
+      concat(p, concat(o, concat(apply_emit_spelling_escapes(spelling: spelling, escapes: es), c)))
+  }
 }
 
 // A FIXED TOKEN'S SPELLING IS ITS LEXEME, THEN THE TARGET'S EMIT TRANSFORM. The transform map was
@@ -3971,7 +4015,13 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
         target_model_named_edge(
           name: ^target_value_expression_field_codepoint,
           target: Node {
-            kind: TypeNode { connective: Atom { identity: codepoint } },
+            kind: TypeNode {
+              connective: Atom {
+                identity: symbol_intern_lexeme(
+                  lexeme: list_snoc_item(xs: Empty, item: codepoint)
+                )
+              }
+            },
             children: [],
             occurrence_id: OccurrenceSynthetic
 }
@@ -11744,6 +11794,33 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> TargetUseSiteOwnershipCatalogLookup {
+  match acc {
+    TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
+    TargetUseSiteOwnershipCatalogMissing =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipMissing, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+    TargetUseSiteOwnershipCatalogUnique { row: r } =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipUnique { row: r }, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+    TargetUseSiteOwnershipCatalogAmbiguous =>
+      target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+        acc: TargetUseSiteOwnershipAmbiguous, row_node: row_node, display_name: display_name,
+        source_carrier: source_carrier, use_site: use_site
+      )
+  }
+}
+
+fn target_use_site_ownership_catalog_lookup_step_from_valid_acc(
+  acc: TargetUseSiteOwnershipLookup,
+  row_node: Node,
+  display_name: Symbol,
+  source_carrier: Node,
+  use_site: TargetOwnershipUseSite
+) -> TargetUseSiteOwnershipCatalogLookup {
   match target_use_site_ownership_row_from_node(
     row_node: row_node,
     display_name: display_name,
@@ -11751,21 +11828,13 @@ fn target_use_site_ownership_catalog_lookup_step_for_row(
   ) {
     Accepted { value: row, diagnostics: _ } =>
       match target_use_site_ownership_lookup_step(
-        acc: match acc {
-          TargetUseSiteOwnershipCatalogMissing => TargetUseSiteOwnershipMissing
-          TargetUseSiteOwnershipCatalogUnique { row: r } =>
-            TargetUseSiteOwnershipUnique { row: r }
-          TargetUseSiteOwnershipCatalogAmbiguous => TargetUseSiteOwnershipAmbiguous
-          TargetUseSiteOwnershipCatalogInvalid => TargetUseSiteOwnershipCatalogInvalid
-        },
+        acc: acc,
         row: row,
         source_carrier: source_carrier,
         use_site: use_site
       ) {
-        TargetUseSiteOwnershipMissing =>
-          TargetUseSiteOwnershipCatalogMissing
-        TargetUseSiteOwnershipUnique { row: row } =>
-          TargetUseSiteOwnershipCatalogUnique { row: row }
+        TargetUseSiteOwnershipMissing => TargetUseSiteOwnershipCatalogMissing
+        TargetUseSiteOwnershipUnique { row: row } => TargetUseSiteOwnershipCatalogUnique { row: row }
         TargetUseSiteOwnershipAmbiguous => TargetUseSiteOwnershipCatalogAmbiguous
       }
     Rejected { diagnostics: _ } => TargetUseSiteOwnershipCatalogInvalid

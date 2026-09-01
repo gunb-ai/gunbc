@@ -265,6 +265,32 @@ fn stall_report_message(s: GuaranteeStall) -> String {
 // not merely unstarted but unspecifiable. What the finding correctly kills is the pretence that
 // the decision had a home. A blocker may name an open question; it may not name a phantom ruling.
 
+// TWO Nat AUTHORITIES ARE ONE NAME ANSWERING FOR TWO CONCEPTS, and this row exists because review
+// 57758 correctly refused a version of it that was narrated in prose beside one of the two nat_max
+// declarations. The fork predates this lane; what this lane changed is that the Peano side now
+// carries real operations, so the fork is load-bearing rather than latent.
+//
+// ClimbableButUnbuilt, NOT AwaitsOneGrounding, and review 57807 was right to refuse the first
+// version of this row for saying otherwise. The modeling direction is already decided and its
+// prerequisites discharged: gunbc.plans.dag_v2_defork_audit records the nat census complete with
+// the per-concept design DESIGN READY (FreeMonoid shadow #6341 merged, generic-alias coproduct
+// keystone green) and names the atomic wave file-by-file -- dag/std/nat.dag takes the coproduct and
+// the Peano ops, the semiring alias is deleted, v2.std.nat becomes a thin reimport plus the law
+// roster, integer and float repoint GroupCompletion<Nat> to std.nat.Nat, every importer in the same
+// push. Classifying that as awaiting a ruling would convert scheduled work into an indefinite
+// decision stall, which is exactly the untracked stall DESIGN section 4b forbids, and would dilute
+// the canonical plan by implying the question is still open.
+data two_nat_authorities_stall: GuaranteeStall = GuaranteeStall {
+  subject: "std.nat Nat (CommutativeSemiring<Magnitude>, realizing natively as a machine scalar) and v2.std.nat Nat (the Peano coproduct Zero | Succ) are two declarations answering for one name, so nat_add / nat_mul / nat_max / nat_compare each exist twice and a bare reference in a closure containing both modules is ambiguous",
+  current: Mitigatable,
+  ceiling: StructurallyImpossible,
+  blocker: ClimbableButUnbuilt,
+  population: UncountedNotEnumerable {
+    reason: "the declaration half IS enumerable -- std.nat and v2.std.nat both declaring Nat, with the per-operation forks nat_add / nat_mul / nat_max / nat_compare that no single function can serve because the two are different types -- but the exposure half is not, and one carrier answers for the whole population. The exposed set is every reference site whose CLOSURE contains both modules, and closure membership is transitive: a module importing one neighbour that reaches std.nat and another that reaches v2.std.nat has both without importing either. So a direct-import scan is not that set -- it currently names four dual-importing files and understates the real exposure -- and rendering those four as a BoundedPopulation would read as bounded while measuring the wrong property, which is the empty-observation narrow this carrier's second variant exists to prevent. It is bounded in principle by the corpus and shrinks to zero with the trigger below, but no enumeration here would be true when written",
+  },
+  next_rung_trigger: "the atomic Nat unification wave specified in gunbc.plans.dag_v2_defork_audit: dag/std/nat.dag carrying the coproduct and the Peano operations with the semiring alias deleted, v2.std.nat reduced to a thin reimport plus the node-bound law roster, integer and float repointing GroupCompletion<Nat> to std.nat.Nat, and every importer repointed in the same push -- retired by that wave landing and by nothing less, since deleting either declaration without deriving its operations would remove the operations its consumers call rather than unify the authority"
+}
+
 data import_eligibility_resolution_stall: GuaranteeStall = GuaranteeStall {
   subject: "a bare reference resolves under one import list and refuses under a superset of it, because bare-reference closure edges originate only from zero-import files",
   current: Mitigatable,
@@ -339,6 +365,19 @@ data parse_ingest_grammar_relation_stall: GuaranteeStall = GuaranteeStall {
   blocker: ClimbableButUnbuilt,
   population: BoundedPopulation { members: Cons { head: "v2.test.execution.emit_ingest_grammar_relation_round_trip.same_grammar_parse_ingest_bridge_holds", tail: Empty {} } },
   next_rung_trigger: "the same-grammar parse-to-ingest round trip holds"
+}
+
+// The candidate-tree producer drop is retired separately in gunbc.rung_drop: executed clean and
+// drift arms both produced and named the candidate before adjudication. That restoration does not
+// make the hand-maintained host mirror structural. Keeping this as its own stall prevents a new
+// climb obligation from extending the lifetime of the retired producer drop.
+data required_regen_host_derivation_stall: GuaranteeStall = GuaranteeStall {
+  subject: "required-regen host ordering is hand-maintained beside its modeled carrier",
+  current: Mitigatable,
+  ceiling: StructurallyGuaranteed,
+  blocker: ClimbableButUnbuilt,
+  population: BoundedPopulation { members: Cons { head: "v1_compiler.required_regen_host.run_required_regen", tail: Empty {} } },
+  next_rung_trigger: "v1_compiler.required_regen_host run_required_regen is derived from v2.workflow.required_regen required_regen_run, with that derivation SUFFICIENT FOR preserving the carrier's exhaustive verdict mapping: every host verdict after successful emission carries the CandidateTree adjudicated for that verdict, and only an emission that produced no tree reaches a tree-less host arm. A generator that merely emits the host, or agreement on one verdict arm, does not satisfy this trigger; the whole host mapping must be constructed from the carrier so candidate production before adjudication has one authority rather than a modeled carrier and a hand-maintained host mirror"
 }
 
 data self_host_candidate_generation_add_slice_stall: GuaranteeStall = GuaranteeStall {
@@ -490,11 +529,25 @@ data heterogeneous_child_list_stall: GuaranteeStall = GuaranteeStall {
 //
 // THE ROSTER IS HAND-MAINTAINED AND THAT IS A REAL WEAKNESS, stated rather than buried. A row
 // added above and not added here is invisible to the fold -- the same staleness these rows warn
-// about, one level up. It is not derivable today: nothing in .dag enumerates a module's own
-// declarations, so the alternative is not a better roster but no consumer at all, which is the
-// state being repaired. TRIGGER: v1_compiler.declaration_index grows a modeled surface projecting
-// a module's declarations of one type, at which point this list is DERIVED and an unenrolled row
-// has no spelling.
+// about, one level up. Declaration IDENTITIES are derivable today: v2.std.decl_index
+// data_decl_type_facts enumerates every top-level data declaration with its declared type. The
+// VALUES needed by this List<GuaranteeStall> are not. DeclFact.node is an initializer-identity
+// projection. gunbc.seed_closed_vocabulary_wildcard_census files the NotVariantValue answer for
+// initializer forms outside that projection's ExprRecordLit and ExprVar arms as
+// FabricatedSubstitution. Independently, a measured ExprRecordLit takes
+// marshal_plain_record_projection, whose marshal_field_initializer_projection path collapses field
+// values needed to reconstruct the GuaranteeStall, including primitive string and list payloads
+// nested under ClimbBlocker and StallPopulation, to NotVariantValue through
+// variant_value_from_typechecked_expr; no census row currently files that field-value site. So the
+// alternative today is still this authored roster or no consumer, but
+// declaration enumeration is no longer the blocker.
+// TRIGGER: fail-closed typed data-value reflection enumerates exactly every top-level data
+// declaration in gunbc.guarantee_rung_drop whose declared type is GuaranteeStall, and no declaration
+// outside that module, and projects each fully evaluated value in deterministic source order,
+// SUFFICIENT FOR reconstructing every field of every GuaranteeStall row and refusing any initializer
+// form or field value it cannot project rather than substituting NotVariantValue. At that point this
+// list is DERIVED and an unenrolled row has no spelling. A declaration-identity,
+// initializer-shape, or corpus-wide GuaranteeStall surface alone does not satisfy the trigger.
 data all_guarantee_stalls: List<GuaranteeStall> = [
   import_eligibility_resolution_stall,
   next_rung_trigger_enforcement_stall,
@@ -504,6 +557,7 @@ data all_guarantee_stalls: List<GuaranteeStall> = [
   enforcement_live_closure_gate_stall,
   mandatory_tag_live_corpus_stall,
   parse_ingest_grammar_relation_stall,
+  required_regen_host_derivation_stall,
   self_host_candidate_generation_add_slice_stall,
   non_fold_residue_roster_stall,
   retained_rust_live_tree_migration_stall,
@@ -544,4 +598,3 @@ fn stall_roster_size(ss: List<GuaranteeStall>) -> Int {
     cons: fn(acc, s) { acc + 1 },
   )
 }
-

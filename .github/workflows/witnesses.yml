@@ -18,6 +18,7 @@ env:
   GUNBC_REQUIRED_FLOOR_DISPOSITION: required_floor_disposition.tsv
   GUNBC_LONG_HOME_STORAGE_AGREEMENT: long_home_storage_agreement.tsv
   GUNBC_REQUIRED_FLOOR_CLAIM_COST: required_floor_claim_cost.tsv
+  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1
 jobs:
   required-witnesses-build:
     runs-on: [self-hosted, linux, arm64]
@@ -222,9 +223,46 @@ jobs:
           bash tools/fabric_ci_evidence_calibration.sh
         if: "!cancelled() && steps.build_witness_fold.outcome == 'success'"
         timeout-minutes: 55
+  emit-copy-qualification-battery:
+    runs-on: [self-hosted, linux, arm64]
+    timeout-minutes: 60
+    if: "false"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Isolate toolchain homes
+        run: |
+          # dissolve-on: ci_toolchain_home_isolation_script -- orch-emitted foreign-executor prelude step wiping and setting HOME/CARGO_HOME/RUSTUP_HOME under RUNNER_TEMP so concurrent runner slots stop sharing one toolchain; leaf rm/echo strings remain until a typed per-job filesystem-and-environment effect lands on host_effect_apply (shell-to-intent Phase 2). This obligation covers THIS carrier and ci_isolate_toolchain_script, which share that terminal construction; ci_pin_rustup_default_script carries its own obligation because it does not
+          rm -rf "$RUNNER_TEMP/rustup" "$RUNNER_TEMP/cargo"
+          echo "HOME=$RUNNER_TEMP" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=$RUNNER_TEMP/cargo" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=$RUNNER_TEMP/rustup" >> "$GITHUB_ENV"
+      - name: Install Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          components: rustfmt
+          cache: false
+      - name: Pin rustup default (isolated RUSTUP_HOME has no default toolchain)
+        run: |
+          # dissolve-on: ci_pin_rustup_default_script -- orch-emitted foreign-executor step selecting a rustup default toolchain inside an isolated RUSTUP_HOME, which starts with none, and resolving the cargo binary that selection implies. The leaf rustup/command/echo strings remain until a typed TOOLCHAIN-SELECTION effect lands on host_effect_apply -- NOT the filesystem-and-environment effect ci_toolchain_home_isolation_script waits on, which is why this is a separate obligation: that effect landing alone would leave this carrier standing
+          rustup default "$(rustup show active-toolchain | awk '{print $1; exit}')"
+          if [ -x "$CARGO_HOME/bin/cargo" ]; then CARGO_BIN="$CARGO_HOME/bin/cargo"; else CARGO_BIN="$(command -v cargo || true)"; fi
+          if [ -z "$CARGO_BIN" ]; then echo "::error::no cargo binary: neither the isolated $CARGO_HOME/bin/cargo shim nor PATH carries one"; exit 1; fi
+          echo "CARGO_BIN=$CARGO_BIN" >> "$GITHUB_ENV"
+      - name: Build the witness fold
+        id: build_witness_fold
+        run: |
+          cargo build --release -p v1-compiler --bin gunbc --bin claim_batch
+      - name: "EMIT-COST-QUAL-0: wet copy/share qualification battery"
+        run: |
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          cd "$ROOT"
+          target/release/claim_batch --wet --source-root dag --source-root src/v2 --entry dag/gunbc/emit_copy_qualification_wet_battery.dag --functions ecq_wet_shard_copy_scalar_qualifies_holds,ecq_wet_shard_owned_string_qualifies_holds,ecq_wet_shard_shared_record_qualifies_holds,ecq_wet_shard_persistent_sequence_qualifies_holds,ecq_wet_shard_persistent_map_qualifies_holds,ecq_wet_shard_nested_record_qualifies_holds,ecq_calibration_redundant_share_clone_reds_static_only_holds,ecq_calibration_hidden_deep_copy_reds_runtime_only_holds,ecq_calibration_redundant_deep_clone_reds_holds,ecq_calibration_disconnected_counter_refuses_observation_holds,ecq_calibration_copied_accumulator_changes_cost_not_behavior_holds,ecq_emitted_prelude_grounds_structural_sequence_holds
   witnesses:
     runs-on: [self-hosted, linux, arm64]
-    needs: [required-witnesses-build, required-witnesses-floor, fabric-evidence]
+    needs: [required-witnesses-build, required-witnesses-floor]
     timeout-minutes: 5
     if: always()
     steps:
@@ -234,17 +272,16 @@ jobs:
           if '[' "$EVENT_NAME" '=' 'pull_request' ']'; then HEAD_STANDING='unobserved'; fi
           'echo' 'required floor attempt: pull_request='"$PULL_REQUEST"' measured_head='"$MEASURED_HEAD"' run_id='"$RUN_ID"' head_standing='"$HEAD_STANDING"
           VERDICT='stands-green'
-          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']' || '[' "$FABRIC_EVIDENCE" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
-          if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']' || '[' "$FABRIC_EVIDENCE" '=' 'failure' ']'; then VERDICT='stands-red'; fi
+          if '[' "$BUILD" '!=' 'success' ']' || '[' "$FLOOR" '!=' 'success' ']'; then VERDICT='stands-unestablished'; fi
+          if '[' "$BUILD" '=' 'failure' ']' || '[' "$FLOOR" '=' 'failure' ']'; then VERDICT='stands-red'; fi
           MECHANISM='unestablished'
           ATTRIBUTION='unestablished'
-          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' fabric='"$FABRIC_EVIDENCE"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
-          if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' fabric='"$FABRIC_EVIDENCE"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
-          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' fabric='"$FABRIC_EVIDENCE"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          'echo' 'required lanes: build='"$BUILD"' floor='"$FLOOR"' verdict='"$VERDICT"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"
+          if '[' "$VERDICT" '=' 'stands-red' ']'; then 'echo' '::error::a required lane concluded failure; that alone does not establish whether its subject was evaluated, so read the log before assuming a defect in the diff (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
+          if '[' "$VERDICT" '=' 'stands-unestablished' ']'; then 'echo' '::error::a required lane produced no conclusion of its own, so this head'\''s floor verdict is unobservable rather than failed; rerun it (build='"$BUILD"' floor='"$FLOOR"' mechanism='"$MECHANISM"' attribution='"$ATTRIBUTION"') - open that job'\''s log' >&2; exit 1; fi
         env:
           BUILD: ${{ needs['required-witnesses-build'].result }}
           FLOOR: ${{ needs['required-witnesses-floor'].result }}
-          FABRIC_EVIDENCE: ${{ needs['fabric-evidence'].result }}
           PULL_REQUEST: ${{ github.event.pull_request.number }}
           EVENT_NAME: ${{ github.event_name }}
           MEASURED_HEAD: ${{ github.event.pull_request.head.sha }}

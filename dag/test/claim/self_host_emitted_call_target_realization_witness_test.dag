@@ -26,6 +26,44 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // DISSOLVE-ON: never. Emission may change target SPELLING, but it may never again name a runtime
 // symbol it has not established exists.
 
+// KEYED-CARRIER TYPE REALIZATION, THE DISCRIMINATING RED. render_node_type used to decide that
+// every two-argument container was the literal `map` carrier, so an authored PartialFunction was
+// rendered as the Rust map inhabitant even though its declaration is the open-support structural
+// carrier below. The fixture differs from the control after it only in the carrier declaration.
+test fn w_partial_function_type_position_keeps_its_declared_structural_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.partial_function_type_probe\nimport std.algebra { PartialFunction }\nimport std.types { Int, String }\nfn probe(f: PartialFunction<String, Int>) -> PartialFunction<String, Int> { f }\n",
+    "src/test_claim_partial_function_type_probe.rs",
+    ["PartialFunction<String, i64>"],
+    ["HashMap<String, i64>"]
+  )
+}
+
+// THE POSITIVE CONTROL. Map's declaration carries the finite-map algebra whose Rust inhabitant is
+// HashMap. A repair that merely stopped all two-argument containers reaching a target realization
+// makes the RED above green and this row red.
+test fn w_map_type_position_still_uses_its_declared_host_realization() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_type_realization_probe\nimport std.types { Int, String, Map }\nfn probe(m: Map<String, Int>) -> Map<String, Int> { m }\n",
+    "src/test_claim_map_type_realization_probe.rs",
+    ["HashMap<String, i64>"],
+    ["PartialFunction<String, i64>", "FinitelySupportedFunction<String, i64>"]
+  )
+}
+
+// CONSTRUCTION MUST CONSULT THE SAME TARGET FACT. A deficient record literal cannot construct the
+// native HashMap inhabitant from an arbitrary lookup closure. Rust emission therefore retains the
+// function signature's declared host map and emits a loud refusal expression for this unreachable
+// seed fallback, instead of silently constructing the structural algebra carrier under that type.
+test fn w_host_map_record_shape_refuses_instead_of_constructing_a_second_carrier() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.map_record_shape_probe\nimport std.types { Int, String, Map }\nimport v2.std.optional { Present }\nfn probe(m: Map<String, Int>, key: String, value: Int) -> Map<String, Int> { Map { lookup: fn(candidate) { if candidate == key { Present { value: value } } else { m.lookup(candidate) } } } }\n",
+    "src/test_claim_map_record_shape_probe.rs",
+    ["HashMap<String, i64>", "record-shaped carrier has no realization"],
+    ["FinitelySupportedFunction", "Map {\n"]
+  )
+}
+
 // THE PROBE IMPORTS v2.std.collection AND THEN CALLS IT BY ITS QUALIFIED NAME, which looks
 // redundant and is not. compile_dag_rust_emit_check compiles through the witness harness's
 // restricted pool (2973 modules against the corpus's 4261), and a qualified spelling alone does not
@@ -650,5 +688,35 @@ test fn w_native_alias_at_a_variant_record_field_renders_the_machine_scalar_bare
     "src/test_claim_nat_variant_field_probe.rs",
     ["predecessor: i64,"],
     ["predecessor: Rc<Nat>,", "predecessor: Rc<i64>,"]
+  )
+}
+
+// NESTED SHARED-FIELD REFUTATION, THE DISCRIMINATING RED (v2.lens.cost symbolic_product, 2 board
+// rows). A match arm nesting a refutable pattern under an Rc-carried field of an Rc-carried field
+// (`PConst { value: PSucc { prev: PZero } }`) lowered its guard SHAPE-ONLY
+// (`matches!(value.as_ref(), PSucc { .. })`) while the arm's let-else prelude demanded the full
+// nested pattern -- the inner Rc field met an enum pattern (E0308), and had the types been repaired
+// naively the prelude's `unreachable!()` sat on a REACHABLE path (guard admits PSucc { prev: PSucc },
+// prelude refuses it -- a fabricated panic, section 5). Refutation now lives entirely in the guard,
+// recursively (`.. { ref prev, .. } if matches!(prev.as_ref(), ..)`), and the prelude destructures
+// under that guarantee, level by level.
+test fn w_nested_shared_field_refutation_lives_in_the_guard() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.nested_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: PZero } } => 1\n    _ => 0\n  }\n}\n",
+    "src/test_claim_nested_shared_refutation_probe.rs",
+    ["if matches!(prev.as_ref(), PNat::PZero)"],
+    ["prev: PNat::PZero, .. } = value.as_ref()"]
+  )
+}
+
+// THE BOUNDARY CONTROL: a DEPTH-ONE refutation (inner pattern binds, refutes nothing below the
+// first shared level) keeps the shape-only guard and the single-level prelude byte-for-byte -- a
+// repair that recursed unconditionally would rewrite the whole corpus's preludes to prove two sites.
+test fn w_depth_one_shared_field_refutation_stays_shape_guarded() -> Bool {
+  compile_dag_rust_emit_check(
+    "module test.claim.depth_one_shared_refutation_probe\nimport std.types { Int }\nimport std.occurrence_identity { OccurrenceId }\ntype PNat = PZero | PSucc { prev: PNat }\ntype PCost = PConst { value: PNat } | POther\nfn probe(c: PCost) -> Int {\n  match c {\n    PConst { value: PSucc { prev: p } } => 1\n    _ => 0\n  }\n}\n",
+    "src/test_claim_depth_one_shared_refutation_probe.rs",
+    ["matches!(value.as_ref(), PNat::PSucc { .. })"],
+    ["if matches!(prev.as_ref()"]
   )
 }

@@ -8,6 +8,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+
+/// The two grounds on which the floor removes an enrolled identity from a roster BEFORE the
+/// fold. The authority is `v1.compiler.expected_red_roster_join`; this alias only shortens the
+/// path at the suppression site, which is the one place both grounds are decided.
+use crate::v1_compiler_expected_red_roster_join::ExpectedRedSuppressionGround as SuppressionGround;
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
@@ -646,6 +651,9 @@ pub(crate) fn floor_diff_edits_from_diff_text(
     floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
 }
 
+// Host realization under a declared scaffold: the governing row is the `SCAFFOLD (DESIGN
+// §6–§7)` declaration above `FloorDiffEdits` in `cli_run`, which owns this function's
+// reason, dissolve-on trigger and census. Read it there; it is not restated here.
 pub(crate) fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
@@ -761,6 +769,41 @@ pub(crate) fn floor_diff_edits_from_line_ranges(
                 for l in r.start..=end {
                     changed.insert(l);
                 }
+            }
+        }
+        // A PATH WHOSE DECLARATION SET IS ESTABLISHED FRESH CONTRIBUTES EVERY DECLARATION IT
+        // CARRIES, and the line ranges do not establish that set — they only report which lines
+        // the diff happened to print.
+        //
+        // `parse_unified_diff_added_paths` already rules that both wholly-added files and RENAME
+        // DESTINATIONS are new-at-path ("its declaration set is established fresh at NEW"), and
+        // for a `/dev/null` add the two agree by accident: every line is a `+` line, so line
+        // attribution reaches every declaration anyway. For a rename destination they do not.
+        // Git detects the rename and prints only the hunks that differ, so a moved file's
+        // declarations are attributed by WHICH LINES THE MOVE HAPPENED TO EDIT — while every
+        // identity at the new path is a NEW qualified identity (`<authored module>.<function>`)
+        // that has never executed under that spelling, because the authored module name moved
+        // with the file.
+        //
+        // MEASURED, NOT ANTICIPATED (2026-08-31, `git rev-list HEAD` = 90 commits): 8 of 8
+        // rename-destination `.dag` files carrying test decls were under-enrolled, 87 of their
+        // 103 identities missed. gunbc#9823 is the receipt-confirmed instance — it renamed
+        // `machine_shape_construction_wall_test.dag` into `v2.test.` with two `test fn`s, git
+        // printed the module line and the removed trailing blank line at EOF, the EOF hunk fell
+        // inside the LAST declaration, and exactly one of the two siblings was selected. The
+        // wall's DISCRIMINATING RED (`gate_red_synthetic_machine_shape_call`) was the one missed.
+        // It executed anyway there, via the ordinary `Planned` arm — but changed-witness
+        // membership is precisely what OVERRIDES the cost-debt withhold and the outside-gate
+        // suppression below, so the same miss on a rostered identity is a silent decline of a
+        // witness whose author is present. That is the state
+        // `v2.workflow.floor_changed_witness` was written for.
+        //
+        // THIS NARROWS NOTHING AND WIDENS NOTHING BEYOND THE PATH'S OWN DECLARATIONS: the
+        // universe is this file's parsed decl list, not the corpus, so it is the precise answer
+        // to "what does this path declare", never an absorbing "rerun everything" (DESIGN §5).
+        if added_paths.contains(&file_norm) {
+            for (line, _, _) in &decls {
+                changed.insert(*line);
             }
         }
         // Module-line edits (line 1) stay fail-closed for modifies — renaming can
@@ -902,6 +945,8 @@ pub(crate) fn changed_witness_projection_rows(
     terminal: &[ClaimTerminalRow],
     verdict_only: &HashSet<String>,
     observations: &HashMap<String, ChangedWitnessCostObservation>,
+    wet_lane: &LocalRepoWetLaneOutcome,
+    candidate: &str,
 ) -> Vec<ChangedWitnessProjectionRow> {
     let dispositions: std::collections::HashMap<&str, &RequiredFloorDisposition> = disposition_rows
         .iter()
@@ -953,8 +998,23 @@ pub(crate) fn changed_witness_projection_rows(
                 ) || (verdict_only_policy
                     && matches!(outcome, Some(ClaimDisposition::PassedOverBudget)));
                 let cost_missing = verdict_only_policy && reached_pass && observation.is_none();
+                // THE JOINED WET STANDING (`v2.workflow.floor_changed_witness`
+                // `HermeticRouteGapHeldAndWetPassed`). A hermetic route gap stays nonterminal on
+                // its own; it becomes admissible ONLY when the SAME identity has a wet terminal
+                // that reached the expected verdict against THIS candidate, and only while the
+                // lane's own schedule-to-terminal join holds.
+                //
+                // THE CANDIDATE IS COMPARED, NOT ASSUMED. Membership in a set of identities says
+                // "it passed somewhere"; the pair the `.dag` evidence carries says where. The
+                // lane records the subject it ran against, and an admission from any other
+                // subject is refused here rather than silently accepted as this run's.
+                let wet_joined = matches!(outcome, Some(ClaimDisposition::RouteGapBeforeVerdict))
+                    && wet_lane.refusals.is_empty()
+                    && wet_lane.candidate == candidate
+                    && wet_lane.admitted.contains(identity.as_str());
                 let green = (reached_pass && !cost_missing)
-                    || matches!(outcome, Some(ClaimDisposition::KnownRedHeld));
+                    || matches!(outcome, Some(ClaimDisposition::KnownRedHeld))
+                    || wet_joined;
                 ChangedWitnessProjectionRow {
                     identity: identity.clone(),
                     cost: observation,
@@ -965,6 +1025,7 @@ pub(crate) fn changed_witness_projection_rows(
                             "planned-and-passed-with-cost-debt-observed"
                         }
                         _ if reached_pass => "planned-and-passed",
+                        _ if wet_joined => "hermetic-route-gap-held-and-wet-passed",
                         _ => {
                             // "No terminal Passed verdict stands", deliberately covering a failed
                             // or refused verdict too — each of those already reds the floor by its
@@ -992,6 +1053,489 @@ pub(crate) fn changed_witness_projection_rows(
             },
         })
         .collect()
+}
+
+/// ONE SCHEDULED ROW of the local-repo wet lane, decoded from
+/// `v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule`. The `.dag` declaration is the
+/// authority for membership and for the verdict each member is expected to reach; this struct is
+/// its host realization, never its origin.
+#[derive(Debug, Clone)]
+pub(crate) struct LocalRepoWetScheduledRow {
+    pub identity: String,
+    /// The AUTHORED source path. Kept and JOINED, not decoration: the lane refuses if the prepared
+    /// subject resolved the module from a different file, so a stale entry cannot sit unread beside
+    /// a module the executor reached some other way.
+    pub entry: String,
+    pub entry_module: String,
+    pub function: String,
+}
+
+/// WHAT ONE MEMBER ACTUALLY REACHED, at the width of the `.dag` authority's observed side.
+///
+/// This used to be a `bool`. Passed, Failed, Refused, Nonterminal and CompletedOverBudget are
+/// different facts with different remedies, and folding them into "not passed" made a route with no arm
+/// indistinguishable from a witness that ran and disagreed — a widened failure arm wearing a
+/// precise one's name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum LocalRepoWetObserved {
+    Passed,
+    Failed,
+    Refused(String),
+    Nonterminal(String),
+    CompletedOverBudget(String),
+}
+
+impl LocalRepoWetObserved {
+    fn name(&self) -> &'static str {
+        match self {
+            LocalRepoWetObserved::Passed => "passed",
+            LocalRepoWetObserved::Failed => "failed",
+            LocalRepoWetObserved::Refused(_) => "refused",
+            LocalRepoWetObserved::Nonterminal(_) => "nonterminal",
+            LocalRepoWetObserved::CompletedOverBudget(_) => "completed-over-budget",
+        }
+    }
+
+    fn detail(&self) -> &str {
+        match self {
+            LocalRepoWetObserved::Passed | LocalRepoWetObserved::Failed => "",
+            LocalRepoWetObserved::Refused(d)
+            | LocalRepoWetObserved::Nonterminal(d)
+            | LocalRepoWetObserved::CompletedOverBudget(d) => d.as_str(),
+        }
+    }
+
+    /// The host realization of `local_repo_wet_expectation_met` for the one expectation arm
+    /// `LocalRepoWetExpectation` carries. Exhaustive on the observed side by construction.
+    fn meets_pass_expectation(&self) -> bool {
+        matches!(self, LocalRepoWetObserved::Passed)
+    }
+}
+
+/// EVERY ARM IS SPELLED, AND THE WILDCARD IS GONE ON PURPOSE.
+///
+/// This read `other => Refused(...)`, which quietly absorbed every FUTURE `ClaimOutcome` variant
+/// into one class. A producer arm added upstream would have been classified by a catch-all that
+/// never considered it, and nothing would have said so — the compiler's exhaustiveness check is
+/// the only thing that can make a new outcome a decision rather than a default, and a wildcard
+/// disables exactly that. A new variant must now fail this match until someone classifies it.
+fn local_repo_wet_observed_from(outcome: &crate::cli_run::ClaimOutcome) -> LocalRepoWetObserved {
+    use crate::cli_run::ClaimOutcome as O;
+    match outcome {
+        O::Pass => LocalRepoWetObserved::Passed,
+        O::Fail => LocalRepoWetObserved::Failed,
+        // NO VERDICT WAS REACHED. The claim was stopped or never started, which is not the same
+        // as reaching a verdict this lane disagrees with.
+        O::BudgetInterrupted { .. } => LocalRepoWetObserved::Nonterminal("budget".to_string()),
+        O::NotAttempted { halted_by } => {
+            LocalRepoWetObserved::Nonterminal(format!("not attempted: {halted_by}"))
+        }
+        // IT COMPLETED. Calling this nonterminal contradicted the producer: the claim reached its
+        // verdict and then the run exceeded a declared line, which is a cost fact and not an
+        // absence of one. The lane still refuses it — a member that only passes by running past
+        // its budget is not a member this lane can carry — but it refuses it AS a completed
+        // over-budget observation, so the reader is sent to the budget rather than to the route.
+        O::CompletedOverBudget {
+            elapsed_ms,
+            budget_ms,
+            kind,
+        } => LocalRepoWetObserved::CompletedOverBudget(format!(
+            "{kind:?} {elapsed_ms}ms over the {budget_ms}ms line"
+        )),
+        // THE ROUTE OR THE PROGRAM REFUSED. Each is a located typed refusal in its own right; the
+        // lane keeps the class and hands the reader that diagnostic.
+        O::NotBool { got } => LocalRepoWetObserved::Refused(format!("not a Bool: {got}")),
+        O::RuntimeError { cause, message } => {
+            LocalRepoWetObserved::Refused(format!("runtime error {cause:?}: {message}"))
+        }
+        O::HostToolUnresolved { name, probed } => LocalRepoWetObserved::Refused(format!(
+            "host tool {name} unresolved after probing {} path(s)",
+            probed.len()
+        )),
+        O::HostEffectRefused { operation, ground } => {
+            LocalRepoWetObserved::Refused(format!("host effect {operation} refused: {ground:?}"))
+        }
+        O::Panicked { .. } => LocalRepoWetObserved::Refused("panicked".to_string()),
+    }
+}
+
+/// WHAT THE LANE OBSERVED, kept as the two facts the changed-witness join needs and the refusals
+/// that make the lane's own honesty checkable.
+///
+/// `admitted` is the conjunction the gate consults: a terminal for THIS candidate, for this exact
+/// identity, whose observed verdict is the one the roster expected. `refusals` carries every way
+/// the schedule and the receipts failed to agree — a scheduled member with no receipt, a receipt
+/// for a member nobody scheduled, a verdict that was not the expected one. The lane reds the floor
+/// on any of them, because a lane whose roster and receipts disagree cannot support the route claim
+/// `std.witness_admission` makes for its cadence.
+#[derive(Debug, Default)]
+pub(crate) struct LocalRepoWetLaneOutcome {
+    pub scheduled: usize,
+    /// THE CANDIDATE EVERY ADMISSION IN THIS OUTCOME IS BOUND TO -- the prepared subject digest
+    /// the lane actually ran against. Carried rather than assumed: the `.dag` evidence
+    /// (`WetTerminalAdmitted`) is a pair, and a set of identities with no candidate beside it is
+    /// the "it passed SOMEWHERE" standing this whole lane exists to refuse.
+    pub candidate: String,
+    pub admitted: HashSet<String>,
+    pub refusals: Vec<String>,
+}
+
+/// ONE TERMINAL RECEIPT, at the width of `v2.workflow.local_repo_wet_terminal.LocalRepoWetTerminal`.
+/// `entry` is the source the prepared subject RESOLVED for the module and `candidate` is the tree
+/// the executor ran against — both recorded rather than restated from the roster, because the join
+/// below decides whether they agree with what was scheduled.
+#[derive(Debug, Clone)]
+pub(crate) struct LocalRepoWetTerminalRow {
+    pub identity: String,
+    pub entry: String,
+    pub function: String,
+    pub candidate: String,
+    pub observed: LocalRepoWetObserved,
+}
+
+/// WHETHER THE EXECUTOR RAN AT ALL, as a value the finalizer is handed.
+///
+/// Host realization of `v2.workflow.local_repo_wet_terminal.LocalRepoWetExecution`, and it carries
+/// the same payload the modeled arm does: the candidate and the TERMINAL POPULATION. It carried a
+/// pre-adjudicated `LocalRepoWetLaneOutcome` instead — a count, a candidate and an admitted set —
+/// which meant the finalizer could only re-read the executor's own verdict, so a run that skipped a
+/// scheduled member, mis-stated its count, or admitted an identity nobody scheduled finalized
+/// green. The `.dag` fold refuses all three; a host arm that trusts its payload realizes none of it.
+///
+/// The join this lane already models is the completeness half of the wall; `NotInvoked` is the
+/// liveness half. With no invocation there are no terminals, and a join over an unread schedule
+/// holds vacuously — the deleted-`falsifier.yml` shape at this lane's grain, now that
+/// `std.witness_admission` claims a live route for `LocalRepoWetLane`. So absence is an ARM, and
+/// `Ran` has one producer: `run_local_repo_wet_lane` itself.
+#[derive(Debug)]
+pub(crate) enum LocalRepoWetExecution {
+    NotInvoked,
+    Ran {
+        candidate: String,
+        terminals: Vec<LocalRepoWetTerminalRow>,
+    },
+}
+
+/// THE FLOOR'S WHOLE QUESTION ABOUT THIS LANE, asked once and unconditionally, with execution as an
+/// argument. Host realization of `v2.workflow.local_repo_wet_terminal.local_repo_wet_finalize` and
+/// of the `local_repo_wet_join` it defers to: the same three finalization causes and the same
+/// bidirectional join, separated by remedy rather than collapsed into "the receipt is bad".
+///
+/// An empty schedule with no invocation HOLDS: a lane that scheduled nobody claims nobody. It is
+/// `scheduled > 0` that turns absence into a refusal, and the schedule is non-empty by construction
+/// on this tree, so production reaches only the refusing cell of that arm.
+///
+/// `LocalRepoWetLaneOutcome` is DERIVED from a join that held, never accepted from the executor.
+pub(crate) fn finalize_local_repo_wet_lane(
+    schedule: &[LocalRepoWetScheduledRow],
+    execution: LocalRepoWetExecution,
+    candidate: &str,
+) -> Result<LocalRepoWetLaneOutcome, String> {
+    let (ran_candidate, terminals) = match execution {
+        LocalRepoWetExecution::NotInvoked => {
+            if schedule.is_empty() {
+                return Ok(LocalRepoWetLaneOutcome {
+                    scheduled: 0,
+                    candidate: candidate.to_string(),
+                    admitted: HashSet::new(),
+                    refusals: Vec::new(),
+                });
+            }
+            return Err(format!(
+                "local-repo wet lane: LocalRepoWetExecutorAbsent — the executor was not invoked \
+                 while {} member(s) were scheduled, so the lane's schedule-to-terminal join had \
+                 nothing to disagree with and `std.witness_admission`'s LocalRepoWetLane route \
+                 claim would have been asserted rather than executed",
+                schedule.len()
+            ));
+        }
+        LocalRepoWetExecution::Ran {
+            candidate,
+            terminals,
+        } => (candidate, terminals),
+    };
+    if ran_candidate != candidate {
+        return Err(format!(
+            "local-repo wet lane: LocalRepoWetExecutionForeignCandidate — the executor ran against \
+             {ran_candidate} while this floor is evaluating {candidate}"
+        ));
+    }
+    let mut refusals: Vec<String> = Vec::new();
+    let mut admitted: HashSet<String> = HashSet::new();
+    // FORWARD: every scheduled identity has exactly one terminal, for this candidate, naming the
+    // entry and function that were scheduled, with the verdict the roster expects.
+    for row in schedule {
+        let hits: Vec<&LocalRepoWetTerminalRow> = terminals
+            .iter()
+            .filter(|t| t.identity == row.identity)
+            .collect();
+        match hits.len() {
+            0 => refusals.push(format!(
+                "{}: LocalRepoWetTerminalMissing — scheduled, and the executor produced no terminal \
+                 for it",
+                row.identity
+            )),
+            1 => {
+                let t = hits[0];
+                if t.candidate != candidate {
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalForeignCandidate — terminal names {}, this floor \
+                         is evaluating {candidate}",
+                        row.identity, t.candidate
+                    ));
+                } else if t.entry != row.entry {
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalForeignEntry — the roster's entry {:?} is not the \
+                         source the prepared subject resolved ({})",
+                        row.identity, row.entry, t.entry
+                    ));
+                } else if t.function != row.function {
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalForeignFunction — terminal names {}, the roster \
+                         scheduled {}",
+                        row.identity, t.function, row.function
+                    ));
+                } else if !t.observed.meets_pass_expectation() {
+                    let detail = t.observed.detail();
+                    let suffix = if detail.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" — {detail}")
+                    };
+                    refusals.push(format!(
+                        "{}: LocalRepoWetTerminalVerdictNotExpected — expected passed, observed \
+                         {}{suffix}",
+                        row.identity,
+                        t.observed.name()
+                    ));
+                } else {
+                    admitted.insert(row.identity.clone());
+                }
+            }
+            n => refusals.push(format!(
+                "{}: LocalRepoWetTerminalDuplicated — {n} terminals claim this identity and neither \
+                 can be trusted over the other",
+                row.identity
+            )),
+        }
+    }
+    // REVERSE: a terminal for an identity nobody scheduled is a refusal, not a bonus. Without it an
+    // executor could admit anything it liked as long as it also ran the roster.
+    for t in &terminals {
+        if !schedule.iter().any(|row| row.identity == t.identity) {
+            refusals.push(format!(
+                "{}: LocalRepoWetTerminalUnscheduled — a terminal for an identity this lane never \
+                 scheduled",
+                t.identity
+            ));
+        }
+    }
+    for refusal in &refusals {
+        eprintln!("required-floor: LOCAL-REPO-WET REFUSAL {refusal}");
+    }
+    if !refusals.is_empty() {
+        // THE CAUSES TRAVEL WITH THE COUNT. A count alone sends a reader back to the log to find
+        // out WHICH member and which cause, and makes every join cell indistinguishable to any
+        // caller that can only see the returned diagnostic.
+        return Err(format!(
+            "local-repo wet lane: {} refusal(s) — the lane's schedule and its terminals disagree: {}",
+            refusals.len(),
+            refusals.join("; ")
+        ));
+    }
+    eprintln!(
+        "[local-repo-wet] scheduled={} admitted={} refusals=0",
+        schedule.len(),
+        admitted.len()
+    );
+    Ok(LocalRepoWetLaneOutcome {
+        scheduled: schedule.len(),
+        candidate: candidate.to_string(),
+        admitted,
+        refusals: Vec::new(),
+    })
+}
+
+/// Decode the lane's schedule from its `.dag` authority.
+fn local_repo_wet_schedule(
+    hermetic: &v1_interpreter::InterpContext,
+) -> Result<Vec<LocalRepoWetScheduledRow>, String> {
+    let value = v1_interpreter::run_in_context(
+        hermetic,
+        "v2.workflow.local_repo_wet_terminal.local_repo_wet_schedule",
+        false,
+    )
+    .map_err(|e| format!("local_repo_wet_schedule: {e}"))?;
+    let items = floor_decode_list(hermetic, Some(&value))
+        .map_err(|e| format!("local_repo_wet_schedule: {e}"))?;
+    let mut out: Vec<LocalRepoWetScheduledRow> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
+    for item in items {
+        let v1_interpreter::Value::Record { type_name, fields } = item else {
+            return Err(format!(
+                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got {}",
+                floor_value_shape(Some(&item))
+            ));
+        };
+        if !hermetic.sym_eq(*type_name, "LocalRepoWetScheduled") {
+            return Err(format!(
+                "local_repo_wet_schedule: expected LocalRepoWetScheduled, got record {}",
+                hermetic.resolve(*type_name)
+            ));
+        }
+        let str_field = |name: &str| -> Result<String, String> {
+            match hermetic.field(&fields, name) {
+                Some(v1_interpreter::Value::Str(s)) => Ok(s.to_string()),
+                other => Err(format!(
+                    "local_repo_wet_schedule: {name} must be String, got {}",
+                    floor_value_shape(other)
+                )),
+            }
+        };
+        let identity = str_field("identity")?;
+        let function = str_field("function")?;
+        let entry = str_field("entry")?;
+        // THE ENTRY MODULE IS DERIVED FROM THE IDENTITY, NOT FROM THE PATH. The identity is
+        // `<module>.<function>` and the module is what the prepared subject is keyed by; the
+        // roster's `entry` field is the file the local recipe names, which is a different
+        // question (DESIGN §3 — a path is a discriminator, the authored module name is the fact).
+        let entry_module = match identity.strip_suffix(&format!(".{function}")) {
+            Some(m) if !m.is_empty() => m.to_string(),
+            _ => {
+                return Err(format!(
+                    "local_repo_wet_schedule: identity {identity:?} does not end in .{function} \
+                     — the roster's identity and function disagree"
+                ));
+            }
+        };
+        // `LocalRepoWetExpectation` HAS ONE ARM, so there is nothing to collapse. A second arm
+        // reaching here refuses rather than defaulting: the widening that admits an expected-red
+        // member must arrive with the executor arm that realizes it, and this refusal is what
+        // stops the authority from claiming a behaviour production cannot perform.
+        match hermetic.field(&fields, "expected") {
+            Some(v1_interpreter::Value::Variant { variant_name, .. }) => {
+                match hermetic.resolve(*variant_name).as_str() {
+                    "LocalRepoWetExpectPassed" => {}
+                    other => {
+                        return Err(format!(
+                            "local_repo_wet_schedule: expectation {other} has no executor arm in this \
+                             lane; only LocalRepoWetExpectPassed is realizable today"
+                        ));
+                    }
+                }
+            }
+            other => {
+                return Err(format!(
+                    "local_repo_wet_schedule: expected must be a typed variant, got {}",
+                    floor_value_shape(other)
+                ));
+            }
+        }
+        // A DUPLICATE REFUSES. The roster is joined to the receipts at identity grain, and a
+        // repeated member would make one receipt answer for two rows.
+        if !seen.insert(identity.clone()) {
+            return Err(format!(
+                "local_repo_wet_schedule: duplicate scheduled identity: {identity}"
+            ));
+        }
+        out.push(LocalRepoWetScheduledRow {
+            identity,
+            entry,
+            entry_module,
+            function,
+        });
+    }
+    Ok(out)
+}
+
+/// RUN THE LANE, WET, AGAINST THIS CANDIDATE.
+///
+/// The frame is built over the SAME prepared subject the floor already holds, in
+/// `ExecutionMode::Wet`, so the members execute their real effects against the very tree being
+/// evaluated. That is what makes the terminal candidate-bound by construction: there is no receipt
+/// to carry from elsewhere and no artifact handoff that could answer for another tree.
+///
+/// IT PRODUCES TERMINALS AND ADJUDICATES NOTHING. Every disagreement between the roster and what
+/// ran — a member with no receipt, a receipt naming another entry, a verdict that was not the
+/// expected one — is decided by `finalize_local_repo_wet_lane` against the SAME schedule, which is
+/// the host realization of `local_repo_wet_join`. An executor that judged its own completeness
+/// would be a second authority for the join, and the one whose payload the finalizer then trusted.
+pub(crate) fn run_local_repo_wet_lane(
+    prepared: &PreparedRepository,
+    schedule: &[LocalRepoWetScheduledRow],
+    published: Option<Rc<HashSet<String>>>,
+) -> LocalRepoWetExecution {
+    let mut terminals: Vec<LocalRepoWetTerminalRow> = Vec::new();
+    // Group by module so one scope is prepared per entry rather than per witness.
+    let mut by_module: Vec<(String, Vec<&LocalRepoWetScheduledRow>)> = Vec::new();
+    for row in schedule {
+        match by_module.iter_mut().find(|(m, _)| m == &row.entry_module) {
+            Some((_, rows)) => rows.push(row),
+            None => by_module.push((row.entry_module.clone(), vec![row])),
+        }
+    }
+    for (module, rows) in &by_module {
+        // THE TERMINAL CARRIES THE SOURCE PREPARATION ACTUALLY RESOLVED, never the path the roster
+        // authored. That is what lets the join decide `ForeignEntry`: comparing the two here would
+        // put the same comparison in two places, and the executor's copy would be the one deciding
+        // what the finalizer never sees.
+        let resolved_file = prepared
+            .graph
+            .modules
+            .iter()
+            .find(|m| m.func_env.name.as_str() == module.as_str())
+            .map(|m| m.module.span.file.to_string());
+        let scope = match claim_scope_for(prepared, module) {
+            Ok(s) => s,
+            Err(e) => {
+                // A SCHEDULED MEMBER THE SUBJECT CANNOT REACH PRODUCES NO TERMINAL, and the join
+                // then refuses it as missing — which is the truthful shape: nothing ran, so there
+                // is nothing to report a verdict for. The reason is printed here, where it is
+                // observed, so the identity the finalizer names has a located cause beside it.
+                for row in rows {
+                    eprintln!(
+                        "[local-repo-wet] identity={} unreachable: scheduled module {module} has \
+                         no scope in this subject: {e}",
+                        row.identity
+                    );
+                }
+                continue;
+            }
+        };
+        let ctx = crate::cli_run::evaluation_frame(
+            &scope,
+            v1_interpreter::ExecutionMode::Wet,
+            None,
+            published.clone(),
+        );
+        for row in rows {
+            let observed =
+                local_repo_wet_observed_from(&crate::cli_run::run_claim(&ctx, &row.function));
+            eprintln!(
+                "[local-repo-wet] identity={} expected=passed observed={}",
+                row.identity,
+                observed.name(),
+            );
+            terminals.push(LocalRepoWetTerminalRow {
+                identity: row.identity.clone(),
+                entry: resolved_file.clone().unwrap_or_default(),
+                function: row.function.clone(),
+                candidate: prepared.subject_digest.clone(),
+                observed,
+            });
+        }
+    }
+    eprintln!(
+        "[local-repo-wet] scheduled={} terminals={}",
+        schedule.len(),
+        terminals.len()
+    );
+    // THE ONLY PRODUCER OF `Ran`. The floor holds `NotInvoked` until this function returns, so the
+    // execution value the finalizer reads is a fact about whether this function ran.
+    LocalRepoWetExecution::Ran {
+        candidate: prepared.subject_digest.clone(),
+        terminals,
+    }
 }
 
 /// Print the projection — one `[changed-witness]` line per CHANGED identity (never one per
@@ -2741,7 +3285,14 @@ pub fn run_required_floor(
                 .to_string()
         })
         .collect();
-    let required_gate_prefixes = {
+    // THE LANE'S SCHEDULE IS DECODED HERE, IN THE POLICY CLOSURE, AND NOT LATER -- because its
+    // modules must become SEEDS of the prepared subject below. The first CI run of this lane
+    // refused seven times with `EntryModuleOutsidePreparedSubject`: the prepared graph is the
+    // required-gate closure plus the changed set, and the lane's members are on the discovery
+    // exclusion frontier, so nothing pulled them in. A lane that cannot reach its own members
+    // cannot support the route claim `std.witness_admission` makes for its cadence, so the
+    // schedule joins the seed list rather than the executor learning to run outside the subject.
+    let (required_gate_prefixes, local_repo_wet_schedule_rows) = {
         let policy_seed = [REQUIRED_FLOOR_POLICY_MODULE.to_string()];
         let (policy_prepared, _) = prepare_repository_closure(
             source_roots,
@@ -2755,10 +3306,12 @@ pub fn run_required_floor(
             None,
             None,
         );
-        floor_decode_module_prefix_roster(
+        let prefixes = floor_decode_module_prefix_roster(
             &policy_frame,
             "v2.workflow.required_floor.required_gate_prefixes",
-        )?
+        )?;
+        let schedule = local_repo_wet_schedule(&policy_frame)?;
+        (prefixes, schedule)
     };
     // THE FLOOR'S OWN AUTHORITIES ARE ALWAYS IN THE SUBJECT: the floor evaluates its rosters
     // (expected red, route gap, cost debt, the gate itself) in a frame over the prepared graph,
@@ -2783,6 +3336,11 @@ pub fn run_required_floor(
                 .map(|m| m.to_string()),
         )
         .chain(changed_module_seeds.iter().cloned())
+        .chain(
+            local_repo_wet_schedule_rows
+                .iter()
+                .map(|row| row.entry_module.clone()),
+        )
         .collect();
     let (mut prepared, prepared_sources) = prepare_repository_closure(
         source_roots,
@@ -3006,7 +3564,9 @@ pub fn run_required_floor(
     // 33251451113 and 33246969960 (`required_floor_claim_cost.tsv`) the whole build landed on
     // `v2.test.languages_consumer_census.corpus.rust_language_external_consumer
     // corpus_rust_language_has_external_consumer` at 412ms against the 500ms
-    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower — while its
+    // `required_floor_claim_cpu_safety_limit_ms` — red on any runner a fifth slower, which is the
+    // class `gunbc.rung_drop floor_cost_contention_verdict` now carries with its measurements and
+    // its restoration trigger; this comment states the instance and does not restate the class — while its
     // sibling in the same file, reading the identical memo milliseconds later, measured 0ms.
     // The `OnceLock` miss is not bracketed by `record_shared_artifact_fill_cpu`, so
     // `run_claim_measured` could not net it either; paying it here is the ONE mechanism, and a
@@ -3558,8 +4118,28 @@ pub fn run_required_floor(
             .iter()
             .any(|prefix| module_path.starts_with(prefix.as_str()))
     };
-    let suppress_withheld = |roster: &mut HashSet<String>, name: &str| {
+    // RETURNS WHAT IT REMOVED, at identity grain and carrying which of the two grounds removed
+    // it. The counts were already printed; what did not exist was the per-identity fact, and the
+    // expected-red roster join needs exactly that to account for every enrolled identity rather
+    // than for the survivors. See the disposition note in v1.compiler.expected_red_roster_join.
+    let suppress_withheld = |roster: &mut HashSet<String>,
+                             name: &str|
+     -> Vec<(String, SuppressionGround)> {
+        let mut removed: Vec<(String, SuppressionGround)> = Vec::new();
         let before = roster.len();
+        let mut withheld: Vec<String> = roster
+            .iter()
+            .filter(|identity| {
+                !(changed_witness_set.contains(*identity) || !cost_debt_roster.contains(*identity))
+            })
+            .cloned()
+            .collect();
+        withheld.sort();
+        removed.extend(
+            withheld
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::WithheldCostDebt)),
+        );
         roster.retain(|identity| {
             changed_witness_set.contains(identity) || !cost_debt_roster.contains(identity)
         });
@@ -3572,6 +4152,20 @@ pub fn run_required_floor(
             );
         }
         let before = roster.len();
+        let mut outside: Vec<String> = roster
+            .iter()
+            .filter(|identity| {
+                !(changed_witness_set.contains(*identity)
+                    || identity_inside_required_gate(identity))
+            })
+            .cloned()
+            .collect();
+        outside.sort();
+        removed.extend(
+            outside
+                .into_iter()
+                .map(|identity| (identity, SuppressionGround::OutsideRequiredGate)),
+        );
         roster.retain(|identity| {
             changed_witness_set.contains(identity) || identity_inside_required_gate(identity)
         });
@@ -3584,6 +4178,7 @@ pub fn run_required_floor(
                  roster admits the module or in the whole-corpus receipts run"
             );
         }
+        removed
     };
 
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
@@ -4105,7 +4700,7 @@ pub fn run_required_floor(
         out
     };
     let mut expected_red_roster = expected_red_roster;
-    suppress_withheld(&mut expected_red_roster, "floor_expected_red");
+    let expected_red_suppressed = suppress_withheld(&mut expected_red_roster, "floor_expected_red");
     eprintln!(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
@@ -4159,7 +4754,7 @@ pub fn run_required_floor(
         out
     };
     let mut route_gap_roster = route_gap_roster;
-    suppress_withheld(&mut route_gap_roster, "floor_route_gap");
+    let _ = suppress_withheld(&mut route_gap_roster, "floor_route_gap");
     eprintln!(
         "[floor-route-gap] roster carries {} enrolled identity(ies)",
         route_gap_roster.len()
@@ -4356,7 +4951,7 @@ pub fn run_required_floor(
         out
     };
     let mut non_verdict_roster = non_verdict_roster;
-    suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
+    let _ = suppress_withheld(&mut non_verdict_roster, "floor_non_verdict");
     eprintln!(
         "[floor-non-verdict] roster carries {} enrolled identity(ies)",
         non_verdict_roster.len()
@@ -4445,8 +5040,18 @@ pub fn run_required_floor(
     let long_home_storage_agreement_path = std::env::var("GUNBC_LONG_HOME_STORAGE_AGREEMENT").ok();
     let claim_cost_path = std::env::var("GUNBC_REQUIRED_FLOOR_CLAIM_COST").ok();
     let mut roster_join_report = if roster_join_active {
-        let mut roster_identities: Vec<String> = expected_red_roster.iter().cloned().collect();
+        // THE DENOMINATOR IS THE ENROLLED ROSTER, NOT THE SURVIVORS. Until 2026-09-01 this took
+        // the post-suppression roster, so the report described only identities the fold could
+        // reach while its own run_note said it described every enrolled one. The suppressed rows
+        // now enter the report and carry their ground, so the sentence is true and a reader can
+        // see the two populations apart.
+        let mut roster_identities: Vec<String> = expected_red_roster
+            .iter()
+            .cloned()
+            .chain(expected_red_suppressed.iter().map(|(id, _)| id.clone()))
+            .collect();
         roster_identities.sort();
+        roster_identities.dedup();
         let run_head = std::process::Command::new("git")
             .args(["rev-parse", "HEAD"])
             .output()
@@ -4466,16 +5071,24 @@ pub fn run_required_floor(
                 .to_string()
         } else {
             "full-floor join: every enrolled identity receives still_red | now_passes | \
-             not_evaluated"
+             not_evaluated | suppressed; suppressed rows were removed before the fold and carry \
+             the ground that removed them"
                 .to_string()
         };
-        Some(
+        let mut report =
             crate::v1_compiler_expected_red_roster_join::new_expected_red_roster_join_report(
                 run_head,
                 run_note,
                 std::rc::Rc::new(roster_identities.into_iter().collect::<im::Vector<_>>()),
-            ),
-        )
+            );
+        for (identity, ground) in expected_red_suppressed.iter() {
+            report = crate::v1_compiler_expected_red_roster_join::record_suppressed(
+                report,
+                identity.clone(),
+                *ground,
+            );
+        }
+        Some(report)
     } else {
         None
     };
@@ -4610,6 +5223,17 @@ pub fn run_required_floor(
     // memory and why its census survives without it.
     let mut current_scope: Option<(String, PreparedClaimScope)> = None;
     let mut scope_constructions: usize = 0;
+    // TIME BESIDE MEMORY, BECAUSE THE MEMORY HALF ALONE COULD NOT SIZE A FIX. The scope note
+    // below reads RSS either side of the one construction, so scope COST was observable and
+    // scope TIME was not; likewise the per-claim frame was untimed entirely. Measured on run
+    // 33366134453 that left ~150s of a 336.5s fold attributable to neither the shared-fill
+    // ledger (~85s, and nine fills are almost all of it) nor the per-claim cost receipt
+    // (~100s) -- a plurality of the fold's wall with no instrument pointing at it. These two
+    // counters close that, and they are deliberately the same shape as the RSS pair: read
+    // either side of the one call, so the delta is that call and not a sample near it.
+    let mut scope_build_nanos: u128 = 0;
+    let mut frame_build_nanos: u128 = 0;
+    let mut frame_constructions: usize = 0;
     let mut scope_module_total: usize = 0;
     let mut scope_module_max: usize = 0;
     let mut terminal_rows: Vec<ClaimTerminalRow> = Vec::new();
@@ -4650,6 +5274,7 @@ pub fn run_required_floor(
     let mut scope_kb_max_module = String::new();
     let mut scope_kb_max_modules: usize = 0;
     let mut scopes_with_ambiguity: usize = 0;
+    let mut scope_build_split = crate::cli_run::ScopeBuildSplit::default();
     let mut ambiguous_total: usize = 0;
     let mut ambiguous_max: usize = 0;
     let mut final_symbol_retention = None;
@@ -4670,7 +5295,9 @@ pub fn run_required_floor(
             // the question stops being inferential. Taken with the old scope already dropped, so
             // the delta is this scope's cost and not the difference between two.
             let rss_before = current_rss_bytes().unwrap_or(0) / 1024;
+            let scope_build_started = std::time::Instant::now();
             let built = claim_scope_for(&prepared, &claim.module_path)?;
+            scope_build_nanos += scope_build_started.elapsed().as_nanos();
             let rss_after = current_rss_bytes().unwrap_or(0) / 1024;
             let scope_kb = rss_after.saturating_sub(rss_before);
             if scope_kb > scope_kb_max {
@@ -4680,6 +5307,7 @@ pub fn run_required_floor(
             }
             scope_kb_total += scope_kb;
             scope_constructions += 1;
+            scope_build_split.accumulate(&built.build_split);
             scope_module_total += built.indexes.modules.len();
             scope_module_max = scope_module_max.max(built.indexes.modules.len());
             if built.ambiguous_bare_names > 0 {
@@ -4696,7 +5324,10 @@ pub fn run_required_floor(
         // FRESH PER CLAIM. Claims sharing one immutable scope must not share the mutable
         // evaluation caches a context owns, or one witness contaminates the next through a
         // memo rather than through anything it declared.
+        let frame_build_started = std::time::Instant::now();
         let frame = evaluation_frame(scope, claim.execution_mode, None, published.clone());
+        frame_build_nanos += frame_build_started.elapsed().as_nanos();
+        frame_constructions += 1;
         // ARM THE WALL CEILING, which is what the operator's rule has always been about and
         // what this path was not doing. `run_claim_measured` already arms the deadline and
         // applies a completion-side backstop when a wall budget is set -- the mechanism was
@@ -5392,6 +6023,53 @@ pub fn run_required_floor(
     // the previous one reads as free and would otherwise drag the mean toward zero. This is the
     // quantity the terminal one-corpus-index correction removes entirely — a scope that is a
     // view rather than a rebuild costs nothing to enter.
+    // THE FOLD'S TIME, PARTITIONED AT THE TWO CONSTRUCTIONS THE OTHER RECEIPTS CANNOT SEE.
+    // The shared-fill ledger above accounts for the fills; the per-claim cost receipt accounts
+    // for the claims. Neither can see scope or frame construction, so this line is what makes
+    // the fold's wall add up. It reports both totals AND their per-construction means, because
+    // the remedies differ: a large scope total over 656 constructions is a per-MODULE cost that
+    // tracks distinct scopes, while a large frame total over 3146 is a per-CLAIM cost that
+    // tracks the manifest's length -- and only the second would grow by adding witnesses to a
+    // module that already has some.
+    eprintln!(
+        "[floor-fold-time] scope_build={:.1}s over {} construction(s) (mean={:.0}ms) \
+         frame_build={:.1}s over {} construction(s) (mean={:.1}ms)",
+        scope_build_nanos as f64 / 1_000_000_000.0,
+        scope_constructions,
+        if scope_constructions == 0 {
+            0.0
+        } else {
+            scope_build_nanos as f64 / scope_constructions as f64 / 1_000_000.0
+        },
+        frame_build_nanos as f64 / 1_000_000_000.0,
+        frame_constructions,
+        if frame_constructions == 0 {
+            0.0
+        } else {
+            frame_build_nanos as f64 / frame_constructions as f64 / 1_000_000.0
+        }
+    );
+    // AND WHICH OF THE THREE CONSTRUCTIONS INSIDE A SCOPE BUILD THAT TIME IS. This line is the
+    // DECOMPOSITION of `[floor-fold-time]`'s `scope_build` term, not a second measurement of
+    // it: `[floor-scope-cost]` prices a scope in resident bytes and cannot distinguish an
+    // order walk from a registry union from an index rebuild, and those are three different
+    // constructions whose replacements are three different changes. It deliberately carries NO
+    // total and NO overall mean — the total is `scope_build` one line up, and printing a second
+    // nearly-equal figure beside it would be two spellings of one number, differing only by the
+    // few instructions between the timer around the call and the timers inside it.
+    {
+        let n = scope_constructions.max(1) as f64;
+        eprintln!(
+            "[floor-scope-split] order_ms={} registry_ms={} indexes_ms={} \
+             per_scope_ms(order={:.1} registry={:.1} indexes={:.1})",
+            scope_build_split.order_nanos / 1_000_000,
+            scope_build_split.registry_nanos / 1_000_000,
+            scope_build_split.indexes_nanos / 1_000_000,
+            scope_build_split.order_nanos as f64 / 1_000_000.0 / n,
+            scope_build_split.registry_nanos as f64 / 1_000_000.0 / n,
+            scope_build_split.indexes_nanos as f64 / 1_000_000.0 / n,
+        );
+    }
     eprintln!(
         "[floor-scope-cost] max={:.2}GB at={} ({} modules) total_built={:.2}GB over {} construction(s)",
         scope_kb_max as f64 / 1048576.0,
@@ -5967,6 +6645,27 @@ pub fn run_required_floor(
     // closes — refusing is the only arm that does not widen. A local run (no GITHUB_SHA, so no
     // CI diff baseline to resolve) reports the projection NOT EVALUATED, loudly, rather than
     // fabricating an empty changed set.
+    // THE LOCAL-REPO WET LANE RUNS BEFORE THE CHANGED-SET PROJECTION READS IT, in this same
+    // process and over this same prepared subject, which is what binds its terminals to the
+    // candidate under evaluation rather than to whatever tree produced them elsewhere. Its
+    // refusals red the floor on their own: a lane whose roster and receipts disagree cannot
+    // support the route claim `std.witness_admission` makes for its cadence.
+    //
+    // THE INVOCATION IS ITSELF OBSERVED, by both routes the ruling that ordered this wall names.
+    // Finalization is unconditional and takes execution as an ARGUMENT, so it runs whether or not
+    // the executor did -- it lives outside the function that would be deleted. DELETING the call
+    // below leaves `wet_execution` unbound and the floor does not compile; SUPPRESSING it, by
+    // handing the finalizer `NotInvoked` from anywhere, reaches the named
+    // `LocalRepoWetExecutorAbsent` refusal. That is the tooth the schedule-to-terminal join cannot
+    // have: with nothing invoked there are no terminals, and a join over zero terminals and an
+    // unread schedule holds vacuously while `std.witness_admission` goes on claiming the route.
+    let wet_execution: LocalRepoWetExecution =
+        run_local_repo_wet_lane(&prepared, &local_repo_wet_schedule_rows, published.clone());
+    let wet_lane = finalize_local_repo_wet_lane(
+        &local_repo_wet_schedule_rows,
+        wet_execution,
+        &prepared.subject_digest,
+    )?;
     if let Some(changed_witnesses) = changed_witnesses {
         let rows = changed_witness_projection_rows(
             &changed_witnesses,
@@ -5974,6 +6673,8 @@ pub fn run_required_floor(
             &terminal_rows,
             &cost_debt_verdict_only,
             &cost_debt_observations,
+            &wet_lane,
+            &prepared.subject_digest,
         );
         emit_changed_witness_projection(&rows)?;
         outcome.changed_witness_rows = rows.len();
@@ -6130,8 +6831,366 @@ mod pure_producer_share_tests {
 }
 
 #[cfg(test)]
+mod scope_fragment_memo_equivalence {
+    use super::*;
+    use std::rc::Rc;
+
+    /// A minimal `PreparedRepository` over in-memory sources — the same shape the floor
+    /// prepares, without the corpus.
+    fn prepared_from(sources: &[(&str, &str)]) -> PreparedRepository {
+        let files: Vec<Rc<crate::v1_compiler_compile::SourceFile>> = sources
+            .iter()
+            .map(|(path, content)| {
+                Rc::new(crate::v1_compiler_compile::SourceFile {
+                    path: path.to_string(),
+                    content: content.to_string(),
+                })
+            })
+            .collect();
+        let result = crate::v1_compiler_compile::compile_to_resolved(Rc::new(files.into()));
+        let graph = result.graph.as_ref().expect("fixture graph").clone();
+        PreparedRepository {
+            graph,
+            source_indices: result.source_indices.clone(),
+            // A DISTINCT DIGEST PER FIXTURE, because the fragment memo is keyed by it: a shared
+            // spelling would let one fixture's fragments answer another's scopes, which is the
+            // cross-subject leak the key exists to prevent — and a test that shared it would be
+            // measuring the leak instead of the memo.
+            subject_digest: format!("fixture-{}", sources.len()),
+            modules_resolved: sources.len(),
+            modules_excluded: 0,
+            full_inventory: Vec::new(),
+            discovery_exclusions: HashMap::new(),
+        }
+    }
+
+    /// TWO MODULES CLAIMING ONE BARE NAME, reached from two different entries — so the two
+    /// scopes over this corpus have DIFFERENT precedence orders over the SAME modules, and the
+    /// colliding name must resolve to a different declaration in each. That is the property a
+    /// per-module memo could destroy if it ever cached anything order-dependent: the second
+    /// scope would be served the first scope's winner and the fingerprints would diverge.
+    fn colliding_corpus() -> PreparedRepository {
+        prepared_from(&[
+            (
+                "workspace/src/alpha.dag",
+                "module fixture.alpha\n\
+                 import fixture.shared { helper }\n\
+                 fn shared_name() -> Bool { true }\n\
+                 fn alpha_entry() -> Bool { shared_name() }\n",
+            ),
+            (
+                "workspace/src/beta.dag",
+                "module fixture.beta\n\
+                 import fixture.shared { helper }\n\
+                 fn shared_name() -> Bool { false }\n\
+                 fn beta_entry() -> Bool { shared_name() }\n",
+            ),
+            (
+                "workspace/src/shared.dag",
+                "module fixture.shared\n\
+                 fn helper() -> Bool { true }\n\
+                 data shared_datum: Bool = true\n",
+            ),
+        ])
+    }
+
+    /// THE EQUIVALENCE WITNESS. Every scope of the corpus, built with the per-module fragment
+    /// memo and built without it, must answer identically at identity grain — same fn_nodes
+    /// down to WHICH declaration node each name resolves to, same ambiguity set, same
+    /// file/import binding tiers, same service ops, same item registry, same precedence
+    /// identity and module count.
+    #[test]
+    fn a_memoized_scope_answers_exactly_as_an_unmemoized_one() {
+        let prepared = colliding_corpus();
+        for entry in ["fixture.alpha", "fixture.beta", "fixture.shared"] {
+            let memoized = claim_scope_for(&prepared, entry).expect("memoized scope");
+            let control = claim_scope_for_without_memos(&prepared, entry).expect("control scope");
+            assert_eq!(
+                memoized.scope_identity, control.scope_identity,
+                "{entry}: precedence identity diverged"
+            );
+            assert_eq!(
+                memoized.module_count, control.module_count,
+                "{entry}: module population diverged"
+            );
+            assert_eq!(
+                memoized.ambiguous_bare_names, control.ambiguous_bare_names,
+                "{entry}: ambiguity population diverged"
+            );
+            assert_eq!(
+                memoized.resolution_fingerprint(),
+                control.resolution_fingerprint(),
+                "{entry}: scope answers diverged between the memoized and unmemoized folds"
+            );
+        }
+    }
+
+    /// THE DISCRIMINATING RED'S SUBJECT, asserted rather than assumed: the two entries really
+    /// do resolve the colliding bare name to DIFFERENT declarations. Without this the
+    /// equivalence assertion above could pass over a corpus where order never decided
+    /// anything, which is the absence-evidence trap — a clean comparison on a sample that
+    /// lacks the discriminating case.
+    #[test]
+    fn the_two_scopes_really_do_disagree_about_the_colliding_name() {
+        let prepared = colliding_corpus();
+        let alpha = claim_scope_for(&prepared, "fixture.alpha").expect("alpha scope");
+        let beta = claim_scope_for(&prepared, "fixture.beta").expect("beta scope");
+        let bare_line = |scope: &PreparedClaimScope| -> String {
+            scope
+                .resolution_fingerprint()
+                .into_iter()
+                .find(|line| line.starts_with("fn\tshared_name\t"))
+                .expect("both scopes bind the colliding bare name")
+        };
+        assert_ne!(
+            bare_line(&alpha),
+            bare_line(&beta),
+            "the fixture must exercise order-dependent resolution, or the equivalence \
+             witness proves nothing about precedence"
+        );
+    }
+
+    /// THE MEMOS ARE ACTUALLY REUSED ACROSS SCOPES, asserted rather than assumed. Without this
+    /// the equivalence test above could be green because the "memoized" path memoized nothing:
+    /// a per-scope cache would answer identically to the control and prove only that two
+    /// unmemoized folds agree.
+    #[test]
+    fn a_second_scope_of_one_subject_reuses_the_first_scopes_memos() {
+        let prepared = colliding_corpus();
+        claim_scope_for(&prepared, "fixture.alpha").expect("first scope");
+        let filled = crate::cli_run::scope_memo_population_for_test(&prepared);
+        assert!(
+            filled.0 > 0 && filled.1 > 0,
+            "the first scope must leave fragments and reached-lists behind: {filled:?}"
+        );
+        claim_scope_for(&prepared, "fixture.beta").expect("second scope");
+        let after = crate::cli_run::scope_memo_population_for_test(&prepared);
+        assert!(
+            after.0 >= filled.0 && after.1 >= filled.1,
+            "the second scope must add to the SAME memos, not start new ones: \
+             {filled:?} then {after:?}"
+        );
+    }
+
+    /// The memo is keyed inside one prepared subject. Two subjects sharing a module NAME must
+    /// not share its fragment: the declarations are different nodes, and serving one for the
+    /// other is a silently wrong resolution rather than a slow one.
+    #[test]
+    fn a_second_subject_does_not_inherit_the_first_subjects_fragments() {
+        let first = colliding_corpus();
+        let second = prepared_from(&[
+            (
+                "workspace/src/alpha.dag",
+                "module fixture.alpha\nfn shared_name() -> Bool { false }\n",
+            ),
+            (
+                "workspace/src/second_only.dag",
+                "module fixture.second_only\nfn only_here() -> Bool { true }\n",
+            ),
+        ]);
+        let from_first = claim_scope_for(&first, "fixture.alpha").expect("first subject scope");
+        let from_second = claim_scope_for(&second, "fixture.alpha").expect("second subject scope");
+        let control = claim_scope_for_without_memos(&second, "fixture.alpha").expect("control");
+        assert_eq!(
+            from_second.resolution_fingerprint(),
+            control.resolution_fingerprint(),
+            "the second subject's scope must answer from its OWN modules"
+        );
+        assert_ne!(
+            from_first.resolution_fingerprint(),
+            from_second.resolution_fingerprint(),
+            "two subjects declaring the same module name must not produce one answer"
+        );
+    }
+}
+
+#[cfg(test)]
 mod changed_witness_projection_tests {
     use super::*;
+
+    /// THE STATE EVERY CHANGED IDENTITY OUTSIDE THE LOCAL-REPO WET LANE IS IN: the lane ran, held,
+    /// and admitted nobody. Named once so the wet witnesses below differ from the others by
+    /// exactly the fact under test.
+    fn no_wet_lane() -> LocalRepoWetLaneOutcome {
+        LocalRepoWetLaneOutcome {
+            scheduled: 0,
+            candidate: TEST_CANDIDATE.to_string(),
+            admitted: HashSet::new(),
+            refusals: Vec::new(),
+        }
+    }
+
+    /// One scheduled row, named once so every cell below differs from the positive by exactly the
+    /// fact under test.
+    fn scheduled_row(identity: &str) -> LocalRepoWetScheduledRow {
+        LocalRepoWetScheduledRow {
+            identity: identity.to_string(),
+            entry: "dag/test/claim/x_test.dag".to_string(),
+            entry_module: "test.claim.x".to_string(),
+            function: "w_holds".to_string(),
+        }
+    }
+
+    fn terminal_row(identity: &str, candidate: &str) -> LocalRepoWetTerminalRow {
+        LocalRepoWetTerminalRow {
+            identity: identity.to_string(),
+            entry: "dag/test/claim/x_test.dag".to_string(),
+            function: "w_holds".to_string(),
+            candidate: candidate.to_string(),
+            observed: LocalRepoWetObserved::Passed,
+        }
+    }
+
+    fn finalize(
+        schedule: &[LocalRepoWetScheduledRow],
+        terminals: Vec<LocalRepoWetTerminalRow>,
+    ) -> Result<LocalRepoWetLaneOutcome, String> {
+        finalize_local_repo_wet_lane(
+            schedule,
+            LocalRepoWetExecution::Ran {
+                candidate: TEST_CANDIDATE.to_string(),
+                terminals,
+            },
+            TEST_CANDIDATE,
+        )
+    }
+
+    /// THE OPPOSITE CONTROL FOR THE INVOCATION WALL, run through the SAME finalizer the required
+    /// floor calls. A nonempty schedule with the executor never invoked reds by name, and the
+    /// message names the arm and the count so the reader is sent to the call site rather than to
+    /// the roster.
+    ///
+    /// It is deliberately not a grep for `run_local_repo_wet_lane` and not a `.dag`-only
+    /// comparison: those establish that a call is spelled somewhere, never that finalization
+    /// refuses when it is not.
+    #[test]
+    fn a_nonempty_schedule_with_no_executor_invocation_refuses_at_finalization() {
+        let refused = finalize_local_repo_wet_lane(
+            &[scheduled_row("test.claim.x.w_holds")],
+            LocalRepoWetExecution::NotInvoked,
+            TEST_CANDIDATE,
+        )
+        .expect_err("a scheduled lane whose executor never ran must refuse");
+        assert!(
+            refused.contains("LocalRepoWetExecutorAbsent") && refused.contains("1 member(s)"),
+            "the refusal must name the arm and how many members went unrun, got: {refused}"
+        );
+    }
+
+    /// THE PAIRED POSITIVE. The same finalizer, the same schedule, an executor that ran this
+    /// candidate and produced the terminal the schedule demands: it holds, and the admitted set is
+    /// DERIVED from that join rather than accepted from the executor.
+    #[test]
+    fn an_executor_that_ran_this_candidate_completely_finalizes() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let outcome = finalize(
+            &schedule,
+            vec![terminal_row("test.claim.x.w_holds", TEST_CANDIDATE)],
+        )
+        .expect("a complete run against this candidate must finalize");
+        assert_eq!(outcome.scheduled, 1);
+        assert!(outcome.admitted.contains("test.claim.x.w_holds"));
+    }
+
+    /// A RECEIPT FROM ANOTHER TREE IS REFUSED BEFORE THE ROSTER IS BLAMED. The executor ran, and
+    /// the schedule is satisfied on its own terms -- what fails is provenance, which is the
+    /// standing this lane's candidate binding exists to make unavailable.
+    #[test]
+    fn an_executor_that_ran_another_candidate_refuses_at_finalization() {
+        let refused = finalize_local_repo_wet_lane(
+            &[],
+            LocalRepoWetExecution::Ran {
+                candidate: "subject-another-tree".to_string(),
+                terminals: Vec::new(),
+            },
+            TEST_CANDIDATE,
+        )
+        .expect_err("a receipt bound to another candidate must refuse");
+        assert!(
+            refused.contains("LocalRepoWetExecutionForeignCandidate"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE FORWARD DIRECTION OF THE JOIN, IN THE HOST. An executor that ran and skipped a scheduled
+    /// member must refuse HERE, not merely in the `.dag` fold: the carrier this finalizer reads
+    /// used to be the executor's own admitted set, so a skipped member finalized green while the
+    /// modeled authority refused it.
+    #[test]
+    fn an_executor_that_ran_but_skipped_a_scheduled_member_refuses_as_missing() {
+        let schedule = [
+            scheduled_row("test.claim.x.w_holds"),
+            scheduled_row("test.claim.x.w_other"),
+        ];
+        let refused = finalize(
+            &schedule,
+            vec![terminal_row("test.claim.x.w_holds", TEST_CANDIDATE)],
+        )
+        .expect_err("a scheduled member with no terminal must refuse");
+        assert!(
+            refused.contains("1 refusal(s)")
+                && refused.contains("LocalRepoWetTerminalMissing")
+                && refused.contains("w_other"),
+            "exactly the skipped member refuses, by name, got: {refused}"
+        );
+    }
+
+    /// THE REVERSE DIRECTION. A terminal for an identity nobody scheduled is a refusal, not a
+    /// bonus admission -- without this an executor could admit anything at all as long as it also
+    /// ran the roster.
+    #[test]
+    fn a_terminal_for_an_unscheduled_identity_refuses_at_finalization() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let refused = finalize(
+            &schedule,
+            vec![
+                terminal_row("test.claim.x.w_holds", TEST_CANDIDATE),
+                terminal_row("test.claim.x.w_nobody_scheduled", TEST_CANDIDATE),
+            ],
+        )
+        .expect_err("an unscheduled terminal must refuse");
+        assert!(
+            refused.contains("1 refusal(s)")
+                && refused.contains("LocalRepoWetTerminalUnscheduled")
+                && refused.contains("w_nobody_scheduled"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE VERDICT CELL. The member ran, for this candidate, from the scheduled source -- and did
+    /// not pass. The lane's one expectation is not met, so it cannot be admitted.
+    #[test]
+    fn a_member_that_ran_and_failed_refuses_at_finalization() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let mut terminal = terminal_row("test.claim.x.w_holds", TEST_CANDIDATE);
+        terminal.observed = LocalRepoWetObserved::Failed;
+        let refused =
+            finalize(&schedule, vec![terminal]).expect_err("a failed member must not be admitted");
+        assert!(
+            refused.contains("LocalRepoWetTerminalVerdictNotExpected")
+                && refused.contains("observed failed"),
+            "got: {refused}"
+        );
+    }
+
+    /// THE ENTRY CELL, which is why the schedule keeps a third writable field. The roster's entry
+    /// must be the source the prepared subject actually resolved for the module; a stale one is a
+    /// refusal rather than an unread string beside a module the executor reached another way.
+    #[test]
+    fn a_terminal_resolved_from_another_source_refuses_as_foreign_entry() {
+        let schedule = [scheduled_row("test.claim.x.w_holds")];
+        let mut terminal = terminal_row("test.claim.x.w_holds", TEST_CANDIDATE);
+        terminal.entry = "dag/test/claim/somewhere_else_test.dag".to_string();
+        let refused = finalize(&schedule, vec![terminal])
+            .expect_err("a roster entry that is not the resolved source must refuse");
+        assert!(
+            refused.contains("LocalRepoWetTerminalForeignEntry")
+                && refused.contains("somewhere_else_test.dag"),
+            "got: {refused}"
+        );
+    }
+
+    const TEST_CANDIDATE: &str = "subject-8993beb0d2808db6";
 
     fn disposition(
         identity: &str,
@@ -6158,6 +7217,8 @@ mod changed_witness_projection_tests {
             terminal,
             &HashSet::new(),
             &HashMap::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         )
     }
 
@@ -6408,6 +7469,8 @@ mod changed_witness_projection_tests {
             )],
             &verdict_only_set(),
             &observation(505),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(rows.len(), 1);
         assert_eq!(
@@ -6457,6 +7520,8 @@ mod changed_witness_projection_tests {
             &[terminal("m.a", ClaimOutcome::Pass)],
             &verdict_only_set(),
             &HashMap::new(),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(
             rows[0].standing,
@@ -6477,9 +7542,87 @@ mod changed_witness_projection_tests {
             &[terminal("m.a", ClaimOutcome::Fail)],
             &verdict_only_set(),
             &observation(505),
+            &no_wet_lane(),
+            TEST_CANDIDATE,
         );
         assert_eq!(rows[0].standing, "planned-without-terminal-verdict");
         assert!(rows[0].blocks);
+    }
+
+    /// A CHANGED IDENTITY WHOSE HERMETIC ROUTE GAPPED IS ADMITTED ONLY WITH ITS WET TERMINAL, and
+    /// this pair is the discrimination: the SAME row, the same outcome, differing only in whether
+    /// the lane admitted the identity against this candidate. The projection realizes
+    /// `v2.workflow.floor_changed_witness` `HermeticRouteGapHeldAndWetPassed`, whose own arms
+    /// execute in `v2/test/floor_changed_witness_test.dag`; this control is the host half.
+    #[test]
+    fn a_route_gap_is_admitted_with_a_wet_terminal_and_blocks_without_one() {
+        let changed = ["m.a".to_string()];
+        let dispositions = [disposition(
+            "m.a",
+            RequiredFloorDisposition::PlannedAsChangedWitness,
+        )];
+        // THE OUTCOME MUST BE A REAL ROUTE GAP, not a pass: `claim_disposition` maps
+        // `HostEffectRefused` onto `RouteGapBeforeVerdict`, and that is the only outcome the joined
+        // arm applies to. A fixture that passed here would assert nothing about the join.
+        let terminal = [terminal(
+            "m.a",
+            ClaimOutcome::HostEffectRefused {
+                operation: "Dir".to_string(),
+                ground: v1_interpreter::HermeticEffectGround::NoMockResponse,
+            },
+        )];
+        let admitting = |candidate: &str, refusals: Vec<String>| LocalRepoWetLaneOutcome {
+            scheduled: 1,
+            candidate: candidate.to_string(),
+            admitted: ["m.a".to_string()].into_iter().collect(),
+            refusals,
+        };
+        let project = |lane: &LocalRepoWetLaneOutcome| {
+            changed_witness_projection_rows(
+                &changed,
+                &dispositions,
+                &terminal,
+                &HashSet::new(),
+                &HashMap::new(),
+                lane,
+                TEST_CANDIDATE,
+            )
+        };
+
+        let with_wet = project(&admitting(TEST_CANDIDATE, Vec::new()));
+        assert_eq!(with_wet.len(), 1);
+        assert_eq!(
+            with_wet[0].standing,
+            "hermetic-route-gap-held-and-wet-passed"
+        );
+        assert!(!with_wet[0].blocks);
+
+        // NO TERMINAL AT ALL.
+        let without_wet = project(&no_wet_lane());
+        assert_eq!(without_wet[0].standing, "planned-without-terminal-verdict");
+        assert!(
+            without_wet[0].blocks,
+            "a route gap with no wet terminal must still block"
+        );
+
+        // A TERMINAL FROM ANOTHER TREE. Set membership alone would accept this, which is exactly
+        // the "it passed somewhere" standing the candidate binding exists to refuse.
+        let foreign = project(&admitting("subject-0000000000000000", Vec::new()));
+        assert!(
+            foreign[0].blocks,
+            "an admission bound to another candidate must not green this run"
+        );
+
+        // THE LANE ITSELF DISAGREED. One member admitted while the lane's schedule and terminals
+        // do not join is a broken roster supplying evidence for its intact rows.
+        let refused = project(&admitting(
+            TEST_CANDIDATE,
+            vec!["m.b: wet terminal missing".to_string()],
+        ));
+        assert!(
+            refused[0].blocks,
+            "an admission under a refused lane join must not green this run"
+        );
     }
 
     /// A cost-debt row planned by the changed override is NOT stale, and an ordinarily planned
@@ -6504,5 +7647,104 @@ mod changed_witness_projection_tests {
             rows.iter().find(|(q, _)| *q == "m.b").map(|(_, s)| *s),
             Some(CostDebtRosterStanding::DeclaredButNotWithheld)
         );
+    }
+}
+
+#[cfg(test)]
+mod expected_red_roster_join_suppression_tests {
+    use crate::v1_compiler_expected_red_roster_join::{
+        disposition_label, disposition_reason, expected_red_roster_join_not_evaluated,
+        expected_red_roster_join_roster_len, expected_red_roster_join_suppressed,
+        finalize_not_observed, new_expected_red_roster_join_report, record_suppressed,
+        ExpectedRedSuppressionGround,
+    };
+    use std::rc::Rc;
+
+    fn report_over(
+        identities: &[&str],
+    ) -> Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport> {
+        new_expected_red_roster_join_report(
+            Some("fixture-head".to_string()),
+            "fixture".to_string(),
+            Rc::new(
+                identities
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<im::Vector<String>>(),
+            ),
+        )
+    }
+
+    /// A suppressed identity is IN the report and carries the ground that removed it. This is the
+    /// repair's whole subject: before it, a suppressed identity was absent from the roster the
+    /// report was built over, so the run_note's "every enrolled identity" sentence described a
+    /// population the artifact did not contain.
+    #[test]
+    fn a_suppressed_identity_is_reported_with_its_ground() {
+        let report = report_over(&["a.b.c", "d.e.f"]);
+        let report = record_suppressed(
+            report,
+            "a.b.c".to_string(),
+            ExpectedRedSuppressionGround::OutsideRequiredGate,
+        );
+        assert_eq!(expected_red_roster_join_roster_len(report.clone()), 2);
+        assert_eq!(expected_red_roster_join_suppressed(report.clone()), 1);
+        let row = report
+            .rows
+            .iter()
+            .find(|r| r.identity == "a.b.c")
+            .expect("suppressed identity is in the report");
+        assert_eq!(disposition_label(row.disposition.clone()), "suppressed");
+        assert_eq!(
+            disposition_reason(row.disposition.clone()),
+            "suppressed_outside_required_gate"
+        );
+    }
+
+    /// THE DISCRIMINATING RED, and it is not the arm above. `finalize_not_observed` rewrites every
+    /// row still carrying the initial placeholder into `not_in_executed_manifest` -- which is TRUE
+    /// of a row nobody executed and FALSE of a row nobody attempted. If it reached suppressed rows,
+    /// the artifact would report the 39 outside-gate identities as "no matching claim executed",
+    /// losing the only fact that distinguishes a dormant enrolment from an unobserved one, and
+    /// every assertion in the test above would still pass because it runs before finalize.
+    #[test]
+    fn finalize_does_not_overwrite_a_suppressed_row_with_not_in_executed_manifest() {
+        let report = report_over(&["a.b.c", "d.e.f"]);
+        let report = record_suppressed(
+            report,
+            "a.b.c".to_string(),
+            ExpectedRedSuppressionGround::WithheldCostDebt,
+        );
+        let report = finalize_not_observed(report);
+        let suppressed = report
+            .rows
+            .iter()
+            .find(|r| r.identity == "a.b.c")
+            .expect("suppressed identity survives finalize");
+        assert_eq!(
+            disposition_label(suppressed.disposition.clone()),
+            "suppressed"
+        );
+        assert_eq!(
+            disposition_reason(suppressed.disposition.clone()),
+            "suppressed_withheld_cost_debt"
+        );
+        // The positive control: an ordinary unobserved row IS finalized, so the assertion above
+        // cannot be satisfied by finalize doing nothing at all.
+        let unobserved = report
+            .rows
+            .iter()
+            .find(|r| r.identity == "d.e.f")
+            .expect("the other identity is present");
+        assert_eq!(
+            disposition_label(unobserved.disposition.clone()),
+            "not_evaluated"
+        );
+        assert_eq!(
+            disposition_reason(unobserved.disposition.clone()),
+            "not_in_executed_manifest"
+        );
+        assert_eq!(expected_red_roster_join_not_evaluated(report.clone()), 1);
+        assert_eq!(expected_red_roster_join_suppressed(report), 1);
     }
 }
