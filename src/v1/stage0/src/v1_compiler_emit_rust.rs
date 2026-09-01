@@ -9202,7 +9202,11 @@ pub fn reference_derived_use_line_plan(
     Some(info) => (info.module_name.clone() == provider.clone()),
     std::option::Option::None => false,
 } { __result.push(name); } } __result });
-let block = emit_specific_import_block(provider.clone(), crate::v1_compiler_emit_core_support::module_to_filename(provider.clone()), names.clone(), emit_info.clone(), registry.clone(), local_type_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
+let plan_module_env = match v1_rt::map_get(&module_index.by_name.clone(), this_module_name.clone()) {
+    Some(tm) => Some(tm.type_env.clone()),
+    std::option::Option::None => std::option::Option::None,
+};
+let block = emit_specific_import_block(provider.clone(), crate::v1_compiler_emit_core_support::module_to_filename(provider.clone()), names.clone(), emit_info.clone(), registry.clone(), local_type_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone(), plan_module_env.clone());
 let block_lines = if (block.clone() == "".to_string()) {
                 Rc::new(vec![])
             } else {
@@ -9646,6 +9650,7 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
             typed_module.items.clone(),
+            Some(scope.type_env.clone()),
         );
         let dag_import_lines = if (imports_str.clone() == "".to_string()) {
             Rc::new(vec![])
@@ -11942,6 +11947,25 @@ pub fn import_variant_parent_for_name(
     }
 }
 
+pub fn import_name_resolves_to_kernel(name: String, module_env: Option<Rc<TypeEnv>>) -> bool {
+    match module_env.clone() {
+        std::option::Option::None => false,
+        Some(env) => {
+            match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
+                std::option::Option::None => false,
+                Some(n) => match n.ident_span.clone() {
+                    Some(sp) => {
+                        ((v1_rt::string_contains(&sp.file.clone(), "<kernel:".to_string())
+                            && (n.connective.clone() == Connective::NoConnective))
+                            && ((n.children.clone().len() as i64) == 0))
+                    }
+                    std::option::Option::None => false,
+                },
+            }
+        }
+    }
+}
+
 pub fn emit_specific_import_block(
     import_module: String,
     mod_name: String,
@@ -11953,22 +11977,34 @@ pub fn emit_specific_import_block(
     typed_modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
+    module_env: Option<Rc<TypeEnv>>,
 ) -> String {
     {
         let type_summaries = emit_info.type_summaries.clone();
         let deduped_names = crate::v1_compiler_emit_core_support::unique_strings(Rc::new({
             let mut __result = Vec::new();
-            for n in filtered_names.iter().cloned() {
-                if {
-                    let mut __all = true;
-                    for ln in local_names.iter().cloned() {
-                        if !(ln.clone() != n.clone()) {
-                            __all = false;
-                            break;
+            for n in Rc::new({
+                let mut __result = Vec::new();
+                for n in filtered_names.iter().cloned() {
+                    if {
+                        let mut __all = true;
+                        for ln in local_names.iter().cloned() {
+                            if !(ln.clone() != n.clone()) {
+                                __all = false;
+                                break;
+                            }
                         }
+                        __all
+                    } {
+                        __result.push(n);
                     }
-                    __all
-                } {
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                if !import_name_resolves_to_kernel(n.clone(), module_env.clone()) {
                     __result.push(n);
                 }
             }
@@ -13206,6 +13242,7 @@ pub fn emit_imports(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     module_index: Rc<ModuleIndex>,
     supplement_items: Rc<Vec<Rc<Node>>>,
+    module_env: Option<Rc<TypeEnv>>,
 ) -> String {
     if ((imports.clone().len() as i64) == 0) {
         "".to_string()
@@ -13233,7 +13270,7 @@ let block = if mod_has_wildcard.clone() {
                         let wildcard_line = v1_rt::concat(v1_rt::concat("use crate::".to_string(), mod_name.clone()), "::*;".to_string());
 let reexport_surface = wildcard_reexport_surface_names(import_module.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
 let merged_specific = crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(Rc::new({ let mut __result = Vec::new(); for imp in Rc::new({ let mut __result = Vec::new(); for imp in mod_imports.iter().cloned() { if (crate::v1_std_core::import_is_all(imp.clone()) == false) { __result.push(imp); } } __result }).iter().cloned() { __result.extend((*crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())).iter().cloned()); } __result }), reexport_surface.clone()));
-let specific_block = emit_specific_import_block(import_module.clone(), mod_name.clone(), merged_specific.clone(), emit_info.clone(), registry.clone(), local_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
+let specific_block = emit_specific_import_block(import_module.clone(), mod_name.clone(), merged_specific.clone(), emit_info.clone(), registry.clone(), local_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone(), module_env.clone());
 if (specific_block.clone() != "".to_string()) {
                             v1_rt::concat(v1_rt::concat(wildcard_line.clone(), "\n".to_string()), specific_block.clone())
                         } else {
@@ -13245,7 +13282,7 @@ if (specific_block.clone() != "".to_string()) {
                         let specific_names = Rc::new({ let mut __result = Vec::new(); for imp in mod_imports.iter().cloned() { __result.extend((*crate::v1_std_core::import_specific_names_at(imp.clone(), source_indices.clone())).iter().cloned()); } __result });
 let synth_for_module = module_data_field_struct_import_names(supplement_items.clone(), emit_info.type_summaries.clone(), import_module.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone());
 let merged_specific = crate::v1_compiler_emit_core_support::unique_strings(v1_rt::concat(specific_names.clone(), synth_for_module.clone()));
-emit_specific_import_block(import_module.clone(), mod_name.clone(), merged_specific.clone(), emit_info.clone(), registry.clone(), local_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone())
+emit_specific_import_block(import_module.clone(), mod_name.clone(), merged_specific.clone(), emit_info.clone(), registry.clone(), local_names.clone(), export_sets.clone(), typed_modules.clone(), source_indices.clone(), module_index.clone(), module_env.clone())
 }
                 };
 Rc::new(block.clone().split(&"\n".to_string()).map(|s| s.to_string()).collect::<Vec<_>>())
