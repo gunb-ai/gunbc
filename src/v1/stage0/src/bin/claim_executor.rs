@@ -158,9 +158,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut required_ci_lane: Option<RequiredCiLane> = None;
     let mut required_v2_emission_mode = false;
     let mut required_emit_compile_mode = false;
-    let mut fixture_closure_compile_mode = false;
-    let mut fixture_closure_pair_mode = false;
-    let mut fixture_closure_paths: Vec<String> = Vec::new();
     let mut required_regen_mode = false;
     let mut emit_partition_crates_mode = false;
     let mut emit_partition_crates_write = false;
@@ -214,41 +211,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             // THE PHASE AS ITS OWN ENTRY POINT, for the reason `--required-v2-emission` is one:
             // running this alone is a real local action, and it runs the SAME producer the
             // required phase runs, so a green here and a green there cannot be two facts.
-            // THE FIXTURE-CALLABLE ROUTE AS ITS OWN ENTRY POINT.
-            //
-            // WHO THIS IS FOR, because it is not the required phase's caller. A lane holding a
-            // two-arm emitter discriminator -- one accepted `.dag` source, two emitter
-            // behaviours, the arms separated only by what rustc says about the EMITTED crate --
-            // has nowhere to run it: the text oracles stop at emitted bytes, and the phase above
-            // takes only the entries its roster names. This mode takes `--fixture <path>` as many
-            // times as there are arms and reports EACH ARM'S DIAGNOSTIC.
-            //
-            // IT REPORTS; IT DOES NOT ADJUDICATE, and the distinction is the whole contract. A
-            // red arm is the EXPECTED result for half of a discriminator, so a red may not be
-            // this mode's failure -- the caller compares the arms, and a mode that exited
-            // nonzero on a red would make the discriminator's own passing state look like a
-            // broken run. What DOES stop the line is the route failing to reach a verdict at
-            // all (`CrateNotWritten`): then no arm was measured and there is nothing to compare.
-            "--fixture-closure-compile" => {
-                fixture_closure_compile_mode = true;
-            }
-            // THE ROUTE'S OWN ENROLLED DISCRIMINATION, RUNNABLE ON ITS OWN.
-            //
-            // It is also a conjunct of `--required-emit-compile`, which is where it gates. It has
-            // its own flag because that mode walks the whole entry roster first, and evidence
-            // nobody can afford to run is evidence that stops being run. This form compiles two
-            // closures and nothing else.
-            //
-            // IT IS AN EXPLICIT FLAG AND NOT THE NO-ARGUMENT DEFAULT OF THE MODE ABOVE. A default
-            // that silently swaps in a different subject when the caller passed no fixture is how
-            // a run reports on arms nobody asked for.
-            "--fixture-closure-pair" => {
-                fixture_closure_pair_mode = true;
-            }
-            "--fixture" => {
-                i += 1;
-                fixture_closure_paths.push(require_path_value(&args, i, "--fixture")?);
-            }
             "--required-emit-compile" => {
                 required_emit_compile_mode = true;
             }
@@ -362,81 +324,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                 };
             }
         }
-    }
-
-    // ORDERED AHEAD OF THE SOURCE-ROOT REQUIREMENT, for the reason `--emit-partition-crates`
-    // is: this mode takes NO roots. The route resolves a fixture's imports against the live tree
-    // through the witness roots the emit host already uses, so the generic guard below would
-    // refuse the only invocation this mode has.
-    if fixture_closure_pair_mode {
-        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
-        let pair = v1_compiler::cli_run::run_fixture_closure_discrimination(&probe_root);
-        for line in v1_compiler::cli_run::fixture_discrimination_report(&pair) {
-            eprintln!("{line}");
-        }
-        // HERE THE PAIR IS THE SUBJECT, so a red arm that failed to be red IS a failure -- the
-        // opposite contract from `--fixture-closure-compile`, where a red is one arm of someone
-        // else's discriminator and this binary is not the one comparing them.
-        return if v1_compiler::cli_run::fixture_discrimination_passed(&pair) {
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
-    }
-
-    if fixture_closure_compile_mode {
-        // AN EMPTY FIXTURE LIST REFUSES. Zero arms measured is the mode reaching no subject, not
-        // zero failures, and reporting it clean is the empty-observation narrow.
-        if fixture_closure_paths.is_empty() {
-            eprintln!(
-                "fixture-closure-compile: no --fixture given; the mode has no subject and \
-                 refuses rather than reporting a clean run over nothing"
-            );
-            return Err(ExitCode::from(2));
-        }
-        let probe_root = v1_compiler::cli_run::local_emit_compile_probe_root();
-        let mut unanswered = 0usize;
-        for path in &fixture_closure_paths {
-            let source = match std::fs::read_to_string(path) {
-                Ok(text) => text,
-                Err(e) => {
-                    eprintln!("fixture-closure-compile: {path} unreadable: {e}");
-                    unanswered += 1;
-                    continue;
-                }
-            };
-            let outcome = v1_compiler::cli_run::fixture_closure_rustc_verdict(&source, &probe_root);
-            eprintln!(
-                "fixture-closure-compile: {path} {}",
-                v1_compiler::cli_run::fixture_closure_summary(&outcome)
-            );
-            for line in v1_compiler::cli_run::fixture_arm_diagnostic_lines(path, &outcome) {
-                eprintln!("fixture-closure-compile: {line}");
-            }
-            if let Some(attributed) =
-                v1_compiler::cli_run::fixture_closure_attributed_line(&outcome)
-            {
-                eprintln!("fixture-closure-compile: {path} attributed {attributed}");
-            }
-            // AN ARM IS ANSWERED ONLY IF RUSTC REACHED A VERDICT ON IT. A red is answered; a
-            // fixture gunbc refused, an unwritten crate and a cargo run that never completed are
-            // not, and this mode must not exit successfully over any of them (review 58120).
-            if !v1_compiler::cli_run::fixture_closure_reached_rustc(&outcome) {
-                unanswered += 1;
-            }
-        }
-        eprintln!(
-            "fixture-closure-compile: arms={} unanswered={}",
-            fixture_closure_paths.len(),
-            unanswered
-        );
-        // A RED ARM IS NOT THIS MODE'S FAILURE -- it is half of what a discriminator is for. Only
-        // an arm the route could not answer stops the line.
-        return if unanswered == 0 {
-            Ok(ExitCode::SUCCESS)
-        } else {
-            Err(ExitCode::from(1))
-        };
     }
 
     if source_roots.is_empty() {
@@ -909,17 +796,6 @@ fn run() -> Result<ExitCode, ExitCode> {
                         }
                     }
                 }
-                // THE FIXTURE ROUTE'S DISCRIMINATING PAIR RUNS IN THE SAME MODE AND THE SAME
-                // PROCESS. It is not a second gate: the entry roster and the fixture pair are two
-                // subjects of ONE question -- does an emitted closure survive rustc -- and running
-                // them apart would let one green stand for the other. It runs after the roster so
-                // the shared target directory is already warm, and its verdict joins this mode's
-                // exit status rather than being printed beside it.
-                let pair = v1_compiler::cli_run::run_fixture_closure_discrimination(&probe_root);
-                for line in v1_compiler::cli_run::fixture_discrimination_report(&pair) {
-                    eprintln!("required-emit-compile: {line}");
-                }
-                let pair_passed = v1_compiler::cli_run::fixture_discrimination_passed(&pair);
                 let (report, retention_error) = v1_compiler::cli_run::emit_compile_report(
                     &outcomes,
                     &roots,
@@ -929,7 +805,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                 for line in report {
                     eprintln!("{line}");
                 }
-                return if not_passed == 0 && retention_error.is_none() && pair_passed {
+                return if not_passed == 0 && retention_error.is_none() {
                     Ok(ExitCode::SUCCESS)
                 } else {
                     Err(ExitCode::from(1))

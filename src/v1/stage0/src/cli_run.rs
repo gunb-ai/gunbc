@@ -38756,14 +38756,25 @@ pub use emitted_closure_compile_host::{
     cargo_verdict_stderr_tail, emit_compile_modules_reached, emit_compile_outcome_passed,
     emit_compile_outcome_summary, emit_compile_report, emit_compile_selection,
     emit_compile_selection_not_selected_digest, emit_compile_selection_selected_digest,
-    emit_compile_selection_universe_digest, fixture_arm_diagnostic_lines,
-    fixture_closure_attributed_line, fixture_closure_compiled, fixture_closure_reached_rustc,
-    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
-    fixture_discrimination_report, local_emit_compile_probe_root,
+    emit_compile_selection_universe_digest, local_emit_compile_probe_root,
     required_ci_emit_compile_probe_root, required_emit_compile_entries,
-    retain_not_selected_identities, run_fixture_closure_discrimination, run_required_emit_compile,
-    CargoVerdict, EmitCompileOutcome, EmitCompileSelection, FixtureClosureOutcome,
-    FixtureDiscrimination, MutationVerdict,
+    retain_not_selected_identities, run_required_emit_compile, CargoVerdict, EmitCompileOutcome,
+    EmitCompileSelection, MutationVerdict,
+};
+
+/// THE FIXTURE ROUTE IS TEST-FACING ONLY, AND THAT IS WHY IT HAS ITS OWN `use` RATHER THAN A LINE
+/// IN THE LIST ABOVE.
+///
+/// `pub(crate)` under `#[cfg(test)]`: the generated `compiler_tests` module is a sibling module in
+/// this crate, so it needs crate visibility to reach the route and needs nothing wider. Putting
+/// these names in the production list would place them on the emitted seed's exported surface --
+/// PublicSurfaceGrowth against a seed frozen for growth. An internal test function does not become
+/// public surface merely because Rust needs a path to it.
+#[cfg(test)]
+pub(crate) use emitted_closure_compile_host::{
+    fixture_arm_diagnostic_lines, fixture_closure_attributed_line, fixture_closure_reached_rustc,
+    fixture_closure_rustc_verdict, fixture_closure_summary, fixture_discrimination_passed,
+    fixture_discrimination_report, run_fixture_closure_discrimination, FixtureClosureOutcome,
 };
 
 /// The authority's own declared module path, for consumers outside this module.

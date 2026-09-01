@@ -78,9 +78,30 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // silently on the next declaration added, and nothing in the required run compares the two. Its
 // dissolution is the same v1-hand-queue-drain lane this obligation already names.
 //
-// WHAT THE EXECUTED EVIDENCE IS, because the seed's own unit tests are not it. The Rust suite was
-// removed from CI on 2026-07-11, so nothing under #[cfg(test)] executes on the merge path and none
-// of it may be cited as coverage. The executed evidence is the phase itself:
+// WHAT THE EXECUTED EVIDENCE IS, because the seed's own unit tests are not it. THE SENTENCE THAT
+// STOOD HERE UNTIL 2026-09-01 SAID THE RUST SUITE WAS REMOVED FROM CI ON 2026-07-11 AND THAT
+// NOTHING UNDER #[cfg(test)] EXECUTES ON THE MERGE PATH. THAT IS FALSE AND IS CORRECTED RATHER
+// THAN LEFT STANDING: `gunbc.witness_floor_workflow` runs a `rust-unit-tests` job executing
+// `repo_self_test_command` (`cargo test --release -p v1-compiler --lib`) on every push and pull
+// request. A known-false paragraph does not get to survive because it predates the change that
+// noticed it -- it is premise contamination, and a reader planning against it plans against a
+// CI shape that has not existed for six weeks.
+//
+// WHAT IS TRUE, AT THE GRAIN THE DISTINCTION ACTUALLY HAS, because the corrected sentence is
+// weaker than it first looks and the weakness is the point. The fixture discriminator
+// (`fixture_closure_rustc_discrimination`, authored in `v1.compiler.compiler_tests_rust` and
+// emitted into `compiler_tests.rs`) is ENROLLED AND AVAILABLE in `rust-unit-tests` via
+// `cargo test --release -p v1-compiler --lib fixture_closure_rustc_discrimination -- --ignored`.
+// It DOES NOT EXECUTE BY DEFAULT on push or pull request: it is `#[ignore]`d because it spawns
+// cargo and compiles two emitted crates, which is minutes inside a suite that runs on every push.
+// And `rust-unit-tests` is not a `needs` of the required aggregate, so even un-ignored a red
+// there would be visible and would not block through the required context. THE EVIDENCE IS
+// THEREFORE CANDIDATE EVIDENCE -- reviewable on demand, no wall -- and an `#[ignore]` is a COST
+// DECISION AND NOT A RUNG. Nothing here may be cited as coverage that executes on the merge path,
+// which is what the false sentence above got right for the wrong reason.
+//
+// The older reason still stands, and it is a different claim from the paragraph above: the
+// phase's OWN executed evidence is the phase itself, not any unit test.
 // establish_discriminating_red injects one type error into one emitted file on EVERY required run,
 // requires it to fail alone, restores the bytes and requires the green back -- and a mutation that
 // fails to go red is a PHASE FAILURE, not a note. That is DESIGN 4b's authorable-RED question
@@ -139,13 +160,20 @@ import gunbc.seed_growth { SeedGrowthJustification }
 // rung for the text-boundary class, which stays exactly where its own row puts it -- what changes
 // is that the row's emitted-Rust half now has an executing probe instead of a sentence.
 //
-// WHY IT IS NOT A cargo test. The route spawns cargo against the workspace target directory, and
-// a test binary launched BY cargo would be a nested cargo over the directory the outer one holds.
-// It does not fail there, it BLOCKS, which is worse: a lock wait is indistinguishable from a slow
-// legitimate build. Measured, at the cost of a thirty-minute remote run terminated rather than
-// concluded, and filed as gunbc.recurring_failure_mode instrument_reenters_its_own_build_tool --
-// an instrument may not be hosted by its own subject's actuator. The executing consumer is
-// therefore the binary, exactly as the entry roster's is.
+// WHERE THE CONSUMER LIVES, AND A FALSIFIED CLAIM RECORDED RATHER THAN QUIETLY DROPPED. An
+// earlier revision of this lane asserted that a cargo-test-hosted consumer DEADLOCKS -- that a
+// test binary launched by cargo, spawning cargo at the same target directory, blocks on the outer
+// lock. THAT IS FALSE AND WAS NEVER MEASURED: it was inferred from a thirty-minute run that
+// produced no output and was terminated. Measured properly, from inside a cargo-launched test
+// binary: elapsed 215s, exit status 0, and cargo emitted no `Blocking waiting for file lock`
+// line at all. The run completed. What the original silence actually was is an ordinary REBUILD --
+// an inner `cargo build --release` from an outer `cargo test --release` does not share
+// fingerprints, because a test build resolves features differently, so the inner invocation
+// recompiles part of the dependency graph before it reaches the emitted closure. Two long builds
+// in series, working the whole time. The claim is recorded here in the past tense, with what
+// replaced it, because a mechanism asserted from a silence is exactly what this file's own
+// evidence discipline exists to prevent, and deleting the sentence would leave the next author
+// free to infer it again.
 //
 // HAND-ITEM DELTA FOR THIS LANE: fifteen declarations, every one enumerated in the roster below
 // rather than counted -- write_probe_crate_files, FixtureClosureOutcome, fixture_closure_compiled,

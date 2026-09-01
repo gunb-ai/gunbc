@@ -951,7 +951,8 @@ pub fn run_emit_compile_entry(
 /// diagnostic — not a red. Collapsing the two would let a fixture that gunbc rejected be reported
 /// as "rustc refused the emitted bytes", which is a claim about bytes that were never emitted.
 #[derive(Debug, Clone)]
-pub enum FixtureClosureOutcome {
+#[cfg(test)]
+pub(crate) enum FixtureClosureOutcome {
     /// The v1 compiler refused the fixture itself: emission never happened, so rustc has no
     /// subject. `first` names one hard diagnostic so the caller can say WHICH refusal.
     SourceRefused {
@@ -972,7 +973,8 @@ pub enum FixtureClosureOutcome {
 /// True only when cargo COMPLETED with status zero over the written closure. Every other arm —
 /// a gunbc refusal, an unwritten crate, a killed toolchain — answers false, because none of them
 /// is evidence the emitted program type-checks.
-pub fn fixture_closure_compiled(outcome: &FixtureClosureOutcome) -> bool {
+#[cfg(test)]
+pub(crate) fn fixture_closure_compiled(outcome: &FixtureClosureOutcome) -> bool {
     match outcome {
         FixtureClosureOutcome::Measured { cargo, .. } => cargo_verdict_compiled(cargo),
         _ => false,
@@ -997,7 +999,8 @@ pub fn fixture_closure_compiled(outcome: &FixtureClosureOutcome) -> bool {
 /// reaching rustc, which is the fail-open §5 forbids and which contradicted this module's own
 /// outcome separation. A predicate beside the carrier, rather than a `matches!` at each caller,
 /// is what stops the next caller from enumerating a different subset of the same arms.
-pub fn fixture_closure_reached_rustc(outcome: &FixtureClosureOutcome) -> bool {
+#[cfg(test)]
+pub(crate) fn fixture_closure_reached_rustc(outcome: &FixtureClosureOutcome) -> bool {
     match outcome {
         FixtureClosureOutcome::Measured { cargo, .. } => {
             matches!(cargo, CargoVerdict::Completed { .. })
@@ -1013,14 +1016,16 @@ pub fn fixture_closure_reached_rustc(outcome: &FixtureClosureOutcome) -> bool {
 /// RED". The subject is one module inside a closure of hundreds; a bare non-zero status says the
 /// crate did not build and says nothing about which member broke. So the red direction is only
 /// claimable when a diagnostic line names the fixture's emitted file, which is what this returns.
-pub fn fixture_closure_attributed_line(outcome: &FixtureClosureOutcome) -> Option<&str> {
+#[cfg(test)]
+pub(crate) fn fixture_closure_attributed_line(outcome: &FixtureClosureOutcome) -> Option<&str> {
     match outcome {
         FixtureClosureOutcome::Measured { cargo, .. } => cargo_verdict_probe_line(cargo),
         _ => None,
     }
 }
 
-pub fn fixture_closure_summary(outcome: &FixtureClosureOutcome) -> String {
+#[cfg(test)]
+pub(crate) fn fixture_closure_summary(outcome: &FixtureClosureOutcome) -> String {
     match outcome {
         FixtureClosureOutcome::SourceRefused {
             hard_diagnostics,
@@ -1046,6 +1051,7 @@ pub fn fixture_closure_summary(outcome: &FixtureClosureOutcome) -> String {
 /// module line rather than passed in beside it: a caller-supplied symbol could name a module the
 /// fixture does not declare, and every red would then be reported as unattributed while the
 /// fixture's real diagnostics sat in the same stderr.
+#[cfg(test)]
 fn fixture_rust_module(source: &str) -> Result<String, String> {
     source
         .lines()
@@ -1059,7 +1065,11 @@ fn fixture_rust_module(source: &str) -> Result<String, String> {
 /// The fixture's imports are resolved transitively against the live tree by
 /// `resolve_virtual_source_with_imports` — the same resolver `compile_dag_rust_emit_check` uses,
 /// so a fixture that compiles under one reaches the same closure under the other.
-pub fn fixture_closure_rustc_verdict(source: &str, probe_root: &Path) -> FixtureClosureOutcome {
+#[cfg(test)]
+pub(crate) fn fixture_closure_rustc_verdict(
+    source: &str,
+    probe_root: &Path,
+) -> FixtureClosureOutcome {
     let rust_module = match fixture_rust_module(source) {
         Ok(module) => module,
         Err(cause) => return FixtureClosureOutcome::CrateNotWritten { cause },
@@ -1140,9 +1150,10 @@ pub fn fixture_closure_rustc_verdict(source: &str, probe_root: &Path) -> Fixture
 /// diagnostic line NAMES the fixture's own emitted module — otherwise the report says
 /// `unattributed` and the pair fails, rather than crediting a red the fixture did not cause.
 #[derive(Debug, Clone)]
-pub struct FixtureDiscrimination {
-    pub green: FixtureClosureOutcome,
-    pub red: FixtureClosureOutcome,
+#[cfg(test)]
+pub(crate) struct FixtureDiscrimination {
+    pub(crate) green: FixtureClosureOutcome,
+    pub(crate) red: FixtureClosureOutcome,
 }
 
 /// THE TWO ARMS ARE FIXTURE FILES, NOT STRING CONSTANTS IN THIS FILE, and the difference is
@@ -1152,15 +1163,18 @@ pub struct FixtureDiscrimination {
 /// the arm anyone else runs.
 ///
 /// The positive control has no imports, so its closure is its own emitted module plus the runtime.
+#[cfg(test)]
 const FIXTURE_GREEN_PATH: &str = "fixtures/fixture_closure_rustc/green_probe.dag";
 
 /// The meaning-level red: `concat` answers the kernel string, the boundary declares the
 /// structural `v2.std.text.String`, and no homomorphism row stands between them.
+#[cfg(test)]
 const FIXTURE_RED_PATH: &str = "fixtures/fixture_closure_rustc/text_nonliteral_probe.dag";
 
 /// AN UNREADABLE ARM IS `CrateNotWritten`, NAMING THE PATH -- never an empty source quietly
 /// compiled. An empty `.dag` text emits a crate that builds, so substituting one would turn a
 /// missing fixture into a GREEN control and a red arm that stopped discriminating.
+#[cfg(test)]
 fn fixture_arm_verdict(rel_path: &str, probe_root: &Path) -> FixtureClosureOutcome {
     let path = process_workspace_root().join(rel_path);
     match std::fs::read_to_string(&path) {
@@ -1171,7 +1185,8 @@ fn fixture_arm_verdict(rel_path: &str, probe_root: &Path) -> FixtureClosureOutco
     }
 }
 
-pub fn run_fixture_closure_discrimination(probe_root: &Path) -> FixtureDiscrimination {
+#[cfg(test)]
+pub(crate) fn run_fixture_closure_discrimination(probe_root: &Path) -> FixtureDiscrimination {
     FixtureDiscrimination {
         green: fixture_arm_verdict(FIXTURE_GREEN_PATH, probe_root),
         red: fixture_arm_verdict(FIXTURE_RED_PATH, probe_root),
@@ -1184,7 +1199,8 @@ pub fn run_fixture_closure_discrimination(probe_root: &Path) -> FixtureDiscrimin
 /// A `SourceRefused` red does NOT pass. gunbc refusing the fixture is a different and better
 /// outcome — it means the wall climbed — but it is not this pair's subject, and reporting it as
 /// a pass here would let the route's evidence green while nothing reached rustc at all.
-pub fn fixture_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
+#[cfg(test)]
+pub(crate) fn fixture_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
     fixture_closure_compiled(&pair.green)
         && fixture_closure_reached_rustc(&pair.red)
         && !fixture_closure_compiled(&pair.red)
@@ -1199,7 +1215,8 @@ pub fn fixture_discrimination_passed(pair: &FixtureDiscrimination) -> bool {
 /// arms were red cannot tell those two apart, so it cannot discriminate the emitter behaviours
 /// that produced them. So every arm's diagnostic lines are reported, red or green, and the
 /// summary sits beside them rather than replacing them.
-pub fn fixture_discrimination_report(pair: &FixtureDiscrimination) -> Vec<String> {
+#[cfg(test)]
+pub(crate) fn fixture_discrimination_report(pair: &FixtureDiscrimination) -> Vec<String> {
     let mut lines = vec![format!(
         "fixture-closure: control {}",
         fixture_closure_summary(&pair.green)
@@ -1238,7 +1255,11 @@ pub fn fixture_discrimination_report(pair: &FixtureDiscrimination) -> Vec<String
 /// A gunbc refusal reports the diagnostic gunbc produced; a cargo run reports what cargo said.
 /// Neither is silently rendered as the other, because the reader's next move differs: one names
 /// a fixture the compiler rejected, the other names emitted bytes rustc rejected.
-pub fn fixture_arm_diagnostic_lines(label: &str, outcome: &FixtureClosureOutcome) -> Vec<String> {
+#[cfg(test)]
+pub(crate) fn fixture_arm_diagnostic_lines(
+    label: &str,
+    outcome: &FixtureClosureOutcome,
+) -> Vec<String> {
     match outcome {
         FixtureClosureOutcome::SourceRefused { first, .. } => {
             vec![format!("{label}| gunbc {first}")]
