@@ -1157,7 +1157,7 @@ fn is_compared_generated_basename(basename: &str) -> bool {
 /// `committed_generated_basenames`/`generated_basenames_from_emit` — both already `.rs`-only and
 /// both already hand-maintained-excluded. The live corpus is this wall's positive control; its
 /// discriminating RED is authored in
-/// `install_target_admission_refuses_unaddressable_and_hand_maintained`.
+/// `install_admission_refuses_unaddressable_and_hand_maintained`.
 ///
 /// RUNG, HONESTLY: mechanically preventable. The invalid state stays writable — the plan
 /// projection hands this function a `Vec<String>`, so a non-installable path is expressible right
@@ -1184,6 +1184,44 @@ fn admit_install_target(basename: &str) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// THE NAME IS NOT THE DESTINATION: the lexical admission above proves only that the basename
+/// SPELLS a bare stage0 entry, never where that name RESOLVES. Git tracks symlinks (mode 120000),
+/// so a committed stage0 entry can be one, and `fs::copy` follows the DESTINATION link -- the
+/// bytes land wherever it points, outside the committed surface, with the lexical check fully
+/// satisfied and nothing refused. That indirection is the second route to the harm the failure-mode
+/// row under-enumerated: it reaches a path outside `stage0_src` without the join ever changing.
+///
+/// RUNG, HONESTLY: this is a BOUNDARY OBSERVATION, not a construction, and deliberately not on the
+/// ladder (DESIGN 4b, "outside the modeled guarantee"). The filesystem is external reality that no
+/// modeled type can make impossible, so the only honest arms are LOOK and REFUSE. It refuses on
+/// unreadable as well as on symlink: an unreadable destination is ignorance about containment, and
+/// answering ignorance with "proceed" is the absorbing fallback DESIGN 5 forbids.
+fn admit_install_destination(stage0_src: &Path, basename: &str) -> Result<(), String> {
+    let destination = stage0_src.join(basename);
+    // symlink_metadata, never metadata: metadata FOLLOWS the link and would report the target's
+    // kind, so the one question being asked would be answered about the wrong file.
+    match fs::symlink_metadata(&destination) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(format!(
+            "InstallDestinationNotARegularFile: {basename} is a symlink. fs::copy follows the \
+             destination link, so the installed bytes would land outside the committed generated \
+             surface"
+        )),
+        Ok(metadata) if !metadata.file_type().is_file() => Err(format!(
+            "InstallDestinationNotARegularFile: {basename} exists and is not a regular file, so \
+             the install destination is not a committed generated artifact"
+        )),
+        Ok(_) => Ok(()),
+        // A first-time emitted artifact legitimately has no committed destination yet. A DANGLING
+        // symlink is not this arm: symlink_metadata reports it Ok and is_symlink, so it refuses
+        // above rather than reading as absent here.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(format!(
+            "InstallDestinationUnreadable: {basename}: {e}. Containment is unknown, and unknown \
+             containment refuses rather than proceeds"
+        )),
+    }
 }
 
 /// THE EMITTED ROSTER IS READ FROM THE EMITTER'S DECLARATION, NOT FROM WHAT IT HANDED BACK.
@@ -4749,6 +4787,7 @@ where
     // checkpoint restore, i.e. a widen dressed as a refusal.
     for basename in basenames {
         admit_install_target(basename)?;
+        admit_install_destination(stage0_src, basename)?;
     }
     let changed_before = git_changed_stage0_paths(workspace)?
         .into_iter()
@@ -5477,8 +5516,76 @@ mod regen_convergence_host_instrument_tests {
     /// so a test asserting only "it refused" would be permanently green and carry no information.
     /// It is the CAUSE that discriminates: these arms pass only if the install boundary answered
     /// before the manifest was consulted at all.
+    /// CONTAINMENT, PROVEN AGAINST THE COPY AND NOT AGAINST A MESSAGE.
+    ///
+    /// This is a separate test from the cause-arms above for one reason found by running the RED:
+    /// with the destination admission neutered, those arms never reach `fs::copy` at all -- the
+    /// install stops earlier at `CandidateManifestPopulationMismatch`, because a bare basename with
+    /// no admitted manifest row is refused upstream. So an "the outside file survived" assertion
+    /// placed there is satisfied by the UPSTREAM refusal and discriminates nothing about
+    /// containment (DESIGN `executed_conjunct_discriminates_nothing`).
+    ///
+    /// Here the basename carries a real admitted manifest row and real candidate bytes, so every
+    /// upstream gate passes and `admit_install_destination` is the ONLY thing standing between the
+    /// copy and a file outside `stage0_src`. The surviving bytes are then evidence of containment
+    /// rather than evidence that something else refused first.
     #[test]
-    fn install_target_admission_refuses_unaddressable_and_hand_maintained() {
+    fn install_admission_contains_the_destination_against_a_symlink() {
+        let (workspace, stage0, candidate, subject) = fixture_workspace();
+        let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
+
+        // The link points OUTSIDE stage0_src, so a following copy writes somewhere observably
+        // wrong rather than merely somewhere else.
+        let outside = workspace.join("outside_the_surface.rs");
+        let preserved = "// must not be overwritten by an install\n";
+        fs::write(&outside, preserved).unwrap();
+        std::os::unix::fs::symlink(&outside, stage0.join("linked_generated.rs")).unwrap();
+
+        let rows = [(
+            "linked_generated.rs",
+            "fixture.linked",
+            "// bytes that must never reach the link target\n",
+        )];
+        let (_, admitted) = fixture_manifest(&candidate, &rows);
+
+        let refused = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &[rows[0].0.to_string()],
+            &admitted,
+            &fixture_modules(&rows),
+            1,
+            RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "closure-0",
+            &subject,
+            |_| -> Result<CargoBuildObservation, String> {
+                panic!("a refused install must never reach the seed build")
+            },
+            || -> Result<String, String> {
+                panic!("a refused install must never reach a seed digest")
+            },
+        )
+        .unwrap_err();
+
+        assert!(
+            refused.contains("InstallDestinationNotARegularFile"),
+            "expected the destination admission to refuse, got: {refused}"
+        );
+        assert_eq!(
+            fs::read_to_string(&outside).unwrap(),
+            preserved,
+            "an install escaped stage0_src through a destination symlink"
+        );
+    }
+
+    #[test]
+    fn install_admission_refuses_unaddressable_and_hand_maintained() {
         let (workspace, stage0, candidate, subject) = fixture_workspace();
         let model = RegenConvergenceModel::load(&fixture_roots()).unwrap();
         // NO Cargo.toml ARM HERE, deliberately. The emitted manifest is stage0's own package
@@ -5528,6 +5635,39 @@ mod regen_convergence_host_instrument_tests {
                     "installing {basename} refused with {refused}, expected {cause}"
                 ));
             }
+        }
+        // POSITIVE CONTROL for the symlink arm: the SAME basename shape with an ordinary regular
+        // destination must NOT refuse for containment. Without this, an admission that refused
+        // every destination would pass the arm above while discriminating nothing.
+        fs::write(stage0.join("plain_generated.rs"), "// regular file\n").unwrap();
+        let control = install_convergence_stage_with_backend(
+            &model,
+            &workspace,
+            &stage0,
+            &candidate,
+            &["plain_generated.rs".to_string()],
+            &HashMap::new(),
+            &HashMap::new(),
+            1,
+            RegenConvergenceStageKindReceipt::PublishNonSeedOutputs,
+            "seed-0",
+            "generation-0",
+            "tree-0",
+            "manifest-0",
+            "closure-0",
+            &subject,
+            |_| -> Result<CargoBuildObservation, String> {
+                panic!("this control must never reach the seed build")
+            },
+            || -> Result<String, String> { panic!("this control must never reach a seed digest") },
+        )
+        .unwrap_err();
+        if control.contains("InstallDestinationNotARegularFile")
+            || control.contains("InstallTargetNotABareBasename")
+        {
+            mismatches.push(format!(
+                "a regular destination was refused by admission: {control}"
+            ));
         }
         assert!(mismatches.is_empty(), "{}", mismatches.join("\n"));
 
