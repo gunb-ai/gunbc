@@ -1339,8 +1339,8 @@ fn rust_unit_tests_job() -> Job {
 // workflow regeneration and no second list can drift. The receipt — a latest-attempt JSON
 // envelope keyed by the wet subject digest, plus its canonical TSV projection (authority
 // `v2.workflow.floor_wet_route`) — reaches main by PULL REQUEST (transport a' as amended,
-// same ruling): this job commits the refreshed pair to a well-known branch and
-// opens/refreshes the PR; merging stays under the ordinary rule. No bot push to the
+// same ruling): this job uploads the refreshed pair as a run artifact and writes nothing, and
+// a PERSON opens the carrying PR; merging stays under the ordinary rule. No bot push to the
 // protected default branch, and no API read anywhere on the required path — the floor only
 // ever reads the committed pair. A RECEIPT MERGE CANNOT RELAUNCH THIS LANE by construction
 // rather than by path filter: the job's condition admits only schedule and

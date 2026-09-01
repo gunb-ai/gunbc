@@ -76,7 +76,10 @@ import v2.std.text { String }
 // HOW THE RECEIPT REACHES THE FLOOR (transport a'): the lane writes
 // `floor_wet_route_receipt_json_rel_path` (the envelope, authority) and
 // `floor_wet_route_receipt_tsv_rel_path` (its canonical row projection, for human diff
-// review) and opens a PULL REQUEST carrying both, which merges under the ordinary rule. The
+// review), uploads the pair as a run artifact, and STOPS — it holds no repository-write step
+// on any ref. A PERSON carries the pair into the tree on a pull request, which merges under
+// the ordinary rule; that recurring obligation, and its dissolution, are declared at
+// `wet_receipt_hand_commit_dissolve_on` below. The
 // required floor reads ONLY the committed files from the tree: hermetic, no network, no
 // api.github.com read on the required path (a rate-limited API refusal would be a correct
 // AND nondeterministic merge gate, the class the 2026-08-29 bankruptcy ruled against), and
@@ -231,6 +234,21 @@ fn floor_wet_route_receipt_schema_version() -> Int {
   1
 }
 
+// WHAT THE AGE AXIS IS FOR, because it is NOT redundant with the subject axis and reading it
+// that way is the live trap. The standing fold reaches `ReceiptExpired` only AFTER the subject
+// digest, the executor contract digest and the roster join all match — so an exact receipt for
+// an untouched tree still ages out, which invites the conclusion that aging buys nothing. It
+// buys the only thing the digests cannot: both of them are computed from REPOSITORY FILES, and
+// `wet_executor_contract_input_prefixes` covers the toolchain PIN, not the realized toolchain,
+// the runner image, the resolved dependency bytes, or any service the wet rows actually touch.
+// A wet receipt is an OBSERVATION OF EXTERNAL REALITY, which DESIGN §4b deliberately keeps off
+// the guarantee ladder — observed at a declared boundary, never fabricated. Observations of the
+// unmodeled decay while every modeled digest stays identical. So the two axes bound two
+// different drifts: the subject axis bounds what we MODEL, the age axis bounds what we DO NOT.
+// Re-keying expiry to the subject would not remove this route's recurring cost, it would remove
+// our ability to NOTICE it — a stale observation cited as current, with nothing refusing. That
+// is the absorbing-fallback shape, not a bound, and it is why the age leg stays.
+//
 // Daily cadence; three days of grace pricing the publication pipeline (render, a human
 // retrieving the run artifact, the refresh commit's own CI, approval, merge — each a real
 // latency between executed_at and the receipt standing in a tree). The retrieval leg is
