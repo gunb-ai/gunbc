@@ -10,8 +10,9 @@ import tools.prose_citation_census {
   prose_citation_retirement_scan,
   prose_citation_retired_index,
   prose_citation_census_of,
-  prose_citation_baseline_row,
-  prose_citation_baseline_rows,
+  prose_citation_baseline_scan,
+  prose_citation_baseline_reading,
+  BaselineLineReading, BaselineRowRead, BaselineLineNotAProseRow, BaselineLineBlank, BaselineLineUnparsable,
   prose_citation_site_key,
   ProseRowOrigin, RetiredFromOnePath, RetiredFromSeveralPaths,
   ProseCitationLocality, InRetiringFile, InAnotherFile, RetiringFileAmbiguous,
@@ -323,11 +324,14 @@ test fn the_census_totals_are_projections_of_its_own_site_list() -> Bool {
 data baseline_ref_specimen: String = "2afe322f774dbc908afc6106bf3fa55372fccf89"
 
 fn baseline_row_of(line: String) -> List<ProseRowRef> {
-  prose_citation_baseline_rows(matches: line, ref_len: string_length(s: baseline_ref_specimen))
+  prose_citation_baseline_scan(matches: line, ref_len: string_length(s: baseline_ref_specimen)).rows
 }
 
+data baseline_prose_line: String = "2afe322f774dbc908afc6106bf3fa55372fccf89:dag/gunbc/retiring_module.dag:data probe_note: String = \""
+data baseline_program_line: String = "2afe322f774dbc908afc6106bf3fa55372fccf89:dag/gunbc/retiring_module.dag:data probe_label: String = \""
+
 test fn a_baseline_match_line_yields_its_path_and_name() -> Bool {
-  let rows = baseline_row_of(line: concat(baseline_ref_specimen, ":dag/gunbc/retiring_module.dag:data probe_note: String = \""))
+  let rows = baseline_row_of(line: baseline_prose_line)
   (rows |> count) == 1
     && fold(rows, init: true, f: (ok, r) => ok && r.decl_name == "probe_note" && r.path == "dag/gunbc/retiring_module.dag")
 }
@@ -335,11 +339,55 @@ test fn a_baseline_match_line_yields_its_path_and_name() -> Bool {
 // A `data NAME: String` row that is NOT a prose row is program data, and enrolling it would put every
 // string-valued declaration in the corpus into the retired universe.
 test fn a_baseline_match_that_is_not_a_prose_row_yields_nothing() -> Bool {
-  (baseline_row_of(line: concat(baseline_ref_specimen, ":dag/gunbc/retiring_module.dag:data probe_label: String = \"")) |> count) == 0
+  (baseline_row_of(line: baseline_program_line) |> count) == 0
 }
 
-test fn a_baseline_line_with_no_path_separator_yields_nothing() -> Bool {
-  (baseline_row_of(line: baseline_ref_specimen) |> count) == 0
+// "YIELDS NOTHING" WAS THE CONFLATION. Three different lines yielded no row, and an Optional could not
+// say which -- so a line git grep should never have emitted read exactly like an ordinary program-data
+// row. These three controls pin each to its OWN arm, which is what lets the caller refuse on the third
+// without refusing on the first two.
+test fn a_program_data_line_is_read_as_not_a_prose_row_not_as_malformed() -> Bool {
+  match prose_citation_baseline_reading(line: baseline_program_line, ref_len: string_length(s: baseline_ref_specimen)) {
+    BaselineLineNotAProseRow => true
+    BaselineRowRead { row: _ } => false
+    BaselineLineBlank => false
+    BaselineLineUnparsable { line: _ } => false
+  }
+}
+
+// THE BLANK ARM EXISTS BECAUSE split YIELDS ONE FOR THE TRAILING NEWLINE. It reaches the
+// no-separator test, so without its own arm every healthy run would carry a malformed line and the
+// refusal would fire on all of them. This control is what keeps that wall from being unshippable.
+test fn the_trailing_blank_line_is_blank_not_malformed() -> Bool {
+  match prose_citation_baseline_reading(line: "", ref_len: string_length(s: baseline_ref_specimen)) {
+    BaselineLineBlank => true
+    BaselineRowRead { row: _ } => false
+    BaselineLineNotAProseRow => false
+    BaselineLineUnparsable { line: _ } => false
+  }
+}
+
+// THE DISCRIMINATING RED for the baseline arm: output that is not shaped like git grep output is the
+// acquisition misreporting its own format, and it is the ONLY arm that refuses.
+test fn a_baseline_line_with_no_path_separator_is_unparsable_not_merely_empty() -> Bool {
+  let scan = prose_citation_baseline_scan(matches: baseline_ref_specimen, ref_len: string_length(s: baseline_ref_specimen))
+  (scan.rows |> count) == 0 && (scan.unparsable |> count) == 1
+}
+
+// THE PARTITION MUST CLOSE, and this is the executable form of the measurement that admitted the wall.
+// At the pre-sweep baseline the corpus read 4807 rows + 3058 program-data rows = 7865 lines with zero
+// unparsable. A count gap and a mass silent drop are indistinguishable from the gap alone, so what has
+// to be shown is that the four arms EXHAUST the input -- not that a filter exists. Asserting the sum
+// here means no future arm can quietly absorb a line without failing this control.
+test fn every_baseline_line_lands_in_exactly_one_arm() -> Bool {
+  let matches = concat(concat(baseline_prose_line, "\n"), concat(concat(baseline_program_line, "\n"), concat(baseline_ref_specimen, "\n")))
+  let scan = prose_citation_baseline_scan(matches: matches, ref_len: string_length(s: baseline_ref_specimen))
+  let total = (split(s: matches, delimiter: "\n") |> count)
+  ((scan.rows |> count) + scan.non_prose_count + scan.blank_count + (scan.unparsable |> count)) == total
+    && (scan.rows |> count) == 1
+    && scan.non_prose_count == 1
+    && (scan.unparsable |> count) == 1
+    && scan.blank_count == 1
 }
 
 // THE COLLISION ARM, which had no control at all until review 58228 named it. Two baseline rows sharing

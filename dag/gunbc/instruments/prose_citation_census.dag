@@ -227,20 +227,47 @@ fn prose_citation_colon_index(s: String, i: Int, len: Int) -> Int {
   }
 }
 
-// A match line yields a row only when gunbc.prose_row_frontier recognises the declaration it carries.
-// A line the frontier declines is not an error and not a prose row; it is one of the many `data NAME:
-// String` rows that carry program data, which this census must not touch.
-fn prose_citation_baseline_row(line: String, ref_len: Int) -> ProseRowRef? {
-  let rest = prose_citation_strip_ref(line: line, ref_len: ref_len)
-  let n = string_length(s: rest)
-  let colon = prose_citation_colon_index(s: rest, i: 0, len: n)
-  if colon >= n {
-    none
+// READING A MATCH LINE HAS FOUR OUTCOMES, NOT TWO, and collapsing them into an Optional is the same
+// concealment review 58281 found on the module side. An `Optional<ProseRowRef>` says a line did not
+// become a row; it cannot say WHY, so a line that git grep should never have produced is
+// indistinguishable from one of the thousands of ordinary `data NAME: String` rows this census must
+// not touch.
+//
+// THE THREE NON-ROW ARMS ARE MATERIALLY DIFFERENT:
+//   - NotAProseRow is the census working correctly. Measured at the pre-sweep baseline, 3058 of the
+//     7865 declaration lines carry program data rather than prose. Refusing on these would refuse on
+//     every healthy run.
+//   - Blank is the trailing element `split` yields for the final newline. It is an artifact of how the
+//     output is cut, not a fact about the corpus -- and it MUST be its own arm, because it reaches the
+//     no-separator test and would otherwise be read as malformed, firing the wall on every run.
+//   - Unparsable is git grep output that is not shaped like git grep output. That is the acquisition
+//     lying about its own format, and it is the only arm that is a refusal.
+//
+// The measured partition at 2afe322f closes exactly -- 4807 rows + 3058 non-prose = 7865 lines read,
+// zero unparsable -- so the refusal below cannot fire on a healthy read. A count gap and a silent drop
+// are indistinguishable from the gap alone, which is why the scan carries every arm's count and the
+// witness asserts the four exhaust the input rather than asserting a filter exists.
+type BaselineLineReading =
+  BaselineRowRead { row: ProseRowRef }
+  | BaselineLineNotAProseRow
+  | BaselineLineBlank
+  | BaselineLineUnparsable { line: String }
+
+fn prose_citation_baseline_reading(line: String, ref_len: Int) -> BaselineLineReading {
+  if string_length(s: trim(s: line)) == 0 {
+    BaselineLineBlank
   } else {
-    let path = substring(s: rest, start: 0, end: colon)
-    match prose_row_decl_name(line: substring(s: rest, start: colon + 1, end: n)) {
-      Absent => none
-      Present { value: name } => Present { value: ProseRowRef { path: path, decl_name: name } }
+    let rest = prose_citation_strip_ref(line: line, ref_len: ref_len)
+    let n = string_length(s: rest)
+    let colon = prose_citation_colon_index(s: rest, i: 0, len: n)
+    if colon >= n {
+      BaselineLineUnparsable { line: line }
+    } else {
+      let path = substring(s: rest, start: 0, end: colon)
+      match prose_row_decl_name(line: substring(s: rest, start: colon + 1, end: n)) {
+        Absent => BaselineLineNotAProseRow
+        Present { value: name } => BaselineRowRead { row: ProseRowRef { path: path, decl_name: name } }
+      }
     }
   }
 }
@@ -273,14 +300,25 @@ fn prose_citation_module_index(matches: String, ref_len: Int) -> Map<String, Str
   )
 }
 
-fn prose_citation_baseline_rows(matches: String, ref_len: Int) -> List<ProseRowRef> {
+// EVERY LINE LANDS IN EXACTLY ONE ARM AND THE ARMS ARE COUNTED, so "nothing escaped" is a claim this
+// scan can answer about itself rather than one a reader has to take on faith.
+type ProseCitationBaselineScan {
+  rows: List<ProseRowRef>
+  non_prose_count: Int
+  blank_count: Int
+  unparsable: List<String>
+}
+
+fn prose_citation_baseline_scan(matches: String, ref_len: Int) -> ProseCitationBaselineScan {
   fold(
     split(s: matches, delimiter: "\n"),
-    init: [],
+    init: ProseCitationBaselineScan { rows: [], non_prose_count: 0, blank_count: 0, unparsable: [] },
     f: (acc, line) =>
-      match prose_citation_baseline_row(line: line, ref_len: ref_len) {
-        Absent => acc
-        Present { value: row } => concat(acc, [row])
+      match prose_citation_baseline_reading(line: line, ref_len: ref_len) {
+        BaselineRowRead { row: r } => ProseCitationBaselineScan { rows: concat(acc.rows, [r]), non_prose_count: acc.non_prose_count, blank_count: acc.blank_count, unparsable: acc.unparsable }
+        BaselineLineNotAProseRow => ProseCitationBaselineScan { rows: acc.rows, non_prose_count: acc.non_prose_count + 1, blank_count: acc.blank_count, unparsable: acc.unparsable }
+        BaselineLineBlank => ProseCitationBaselineScan { rows: acc.rows, non_prose_count: acc.non_prose_count, blank_count: acc.blank_count + 1, unparsable: acc.unparsable }
+        BaselineLineUnparsable { line: l } => ProseCitationBaselineScan { rows: acc.rows, non_prose_count: acc.non_prose_count, blank_count: acc.blank_count, unparsable: concat(acc.unparsable, [l]) }
       }
   )
 }
@@ -687,8 +725,11 @@ fn prose_citation_census_live(baseline: String) -> ProseCitationCensusOutcome {
   if found.exit_code != 0 && found.exit_code != 1 {
     ProseCitationCensusUnreadable { reason: concat(concat("git grep could not read baseline ", baseline), concat(": ", found.stderr)) }
   } else {
-    let baseline_rows = prose_citation_baseline_rows(matches: found.matches, ref_len: string_length(s: baseline))
-    if (baseline_rows |> count) == 0 {
+    let scan_in = prose_citation_baseline_scan(matches: found.matches, ref_len: string_length(s: baseline))
+    let baseline_rows = scan_in.rows
+    if (scan_in.unparsable |> count) > 0 {
+      ProseCitationCensusUnreadable { reason: concat(concat(concat("the baseline declaration read returned ", to_string(scan_in.unparsable |> count)), " line(s) not shaped like git grep output, so the acquisition is misreporting its own format and any row count from it is unsound; first: "), fold(scan_in.unparsable, init: "", f: (first, l) => if first == "" { l } else { first })) }
+    } else if (baseline_rows |> count) == 0 {
       ProseCitationCensusUnreadable { reason: concat("baseline declared no prose rows at all, which is a read that found nothing rather than a retirement of nothing: ", baseline) }
     } else {
       let listed = git.Inspect.ListTreePathsAtRevision(ref: "HEAD" as GitRef)
