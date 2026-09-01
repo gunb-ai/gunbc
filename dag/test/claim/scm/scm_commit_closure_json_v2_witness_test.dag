@@ -93,7 +93,12 @@ import gunbc.scm.checkout {
   MissingObject,
   ObjectIsAuthoredSource,
 }
-import gunbc.scm.commit_closure { CommitClosure }
+import gunbc.scm.commit_closure {
+  CommitClosure,
+  admit_well_kinded_closure,
+  WellKinded,
+  NotWellKinded,
+}
 import gunbc.scm.load_standing {
   LoadStanding,
   LoadComplete,
@@ -153,6 +158,19 @@ import gunbc.scm.commit_closure_json_v2 {
 // helper name is a live correctness hazard rather than a style question (#8719).
 // ------------------------------------------------------------------------------------------------
 
+// THE RAW ENCODER NOW TAKES A SEALED CARRIER, so a fixture cannot hand it a store and a root. That is
+// the point of the seal: `.dag` has no module privacy, and a judgment written only at the intended
+// entry points left this importable and the wrong-kind state representable through it. Every fixture
+// below therefore states the kind judgment out loud. The refusing arm is unreachable for these
+// fixtures -- none of them puts a file under a node's locator -- and it answers an empty document
+// rather than a plausible one, so a fixture that ever did reach it fails its own assertion.
+fn scm_image_encode_or_empty(store: ObjectStore, root: SemanticNodeTarget) -> JsonValue {
+  match admit_well_kinded_closure(closure: CommitClosure { store: store, root: root }) {
+    NotWellKinded { identities: _ } => json_object(members: [])
+    WellKinded { admitted: image } => encode_closure_document(image: image)
+  }
+}
+
 fn closure_doc_atom(identity: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: identity } }, children: [])
 }
@@ -206,7 +224,7 @@ fn scm_image_put(store: ObjectStore, n: Node) -> ScmImagePut {
 
 fn scm_image_encoded(n: Node) -> JsonValue {
   let put = scm_image_put(store: empty_store(), n: n)
-  encode_closure_document(store: put.store, root: put.identity)
+  scm_image_encode_or_empty(store: put.store, root: put.identity)
 }
 
 // The reconstructed program compared on CONTENT IDENTITY, not on occurrence provenance. checkout
@@ -690,7 +708,8 @@ test fn scm_image_a_complete_closure_encodes() -> Bool {
   let full = scm_image_put(store: empty_store(), n: closure_doc_program())
   match encode_complete_closure_document(closure: CommitClosure { store: full.store, root: full.identity }) {
     ClosureDocEncoded { value: v } =>
-      serialize_json(v: v) == serialize_json(v: encode_closure_document(store: full.store, root: full.identity))
+      serialize_json(v: v)
+        == serialize_json(v: scm_image_encode_or_empty(store: full.store, root: full.identity))
     ClosureDocEncodeRefused { cause: _ } => false
   }
 }
@@ -1504,7 +1523,7 @@ fn scm_image_content_matches(store: ObjectStore, locator: ObjectId, text: String
 // the decoder's name. The option has no arm to lie in: Absent means the text did not parse, and every
 // caller answers false to it.
 fn scm_image_reload_through_text(store: ObjectStore, root: SemanticNodeTarget) -> ClosureDocLoadOutcome? {
-  match parse_json_document(s: serialize_json(v: encode_closure_document(store: store, root: root))) {
+  match parse_json_document(s: serialize_json(v: scm_image_encode_or_empty(store: store, root: root))) {
     JsonDocumentUnreadable { gap: _ } => none
     JsonDocumentParsed { value: reparsed } => Present { value: decode_closure_document(v: reparsed) }
   }

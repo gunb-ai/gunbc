@@ -34,6 +34,14 @@ import gunbc.scm.commit_closure {
   closure_is_complete,
   closure_census,
   ClosureCensus,
+  WellKindedClosure,
+  WellKindedAdmission,
+  WellKinded,
+  NotWellKinded,
+  admit_well_kinded_closure,
+  admitted_well_kinded,
+  well_kinded_store,
+  well_kinded_root,
 }
 import gunbc.scm.object_table_json {
   ObjectTableDecodeRefusal,
@@ -222,6 +230,7 @@ type ClosureDocRefusal
 // name this cause. DESIGN section 4b's top rung: not validated, not proven, unrepresentable.
 type ClosureDocEncodeRefusal
   = ClosureDocIncompleteWithoutAdmission { identity: String }
+  | ClosureDocRequiresNodeAtAuthoredSource { identities: List<ObjectId> }
 
 // THE FORMAT TAG MEANS "I UNDERSTAND THIS EXACT SCHEMA", not "I understand some subset of whatever
 // this writer may have meant". So once the tag matches, every JSON object in the document has a
@@ -616,19 +625,31 @@ type ClosureDocEncodeOutcome
 // admission at all. The wall is on the carrier now, but the module's front door is still ajar.
 // dissolve-on: module-private functions in .dag, at which point the unchecked encoder stops being
 // reachable and the gate becomes structural. Until then this comment is the only thing saying so.
+// THE COMPLETE WRITER CONSUMES THE WHOLE CENSUS, NOT THE ABSENT HALF.
+//
+// This asked unresolved_identities, which projects `absent`. For a requirement whose locator is
+// occupied by an authored source the absent population is EMPTY, so this saw nothing missing and
+// returned bytes -- the wrong-kind state was publishable through the front door while partial
+// admission refused it at the side door. Kind is judged first because it is not a degree of
+// incompleteness: no supply step repairs it.
 fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeOutcome {
-  match unresolved_identities(closure: closure) {
-    missing =>
-      if list_length(items: missing) == 0 {
-        ClosureDocEncoded {
-          value: encode_closure_document(store: closure.store, root: closure.root)
-        }
-      } else {
-        ClosureDocEncodeRefused {
-          cause: ClosureDocIncompleteWithoutAdmission {
-            identity: an_uncontained_key(missing: missing)
+  match admit_well_kinded_closure(closure: closure) {
+    NotWellKinded { identities: identities } =>
+      ClosureDocEncodeRefused {
+        cause: ClosureDocRequiresNodeAtAuthoredSource { identities: identities }
+      }
+    WellKinded { admitted: image } =>
+      match unresolved_identities(closure: closure) {
+        missing =>
+          if list_length(items: missing) == 0 {
+            ClosureDocEncoded { value: encode_closure_document(image: image) }
+          } else {
+            ClosureDocEncodeRefused {
+              cause: ClosureDocIncompleteWithoutAdmission {
+                identity: an_uncontained_key(missing: missing)
+              }
+            }
           }
-        }
       }
   }
 }
@@ -637,7 +658,7 @@ fn encode_complete_closure_document(closure: CommitClosure) -> ClosureDocEncodeO
 // through a mint that derived the unresolved population from this very closure, so by the time one
 // exists there is nothing this function could refuse that the mint did not already settle.
 fn encode_admitted_partial_closure_document(admitted: AdmittedPartialCommitClosure) -> JsonValue {
-  encode_closure_document(store: admitted.closure.store, root: admitted.closure.root)
+  encode_closure_document(image: admitted_well_kinded(admitted: admitted))
 }
 
 // The first identity that would have been written as an uncontained arm. Naming one is what makes
@@ -651,7 +672,9 @@ fn an_uncontained_key(missing: List<ObjectId>) -> String {
   })
 }
 
-fn encode_closure_document(store: ObjectStore, root: SemanticNodeTarget) -> JsonValue {
+fn encode_closure_document(image: WellKindedClosure) -> JsonValue {
+  let store = well_kinded_store(admitted: image)
+  let root = well_kinded_root(admitted: image)
   let acc = encode_object_table(store: store)
   let root_reference = encoded_root_reference(acc: acc, root: node_target_locator(target: root))
   json_object(

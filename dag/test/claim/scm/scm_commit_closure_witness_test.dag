@@ -65,6 +65,7 @@ import gunbc.scm.target_reference {
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
+  ClosureDocRequiresNodeAtAuthoredSource,
   ClosureDocEncodeRefusal,
   ClosureDocMemberReadRefused,
   ClosureDocEncodeOutcome,
@@ -423,6 +424,7 @@ test fn a_partial_closure_encodes_only_with_an_admission() -> Bool {
 fn cause_is_incomplete_without_admission(cause: ClosureDocEncodeRefusal) -> Bool {
   match cause {
     ClosureDocIncompleteWithoutAdmission { identity: _ } => true
+    ClosureDocRequiresNodeAtAuthoredSource { identities: _ } => false
   }
 }
 
@@ -677,6 +679,7 @@ test fn a_present_child_round_trips_as_a_complete_closure() -> Bool {
     closure: CommitClosure { store: full.store, root: full.root }
   ) {
     ClosureDocEncodeRefused { cause: _ } => false
+    
     ClosureDocEncoded { value: encoded } =>
       match parse_json_document(s: serialize_json(v: encoded)) {
         JsonDocumentUnreadable { gap: _ } => false
@@ -859,11 +862,13 @@ test fn one_closure_has_one_image_however_its_store_was_assembled() -> Bool {
   closure_is_complete(closure: closure)
     && match encode_complete_closure_document(closure: closure) {
       ClosureDocEncodeRefused { cause: _ } => false
+      
       ClosureDocEncoded { value: grafted_image } =>
         match encode_complete_closure_document(
           closure: CommitClosure { store: full.store, root: full.root }
         ) {
           ClosureDocEncodeRefused { cause: _ } => false
+          
           ClosureDocEncoded { value: natural_image } =>
             serialize_json(v: grafted_image) == serialize_json(v: natural_image)
         }
@@ -884,6 +889,7 @@ test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool 
         closure: CommitClosure { store: full.store, root: full.root }
       ) {
         ClosureDocEncodeRefused { cause: _ } => false
+        
         ClosureDocEncoded { value: natural_image } =>
           serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
             != serialize_json(v: natural_image)
@@ -942,6 +948,7 @@ test fn a_complete_closure_spells_its_child_contained() -> Bool {
     closure: CommitClosure { store: completed, root: full.root }
   ) {
     ClosureDocEncodeRefused { cause: _ } => false
+    
     ClosureDocEncoded { value: image } =>
       match target_arm_of_first_child(objects: document_objects(v: image)) {
         Absent => false
@@ -1017,4 +1024,43 @@ test fn positional_children_are_not_reordered_by_canonicalization() -> Bool {
             !object_id_eq(left: first_ref.locator, right: second_ref.locator)
         }
     }
+}
+
+// THE COMPLETE WRITER PRODUCES NO BYTES FOR A WRONG-KIND CLOSURE, and it names the population.
+//
+// This is the front door the side door already refused. encode_complete_closure_document asked
+// unresolved_identities, which projects the ABSENT population -- and for a requirement whose locator
+// is occupied by an authored source that population is EMPTY. So the writer saw nothing missing and
+// returned bytes, while partial admission refused the identical state. External review found it.
+//
+// The raw writer beneath it needs no claim of its own any more, and that is the stronger outcome:
+// encode_closure_document now takes a WellKindedClosure, which is sole_constructor and mintable only
+// through admit_well_kinded_closure. There is no argument a caller can build that carries this state,
+// so the refusal is by construction rather than by a judgment the front door happens to run.
+test fn the_complete_writer_refuses_a_wrong_kind_closure_and_names_it() -> Bool {
+  let fx = closure_over_an_occupied_locator()
+  fx.ok
+    && match encode_complete_closure_document(
+      closure: CommitClosure { store: fx.store, root: fx.root }
+    ) {
+      ClosureDocEncoded { value: _ } => false
+      ClosureDocEncodeRefused { cause: c } =>
+        match c {
+          ClosureDocRequiresNodeAtAuthoredSource { identities: ids } =>
+            (list_length(items: ids) == 1) && names_exactly(missing: ids, expected: fx.child)
+          ClosureDocIncompleteWithoutAdmission { identity: _ } => false
+        }
+    }
+}
+
+// THE CONTROL. Without it the claim above is satisfied by a writer that refuses everything, which
+// would delete the format. A genuinely complete closure still encodes.
+test fn the_complete_writer_still_encodes_a_complete_closure() -> Bool {
+  let full = build_full_store()
+  match encode_complete_closure_document(
+    closure: CommitClosure { store: full.store, root: full.root }
+  ) {
+    ClosureDocEncoded { value: v } => json_is_object(v: v)
+    ClosureDocEncodeRefused { cause: _ } => false
+  }
 }

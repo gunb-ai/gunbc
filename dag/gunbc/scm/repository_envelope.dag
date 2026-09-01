@@ -102,6 +102,7 @@ import gunbc.scm.commit_closure_json_v2 {
   encode_object_table,
   object_id_key,
   position_of,
+  node_position_of,
   encoded_root_reference,
   decode_object_table,
   unexpected_member_key,
@@ -621,7 +622,7 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
   match found {
     Present { value: _ } => found
     Absent =>
-      match position_of(positions: acc.positions, identity: commit.root.locator) {
+      match node_position_of(positions: acc.positions, identity: commit.root.locator) {
         Present { value: _ } => none
         Absent => Present { value: commit.root.locator }
       }

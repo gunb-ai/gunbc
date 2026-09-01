@@ -215,6 +215,49 @@ fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId>
   admitted.unresolved
 }
 
+// An admitted partial closure is well-kinded BY CONSTRUCTION: admit_partial_commit_closure refuses the
+// source_occupied population before it mints one, so this re-seals rather than re-judges.
+fn admitted_well_kinded(admitted: AdmittedPartialCommitClosure) -> WellKindedClosure {
+  WellKindedClosure { closure: admitted.closure }
+}
+
+// A CLOSURE WHOSE EVERY REQUIREMENT IS SATISFIABLE, WHICH IS NOT THE SAME AS COMPLETE.
+//
+// The encoder must never see a closure requiring a semantic node where an authored source sits: it
+// has no honest spelling for that. Emitting the contained arm publishes bytes the decoder refuses;
+// emitting the uncontained arm publishes a fetchable absence that no fetch can repair. Both were
+// shipped on this branch in turn, which is why the guarantee is now a CARRIER rather than a check --
+// `.dag` has no module privacy, so a judgment written at the two intended entry points leaves the raw
+// encoder importable and the bad state perfectly representable through it.
+//
+// sole_constructor seals it: the only way to obtain one is admit_well_kinded_closure, which runs the
+// census. An ABSENT population is fine here and is the partial-closure case the format exists for --
+// this carrier is about KIND, not about completeness.
+type WellKindedClosure sole_constructor {
+  closure: CommitClosure
+}
+
+type WellKindedAdmission
+  = WellKinded { admitted: WellKindedClosure }
+  | NotWellKinded { identities: List<ObjectId> }
+
+fn admit_well_kinded_closure(closure: CommitClosure) -> WellKindedAdmission {
+  let census = closure_census(closure: closure)
+  if list_length(items: census.source_occupied) > 0 {
+    NotWellKinded { identities: census.source_occupied }
+  } else {
+    WellKinded { admitted: WellKindedClosure { closure: closure } }
+  }
+}
+
+fn well_kinded_store(admitted: WellKindedClosure) -> ObjectStore {
+  admitted.closure.store
+}
+
+fn well_kinded_root(admitted: WellKindedClosure) -> SemanticNodeTarget {
+  admitted.closure.root
+}
+
 // A closure is the store plus the root the commit names. Nothing about how it is written down.
 type CommitClosure {
   store: ObjectStore
