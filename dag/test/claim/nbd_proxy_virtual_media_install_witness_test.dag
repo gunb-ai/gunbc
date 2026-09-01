@@ -37,17 +37,29 @@ test fn nbd_proxy_actuator_steps_serve_boot_restart() -> Bool {
   )
   list_length(items: steps) == 3
     && match steps.first() {
-      ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
-        e == VmSlotIndexEndpoint
-      _ => false
+      Present { value: only } =>
+        match only {
+          ActuatorNbdProxyServe { endpoint: e, slot: 0, index: 0, export: _ } =>
+            e == VmSlotIndexEndpoint
+          _ => false
+        }
+      Absent => false
     }
     && match steps.skip(n: 1).first() {
-      ActuatorBootOnce { target: BootTargetCd, enabled: _ } => true
-      _ => false
+      Present { value: only } =>
+        match only {
+          ActuatorBootOnce { target: BootTargetCd, enabled: _ } => true
+          _ => false
+        }
+      Absent => false
     }
     && match steps.skip(n: 2).first() {
-      ActuatorForceRestart { reset_type: _ } => true
-      _ => false
+      Present { value: only } =>
+        match only {
+          ActuatorForceRestart { reset_type: _ } => true
+          _ => false
+        }
+      Absent => false
     }
 }
 
@@ -58,8 +70,12 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
   )
   list_length(items: steps) == 3
     && match steps.first() {
-      ActuatorPxeNetworkBootStaging => true
-      _ => false
+      Present { value: only } =>
+        match only {
+          ActuatorPxeNetworkBootStaging => true
+          _ => false
+        }
+      Absent => false
     }
 }
 

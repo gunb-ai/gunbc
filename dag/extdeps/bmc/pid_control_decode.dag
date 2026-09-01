@@ -317,14 +317,18 @@ fn decode_curve_side(container: JsonValue, path: DocumentPath, side: CurveSide) 
     }
   } else {
     match hits.first() {
-      JsonObject { members } =>
-        curve_side_fold(
-          path: path_field(parent: path, field: field),
-          side: side,
-          members: members,
-          acc: CurveSideDecoded { entries: [] },
-        )
-      other => CurveSideRefused { refusal: CurveSideNotAnObject { path: path, side: side } }
+      Present { value: hit } =>
+        match hit {
+          JsonObject { members } =>
+            curve_side_fold(
+              path: path_field(parent: path, field: field),
+              side: side,
+              members: members,
+              acc: CurveSideDecoded { entries: [] },
+            )
+          other => CurveSideRefused { refusal: CurveSideNotAnObject { path: path, side: side } }
+        }
+      Absent => CurveSideRefused { refusal: CurveSideMissing { path: path, side: side } }
     }
   }
 }
@@ -351,10 +355,54 @@ fn decode_curve_side(container: JsonValue, path: DocumentPath, side: CurveSide) 
 // split between the language-semantics question and the type-conformance half that is below floor
 // regardless of how the first is answered. What is claimed HERE is only the local fact: the rename
 // to `magnitude` is a workaround, and no compiler guarantee is claimed by this module.
-fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> ExactDecimal {
-  let matched = indexed_decimal_entries_with(entries: entries, index: index)
-  let entry = matched.first()
-  entry.magnitude
+// THE LOOKUP ANSWERS AN OPTIONAL BECAUSE THE LIST MIGHT NOT HOLD THE INDEX, and saying so is what
+// keeps its one caller total. It previously read `matched.first()` into a binding and took
+// `.magnitude` off it, which read the OPTIONAL's own payload rather than the entry's field -- the
+// same confusion the note above this module's decode records, in the module that records it.
+fn indexed_decimal_value_at(entries: List<IndexedDecimal>, index: Int) -> Optional<ExactDecimal> {
+  match indexed_decimal_entries_with(entries: entries, index: index).first() {
+    Present { value: entry } => Present { value: entry.magnitude }
+    Absent => Absent
+  }
+}
+
+// THE POINT SET IS BUILT BY A FOLD THAT CAN REFUSE, not by a map that cannot. A map has no arm for
+// a missing output, so the only ways to write it are to fabricate a magnitude or to let an Optional
+// reach a declared non-optional field -- the first is forbidden outright and the second is the
+// coercion this PR declares as debt. The refusal is DERIVED rather than invented: an indexed
+// reading whose output the join cannot supply is exactly `CurveReadingWithoutOutput`, which the
+// caller already raises for the same condition measured a different way. Accumulating by PREPEND
+// keeps the fold linear, and the caller's `sort_by` over the point index restores the order.
+fn curve_points_fold(
+  path: DocumentPath,
+  readings: List<IndexedDecimal>,
+  outputs: List<IndexedDecimal>,
+) -> CurveDecode {
+  fold(
+    readings,
+    init: CurveDecoded { points: [] },
+    f: fn(acc, r) {
+      match acc {
+        CurveRefused { refusal } => CurveRefused { refusal: refusal }
+        CurveDecoded { points } =>
+          match indexed_decimal_value_at(entries: outputs, index: r.index) {
+            Present { value: magnitude } =>
+              CurveDecoded {
+                points: concat(
+                  [DemandCurvePoint {
+                    index: r.index,
+                    reading: decimal_celsius(value: r.magnitude),
+                    output: zone_demand_value(value: magnitude),
+                  }],
+                  points,
+                ),
+              }
+            Absent =>
+              CurveRefused { refusal: CurveReadingWithoutOutput { path: path, index: r.index } }
+          }
+      }
+    },
+  )
 }
 
 type CurveDecode
@@ -383,17 +431,10 @@ fn curve_join(path: DocumentPath, readings: List<IndexedDecimal>, outputs: List<
         Present { value: stray_output } =>
           CurveRefused { refusal: CurveOutputWithoutReading { path: path, index: stray_output.index } }
         Absent =>
-    CurveDecoded {
-      points: sort_by(
-        map(readings, r =>
-          DemandCurvePoint {
-            index: r.index,
-            reading: decimal_celsius(value: r.magnitude),
-            output: zone_demand_value(value: indexed_decimal_value_at(entries: outputs, index: r.index)),
-          }
-        ),
-        point => point.index,
-      ),
+    match curve_points_fold(path: path, readings: readings, outputs: outputs) {
+      CurveRefused { refusal } => CurveRefused { refusal: refusal }
+      CurveDecoded { points } =>
+        CurveDecoded { points: sort_by(points, point => point.index) }
     }
       }
   }

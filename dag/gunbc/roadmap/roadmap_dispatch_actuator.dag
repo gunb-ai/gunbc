@@ -1880,10 +1880,13 @@ fn tmux_session_observation_for_scope(
   if count(matched) == 0 {
     SessionAbsent
   } else {
-    let e = matched.first()
-    SessionNameObserved {
-      session_name: scope.session_name,
-      windows: e.windows,
+    match matched.first() {
+      Present { value: e } =>
+        SessionNameObserved {
+          session_name: scope.session_name,
+          windows: e.windows,
+        }
+      Absent => SessionAbsent
     }
   }
 }

@@ -124,7 +124,10 @@ test fn witness_bodied_502_retains_network_document() -> Bool {
 
 test fn witness_reload_trial_claims_sufficiency_not_necessity() -> Bool {
   let observation = playwright_chromium_151_linux_arm64_headless_navigation_run.specimens.connection_refused
-  let trial = observation.recovery_trials.first()
-  trial.action == ExplicitReload
-    && trial.outcome == HealthyResponseDocumentObserved
+  match observation.recovery_trials.first() {
+    Present { value: trial } =>
+      trial.action == ExplicitReload
+        && trial.outcome == HealthyResponseDocumentObserved
+    Absent => false
+  }
 }

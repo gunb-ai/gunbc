@@ -78,13 +78,21 @@ fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> 
   let steps = srv3_os_install_actuate_workflow_steps()
   srv3_os_install_actuate_workflow_step_count() == 8
     && match steps.skip(n: 5).first() {
-      WorkflowOperatorApproval { escalation: e } =>
-        e.escalation_id == srv3_boot_once_cd_escalation.escalation_id
-      _ => false
+      Present { value: only } =>
+        match only {
+          WorkflowOperatorApproval { escalation: e } =>
+            e.escalation_id == srv3_boot_once_cd_escalation.escalation_id
+          _ => false
+        }
+      Absent => false
     }
     && match steps.skip(n: 6).first() {
-      WorkflowBootOnceCd => true
-      _ => false
+      Present { value: only } =>
+        match only {
+          WorkflowBootOnceCd => true
+          _ => false
+        }
+      Absent => false
     }
 }
 

@@ -52,7 +52,8 @@ test fn dag_claim_derives_only_the_claim_runner() -> Bool {
   )
   count(capabilities) == 1
     && match capabilities.first() {
-      Present { value: h0 } => execution_capability_label(capability: h0.value) == "gunbc-claim-runner"
+      Present { value: only } =>
+        execution_capability_label(capability: only) == "gunbc-claim-runner"
       Absent => false
     }
 }

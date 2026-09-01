@@ -23,28 +23,40 @@ test fn chain_has_four_steps_in_delegation_order() -> Bool {
 
 test fn exchange_step_pins_repo_attribute_condition() -> Bool {
   match bmc_wif_canary_delegation_chain.steps.skip(n: 1).first() {
-    WifTokenExchange { pool: _, provider: _, attribute_condition: cond } =>
-      string_contains(s: cond as String, pattern: "assertion.repository == 'gunb-ai/gunbc'")
-        && cond as String == bmc_wif_attribute_condition()
-    _ => false
+    Present { value: step } =>
+      match step {
+        WifTokenExchange { pool: _, provider: _, attribute_condition: cond } =>
+          string_contains(s: cond as String, pattern: "assertion.repository == 'gunb-ai/gunbc'")
+            && cond as String == bmc_wif_attribute_condition()
+        _ => false
+      }
+    Absent => false
   }
 }
 
 test fn impersonation_step_targets_the_scoped_assimilator_sa() -> Bool {
   match bmc_wif_canary_delegation_chain.steps.skip(n: 2).first() {
-    ServiceAccountImpersonation { impersonated_sa: sa, granted_roles: roles } =>
-      sa == bmc_assimilator_sa_email
-        && fold(roles, init: true, f: (acc, r) => acc && bmc_role_allowed(role: r))
-    _ => false
+    Present { value: step } =>
+      match step {
+        ServiceAccountImpersonation { impersonated_sa: sa, granted_roles: roles } =>
+          sa == bmc_assimilator_sa_email
+            && fold(roles, init: true, f: (acc, r) => acc && bmc_role_allowed(role: r))
+        _ => false
+      }
+    Absent => false
   }
 }
 
 test fn secret_access_step_targets_canary_not_bmc_secret() -> Bool {
   match bmc_wif_canary_delegation_chain.steps.skip(n: 3).first() {
-    SecretVersionAccess { secret_ref: ref } =>
-      secret_ref_secret_resource(ref: ref) == secret_ref_secret_resource(ref: wif_canary_secret_ref)
-        && secret_ref_secret_resource(ref: ref) != secret_ref_secret_resource(ref: bmc_srv3_admin_secret_ref)
-    _ => false
+    Present { value: step } =>
+      match step {
+        SecretVersionAccess { secret_ref: ref } =>
+          secret_ref_secret_resource(ref: ref) == secret_ref_secret_resource(ref: wif_canary_secret_ref)
+            && secret_ref_secret_resource(ref: ref) != secret_ref_secret_resource(ref: bmc_srv3_admin_secret_ref)
+        _ => false
+      }
+    Absent => false
   }
 }
 
@@ -54,7 +66,7 @@ test fn bootstrap_grants_zero_bindings_for_bmc_secret() -> Bool {
     && bmc_wif_signed_grants().length() == 1
     && bmc_wif_bootstrap_bindings().length() == 1
     && match bmc_wif_bootstrap_bindings().first() {
-      Present { value: h0 } => h0.members.length() == 1
+      Present { value: binding } => binding.members.length() == 1
       Absent => false
     }
 }
@@ -80,16 +92,30 @@ test fn secret_refs_are_free_of_credential_shaped_strings() -> Bool {
 
 test fn srv3_credential_path_is_an_enumerated_option_space_not_a_binding() -> Bool {
   srv3_credential_path_options.length() == 4
-    && match srv3_credential_path_options.first() { OperatorOneHourToken => true, _ => false }
-    && match srv3_credential_path_options.skip(n: 1).first() {
-         ActorPinnedWorkflowDispatch { allowed_actor: a } => a as String == "briansrls"
-         _ => false
+    && match srv3_credential_path_options.first() {
+         Present { value: option } => match option { OperatorOneHourToken => true, _ => false }
+         Absent => false
        }
-    && match srv3_credential_path_options.skip(n: 2).first() { DedicatedActuatorIdentity { note: _ } => true, _ => false }
+    && match srv3_credential_path_options.skip(n: 1).first() {
+         Present { value: option } =>
+           match option {
+             ActorPinnedWorkflowDispatch { allowed_actor: a } => a as String == "briansrls"
+             _ => false
+           }
+         Absent => false
+       }
+    && match srv3_credential_path_options.skip(n: 2).first() {
+         Present { value: option } => match option { DedicatedActuatorIdentity { note: _ } => true, _ => false }
+         Absent => false
+       }
     && match srv3_credential_path_options.skip(n: 3).first() {
-         ExistingAssimilatorSaBinding { legacy_grant: g } =>
-           secret_ref_secret_resource(ref: g.secret_ref) == secret_ref_secret_resource(ref: bmc_srv3_admin_legacy_binding.secret_ref)
-         _ => false
+         Present { value: option } =>
+           match option {
+             ExistingAssimilatorSaBinding { legacy_grant: g } =>
+               secret_ref_secret_resource(ref: g.secret_ref) == secret_ref_secret_resource(ref: bmc_srv3_admin_legacy_binding.secret_ref)
+             _ => false
+           }
+         Absent => false
        }
 }
 
@@ -115,8 +141,8 @@ test fn secret_ref_login_handler_added_beside_factory_login_not_over_it() -> Boo
 
 test fn bmc_smoke_workflow_scopes_id_token_write_to_its_single_designated_job() -> Bool {
   bmc_token_smoke_workflow.jobs.length() == 1
-    && match jobs.first() {
-      Present { value: h0 } => bmc_token_smoke_workflow.h0.id == bmc_token_smoke_job().id
+    && match bmc_token_smoke_workflow.jobs.first() {
+      Present { value: job } => job.id == bmc_token_smoke_job().id
       Absent => false
     }
     && match bmc_token_smoke_workflow.permissions {

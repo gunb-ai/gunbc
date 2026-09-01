@@ -531,10 +531,9 @@ type BmcFanTypedMutationResult
 
 fn bmc_fan_observation_value(lines: List<String>, key: String) -> String? {
   let prefix = concat(key, "=")
-  if lines.length() == 0 {
-    none
-  } else {
-    let line = lines.first()
+  match lines.first() {
+    Absent => none
+    Present { value: line } =>
     if starts_with(s: line, prefix: prefix) {
       Present {
         value: substring(

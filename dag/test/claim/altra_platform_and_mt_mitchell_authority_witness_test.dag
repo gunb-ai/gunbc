@@ -258,12 +258,15 @@ test fn w_a_public_layout_document_would_read_as_reachable() -> Bool {
 // --- OCP Mt. Mitchell motherboard specification, revision 0.80 ---
 
 test fn w_mt_mitchell_revision_table_ends_at_the_modelled_revision() -> Bool {
-  let latest = mt_mitchell_revision_table.last()
   list_length(items: mt_mitchell_revision_table) == 3
-    && latest.revision == "0.80"
-    && latest.publication_date.year == 2022
-    && latest.publication_date.month == 9
-    && latest.publication_date.day == 9
+    && match mt_mitchell_revision_table.last() {
+      Present { value: latest } =>
+        latest.revision == "0.80"
+          && latest.publication_date.year == 2022
+          && latest.publication_date.month == 9
+          && latest.publication_date.day == 9
+      Absent => false
+    }
     && match mt_mitchell_revision_table.first() {
       Present { value: h0 } => h0.revision == "0.50"
       Absent => false

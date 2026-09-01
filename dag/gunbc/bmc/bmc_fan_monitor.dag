@@ -29,7 +29,8 @@ fn bmc_fan_assess_monitoring_samples_rec(
   required_elapsed: Second,
   maximum_sample_gap: Second,
 ) -> BmcFanMonitoringResult {
-  if remaining.length() == 0 {
+  match remaining.first() {
+    Absent =>
     let receipt = BmcFanMonitoringReceipt {
       sample_count: sample_count,
       elapsed: previous_elapsed,
@@ -51,8 +52,7 @@ fn bmc_fan_assess_monitoring_samples_rec(
         receipt: receipt,
       }
     }
-  } else {
-    let sample = remaining.first()
+    Present { value: sample } =>
     let sample_gap_seconds = second_count(sample.elapsed) - second_count(previous_elapsed)
     let receipt = BmcFanMonitoringReceipt {
       sample_count: sample_count + 1,

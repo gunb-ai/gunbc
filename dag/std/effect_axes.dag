@@ -86,44 +86,41 @@ fn read_grant_intersects_live_tree(g: Grant) -> Bool {
 }
 
 fn grants_all_read_replayable(grants: List<Grant>) -> Bool {
-  if grants.count() == 0 {
-    true
-  } else {
-    let g = grants.first()
-    let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Read) {
-      read_grant_replayable(g: g) && grants_all_read_replayable(grants: rest)
-    } else {
-      grants_all_read_replayable(grants: rest)
-    }
+  match grants.first() {
+    Absent => true
+    Present { value: g } =>
+      let rest = grants.skip(n: 1)
+      if verb_eq(a: g.verb, b: Read) {
+        read_grant_replayable(g: g) && grants_all_read_replayable(grants: rest)
+      } else {
+        grants_all_read_replayable(grants: rest)
+      }
   }
 }
 
 fn grants_all_write_isolated(grants: List<Grant>) -> Bool {
-  if grants.count() == 0 {
-    true
-  } else {
-    let g = grants.first()
-    let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Write) {
-      write_grant_isolated(g: g) && grants_all_write_isolated(grants: rest)
-    } else {
-      grants_all_write_isolated(grants: rest)
-    }
+  match grants.first() {
+    Absent => true
+    Present { value: g } =>
+      let rest = grants.skip(n: 1)
+      if verb_eq(a: g.verb, b: Write) {
+        write_grant_isolated(g: g) && grants_all_write_isolated(grants: rest)
+      } else {
+        grants_all_write_isolated(grants: rest)
+      }
   }
 }
 
 fn grants_any_read_intersects_live_tree(grants: List<Grant>) -> Bool {
-  if grants.count() == 0 {
-    false
-  } else {
-    let g = grants.first()
-    let rest = grants.skip(n: 1)
-    if verb_eq(a: g.verb, b: Read) {
-      read_grant_intersects_live_tree(g: g) || grants_any_read_intersects_live_tree(grants: rest)
-    } else {
-      grants_any_read_intersects_live_tree(grants: rest)
-    }
+  match grants.first() {
+    Absent => false
+    Present { value: g } =>
+      let rest = grants.skip(n: 1)
+      if verb_eq(a: g.verb, b: Read) {
+        read_grant_intersects_live_tree(g: g) || grants_any_read_intersects_live_tree(grants: rest)
+      } else {
+        grants_any_read_intersects_live_tree(grants: rest)
+      }
   }
 }
 
