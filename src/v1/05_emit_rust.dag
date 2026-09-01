@@ -845,8 +845,18 @@ fn rust_peel_all_rc_type_node(type_node: Node, source_indices: Map<String, Newli
   }
 }
 
+// A COPRODUCT ARM IS NOT A TYPE ARGUMENT. Measured: with the expected-type source declining, the
+// `Violates` fallback read the variant's resolved type and came back with `Holds` -- the ARM sitting
+// in the position this reader treats as the applied type argument -- emitting
+// `Witness::<Holds>::Violates` and turning v2.compiler.compile's E0308 into E0573
+// `expected type, found variant Holds` at the same site. That is the fabrication moving one frame
+// down, which is the thing this whole change exists to refuse, so the second source declines too.
+// The test is the corpus's own authority rather than a spelling list: `variant_to_enum` keys every
+// coproduct arm in the closure, so an arm from any coproduct -- including ones not yet written --
+// is declined by construction.
 fn rust_witness_type_arg_admit_rendered(rendered: String, emit_info: EmitGraphInfo) -> String? {
   if rendered == "_" || rendered == "" { none }
+  else if map_contains_key(emit_info.variant_to_enum, rendered) { none }
   else if string_length(s: rendered) == 1 && rust_is_uppercase_letter(c: rendered) && !type_var_in_fn_generic_scope(id: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
   else if rust_fold_rendered_type_has_any_spurious_generic(type_str: rendered, generic_param_names: emit_info.fn_generic_param_names) { none }
   else { Present { value: rendered } }
@@ -914,9 +924,47 @@ fn rust_witness_type_arg_from_holds_value_field(fields: List<Node>, shared_types
   }
 }
 
+// AN EXPECTED TYPE THAT IS NOT A WITNESS IS NOT EVIDENCE ABOUT A WITNESS CARRIER.
+// `rust_witness_carrier_from_type_node` answers two different questions depending on where its
+// argument came from: given the `value` field's own type it reads THE CARRIER, and given a
+// `Witness<C>` it reads C out of it. `emit_info.expected_type` is the second kind of source and
+// only when its head is `Witness` -- it is the type expected of the whole expression, which at a
+// bare `Violates` inside `outcome_with_diagnostics(value: Violates { .. }, ..)` is
+// `Outcome<Witness<Node>>`, the ENCLOSING call's type. Handing that to the general reader took the
+// non-Witness arm and returned the whole type as the carrier, emitting
+// `Witness::<Rc<Outcome<Rc<Witness<Rc<Node>>>>>>::Violates` in v2.compiler.compile
+// (apply_compile_lens_introspect, E0308 expected Witness<Rc<Node>>).
+// This is the discipline `rust_witness_carrier_from_type_node` already states for an erased
+// identity -- a first source that cannot answer must DECLINE so the second is consulted -- applied
+// to the case that was not asked.
+//
+// BOTH SOURCES IN THE `Violates` CHAIN READ THROUGH HERE, because declining in one and fabricating
+// in the other only moves the fabrication one frame down. Measured: making the expected-type source
+// decline turned v2.compiler.compile's E0308 into E0573 `expected type, found variant Holds` at the
+// same site -- the second source, the variant's own resolved type, answering with something that is
+// not a Witness either. A `Violates` arm carries no value from which its carrier could be read, so
+// the carrier is a fact about the CONTEXT and only a Witness-headed type is that fact. When neither
+// source is Witness-headed, `rust_witness_variant_ctor_path`'s refusal fires and the emitted crate
+// carries a located `compile_error!` naming the variant rather than a plausible wrong type.
+//
+// NEXT-RUNG TRIGGER, shared with `rust_param_type_is_type_variable`: at
+// `outcome_with_diagnostics(value: Violates { .. }, ..)` the carrier IS derivable -- it is the
+// instantiated type of the callee's `value` parameter, `T` unified from the declared return
+// `Outcome<T>` against the expected `Outcome<Witness<Node>>`. The emitter cannot reach it because
+// `emit_info.expected_type` at an argument carries the ENCLOSING expression's type rather than the
+// argument position's, and no per-call type-argument substitution is recorded. Inference recording
+// that substitution -- the shape `__applied_type_args` already has on type nodes -- makes this
+// source answerable and both fabrications in this class unnecessary at once.
+fn rust_witness_carrier_from_witness_headed_type_node(type_node: Node, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String? {
+  if type_node.inferred != none && is_compiler_error(inferred: type_node.inferred.value) { return none }
+  let peeled = rust_peel_all_rc_type_node(type_node: type_node, source_indices: source_indices)
+  if qualified_last_segment(name: peeled.name) != "Witness" { none }
+  else { rust_witness_carrier_from_type_node(type_node: peeled, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) }
+}
+
 fn rust_witness_type_arg_from_expected_type(emit_info: EmitGraphInfo, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> String? {
   match emit_info.expected_type {
-    Present { value: rt } => rust_witness_carrier_from_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    Present { value: rt } => rust_witness_carrier_from_witness_headed_type_node(type_node: rt, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     Absent => none
   }
 }
@@ -930,26 +978,43 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: Node, 
   } else if variant_name == "Violates" {
     match rust_witness_type_arg_from_expected_type(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+      Absent => rust_witness_carrier_from_witness_headed_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
   } else {
     rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
-fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+// A REFUSAL IS AN EXPRESSION, NOT A PATH, and this carrier exists because the refusal was written
+// as a path and is not one. `compile_error!(..)` was returned where the caller then appends the
+// variant's field body, producing `compile_error!("..") { diagnostic: .. }` -- which is not Rust.
+// Measured on v2.compiler.compile: one unresolved carrier became FOUR rows, two of them uncoded
+// parse errors ("struct literal body without path", "expected one of `)`, `,` ... found `{`") plus
+// an E0061 on the macro. A refusal that emits a syntax error is not a located refusal; it is noise
+// at a location, and it is louder about the wrong thing than the defect it replaced.
+// So the verdict is typed and the CALLER decides the whole expression: on refusal it emits the
+// `compile_error!` alone and drops the field body, which is one located row naming the variant.
+type WitnessCtorPathVerdict
+  = WitnessCtorPathResolved { path: String }
+  | WitnessCtorPathUnresolved { reason: String }
+
+fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effective_parent: String?, resolved_type: Node, fields: List<Node>, shared_types: Set<String>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> WitnessCtorPathVerdict {
   match effective_parent {
     Present { value: parent } =>
       if !rust_witness_parent_leaf(parent: parent) {
-        rust_variant_path(parent: parent, rust_name: variant_name)
+        WitnessCtorPathResolved { path: rust_variant_path(parent: parent, rust_name: variant_name) }
       } else {
         match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
-          Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
-          Absent => concat("compile_error!(\"witness carrier type arg unresolved for variant ", variant_name, "\")")
+          Present { value: arg } => WitnessCtorPathResolved { path: concat("Witness::<", arg, ">::", variant_name) }
+          Absent => WitnessCtorPathUnresolved { reason: concat("witness carrier type arg unresolved for variant ", variant_name) }
         }
       }
-    Absent => ctor_name
+    Absent => WitnessCtorPathResolved { path: ctor_name }
   }
+}
+
+fn rust_witness_ctor_refusal_expr(reason: String) -> String {
+  concat("compile_error!(\"", reason, "\")")
 }
 
 fn is_parametric_opaque_type_by_name(env: TypeEnv, type_name: String) -> Bool {
@@ -10358,13 +10423,39 @@ fn emit_typed_call_expr(func: String, args: List<Node>, inferred: InferredNode?,
 // `witness_from_optional(opt: Optional<T>, ..)` earned a fail-closed `.expect(..)` that unwrapped
 // the very value the callee exists to inspect (E0308 expected Option<..>, found .. at six sites).
 // Both spellings name one carrier; the predicate asks both.
+// A TYPE VARIABLE CANNOT SAY "REQUIRED". The predicate below is consulted by
+// `rust_call_arg_fail_closed_unwrap`, whose two existing sources -- the `T?` cardinality flag and
+// the applied `Optional<T>` carrier spelling -- both read the callee's DECLARED parameter type.
+// When that declared type is the callee's own type VARIABLE the declaration carries no answer at
+// all: optionality is a property of the instantiation. Answering "required" there is a fabricated
+// default, not a fail-closed one (DESIGN section 5: a failure arm refuses, it does not widen), and
+// it injected `.expect(..)` into `outcome_accepted(Present { value: child })` in
+// v2.compiler.target_carriers, stripping the very Option the call's own return type
+// `Outcome<Optional<Node>>` demands (E0308 expected Option<Rc<Node>>, found Rc<Node>).
+// So an unanswerable source DECLINES and no unwrap is injected: the argument is passed as written,
+// which is what the instantiated parameter type asks for.
+//
+// A TYPE VARIABLE IS RECOGNISED THE WAY THIS MODULE ALREADY RECOGNISES ONE -- a single uppercase
+// letter carrying no type arguments, the same test `rust_witness_type_arg_admit_rendered` applies
+// to a rendered type argument. Recognising fewer type variables than exist is safe in this
+// direction: an unrecognised one keeps today's behavior rather than inventing new silence.
+fn rust_param_type_is_type_variable(param_type: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if param_type.children |> count > 0 { false }
+  else if param_type.params |> count > 0 { false }
+  else {
+    let authored = authored_name_at(source_indices: source_indices, node: param_type)
+    let name = if authored != "" { authored } else { param_type.name }
+    string_length(s: name) == 1 && rust_is_uppercase_letter(c: name)
+  }
+}
+
 fn rust_call_arg_fail_closed_unwrap(arg_str: String, arg: Node, callee: ItemInfo?, idx: Int, func: String, source_indices: Map<String, NewlineIndex>) -> String {
   match callee {
     Present { value: info } =>
       match function_value_params(params: info.params) |> skip(idx) |> first {
         Present { value: param } =>
           let param_type = param_node_type_expr(n: param)
-          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices)
+          let param_required = param_type.return_cardinality != CardOptional && !is_host_optional_carrier_type(n: param_type, source_indices: source_indices) && !rust_param_type_is_type_variable(param_type: param_type, source_indices: source_indices)
           let arg_optional = resolved_type(n: arg).return_cardinality == CardOptional
           if param_required && arg_optional {
             concat(arg_str, ".expect(\"fail-closed: an optional value flowed into non-optional parameter ", to_string(value: idx), " of ", func, " (empty Optional at runtime)\")")
@@ -12582,10 +12673,15 @@ fn emit_typed_record_lit(type_name: String?, fields: List<Node>, parent_enum: St
       let rust_tn = if optional_variant {
         rust_optional_variant_spelling(name: variant_surface_name)
       } else { tn }
-      let display_tn = if optional_variant { rust_tn }
-        else {
-          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
-        }
+      let ctor_verdict = if optional_variant {
+        WitnessCtorPathResolved { path: rust_tn }
+      } else {
+        rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+      }
+      let display_tn = match ctor_verdict {
+        WitnessCtorPathResolved { path: p } => p
+        WitnessCtorPathUnresolved { reason: r } => return rust_witness_ctor_refusal_expr(reason: r)
+      }
       if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
           Present { value: f } =>
