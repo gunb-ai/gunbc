@@ -177,10 +177,11 @@ test fn missing_prepared_identity_refuses() -> Bool {
   ) {
     PreparedFloorSubjectRefused {
       cause: PreparedFloorMissingProbeIdentities { missing: missing }
-    match missing.first() {
-      Present { value: h0 } => } => missing.count() == 1 && h0.entry == witness_b().entry
-      Absent => false
-    }
+    } => missing.count() == 1
+      && match missing.first() {
+        Present { value: h0 } => h0.entry == witness_b().entry
+        Absent => false
+      }
     _ => false
   }
 }
@@ -254,10 +255,11 @@ test fn unexpected_probe_identity_refuses() -> Bool {
   ) {
     PreparedFloorSubjectRefused {
       cause: PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected }
-    match unexpected.first() {
-      Present { value: h0 } => } => unexpected.count() == 1 && h0.entry == witness_extra().entry
-      Absent => false
-    }
+    } => unexpected.count() == 1
+      && match unexpected.first() {
+        Present { value: h0 } => h0.entry == witness_extra().entry
+        Absent => false
+      }
     _ => false
   }
 }

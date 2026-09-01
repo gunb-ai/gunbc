@@ -364,16 +364,18 @@ test fn commit_check_demand_named_multi_function_is_exact_and_permutation_invari
             }
             && nth_declaration_name(rows: left, row: 0, declaration: 0) == "beta_holds"
             && nth_declaration_name(rows: left, row: 0, declaration: 1) == "alpha_holds"
-            && declaration_ref_lists_eq(
-              match left.first() {
-                Present { value: h0 } => left: h0.declarations,
-                Absent => false
-              }
-              match right.first() {
-                Present { value: h0 } => right: h0.declarations
-                Absent => false
-              }
-            )
+            && match left.first() {
+              Present { value: l0 } =>
+                match right.first() {
+                  Present { value: r0 } =>
+                    declaration_ref_lists_eq(
+                      left: l0.declarations,
+                      right: r0.declarations
+                    )
+                  Absent => false
+                }
+              Absent => false
+            }
         DemandMissing { check: _, cause: _ } => false
         DemandAmbiguous { check: _, cause: _ } => false
         DemandIncomplete { check: _, cause: _ } => false
