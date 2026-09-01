@@ -185,6 +185,7 @@ The payoff is that **language design itself opens up.** It is normally locked by
 
 One row per class, each carrying its recognition rule and its receipts, in [docs/design-ledgers.md](docs/design-ledgers.md) — authority `gunbc.recurring_failure_mode`. They are rostered there rather than here because they are a LEDGER and not a consequence: every lane that finds a new class appends one, so the section grows without bound while this document's sections are fixed by §1. The index below is the classes; the ledger is the content.
 
+- `censored_estimator_drops_its_own_tail`
 - `hollow_alias`
 - `state_space_conflation`
 - `absorbing_fallback`
