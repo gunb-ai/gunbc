@@ -149,6 +149,15 @@ pub fn type_reference_decl_file(n: Rc<Node>) -> String {
     }
 }
 
+pub fn decl_file_carries_three_states_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "THE IDENTITY KEY HAS THREE INHABITANTS AND ITS TYPE EXPRESSES TWO. decl_identity_file projects a declaration's ident_span FILE, and a kernel-minted node's span file is the synthetic string <kernel:NAME> (v1.std.core kernel_span, the same spelling v1.compiler.env resolved_node_is_kernel_identity_for_name tests for exact equality). So a decl_file argument is one of THREE things -- a real declaring module path, the synthetic kernel identity, or the empty string meaning unknown -- while every consumer here discriminates only empty from non-empty. type_realization_decision reads <kernel:String> as a KNOWN declaration and proceeds to the spelling-keyed arm; decl_file_declares_structurally compares it against structural_declaration_modules_for with contains, which no synthetic identity can ever match, so the structural gate is unreachable for a kernel-resolved reference by construction rather than by decision. NO WRONG ANSWER IS CLAIMED AND NONE WAS MEASURED: for the kernel names that reach it today the spelling-keyed answer is the correct one, which is precisely why the conflation is invisible -- it is a state-space defect, not a live diagnostic, and it is filed so it ranks rather than waiting for the first name where the two answers differ. Measured on a fixture module importing v2.std.text String and v2.std.node Node, read through v1.tests.claim.carrier_realization_census: the bare String reference carries <kernel:String> as its identity while a v2.std.node.Node reference in the same module carries src/v2/std/node.dag, and both are reported as identity KNOWN. RUNG: mitigatable -- the invalid state is writable and nothing refuses it. CEILING: structurally impossible, because the distinction is decidable and already has an authority (resolved_node_is_kernel_identity_for_name) that this key path does not consult. NEXT-RUNG TRIGGER, naming the CAPABILITY rather than an artifact: the identity key becomes a typed carrier whose kernel-identity inhabitant is a distinct constructor from a declaring module, so a consumer cannot read a synthetic identity as a declaration without matching on it -- at which point this note dissolves rather than being edited.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn type_reference_identity_note() -> String {
     thread_local! {
         static CACHED: String = {
