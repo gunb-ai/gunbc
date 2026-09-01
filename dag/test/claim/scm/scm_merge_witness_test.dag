@@ -633,6 +633,14 @@ fn merge_witness_source_fixture() -> Fixture {
   }
 }
 
+// WHERE THE CHILD ARM IS WITNESSED, AND WHY NOT HERE. A proposal cannot reach
+// TargetChildIsAuthoredSource: `RequireBinding` carries a `Node`, so every role value a proposal
+// supplies is stored through store_node and is a semantic node by construction. The only way a role
+// value names a file is for the TARGET ROOT's own child edge to point at one, and the only producer
+// of that shape is the decoder resolving an edge position into an authored entry. So that claim lives
+// beside the document builder, in test.claim.scm_commit_closure_json_v2_witness, where the input can
+// actually be constructed -- rather than here, where it would need a constructor the model correctly
+// does not offer.
 fn merge_refusal_tag(o: MergeOutcome) -> String {
   match o {
     Merged { store: _, commit: _, roles: _ } => "merged"
@@ -668,12 +676,3 @@ test fn merge_a_target_root_that_is_a_node_does_not_refuse() -> Bool {
     o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
   ) == "merged"
 }
-
-// WHERE THE CHILD ARM IS WITNESSED, AND WHY NOT HERE. A proposal cannot reach
-// TargetChildIsAuthoredSource: `RequireBinding` carries a `Node`, so every role value a proposal
-// supplies is stored through store_node and is a semantic node by construction. The only way a role
-// value names a file is for the TARGET ROOT's own child edge to point at one, and the only producer
-// of that shape is the decoder resolving an edge position into an authored entry. So that claim lives
-// beside the document builder, in test.claim.scm_commit_closure_json_v2_witness, where the input can
-// actually be constructed -- rather than here, where it would need a constructor the model correctly
-// does not offer.

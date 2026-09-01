@@ -80,7 +80,15 @@ import gunbc.scm.json_member {
   read_member_value,
   read_string_member,
 }
-import gunbc.scm.object_store { ObjectId, ObjectStore, empty_store, store_contains }
+import gunbc.scm.object_store {
+  NodeRecordAbsent,
+  NodeRecordFound,
+  NodeRecordIsAuthoredSource,
+  ObjectId,
+  ObjectStore,
+  empty_store,
+  find_node_record,
+}
 import gunbc.scm.commit_closure { uncontained_targets }
 import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
@@ -268,6 +276,7 @@ type RepositoryCommitMint
   = RepositoryCommitMinted { repository: RepositoryEnvelope, reference: RepositoryCommitRef }
   | RepositoryCommitMintAllocatorInvalid { next_ordinal: Int }
   | RepositoryCommitMintRootMissing { root: ObjectId }
+  | RepositoryCommitMintRootIsAuthoredSource { root: ObjectId }
   | RepositoryCommitMintParentMissing { parent: RepositoryCommitRef }
 
 // PURE CONSTRUCTION WALL FOR INTERNAL HISTORIES. The allocator is carried by the repository and
@@ -275,6 +284,11 @@ type RepositoryCommitMint
 // highest row would then reuse an identity and let an old user-held reference resolve confidently to
 // a different commit. A descendant accepts only an EXISTING parent, so construction order makes a
 // cycle unwritable internally. This function performs no persistence, CLI action, or host effect.
+//
+// THE ROOT ADMISSION ASKS FOR A NODE, NOT FOR A LOCATOR. `store_contains` answers about the locator
+// and is kind-agnostic by design, so asking it here admitted an authored-source object as a commit
+// root -- a commit that mints cleanly and then refuses at checkout, which is the wrong place for the
+// refusal to appear and the wrong owner to name in it.
 fn mint_repository_commit(
   repository: RepositoryEnvelope,
   root: ObjectId,
@@ -283,28 +297,31 @@ fn mint_repository_commit(
 ) -> RepositoryCommitMint {
   if repository.commit_allocator.next_ordinal < 0 {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
-  } else if !store_contains(store: repository.store, identity: root) {
-    RepositoryCommitMintRootMissing { root: root }
   } else {
-    match parent {
-      Present { value: parent_ref } =>
-        match commit_at_reference(commits: repository.commits, reference: parent_ref) {
-          Absent => RepositoryCommitMintParentMissing { parent: parent_ref }
-          Present { value: _ } =>
+    match find_node_record(store: repository.store, identity: root) {
+      NodeRecordAbsent { identity: _ } => RepositoryCommitMintRootMissing { root: root }
+      NodeRecordIsAuthoredSource { identity: _ } => RepositoryCommitMintRootIsAuthoredSource { root: root }
+      NodeRecordFound(_) =>
+        match parent {
+          Present { value: parent_ref } =>
+            match commit_at_reference(commits: repository.commits, reference: parent_ref) {
+              Absent => RepositoryCommitMintParentMissing { parent: parent_ref }
+              Present { value: _ } =>
+                mint_repository_commit_admitted(
+                  repository: repository,
+                  root: root,
+                  message: message,
+                  ancestry: DescendsFrom { parent: parent_ref },
+                )
+            }
+          Absent =>
             mint_repository_commit_admitted(
               repository: repository,
               root: root,
               message: message,
-              ancestry: DescendsFrom { parent: parent_ref },
+              ancestry: RootCommit,
             )
         }
-      Absent =>
-        mint_repository_commit_admitted(
-          repository: repository,
-          root: root,
-          message: message,
-          ancestry: RootCommit,
-        )
     }
   }
 }

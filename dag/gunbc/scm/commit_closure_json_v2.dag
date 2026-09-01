@@ -854,6 +854,15 @@ fn decode_acc_refused(acc: DecodeAcc, cause: ClosureDocRefusal) -> DecodeAcc {
 // malformed failure. An entry carrying neither is refused by the node member set, which is the
 // pre-existing behaviour for an unrecognized entry and stays the default: a new shape has to be
 // added here deliberately, it cannot arrive by resembling something.
+// ONLY *MISSING* IS EVIDENCE THAT THE ENTRY MIGHT BE A NODE, and the first cut of this
+// classifier ignored that. It matched every MemberFailed cause and fell through to the node
+// arm, so `{"source": null}`, a DUPLICATED source, and a source whose subject is not an
+// object were all reclassified as "not a source" and then reported as a missing `kind` or
+// an unexpected member. Each of those still refused, but for the WRONG OWNER -- the
+// not-applicable-rendered-as-malformed failure this module's own header names, reintroduced
+// by the classifier added to avoid it. gunbc.scm.json_member separates the four causes
+// precisely so a consumer does not have to collapse them; collapsing them here threw that
+// away. Found by external review of gunbc#9891.
 fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -878,15 +887,6 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
             acc: acc,
             cause: ClosureDocMemberReadRefused { cause: MemberReadWrongShape { key: "source" } }
           )
-        // ONLY *MISSING* IS EVIDENCE THAT THE ENTRY MIGHT BE A NODE, and the first cut of this
-        // classifier ignored that. It matched every MemberFailed cause and fell through to the node
-        // arm, so `{"source": null}`, a DUPLICATED source, and a source whose subject is not an
-        // object were all reclassified as "not a source" and then reported as a missing `kind` or
-        // an unexpected member. Each of those still refused, but for the WRONG OWNER -- the
-        // not-applicable-rendered-as-malformed failure this module's own header names, reintroduced
-        // by the classifier added to avoid it. gunbc.scm.json_member separates the four causes
-        // precisely so a consumer does not have to collapse them; collapsing them here threw that
-        // away. Found by external review of gunbc#9891.
         MemberFailed { cause: c } =>
           match c {
             MemberReadMissing { key: _ } =>

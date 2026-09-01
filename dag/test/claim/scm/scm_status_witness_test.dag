@@ -10,6 +10,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
+  RepositoryCommitMintRootIsAuthoredSource,
   RepositoryCommitMintRootMissing,
   RepositoryCommitMintParentMissing,
   mint_repository_commit,
@@ -78,6 +79,7 @@ fn status_witness_repository_with_checkout() -> RepositoryEnvelope {
     }
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => base
     RepositoryCommitMintRootMissing { root: _ } => base
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => base
     RepositoryCommitMintParentMissing { parent: _ } => base
   }
 }

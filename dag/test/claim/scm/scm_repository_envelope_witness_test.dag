@@ -30,6 +30,7 @@ import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
   empty_store, object_id_eq, store_node, store_object_count,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
+  store_authored_source,
 }
 import gunbc.scm.commit_closure { uncontained_targets }
 import gunbc.scm.ancestry { CommitAncestry, RootCommit, DescendsFrom, RepositoryCommitRef }
@@ -54,6 +55,7 @@ import gunbc.scm.repository_envelope {
   encode_repository_checked,
   RepositoryCommitMint, RepositoryCommitMinted, RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintParentMissing,
+  RepositoryCommitMintRootIsAuthoredSource,
   RepositoryCommitMintRootMissing, mint_repository_commit,
   commit_at_reference,
 }
@@ -148,6 +150,7 @@ fn scm_env_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, 
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
   }
 }
 
@@ -1020,6 +1023,7 @@ test fn scm_env_the_mint_refuses_a_parent_not_already_in_the_repository() -> Boo
     RepositoryCommitMinted { repository: _, reference: _ } => false
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
   }
 }
 
@@ -1101,6 +1105,7 @@ test fn scm_env_deleting_the_highest_commit_does_not_reuse_its_identity() -> Boo
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
     RepositoryCommitMintParentMissing { parent: _ } => false
     RepositoryCommitMintRootMissing { root: _ } => false
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
   }
 }
 
@@ -1127,5 +1132,48 @@ test fn scm_env_reordering_rows_does_not_change_which_commit_a_key_names() -> Bo
         Absent => false
         Present { value: second } => first.message == "first" && second.message == "second"
       }
+  }
+}
+
+// THE ROOT ADMISSION DISCRIMINATES ON KIND, NOT ON PRESENCE, and this pair is what establishes that
+// rather than the signature. The subject store holds exactly one object -- an authored source file --
+// so its locator is PRESENT: the `RootMissing` arm is not reachable here, and a kind-agnostic
+// `store_contains` returns true and mints a commit. The claim asserts the file's own identity comes
+// back in the refusal, so a refusal naming some other locator does not satisfy it.
+test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> Bool {
+  match store_authored_source(store: empty_store(), text: "not a program") {
+    LocatorCollision { identity: _, existing: _, incoming: _ } => false
+    Stored { store: store, identity: file } =>
+      match mint_repository_commit(
+        repository: scm_env_repository_with_store(store: store),
+        root: file,
+        message: "root is a file",
+        parent: none,
+      ) {
+        RepositoryCommitMintRootIsAuthoredSource { root: r } => object_id_eq(left: r, right: file)
+        RepositoryCommitMinted { repository: _, reference: _ } => false
+        RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+        RepositoryCommitMintParentMissing { parent: _ } => false
+        RepositoryCommitMintRootMissing { root: _ } => false
+      }
+  }
+}
+
+// THE CONTROL, ONE FACT APART. Same shape, same store construction, same message; the root is a
+// stored NODE instead of a stored file. It must mint. Without this, a mint that refused everything
+// would satisfy the claim above.
+test fn env_a_commit_root_that_is_a_node_mints() -> Bool {
+  let put = scm_env_put(store: empty_store(), n: scm_env_atom(identity: "program"))
+  match mint_repository_commit(
+    repository: scm_env_repository_with_store(store: put.store),
+    root: put.identity,
+    message: "root is a program",
+    parent: none,
+  ) {
+    RepositoryCommitMinted { repository: _, reference: _ } => true
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => false
+    RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
+    RepositoryCommitMintParentMissing { parent: _ } => false
+    RepositoryCommitMintRootMissing { root: _ } => false
   }
 }

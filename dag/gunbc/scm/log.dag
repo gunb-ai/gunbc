@@ -19,7 +19,14 @@ module gunbc.scm.log
 // output failure DESIGN section 5 forbids at a user-facing boundary.
 
 import std.types { Bool, List, String }
-import gunbc.scm.object_store { ObjectId, ObjectStore, store_contains }
+import gunbc.scm.object_store {
+  NodeRecordAbsent,
+  NodeRecordFound,
+  NodeRecordIsAuthoredSource,
+  ObjectId,
+  ObjectStore,
+  find_node_record,
+}
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 
 // WHETHER THIS COMMIT'S PROGRAM IS ACTUALLY HELD, which is decidable here and therefore reported.
@@ -28,9 +35,19 @@ import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
 // commit without saying so would present a row that cannot be checked out as though it were
 // ordinary -- the same reasoning that gives gunbc.scm.status its CheckedOutCommitMissing arm, and
 // the same refusal it is derived from.
+// THREE STANDINGS, NOT TWO, BECAUSE THE STORE ANSWERS TWO DIFFERENT NEGATIVES.
+//
+// A commit root must denote a semantic node: it is the thing `checkout` reconstructs. The store also
+// holds authored-source objects, so a locator can be PRESENT and still be the wrong kind of thing
+// for a root. An earlier revision asked `store_contains`, which is deliberately kind-agnostic --
+// it answers about the LOCATOR -- and so reported a file sitting under a commit's root locator as
+// `LoggedCommitRootHeld`: a log row claiming a checkoutable root where checkout refuses. The two
+// negatives have different remedies (fetch the missing object vs. repair a wrong-kind reference), so
+// they are separate arms rather than one Bool.
 type LoggedCommitStanding
   = LoggedCommitRootHeld
   | LoggedCommitRootMissingFromStore
+  | LoggedCommitRootIsAuthoredSource
 
 // The row exposes the commit's own opaque identity, not a value derived from its list position or
 // root. Consumers may hand it back as a reference; they must not inspect its ordinal for ordering or
@@ -63,10 +80,10 @@ type CommitLogAcc {
 }
 
 fn logged_commit_standing(store: ObjectStore, root: ObjectId) -> LoggedCommitStanding {
-  if store_contains(store: store, identity: root) {
-    LoggedCommitRootHeld
-  } else {
-    LoggedCommitRootMissingFromStore
+  match find_node_record(store: store, identity: root) {
+    NodeRecordFound(_) => LoggedCommitRootHeld
+    NodeRecordAbsent { identity: _ } => LoggedCommitRootMissingFromStore
+    NodeRecordIsAuthoredSource { identity: _ } => LoggedCommitRootIsAuthoredSource
   }
 }
 
@@ -126,6 +143,7 @@ fn commit_log_is_fully_held(log: CommitLog) -> Bool {
           match r.standing {
             LoggedCommitRootHeld => true
             LoggedCommitRootMissingFromStore => false
+            LoggedCommitRootIsAuthoredSource => false
           }
         } else {
           false

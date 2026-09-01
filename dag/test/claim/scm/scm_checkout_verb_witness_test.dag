@@ -28,6 +28,7 @@ import gunbc.scm.repository_envelope {
   RepositoryCommitMinted,
   RepositoryCommitMintAllocatorInvalid,
   RepositoryCommitMintParentMissing,
+  RepositoryCommitMintRootIsAuthoredSource,
   RepositoryCommitMintRootMissing,
   mint_repository_commit,
 }
@@ -104,6 +105,7 @@ fn scm_ck_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, p
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
     RepositoryCommitMintParentMissing { parent: _ } => repo
     RepositoryCommitMintRootMissing { root: _ } => repo
+    RepositoryCommitMintRootIsAuthoredSource { root: _ } => repo
   }
 }
 
