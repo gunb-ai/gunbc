@@ -39,6 +39,12 @@ own homework. `docs/plans/roadmap-launch-mvp-plan.md` is that procedure.
 No substitute terminal counts. A harness that completes a turn against a Spark in isolation is a
 component probe, not this terminal.
 
+**And this terminal is necessary without being sufficient.** The canary is one small change: it
+will not fill a context window, will not run a build long enough to meet a tool timeout, and will
+not sit through a convergence of the serving unit. So the classes in §5 cannot be discharged by
+passing it, and a green on the canary is a green on the easy path. Each class in §5 owes its own
+evidence, named there. Stating this is the difference between a terminal and a demonstration.
+
 ## 2. Current-state ruling
 
 ### Already usable
@@ -105,6 +111,12 @@ them on its own evidence: that a cold large model can exceed a default HTTP clie
 timeout, and that an assistant turn must be echoed back verbatim — thinking blocks included — with
 all tool results for one turn batched into a single user message. Treat both as **hypotheses with a
 predicted failure**, not as facts on loan.
+
+Two more joined that list on 2026-09-01 from the transcript §5 reads, on the same terms: that a
+streaming request may terminate a response early where an otherwise identical non-streaming request
+returns it complete, and that an assistant turn may stop at `end_turn` having announced work it did
+not perform. Neither is established. The second has exactly one observation and the first has none
+— their session's last planned step, isolating streaming as the single variable, was never run.
 
 ## 3. Serial gate chain
 
@@ -256,3 +268,97 @@ surface goes with them — it exists to solve a problem that a self-hosted endpo
 - Bump `fleet_intent_network_witness_test`'s endpoint-count literal to absorb enrolment. Repair the
   oracle or leave it red; a count copied from the tree it measures is not one.
 - Treat "it completed one turn" as evidence for anything but that.
+
+## 5. Adversarial review — the failure classes this lane must answer in advance
+
+**Provenance, stated once.** On 2026-09-01 the operator relayed a transcript of the `ctrl`
+mini-agent lane debugging its own harness against these same Sparks, and directed that DCH be made
+to answer it before it starts. Everything in this section is **second-hand and unreproduced here**.
+It is admitted on exactly the terms §2 sets for the rest of that lane's output: each row is a
+**hypothesis about our design with a predicted failure**, never a fact on loan, and none of it is
+citable as evidence. What their session buys us is not findings — it is a cheap enumeration of
+where a harness of this shape breaks, produced by someone who paid for it.
+
+The value is concentrated in one property: **every class below was operator-visible as something
+other than itself.** A harness throw read as a clean exit. A dead session read as a working one. A
+control-plane restart read as a Spark fault. An inflated rate read as fast hardware. A model that
+stopped early read as a truncated message. That is one class, not five, and it is the class DESIGN
+§5 exists for — so the obligation this section places on DCH is not "handle these bugs" but
+**produce a disposition that cannot be mistaken for a different one.**
+
+### 5.1 Classes, and the gate that owns each
+
+| # | Class | Observed as | Owner |
+|---|---|---|---|
+| 1 | A harness fault reaches the operator as success | process exited 0 for an hour after a first-write throw | DCH-2, and Q5 below |
+| 2 | One throw destroys unrelated work | any error in the loop took down the whole container | DCH-2, and Q1 below |
+| 3 | Self-reported status that no observer can resolve | frozen at `idle` while the harness emitted `working` throughout | DCH-2 |
+| 4 | A backend restart kills every in-flight turn | control plane and inference router shared a process | **DCH-0**, and Q3 below |
+| 5 | A turn ends without doing the work and nothing types it | `end_turn`, one heading, after 50k input | DCH-2, and Q2 below |
+| 6 | An instrument that fails toward a flattering number | 687 tok/s the hardware never reached, from KV reuse | DCH-2 |
+| 7 | Tool-surface semantics that are real and unannounced | `cd` not persisting; a 120s SIGKILL; no stdin; no compaction | DCH-2 |
+| 8 | A repair whose blast radius exceeds the bug's | a failed `chown` under `set -e` blocked every spawn on the node | this lane's own discipline |
+| 9 | Evidence filtered by survivorship | one completed final turn existed; the rest died of other bugs | Q4 below |
+
+Row 3 is the one that most directly touches a claim this plan already makes. DCH-2 says a harness
+that reports its own status retires the observation layer. Their harness **did** report its own
+status, correctly, the entire time — and the operator still saw a frozen session, because the
+report's *transport* failed independently of the report. So self-reporting is necessary and is not
+the simplification on its own; the plan's existing instruction to **measure** that claim rather
+than assert it is upheld, and this is what it will be measured against.
+
+Row 6 is the same defect this plan already corrects in DCH-0 for a different subject: a plausible
+number that nobody could re-derive. DESIGN §6 governs both — name the instrument, never transcribe
+its output. A harness of ours may not report a rate it cannot ground, and where a quantity is not
+measurable the honest render is a refusal to render, not a zero.
+
+Row 7 is a single line in DCH-2 today ("four tools: run a command, read, write, edit"), and that
+line is where every operator-visible quirk in their lane lived. It is expanded there rather than
+here. Two of their choices are worth keeping as-is because they are already the right shape: an
+output cap that **announces** its truncation, so a large result is distinguishable from a complete
+one; and an edit that **refuses on zero or multiple matches** rather than patching the first, which
+is construction over validation.
+
+Row 8 is not about the harness. It is a note to this lane's own reviewers: their repair for a
+mini-agent-only failure aborted bootstrap for every session on the node. A fix that widens the
+failure population is a regression regardless of the class it closes.
+
+### 5.2 Five questions sent for adjudication, 2026-09-01
+
+These are **open**, and this section will not be treated as settled until they return. They were
+sent to the controlling reviewer rather than decided here because each one is contestable and three
+of them can change a gate.
+
+1. **Where is the stop-the-line boundary inside a coding harness?** DESIGN §5 says a failure arm
+   must refuse, never widen — and their harness refuses maximally, which is what destroyed the
+   sessions. The reflexive repair, "survive your own errors", has the shape of an absorbing
+   fallback, so it is not adopted by reflex. Proposed discriminator: a **tool** failure is an
+   observation and returning it typed to the model is the answer, not a widening; a **harness
+   invariant** failure stops the line. Ruling wanted on the boundary, and on which side a tool
+   timeout and an unexpected stop reason fall.
+2. **Can a degenerate turn carry a typed disposition at all?** "Shorter than N is degenerate" is
+   precisely the view-read-as-population defect that landed in #9946. What may be typeable without
+   a threshold: the turn ended while an **announced and unperformed** intent stands — a structural
+   fact about the last message, not a length.
+3. **Convergence is their router restart.** DCH-0 places the serving unit under fleet convergence;
+   converging it restarts the serving process; so this lane imports their worst open defect **by
+   construction**, into the layer it chose on purpose. Candidates: a drain or lease so a converge
+   cannot land mid-turn; or DCH-2 surviving a mid-stream backend restart, which needs real design
+   because replaying a partially streamed response can duplicate work; or a declared §4b drop with
+   a restoration trigger. Position taken into the ruling: the drain is the construction, and until
+   it exists the drop is what honesty requires.
+4. **What does n=1 under survivorship license?** The degenerate stop has one observation, and the
+   sample is survivorship-filtered rather than merely small. Do these two join the
+   hypotheses-with-a-predicted-failure list in §2, or does each first owe its own instrument?
+5. **Is a process exit status a carrier?** Their operator read `0` for an hour; the zero was a
+   watchdog's, not the harness's — a refusal typed as success at a boundary that can only carry an
+   integer. Preferred answer: the exit status is **not** a carrier, the durable attempt record is
+   the only disposition, and the process boundary is declared lossy. That preference imposes a real
+   ordering constraint on DCH-2 — the record must be written before the process can die.
+
+### 5.3 What is already added to §4 regardless of the rulings
+
+- Do not report a measurement the harness cannot ground; render a refusal where a quantity is not
+  measurable, never a zero and never a back-computed figure.
+- Do not treat a green canary as evidence for any class in §5.1.
+- Do not land a repair whose failure population is larger than the one it closes.
