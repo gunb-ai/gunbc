@@ -208,6 +208,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `externalized_degradation`
 - `instrument_output_read_as_subject_content`
 - `executed_conjunct_discriminates_nothing`
+- `unbacked_execution_claim`
 
 ## Building & checks
 
