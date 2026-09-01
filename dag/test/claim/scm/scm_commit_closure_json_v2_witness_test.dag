@@ -87,6 +87,14 @@ import gunbc.scm.checkout {
   ObjectIsAuthoredSource,
 }
 import gunbc.scm.commit_closure { CommitClosure }
+import gunbc.scm.load_standing {
+  LoadStanding,
+  LoadComplete,
+  LoadPartial,
+  LoadUnsupportedProtocol,
+  LoadDocumentMalformed,
+  LoadIdentityCollision,
+}
 import gunbc.scm.merge {
   MergeOutcome,
   Merged,
@@ -119,6 +127,7 @@ import gunbc.scm.commit_closure_json_v2 {
   ClosureDocFormatUnrecognized,
   ClosureDocRootPositionUnresolved,
   ClosureDocRootIsAuthoredSource,
+  closure_document_load_standing,
   ClosureDocMemberReadRefused,
   ClosureDocUnexpectedMember,
   ClosureDocTargetReferenceRefused,
@@ -371,6 +380,73 @@ test fn scm_image_an_unrecognized_format_refuses() -> Bool {
       )
     )
   )
+}
+
+// THE PREDECESSOR'S OWN TAG, FROZEN, AND REFUSED AS A PROTOCOL GAP RATHER THAN AS DAMAGE.
+//
+// The re-review asked for independent old-writer evidence: bytes not produced by the current
+// encoder. Versioning changed what that evidence has to show. Before the bump, the question was
+// whether a predecessor document still decoded; now the v2 tag is a version this build does not
+// implement, so the required behaviour is a REFUSAL -- and specifically the unsupported-protocol
+// one, never malformed, because those have opposite remedies and only malformed permits
+// supersession (gunbc.scm.supersession standing_permission_refusal). A reader that filed a
+// predecessor document as damaged could discard a generation it simply cannot read.
+//
+// The document below is authored as a literal rather than derived from the current encoder, which
+// is the whole point: it is what the predecessor emitted -- a node-only object table under the v2
+// tag -- and nothing in this file can quietly re-derive it.
+data scm_image_legacy_v2_tag: String = "gunbc-scm-commit-closure-v2"
+
+fn scm_image_legacy_v2_document() -> JsonValue {
+  json_object(
+    members: [
+      json_kv(key: "format", value: json_string(s: scm_image_legacy_v2_tag)),
+      json_kv(key: "objects", value: json_array(elements: [scm_image_empty_node_entry()])),
+      json_kv(
+        key: "root",
+        value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])
+      ),
+    ]
+  )
+}
+
+test fn scm_image_a_frozen_predecessor_document_refuses_as_its_format() -> Bool {
+  scm_image_cause_tag(loaded: decode_closure_document(v: scm_image_legacy_v2_document())) == "format"
+}
+
+// AND THE STANDING IS THE PROTOCOL ONE. The claim above pins the cause; this pins what a consumer
+// deciding whether to overwrite is told, which is the half that actually carries the consequence.
+test fn scm_image_a_frozen_predecessor_document_is_a_protocol_gap_not_damage() -> Bool {
+  match decode_closure_document(v: scm_image_legacy_v2_document()) {
+    ClosureDocLoaded { store: _, root: _ } => false
+    ClosureDocRefused { cause: c } =>
+      match closure_document_load_standing(cause: c) {
+        LoadUnsupportedProtocol => true
+        LoadComplete => false
+        LoadPartial => false
+        LoadDocumentMalformed => false
+        LoadIdentityCollision => false
+      }
+  }
+}
+
+// CONTROL, one fact apart: the identical document under THIS build's tag loads. Without it, a
+// decoder that refused every hand-authored document would satisfy both claims above.
+test fn scm_image_the_same_document_under_the_current_tag_loads() -> Bool {
+  scm_image_cause_tag(
+    loaded: decode_closure_document(
+      v: json_object(
+        members: [
+          json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
+          json_kv(key: "objects", value: json_array(elements: [scm_image_empty_node_entry()])),
+          json_kv(
+            key: "root",
+            value: json_object(members: [json_kv(key: "at", value: json_string(s: "0"))])
+          ),
+        ]
+      )
+    )
+  ) == "loaded"
 }
 
 test fn scm_image_a_missing_format_refuses() -> Bool {

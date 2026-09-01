@@ -40,7 +40,7 @@ import gunbc.scm.repository_envelope {
   RepositoryEnvelope, RepositoryCommit,
   RepositoryDecodeOutcome, RepositoryDecoded, RepositoryDecodeRefused,
   empty_repository, encode_repository, decode_repository,
-  repository_envelope_format_tag, repository_node_identity_rule_tag,
+  repository_envelope_format_tag, repository_object_identity_rule_tag,
   RepositoryEncodeOutcome, RepositoryEncoded, RepositoryEncodeRefused,
   RepositoryEncodeRefusal, RepositoryEncodeUncontainedTarget,
   RepositoryCommitRootNotInStore, RepositoryCheckoutNotInCommits,

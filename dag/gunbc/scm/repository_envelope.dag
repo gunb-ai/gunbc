@@ -153,13 +153,22 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v2"
 // deliberately NOT derived from the code that implements the rule: a tag computed from the current
 // implementation would agree with itself by construction and could never disagree, which is the
 // change-detector failure -- it would go green precisely when the rule changed.
-// THE IDENTITY RULE MOVES ON ITS OWN AXIS, AND IT MOVED. v1 named ONE derivation: fnv1a64 over the
-// canonicalized node structure. The store now derives a second family -- an authored source's
-// identity, from content_hash_tagged_structural over a domain tag and the bytes -- and a document
-// carrying both families is reconstructed by a rule v1 does not describe. A reader that accepted v1
-// here and then met a source entry would reconstruct identities by a rule the document never
-// claimed, which is precisely the silent reinterpretation this tag exists to turn into a refusal.
-data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v2"
+// THE IDENTITY RULE MOVES ON ITS OWN AXIS, AND IT MOVED. The old value named ONE derivation --
+// fnv1a64 over the canonicalized node structure -- and the store now derives a second family: an
+// authored source's identity, from content_hash_tagged_structural over a domain tag and the text. A
+// document carrying both families is reconstructed by a rule the old value does not describe, and a
+// reader that accepted it and then met a source entry would reconstruct identities by a rule the
+// document never claimed. That is the silent reinterpretation this tag exists to turn into a
+// refusal.
+//
+// THE NAME MOVED WITH IT, AND THAT IS NOT COSMETIC. The symbol said `node` while the table it
+// governs holds non-node identities, so the authority's own name asserted something false about its
+// subject -- the meaning fork DESIGN section 3 names, in the one place whose whole job is to say
+// which rule was used. It now names the OBJECT identity rule, and the value names the rule rather
+// than one branch's hash function, because the rule is a total law over the object coproduct whose
+// semantic-node branch delegates to v2.std.node content_hash. A manifest branch joins this same tag
+// when it lands; it does not mint a third one.
+data repository_object_identity_rule_tag: String = "scm-object-identity-v1"
 
 // ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
 // rather than a fresh choice. The annotation on `checked_out` records why it resolves against the
@@ -483,7 +492,7 @@ fn encode_repository_v1(repo: RepositoryEnvelope) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "format", value: json_string(s: repository_envelope_format_tag)),
-      json_kv(key: "identity_rule", value: json_string(s: repository_node_identity_rule_tag)),
+      json_kv(key: "identity_rule", value: json_string(s: repository_object_identity_rule_tag)),
       json_kv(key: "objects", value: json_array(elements: acc.objects)),
       json_kv(
         key: "next_commit_ordinal",
@@ -1067,7 +1076,7 @@ fn decode_repository_v1(v: JsonValue) -> RepositoryDecodeOutcome {
   match read_string_member(v: v, key: "identity_rule") {
     MemberFailed { cause: c } => RepositoryDecodeRefused { cause: RepositoryMemberReadRefused { cause: c } }
     MemberString { value: rule } =>
-      if rule != repository_node_identity_rule_tag {
+      if rule != repository_object_identity_rule_tag {
         RepositoryDecodeRefused { cause: RepositoryIdentityRuleUnrecognized { found: rule } }
       } else {
         match repository_member_set_refusal(
