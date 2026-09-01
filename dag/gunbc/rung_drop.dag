@@ -23,7 +23,11 @@ module gunbc.rung_drop
 // three-way merge of two lanes' appended rows factors that suffix out of the conflict region and
 // leaves one tail below the markers for two half-blocks above them. Here the shared suffix is only
 // the closing brace, which is enough -- the additive resolution still produces a first row missing
-// it. One line per row leaves nothing shared but the blank separator.
+// it. One line per row leaves nothing shared but the blank separator. The rung is the one that
+// carrier states in full and it is not structural: nothing enforces the shape here either, so a
+// future multi-line row reintroduces the geometry, and the next-rung trigger is the same missing
+// capability -- a declaration-extent producer sufficient to refuse a multi-line row of a
+// growth-surface type at authoring time.
 //
 // WHY THE ANALYTIC FIELDS ARE NOT FILLED HERE, recorded so the next author does not read their
 // absence as an oversight. Splitting `authored` into the five 4b(3) fields means deciding, per row,

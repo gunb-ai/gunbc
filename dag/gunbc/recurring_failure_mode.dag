@@ -52,10 +52,31 @@ module gunbc.recurring_failure_mode
 //
 // A one-line row has no tail to lose. The only suffix a merge can factor out of the region is the
 // blank separator between rows, which carries nothing, so both sides of every region are WHOLE
-// declarations and the additive resolution is total. Construction rather than a check (DESIGN
-// section 5): the severed row has no spelling here, so nothing has to notice one. What this does
-// NOT do is remove the conflict -- two lanes appending still collide at this file's two append
-// points, and that pressure is a carrier question, not this one.
+// declarations and the additive resolution is total. What this does NOT do is remove the conflict --
+// two lanes appending still collide at this file's two append points, and that pressure is a carrier
+// question, not this one.
+//
+// THE RUNG, STATED HONESTLY BECAUSE THIS PARAGRAPH IS WHAT THE NEXT APPENDER READS. The population
+// carries no severable tail. The SHAPE IS NOT ENFORCED -- no lens covers row shape on this carrier
+// -- so one hand-authored multi-line row restores the two-line tail and the whole geometry with it.
+// The invalid state therefore stays WRITABLE and this is mechanically preventable at best, not
+// structural; calling the shape construction would be the rung inflation DESIGN section 4b(1) names,
+// sitting in the annotation an author consults before appending. NEXT-RUNG TRIGGER, named as the
+// capability and not as an artifact that would contribute to one: a row-shape obligation DECIDED for
+// every declaration of a growth-surface type rather than observed on the rows that happen to exist
+// -- the corpus already reads declared types per declaration through `v2.std.decl_index`
+// `data_decl_type_facts`, and what is missing is a producer carrying each declaration's source
+// EXTENT, sufficient for refusing a multi-line row of such a type at authoring time. Until that
+// exists, the shape is a convention held by review and by this paragraph.
+//
+// THE LOSS STATES ARE MEASURED AND THE SET IS COMPLETE, which is why no check is written here.
+// Against a gunbc built from source at d0009ca531, severing a multi-line row is loud in every one of
+// the three ways the two-line tail can be cut: losing BOTH lines and losing `}` alone are PARSE
+// refusals at the module index (`expected expression, found Eq` -- a `data` keyword landing in
+// record-field position), and losing `evidence: [],` alone is a RESOLVE refusal (`missing required
+// field 'evidence' in literal of type 'RecurringFailureMode'`). Nothing silent was found in that
+// set. A brace-balance or declared-versus-rostered check would be the DESIGN section 4b decoration:
+// permanently green, because the only corpus it could fire on never reaches it.
 
 import std.types { String, NonEmptyStr, List }
 import std.decl_ref { DeclarationRef }
