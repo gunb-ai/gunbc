@@ -105,10 +105,16 @@ fn ollama_context_length_env_assignment(default_context: TokenCount) -> NonEmpty
 // duration, which is not a throughput cost but a queue.
 //
 // THE SLOT COUNT DOES NOT DIVIDE THE CONTEXT WINDOW. That is worth stating in the authority because
-// the opposite was written down and believed. Measured on one host, one model, changing only this
-// variable: at one slot the runner reported context_length 1048576 and 88,865,253,620 bytes; at two
-// slots it reported context_length 1048576 and 90,543,761,652 bytes. Each slot receives its OWN full
-// window and costs its own cache. The count multiplies memory; it does not divide context.
+// the opposite was written down and believed. Holding the host and the model fixed and varying only
+// this variable, the runner reports the SAME context_length at one slot and at two, and a larger
+// buffer at two: each slot receives its OWN full window and costs its own cache. The count
+// multiplies memory; it does not divide context.
+//
+// NO FIGURE IS TRANSCRIBED HERE. Re-derive the comparison with the instrument that owns it --
+// `gunbc.spark.serving_observe spark_serving_observe_ci_wet`, whose residency readback is decoded by
+// `gunbc.spark.serving_readback_parse` and already yields both the context_length and the size_vram
+// the comparison needs. A pair of numbers copied into this comment would be unreachable from that
+// producer and would rot without either end being touched.
 //
 // So the two axes do trade inside one memory budget, but multiplicatively rather than by division,
 // and the per-slot price is a property of the REALIZATION -- a compressed-cache architecture pays
