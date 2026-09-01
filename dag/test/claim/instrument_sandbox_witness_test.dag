@@ -147,8 +147,15 @@ fn witness_the_press_response_is_a_bounded_translation() -> Bool {
 // grain onto outcome grain is caught by VALUE and not merely by variant — asserting the variant
 // alone would still pass if some future arm returned a program-shaped reading built from the line's
 // own shape. Cheap by construction: the record is built directly rather than derived through
-// program_view, so this mechanism claim costs microseconds and stays per-PR while the live half
-// runs on the falsifier lane.
+// program_view, so this mechanism claim costs microseconds and stays per-PR. The live half moved
+// to dag/test/claim/long/instrument_sandbox_live_witness_test.dag, and THE SENTENCE HERE USED TO
+// SAY IT RUNS ON THE FALSIFIER LANE (corrected 2026-09-01). That lane is dark: the half is enrolled
+// on gunbc.ci_layer_roots falsifier_substrate_long_lane_rows, and std.witness_admission
+// witness_cadence_has_scheduled_route answers FalsifierSubstrateLongLane false since falsifier.yml
+// was deleted at 611fd02770 (#8283, 2026-08-15). Its only route today is the local recipe carried
+// in that file's own header, which is a MANUAL route and not a scheduled executing consumer --
+// gunbc.deleted_cadence_reference_census requires a scheduled entry point for that, and a command
+// with no workflow does not supply one. Censused as PremiseInvalidated there.
 
 fn fixture_line_remaining() -> RemainingShape {
   RemainingShape {
