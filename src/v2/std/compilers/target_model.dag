@@ -4004,6 +4004,13 @@ fn target_value_expression_bool_literal(value: Bool) -> TargetValueExpression {
   }
 }
 
+// The codepoint child's atom identity is the ONE-CHARACTER SPELLING, minted through
+// `from_code_point`, which is the declared inverse of the `code_point` that
+// `source_atom_char_projection_from_node` uses to read it back. Carrying the raw Char here instead
+// made the pair non-inverse: an `Atom` identity is a Symbol, a Char is a branded Int, and `Symbol`
+// is declared with no arms -- so nothing in the source language refused the substitution and the
+// violation surfaced only in the emitted target as expected `String`, found `i64`. Keeping the two
+// directions on one pair of functions is what makes that class decidable here rather than at rustc.
 fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueExpression {
   TargetValueExpression {
     kind: TargetValueExprCharUnicodeScalar,
@@ -4015,7 +4022,7 @@ fn target_value_expression_char_unicode_scalar(codepoint: Char) -> TargetValueEx
         target_model_named_edge(
           name: ^target_value_expression_field_codepoint,
           target: Node {
-            kind: TypeNode { connective: Atom { identity: codepoint } },
+            kind: TypeNode { connective: Atom { identity: from_code_point(cp: codepoint) } },
             children: [],
             occurrence_id: OccurrenceSynthetic
 }
