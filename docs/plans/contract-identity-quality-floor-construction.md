@@ -135,13 +135,22 @@ belongs to the receipt authority's owner and not to this cut.
 
 **That finding does not live only here — its destination exists.** Cut B deletes this plan, so a
 finding whose only home is this file would be destroyed by its own program. It was routed to
-`node://adhoc-8d0de08a-242` and landed as **gunbc#9858**, whose disposition is **deletion**: that
+`node://adhoc-8d0de08a-242` and carried by **gunbc#9858**, whose disposition is **deletion**: that
 lane reproduced the census independently rather than inheriting it, and established the discriminator
 — there is no *producer* at all, so the join is **unreachable rather than merely unoccupied**, which
-is what separates deleting a dead model from silencing a quiet guard. Its durable home is a receipt
-appended to the `reachability_read_as_occupancy` row of `gunbc.recurring_failure_mode`, projected into
-`docs/design-ledgers.md`, which survives this plan's dissolution. This file records the finding; it
-does not own it.
+is what separates deleting a dead model from silencing a quiet guard.
+
+**Status, verified on main rather than relayed.** #9858 is merged (`main@83fe4399d0`), and the
+durable home is confirmed present at `origin/main`: a receipt inside the
+`reachability_read_as_occupancy` row of `gunbc.recurring_failure_mode`, carrying the
+unreachable-versus-unoccupied discriminator, and projected into `docs/design-ledgers.md`. That home
+survives this plan's dissolution. This file records the finding; it does not own it.
+
+**The sequencing rule stands regardless**, because it is what keeps the program from destroying its
+own finding: Cut A may be *authored* once this plan is approved, but Cut A may not *land* until
+#9858 — or an equivalent durable repair — has landed **and** the persistent authority and ledger
+destination is verified on main. Both conditions are now met; the rule is retained because it is the
+reason the verification was performed at all.
 
 The receipt remains the honest upgrade if that lane is ever restored, at which point it is the
 stronger observation.
@@ -158,8 +167,24 @@ or an embedded substring is not sufficient contract data** — the epoch is a st
 - **the exact-commit reader** — a read of that artifact path at `event.head_sha`, never the ambient
   checkout;
 - **the parser** — a structural read of the env mapping, not a substring match;
-- **typed causes**, each distinct and each refusing on its own axis: epoch **absent**, **malformed**,
-  **duplicated**, commit **unreadable**, path **unreadable**, epoch **undecodable**;
+- **the value domain** — `ContractEpoch` is an **opaque branded `NonEmptyStr`**. The epoch is a
+  discrete identity, not an ordered quantity and nothing arithmetic is performed on it, so a numeric
+  or semantic-version grammar would add interpretation no consumer needs. The full decision is
+  therefore closed by the container alone:
+
+  ```
+  missing key       -> EpochAbsent
+  duplicate key     -> EpochDuplicated
+  non-string value  -> EpochMalformed
+  empty string      -> EpochMalformed
+  nonempty string   -> ContractEpoch
+  ```
+
+  **There is no `EpochUndecodable` arm.** Once the YAML value is a nonempty string there is no
+  further decode that can fail, so such an arm would be a typed refusal with **no authorable
+  subject** — a permanently-green check that would later be cited as coverage, which §4b forbids at
+  the top rung. An earlier draft listed it; it is removed rather than retained for symmetry.
+  Commit-unreadable and path-unreadable remain separate *observation* failures, on their own axes;
 - **the epoch carrier and its canonical wire representation** — the epoch is a declared version
   value, carried as the string value of one top-level `env:` key emitted by the workflow authority.
   Its canonical wire form is fixed by that authority (one member, one spelling, no alternate
@@ -459,8 +484,7 @@ The values carrying it (`RequiredCiSucceeded`, `AcceptedFleetRevision`) reach fo
 modules — `fleet_revision_acceptance`, `fleet_desired_admission`, `fleet_desired_admission_workflow`,
 `fleet_main_revision` — and three witness modules. **It reaches no Rust or seed surface at all**, so
 the atomic root transition has no seed mirror to synchronize: Cut A needs no generated bridge, and
-that machinery belongs entirely to Cut B. This is the population the old two-field representation must
-disappear from in one landing.
+that machinery belongs entirely to Cut B. This is the population the old two-field representation must disappear from in one landing — and it is the **maximum justified closure, not an obligation or a permission to edit every reachable module**. A module that merely transports the generic carrier and needs no source change stays untouched; every path in the Cut A diff must carry its own concrete reason.
 
 Cut A therefore touches the identity authority, those four production modules and their witnesses, and
 `gunbc.witness_floor_workflow` for the epoch's structural emission plus its exact-commit reader and
