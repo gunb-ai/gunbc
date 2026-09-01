@@ -590,6 +590,20 @@ fn standing_from_accum(folded: FieldAccum, sensitivities: List<NonEmptyStr>) -> 
   }
 }
 
+// THE SUBJECT IS SCANNED EXACTLY ONCE, WHETHER OR NOT IT SITS IN THE FIELD. Callers normally pass
+// a field that already contains the subject, so appending it unconditionally scanned it twice and
+// emitted its contradiction twice in one cause string -- a diagnostic that overstates how many
+// things are wrong, which is its own small dishonesty in a message a human reads to decide what to
+// repair. Membership is decided on IDENTITY through the same counter the duplicate-identity refusal
+// uses, not by position or by trusting the caller's convention.
+fn scanned_population(subject: ParetoEntry, field: List<ParetoEntry>) -> List<ParetoEntry> {
+  if count_entry_identity(field: field, id: subject.identity) > 0 {
+    field
+  } else {
+    concat(field, [subject])
+  }
+}
+
 // The contradiction scan runs BEFORE the subject's own missing-input check, because a field that
 // lies about its completeness invalidates every standing derived in it -- including the honest
 // report that this particular subject is short an input.
@@ -600,7 +614,7 @@ fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<Sel
     if field_has_duplicate_identity(field: field) {
       SelectionRefused { cause: "two field entries share one candidate identity - a duplicate would be skipped as self-comparison, so the selection refuses" }
     } else {
-      let contradictions = field_contradictions(field: concat(field, [subject]), axes: axes)
+      let contradictions = field_contradictions(field: scanned_population(subject: subject, field: field), axes: axes)
       if count(contradictions) > 0 {
         SelectionRefused { cause: join(contradictions, " ; ") }
       } else {

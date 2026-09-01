@@ -570,3 +570,26 @@ test fn the_three_non_standings_are_distinct() -> Bool {
     && pareto_label(s: too_coarse) == "pending evidence"
     && pareto_label(s: contradiction) == "selection refused"
 }
+
+
+// ONE CONTRADICTION IS REPORTED ONCE. Callers normally include the subject in the field, so an
+// unconditional append scanned it twice and named its defect twice in a single cause. The two
+// spellings of the same question must produce the same cause; before the repair the in-field form
+// carried the sentence twice while the out-of-field form carried it once.
+test fn a_contradiction_is_named_once_not_once_per_spelling() -> Bool {
+  let subject_in_field = entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let subject_outside_field = entry_standing(subject: entry_reading_hole, field: [entry_cheap_strong], axes: both_axes, sensitivities: spine_sensitivities)
+  match subject_in_field {
+    SelectionRefused { cause: c_in } => match subject_outside_field {
+      SelectionRefused { cause: c_out } => c_in == c_out
+      NotComputable { missing } => false
+      PendingEvidence { undecided } => false
+      ProvisionallyNonDominated { sensitivities } => false
+      DominatedBy { dominators } => false
+    }
+    NotComputable { missing } => false
+    PendingEvidence { undecided } => false
+    ProvisionallyNonDominated { sensitivities } => false
+    DominatedBy { dominators } => false
+  }
+}
