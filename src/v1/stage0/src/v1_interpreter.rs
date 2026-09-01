@@ -872,13 +872,29 @@ fn classify_optional_arg(val: Value, ctx: &InterpContext) -> OptionalArg {
 /// `rust_call_arg_fail_closed_unwrap` makes, and for the same reason: unwrapping into
 /// `witness_from_optional(opt: Optional<T>)` would strip the very value the callee exists to
 /// inspect.
-fn param_declares_required_value(param: &Rc<Node>, pname: &str, ctx: &InterpContext) -> bool {
+///
+/// A FREE TYPE VARIABLE DECLARES NOTHING ABOUT CARDINALITY, so it is not a required formal. For
+/// `fn outcome_accepted<T>(value: T)`, `T` instantiating to `Optional<Node>` is a legitimate
+/// instantiation and not a cardinality escape; treating it as required both unwrapped `Present`
+/// into the callee (a SILENT corruption of the very kind this repair exists to remove — the callee
+/// declared `Outcome<Optional<Node>>` and would have received `Outcome<Node>`) and refused `Absent`
+/// outright. That is the already-rostered `mitigation_injected_where_judgment_declined` shape, and
+/// this predicate is the producer its row names as the trigger: it distinguishes a free type
+/// variable from a declared non-optional formal, reading the fn's own declared type-parameter list
+/// rather than guessing from the spelling of a name.
+fn param_declares_required_value(
+    param: &Rc<Node>,
+    pname: &str,
+    type_param_names: &[String],
+    ctx: &InterpContext,
+) -> bool {
     match param.children.first() {
         Some(type_expr) => {
             let type_name = authored_name_at(ctx.si(), type_expr.clone());
             type_name != pname
                 && type_expr.return_cardinality != Cardinality::CardOptional
                 && type_name != "Optional"
+                && !type_param_names.iter().any(|t| t == &type_name)
         }
         None => false,
     }
@@ -3885,7 +3901,8 @@ pub struct InterpContext {
     // key for the ctx's lifetime (as PureCallMemo.keepalive_fns / EvalRecomputeTrace.keepalive_fns
     // / EvalCallMemo.keepalive_fns), and the cache dies with the ctx (as data_cache).
     // Value = (filtered named-param list, all-param list), matching call_function's two uses.
-    param_name_cache: std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>)>>>,
+    param_name_cache:
+        std::cell::RefCell<HashMap<usize, Rc<(Vec<String>, Vec<String>, Vec<String>)>>>,
     param_name_cache_keepalive: std::cell::RefCell<Vec<Rc<Node>>>,
     // Same chokepoint, ExprVar arm: eval_var rebuilt the name String from its span
     // (expr_var_name_at) and re-interned it (ctx.sym) per read. The interned Symbol is memoized
@@ -4799,7 +4816,22 @@ fn call_function_inner(
                 })
                 .map(|(i, _)| all[i].clone())
                 .collect();
-            let c = Rc::new((filtered, all));
+            // A `fn f<T>(v: T)` node carries `params = concat(type_params, value_params)`
+            // (`v1.compiler.parse` `parse_fn_body_from_prefix`), and a TYPE parameter is exactly
+            // the entry whose declared type is its own name -- the same shape `filtered` uses to
+            // drop them from the positional list. Naming that set is what lets the coercion below
+            // tell a declared non-optional formal from a FREE type variable.
+            let type_params: Vec<String> = fn_node
+                .params
+                .iter()
+                .enumerate()
+                .filter(|(i, p)| match p.children.first() {
+                    Some(type_expr) => authored_name_at(ctx.si(), type_expr.clone()) == all[*i],
+                    None => true,
+                })
+                .map(|(i, _)| all[i].clone())
+                .collect();
+            let c = Rc::new((filtered, all, type_params));
             ctx.param_name_cache_keepalive
                 .borrow_mut()
                 .push(fn_node.clone());
@@ -4809,6 +4841,7 @@ fn call_function_inner(
     };
     let param_names: &Vec<String> = &cached_params.0;
     let all_param_names: &Vec<String> = &cached_params.1;
+    let type_param_names: &Vec<String> = &cached_params.2;
 
     let mut bindings = HashMap::new();
     if !args.is_empty() {
@@ -4914,7 +4947,7 @@ fn call_function_inner(
     // panics.
     for (i, param) in fn_node.params.iter().enumerate() {
         let pname = &all_param_names[i];
-        if !param_declares_required_value(param, pname, ctx) {
+        if !param_declares_required_value(param, pname, type_param_names, ctx) {
             continue;
         }
         let key = ctx.sym(pname);

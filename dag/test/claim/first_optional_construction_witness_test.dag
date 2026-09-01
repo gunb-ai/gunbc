@@ -83,3 +83,32 @@ test fn get_past_the_end_is_absent_and_get_in_bounds_is_present() -> Bool {
   (match ["a"] |> get(1) { Present { value: _ } => false Absent => true })
     && (match ["a"] |> get(0) { Present { value: s } => s == "a" Absent => false })
 }
+
+// THE COERCION THIS REPAIR ADDED MUST NOT FIRE ON A FREE TYPE VARIABLE. Constructing the Optional
+// created a second obligation: an argument that is now `Optional<T>` meets a parameter declared
+// `T`, so the interpreter grew the coercion the Rust arm already had. Applied to a GENERIC formal
+// that rule is wrong in both directions, because `T` declares nothing about cardinality and
+// `Optional<Int>` is a legitimate instantiation rather than a cardinality escape. Measured on the
+// first head that carried the coercion: `Present` was SILENTLY UNWRAPPED into the callee -- the
+// caller's `T = Optional<Int>` arrived as `Int`, which is the same silent divergence this whole
+// module exists to remove, pointed at a new seam -- and `Absent` was REFUSED outright with a
+// `CallContractMismatch`, which took down the generated-artifact regen actuator. The predicate now
+// reads the fn's own declared type-parameter list, so a free type variable is not a required
+// formal. These two are the discriminating REDs for that seam and stay enrolled after the climb.
+fn observe_arrival<T>(value: T) -> String {
+  match value {
+    Present { value: _ } => "PRESENT"
+    Absent => "ABSENT"
+    _ => "UNWRAPPED"
+  }
+}
+
+// RED against the unwrapping arm, which reported "UNWRAPPED": the callee received the bare element.
+test fn a_present_optional_into_a_free_type_variable_arrives_whole() -> Bool {
+  observe_arrival(value: [7] |> first) == "PRESENT"
+}
+
+// RED against the refusing arm, which raised CallContractMismatch on a legitimate instantiation.
+test fn an_absent_optional_into_a_free_type_variable_is_not_refused() -> Bool {
+  observe_arrival(value: [] |> first) == "ABSENT"
+}
