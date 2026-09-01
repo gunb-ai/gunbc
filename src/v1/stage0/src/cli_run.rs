@@ -8002,92 +8002,46 @@ fn bare_reference_pull_paths_for_source(
                             "unique",
                         ),
                         GlobalBareLookupState::GlobalBareAmbiguousBinding { candidates } => {
-                            // AMBIGUITY IS REFUSED, NOT RANKED (DESIGN §4: "a heuristic is
-                            // never necessary"; §5: a failure arm must refuse, never widen).
-                            // This arm used to call `global_bare_nearest_ancestor_candidate`,
-                            // which picked the candidate sharing the longest module-path
-                            // prefix with the referencing module -- a proximity heuristic with
-                            // no grounding: nearness in the namespace tree is not evidence
-                            // about which declaration the author meant, and it silently
-                            // resolved 312 occurrences whose meaning was never stated. The
-                            // remedy is authorable at every site: name the module you mean
-                            // with an explicit import, which `explicit_import_member_names`
-                            // then treats as the authority and this census is never asked.
-                            // ASK THE QUESTION THE TYPE ENV ASKS (§3 single authority).
-                            // NameResolutionPolicy = NamespaceOnlyY is the ratified rule
-                            // for what a bare homonym means (namespace-resolution-design.md
-                            // §13, operator-ratified 2026-07-21): a candidate counts only
-                            // if its declaring module path is a leading-segment prefix of
-                            // the referencing module's, and exactly one such candidate
-                            // resolves. That is CONTAINMENT -- the referencing module is
-                            // inside the declaring one -- not the proximity the deleted
-                            // heuristic scored, and it is grounded: a submodule referring
-                            // to a name its own parent declares means its parent's.
-                            //
-                            // Receipt: v2.lens.identity_captured_navigation.analyze
-                            // references `Finding`, which its parent
-                            // v2.lens.identity_captured_navigation declares and which
-                            // v2.lens.complexity_accumulator_copy also declares. Only the
-                            // parent is on the chain, so this resolves with no edit --
-                            // whereas refusing on the raw candidate count would have
-                            // demanded a rename or an import for a reference that was
-                            // never actually ambiguous.
-                            let on_chain =
-                                crate::v1_compiler_infer_env::global_bare_chain_candidates(
-                                    referencing_module.clone(),
-                                    candidates.clone(),
-                                );
-                            if on_chain.len() == 1 {
-                                let cand = on_chain[0].clone();
-                                return Ok((
-                                    if pullable(&cand.binding) {
-                                        Some(cand.module_path.clone())
-                                    } else {
-                                        None
-                                    },
-                                    "unique-on-chain",
-                                ));
+                            // THE DECISION IS NAMED AND TESTED ELSEWHERE.
+                            // `closure_bare_disposition` owns the zero/one/many classification
+                            // over the chain-filtered candidates; this arm only projects it.
+                            // It was inline here until review 58002 pointed out the obvious:
+                            // every test I had enrolled exercised the SCANNER, and none reached
+                            // the arm this change rewrote. A decision buried in a closure inside
+                            // a 200-line function cannot be witnessed, so the fix is to give it
+                            // a name, not to write a test that approaches it sideways.
+                            match closure_bare_disposition(&referencing_module, candidates.clone())
+                            {
+                                ClosureBareDisposition::UniqueOnChain {
+                                    module_path,
+                                    binding,
+                                } => {
+                                    return Ok((
+                                        if pullable(&binding) {
+                                            Some(module_path)
+                                        } else {
+                                            None
+                                        },
+                                        "unique-on-chain",
+                                    ));
+                                }
+                                ClosureBareDisposition::NoOnChainCandidate => {
+                                    return Ok((None, "no-on-chain-candidate"));
+                                }
+                                ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                                    return Err(format!(
+                                        "bare_reference_closure: bare reference '{name}' in \
+                                         '{file_rel}' is AMBIGUOUS -- {} modules ON THIS \
+                                         MODULE'S ANCESTOR CHAIN declare that name ({}), and \
+                                         this resolver does not rank candidates. Name the one \
+                                         you mean with an explicit import, e.g. \
+                                         `import {} {{ {name} }}`.",
+                                        modules.len(),
+                                        modules.join(", "),
+                                        modules.first().map(String::as_str).unwrap_or("<module>"),
+                                    ));
+                                }
                             }
-                            // ZERO ON-CHAIN IS `Absent`, NOT A REFUSAL -- because that is
-                            // what the ratified rule says. `global_bare_lookup` under
-                            // NamespaceOnlyY returns Absent when no candidate is on the
-                            // chain, and `global_bare_is_ambiguous` answers false for that
-                            // case (ModulePathBindingMiss); only 2+ ON-CHAIN raises
-                            // AmbiguousReference. So the closure resolver pulls nothing here
-                            // and lets resolution continue exactly as the type env does.
-                            //
-                            // I had this wrong in the two commits before this one: refusing
-                            // on the raw candidate set made this resolver STRICTER than the
-                            // authority it cites, which is its own §3 violation. Measured
-                            // consequence -- 1006 forked names in the pool census, 129 of
-                            // them spanning std.* and v2.std.* (the whole numeric tower:
-                            // Int8..Int128, Nat, Float32/64, Byte, FilePath, HttpMethod).
-                            // None of those has two candidates on one referencing module's
-                            // chain, so every one of them was being refused by a rule the
-                            // type env does not apply, and the burn-down that produced was
-                            // a tax with no safety behind it.
-                            //
-                            // Pulling nothing is also strictly safer than what stood before:
-                            // the deleted heuristic pulled ONE arbitrarily-ranked candidate,
-                            // which is how PCB witness modules entered the closure of every
-                            // GitHub service config.
-                            if on_chain.is_empty() {
-                                return Ok((None, "no-on-chain-candidate"));
-                            }
-                            let mut modules: Vec<String> =
-                                on_chain.iter().map(|c| c.module_path.clone()).collect();
-                            modules.sort();
-                            modules.dedup();
-                            return Err(format!(
-                                "bare_reference_closure: bare reference '{name}' in \
-                             '{file_rel}' is AMBIGUOUS -- {} modules ON THIS MODULE'S \
-                             ANCESTOR CHAIN declare that name ({}), and this resolver \
-                             does not rank candidates. Name the one you mean with an \
-                             explicit import, e.g. `import {} {{ {name} }}`.",
-                                modules.len(),
-                                modules.join(", "),
-                                modules.first().map(String::as_str).unwrap_or("<module>"),
-                            ));
                         }
                     },
                     None => (
@@ -18118,6 +18072,231 @@ pub fn classify_exit(
         other => ExitClass::NotProcessExit {
             type_name: ctx.format_value(other),
         },
+    }
+}
+
+/// What the closure resolver does with a bare name the census reports as FORKED.
+///
+/// One name for the zero/one/many classification, so it can be witnessed. Review 58002's
+/// sharpest finding was that the five tests I had enrolled all exercised
+/// `bare_identifier_candidates` and `explicit_import_member_names` -- the scanner -- and not
+/// one of them reached the ambiguity arm this branch rewrote. It also noted that `[AMBIG] = 0`
+/// over the repaired corpus proves the current population no longer REACHES the arm, which is
+/// not evidence about what the arm DOES. Both are right, and they are the same mistake I have
+/// a standing note about: an executed conjunct can still be an inert wall.
+///
+/// The CHAIN FILTER is not reimplemented here. It delegates to
+/// `v1_compiler_infer_env::global_bare_chain_candidates`, the §13 authority the type env uses,
+/// so there is one containment rule and this function only classifies its output.
+pub enum ClosureBareDisposition {
+    /// Exactly one candidate on the referencing module's ancestor chain: that is what the
+    /// reference means, and an unrelated same-spelled declaration elsewhere is not a reason to
+    /// reject a program the type env accepts.
+    UniqueOnChain {
+        module_path: String,
+        binding: Rc<crate::v1_compiler_infer_env::TypeBinding>,
+    },
+    /// Two or more on-chain. Refuse, naming the full on-chain population in deterministic
+    /// order -- never rank them.
+    AmbiguousOnChain { modules: Vec<String> },
+    /// Nothing on the chain. `global_bare_lookup` returns `Absent` here and
+    /// `global_bare_is_ambiguous` answers false (ModulePathBindingMiss), so the semantic result
+    /// is UNRESOLVED and the closure must not fabricate a provider. It pulls nothing.
+    NoOnChainCandidate,
+}
+
+pub fn closure_bare_disposition(
+    referencing_module: &str,
+    candidates: Rc<im::Vector<Rc<crate::v1_compiler_infer_env::GlobalBareCandidate>>>,
+) -> ClosureBareDisposition {
+    let on_chain = crate::v1_compiler_infer_env::global_bare_chain_candidates(
+        referencing_module.to_string(),
+        candidates,
+    );
+    if on_chain.is_empty() {
+        return ClosureBareDisposition::NoOnChainCandidate;
+    }
+    if on_chain.len() == 1 {
+        let cand = on_chain[0].clone();
+        return ClosureBareDisposition::UniqueOnChain {
+            module_path: cand.module_path.clone(),
+            binding: cand.binding.clone(),
+        };
+    }
+    // Sorted and deduped so the refusal names the same population in the same order on every
+    // run: a diagnostic whose candidate list permutes between runs is not one an operator can
+    // diff, and dedup matters because one module can bind a name more than once.
+    let mut modules: Vec<String> = on_chain.iter().map(|c| c.module_path.clone()).collect();
+    modules.sort();
+    modules.dedup();
+    if modules.len() == 1 {
+        let cand = on_chain[0].clone();
+        return ClosureBareDisposition::UniqueOnChain {
+            module_path: cand.module_path.clone(),
+            binding: cand.binding.clone(),
+        };
+    }
+    ClosureBareDisposition::AmbiguousOnChain { modules }
+}
+
+#[cfg(test)]
+mod closure_bare_disposition_tests {
+    use super::{closure_bare_disposition, ClosureBareDisposition};
+    use crate::v1_compiler_infer_env::{GlobalBareCandidate, TypeBinding};
+    use std::rc::Rc;
+
+    /// A synthetic binding: this decision reads only `module_path`, so the node carries no
+    /// meaning and must not pretend to. Same shape the generated tests use for a synthetic node.
+    fn candidate(module_path: &str) -> Rc<GlobalBareCandidate> {
+        let span = crate::v1_std_core::no_span();
+        let node = Rc::new(crate::v1_std_core::Node {
+            occurrence_identity: Rc::new(
+                crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
+            ),
+            name: "Target".to_string(),
+            ident: None,
+            span: span.clone(),
+            ident_span: Some(span),
+            children: crate::v1_std_core::empty_node_list(),
+            connective: crate::v1_std_core::Connective::NoConnective,
+            params: crate::v1_std_core::empty_node_list(),
+            inferred: None,
+            return_cardinality: crate::v1_std_core::Cardinality::Required,
+            uses: crate::v1_std_core::empty_node_list(),
+            body: None,
+            transport: None,
+            properties: crate::v1_std_core::empty_node_list(),
+            type_annotation: None,
+            is_self_recursive: false,
+            has_non_tail_self_call: false,
+            match_pattern: None,
+            expr_data: Rc::new(crate::v1_std_core::ExprData::NoExprData),
+        });
+        Rc::new(GlobalBareCandidate {
+            module_path: module_path.to_string(),
+            binding: Rc::new(TypeBinding {
+                name: "Target".to_string(),
+                resolved: node,
+                provenance: Rc::new(crate::std_induction::SubValueRelation::PreservedValue),
+            }),
+        })
+    }
+
+    /// CASE 1 — one on-chain, one off-chain. The on-chain declaration is what the reference
+    /// means. RED if the flat raw-candidate rule is restored: that rule refuses here.
+    #[test]
+    fn one_on_chain_and_one_off_chain_resolves_to_the_on_chain_declaration() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a.b"), candidate("x.y")])),
+        );
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(
+                    module_path, "a.b",
+                    "containment decides, not proximity or count"
+                );
+            }
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "refused a reference the type env resolves; a flat rule was restored: {modules:?}"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => {
+                panic!("a.b IS on a.b.c's chain")
+            }
+        }
+    }
+
+    /// CASE 2 — two on-chain at different depths. §13 refuses and names BOTH. RED if
+    /// nearest/LCP ranking is restored: ranking would pick `a.b` as the longer prefix.
+    #[test]
+    fn two_on_chain_candidates_refuse_and_name_the_whole_on_chain_population() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a"), candidate("a.b")])),
+        );
+        match d {
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                assert_eq!(
+                    modules,
+                    vec!["a".to_string(), "a.b".to_string()],
+                    "both on-chain candidates, deterministically ordered"
+                );
+            }
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "ranked instead of refusing — picked {module_path}; the deleted proximity                  heuristic is back"
+            ),
+            ClosureBareDisposition::NoOnChainCandidate => panic!("both are on-chain"),
+        }
+    }
+
+    /// CASE 3 — zero on-chain with several global candidates. The type env returns `Absent`
+    /// here, so the semantic result is unresolved and the closure pulls nothing rather than
+    /// fabricating a provider. RED if a raw-candidate refusal is restored.
+    ///
+    /// This is also the case the corpus is FULL of: 129 forked names span std.* and v2.std.*,
+    /// and none has two candidates on one referencing module's chain.
+    #[test]
+    fn zero_on_chain_pulls_nothing_rather_than_refusing_or_choosing() {
+        let d = closure_bare_disposition(
+            "gunbc.ci.ci_spec",
+            Rc::new(im::Vector::from(vec![
+                candidate("std.nat"),
+                candidate("v2.std.nat"),
+            ])),
+        );
+        match d {
+            ClosureBareDisposition::NoOnChainCandidate => {}
+            ClosureBareDisposition::AmbiguousOnChain { modules } => panic!(
+                "refused with off-chain candidates {modules:?} — that is a rule the type env                  does not apply"
+            ),
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                panic!("fabricated a provider off-chain: {module_path}")
+            }
+        }
+    }
+
+    /// The chain is LEADING-SEGMENT containment, not string prefix: `a.bc` is not on `a.b.c`'s
+    /// chain, and a rule written with `starts_with` would say it is.
+    #[test]
+    fn a_segment_boundary_is_respected_so_a_bc_is_not_on_a_b_c_s_chain() {
+        let d =
+            closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.bc")])));
+        assert!(
+            matches!(d, ClosureBareDisposition::NoOnChainCandidate),
+            "a.bc shares a string prefix with a.b.c but is not an ancestor of it"
+        );
+    }
+
+    /// The referencing module itself is on its own chain (equal, not strictly above).
+    #[test]
+    fn the_referencing_module_is_on_its_own_chain() {
+        let d =
+            closure_bare_disposition("a.b.c", Rc::new(im::Vector::from(vec![candidate("a.b.c")])));
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(module_path, "a.b.c")
+            }
+            _ => panic!("a module declaring a name is on its own chain"),
+        }
+    }
+
+    /// One module binding the same name twice is ONE candidate to report, not an ambiguity
+    /// between a module and itself.
+    #[test]
+    fn one_module_bound_twice_is_not_an_ambiguity() {
+        let d = closure_bare_disposition(
+            "a.b.c",
+            Rc::new(im::Vector::from(vec![candidate("a.b"), candidate("a.b")])),
+        );
+        match d {
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
+                assert_eq!(module_path, "a.b")
+            }
+            ClosureBareDisposition::AmbiguousOnChain { modules } => {
+                panic!("one module is not ambiguous with itself: {modules:?}")
+            }
+            ClosureBareDisposition::NoOnChainCandidate => panic!("a.b is on-chain"),
+        }
     }
 }
 
