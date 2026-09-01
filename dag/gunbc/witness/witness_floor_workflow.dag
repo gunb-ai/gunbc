@@ -36,7 +36,9 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened,
   DispatchInput, InputString,
   WorkflowPermissions, PermRead,
-  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, ConcurrencyMappingQueueMax,
+  CancelInProgressSpec, CancelInProgressBool, CancelInProgressExpression,
+  CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec,
   checkout_action, setup_rust_action
 }
@@ -279,15 +281,53 @@ data witness_floor_running_supersession_policy: RunningSupersessionPolicy = witn
 
 data witness_floor_pending_replacement_policy: PendingReplacementPolicy = witness_floor_concurrency_policy.pending
 
+fn supersession_event_expression(event: String) -> String {
+  concat(concat("${{ github.event_name == '", event), "' }}")
+}
+
 fn cancel_in_progress_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressSpec {
   match policy {
     NeverSupersedeRunning => CancelInProgressBool { value: false }
     SupersedeRunningForEvent { event: e } =>
-      CancelInProgressExpression { expression: concat(concat("${{ github.event_name == '", e), "' }}") }
+      CancelInProgressExpression { expression: supersession_event_expression(event: e) }
   }
 }
 
 data witness_floor_cancel_in_progress: CancelInProgressSpec = cancel_in_progress_of_policy(policy: witness_floor_running_supersession_policy)
+
+// THE QUEUE AXIS EMITS FROM THE SAME ROW THE CLASSIFIER READS, or the policy is not the authority.
+// Raised in review 58012: the running axis was already derived through cancel_in_progress_of_policy
+// while the emitted mapping named ConcurrencyMappingQueueNotMax as a literal, so flipping the
+// modeled policy to RetainPendingQueue would have moved the classifier and left CI in replacement
+// mode -- one fact with two authorities, which is the thing DESIGN 3 forbids. Both axes now fold
+// out of witness_floor_concurrency_policy, so the emission cannot disagree with the classifier.
+//
+// The QueueMax arm is not a hypothetical: GitHub forces cancel-in-progress into its own
+// CancelInProgressWhenQueueMax vocabulary there, and this fold carries the running policy across
+// that boundary rather than dropping it, so the retaining regime stays expressible without a
+// second edit here.
+fn queue_max_cancel_of_policy(policy: RunningSupersessionPolicy) -> CancelInProgressWhenQueueMax {
+  match policy {
+    NeverSupersedeRunning => QueueMaxCancelInProgressFalse
+    SupersedeRunningForEvent { event: e } =>
+      QueueMaxCancelInProgressExpression { expression: supersession_event_expression(event: e) }
+  }
+}
+
+fn concurrency_of_policy(policy: WitnessFloorConcurrencyPolicy, group: String) -> ConcurrencySpec {
+  let pending = policy.pending
+  match pending {
+    ReplaceExistingPending => ConcurrencyMappingQueueNotMax {
+      group: group,
+      cancel_in_progress: Present { value: cancel_in_progress_of_policy(policy: policy.running) },
+      explicit_single: none
+    }
+    RetainPendingQueue => ConcurrencyMappingQueueMax {
+      group: group,
+      cancel_in_progress: Present { value: queue_max_cancel_of_policy(policy: policy.running) }
+    }
+  }
+}
 
 // The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
 // `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
@@ -1784,11 +1824,9 @@ data witness_floor_workflow: Workflow = {
     }
   ],
   concurrency: Present {
-    value: ConcurrencyMappingQueueNotMax {
-      group: witness_floor_concurrency_group,
-      cancel_in_progress: Present { value: witness_floor_cancel_in_progress },
-      explicit_single: none
-    }
+    value: concurrency_of_policy(
+      policy: witness_floor_concurrency_policy,
+      group: witness_floor_concurrency_group)
   },
   env: Present {
     value: [

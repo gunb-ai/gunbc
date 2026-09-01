@@ -17,7 +17,20 @@ import gunbc.witness_floor_workflow {
   RunningSupersessionPolicy,
   SupersedeRunningForEvent,
   witness_floor_concurrency_policy,
-  witness_floor_running_supersession_policy
+  witness_floor_running_supersession_policy,
+  concurrency_of_policy
+}
+import extdeps.github.actions {
+  ConcurrencySpec,
+  ConcurrencyScalar,
+  ConcurrencyMappingQueueMax,
+  ConcurrencyMappingQueueNotMax,
+  CancelInProgressSpec,
+  CancelInProgressBool,
+  CancelInProgressExpression,
+  CancelInProgressWhenQueueMax,
+  QueueMaxCancelInProgressFalse,
+  QueueMaxCancelInProgressExpression
 }
 import gunbc.run_disposition {
   CancellationExecutionStanding,
@@ -450,4 +463,70 @@ test fn w_the_live_entry_refuses_to_attribute_a_cancellation_it_cannot_date() ->
     DispositionExternallyCancelled { supersession_was_available: _ } => false
     DispositionOtherSettlement { conclusion: _ } => false
   }
+}
+
+
+// THE EMITTED QUEUE REGIME IS THE POLICY, NOT A LITERAL BESIDE IT.
+//
+// Raised in review 58012: PendingReplacementPolicy governed the classifier while the emission named
+// ConcurrencyMappingQueueNotMax directly, so the two could disagree and only the classifier would
+// move. concurrency_of_policy closes that, and these three arms are what make the closure executed
+// rather than asserted -- the second is the discriminating red, because under the old literal it
+// was UNWRITABLE: no policy value could change the emitted constructor at all.
+fn queue_regime_name(spec: ConcurrencySpec) -> String {
+  match spec {
+    ConcurrencyScalar { group: _ } => "scalar"
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: _ } => "queue-max"
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => "queue-not-max"
+  }
+}
+
+fn retaining_policy() -> WitnessFloorConcurrencyPolicy {
+  WitnessFloorConcurrencyPolicy {
+    pending: RetainPendingQueue,
+    running: witness_floor_running_supersession_policy
+  }
+}
+
+test fn w_the_live_policy_emits_the_replacing_queue_regime() -> Bool {
+  queue_regime_name(spec: concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")) == "queue-not-max"
+}
+
+test fn w_a_retaining_policy_emits_the_queue_max_regime() -> Bool {
+  queue_regime_name(spec: concurrency_of_policy(policy: retaining_policy(), group: "g")) == "queue-max"
+}
+
+// AND THE RUNNING AXIS SURVIVES THE CROSSING. GitHub gives queue:max its own cancel-in-progress
+// vocabulary, so a fold that dropped the running policy there would be silently lossy while both
+// regime witnesses above stayed green.
+test fn w_the_running_axis_crosses_into_the_queue_max_vocabulary() -> Bool {
+  let live = concurrency_of_policy(policy: witness_floor_concurrency_policy, group: "g")
+  let retaining = concurrency_of_policy(policy: retaining_policy(), group: "g")
+  let live_holds = match live {
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: c, explicit_single: _ } =>
+      match c {
+        Present { value: v } =>
+          match v {
+            CancelInProgressBool { value: b } => b == false
+            CancelInProgressExpression { expression: _ } => false
+          }
+        none => false
+      }
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: _ } => false
+    ConcurrencyScalar { group: _ } => false
+  }
+  let retaining_holds = match retaining {
+    ConcurrencyMappingQueueMax { group: _, cancel_in_progress: c } =>
+      match c {
+        Present { value: v } =>
+          match v {
+            QueueMaxCancelInProgressFalse => true
+            QueueMaxCancelInProgressExpression { expression: _ } => false
+          }
+        none => false
+      }
+    ConcurrencyMappingQueueNotMax { group: _, cancel_in_progress: _, explicit_single: _ } => false
+    ConcurrencyScalar { group: _ } => false
+  }
+  live_holds && retaining_holds
 }
