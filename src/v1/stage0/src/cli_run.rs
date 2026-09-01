@@ -8048,19 +8048,42 @@ fn bare_reference_pull_paths_for_source(
                                     "unique-on-chain",
                                 ));
                             }
-                            let mut modules: Vec<String> = if on_chain.is_empty() {
-                                candidates.iter().map(|c| c.module_path.clone()).collect()
-                            } else {
-                                on_chain.iter().map(|c| c.module_path.clone()).collect()
-                            };
+                            // ZERO ON-CHAIN IS `Absent`, NOT A REFUSAL -- because that is
+                            // what the ratified rule says. `global_bare_lookup` under
+                            // NamespaceOnlyY returns Absent when no candidate is on the
+                            // chain, and `global_bare_is_ambiguous` answers false for that
+                            // case (ModulePathBindingMiss); only 2+ ON-CHAIN raises
+                            // AmbiguousReference. So the closure resolver pulls nothing here
+                            // and lets resolution continue exactly as the type env does.
+                            //
+                            // I had this wrong in the two commits before this one: refusing
+                            // on the raw candidate set made this resolver STRICTER than the
+                            // authority it cites, which is its own §3 violation. Measured
+                            // consequence -- 1006 forked names in the pool census, 129 of
+                            // them spanning std.* and v2.std.* (the whole numeric tower:
+                            // Int8..Int128, Nat, Float32/64, Byte, FilePath, HttpMethod).
+                            // None of those has two candidates on one referencing module's
+                            // chain, so every one of them was being refused by a rule the
+                            // type env does not apply, and the burn-down that produced was
+                            // a tax with no safety behind it.
+                            //
+                            // Pulling nothing is also strictly safer than what stood before:
+                            // the deleted heuristic pulled ONE arbitrarily-ranked candidate,
+                            // which is how PCB witness modules entered the closure of every
+                            // GitHub service config.
+                            if on_chain.is_empty() {
+                                return Ok((None, "no-on-chain-candidate"));
+                            }
+                            let mut modules: Vec<String> =
+                                on_chain.iter().map(|c| c.module_path.clone()).collect();
                             modules.sort();
                             modules.dedup();
                             return Err(format!(
                                 "bare_reference_closure: bare reference '{name}' in \
-                             '{file_rel}' is AMBIGUOUS -- {} modules declare that name \
-                             ({}) and this resolver does not rank candidates. Name the \
-                             one you mean with an explicit import, e.g. \
-                             `import {} {{ {name} }}`.",
+                             '{file_rel}' is AMBIGUOUS -- {} modules ON THIS MODULE'S \
+                             ANCESTOR CHAIN declare that name ({}), and this resolver \
+                             does not rank candidates. Name the one you mean with an \
+                             explicit import, e.g. `import {} {{ {name} }}`.",
                                 modules.len(),
                                 modules.join(", "),
                                 modules.first().map(String::as_str).unwrap_or("<module>"),
