@@ -301,17 +301,33 @@ pub fn moduleless_dag_entry_paths(entry_files: &[(String, String)]) -> Vec<Strin
 /// bare-name universe before the census is asked anything.
 pub(crate) fn explicit_import_member_names(content: &str) -> BTreeSet<String> {
     let mut names = BTreeSet::new();
+    let mut in_block = false;
     for line in content.lines() {
         let trimmed = line.trim();
-        if !trimmed.starts_with("import ") {
-            continue;
-        }
-        let Some(open) = trimmed.find('{') else {
+        // THE MEMBER LIST SPANS LINES. The corpus writes the multi-line form freely --
+        // `dag/std/computation.dag` opens `import std.termination {` and lists
+        // `RankingDimension` on the NEXT line -- so reading members only when `{` shares the
+        // `import` line missed the disambiguating import at the very sites that had one, and
+        // the resolver refused a name the author had already named the module for. This
+        // scans from the opening brace to the closing one, whether or not they share a line.
+        let mut rest = if in_block {
+            trimmed
+        } else if trimmed.starts_with("import ") {
+            match trimmed.find('{') {
+                Some(open) => {
+                    in_block = true;
+                    &trimmed[open + 1..]
+                }
+                None => continue,
+            }
+        } else {
             continue;
         };
-        let rest = &trimmed[open + 1..];
-        let body = rest.split('}').next().unwrap_or(rest);
-        for member in body.split(',') {
+        if let Some(close) = rest.find('}') {
+            rest = &rest[..close];
+            in_block = false;
+        }
+        for member in rest.split(',') {
             // `A as B` binds B locally; the local binder is what a bare reference names.
             let member = member.trim();
             let bound = member
@@ -707,6 +723,43 @@ mod bare_reference_scanner_tests {
         assert!(
             !names.contains("std.types"),
             "a memberless import names no members, and the module path is not a member"
+        );
+    }
+
+    /// The multi-line member list is what the corpus actually writes, and missing it was a
+    /// real refusal: dag/std/computation.dag imports `RankingDimension` from std.termination
+    /// on the line AFTER the brace, and the resolver refused it as ambiguous against
+    /// v2.std.cardinality anyway. RED before the block scan landed.
+    #[test]
+    fn a_multi_line_import_block_names_its_members() {
+        let names = explicit_import_member_names(concat!(
+            "module std.computation\n",
+            "import std.termination {\n",
+            "  DescentEvidence, DescentUnknown, RankingDimension,\n",
+            "  descent_evidence_meet\n",
+            "}\n",
+            "import std.algebra { FreeMonoid }\n",
+            "fn f() -> Int { 1 }\n",
+        ));
+        for expected in [
+            "DescentEvidence",
+            "DescentUnknown",
+            "RankingDimension",
+            "descent_evidence_meet",
+            "FreeMonoid",
+        ] {
+            assert!(
+                names.contains(expected),
+                "{expected} is imported explicitly"
+            );
+        }
+        assert!(
+            !names.contains("f"),
+            "the block ends at `}}` — a later declaration is not swept in as a member"
+        );
+        assert!(
+            !names.contains("module std.computation"),
+            "nor is anything before the first import"
         );
     }
 
