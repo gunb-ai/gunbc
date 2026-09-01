@@ -7,6 +7,7 @@ import std.measure {
   TokenCount, token_count,
   TokensPerSecond, tokens_per_second,
 }
+import gunbc.model.publication { ReleaseIdentity }
 import gunbc.model.choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
   PrefillObservation, prefill_rate_at_floor,
@@ -39,11 +40,33 @@ data node_capacity: NodeCapacity = NodeCapacity {
 
 data kv_per_token: ByteSize = byte_size(count: 88064)
 
-// The two builds actually installed. Quality rank is ordinal WITHIN this release: 3-bit outranks
+// RELEASE IDENTITIES, exact rather than display names. Publisher, family and revision together are
+// what decide whether two candidates share an ordinal quality scale, so the selector is keyed by
+// this and never by a name string: two revisions of one family share a name and would merge under a
+// name key, and one release named two ways would split.
+data deepseek_v4_flash_release: ReleaseIdentity = ReleaseIdentity {
+  publisher: "deepseek" as NonEmptyStr,
+  family: "DeepSeek-V4-Flash" as NonEmptyStr,
+  revision: "0731" as NonEmptyStr,
+}
+
+data fixture_release: ReleaseIdentity = ReleaseIdentity {
+  publisher: "fixture-publisher" as NonEmptyStr,
+  family: "Fixture-Release" as NonEmptyStr,
+  revision: "1" as NonEmptyStr,
+}
+
+data qwen_release: ReleaseIdentity = ReleaseIdentity {
+  publisher: "qwen" as NonEmptyStr,
+  family: "Qwen3.6" as NonEmptyStr,
+  revision: "35B" as NonEmptyStr,
+}
+
+// The two builds actually installed. Quality rank is ordinal WITHIN this identity: 3-bit outranks
 // 2-bit. It says nothing about any other model, which is why cross-release quality never enters
 // this function as a comparable number.
 data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
-  model_name: "DeepSeek-V4-Flash-0731" as NonEmptyStr,
+  identity: deepseek_v4_flash_release,
   quant_label: "IQ2_XXS" as NonEmptyStr,
   weights: byte_size(count: 86720111200),
   quality_rank: 2,
@@ -58,7 +81,7 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
 }
 
 data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
-  model_name: "DeepSeek-V4-Flash-0731" as NonEmptyStr,
+  identity: deepseek_v4_flash_release,
   quant_label: "UD-IQ3_S" as NonEmptyStr,
   weights: byte_size(count: 116100000000),
   quality_rank: 3,
@@ -93,8 +116,8 @@ fn chosen_label(choice: ServingChoice) -> String {
     ChoseCandidate { verdict: v } =>
       match v {
         ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.quant_label as String
-        ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => "none"
-        ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => "none"
+        ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => "none"
+        ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => "none"
       }
   }
 }
@@ -129,14 +152,14 @@ test fn w_kv_at_the_context_floor_is_derived_from_architecture() -> Bool {
 // says so from the numbers rather than from an argument.
 test fn w_at_the_400k_floor_the_higher_quality_build_is_rejected_on_memory() -> Bool {
   match evaluate_candidate(candidate: build_iq3_s, capacity: node_capacity, constraints: floor_400k) {
-    ServingCandidateRejected { model_name: _, quant_label: _, axis: a } =>
+    ServingCandidateRejected { identity: _, quant_label: _, axis: a } =>
       match a {
         DoesNotFitMemory { required: _, allocatable: _ } => true
         ContextBelowFloor { declared: _, floor: _ } => false
         PrefillBelowFloor { measured: _, floor: _ } => false
       }
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
-    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => false
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
   }
 }
 
@@ -157,7 +180,7 @@ test fn w_at_the_400k_floor_the_two_bit_build_is_chosen() -> Bool {
 // release, so a maximum over them exists, and they differ only in quality_rank and weights. Without
 // this control every other claim here is satisfied by a function that returns its first argument.
 data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
-  model_name: "Fixture-Release" as NonEmptyStr,
+  identity: fixture_release,
   quant_label: "LOW" as NonEmptyStr,
   weights: byte_size(count: 20000000000),
   quality_rank: 1,
@@ -170,7 +193,7 @@ data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
 }
 
 data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
-  model_name: "Fixture-Release" as NonEmptyStr,
+  identity: fixture_release,
   quant_label: "HIGH" as NonEmptyStr,
   weights: byte_size(count: 30000000000),
   quality_rank: 9,
@@ -197,16 +220,16 @@ test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
 // selector could have quietly reintroduced it.
 test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bool {
   match evaluate_candidate(candidate: build_iq3_s, capacity: node_capacity, constraints: floor_8k) {
-    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: m } =>
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         SemanticContextUnverifiedAtFloor { floor: _, declared: d } =>
           token_count_value(t: d) == 1048576
         KvFootprintUnmeasured => false
         PrefillRateUnmeasuredAtFloor { floor: _ } => false
-        CapacityMalformed { detail: _ } => false
+        CapacityMalformed => false
       }
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
-    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
   }
 }
 
@@ -258,7 +281,7 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
 // A candidate whose KV cost was never measured has not FAILED the memory test -- it has not taken
 // it. The selector must refuse rather than hand the win to the measured candidate by default.
 data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
-  model_name: "DeepSeek-V4-Flash-0731" as NonEmptyStr,
+  identity: deepseek_v4_flash_release,
   quant_label: "UD-IQ4_XS" as NonEmptyStr,
   weights: byte_size(count: 136700000000),
   quality_rank: 4,
@@ -272,14 +295,14 @@ data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
 
 test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
   match evaluate_candidate(candidate: build_unmeasured, capacity: node_capacity, constraints: floor_400k) {
-    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: m } =>
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
         KvFootprintUnmeasured => true
         PrefillRateUnmeasuredAtFloor { floor: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
-        CapacityMalformed { detail: _ } => false
+        CapacityMalformed => false
       }
-    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
   }
 }
@@ -303,7 +326,7 @@ test fn w_selection_refuses_while_an_unresolved_candidate_could_win() -> Bool {
 // Preference is ordinal WITHIN a release, so two admissible releases have no join and a maximum over
 // them does not exist. Returning one would manufacture an ordering the inputs never contained.
 data other_release: QuantizedCandidate = QuantizedCandidate {
-  model_name: "Qwen3.6-35B" as NonEmptyStr,
+  identity: qwen_release,
   quant_label: "Q8_0" as NonEmptyStr,
   weights: byte_size(count: 22600000000),
   quality_rank: 3,
@@ -344,14 +367,14 @@ test fn w_malformed_capacity_is_unanswerable_not_a_memory_rejection() -> Bool {
     Present { value: _ } => false
     Absent =>
       match evaluate_candidate(candidate: build_iq2_xxs, capacity: malformed_capacity, constraints: floor_400k) {
-        ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: m } =>
+        ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
           match m {
-            CapacityMalformed { detail: _ } => true
+            CapacityMalformed => true
             KvFootprintUnmeasured => false
             PrefillRateUnmeasuredAtFloor { floor: _ } => false
             SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
           }
-        ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+        ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
         ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
       }
   }
@@ -369,7 +392,7 @@ test fn w_all_answerability_claims_hold() -> Bool {
 // would return a different winner for the same inputs, which is why "stable under re-ordering" and
 // "keep the earlier one" cannot both be true.
 data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
-  model_name: "Fixture-Release" as NonEmptyStr,
+  identity: fixture_release,
   quant_label: "TIED-A" as NonEmptyStr,
   weights: byte_size(count: 20000000000),
   quality_rank: 5,
@@ -382,7 +405,7 @@ data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
 }
 
 data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
-  model_name: "Fixture-Release" as NonEmptyStr,
+  identity: fixture_release,
   quant_label: "TIED-B" as NonEmptyStr,
   weights: byte_size(count: 21000000000),
   quality_rank: 5,

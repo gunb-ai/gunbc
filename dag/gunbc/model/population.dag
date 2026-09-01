@@ -4,7 +4,7 @@ import std.types { String, Bool, List, NonEmptyStr, Int, Timestamp }
 import std.nat { Nat }
 import gunbc.model.publication {
   ModelRelease, ReleaseIdentity, DistributionChannel, DistributionObservation,
-  release_identity, release_is_open_weight, distribution_channel_wire,
+  release_identity, release_identity_equal, release_is_open_weight, distribution_channel_wire,
 }
 
 // THE CANDIDATE POPULATION AND ITS NARROWING, built so that the invariant we care about is a
@@ -113,11 +113,7 @@ fn narrow_population(
 }
 
 fn identity_in(roster: List<ReleaseIdentity>, candidate: ReleaseIdentity) -> Bool {
-  length(filter(roster, i =>
-    (i.publisher as String) == (candidate.publisher as String)
-    && (i.family as String) == (candidate.family as String)
-    && (i.revision as String) == (candidate.revision as String)
-  )) > 0
+  length(filter(roster, i => release_identity_equal(a: i, b: candidate))) > 0
 }
 
 // ===========================================================================================

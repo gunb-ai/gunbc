@@ -103,6 +103,17 @@ type ModelRelease
       declared_context: DeclaredContext
     }
 
+// IDENTITY EQUALITY, here rather than at each consumer. A release is identified by publisher,
+// family and revision together, so a comparison that omits one silently merges distinct releases --
+// two revisions of one family, or one family published by two organizations. Hoisted from
+// population.identity_in, which had inlined the three-field comparison, so a fourth component added
+// to ReleaseIdentity cannot leave a consumer comparing the old three.
+fn release_identity_equal(a: ReleaseIdentity, b: ReleaseIdentity) -> Bool {
+  (a.publisher as String) == (b.publisher as String)
+    && (a.family as String) == (b.family as String)
+    && (a.revision as String) == (b.revision as String)
+}
+
 fn release_identity(subject: ModelRelease) -> ReleaseIdentity {
   match subject {
     OpenWeightRelease { identity: i, publication: _, declared_context: _ } => i

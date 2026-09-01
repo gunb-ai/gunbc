@@ -2,6 +2,7 @@ module gunbc.model.choice
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
 import std.nat { Nat }
+import gunbc.model.publication { ReleaseIdentity, release_identity_equal }
 import std.measure {
   ByteSize, byte_size, byte_size_count,
   TokenCount, token_count, token_count_value,
@@ -74,7 +75,7 @@ fn allocatable(capacity: NodeCapacity) -> ByteSize? {
 // a Q8 of a 30B model are not on one scale. Cross-release quality is the operator's subjective call,
 // which is why it enters as a floor rather than as an objective.
 type QuantizedCandidate {
-  model_name: NonEmptyStr
+  identity: ReleaseIdentity
   quant_label: NonEmptyStr
   weights: ByteSize
   quality_rank: Int
@@ -137,11 +138,15 @@ type ServingConstraints {
 // A candidate whose KV cost was never measured has not failed the memory test -- it has not TAKEN
 // it. Reporting that as a rejection would let a fully-measured but worse candidate win by default,
 // and the answer would look identical to one where the better candidate genuinely lost.
+// CapacityMalformed carries NO payload. There is exactly one way a NodeCapacity is malformed --
+// declared runtime overhead exceeding the kernel-visible total -- so the `detail: String` it used to
+// carry restated what the constructor already says, and a second malformation would need its own arm
+// rather than a different sentence. Prose whose content the type fixes is dead data (DESIGN 4c).
 type MissingFact
   = KvFootprintUnmeasured
   | PrefillRateUnmeasuredAtFloor { floor: TokenCount }
   | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
-  | CapacityMalformed { detail: String }
+  | CapacityMalformed
 
 fn missing_fact_wire(missing: MissingFact) -> String {
   match missing {
@@ -154,7 +159,7 @@ fn missing_fact_wire(missing: MissingFact) -> String {
         "; the publisher declares ", to_string(token_count_value(t: d)),
         " but a declaration is a claim, not evidence",
       ], "")
-    CapacityMalformed { detail: d } => join(["capacity-malformed: ", d], "")
+    CapacityMalformed => "capacity-malformed: declared runtime overhead exceeds the kernel-visible total"
   }
 }
 
@@ -168,8 +173,8 @@ type RejectionAxis
 
 type CandidateVerdict
   = ServingCandidateAdmissible { candidate: QuantizedCandidate, resident: ByteSize, headroom: ByteSize }
-  | ServingCandidateRejected { model_name: NonEmptyStr, quant_label: NonEmptyStr, axis: RejectionAxis }
-  | ServingCandidateUnanswerable { model_name: NonEmptyStr, quant_label: NonEmptyStr, missing: MissingFact }
+  | ServingCandidateRejected { identity: ReleaseIdentity, quant_label: NonEmptyStr, axis: RejectionAxis }
+  | ServingCandidateUnanswerable { identity: ReleaseIdentity, quant_label: NonEmptyStr, missing: MissingFact }
 
 // Evaluated in a fixed order so the reported axis is deterministic: capability floors first, then
 // fit. A candidate that fails several axes reports the first, and the ordering puts the axis the
@@ -192,15 +197,13 @@ fn evaluate_candidate(
 ) -> CandidateVerdict {
   match allocatable(capacity: capacity) {
     Absent => ServingCandidateUnanswerable {
-      model_name: candidate.model_name,
+      identity: candidate.identity,
       quant_label: candidate.quant_label,
-      missing: CapacityMalformed {
-        detail: "declared runtime overhead exceeds the kernel-visible total, so no allocatable figure exists",
-      },
+      missing: CapacityMalformed,
     }
     Present { value: room } => match candidate.kv_per_token {
       Absent => ServingCandidateUnanswerable {
-        model_name: candidate.model_name,
+        identity: candidate.identity,
         quant_label: candidate.quant_label,
         missing: KvFootprintUnmeasured,
       }
@@ -213,13 +216,13 @@ fn evaluate_candidate(
         )
         match byte_size_count(b: required) > byte_size_count(b: room) {
           true => ServingCandidateRejected {
-            model_name: candidate.model_name,
+            identity: candidate.identity,
             quant_label: candidate.quant_label,
             axis: DoesNotFitMemory { required: required, allocatable: room },
           }
           false => match candidate.semantic_context_verified_to {
             Absent => ServingCandidateUnanswerable {
-              model_name: candidate.model_name,
+              identity: candidate.identity,
               quant_label: candidate.quant_label,
               missing: SemanticContextUnverifiedAtFloor {
                 floor: constraints.context_floor,
@@ -229,7 +232,7 @@ fn evaluate_candidate(
             Present { value: verified } =>
               match token_count_value(t: verified) < token_count_value(t: constraints.context_floor) {
                 true => ServingCandidateRejected {
-                  model_name: candidate.model_name,
+                  identity: candidate.identity,
                   quant_label: candidate.quant_label,
                   axis: ContextBelowFloor { declared: verified, floor: constraints.context_floor },
                 }
@@ -238,14 +241,14 @@ fn evaluate_candidate(
                   floor: constraints.context_floor,
                 ) {
                   Absent => ServingCandidateUnanswerable {
-                    model_name: candidate.model_name,
+                    identity: candidate.identity,
                     quant_label: candidate.quant_label,
                     missing: PrefillRateUnmeasuredAtFloor { floor: constraints.context_floor },
                   }
                   Present { value: prefill } =>
                     match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
                       true => ServingCandidateRejected {
-                        model_name: candidate.model_name,
+                        identity: candidate.identity,
                         quant_label: candidate.quant_label,
                         axis: PrefillBelowFloor { measured: prefill, floor: constraints.prefill_floor },
                       }
@@ -267,16 +270,40 @@ fn evaluate_candidate(
 fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
   match verdict {
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => true
-    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
-    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
   }
 }
 
-fn verdict_quality(verdict: CandidateVerdict) -> Int {
+// QUALITY IS ORDINAL WITHIN ONE RELEASE, and this carrier says so structurally. A bare Int rank
+// invites the one comparison that has no meaning -- IQ2_XXS of release A against Q4 of release B --
+// and nothing in the type stops it; the guard has to live in whichever function remembers. Pairing
+// the rank with the release it is ordinal under moves the guard into `compare_within_release`, the
+// single primitive through which every comparison in this module passes.
+type WithinReleaseQuality {
+  identity: ReleaseIdentity
+  rank: Int
+}
+
+// Absent when the two ranks are ordinal under DIFFERENT releases, which is not a tie and not an
+// ordering -- it is the absence of a common scale, and returning any Int here would invent one.
+fn compare_within_release(a: WithinReleaseQuality, b: WithinReleaseQuality) -> Int? {
+  match release_identity_equal(a: a.identity, b: b.identity) {
+    false => none
+    true => Present { value: a.rank - b.rank }
+  }
+}
+
+// Absent for a candidate that is not admissible. The predecessor returned `0 - 1` for those, which
+// is an INVENTED ORDINAL: it places a rejected candidate below every real rank on a scale it was
+// never measured on, and a release legitimately ranking its own artifacts from -1 would collide with
+// it. A fact that was never established is carried as absent, not as a sentinel.
+fn verdict_quality(verdict: CandidateVerdict) -> WithinReleaseQuality? {
   match verdict {
-    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.quality_rank
-    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => 0 - 1
-    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => 0 - 1
+    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } =>
+      Present { value: WithinReleaseQuality { identity: c.identity, rank: c.quality_rank } }
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => none
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => none
   }
 }
 
@@ -330,24 +357,24 @@ fn choose_serving_candidate(
       cause: UnresolvedCandidateCouldWin { unresolved_count: length(unresolved) },
       evaluations: verdicts,
     }
-    false => match distinct_release_count(verdicts: admissible) > 1 {
-      true => SelectionUnanswerable {
-        cause: CrossReleaseQualityOrderAbsent { distinct_release_count: distinct_release_count(verdicts: admissible) },
+    false => match quality_maximum(verdicts: admissible) {
+      NoQualityToCompare => NoCandidateAdmissible { rejections: verdicts }
+      QualityIncomparableAcrossReleases => SelectionUnanswerable {
+        cause: CrossReleaseQualityOrderAbsent {
+          distinct_release_count: distinct_release_count(verdicts: admissible),
+        },
         evaluations: verdicts,
       }
-      false => match top_quality_rank(verdicts: admissible) {
-        Absent => NoCandidateAdmissible { rejections: verdicts }
-        Present { value: rank } => {
-          let tied = verdicts_at_rank(verdicts: admissible, rank: rank)
-          match length(tied) > 1 {
-            true => SelectionUnanswerable {
-              cause: QualityRankTie { tied_count: length(tied), rank: rank },
-              evaluations: verdicts,
-            }
-            false => match first(tied) {
-              Absent => NoCandidateAdmissible { rejections: verdicts }
-              Present { value: best } => ChoseCandidate { verdict: best }
-            }
+      QualityMaximumFound { quality: top } => {
+        let tied = verdicts_at_quality(verdicts: admissible, quality: top)
+        match length(tied) > 1 {
+          true => SelectionUnanswerable {
+            cause: QualityRankTie { tied_count: length(tied), rank: top.rank },
+            evaluations: verdicts,
+          }
+          false => match first(tied) {
+            Absent => NoCandidateAdmissible { rejections: verdicts }
+            Present { value: best } => ChoseCandidate { verdict: best }
           }
         }
       }
@@ -357,9 +384,9 @@ fn choose_serving_candidate(
 
 fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
   match verdict {
-    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => true
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => true
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
-    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
   }
 }
 
@@ -370,51 +397,88 @@ fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
 // distinct_string_count: std carries no distinct, and reaching into the guarantee-measurement module
 // for a list primitive would invert the layering -- a model-selection authority would then depend on
 // a measurement authority for something neither owns.
+// How many DISTINCT releases the admissible set spans, keyed by ReleaseIdentity rather than by a
+// display name. A name-keyed count is wrong in both directions: two revisions of one family share a
+// name and would merge, while one release referred to by an alias in one row and its canonical name
+// in another would split. This module already has an exact identity available, so counting anything
+// else is a second, weaker key for a fact the identity already decides.
+//
+// It fills a DIAGNOSTIC and no longer decides anything. The refusal itself now comes from
+// `quality_maximum` failing to find a common scale, so the count cannot disagree with the decision.
+//
+// The dedupe is the corpus's fold/any/append idiom rather than a call to guarantee_measurement's
+// distinct_string_count: std carries no distinct, and reaching into the guarantee-measurement module
+// for a list primitive would invert the layering -- a model-selection authority would then depend on
+// a measurement authority for something neither owns.
 fn distinct_release_count(verdicts: List<CandidateVerdict>) -> Nat {
-  length(fold(map(verdicts, v => verdict_model_name(verdict: v)), [], (acc, n) =>
-    match any(acc, e => e == n) {
+  length(fold(map(verdicts, v => verdict_release(verdict: v)), [], (acc, r) =>
+    match any(acc, e => release_identity_equal(a: e, b: r)) {
       true => acc
-      false => append(acc, [n])
+      false => append(acc, [r])
     }))
 }
 
-fn verdict_model_name(verdict: CandidateVerdict) -> String {
+fn verdict_release(verdict: CandidateVerdict) -> ReleaseIdentity {
   match verdict {
-    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.model_name as String
-    ServingCandidateRejected { model_name: m, quant_label: _, axis: _ } => m as String
-    ServingCandidateUnanswerable { model_name: m, quant_label: _, missing: _ } => m as String
+    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.identity
+    ServingCandidateRejected { identity: r, quant_label: _, axis: _ } => r
+    ServingCandidateUnanswerable { identity: r, quant_label: _, missing: _ } => r
   }
 }
 
-// Maximum by quality rank, TOTAL over the empty list because it answers with an option rather than
-// a value. The predecessor seeded the fold with a head-or-fabricate helper that manufactured a
-// ServingCandidateRejected { model_name: "none", ... DoesNotFitMemory { 0, 0 } } when the list was
-// empty. That row was unreachable from the only caller, which is exactly what made it dangerous: it
-// is a synthetic verdict a later consumer would read as a real rejection of a real model against a
-// real zero-byte capacity, and nothing in the type would mark it as invented. A failure arm must
-// refuse rather than fabricate, so emptiness is carried in the RESULT and the caller turns it into
-// the honest NoCandidateAdmissible.
+// THE MAXIMUM, or a typed statement of why none exists. Three arms because three things are
+// genuinely different: nothing to compare, a maximum, and quantities with no common scale.
 //
+// The predecessor returned an Int option and relied on the CALLER checking the release count first.
+// That is the arrangement DESIGN 5 names as validation standing where construction was available:
+// the guard was satisfiable by editing the caller while the comparison still lied. Here the fold
+// cannot produce a number across releases, because `compare_within_release` has no arm that does.
+type QualityMaximum
+  = NoQualityToCompare
+  | QualityMaximumFound { quality: WithinReleaseQuality }
+  | QualityIncomparableAcrossReleases
+
 // TIES ARE NOT BROKEN HERE. An earlier revision kept the earlier candidate and its annotation
 // claimed that made the result stable under re-ordering -- which is exactly backwards, since keeping
 // the earlier candidate is the one rule whose output DOES change when the roster is reversed. Two
 // candidates at equal rank have no maximum, and inventing one is the same fabrication this module
-// refuses across releases, applied within a release. So this returns the top rank and how many share
-// it, and the caller refuses when more than one does.
-fn top_quality_rank(verdicts: List<CandidateVerdict>) -> Int? {
-  fold(verdicts, none, (best, v) =>
-    match best {
-      Absent => Present { value: verdict_quality(verdict: v) }
-      Present { value: b } =>
-        match verdict_quality(verdict: v) > b {
-          true => Present { value: verdict_quality(verdict: v) }
-          false => Present { value: b }
+// refuses across releases, applied within a release. So this returns the top quality and the caller
+// refuses when more than one candidate shares it.
+//
+// TOTAL over the empty list, via NoQualityToCompare. The predecessor seeded its fold with a
+// head-or-fabricate helper that manufactured a ServingCandidateRejected { "none", DoesNotFitMemory
+// { 0, 0 } }. That row was unreachable from its only caller, which is exactly what made it
+// dangerous: a synthetic verdict a later consumer would read as a real rejection of a real model
+// against a real zero-byte capacity, with nothing in the type marking it invented.
+fn quality_maximum(verdicts: List<CandidateVerdict>) -> QualityMaximum {
+  fold(verdicts, NoQualityToCompare, (best, v) =>
+    match verdict_quality(verdict: v) {
+      Absent => best
+      Present { value: q } =>
+        match best {
+          QualityIncomparableAcrossReleases => QualityIncomparableAcrossReleases
+          NoQualityToCompare => QualityMaximumFound { quality: q }
+          QualityMaximumFound { quality: b } =>
+            match compare_within_release(a: q, b: b) {
+              Absent => QualityIncomparableAcrossReleases
+              Present { value: d } =>
+                match d > 0 {
+                  true => QualityMaximumFound { quality: q }
+                  false => QualityMaximumFound { quality: b }
+                }
+            }
         }
     })
 }
 
-fn verdicts_at_rank(verdicts: List<CandidateVerdict>, rank: Int) -> List<CandidateVerdict> {
-  filter(verdicts, v => verdict_quality(verdict: v) == rank)
+fn verdicts_at_quality(verdicts: List<CandidateVerdict>, quality: WithinReleaseQuality) -> List<CandidateVerdict> {
+  filter(verdicts, v =>
+    match verdict_quality(verdict: v) {
+      Absent => false
+      Present { value: q } =>
+        match compare_within_release(a: q, b: quality) {
+          Absent => false
+          Present { value: d } => d == 0
+        }
+    })
 }
-
-
