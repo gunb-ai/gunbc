@@ -1390,7 +1390,6 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     ),
     String,
 > {
-    record_required_lane_resolved_sources(&sources);
     let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
@@ -1399,6 +1398,9 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
+        if typecheck_gate == ResolveTypecheckGate::Strict {
+            record_required_lane_judged_sources(&sources);
+        }
         return Ok((graph.clone(), si.clone(), compile_clean_diags.clone()));
     }
     // Arming the optional tier while its JSON representation cannot serve is a
@@ -1648,6 +1650,12 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         record_provider_bootstrap_store_skip();
     }
 
+    if typecheck_gate == ResolveTypecheckGate::Strict {
+        // Reaching here means every parsed module completed resolve, normalize, strict
+        // typecheck, and ownership without a blocking diagnostic. Record judgment only at that
+        // boundary; being indexed or merely submitted to this function is not this receipt.
+        record_required_lane_judged_sources(&sources);
+    }
     Ok((typed, source_indices, compile_clean_diags))
 }
 
@@ -1711,7 +1719,7 @@ pub(crate) fn resolved_graph_from_sources(
     ),
     String,
 > {
-    record_required_lane_resolved_sources(&sources);
+    let strict_sources = (typecheck_gate == ResolveTypecheckGate::Strict).then(|| sources.clone());
     let result = match typecheck_gate {
         ResolveTypecheckGate::Strict => {
             v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
@@ -1759,16 +1767,19 @@ pub(crate) fn resolved_graph_from_sources(
         .graph
         .clone()
         .ok_or_else(|| "compilation produced no graph".to_string())?;
+    if let Some(strict_sources) = strict_sources.as_ref() {
+        record_required_lane_judged_sources(strict_sources);
+    }
     Ok((graph, result.source_indices.clone()))
 }
 
-fn required_lane_resolved_module_identities_store() -> &'static Mutex<BTreeSet<String>> {
+fn required_lane_judged_module_identities_store() -> &'static Mutex<BTreeSet<String>> {
     static STORE: OnceLock<Mutex<BTreeSet<String>>> = OnceLock::new();
     STORE.get_or_init(|| Mutex::new(BTreeSet::new()))
 }
 
-fn record_required_lane_resolved_sources(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
-    let mut identities = required_lane_resolved_module_identities_store()
+fn record_required_lane_judged_sources(sources: &[Rc<v1_compiler_compile::SourceFile>]) {
+    let mut identities = required_lane_judged_module_identities_store()
         .lock()
         .expect("required-lane resolved-module identity store poisoned");
     for source in sources {
@@ -1778,8 +1789,8 @@ fn record_required_lane_resolved_sources(sources: &[Rc<v1_compiler_compile::Sour
     }
 }
 
-pub fn required_lane_resolved_module_identities() -> Vec<String> {
-    required_lane_resolved_module_identities_store()
+pub fn required_lane_judged_module_identities() -> Vec<String> {
+    required_lane_judged_module_identities_store()
         .lock()
         .expect("required-lane resolved-module identity store poisoned")
         .iter()

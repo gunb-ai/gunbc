@@ -941,27 +941,28 @@ pub fn index_get<'a>(
 /// Identity-grain complement of a required lane's semantic-resolution population.
 ///
 /// Both inputs name observations made by the lane: `admitted_module_identities` comes from
-/// source-root ingest, while `resolved_module_identities` comes from sources submitted to
-/// semantic resolution. The broader parse-sweep index is deliberately not a denominator, and
-/// import edges are deliberately absent: neither establishes that the lane judged a module.
+/// source-root ingest, while `judged_module_identities` comes from sources that completed strict
+/// semantic resolution and typechecking without a blocking diagnostic. The broader parse-sweep
+/// index is deliberately not a denominator, and import edges are deliberately absent: neither
+/// establishes that the lane judged a module.
 pub fn modules_unresolved_by_lane(
     admitted_module_identities: Vec<String>,
-    resolved_module_identities: &[String],
+    judged_module_identities: &[String],
 ) -> Vec<String> {
-    module_identity_difference(admitted_module_identities, resolved_module_identities)
+    module_identity_difference(admitted_module_identities, judged_module_identities)
 }
 
 fn module_identity_difference(
     declared_module_identities: Vec<String>,
-    resolved_module_identities: &[String],
+    judged_module_identities: &[String],
 ) -> Vec<String> {
-    let resolved: BTreeSet<&str> = resolved_module_identities
+    let judged: BTreeSet<&str> = judged_module_identities
         .iter()
         .map(String::as_str)
         .collect();
     declared_module_identities
         .into_iter()
-        .filter(|identity| !resolved.contains(identity.as_str()))
+        .filter(|identity| !judged.contains(identity.as_str()))
         .collect()
 }
 

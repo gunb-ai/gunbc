@@ -61,8 +61,8 @@ mod entry_resolve;
 pub(crate) use active_workset::*;
 pub(crate) use entry_resolve::*;
 
-pub fn required_lane_resolved_module_identities_for_ci() -> Vec<String> {
-    entry_resolve::required_lane_resolved_module_identities()
+pub fn required_lane_judged_module_identities_for_ci() -> Vec<String> {
+    entry_resolve::required_lane_judged_module_identities()
 }
 
 /// Module identities admitted by the same source-root ingestion used by compilation.

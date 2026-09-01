@@ -757,11 +757,11 @@ fn run() -> Result<ExitCode, ExitCode> {
             ran.len(),
             phase_failures.len()
         );
-        let resolved_module_identities =
-            v1_compiler::cli_run::required_lane_resolved_module_identities_for_ci();
+        let judged_module_identities =
+            v1_compiler::cli_run::required_lane_judged_module_identities_for_ci();
         eprintln!(
-            "required-ci: resolved-module-identities {:?}",
-            resolved_module_identities
+            "required-ci: judged-module-identities {:?}",
+            judged_module_identities
         );
         match v1_compiler::cli_run::source_root_ingest_module_identities_for_ci(&source_roots) {
             Ok(admitted_module_identities) => {
@@ -773,7 +773,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-ci: unresolved-module-identities {:?}",
                     v1_compiler::cli_run::declaration_index::modules_unresolved_by_lane(
                         admitted_module_identities,
-                        &resolved_module_identities,
+                        &judged_module_identities,
                     )
                 );
             }
