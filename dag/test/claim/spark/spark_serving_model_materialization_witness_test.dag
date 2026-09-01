@@ -159,6 +159,6 @@ test fn the_materialization_does_not_own_the_probes_request_body() -> Bool {
 // than a literal: a request body naming a different model than the one materialized would probe a
 // model that is not there and report the host sick.
 test fn the_written_body_names_the_desired_model() -> Bool {
-  string_contains(spark_serving_health_request_body(), "gpt-oss:20b")
+  string_contains(spark_serving_health_request_body(), "gpt-oss:120b")
     && string_contains(spark_serving_health_request_body(), "\"stream\":false")
 }
