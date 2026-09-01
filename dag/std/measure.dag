@@ -891,6 +891,26 @@ fn token_count_value(t: TokenCount) -> Nat {
   measure_count(t)
 }
 
+// A per-second rate of tokens -- the frequency family at One, period marker in the type, sibling of
+// EventsPerMinute and MegatransfersPerSecond. It exists because token throughput is quoted two ways
+// that are NOT the same quantity and get confused constantly: PREFILL rate (how fast an existing
+// prompt is absorbed) and DECODE rate (how fast new tokens are emitted). Both are tokens per second,
+// so the type cannot separate them -- the FIELD NAME must, and a consumer carrying only one of them
+// is under-specified rather than merely terse.
+//
+// First consumer: gunbc.model.choice, where prefill rate is a serving-admission floor. It is a rate
+// and not a TokenCount because a count answers "how many" and a rate answers "how fast"; assigning
+// one to the other is the class this family exists to make unwritable.
+type TokensPerSecond = Measure<Frequency, One, Nat>
+
+fn tokens_per_second(count: Nat) -> TokensPerSecond {
+  Measure { count: count }
+}
+
+fn tokens_per_second_count(r: TokensPerSecond) -> Nat {
+  measure_count(r)
+}
+
 fn millicore(count: Nat) -> Millicore {
   Measure { count: count }
 }

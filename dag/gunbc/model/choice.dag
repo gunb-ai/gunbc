@@ -1,6 +1,12 @@
 module gunbc.model.choice
 
 import std.types { String, Bool, List, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.measure {
+  ByteSize, byte_size, byte_size_count,
+  TokenCount, token_count, token_count_value,
+  TokensPerSecond, tokens_per_second_count,
+}
 
 // CHOOSING WHAT TO SERVE, as a function rather than as an argument.
 //
@@ -25,23 +31,23 @@ import std.types { String, Bool, List, NonEmptyStr, Int }
 // A vendor's nominal figure, the kernel's visible total, and a live availability reading are THREE
 // DIFFERENT QUANTITIES, and confusing them has already produced a wrong fit decision. Nominal
 // overstates by the firmware carveout; observed-available understates by whatever is resident at the
-// moment of the reading. Only kernel_visible_bytes is a capacity, so only it is consumed here --
+// moment of the reading. Only kernel_visible is a capacity, so only it is consumed here --
 // the others are retained so a reader can see the gap rather than rediscover it.
 type NodeCapacity {
   node_name: NonEmptyStr
-  nominal_bytes: Int
-  kernel_visible_bytes: Int
-  runtime_overhead_bytes: Int
+  nominal: ByteSize
+  kernel_visible: ByteSize
+  runtime_overhead: ByteSize
 }
 
-fn firmware_carveout_bytes(capacity: NodeCapacity) -> Int {
-  capacity.nominal_bytes - capacity.kernel_visible_bytes
+fn firmware_carveout(capacity: NodeCapacity) -> ByteSize {
+  byte_size(count: byte_size_count(b: capacity.nominal) - byte_size_count(b: capacity.kernel_visible))
 }
 
 // The bytes a model may actually occupy: what the kernel can hand out, less what the serving runtime
 // and OS need to stay alive. Deliberately NOT derived from a live availability sample.
-fn allocatable_bytes(capacity: NodeCapacity) -> Int {
-  capacity.kernel_visible_bytes - capacity.runtime_overhead_bytes
+fn allocatable(capacity: NodeCapacity) -> ByteSize {
+  byte_size(count: byte_size_count(b: capacity.kernel_visible) - byte_size_count(b: capacity.runtime_overhead))
 }
 
 // ============================ CANDIDATES ============================
@@ -53,22 +59,23 @@ fn allocatable_bytes(capacity: NodeCapacity) -> Int {
 type QuantizedCandidate {
   model_name: NonEmptyStr
   quant_label: NonEmptyStr
-  weight_bytes: Int
+  weights: ByteSize
   quality_rank: Int
-  declared_context: Int
-  kv_bytes_per_token: Int
-  measured_prefill_tokens_per_second: Int
+  declared_context: TokenCount
+  kv_per_token: ByteSize
+  measured_prefill_rate: TokensPerSecond
 }
 
 // KV scales with context and with how many sessions are simultaneously RESIDENT. Sessions parked to
 // disk between turns do not count -- their KV is not in memory -- which is why hot_sessions is the
 // parameter rather than a total session count.
-fn kv_bytes(candidate: QuantizedCandidate, context_tokens: Int, hot_sessions: Int) -> Int {
-  candidate.kv_bytes_per_token * context_tokens * hot_sessions
+fn kv_footprint(candidate: QuantizedCandidate, context: TokenCount, hot_sessions: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(b: candidate.kv_per_token) * token_count_value(t: context) * hot_sessions)
 }
 
-fn resident_bytes(candidate: QuantizedCandidate, context_tokens: Int, hot_sessions: Int) -> Int {
-  candidate.weight_bytes + kv_bytes(candidate: candidate, context_tokens: context_tokens, hot_sessions: hot_sessions)
+fn resident_footprint(candidate: QuantizedCandidate, context: TokenCount, hot_sessions: Nat) -> ByteSize {
+  let kv = kv_footprint(candidate: candidate, context: context, hot_sessions: hot_sessions)
+  byte_size(count: byte_size_count(b: candidate.weights) + byte_size_count(b: kv))
 }
 
 // ============================ CONSTRAINTS ============================
@@ -76,9 +83,9 @@ fn resident_bytes(candidate: QuantizedCandidate, context_tokens: Int, hot_sessio
 // The operator's floors. Each is a REFUSAL THRESHOLD, never a preference to be traded away silently:
 // a candidate below a floor is not a worse choice, it is not a choice.
 type ServingConstraints {
-  context_floor_tokens: Int
-  hot_sessions: Int
-  prefill_floor_tokens_per_second: Int
+  context_floor: TokenCount
+  hot_sessions: Nat
+  prefill_floor: TokensPerSecond
 }
 
 // ============================ THE DECISION ============================
@@ -87,13 +94,13 @@ type ServingConstraints {
 // census over rejections partitions cleanly into "buy hardware", "lower a floor", "wait for a
 // better artifact".
 type RejectionAxis
-  = DoesNotFitMemory { required_bytes: Int, allocatable_bytes: Int }
-  | ContextBelowFloor { declared: Int, floor: Int }
-  | PrefillBelowFloor { measured: Int, floor: Int }
+  = DoesNotFitMemory { required: ByteSize, allocatable: ByteSize }
+  | ContextBelowFloor { declared: TokenCount, floor: TokenCount }
+  | PrefillBelowFloor { measured: TokensPerSecond, floor: TokensPerSecond }
 
 type CandidateVerdict
-  = Admissible { candidate: QuantizedCandidate, resident_bytes: Int, headroom_bytes: Int }
-  | Rejected { model_name: NonEmptyStr, quant_label: NonEmptyStr, axis: RejectionAxis }
+  = ServingCandidateAdmissible { candidate: QuantizedCandidate, resident: ByteSize, headroom: ByteSize }
+  | ServingCandidateRejected { model_name: NonEmptyStr, quant_label: NonEmptyStr, axis: RejectionAxis }
 
 // Evaluated in a fixed order so the reported axis is deterministic: capability floors first, then
 // fit. A candidate that fails several axes reports the first, and the ordering puts the axis the
@@ -103,37 +110,37 @@ fn evaluate_candidate(
   capacity: NodeCapacity,
   constraints: ServingConstraints,
 ) -> CandidateVerdict {
-  let required = resident_bytes(
+  let required = resident_footprint(
     candidate: candidate,
-    context_tokens: constraints.context_floor_tokens,
+    context: constraints.context_floor,
     hot_sessions: constraints.hot_sessions,
   )
-  let allocatable = allocatable_bytes(capacity: capacity)
-  match candidate.declared_context < constraints.context_floor_tokens {
-    true => Rejected {
+  let room = allocatable(capacity: capacity)
+  match token_count_value(t: candidate.declared_context) < token_count_value(t: constraints.context_floor) {
+    true => ServingCandidateRejected {
       model_name: candidate.model_name,
       quant_label: candidate.quant_label,
-      axis: ContextBelowFloor { declared: candidate.declared_context, floor: constraints.context_floor_tokens },
+      axis: ContextBelowFloor { declared: candidate.declared_context, floor: constraints.context_floor },
     }
-    false => match candidate.measured_prefill_tokens_per_second < constraints.prefill_floor_tokens_per_second {
-      true => Rejected {
+    false => match tokens_per_second_count(r: candidate.measured_prefill_rate) < tokens_per_second_count(r: constraints.prefill_floor) {
+      true => ServingCandidateRejected {
         model_name: candidate.model_name,
         quant_label: candidate.quant_label,
         axis: PrefillBelowFloor {
-          measured: candidate.measured_prefill_tokens_per_second,
-          floor: constraints.prefill_floor_tokens_per_second,
+          measured: candidate.measured_prefill_rate,
+          floor: constraints.prefill_floor,
         },
       }
-      false => match required > allocatable {
-        true => Rejected {
+      false => match byte_size_count(b: required) > byte_size_count(b: room) {
+        true => ServingCandidateRejected {
           model_name: candidate.model_name,
           quant_label: candidate.quant_label,
-          axis: DoesNotFitMemory { required_bytes: required, allocatable_bytes: allocatable },
+          axis: DoesNotFitMemory { required: required, allocatable: room },
         }
-        false => Admissible {
+        false => ServingCandidateAdmissible {
           candidate: candidate,
-          resident_bytes: required,
-          headroom_bytes: allocatable - required,
+          resident: required,
+          headroom: byte_size(count: byte_size_count(b: room) - byte_size_count(b: required)),
         }
       }
     }
@@ -142,15 +149,15 @@ fn evaluate_candidate(
 
 fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
   match verdict {
-    Admissible { candidate: _, resident_bytes: _, headroom_bytes: _ } => true
-    Rejected { model_name: _, quant_label: _, axis: _ } => false
+    ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => true
+    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
   }
 }
 
 fn verdict_quality(verdict: CandidateVerdict) -> Int {
   match verdict {
-    Admissible { candidate: c, resident_bytes: _, headroom_bytes: _ } => c.quality_rank
-    Rejected { model_name: _, quant_label: _, axis: _ } => 0 - 1
+    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.quality_rank
+    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => 0 - 1
   }
 }
 
@@ -188,10 +195,10 @@ fn highest_quality(verdicts: List<CandidateVerdict>) -> CandidateVerdict {
 fn head_of(verdicts: List<CandidateVerdict>) -> CandidateVerdict {
   match first(verdicts) {
     Present { value: v } => v
-    Absent => Rejected {
+    Absent => ServingCandidateRejected {
       model_name: "none" as NonEmptyStr,
       quant_label: "none" as NonEmptyStr,
-      axis: DoesNotFitMemory { required_bytes: 0, allocatable_bytes: 0 },
+      axis: DoesNotFitMemory { required: byte_size(count: 0), allocatable: byte_size(count: 0) },
     }
   }
 }
