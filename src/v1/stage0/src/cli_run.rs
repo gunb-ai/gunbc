@@ -8031,7 +8031,7 @@ fn bare_reference_pull_paths_for_source(
                                 ClosureBareDisposition::AmbiguousOnChain { modules } => {
                                     return Err(format!(
                                         "bare_reference_closure: bare reference '{name}' in \
-                                         '{file_rel}' is AMBIGUOUS -- {} modules ON THIS \
+                                         '{file_rel}' is AMBIGUOUS -- {} bindings ON THIS \
                                          MODULE'S ANCESTOR CHAIN declare that name ({}), and \
                                          this resolver does not rank candidates. Name the one \
                                          you mean with an explicit import, e.g. \
@@ -18123,19 +18123,21 @@ pub fn closure_bare_disposition(
             binding: cand.binding.clone(),
         };
     }
-    // Sorted and deduped so the refusal names the same population in the same order on every
-    // run: a diagnostic whose candidate list permutes between runs is not one an operator can
-    // diff, and dedup matters because one module can bind a name more than once.
+    // COUNT BINDERS, NOT MODULE LABELS. An earlier revision projected the on-chain candidates to
+    // module paths, deduped THOSE, and returned UniqueOnChain when they all came from one module,
+    // taking `on_chain[0]` as the binding. That is not §13's rule and it diverged from inference
+    // exactly where it matters: `global_bare_unique_chain_candidate` routes the COMPLETE on-chain
+    // owner list through `module_path_owner_binding_decide`, which counts the list and answers
+    // ModulePathBindingAmbiguous at two entries EVEN WHEN THE OWNER STRINGS ARE EQUAL. So two
+    // distinct bindings at one module path are ambiguous to the type env and were a free choice
+    // here — a silent pick inside the change whose whole purpose is banning silent picks.
+    // Caught by external review; my own sixth test had canonized the wrong answer.
+    //
+    // Duplicates are KEPT rather than collapsed: two bindings at one module path is what the
+    // operator has to fix, and naming that module once would describe it as something else.
+    // Sorted for determinism — a candidate list that permutes between runs cannot be diffed.
     let mut modules: Vec<String> = on_chain.iter().map(|c| c.module_path.clone()).collect();
     modules.sort();
-    modules.dedup();
-    if modules.len() == 1 {
-        let cand = on_chain[0].clone();
-        return ClosureBareDisposition::UniqueOnChain {
-            module_path: cand.module_path.clone(),
-            binding: cand.binding.clone(),
-        };
-    }
     ClosureBareDisposition::AmbiguousOnChain { modules }
 }
 
@@ -18148,12 +18150,19 @@ mod closure_bare_disposition_tests {
     /// A synthetic binding: this decision reads only `module_path`, so the node carries no
     /// meaning and must not pretend to. Same shape the generated tests use for a synthetic node.
     fn candidate(module_path: &str) -> Rc<GlobalBareCandidate> {
+        candidate_bound_as(module_path, "Target")
+    }
+
+    /// Two candidates at ONE module path must be able to DIFFER, or the duplicate case degenerates
+    /// into the same value twice — which the production index already suppresses, so it would not
+    /// be the counterexample that matters.
+    fn candidate_bound_as(module_path: &str, decl_name: &str) -> Rc<GlobalBareCandidate> {
         let span = crate::v1_std_core::no_span();
         let node = Rc::new(crate::v1_std_core::Node {
             occurrence_identity: Rc::new(
                 crate::std_occurrence_identity::NodeOccurrenceIdentity::OccurrenceSynthetic,
             ),
-            name: "Target".to_string(),
+            name: decl_name.to_string(),
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
@@ -18175,7 +18184,7 @@ mod closure_bare_disposition_tests {
         Rc::new(GlobalBareCandidate {
             module_path: module_path.to_string(),
             binding: Rc::new(TypeBinding {
-                name: "Target".to_string(),
+                name: decl_name.to_string(),
                 resolved: node,
                 provenance: Rc::new(crate::std_induction::SubValueRelation::PreservedValue),
             }),
@@ -18280,21 +18289,34 @@ mod closure_bare_disposition_tests {
         }
     }
 
-    /// One module binding the same name twice is ONE candidate to report, not an ambiguity
-    /// between a module and itself.
+    /// CASE 6 — two DISTINCT bindings at one module path are AMBIGUOUS, not a free choice.
+    ///
+    /// This asserted the OPPOSITE until review caught it. §13 is unique BINDER on the chain, not
+    /// unique module containing one or more binders: `module_path_owner_binding_decide` counts the
+    /// owner list (`owners |> count`) and answers Ambiguous at two entries EVEN WHEN THE STRINGS
+    /// ARE EQUAL. A closure resolver that deduped the labels and took `on_chain[0]` would silently
+    /// pick — the exact class this change bans — and would disagree with the type env on one input.
     #[test]
-    fn one_module_bound_twice_is_not_an_ambiguity() {
+    fn two_distinct_bindings_at_one_module_path_are_ambiguous_not_a_free_choice() {
         let d = closure_bare_disposition(
             "a.b.c",
-            Rc::new(im::Vector::from(vec![candidate("a.b"), candidate("a.b")])),
+            Rc::new(im::Vector::from(vec![
+                candidate_bound_as("a.b", "Target"),
+                candidate_bound_as("a.b", "TargetAgain"),
+            ])),
         );
         match d {
-            ClosureBareDisposition::UniqueOnChain { module_path, .. } => {
-                assert_eq!(module_path, "a.b")
-            }
             ClosureBareDisposition::AmbiguousOnChain { modules } => {
-                panic!("one module is not ambiguous with itself: {modules:?}")
+                assert_eq!(
+                    modules,
+                    vec!["a.b".to_string(), "a.b".to_string()],
+                    "both binders are reported; collapsing them to one label would describe two \
+                     bindings at one path as something else"
+                );
             }
+            ClosureBareDisposition::UniqueOnChain { module_path, .. } => panic!(
+                "chose a binding where inference refuses — module-label dedup is back: {module_path}"
+            ),
             ClosureBareDisposition::NoOnChainCandidate => panic!("a.b is on-chain"),
         }
     }

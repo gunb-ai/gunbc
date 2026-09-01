@@ -95,7 +95,7 @@ data ambiguity_ban_seed_growth_justification: SeedGrowthJustification = SeedGrow
     },
     DeclarationRef {
       module_path: "v1_compiler.cli_run.closure_bare_disposition_tests",
-      decl_name: "one_module_bound_twice_is_not_an_ambiguity",
+      decl_name: "two_distinct_bindings_at_one_module_path_are_ambiguous_not_a_free_choice",
       field: WholeDeclaration
     },
     DeclarationRef {
