@@ -1,0 +1,374 @@
+module v1.tests.claim.carrier_realization_census
+
+import v1.compiler.compile { SourceFile, ResolvedPipelineResult, compile_to_resolved }
+import v1.compiler.emit_rust { is_host_text_carrier_type, function_value_params }
+import v1.compiler.emit_core_support { is_type_def_item }
+import v1.compiler.infer_types { is_coproduct_type, child_type_node }
+import v1.compiler.coercion { type_realization_decision, type_reference_decl_file, decl_identity_file }
+import v1.compiler.artifact { Rust }
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+import v1.compiler.infer_env { TypeEnv, lookup_type_for }
+import v1.std.core { Node, NewlineIndex, authored_name_at, param_node_type_expr, Resolved, Arrow }
+import std.coercion { TypeRealizationDecision, Realized, Unrealized, Refused }
+import std.types { List, String, Map, Bool }
+
+// THE STEP-1 SHADOW CENSUS. For every type-reference occurrence the v1 emitter would render,
+// compute BOTH the legacy short-circuit answer and the strict identity authority's answer, and
+// report where they disagree. It emits nothing, renders nothing and changes no byte: the
+// divergence is a fact about two pure functions over one tree. The design is
+// docs/plans/carrier-realization-arbiter-repair-design.md sections 1 and 2.
+//
+// The predicate is IMPORTED, never re-derived. A second copy of is_host_text_carrier_type would
+// be the forked authority this census exists to measure.
+//
+// The authority queried is the STRICT type_realization_decision, never lookup_checkpoint, whose
+// decl_file == "" arm preserves the bare-name fallback and would measure the bypass against
+// itself.
+//
+// THIS MODULE WALKS THE TYPED GRAPH AND ONLY THE TYPED GRAPH, and the deleted half is the reason
+// that is worth stating. An earlier revision also carried a census over front_end_sources, which
+// returns the INPUT to normalization and inference rather than the tree emit_artifact consumes,
+// so it asked whether inference had happened before the phase responsible for it had run. Its
+// author withdrew that census's subject claim. It is DELETED here rather than kept beside this
+// one: two instruments answering one question is the parallel authority DESIGN section 3 forbids,
+// and the withdrawn one still runs and still produces a number, which is the shape a later reader
+// quotes by accident.
+//
+//   compile_to_resolved -> ResolvedPipelineResult.graph -> ResolvedGraph.modules
+//                       -> TypedModule.items + TypedModule.type_env
+//
+// NO HOST EFFECT APPEARS IN THIS MODULE. Subject sources arrive as SourceFile DATA and the result
+// leaves as a String; reading the sources and writing the receipt are the driver's job. That is
+// transport, not a second authority, and it is what keeps the emitted mirror buildable -- a
+// Filesystem call in an ordinary fn emits an .await in a fn never made async.
+
+// THREE ANSWERS, RECORDED INDEPENDENTLY, none allowed to stand in for another before
+// comparison. That independence is the whole design: the defect under measurement is one
+// arm serving two states, so an instrument that lets a missing answer be filled in by a
+// present one reproduces the very conflation it exists to detect.
+type DeclarationIdentityObservation
+  = IdentityFromInference { decl_file: String }
+  | IdentityFromEnvironment { decl_file: String }
+  | IdentitiesAgree { decl_file: String }
+  | IdentitiesDisagree { inferred: String, environment: String }
+  | IdentityUnavailableBoth
+
+// The raw reference-file value is an OBSERVATION OF CURRENT BEHAVIOUR and never an
+// identity. It is carried in its own field under its own name so that no reader, and no
+// later fold over these rows, can mistake it for one.
+type LegacyKeyObservation = LegacyFallbackUsed { reference_file: String }
+                          | LegacyKeyResolved { decl_file: String }
+
+type CensusOutcome
+  = Agrees
+  | DivergesWithExactIdentity
+  | IdentityUnavailable
+
+// IdentityUnavailable is NOT folded into structural rendering. Unrealized (a known structural
+// declaration) and Refused (identity not supplied) are different answers, and merging them
+// reproduces the bypass under a newer name.
+type TypedCarrierRow {
+  module_file: String
+  enclosing_decl: String
+  position_kind: String
+  authored_name: String
+  identity: DeclarationIdentityObservation
+  legacy: LegacyKeyObservation
+  legacy_base: String
+  authority_base: String
+  outcome: CensusOutcome
+}
+
+fn identity_observation(inferred: String, environment: String) -> DeclarationIdentityObservation {
+  if inferred == "" && environment == "" {
+    IdentityUnavailableBoth
+  } else if inferred == "" {
+    IdentityFromEnvironment { decl_file: environment }
+  } else if environment == "" {
+    IdentityFromInference { decl_file: inferred }
+  } else if inferred == environment {
+    IdentitiesAgree { decl_file: inferred }
+  } else {
+    IdentitiesDisagree { inferred: inferred, environment: environment }
+  }
+}
+
+// NOTE the asymmetry with type_reference_decl_file, and it is deliberate: this reads the
+// resolved node ONLY, with no fallback to the reference's own span. An absent answer is
+// reported as absent. That is the refusal the production helper does not make.
+fn inferred_identity_file(n: Node) -> String {
+  match n.inferred {
+    Present { value: Resolved { node: rt } } => decl_identity_file(item: rt)
+    _ => ""
+  }
+}
+
+fn environment_identity_file(env: TypeEnv, n: Node) -> String {
+  match lookup_type_for(env: env, node: n) {
+    Present { value: d } => decl_identity_file(item: d)
+    Absent => ""
+  }
+}
+
+// The legacy key is LegacyFallbackUsed exactly when the production helper had no resolved
+// node to read -- the arm that returns the reference's own file.
+fn legacy_observation(had_inference: Bool, key: String) -> LegacyKeyObservation {
+  if had_inference { LegacyKeyResolved { decl_file: key } } else { LegacyFallbackUsed { reference_file: key } }
+}
+
+fn identity_query_file(o: DeclarationIdentityObservation) -> String {
+  match o {
+    IdentityFromInference { decl_file: d } => d
+    IdentityFromEnvironment { decl_file: d } => d
+    IdentitiesAgree { decl_file: d } => d
+    IdentitiesDisagree { inferred: _, environment: _ } => ""
+    IdentityUnavailableBoth => ""
+  }
+}
+
+fn legacy_claims_text(n: Node, si: Map<String, NewlineIndex>) -> Bool {
+  is_host_text_carrier_type(n: n, source_indices: si)
+}
+
+fn authority_realizes(name: String, decl_file: String) -> Bool {
+  match type_realization_decision(target: Rust, dag_name: name, decl_file: decl_file) {
+    Realized { checkpoint: _ } => true
+    Unrealized => false
+    Refused { cause: _ } => false
+  }
+}
+
+fn legacy_base_label(n: Node, si: Map<String, NewlineIndex>) -> String {
+  if is_host_text_carrier_type(n: n, source_indices: si) { "String" } else { "<not-short-circuited>" }
+}
+
+fn authority_base_of(name: String, decl_file: String) -> String {
+  match type_realization_decision(target: Rust, dag_name: name, decl_file: decl_file) {
+    Realized { checkpoint: cp } => cp.target_type
+    Unrealized => "<structural>"
+    Refused { cause: _ } => "<refused>"
+  }
+}
+
+// THE OUTCOME IS STRUCTURAL, NOT STRING EQUALITY, and the first reading of this census got that
+// wrong. Comparing rendered spellings makes "String" (what the short-circuit emits) equal "String"
+// (what a structural render of the alias LEAF spells), so the divergence being measured compares
+// EQUAL. The mechanism is not a spelling difference: the short-circuit emits the HOST String type
+// while the authority says no checkpoint governs this declaration and its own structure must be
+// rendered instead.
+fn outcome_of(claims_text: Bool, realizes: Bool, query_file: String) -> CensusOutcome {
+  if query_file == "" {
+    IdentityUnavailable
+  } else if claims_text && !realizes {
+    DivergesWithExactIdentity
+  } else {
+    Agrees
+  }
+}
+
+fn typed_decision_row(
+  module_file: String,
+  enclosing: String,
+  position_kind: String,
+  n: Node,
+  env: TypeEnv,
+  si: Map<String, NewlineIndex>
+) -> TypedCarrierRow {
+  let inferred = inferred_identity_file(n: n)
+  let environment = environment_identity_file(env: env, n: n)
+  let legacy_key = type_reference_decl_file(n: n)
+  let identity = identity_observation(inferred: inferred, environment: environment)
+  let query_file = identity_query_file(o: identity)
+  let name = authored_name_at(source_indices: si, node: n)
+  let claims_text = legacy_claims_text(n: n, si: si)
+  TypedCarrierRow {
+    module_file: module_file,
+    enclosing_decl: enclosing,
+    position_kind: position_kind,
+    authored_name: name,
+    identity: identity,
+    legacy: legacy_observation(had_inference: inferred != "", key: legacy_key),
+    legacy_base: legacy_base_label(n: n, si: si),
+    authority_base: authority_base_of(name: name, decl_file: query_file),
+    outcome: outcome_of(claims_text: claims_text, realizes: authority_realizes(name: name, decl_file: query_file), query_file: query_file)
+  }
+}
+
+// THE OCCURRENCE SET, AND THE TWO ADMISSIONS THAT WERE REPAIRED HERE. The first landing of this
+// module recorded that the walk admitted non-carrier nodes and declined to repair it until the
+// repair could be measured. Both admissions are now closed, and each was established from the
+// PARSER rather than inferred from the census's own output, because a walk defect diagnosed from
+// the instrument's rows is diagnosed by the instrument under suspicion.
+//
+// (1) AN ARROW NODE IS NOT A TYPE REFERENCE. child_type_node of a function-typed field yields the
+// arrow node itself, whose authored name is the keyword `fn`, so every such field contributed one
+// row naming a carrier that does not exist while contributing NO row for the type references the
+// arrow actually contains. An arrow is now DESCENDED, never reported: its children are the type
+// positions, and they are what the emitter renders.
+//
+// (2) A GENERIC TYPE PARAMETER IS NOT A SIGNATURE PARAMETER, and the first note had this subject
+// wrong in a way worth recording. It said item.params over a TYPE DECLARATION yields type
+// parameters; measured, no type declaration contributes a signature row at all -- the guard on
+// item.body already excludes them. The real source is FUNCTION declarations:
+// v1.compiler.parse parse_fn_body_from_prefix builds `all_params = concat(type_params, params)`,
+// so a fn item's params field carries its generic parameters FIRST and its value parameters after.
+// `fn list_head<T>(xs: FreeMonoid<T>)` therefore contributed a row for T. The split authority is
+// v1.compiler.emit_rust function_value_params, which the emitter itself uses to render signatures;
+// it is IMPORTED here for the same reason the carrier predicate is -- a second copy of the
+// value/generic split would be a fork of the decision the census exists to observe.
+//
+// WHAT THIS STILL DOES NOT LICENSE: a published count. The calibration control -- the
+// diagnostic-producing subset of the divergence rows joined to the design's arm-A sites by source
+// declaration and enclosing declaration, never by line -- has not run, and until it does the
+// divergence figure is a measurement of this walk rather than of the emitter.
+
+fn no_typed_rows() -> List<TypedCarrierRow> {
+  []
+}
+
+// The one place a node becomes rows. An arrow contributes its type positions and never itself;
+// every other node contributes exactly one row.
+//
+// AN ARROW'S POSITIONS ARE ITS PARAMS AND ITS RESOLVED RETURN, NOT ITS CHILDREN, and this is
+// taken from the emitter rather than guessed: v1.compiler.emit_rust render_rust_arrow_type_in_scope
+// renders exactly `n.params |> param_node_type_expr` plus the node behind `n.inferred`. A first
+// attempt here descended into n.children, which is EMPTY for an arrow -- so every function-typed
+// position silently contributed no row at all, trading a row that named a carrier that does not
+// exist for the absence of the rows that do. Measured on the v2.std.text closure: `fold_list`'s
+// `cons: fn(A, T) -> A` produced nothing until the descent matched the renderer.
+//
+// The arrow test is a match rather than `n.connective == Arrow`, because a variant name followed
+// by `{` parses as a record construction, so the equality form makes the if-block's own brace read
+// as Arrow's constructor. v1.compiler.emit_rust rust_type_node_is_arrow is named for the same
+// reason, and v1.compiler.resolve takes the same shape.
+fn typed_occurrence_rows(
+  module_file: String, enclosing: String, position_kind: String, n: Node, env: TypeEnv, si: Map<String, NewlineIndex>
+) -> List<TypedCarrierRow> {
+  let node_is_arrow = match n.connective { Arrow => true  _ => false }
+  if node_is_arrow {
+    let param_rows = n.params |> fold(init: no_typed_rows(), f: (acc, p) => concat(acc, typed_occurrence_rows(
+      module_file: module_file, enclosing: enclosing, position_kind: concat(position_kind, "/fn_type_param"),
+      n: param_node_type_expr(n: p), env: env, si: si)))
+    let return_rows = match n.inferred {
+      Present { value: Resolved { node: rt } } => typed_occurrence_rows(
+        module_file: module_file, enclosing: enclosing, position_kind: concat(position_kind, "/fn_type_return"),
+        n: rt, env: env, si: si)
+      _ => no_typed_rows()
+    }
+    concat(param_rows, return_rows)
+  } else {
+    [typed_decision_row(
+      module_file: module_file, enclosing: enclosing, position_kind: position_kind, n: n, env: env, si: si)]
+  }
+}
+
+fn typed_field_rows(
+  module_file: String, enclosing: String, fields: List<Node>, env: TypeEnv, si: Map<String, NewlineIndex>
+) -> List<TypedCarrierRow> {
+  fields |> fold(init: no_typed_rows(), f: (acc, fld) => concat(acc, typed_occurrence_rows(
+    module_file: module_file, enclosing: enclosing, position_kind: "declaration_field",
+    n: child_type_node(ch: fld), env: env, si: si)))
+}
+
+fn typed_item_rows(module_file: String, item: Node, env: TypeEnv, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
+  let enclosing = authored_name_at(source_indices: si, node: item)
+  let decl_rows = if !is_type_def_item(item: item) {
+    no_typed_rows()
+  } else if is_coproduct_type(n: item) {
+    item.children |> fold(init: no_typed_rows(), f: (acc, variant) =>
+      concat(acc, typed_field_rows(module_file: module_file, enclosing: enclosing, fields: variant.children, env: env, si: si)))
+  } else {
+    typed_field_rows(module_file: module_file, enclosing: enclosing, fields: item.children, env: env, si: si)
+  }
+  let param_rows_t = if item.body == none {
+    no_typed_rows()
+  } else {
+    function_value_params(params: item.params) |> fold(init: no_typed_rows(), f: (acc, prm) => concat(acc, typed_occurrence_rows(
+      module_file: module_file, enclosing: enclosing, position_kind: "fn_signature_param",
+      n: param_node_type_expr(n: prm), env: env, si: si)))
+  }
+  concat(decl_rows, param_rows_t)
+}
+
+fn typed_module_rows(m: TypedModule, si: Map<String, NewlineIndex>) -> List<TypedCarrierRow> {
+  let module_file = authored_name_at(source_indices: si, node: m.module)
+  m.items |> fold(init: no_typed_rows(), f: (acc, item) =>
+    concat(acc, typed_item_rows(module_file: module_file, item: item, env: m.type_env, si: si)))
+}
+
+fn identity_label(o: DeclarationIdentityObservation) -> String {
+  match o {
+    IdentityFromInference { decl_file: _ } => "FromInference"
+    IdentityFromEnvironment { decl_file: _ } => "FromEnvironment"
+    IdentitiesAgree { decl_file: _ } => "Agree"
+    IdentitiesDisagree { inferred: _, environment: _ } => "DISAGREE"
+    IdentityUnavailableBoth => "UnavailableBoth"
+  }
+}
+
+fn identity_file_label(o: DeclarationIdentityObservation) -> String {
+  match o {
+    IdentityFromInference { decl_file: d } => d
+    IdentityFromEnvironment { decl_file: d } => d
+    IdentitiesAgree { decl_file: d } => d
+    IdentitiesDisagree { inferred: i, environment: e } => concat(concat(i, " != "), e)
+    IdentityUnavailableBoth => ""
+  }
+}
+
+fn legacy_label(l: LegacyKeyObservation) -> String {
+  match l {
+    LegacyFallbackUsed { reference_file: f } => concat("FALLBACK:", f)
+    LegacyKeyResolved { decl_file: d } => concat("resolved:", d)
+  }
+}
+
+
+fn outcome_label(o: CensusOutcome) -> String {
+  match o {
+    Agrees => "Agrees"
+    DivergesWithExactIdentity => "DivergesWithExactIdentity"
+    IdentityUnavailable => "IdentityUnavailable"
+  }
+}
+
+fn tsv_escape(v: String) -> String {
+  replace(replace(v, "\t", "\\t"), "\n", "\\n")
+}
+
+fn typed_census_header() -> String {
+  "module_file\tenclosing_decl\tposition_kind\tauthored_name\tidentity\tidentity_file\tlegacy_key\tlegacy_base\tauthority_base\toutcome"
+}
+
+fn typed_row_tsv(r: TypedCarrierRow) -> String {
+  [
+    tsv_escape(v: r.module_file),
+    tsv_escape(v: r.enclosing_decl),
+    tsv_escape(v: r.position_kind),
+    tsv_escape(v: r.authored_name),
+    identity_label(o: r.identity),
+    tsv_escape(v: identity_file_label(o: r.identity)),
+    tsv_escape(v: legacy_label(l: r.legacy)),
+    tsv_escape(v: r.legacy_base),
+    tsv_escape(v: r.authority_base),
+    outcome_label(o: r.outcome)
+  ] |> join(separator: "\t")
+}
+
+fn typed_census_tsv(rows: List<TypedCarrierRow>) -> String {
+  rows |> fold(init: typed_census_header(), f: (acc, r) => concat(concat(acc, "\n"), typed_row_tsv(r: r)))
+}
+
+// THE ENTRY THE DRIVER CALLS. Sources in as data, receipt out as a String; no host effect, no
+// path, no process verdict. A compile that produces no graph REFUSES in the return value rather
+// than yielding an empty table, because an empty receipt and a receipt that could not be produced
+// must not share a spelling.
+fn typed_census_from_sources(sources: List<SourceFile>) -> String {
+  let result = compile_to_resolved(sources: sources)
+  match result.graph {
+    Absent => "REFUSED\tcompile_to_resolved produced no graph"
+    Present { value: g } =>
+      typed_census_tsv(rows: g.modules |> fold(init: no_typed_rows(), f: (acc, m) =>
+        concat(acc, typed_module_rows(m: m, si: result.source_indices))))
+  }
+}
