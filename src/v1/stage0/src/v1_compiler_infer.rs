@@ -191,6 +191,7 @@ pub use crate::v1_compiler_infer_types::{
     structural_carrier_template_name, template_return_has_variables,
     template_return_is_receiver_self,
 };
+pub use crate::v1_compiler_ownership::fold_terminal_expr;
 pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule};
 use crate::v1_compiler_type_head_exposure::TypeHeadExposure::{
     ExposedTypeHead, MalformedApplicationHead, OpaqueTypeHead, StuckTypeHead,
@@ -16875,12 +16876,12 @@ pub struct BodyTerminal {
 }
 
 pub fn arm_body_diverges(body: Rc<Node>) -> bool {
-    match (*body.expr_data.clone()).clone() {
+    match (*crate::v1_compiler_ownership::fold_terminal_expr(body.clone())
+        .expr_data
+        .clone())
+    .clone()
+    {
         ExprData::ExprReturn => true,
-        ExprData::ExprBlock => match body.children.clone().last().cloned() {
-            Some(last_stmt) => arm_body_diverges(last_stmt.clone()),
-            std::option::Option::None => false,
-        },
         _ => false,
     }
 }

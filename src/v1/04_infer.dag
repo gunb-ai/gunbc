@@ -9503,13 +9503,8 @@ type BodyTerminal {
 }
 
 fn arm_body_diverges(body: Node) -> Bool {
-  match body.expr_data {
+  match fold_terminal_expr(body: body).expr_data {
     ExprReturn => true
-    ExprBlock =>
-      match body.children |> last {
-        Present { value: last_stmt } => arm_body_diverges(body: last_stmt)
-        Absent => false
-      }
     _ => false
   }
 }

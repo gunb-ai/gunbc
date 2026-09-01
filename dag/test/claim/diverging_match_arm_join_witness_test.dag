@@ -87,3 +87,34 @@ fn probe_no_divergence(xs: List<ProbeCell>) -> Int {
 test fn a_match_without_a_diverging_arm_still_joins_every_arm() -> Bool {
   probe_no_divergence(xs: []) == 0 && probe_no_divergence(xs: [ProbeCell { n: 5 }]) == 5
 }
+
+// REVIEW 58314 (codex/gpt-5.6-sol, REQUEST_CHANGES on #9964): the first version of
+// `arm_body_diverges` hand-walked ExprReturn and ExprBlock and MISSED ExprLet, so a
+// return hidden behind a terminal `let` was still admitted into the join. It also
+// forked a traversal `v1.compiler.ownership` `fold_terminal_expr` already owns. The
+// predicate now routes through that fold, and this is its discriminating case: the
+// arm's terminal is an ExprLet whose body is the `return`.
+fn probe_cell_let_terminal(xs: List<ProbeCell>) -> ProbeResult {
+  let cell = match probe_cell_of(xs: xs) {
+    Absent => {
+      let why = 2
+      return ProbeUnknown { why: why }
+    }
+    Present { value } => value
+  }
+  ProbeOk { cell: ProbeCell { n: probe_takes_cell(cell: cell) } }
+}
+
+test fn a_return_behind_a_terminal_let_also_diverges() -> Bool {
+  match probe_cell_let_terminal(xs: [ProbeCell { n: 9 }]) {
+    ProbeOk { cell } => cell.n == 9
+    ProbeUnknown { why: _ } => false
+  }
+}
+
+test fn the_let_hidden_diverging_arm_still_returns_early() -> Bool {
+  match probe_cell_let_terminal(xs: []) {
+    ProbeOk { cell: _ } => false
+    ProbeUnknown { why } => why == 2
+  }
+}
