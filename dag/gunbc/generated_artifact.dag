@@ -182,6 +182,17 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
   filter(generated_artifact_registry, a => artifact_is_committed(a: a))
 }
 
+// Generated workflow membership is a projection of the existing commit-policy standing. It is
+// deliberately not a second three-item roster: adding any artifact whose repository consumer is
+// GitHub Actions enrolls it in both the visible-banner obligation and its all-members witness.
+fn committed_generated_workflow_artifacts() -> List<GeneratedArtifact> {
+  filter(committed_generated_artifacts(), a => match artifact_commit_policy(a: a) {
+    CommitRequired { consumer: GithubActionsWorkflow } => true
+    CommitRequired { consumer: _ } => false
+    NotCommitted => false
+  })
+}
+
 fn committed_generated_artifact_paths() -> List<String> {
   map(committed_generated_artifacts(), a => artifact_path(a: a))
 }
@@ -222,4 +233,3 @@ fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
 fn registry_contains(a: GeneratedArtifact) -> Bool {
   any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
 }
-

@@ -3,6 +3,12 @@ module gunbc.fleet_converge_workflow
 import std.measure { minute_count }
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, kv }
+import gunbc.generated_artifact { FleetConvergeYamlArtifact }
+import gunbc.generated_workflow_provenance {
+  generated_workflow_provenance_header,
+  GeneratedWorkflowProvenanceHeaderProduced,
+  GeneratedWorkflowProvenanceHeaderNotApplicable,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowDispatch, DispatchInput, InputString, InputChoice,
@@ -834,7 +840,14 @@ fn fleet_converge_yml_after_toolchain_admission() -> FleetConvergeYamlGeneration
       JobTimeoutExceedsCeiling { minutes: _, ceiling: _ } =>
         FleetConvergeYamlGenerationRefused { reason: "fleet-converge job backstop timeout exceeds extdeps.github.actions max_job_timeout_minutes — split the job or reduce a tier's per-step budget, do not raise past the platform ceiling (see gunbc_ci_fleet_job_backstop_timeout_note in gunbc.fleet_workflow_steps)" }
       JobTimeoutWithinCeiling { minutes: _ } =>
-        FleetConvergeYamlGenerated { content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)) }
+        match generated_workflow_provenance_header(a: FleetConvergeYamlArtifact) {
+          GeneratedWorkflowProvenanceHeaderProduced { content } =>
+            FleetConvergeYamlGenerated {
+              content: concat(content, serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_converge_workflow)))
+            }
+          GeneratedWorkflowProvenanceHeaderNotApplicable =>
+            FleetConvergeYamlGenerationRefused { reason: "fleet-converge artifact has no generated-workflow provenance projection" }
+        }
     }
   } else {
     FleetConvergeYamlGenerationRefused { reason: fleet_converge_capability_closure_refusal }

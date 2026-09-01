@@ -3,6 +3,12 @@ module gunbc.fleet_desired_admission_workflow
 import extdeps.languages.yaml.types { yaml_string, kv }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
+import gunbc.generated_artifact { FleetDesiredAdmissionYamlArtifact }
+import gunbc.generated_workflow_provenance {
+  generated_workflow_provenance_header,
+  GeneratedWorkflowProvenanceHeaderProduced,
+  GeneratedWorkflowProvenanceHeaderNotApplicable,
+}
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, WorkflowRunCompleted,
@@ -415,8 +421,13 @@ type FleetDesiredGenerationOutcome
 fn expected_fleet_desired_yml() -> FleetDesiredGenerationOutcome {
   match admit_workflow_toolchain_homes(workflow: fleet_desired_admission_workflow) {
     WorkflowToolchainHomesAdmitted =>
-      FleetDesiredGenerated {
-        content: serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow))
+      match generated_workflow_provenance_header(a: FleetDesiredAdmissionYamlArtifact) {
+        GeneratedWorkflowProvenanceHeaderProduced { content } =>
+          FleetDesiredGenerated {
+            content: concat(content, serialize_yaml(v: project_workflow_to_yaml(workflow: fleet_desired_admission_workflow)))
+          }
+        GeneratedWorkflowProvenanceHeaderNotApplicable =>
+          FleetDesiredGenerationRefused { reason: "fleet-desired artifact has no generated-workflow provenance projection" }
       }
     WorkflowToolchainHomeRefused { job_id: j, refusal: r } =>
       FleetDesiredGenerationRefused { reason: toolchain_home_refusal_reason(job_id: j, refusal: r) }
