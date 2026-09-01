@@ -1,0 +1,300 @@
+module test.claim.declared_type_expected_type_path_witness
+
+import gunbc.compile_diagnostic_census {
+  CompileDiagnosticCensus,
+  CensusObserved,
+  CensusNotRunnable,
+  census_blocking_rows,
+  census_rows_of_class,
+  census_total_count
+}
+import std.types { String, Bool, Int }
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+// SUBSTRATE-ONLY, for the reason the sibling module states in its own voice: a ReadsLiveTree
+// witness is discovered, counted in declined_live, and never folded, so an assertion authored
+// there is enrolled and inert. These arms are evidence about the compiler and must execute.
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// THE ADMISSION ORACLE IS THE TOTAL REFUSING COUNT, NOT A DIAGNOSTIC SPELLING.
+//
+// This module previously asked whether a chosen class name appeared, and read its absence as
+// "the compiler admitted this source". Those are not the same question, and the liveness control
+// below is what proves it: a blatant non-generic mismatch that the compiler REFUSES produces zero
+// rows of class DeclaredTypeNotInhabited and one row in total. So the class-filtered form reports
+// "admitted" for a program that was refused.
+//
+// Three ways that broke a merge-blocking claim. A wanted-class count above zero can report
+// admission when a different class did the refusing. A count of zero can report admission while
+// another class refuses the source. And a future repair that refuses these specimens under a new
+// or more precise class would leave the enrolled red held forever while the hole it names is shut.
+// A class name is a fact about diagnostic QUALITY; only the refusal itself is the admission fact.
+//
+// SEVERITY IS FILTERED THROUGH census_blocking_rows RATHER THAN COUNTED RAW, and the opposite
+// control below is what forced that: an unfiltered total read non-zero on a VALID source, because
+// the census reports advisories as data beside refusals -- exactly what its own authority says when
+// it states that blocking arrives as a projection of compile_clean_diagnostic_is_hard and that
+// CALLERS FILTER. Counting every row would have made a clean compile indistinguishable from a
+// refused one in the opposite direction from the class filter, trading one wrong oracle for another.
+// EVERY ENROLLED SOURCE CARRIES A COMPANION ASSERTING ITS OWN CENSUS RAN, because a red that
+// cannot distinguish "the compiler admitted this" from "the census could not measure this" is
+// evidence of nothing. refusing_count maps CensusNotRunnable to -1, and every red asserts > 0, so
+// a source-specific census failure yields exactly the false the expected-red roster holds as
+// AGREEMENT -- the row would sit green-in-the-roster forever while its subject went unmeasured.
+// The liveness and valid-source controls cannot catch that: they compile DIFFERENT source strings,
+// so they answer for their own sources and not for these.
+fn census_ran(source: String) -> Bool {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: _ } => true
+    CensusNotRunnable { cause: _ } => false
+  }
+}
+
+fn refusing_count(source: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_blocking_rows(rows: rows))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+fn violation_count(source: String, wanted: String) -> Int {
+  match compile_dag_diagnostic_census(source) {
+    CensusObserved { rows: rows } => census_total_count(rows: census_rows_of_class(rows: rows, wanted: wanted))
+    CensusNotRunnable { cause: _ } => 0 - 1
+  }
+}
+
+// THE LIVENESS CONTROL. An intentionally invalid non-generic source that the compiler must refuse.
+// If this ever reads zero, the census is measuring nothing and every zero in this module is
+// uninformative -- so this arm is what licenses reading the others at all.
+data liveness_refused_source: String = "module probe_liveness\nimport std.types { Int }\nfn probe() -> Int { \"not an int\" }\n"
+
+test fn w_the_census_refuses_a_blatant_non_generic_mismatch() -> Bool {
+  refusing_count(source: liveness_refused_source) > 0
+}
+
+// THE OPPOSITE CONTROL. A valid source must carry no refusing diagnostic, so that the arms above
+// cannot be satisfied by a census that refuses everything.
+data liveness_admitted_source: String = "module probe_liveness_ok\nimport std.types { Int }\nfn probe() -> Int { 3 }\n"
+
+test fn w_the_census_admits_a_valid_source() -> Bool {
+  refusing_count(source: liveness_admitted_source) == 0
+}
+
+// WHAT THESE ARMS ARE, AND WHAT THEY NOW CLAIM.
+//
+// Two values reached expected-type positions they do not inhabit, and the required floor stayed
+// green on both. The specimens were found in production on this branch, not constructed to prove a
+// point: a Gibibyte returned from a function declared -> ByteSize, which typechecked and yielded
+// Measure { count: 3 } -- three BYTES per core -- and drove the whole fleet to a refusal naming
+// neither the ratio nor the missing conversion; and a two-variant resolution coproduct passed to a
+// parameter declared as a one-field measure, in gunbc.runner_slot_allocation's own aggregate wall.
+//
+// AN EARLIER CUT OF THIS MODULE WAS DELIBERATELY MECHANISM-NEUTRAL, listing the candidates as a
+// coproduct producer, transparent alias expansion, generic application identity, cross-module
+// resolution, or an interaction, and declining to choose. THE MATRIX HAS SINCE RUN AND THE CAUSE IS
+// LOCATED, so declining to name it here would now be the weaker statement:
+//
+//   in the declared-return expected-type path, a generic application's CONSTRUCTOR HEAD is
+//   compared but its TYPE-ARGUMENT VECTOR is not.
+//
+// The arms below carry that as executed evidence rather than as an assertion. A wrong head refuses.
+// A non-generic call-result mismatch refuses. A matching application is admitted. A wrong type
+// argument is ADMITTED, whether the parameter is phantom or carried in a field. So field occupancy,
+// aliases, coproducts and module boundaries are not necessary causes -- each is absent from a
+// specimen that still reproduces. The repair is to compare normalized application identity as head,
+// arity, and every type argument recursively; both red specimens must survive it, because a repair
+// that merely noticed arguments occurring in FIELDS would leave the phantom arm open.
+//
+// THE CLAIM IS BOUNDED TO ONE PATH. This measures the declared-return comparison. The direct-call
+// path may still enforce argument identity, and the sibling
+// test.claim.declared_type_inhabitance_direct_call_witness refuses distinct unapplied constructors
+// through a call -- consistent with head comparison, which is the half that works. Nothing here
+// establishes that every expected-type path drops arguments, and DESIGN 4b prices that difference:
+// a class's rung is the MINIMUM across its in-scope paths, so citing this one as though it settled
+// the others would be inflation.
+
+// PAIR ONE -- THE DECLARED-RETURN PATH, which is the incident's own shape, EXPRESSED WITHOUT
+// CORPUS IMPORTS.
+//
+// This pair used to import std.measure and read Gibibyte against ByteSize. It was replaced because
+// it never measured its own subject. The census compiles a SYNTHETIC SINGLE-MODULE source, so a
+// corpus import does not resolve: the trivially VALID program
+//   module p / import std.measure { Gibibyte, gibibyte } / fn probe() -> Gibibyte { gibibyte(count: 3) }
+// produces 92 BLOCKING diagnostics. Both the red and its control were drowning in UnresolvedType,
+// and the class filter hid every one of them -- which is the only reason the pair ever appeared to
+// work. Read honestly the old red refused because its imports did not resolve, and its control
+// refused for the identical reason while asserting admission. The census authority states this
+// hazard in its own voice: it emits blocking UnresolvedType for pool-present non-authority refs,
+// and census-derived receipts must not be read as production compile-clean behaviour there.
+//
+// The shape is therefore expressed with types the probe declares itself. Box<TagA> and Box<TagB>
+// stand exactly where Gibibyte and ByteSize stood: two applications of ONE constructor differing
+// only in their type argument, which is what Measure's scale parameter is.
+data generic_argument_return_red_source: String = "module probe_generic_argument_return\ntype TagA = MkTagA {}\ntype TagB = MkTagB {}\ntype Box<T> = MkBox { n: Int }\nfn produces_a() -> Box<TagA> { MkBox { n: 3 } }\nfn probe() -> Box<TagB> { produces_a() }\n"
+
+test fn w_a_wrong_type_argument_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: generic_argument_return_red_source) > 0
+}
+
+// THE POSITIVE CONTROL, identical but for the declared argument. Without it an arm that refused
+// every generic return would satisfy the red above while making the corpus unwritable.
+data generic_argument_return_control_source: String = "module probe_generic_argument_return_ok\ntype TagA = MkTagA {}\ntype Box<T> = MkBox { n: Int }\nfn produces_a() -> Box<TagA> { MkBox { n: 3 } }\nfn probe() -> Box<TagA> { produces_a() }\n"
+
+test fn w_a_matching_type_argument_at_a_declared_return_is_admitted() -> Bool {
+  refusing_count(source: generic_argument_return_control_source) == 0
+}
+
+// THE TWO ARMS THAT PLACE THE BOUNDARY, and one of them previously carried a claim it did not
+// test. This arm returns a PRIMITIVE where an application is declared, and it refuses. An earlier
+// revision read that as "the constructor HEAD is compared" and narrowed the defect to the
+// type-argument vector on that basis. It establishes no such thing: it establishes only that a
+// primitive does not inhabit an application. Two different application HEADS are admitted, which
+// is enrolled below.
+data application_versus_primitive_source: String = "module probe_application_vs_primitive\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype Box<T> = MkBox { n: Int }\nfn probe() -> Box<TagA> { 5 }\n"
+
+test fn w_a_primitive_at_a_declared_application_return_is_refused() -> Bool {
+  refusing_count(source: application_versus_primitive_source) > 0
+}
+
+data non_generic_call_result_source: String = "module probe_non_generic_call\nimport std.types { Int, String }\nfn produces_string() -> String { \"x\" }\nfn probe() -> Int { produces_string() }\n"
+
+test fn w_a_non_generic_call_result_mismatch_is_refused() -> Bool {
+  refusing_count(source: non_generic_call_result_source) > 0
+}
+
+// THE FIELD-OCCUPANCY ARM, with arguments of DIFFERENT SHAPE so it isolates what it names. An
+// earlier cut used two EMPTY records, which a representation-oriented comparison flattens to the
+// same structure -- so it could not distinguish "the argument was discarded" from "the argument was
+// substituted and then compared as identical representation". Int against String cannot be
+// flattened together, and it is still admitted.
+data used_parameter_return_red_source: String = "module probe_used_parameter_return\nimport std.types { Int, String }\ntype Box<T> = MkBox { v: T }\nfn produces_int() -> Box<Int> { MkBox { v: 3 } }\nfn probe() -> Box<String> { produces_int() }\n"
+
+test fn w_a_wrong_type_argument_carried_in_a_field_is_refused() -> Bool {
+  refusing_count(source: used_parameter_return_red_source) > 0
+}
+
+// ITS OWN POSITIVE CONTROL, for the USED-parameter form specifically. The phantom form's control
+// does not cover this one: a repair that refused every Box<T> { v: T } return would satisfy the red
+// above while making valid used-parameter returns unwritable.
+data used_parameter_return_control_source: String = "module probe_used_parameter_return_ok\nimport std.types { Int }\ntype Box<T> = MkBox { v: T }\nfn produces_int() -> Box<Int> { MkBox { v: 3 } }\nfn probe() -> Box<Int> { produces_int() }\n"
+
+test fn w_a_matching_type_argument_carried_in_a_field_is_admitted() -> Bool {
+  refusing_count(source: used_parameter_return_control_source) == 0
+}
+
+// THE MIDDLE ARGUMENT OF A THREE-PARAMETER APPLICATION, which is where the production incident
+// actually differs: Measure<Memory, Gibi, Nat> against Measure<Memory, One, Nat>. Both other
+// enrolled reds differ at position ZERO, so a partial repair comparing only the first argument
+// would green them, SELF-EMPTY them from the roster by this module's own dissolution rule, and
+// leave the Gibibyte-to-ByteSize hole standing. This row is what makes that impossible.
+data middle_argument_return_red_source: String = "module probe_middle_argument\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype TagB = MkTagB { b: Int }\ntype Held = MkHeld { h: Int }\ntype Tri<A, B, C> = MkTri { n: Int }\nfn produces_a() -> Tri<Held, TagA, Held> { MkTri { n: 1 } }\nfn probe() -> Tri<Held, TagB, Held> { produces_a() }\n"
+
+test fn w_a_wrong_middle_type_argument_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: middle_argument_return_red_source) > 0
+}
+
+data middle_argument_return_control_source: String = "module probe_middle_argument_ok\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype Held = MkHeld { h: Int }\ntype Tri<A, B, C> = MkTri { n: Int }\nfn produces_a() -> Tri<Held, TagA, Held> { MkTri { n: 1 } }\nfn probe() -> Tri<Held, TagA, Held> { produces_a() }\n"
+
+test fn w_a_matching_three_argument_application_is_admitted() -> Bool {
+  refusing_count(source: middle_argument_return_control_source) == 0
+}
+
+// TWO DIFFERENT APPLICATION HEADS, SAME ARITY, SAME ARGUMENT VECTOR. This is the arm that refuted
+// the earlier account. Box<TagA> and Crate<TagA> differ only in the constructor and the return is
+// admitted, so the head is NOT compared between two applications and the defect was never confined
+// to the argument vector. Application-versus-application is the discriminator here; the
+// primitive-versus-application arm above cannot serve, which is precisely the substitution the
+// earlier revision made.
+//
+// ARITY IS DELIBERATELY NOT ENROLLED. A same-head arity mismatch is unwritable, since a
+// constructor's arity is fixed by its declaration, so any arity specimen also changes the head and
+// therefore isolates nothing this row does not already carry. The dissolution trigger is narrowed
+// to same-head, same-arity applications rather than keeping a word no specimen could discriminate.
+data different_head_return_red_source: String = "module probe_different_head\nimport std.types { Int }\ntype TagA = MkTagA { a: Int }\ntype Box<T> = MkBox { n: Int }\ntype Crate<T> = MkCrate { n: Int }\nfn produces_box() -> Box<TagA> { MkBox { n: 1 } }\nfn probe() -> Crate<TagA> { produces_box() }\n"
+
+test fn w_a_different_application_head_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: different_head_return_red_source) > 0
+}
+
+// NESTING, AT THE MIDDLE POSITION so it composes with the row above rather than re-testing
+// position zero. LocalMeasure<Left, Carrier<Int>, Right> against LocalMeasure<Left, Carrier<String>,
+// Right> is admitted, so a repair comparing arguments only one level deep would not close this.
+// The dissolution trigger says "recursively", and this row is what makes that word checkable.
+data nested_argument_return_red_source: String = "module probe_nested_argument\nimport std.types { Int, String }\ntype Left { l: Int }\ntype Right { r: Int }\ntype Carrier<T> = MkCarrier { c: Int }\ntype LocalMeasure<A, B, C> = MkLocalMeasure { n: Int }\nfn produces_int() -> LocalMeasure<Left, Carrier<Int>, Right> { MkLocalMeasure { n: 1 } }\nfn probe() -> LocalMeasure<Left, Carrier<String>, Right> { produces_int() }\n"
+
+test fn w_a_wrong_nested_type_argument_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: nested_argument_return_red_source) > 0
+}
+
+// ARGUMENT TWO, so the enrolled positions span the vector rather than clustering at its ends. The
+// trigger claims every argument position; positions zero, one and two each carry a row, and the
+// trigger is narrowed to exactly that rather than asserting a generality no specimen exercises.
+data last_argument_return_red_source: String = "module probe_last_argument\nimport std.types { Int }\ntype Left { l: Int }\ntype RightA { a: Int }\ntype RightB { b: Int }\ntype Mid { m: Int }\ntype LocalMeasure<A, B, C> = MkLocalMeasure { n: Int }\nfn produces_a() -> LocalMeasure<Left, Mid, RightA> { MkLocalMeasure { n: 1 } }\nfn probe() -> LocalMeasure<Left, Mid, RightB> { produces_a() }\n"
+
+test fn w_a_wrong_last_type_argument_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: last_argument_return_red_source) > 0
+}
+
+// AND THE ROOT OF ALL OF THEM, WHICH IS NOT ABOUT GENERICS AT ALL. Two PLAIN records with different
+// field names and different field types are interchangeable in declared-return position. Every
+// generic row above is an instance of this. It is enrolled in its own right because a repair
+// confined to applications would leave it open, and because it is the honest statement of the
+// defect's size: in this position two nominal types are not compared, and refusal survives only
+// where a PRIMITIVE is on one side.
+data plain_record_return_red_source: String = "module probe_plain_record\nimport std.types { Int, String }\ntype Alpha { n: Int }\ntype Beta { m: String }\nfn produces_alpha() -> Alpha { Alpha { n: 1 } }\nfn probe() -> Beta { produces_alpha() }\n"
+
+test fn w_a_different_plain_record_at_a_declared_return_is_refused() -> Bool {
+  refusing_count(source: plain_record_return_red_source) > 0
+}
+
+// PAIR TWO -- THE COPRODUCT-AT-A-RECORD-PARAMETER PATH, minimised from the production shape. No
+// aliases, no generics, no imports beyond Int: if this refuses, the production admission needs one
+// of the remaining candidates to explain it, and the matrix starts one candidate shorter.
+data coproduct_at_record_parameter_red_source: String = "module probe_coproduct_at_record\nimport std.types { Int }\ntype ScalarMeasure { count: Int }\ntype ScalarResolution = ScalarResolved { value: ScalarMeasure } | ScalarUnresolved\nfn scalar_count(value: ScalarMeasure) -> Int { value.count }\nfn bad(value: ScalarResolution) -> Int { scalar_count(value: value) }\n"
+
+test fn w_a_coproduct_at_a_record_parameter_is_refused() -> Bool {
+  refusing_count(source: coproduct_at_record_parameter_red_source) > 0
+}
+
+// THE POSITIVE CONTROL: the same call reached through the match that extracts the record, which is
+// the repair the production site actually took.
+data coproduct_at_record_parameter_control_source: String = "module probe_coproduct_at_record_ok\nimport std.types { Int }\ntype ScalarMeasure { count: Int }\ntype ScalarResolution = ScalarResolved { value: ScalarMeasure } | ScalarUnresolved\nfn scalar_count(value: ScalarMeasure) -> Int { value.count }\nfn good(value: ScalarResolution) -> Int { match value { ScalarResolved { value: m } => scalar_count(value: m) ScalarUnresolved => 0 } }\n"
+
+test fn w_a_matched_record_at_a_record_parameter_is_admitted() -> Bool {
+  refusing_count(source: coproduct_at_record_parameter_control_source) == 0
+}
+
+// DIAGNOSTIC QUALITY, KEPT SEPARATE FROM ADMISSION. The refusal above is the safety fact; that it
+// is CLASSIFIED usefully is a different and weaker claim, and it is asserted here so a regression
+// in diagnostic naming is visible without ever standing in for the refusal itself.
+test fn w_the_coproduct_refusal_is_classified_declared_type_not_inhabited() -> Bool {
+  violation_count(source: coproduct_at_record_parameter_red_source, wanted: "DeclaredTypeNotInhabited") > 0
+}
+
+// THE NO-VERDICT COMPANIONS, one per enrolled red. Each asserts that its own source's census RAN,
+// so a source-specific CensusNotRunnable reds THIS row rather than silently satisfying the
+// expected-red it accompanies. Without them the roster cannot tell agreement from unmeasurability,
+// and an unmeasured subject would be held as evidence indefinitely.
+test fn w_every_enrolled_expected_type_source_is_actually_censused() -> Bool {
+  census_ran(source: generic_argument_return_red_source)
+    && census_ran(source: used_parameter_return_red_source)
+    && census_ran(source: middle_argument_return_red_source)
+    && census_ran(source: different_head_return_red_source)
+    && census_ran(source: last_argument_return_red_source)
+    && census_ran(source: nested_argument_return_red_source)
+    && census_ran(source: plain_record_return_red_source)
+}
+
+// AND FOR THE CONTROLS, for the mirror reason: a control asserting == 0 is SATISFIED by a census
+// that could not run, since refusing_count returns -1 and -1 is not zero -- but it would be
+// satisfied for the wrong reason if the arm were ever written as "not greater than zero".
+test fn w_every_expected_type_control_source_is_actually_censused() -> Bool {
+  census_ran(source: generic_argument_return_control_source)
+    && census_ran(source: used_parameter_return_control_source)
+    && census_ran(source: middle_argument_return_control_source)
+    && census_ran(source: application_versus_primitive_source)
+    && census_ran(source: non_generic_call_result_source)
+    && census_ran(source: coproduct_at_record_parameter_red_source)
+    && census_ran(source: coproduct_at_record_parameter_control_source)
+}

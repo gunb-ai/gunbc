@@ -119,7 +119,6 @@ Every newly discovered error class — incident, review finding, runtime excepti
 - **CI required-run composition** — declared 2026-08-15
 - **Self-host emission board measurement** — declared 2026-08-24
 - **Regen candidate-tree producer** — declared 2026-08-20
-- **Cited-symbol resolution as a required check** — declared 2026-08-23
 - **Blocking emit-stage diagnostics on main** — declared 2026-08-25
 - **Corpus-wide lens enforcement censuses** — declared 2026-08-11
 - **Required gate reduced to the compiler floor** — declared 2026-08-29
@@ -211,6 +210,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `mistyped_body_radiates_nonlocal_diagnostics`
 - `instrument_output_read_as_subject_content`
 - `executed_conjunct_discriminates_nothing`
+- `unbacked_execution_claim`
 
 ## Building & checks
 
