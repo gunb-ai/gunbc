@@ -54,7 +54,7 @@ type LoggedCommitStanding
 // recency, because the allocator watermark is uniqueness state rather than chronology.
 type CommitLogRow {
   reference: RepositoryCommitRef
-  root: ObjectId
+  root: SemanticNodeObjectRef
   message: String
   standing: LoggedCommitStanding
 }

@@ -247,7 +247,7 @@ fn unresolved_identities(closure: CommitClosure) -> List<ObjectId> {
 // have are checked separately against the commit list. Folding the root into this would have forced
 // the repository to invent one.
 // UNCONTAINED TARGETS ACCUMULATE BY PREPEND AND ARE REVERSED ONCE, the same idiom this stack applies
-// in commit_closure_json encode_step and in repository_envelope's commit fold. It is restated at
+// in commit_closure_json_v2 encode_step and in repository_envelope's commit fold. It is restated at
 // the third site because the first two were not enough: this module documented the rule and then
 // reintroduced the shape it forbids, which is the §6 point exactly -- fixing a cost shape where a
 // review names it is not the same as not having the defect, and the sweep has to cover every

@@ -1,7 +1,7 @@
 module gunbc.scm.object_table_json
 
 // DECODING THE OBJECT TABLE IS ONE OPERATION WITH ONE FAILURE POPULATION, and this module owns both.
-// It was previously homed inside gunbc.scm.commit_closure_json with its failures typed as THAT
+// It was previously homed inside gunbc.scm.commit_closure_json_v2 with its failures typed as THAT
 // module's ClosureDocRefusal, so six object-population causes sat in a coproduct that also answers
 // for envelope format and closure-root facts. A consumer matching that type had to handle causes
 // from three different owners, and no reader could tell from the type which owner produced which.

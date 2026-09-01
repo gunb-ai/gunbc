@@ -50,7 +50,7 @@ import gunbc.scm.target_reference {
   TargetReferenceMemberReadRefused,
   decode_target_reference,
 }
-import gunbc.scm.commit_closure_json {
+import gunbc.scm.commit_closure_json_v2 {
   ClosureDocRefusal,
   ClosureDocIncompleteWithoutAdmission,
   ClosureDocEncodeRefusal,

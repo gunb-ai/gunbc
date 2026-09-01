@@ -1,16 +1,28 @@
-module gunbc.scm.commit_closure_json
+module gunbc.scm.commit_closure_json_v2
 
-// THE MODULE NAME CARRIED A VERSION AND THE DOCUMENT CARRIED A DIFFERENT ONE, which is a meaning
-// fork in the place least able to afford it. It was `commit_closure_json_v2`, a suffix that named
-// the second CODEC generation -- the predecessor that encoded the root positionally, since deleted.
-// With that sibling gone the suffix distinguished nothing, and once the schema grew a member and the
-// tag became `…-v3`, one authority was announcing v2 in its name and v3 in its bytes. A reader has no
-// way to know which of the two is the contract.
+// THE MODULE NAME CARRIES A VERSION AND THE DOCUMENT CARRIES A DIFFERENT ONE. `_v2` named the second
+// CODEC GENERATION -- the predecessor that encoded the root positionally, since deleted -- so with
+// that sibling gone the suffix distinguishes nothing, and once the schema grew a member and the tag
+// became `…-v3`, this module announces v2 in its name and v3 in its bytes. THE TAG IS THE CONTRACT
+// AND THE NAME IS A FOSSIL: `closure_document_format_tag` is the value the encoder emits and the
+// decoder compares, and it is the only thing that decides which schema this build writes.
 //
-// So the module names the CODEC and the tag names the VERSION, one fact each. There is exactly one
-// place to look for which schema this build writes, and it is a value the encoder actually emits
-// rather than a spelling in a path. Named by the designated SCM reviewer while tracing whether
-// retired version names still fork meaning; they did.
+// THE RENAME IS DEFERRED, AND THE REASON IS AN EXTERNALITY RATHER THAN EFFORT. It was authored and
+// reverted after measuring what it costs. A module rename re-targets every binding that names it,
+// which the required namespace-wave-admission phase classifies `TargetChanged` -- not auto-admitted,
+// so each needs a row in NAMESPACE_TRANSITION_ADMISSIONS. This rename produced 41. That roster's own
+// header records what happened the last time rows sat on main: `stale_admissions` is computed PER
+// RUN, so rows on main are inherited by every open pull request, and a change that touches no
+// namespace can never match them -- the phase then refuses every unrelated lane until the rows are
+// dissolved. Landing 41 of them to fix a name would spend every other lane's CI to buy this one's
+// tidiness, which is the externalized cost DESIGN section 5 names, and it would do it inside a pull
+// request whose subject is the object model.
+//
+// So the fork is REPORTED rather than carried silently, and it is not repaired by this comment
+// existing: a reader who trusts the module path over the emitted tag is still wrong. What this note
+// buys is that the two are not equally authoritative-looking. dissolve-on: a rename landed as its
+// own change, with its admission rows authored and deleted in the same wave, at a moment when the
+// open-PR population can absorb them -- not folded into an unrelated subject.
 
 import std.types { Bool, Int, List, String, list_length }
 
