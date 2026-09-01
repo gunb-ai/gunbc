@@ -1259,6 +1259,17 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
 // The declared output key of one field: the authored `from` key, else the field's
 // own name -- the same pair the file arm reads, and the same pair the interpreter
 // falls back through.
+// Whether the field AUTHORED a `from` key, as opposed to falling back to its own
+// name. The two cases are indistinguishable once `shell_output_channel_of_field`
+// has collapsed them to one string, and the refusal rule turns on exactly that
+// distinction, so it is asked separately rather than recovered afterwards.
+fn shell_field_authors_from_key(ch: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match child_from_key(ch: ch, source_indices: source_indices) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 fn shell_output_channel_of_field(ch: Node, source_indices: Map<String, NewlineIndex>) -> String {
   match child_from_key(ch: ch, source_indices: source_indices) {
     Present { value: k } => k
@@ -1285,13 +1296,20 @@ fn shell_output_channel_fields(op_node: Node) -> List<Node> {
 // An unmodeled key refuses HERE rather than defaulting in a renderer, so no
 // target can answer it with a channel the author did not ask for.
 //
-// THE ONE-FIELD SHAPE KEEPS THE STANDING CONVENTION, and only it. `output {
-// result: String }` means stdout across the whole corpus and authors no `from`
-// key, so a single field whose key names no channel binds the whole-stdout
-// projection exactly as before. A single field whose key DOES name one -- by an
-// authored `from`, or by being called `success`, `stdout`, `exit_code` -- is
-// asking a channel question and gets that channel's answer, which is where
-// `output { success: Bool }` stopped being handed a String.
+// THE CONVENTION IS KEYED ON AUTHORSHIP, NOT ON ARITY, and the difference is a
+// real hole this function carried for one round (review 58091). `output { result:
+// String }` means stdout across the whole corpus and authors no `from` key, so a
+// single UNKEYED field whose name happens to match no channel binds the
+// whole-stdout projection exactly as before.
+//
+// BUT AN AUTHORED `from` IS A CHANNEL QUESTION, and a question the roster cannot
+// answer must refuse however many fields stand beside it. Gating the convention
+// on `declared_count < 2` let `output { first: String from "not_a_channel" }`
+// bind stdout in silence -- the author named a channel, the roster had none, and
+// the renderer fabricated one. That is the exact class this binding exists to
+// delete, surviving in the one shape a count test cannot see: with two fields the
+// same declaration already refused, so the corpus fixture that covered it
+// discriminated arity rather than authorship.
 //
 // SEVERAL FIELDS ADMIT NO SUCH CONVENTION: one stdout answer cannot be right for
 // all of them, their declared types disagree with each other, and the emitted
@@ -1305,24 +1323,33 @@ fn bind_shell_operation(t: Node, op_node: Node, source_indices: Map<String, Newl
     })
   let declared_count = declared |> count
   let bound_count = bound |> count
-  let unmodeled = declared |> filter(ch =>
+  let unresolved = declared |> filter(ch =>
     match shell_bind_result_field(ch: ch, source_indices: source_indices) {
       Present { value: _ } => false
       Absent => true
-    }) |> first
-  if declared_count < 2 {
-    ShellBound { transport: t, result_fields: bound }
-  } else if bound_count == declared_count {
-    ShellBound { transport: t, result_fields: bound }
-  } else {
-    match unmodeled {
-      Present { value: ch } => BindingRefused {
-        cause: ShellBindingRefused {
-          refusal: ShellOutputKeyNotModeled { key: shell_output_channel_of_field(ch: ch, source_indices: source_indices) }
+    })
+  let authored_unresolved = unresolved |> filter(ch => shell_field_authors_from_key(ch: ch, source_indices: source_indices)) |> first
+  match authored_unresolved {
+    Present { value: ch } => BindingRefused {
+      cause: ShellBindingRefused {
+        refusal: ShellOutputKeyNotModeled { key: shell_output_channel_of_field(ch: ch, source_indices: source_indices) }
+      }
+    }
+    Absent =>
+      if declared_count < 2 {
+        ShellBound { transport: t, result_fields: bound }
+      } else if bound_count == declared_count {
+        ShellBound { transport: t, result_fields: bound }
+      } else {
+        match unresolved |> first {
+          Present { value: ch } => BindingRefused {
+            cause: ShellBindingRefused {
+              refusal: ShellOutputKeyNotModeled { key: shell_output_channel_of_field(ch: ch, source_indices: source_indices) }
+            }
+          }
+          Absent => ShellBound { transport: t, result_fields: bound }
         }
       }
-      Absent => ShellBound { transport: t, result_fields: bound }
-    }
   }
 }
 

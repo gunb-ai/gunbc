@@ -201,6 +201,34 @@ fn w_shell_unmodeled_output_key_refuses() -> Bool {
   )
 }
 
+// THE DISCRIMINATING CASE FOR AUTHORSHIP-VS-ARITY (review 58091). re4d below
+// carries the same bad key but TWO fields, so it cannot tell a refusal keyed on
+// the authored key from one keyed on having several fields -- both rules refuse
+// it. ONE field with an authored key the roster cannot answer separates them: the
+// arity rule binds whole-stdout in silence, the authorship rule refuses. The
+// negative expectation is the whole point -- `stdout.clone()` is exactly the
+// fabricated byte the old branch emitted here.
+fn w_shell_single_field_authored_unknown_key_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4f\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4f.rs",
+    ["transport binding refused", "not_a_channel", "has no modeled channel"],
+    ["stdout.clone()"]
+  )
+}
+
+// POSITIVE CONTROL FOR THE SAME EDIT, so the refusal above cannot be satisfied by
+// refusing every single-field operation: one field, an authored key the roster DOES
+// answer, must still bind that channel rather than refuse.
+fn w_shell_single_field_authored_known_key_binds() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4g\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { code: Int from \"exit_code\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4g.rs",
+    ["output.status.code().unwrap_or(-1) as i64"],
+    ["transport binding refused"]
+  )
+}
+
 fn w_shell_exit_error_arm_is_boxed() -> Bool {
   compile_dag_rust_emit_check(
     "module re4e\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n    exit { 0 => Unit  nonzero => String }\n  }\n}\n",
@@ -213,5 +241,7 @@ fn w_shell_exit_error_arm_is_boxed() -> Bool {
 test fn shell_emit_multi_field_answers_each_declared_channel() -> Bool { w_shell_multi_field_answers_each_declared_channel() }
 test fn shell_emit_single_named_field_answers_its_channel() -> Bool { w_shell_single_named_field_answers_its_channel() }
 test fn shell_emit_single_unkeyed_field_keeps_whole_stdout() -> Bool { w_shell_single_unkeyed_field_keeps_whole_stdout() }
+test fn shell_emit_single_field_authored_unknown_key_refuses() -> Bool { w_shell_single_field_authored_unknown_key_refuses() }
+test fn shell_emit_single_field_authored_known_key_binds() -> Bool { w_shell_single_field_authored_known_key_binds() }
 test fn shell_emit_unmodeled_output_key_refuses() -> Bool { w_shell_unmodeled_output_key_refuses() }
 test fn shell_emit_exit_error_arm_is_boxed() -> Bool { w_shell_exit_error_arm_is_boxed() }
