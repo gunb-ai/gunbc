@@ -95,6 +95,49 @@ either — `scm_log` reads a file, and the SCM witnesses are `SubstrateInputsOnl
 hermetic boundary. So the class is `mitigatable` on the e2e path and the next-rung trigger is a
 CI step that runs an integration target, not another test file.
 
+## Next increment: `add` and `commit`, and the one design step they need
+
+Settled by execution, so not open questions any more:
+
+- **A host WRITE is permitted from `gunbc run`** — `scm_init` created a file. The remaining write
+  verbs are a modeling question, not a permissions one.
+- **Content goes in via `store_node(store, n: Node) -> StoreOutcome`** (`gunbc.scm.object_store`).
+- **A Node is built with `node_synthetic`** (`v2.std.node`):
+  `node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])`. The `atom`
+  helpers in the test modules are LOCAL helpers, not a shared authority — do not import one.
+- **A runtime name becomes a Symbol** with `symbol_intern_lexeme(lexeme: name)`
+  (`v2.std.compilers.lexing`). `name as Symbol` refuses.
+- **`mint_repository_commit(repository, root: ObjectId, message, parent: RepositoryCommitRef?)`**
+  requires `store_contains(root)` — so `add` must precede `commit`, and because identity is derived
+  from content, `commit` can re-derive an added object's `ObjectId` by rebuilding the same node.
+
+### The design step, stated so it is not improvised
+
+`add` composes `store_node` (`Stored | LocatorCollision`) with `save_repository` (4 arms);
+`commit` composes `mint_repository_commit` (4 arms) with the same save. A renderer taking two
+outcome values is the wrong shape — it would have to encode "which one failed" positionally, and
+the arms multiply.
+
+What is wanted is one modeled write-verb outcome, something like:
+
+    type ScmWriteOutcome
+      = ScmWriteRepositoryUnavailable { cause: RepositoryLoadRefusal }
+      | ScmWriteRefusedByStore { collision: StoreOutcome }
+      | ScmWriteRefusedByMint { refusal: RepositoryCommitMint }
+      | ScmWritePersisted { save: RepositorySave }
+
+with one renderer per verb over it. That coproduct is the increment's real content; the wiring
+after it is mechanical. It is deliberately NOT sketched into `cli.dag` here, because a write-verb
+outcome invented at a call site is the anemic modeling this repository keeps paying for.
+
+### `add` has no staging authority, and that is not a wiring gap
+
+`repository_status` takes `pending: Proposal` as a PARAMETER because what is staged is not a fact
+the repository document carries. So a literal `git add` — stage now, commit later — has nowhere to
+persist to. Either `add` writes an object into the store immediately (content-addressed, no
+staging), or a staging authority has to exist first. The first is what the object store supports
+today and is the honest reading of `add` for this substrate.
+
 ## Constraints learned the hard way
 
 - A runtime name becomes a `Symbol` via `symbol_intern_lexeme(lexeme: name)`
