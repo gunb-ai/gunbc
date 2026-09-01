@@ -998,6 +998,21 @@ mod compiler_tests {
     // seam exists, and cannot fire where it does not -- the two predicates cannot disagree while
     // they remain one expression. This control is what notices if they are ever forked.
     //
+    // WHAT THIS ESTABLISHES, AT ITS DECLARED GRAIN, AND WHAT IT DOES NOT. It establishes that
+    // emission SUCCEEDS on this fixture -- zero error diagnostics, asserted first, so a refusal
+    // fails here rather than being matched past -- and that the emitted bytes have this SHAPE:
+    // the adapter appears at the declared-arrow parameter and is absent at the bare type
+    // variable. That is a structural fact about the emitter, and substring matching can decide it.
+    //
+    // IT DOES NOT ESTABLISH THAT THE E0277 SEAM IS CLOSED. Whether these bytes compile is a
+    // RUSTC verdict, and no amount of exact rendering is evidence about one; a substring
+    // assertion could not decide it at any lane membership. The rustc consumer for emitted Rust
+    // is ct_self_compile_cargo_check_test at corpus grain. It is not reached per-fixture here
+    // because probe.rs references the crate runtime (im::vector, v1_std_core, the artifact types)
+    // and does not stand alone, and a second per-fixture compile path beside the corpus-level one
+    // is the parallel authority section 6 warns about. The gap is the declared section 4b(3) drop
+    // emitted_bytes_witness_required_lane, retired by its trigger and by nothing else.
+    //
     // WHY THE BARE TYPE VARIABLE IS THE DISCRIMINATING HALF. It was reported (by me, wrongly) as a
     // silent defect: a parameter declared `T` has arity 0, so no adapter is emitted, and nothing
     // refuses. The bytes below are the refutation -- `T` renders as a plain generic with NO Fn
