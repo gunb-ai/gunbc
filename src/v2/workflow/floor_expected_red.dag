@@ -584,8 +584,16 @@ fn floor_expected_red_chunk_17() -> List<String> {
   Empty {}
 }
 
+// ENROLLED 2026-09-01 with the sealed-carrier head-exposure repair, and enrolled BECAUSE of it.
+// The repair makes a sealed carrier's head visible, which closes the two record positions; the
+// KERNEL position stays accepted for a different reason -- record_at_scalar_needs_identity
+// declines the judgment for want of a declaration identity at the binding edge, the class already
+// filed as the direct-call record-to-scalar row. The probe was first authored asserting the
+// ACCEPTING answer so the hole stayed visible; that turns a below-floor defect into required green
+// behaviour, so it asserts the required REFUSAL instead and the debt is carried here, where the
+// fix is counted the moment it lands.
 fn floor_expected_red_chunk_18() -> List<String> {
-  Empty {}
+  Cons { head: "test.claim.sole_constructor_type_head_exposure_witness_test.sealed_carrier_at_kernel_formal_refuses", tail: Empty {} }
 }
 
 fn floor_expected_red_chunk_19() -> List<String> {
