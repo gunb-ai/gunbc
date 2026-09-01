@@ -795,3 +795,90 @@ test fn swapping_which_target_each_label_names_is_a_different_object() -> Bool {
         }
     }
 }
+
+// ------------------------------------------------------------------------------------------------
+// A LATE GRAFT COMPLETES THE CLOSURE, AND THE DOCUMENT MUST SAY SO.
+//
+// store_records_in_dependency_order returns insertion order, and object_store's note beside it argues
+// that order is dependency order because store_node recurses into a target before appending its
+// parent. That is true for store_node and FALSE for the graft route: copy_object appends one record
+// without its children, so copying the parent and then the child leaves the parent EARLIER than the
+// child it references.
+//
+// Completeness does not care -- both objects are present, so the closure is complete. The encoder
+// does: it assigns positions in that order, so when it encodes the parent the child has no position
+// yet and the target is emitted as UNCONTAINED, naming a digest the document goes on to carry a few
+// entries later. That contradicts the declared wire meaning of uncontained -- "this document does NOT
+// carry it" -- and lets a complete closure emit a partial spelling.
+//
+// The pair is the claim: parent alone must encode uncontained, and parent-then-child must encode
+// contained. Without the first cell the second is satisfied by an encoder that never emits
+// uncontained at all, which would break the partial-closure format this branch exists to add.
+fn build_grafted_then_completed_store() -> ObjectStore {
+  let full = build_full_store()
+  match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.root),
+  ) {
+    CopySourceAbsent { identity: _ } => empty_store()
+    CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+    Copied { store: with_parent, reference: _ } =>
+      match copy_object(from: full.store, to: with_parent, identity: full.child) {
+        CopySourceAbsent { identity: _ } => empty_store()
+        CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+        Copied { store: with_both, reference: _ } => with_both
+      }
+  }
+}
+
+// THE DISCRIMINATING RED, AND THE FIRST VERSION OF IT WAS NOT.
+//
+// The obvious assertion -- encode, round-trip through text, and require the reloaded closure to be
+// complete -- PASSES ON THE DEFECT, and finding that out is why this comment exists rather than a
+// claim that merely looked thorough. Decode re-stores every object in the table, so the child arrives
+// either way and the reloaded closure is complete whichever spelling its parent used. The defect is
+// in the BYTES and an assertion that only reads the rebuilt store cannot see it.
+//
+// So the claim compares IMAGES. The grafted-then-completed store and the naturally-built store are
+// the SAME closure -- same objects, same root, same identities -- so they must serialize to the same
+// document. Under the insertion-order encoder they do not: one spells the child target contained and
+// the other spells it uncontained, and the byte comparison is what refuses that.
+test fn one_closure_has_one_image_however_its_store_was_assembled() -> Bool {
+  let full = build_full_store()
+  let completed = build_grafted_then_completed_store()
+  let closure = CommitClosure { store: completed, root: full.root }
+  closure_is_complete(closure: closure)
+    && match encode_complete_closure_document(closure: closure) {
+      ClosureDocEncodeRefused { cause: _ } => false
+      ClosureDocEncoded { value: grafted_image } =>
+        match encode_complete_closure_document(
+          closure: CommitClosure { store: full.store, root: full.root }
+        ) {
+          ClosureDocEncodeRefused { cause: _ } => false
+          ClosureDocEncoded { value: natural_image } =>
+            serialize_json(v: grafted_image) == serialize_json(v: natural_image)
+        }
+    }
+}
+
+// THE CONTROL. Without it the claim above is satisfied by an encoder that never spells a target
+// uncontained at all -- which would delete the partial-closure format this branch exists to add. The
+// parent alone genuinely does not carry its child, so its image must differ from the complete one.
+test fn a_genuinely_partial_store_does_not_encode_as_the_complete_one() -> Bool {
+  let full = build_full_store()
+  let grafted = build_grafted_store()
+  match admitted_for(store: grafted, root: full.root) {
+    ClosureCompleteSoNothingToAdmit => false
+    ClosureRequiresNodeAtAuthoredSource { identities: _ } => false
+    PartialClosureAdmitted { admitted: a } =>
+      match encode_complete_closure_document(
+        closure: CommitClosure { store: full.store, root: full.root }
+      ) {
+        ClosureDocEncodeRefused { cause: _ } => false
+        ClosureDocEncoded { value: natural_image } =>
+          serialize_json(v: encode_admitted_partial_closure_document(admitted: a))
+            != serialize_json(v: natural_image)
+      }
+  }
+}

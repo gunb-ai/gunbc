@@ -315,8 +315,76 @@ fn store_object_count(store: ObjectStore) -> Int {
 // appends the parent, so a record is appended only after every record it references. Persistence
 // depends on that: an image whose edges point at EARLIER positions can be decoded in one forward
 // pass with no forward references to resolve and no identities to trust.
+// DEPENDENCY ORDER IS DERIVED, NOT ASSUMED FROM INSERTION ORDER.
+//
+// This used to return store.objects, and the note above argued that insertion order IS dependency
+// order because store_node recurses into a target before appending its parent. That is true for
+// store_node and FALSE for the graft route: copy_object appends one record without its children, so
+// copying a parent and then its child leaves the parent EARLIER than the object it references.
+//
+// Completeness never noticed, because both objects are present. The encoder did: it assigns positions
+// in this order, so it reached the parent before the child had one and spelled the target UNCONTAINED
+// while the document went on to carry that very object a few entries later -- contradicting the
+// declared wire meaning of uncontained and letting a complete closure emit a partial spelling.
+//
+// A post-order walk emits every referenced record before the record referencing it, for any insertion
+// history. The store is acyclic by construction -- a locator is derived from content that already
+// includes its children's locators, so a cycle would have to hash itself -- which is what makes the
+// walk terminate without a separate descent argument.
+//
+// ON COST, because DESIGN section 6 refuses "n is small here": emitted_holds is a linear scan, so
+// this is quadratic in the object count. That is the SAME shape find_object already has, since the
+// carrier is a List, and it is bounded by the same dissolve-on already recorded above for that
+// carrier -- a keyed collection retires both at once. Fixing it here alone would leave the store's
+// own lookup quadratic while adding a second index to maintain.
+type OrderAcc {
+  emitted: List<ScmObject>
+}
+
+fn emitted_holds(acc: OrderAcc, identity: ObjectId) -> Bool {
+  fold(
+    acc.emitted,
+    init: false,
+    f: fn(seen, object) {
+      seen || object_id_eq(left: scm_object_identity(object: object), right: identity)
+    }
+  )
+}
+
+fn emit_in_dependency_order(store: ObjectStore, acc: OrderAcc, object: ScmObject) -> OrderAcc {
+  if emitted_holds(acc: acc, identity: scm_object_identity(object: object)) {
+    acc
+  } else {
+    let after_children = match object {
+      AuthoredSourceObject(_) => acc
+      SemanticNodeObject(record) =>
+        fold(
+          record.children,
+          init: acc,
+          f: fn(inner, child) {
+            emit_dependency(store: store, acc: inner, identity: child.target.locator)
+          }
+        )
+    }
+    OrderAcc { emitted: concat(after_children.emitted, [object]) }
+  }
+}
+
+// A target whose object this store does not hold contributes nothing -- it is exactly the uncontained
+// case, and the encoder spells it from the digest rather than from a position.
+fn emit_dependency(store: ObjectStore, acc: OrderAcc, identity: ObjectId) -> OrderAcc {
+  match find_object(store: store, identity: identity) {
+    Absent => acc
+    Present { value: object } => emit_in_dependency_order(store: store, acc: acc, object: object)
+  }
+}
+
 fn store_records_in_dependency_order(store: ObjectStore) -> List<ScmObject> {
-  store.objects
+  fold(
+    store.objects,
+    init: OrderAcc { emitted: [] },
+    f: fn(acc, object) { emit_in_dependency_order(store: store, acc: acc, object: object) }
+  ).emitted
 }
 
 fn empty_store() -> ObjectStore {
