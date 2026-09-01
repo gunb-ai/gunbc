@@ -82,16 +82,11 @@ evidence, named there. Stating this is the difference between a terminal and a d
   them. The structural tell, from eager-pike-541: the materializer carries a single manifest, digest
   and blob closure, so no carrier could hold seven. Nobody can state, check, or drift-detect the
   difference between the model we converge and the models the hosts hold.
-- **Concurrency is unmodeled, and it is the binding constraint.** `spark.serving_unit_render` emits
-  exactly three environment axes — `OLLAMA_HOST`, `OLLAMA_MODELS`, `OLLAMA_CONTEXT_LENGTH`.
-  `OLLAMA_NUM_PARALLEL` is absent, and unset means Ollama serializes. eager-pike-541 measured the
-  consequence: a 350-token probe queued behind a ~61k-token prefill running at a healthy
-  ~290–330 tok/s. N concurrent harness sessions against one host is a queue, not N sessions. An
-  unmodeled axis has no desired value, so it cannot even be reported as drifted. The corpus also
-  carries a **false cost model** for the axis it is missing — see DCH-0.
 - **Desired and observed disagree on both hosts.** The deployed user unit still describes
   `gpt-oss:20b`, predating the #9859 amendment to 120b, and carried no context-length line at all.
-  Two independently declared desired values, un-rendered on both hosts.
+  Two independently declared desired values, un-rendered on both hosts. **This survives #9960**
+  (see §2.1): that PR completed the DESIRED side, and a complete desired value is not a converged
+  host.
 - **There is no generic inference interface.** `extdeps/llm/llm.dag` is 11 lines and
   `llm_contracts.dag` is 14 — anchors only. Every wire fact lives in a per-vendor module, and
   tool-calling is modeled only inside `openai.dag` and `cursor_stream.dag`. What exists in
@@ -102,6 +97,39 @@ evidence, named there. Stating this is the difference between a terminal and a d
   deliberately — rebuilding it would make the interpreter load-bearing for a new capability while
   two lanes delete it — and its refusal names the live successor route. But this lane's own wet plan
   run came back `PartiallyApplied` with apply refused. That is what RLM-2b is currently measuring.
+
+### 2.1 Changes since the baseline — the concurrency axis is RESOLVED ON MAIN
+
+The baseline above is fixed at `main@de2f5f86346` and is not rewritten as main moves; completed work
+is dispositioned here instead. Recorded 2026-09-01, after the controlling reviewer identified that
+this plan's active claims had been falsified by a merge that landed while it was in review.
+
+**#9960 (`7810e68b3ea`, ancestor of current main) resolves the concurrency-axis item outright**, and
+verified here rather than relayed:
+
+- `extdeps.ollama.server_env` declares `OllamaNumParallel` → `OLLAMA_NUM_PARALLEL`, and
+  `spark.serving_unit_render` now emits **four** environment axes, binding
+  `ollama_num_parallel_env_assignment` to the spec's slot count. The axis is no longer absent.
+- `spark_serving_desired_serving_slots_value` carries a desired count of 4, so the axis has a
+  desired value and is drift-reportable — the specific consequence this plan said was missing.
+- The false cost model is corrected at the desired value, in the direction this plan predicted:
+  the count does **not** divide the window, each slot receives its own full window, and the
+  per-slot price is recorded as a property of the **realization** rather than a fleet-wide constant
+  — the per-realization objection this plan raised is answered by a declared §4b drop naming that
+  exact subject.
+
+**One defect found while verifying it, and it is not #9960's to fix by this lane.**
+`gunbc.spark.serving_desired` still carries an *earlier* annotation block stating in the present
+tense that concurrency "is not modeled anywhere in desired state", that the two facts trade "because
+the slot count divides the context window", and that the concurrency row "is P1b and is deliberately
+not smuggled in here". All three are now false, and they contradict that same module's own value and
+annotation roughly 140 lines below. That is a §3 meaning fork inside one authority — a stale
+annotation is data the substrate cannot check, so nothing reds. **Reported, not repaired here**, and
+out of this lane's scope.
+
+**What this does NOT resolve.** #9960 made the state representable, declared and renderable. It did
+not read either host back. The observed-versus-desired receipt below stays open, and so do the two
+outstanding operator hand-edits it must account for.
 
 ### Explicitly off the critical path
 
@@ -123,32 +151,29 @@ not perform. Neither is established. The second has exactly one observation and 
 Only one gate mutates at a time. A later gate may author inert types and fixtures but may not
 activate production rows before its predecessor's receipt is accepted.
 
-### DCH-0 — Enrol the Sparks and model the parallel axis
+### DCH-0 — Enrol the Sparks, and reconcile the rendered unit against the live hosts
 
-**Question owned:** what does the fleet know about these two machines, and who says so?
+**Question owned:** what does the fleet know about these two machines, who says so, and does either
+host actually carry what desired state now declares?
+
+The parallel axis and the cost model **left this gate on 2026-09-01**; #9960 performed both, and
+§2.1 records the verification. What remains is enrolment and the live reconciliation.
 
 - Enrol srv5/srv6 in `fleet_intent_network.endpoints` and `fleet_intent`'s `ComputeHost` list — the
-  act the address correction deliberately did not perform.
-- Add `OLLAMA_NUM_PARALLEL` to the rendered unit, or declare in a row why serialization is desired.
-- **Correct the cost model while adding it.** `serving_desired` states that context length and slot
-  count "trade against each other inside one memory budget, because the slot count divides the
-  context window." Measured by eager-pike-541 on idle spark-3bd5, same model, only the slot count
-  changed: 1 slot gives `context_length` 1048576 at `size_vram` 88,865,253,620; 2 slots gives the
-  same 1048576 at 90,543,761,652. **The window is not divided.** Each slot gets its own full window
-  and the second cost +1,678,508,032 bytes — slot count multiplies KV, it does not divide context.
-  On this hardware concurrency is close to free and serialization was the expensive thing. The
-  sentence is deleted, not softened; the measured per-slot cost goes behind the desired value.
-- **The per-slot number does not generalize.** 1.68 GB/slot is a DeepSeek MLA figure; a non-MLA
-  model pays more. A fleet-wide slot count measured on one realization is the same overreach as a
-  fleet-wide context ceiling measured on one realization. Either the desired value is
-  per-realization, or a row says why one number covers the roster.
+  act the address correction deliberately did not perform. (The `ComputeHost` half is DCH-0c; see
+  below.)
+- Reconcile the rendered unit on both hosts against desired state, which is now complete on four
+  axes where it was complete on three.
 
 **Receipt:** an observed-vs-desired comparison of the rendered unit on both hosts, not a return
 code. The rendered unit is the only member of the must-move-together set that produces **no failure
 signal** when stale — ref, manifest, digest and closure each raise a checksum event, while a stale
 unit is silent, which is how both hosts drifted on two axes unreported. Two hand-edits are
 outstanding against that receipt: the context length raised today, and `OLLAMA_NUM_PARALLEL=4` set
-on both hosts, each under operator instruction.
+on both hosts, each under operator instruction. **#9960 does not discharge this and it sharpens
+it**: a hand-set value on a host and a declared value in the corpus agreeing by coincidence is
+exactly what a silent carrier cannot distinguish from convergence, so the readback is the whole
+receipt.
 
 **Enrolment is inert today, and that is the risk rather than the reassurance.**
 eager-pike-541 looked for the executor rather than arguing from principle: no
