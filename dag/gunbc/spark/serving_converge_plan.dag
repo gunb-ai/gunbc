@@ -82,21 +82,9 @@ import gunbc.spark.serving_realization {
   SparkServingRetirementEffect,
   SparkServingPlannedEffect, PlannedInstallEffect, PlannedRetirementEffect,
 }
-import gunbc.runner_slot_provision { RunnerSlotMember }
-import gunbc.fabric_cell_observation_admission {
-  FabricCellObservationDecision,
-}
-import gunbc.runner_service_activation { runner_activation_readiness_unobserved_no_transaction }
 import gunbc.fleet_converge_plan {
-  FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
   PlannedEffectExecution,
-  fleet_converge_apply_shell,
-  TimerRetirementMember,
-  TimerRetirementMemberAt,
-  CapMember,
-  CapMemberAt,
-  fleet_converge_apply_terminal,
   fleet_converge_spark_serving_row_effects,
 }
 // Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed
@@ -352,16 +340,22 @@ fn fleet_converge_spark_serving_typed_actions_in_order(
   }
 }
 
-// THE SPARK PLAN'S SCRIPT AND TERMINAL COME FROM THE SAME REQUEST THE SUBJECT DOES. This wrapper
-// used to rebuild both from eight loose families, which is the shape gunbc.fleet_converge_plan
-// removed when the terminal became a fold over the request: two reconstructions of one observation
-// could disagree, and nothing joined them.
-fn spark_serving_fleet_converge_apply_shell(request: FleetConvergeRequest) -> String {
-  fleet_converge_apply_shell(
-    request: request,
-    terminal: fleet_converge_apply_terminal(request: request),
-  )
-}
+// THE SECOND APPLY-SHELL SPELLING IS DELETED, NOT RE-WIRED.
+//
+// spark_serving_fleet_converge_apply_shell composed fleet_converge_apply_shell with
+// fleet_converge_apply_terminal over one request -- which is exactly what
+// gunbc.fleet_converge_plan fleet_converge_plan_artifact_of_request already does, computing the
+// terminal ONCE and handing that same value to the plan body line and to the apply script. A
+// second spelling of one composition is a second name for one fact (DESIGN section 3), and the
+// two reconstructions could disagree about the terminal with nothing joining them.
+//
+// IT HAD NO CALLER TO MIGRATE. #9763 deleted the Spark-specific artifact route and with it this
+// wrapper's only caller; the symbol has occurred exactly once in the tree -- its own declaration --
+// on every commit since. Review 5070355515 asked for a caller so that a real consumer would
+// exercise the migrated API; giving a dead wrapper a caller would have minted the parallel
+// authority instead of removing it. The Spark axis reaches the single authority through
+// spark_serving_axis_for_observation into fleet_converge_plan_artifact, and THAT route's terminal
+// identity is asserted by execution in test.claim.spark_serving_converge_slice_witness.
 
 // P0-C3: THE SPARK ROWS ARE A FACT ABOUT AN OBSERVATION, NOT A FACT ABOUT AN ARTIFACT.
 //
