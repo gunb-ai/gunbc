@@ -17,6 +17,7 @@ import v2.std.node {
   content_hash,
   node_synthetic,
   canonicalize_node_for_content_hash,
+  canonicalize_labeled_for_content_hash,
   LabeledChildHash,
   content_hash_of_children,
 }
@@ -286,6 +287,12 @@ type ObjectStore sole_constructor {
 // the element through a typed parameter is the spelling that resolves.
 fn labeled_child_of_stored(stored: StoredEdge) -> LabeledChildHash {
   LabeledChildHash { label: stored.label, hash: node_target_locator(target: stored.target) }
+}
+
+// A NAMED TOP-LEVEL PROJECTION rather than an inline lambda, for the reason std.node records beside
+// its own: a lambda in that generic argument position does not infer its parameter type.
+fn stored_edge_label_of(e: StoredEdge) -> EdgeLabel {
+  e.label
 }
 
 fn labeled_children_of_stored(children: List<StoredEdge>) -> List<LabeledChildHash> {
@@ -698,22 +705,47 @@ fn store_node(store: ObjectStore, n: Node) -> StoreOutcome {
 // canonicalize_node_for_content_hash, which is the fork the identity comment above refuses.
 // dissolve-on: canonicalization exposed over labeled children in v2.std.node, callable without a
 // Node in hand; this function then routes through it.
+// THE STORED CHILDREN ARE CANONICAL HERE TOO, and this route is where that had been missed.
+//
+// store_node already canonicalizes before persisting, and the note above it explains why: the
+// identity rule SORTS named edges, so keying on the canonical identity while persisting the authored
+// order stores an arbitrary first-observed representative of an equivalence class. This function is
+// the OTHER public way to make a record, and it derived the locator from the canonicalized children
+// and then persisted `children` AS SUPPLIED -- the same defect surviving on the sibling route.
+//
+// The consequence was a FABRICATED REFUSAL rather than a missed one, which is why it went unnoticed:
+// writing [alpha, beta] and then [beta, alpha] derives ONE locator, so the second write found the
+// first record, records_equal compared the labeled children in supplied order, they differed, and
+// insert_admission reported a LocatorCollision for a store being asked to do something ordinary.
+// Nothing had collided. Executed by test.claim.scm_commit_closure_witness
+// `re_writing_the_same_bindings_in_another_order_is_idempotent`, with
+// `swapping_which_target_each_label_names_is_a_different_object` as the control that keeps this from
+// being satisfied by collapsing genuinely different label-to-target associations.
+//
+// The canonicalization reuses std's own canonicalize_labeled_for_content_hash rather than sorting
+// here: the ordering rule belongs to the identity authority, and a second sort in this module would
+// be the same rule written twice, free to drift from the one the hash actually uses.
 fn insert_from_structure(
   store: ObjectStore,
   kind: NodeKind,
   children: List<StoredEdge>
 ) -> StoreOutcome {
+  let canonical = canonicalize_labeled_for_content_hash(
+    kind: kind,
+    items: children,
+    label_of: stored_edge_label_of,
+  )
   insert_derived(
     store: store,
     record: ObjectRecord {
       identity: SemanticNodeObjectRef {
         locator: content_hash_of_children(
           kind: kind,
-          children: labeled_children_of_stored(children: children),
+          children: labeled_children_of_stored(children: canonical),
         ),
       },
       kind: kind,
-      children: children,
+      children: canonical,
     },
   )
 }

@@ -13,7 +13,7 @@ module test.claim.scm_commit_closure_witness
 // merely non-empty. `a_grafted_root_names_exactly_the_child_it_lacks` is the test that decides it.
 
 import std.types { Bool, Int, String, List, list_length }
-import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
+import v2.std.node { Node, Edge, Symbol, Named, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectStore,
@@ -680,4 +680,118 @@ test fn a_present_child_round_trips_as_a_complete_closure() -> Bool {
           }
       }
   }
+}
+
+// ------------------------------------------------------------------------------------------------
+// TWO AUTHORED ORDERS OF THE SAME NAMED BINDINGS ARE ONE OBJECT, AND RE-WRITING ONE IS IDEMPOTENT.
+//
+// content_hash_of_children canonicalizes -- canonicalize_node_for_content_hash SORTS named edges --
+// so [alpha, beta] and [beta, alpha] over the same targets derive ONE locator. object_store already
+// records this for store_node, which canonicalizes before persisting so that the stored record is the
+// canonical one rather than an arbitrary first-observed representative.
+//
+// insert_from_structure is the OTHER public route to a record and it does not do that: it derives the
+// locator from the canonicalized children and then persists the children AS SUPPLIED. So the second
+// write finds a record under the same locator, records_equal compares the labeled children in
+// supplied order, they differ, and insert_admission reports a LocatorCollision -- for a store being
+// asked to do something perfectly ordinary. The refusal is fabricated: nothing collided.
+//
+// This is the same class the note above store_node describes, surviving on the sibling route, and it
+// is a fabricated refusal rather than a missed one -- the store refuses a write it should accept.
+fn permutation_alpha_child() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^permutation_alpha } }, children: [])
+}
+
+fn permutation_beta_child() -> Node {
+  node_synthetic(kind: TypeNode { connective: Atom { identity: ^permutation_beta } }, children: [])
+}
+
+type PermutationFixture { store: ObjectStore  alpha: SemanticNodeTarget  beta: SemanticNodeTarget  ok: Bool }
+
+fn permutation_fixture() -> PermutationFixture {
+  let unusable = SemanticNodeTarget { locator: fallback_id() }
+  match store_node(store: empty_store(), n: permutation_alpha_child()) {
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      PermutationFixture { store: empty_store(), alpha: unusable, beta: unusable, ok: false }
+    Stored { store: s1, node: alpha } =>
+      match store_node(store: s1, n: permutation_beta_child()) {
+        LocatorCollision { identity: _, existing: _, incoming: _ } =>
+          PermutationFixture { store: empty_store(), alpha: unusable, beta: unusable, ok: false }
+        Stored { store: s2, node: beta } =>
+          PermutationFixture {
+            store: s2,
+            alpha: node_target_of(reference: alpha),
+            beta: node_target_of(reference: beta),
+            ok: true,
+          }
+      }
+  }
+}
+
+fn insert_two_named(store: ObjectStore, first_label: Symbol, first: SemanticNodeTarget, second_label: Symbol, second: SemanticNodeTarget) -> StoreOutcome {
+  insert_from_structure(
+    store: store,
+    kind: TypeNode { connective: Conj },
+    children: [
+      StoredEdge { label: Named { name: first_label }, target: first },
+      StoredEdge { label: Named { name: second_label }, target: second },
+    ],
+  )
+}
+
+// THE DISCRIMINATING RED. One store, two authored orders, one canonical object. The second write must
+// be idempotent, not a collision.
+test fn re_writing_the_same_bindings_in_another_order_is_idempotent() -> Bool {
+  let fx = permutation_fixture()
+  fx.ok
+    && match insert_two_named(
+      store: fx.store,
+      first_label: ^alpha,
+      first: fx.alpha,
+      second_label: ^beta,
+      second: fx.beta,
+    ) {
+      LocatorCollision { identity: _, existing: _, incoming: _ } => false
+      Stored { store: once, node: first_ref } =>
+        match insert_two_named(
+          store: once,
+          first_label: ^beta,
+          first: fx.beta,
+          second_label: ^alpha,
+          second: fx.alpha,
+        ) {
+          LocatorCollision { identity: _, existing: _, incoming: _ } => false
+          Stored { store: _, node: second_ref } =>
+            object_id_eq(left: first_ref.locator, right: second_ref.locator)
+        }
+    }
+}
+
+// THE CONTROL, without which the claim above is satisfied by a store that never refuses. Different
+// label-to-target ASSOCIATIONS are a genuinely different object, so they derive a different locator
+// and both records stand -- this is not a permutation and must not be collapsed into one.
+test fn swapping_which_target_each_label_names_is_a_different_object() -> Bool {
+  let fx = permutation_fixture()
+  fx.ok
+    && match insert_two_named(
+      store: fx.store,
+      first_label: ^alpha,
+      first: fx.alpha,
+      second_label: ^beta,
+      second: fx.beta,
+    ) {
+      LocatorCollision { identity: _, existing: _, incoming: _ } => false
+      Stored { store: once, node: first_ref } =>
+        match insert_two_named(
+          store: once,
+          first_label: ^alpha,
+          first: fx.beta,
+          second_label: ^beta,
+          second: fx.alpha,
+        ) {
+          LocatorCollision { identity: _, existing: _, incoming: _ } => false
+          Stored { store: _, node: second_ref } =>
+            !object_id_eq(left: first_ref.locator, right: second_ref.locator)
+        }
+    }
 }
