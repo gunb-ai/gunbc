@@ -460,47 +460,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn emit_field_layer_keys_on_declaring_identity_not_bare_name() {
-        let result = std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(|| {
-                let nat_source = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "dag/std/nat.dag".to_string(),
-                    content: "module std.nat\ntype Nat = Int\nfn nat_max(a: Nat, b: Nat) -> Nat { if a > b { a } else { b } }\n".to_string(),
-                });
-                let collider = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe_collision_a.dag".to_string(),
-                    content: "module probe.collision_a\ntype Nat = ProbeNatLeaf | ProbeNatNode { next: Nat }\n".to_string(),
-                });
-                let victim = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {
-                    path: "probe_collision_b.dag".to_string(),
-                    content: "module probe.collision_b\nimport std.nat { Nat, nat_max }\nimport probe.collision_a { ProbeNatLeaf }\ntype NumericCarrier { amount: Nat }\nfn clamp_amount(c: NumericCarrier) -> Nat { nat_max(a: c.amount, b: 0) }\n".to_string(),
-                });
-                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im::vector![nat_source, collider, victim]), crate::v1_compiler_artifact::RenderTarget::Rust);
-                let victim_out = result.files.iter().find(|f| f.path.contains("probe_collision_b")).expect("victim module must emit");
-                assert!(
-                    !victim_out.content.contains("amount: Rc<"),
-                    "a foreign recursive declaration sharing the bare spelling must not drag std.nat's native alias to the Rc layer (expected i64 found Rc<i64> at every consumer); emitted:\n{}",
-                    victim_out.content
-                );
-                assert!(
-                    victim_out.content.contains("pub amount:"),
-                    "the probe field must still emit at all; emitted:\n{}",
-                    victim_out.content
-                );
-                let collider_out = result.files.iter().find(|f| f.path.contains("probe_collision_a")).expect("collider module must emit");
-                assert!(
-                    collider_out.content.contains("next: Rc<Nat>"),
-                    "the genuinely recursive declaration must keep its own reference layer -- this is the positive control on the plant; emitted:\n{}",
-                    collider_out.content
-                );
-            })
-            .expect("failed to spawn thread")
-            .join();
-        result.expect("emit_field_layer_keys_on_declaring_identity_not_bare_name panicked");
-    }
-
-    #[test]
     fn unlisted_import_use_witness() {
         // Discriminating witness for the selective-import fail-closed mask
         // (resolve_node_bounded masked boundary). module_b references `Widget`

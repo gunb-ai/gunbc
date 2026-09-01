@@ -162,7 +162,7 @@ use crate::v1_compiler_infer_env::GlobalBareLookupState::{
 };
 pub use crate::v1_compiler_infer_env::{
     authored_name, binding_declares_span, empty_symbol_index, lookup_type_by_name, lookup_type_for,
-    type_reference_declaration_ref,
+    resolved_node_is_kernel_identity_for_name, type_reference_declaration_ref,
 };
 pub use crate::v1_compiler_infer_env::{GlobalBareLookupState, TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_items::item_kind;
@@ -11947,20 +11947,22 @@ pub fn import_variant_parent_for_name(
     }
 }
 
-pub fn import_name_resolves_to_kernel(name: String, module_env: Option<Rc<TypeEnv>>) -> bool {
+pub fn import_name_resolves_to_host_realized_kernel_scalar(
+    name: String,
+    module_env: Option<Rc<TypeEnv>>,
+) -> bool {
     match module_env.clone() {
         std::option::Option::None => false,
         Some(env) => {
             match crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), name.clone()) {
                 std::option::Option::None => false,
-                Some(n) => match n.ident_span.clone() {
-                    Some(sp) => {
-                        ((v1_rt::string_contains(&sp.file.clone(), "<kernel:".to_string())
-                            && (n.connective.clone() == Connective::NoConnective))
-                            && ((n.children.clone().len() as i64) == 0))
-                    }
-                    std::option::Option::None => false,
-                },
+                Some(n) => {
+                    ((crate::v1_compiler_infer_env::resolved_node_is_kernel_identity_for_name(
+                        n.clone(),
+                        name.clone(),
+                    ) && (n.connective.clone() == Connective::NoConnective))
+                        && ((n.children.clone().len() as i64) == 0))
+                }
             }
         }
     }
@@ -12004,7 +12006,10 @@ pub fn emit_specific_import_block(
             .iter()
             .cloned()
             {
-                if !import_name_resolves_to_kernel(n.clone(), module_env.clone()) {
+                if !import_name_resolves_to_host_realized_kernel_scalar(
+                    n.clone(),
+                    module_env.clone(),
+                ) {
                     __result.push(n);
                 }
             }
