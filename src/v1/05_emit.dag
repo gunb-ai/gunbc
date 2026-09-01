@@ -613,9 +613,47 @@ fn emit_container(name: String, inner: String, target: RenderTarget) -> String {
 }
 
 fn emit_map_type(key_type: String, val_type: String, target: RenderTarget) -> String {
-  match coerce_container_template(target: target, container_name: "map") {
-    Present { value: template } => apply_type_template2(template: template, arg0: key_type, arg1: val_type)
-    Absent => concat("Map<", key_type, ", ", val_type, ">")
+  emit_keyed_container_type(
+    container_name: "map",
+    key_type: key_type,
+    val_type: val_type,
+    fallback_base: "Map",
+    target: target
+  )
+}
+
+// A two-argument carrier is not thereby the literal `map` carrier. The authored carrier roster
+// decides which algebra the spelling names, and the target inhabitant roster decides whether that
+// algebra has a native container template. A declared carrier with no target inhabitant stays
+// structural; an unknown spelling never reaches this helper because node_is_keyed_collection first
+// requires membership in the declared carrier-alias roster.
+fn emit_keyed_container_type(
+  container_name: String,
+  key_type: String,
+  val_type: String,
+  fallback_base: String,
+  target: RenderTarget
+) -> String {
+  match coerce_container_template(target: target, container_name: container_name) {
+    Present { value: template } =>
+      apply_type_template2(template: template, arg0: key_type, arg1: val_type)
+    Absent =>
+      let spec = language_spec(target: target)
+      concat(
+        fallback_base,
+        spec.type_arg_open,
+        key_type,
+        ", ",
+        val_type,
+        spec.type_arg_close
+      )
+  }
+}
+
+fn keyed_container_has_target_inhabitant(container_name: String, target: RenderTarget) -> Bool {
+  match coerce_container_template(target: target, container_name: container_name) {
+    Present { value: _ } => true
+    Absent => false
   }
 }
 
@@ -800,7 +838,17 @@ fn render_node_type(n: Node, target: RenderTarget, shared_types: Set<String>, so
       Present { value: vn } => render_node_type(n: child_type_node(ch: vn), target: target, shared_types: shared_types, source_indices: source_indices)
       Absent => "_"
     }
-    let base = emit_map_type(key_type: k, val_type: v, target: target)
+    let base = emit_keyed_container_type(
+      container_name: tn,
+      key_type: k,
+      val_type: v,
+      fallback_base: coerce_primitive_type(
+        target: target,
+        dag_name: tn,
+        decl_file: type_reference_decl_file(n: n)
+      ),
+      target: target
+    )
     let map_str = if shared { wrap_shared_type(target: target, inner: base) } else { base }
     return map_str
   }
