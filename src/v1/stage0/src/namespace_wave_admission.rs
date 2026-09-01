@@ -483,7 +483,201 @@ pub struct TransitionAdmission {
 /// gunbc#9896 proved both rows consumed at the base. This change touches the roster to teach the
 /// wall that ambient kernel identities are resolved, so the roster's own next-touch obligation
 /// deletes both receipts. The roster is empty and remains fail-closed for new namespace motion.
-pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[];
+/// ELEVENTH TRANSITION, AND THE FIRST WHOSE SUBJECT IS A REQUALIFICATION RATHER THAN A MOVE
+/// (2026-09-01, XL-0T, gunbc#9907). `v2.compiler.tokenize` and `v2.std.compilers.lexing` name the
+/// structural text carrier EXPLICITLY where they previously wrote the bare spelling: `String` in
+/// those positions resolved to the kernel identity and now resolves to `v2.std.text`, whose
+/// `String` is `FreeMonoid<Char>`. No declaration moved and no name was minted -- the destination
+/// is written where the module already meant it -- so every one of the seventeen arrives as
+/// `TargetChanged binding`, base `{<kernel>}` -> head `{v2.std.text}`.
+///
+/// THE POPULATION IS EXACTLY SEVENTEEN AND THE RUN SAYS SO. On run 33501228511 the phase reported
+/// `modules_compared=4475 modules_added=1 modules_removed=0 closure_rows_moved=0 deltas=17`: one
+/// module added (the ingress witness this change enrolls), nothing removed, and no closure motion
+/// at all. That is what makes seventeen a population rather than a count -- the denominators are
+/// beside it, and a delta this roster does not name still refuses.
+///
+/// EVERY ROW NAMES ONE EXACT (module, declaration, spelling) TRIPLE. No wildcard, no prefix rule,
+/// no row admitting a module or a spelling in general: an unintended requalification of `String`
+/// anywhere else in either module -- or anywhere in the corpus -- still refuses as UNADJUDICATED.
+/// The fifteen `v2.compiler.tokenize` rows and the two `v2.std.compilers.lexing` rows are the
+/// whole change to this spelling.
+///
+/// DISSOLVE-ON: #9907 merging. Base and head then both carry the qualification, no run can produce
+/// these deltas, all seventeen report stale, and they are removed by that trigger exactly as the
+/// ten shrinks above were -- a stale row here refuses every unrelated PR in the repository.
+pub const NAMESPACE_TRANSITION_ADMISSIONS: &[TransitionAdmission] = &[
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "DelimitedState",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexMatchResult",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexMatchThunk",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexRuleApply",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "LexWalkAcc",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "RepeatState",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_match_char_pred",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_match_prefix",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_strip_prefix",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_try_compiled",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_try_rule",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_try_rules",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_walk",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_walk_artifact",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.compiler.tokenize",
+            in_declaration: "lex_walk_init",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.lexing",
+            in_declaration: "LexPattern",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+    TransitionAdmission {
+        label: "XL-0T structural text qualification 2026-09-01 (gunbc#9907)",
+        subject: AdmissionSubject::Binding {
+            module: "v2.std.compilers.lexing",
+            in_declaration: "LexPatternFold",
+            spelling: "String",
+            target: "v2.std.text",
+        },
+        disposition: NamespaceDeltaDisposition::TargetChanged,
+    },
+];
 
 /// The denominators a green must name (DESIGN §5): a run that cannot say what it covered is an
 /// instrument failure wearing coverage's clothes.
