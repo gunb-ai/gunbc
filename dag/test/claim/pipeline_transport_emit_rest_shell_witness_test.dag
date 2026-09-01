@@ -134,8 +134,8 @@ fn w_shell_captures_stdout() -> Bool {
   compile_dag_rust_emit_check(
     "module re3c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { script: String }\n    output { success: Bool, stdout: String, stderr: String }\n    transport shell { argv: [\"sh\", \"-lc\", \"\{script\}\"] }\n    exit { 0 => Unit  nonzero => String }\n    mock_response {\n      0 => { success: true, stdout: \"hello\", stderr: \"\" } \"ok\"\n    }\n  }\n}\n",
     "src/re3c.rs",
-    ["from_utf8_lossy", "stdout"],
-    []
+    ["output.status.success()", "stdout.clone()", "stderr.clone()"],
+    ["Ok((stdout.clone(), stdout.clone(), stdout.clone()))"]
   )
 }
 
@@ -164,3 +164,54 @@ test fn rest_emit_uses_header_auth() -> Bool { w_rest_uses_header_auth() }
 test fn rest_emit_post_with_auth_source() -> Bool { w_rest_post_with_auth_source() }
 test fn shell_emit_captures_stdout() -> Bool { w_shell_captures_stdout() }
 test fn shell_emit_cron_upsert_script() -> Bool { w_shell_cron_upsert_script() }
+
+fn w_shell_multi_field_answers_each_declared_channel() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4a\n\nservice test.Shell {\n  config {}\n  operation Probe {\n    input { cmd: String }\n    output { code: Int from \"exit_code\", ok: Bool from \"exit_success\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4a.rs",
+    ["output.status.code().unwrap_or(-1) as i64", "output.status.success()"],
+    ["stdout.clone()"]
+  )
+}
+
+fn w_shell_single_named_field_answers_its_channel() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4b\n\nservice test.Shell {\n  config {}\n  operation Check {\n    input { cmd: String }\n    output { success: Bool }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4b.rs",
+    ["output.status.success()"],
+    ["stdout.clone()"]
+  )
+}
+
+fn w_shell_single_unkeyed_field_keeps_whole_stdout() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4c\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4c.rs",
+    ["stdout.clone()"],
+    []
+  )
+}
+
+fn w_shell_unmodeled_output_key_refuses() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4d\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { first: String from \"not_a_channel\", out: String from \"stdout\" }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n  }\n}\n",
+    "src/re4d.rs",
+    ["transport binding refused", "not_a_channel", "has no modeled channel"],
+    ["stdout.clone()"]
+  )
+}
+
+fn w_shell_exit_error_arm_is_boxed() -> Bool {
+  compile_dag_rust_emit_check(
+    "module re4e\n\nservice test.Shell {\n  config {}\n  operation Run {\n    input { cmd: String }\n    output { result: String }\n    transport shell { argv: [\"sh\", \"-c\", \"\{cmd\}\"] }\n    exit { 0 => Unit  nonzero => String }\n  }\n}\n",
+    "src/re4e.rs",
+    ["Err(stderr.into())"],
+    ["Err(stderr)"]
+  )
+}
+
+test fn shell_emit_multi_field_answers_each_declared_channel() -> Bool { w_shell_multi_field_answers_each_declared_channel() }
+test fn shell_emit_single_named_field_answers_its_channel() -> Bool { w_shell_single_named_field_answers_its_channel() }
+test fn shell_emit_single_unkeyed_field_keeps_whole_stdout() -> Bool { w_shell_single_unkeyed_field_keeps_whole_stdout() }
+test fn shell_emit_unmodeled_output_key_refuses() -> Bool { w_shell_unmodeled_output_key_refuses() }
+test fn shell_emit_exit_error_arm_is_boxed() -> Bool { w_shell_exit_error_arm_is_boxed() }
