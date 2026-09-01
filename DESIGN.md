@@ -222,6 +222,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `restored_bytes_reviewed_as_authorship`
 - `review_summary_inverts_roles_and_affirms_the_join`
 - `accepted_source_emits_uncompilable_target`
+- `incidental_denominator_as_wall`
 
 ## Building & checks
 
