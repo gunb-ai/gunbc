@@ -311,7 +311,7 @@ type TimerRetirementMemberAt = NonEmptyStr
 //
 //   the arm declares only host and observed_timers, and the exact production constructors on this
 //   tree supply only those two -- mechanically closed over WHERE construction happens by
-//   test.claim.fleet_converge_launch_scope_constructor_site_census, which folds the parsed corpus
+//   test.claim.long.fleet_converge_launch_scope_constructor_site_census, which folds the parsed corpus
 //   and joins every production construction site against a declared roster at identity grain;
 //
 //   no authoritative projection consumes an excess field, and a smuggled one cannot alter the
