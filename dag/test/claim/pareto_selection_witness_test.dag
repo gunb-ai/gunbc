@@ -3,11 +3,13 @@ module test.claim.pareto_selection_witness
 import std.types { Bool, List, NonEmptyStr, Int, String }
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
 import std.decl_ref { DeclarationRef, WholeDeclaration, declaration_ref_eq }
+import std.interval { degenerate_interval, closed_interval, IntervalConstruction, IntervalReady, IntervalRefused, OrderedClosedInterval }
 import std.pareto {
   AxisGoal, HigherIsBetter, LowerIsBetter,
   SelectionAxis, AxisReading, ParetoEntry, ParetoStanding, Domination,
-  ProvisionallyNonDominated, DominatedBy, IncomparablePendingEvidence, SelectionRefused,
-  PairStanding, PairDominates, PairNoDominance, PairRefused,
+  ProvisionallyNonDominated, DominatedBy, NotComputable, PendingEvidence, SelectionRefused,
+  PairStanding, PairDominates, PairNoDominance, PairRefused, PairPendingEvidence,
+  AxisComparison, Better, Same, Worse, UndecidedOnEvidence, axis_comparison_interval,
   compare_pair, entry_standing, pareto_label,
 }
 
@@ -46,8 +48,8 @@ data entry_cheap_strong: ParetoEntry = ParetoEntry {
   identity: id_cheap_strong,
   display_label: "twin",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 100 },
-    AxisReading { axis: axis_power_id, value_micro: 500 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 100) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 500) },
   ],
   missing_inputs: no_missing,
 }
@@ -56,8 +58,8 @@ data entry_dear_weak: ParetoEntry = ParetoEntry {
   identity: id_dear_weak,
   display_label: "dear-weak",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 200 },
-    AxisReading { axis: axis_power_id, value_micro: 400 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 200) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 400) },
   ],
   missing_inputs: no_missing,
 }
@@ -69,8 +71,8 @@ data entry_twin_dominated: ParetoEntry = ParetoEntry {
   identity: id_twin_dominated,
   display_label: "twin",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 300 },
-    AxisReading { axis: axis_power_id, value_micro: 300 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 300) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 300) },
   ],
   missing_inputs: no_missing,
 }
@@ -79,8 +81,8 @@ data entry_dear_strong: ParetoEntry = ParetoEntry {
   identity: id_dear_strong,
   display_label: "dear-strong",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 200 },
-    AxisReading { axis: axis_power_id, value_micro: 600 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 200) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 600) },
   ],
   missing_inputs: no_missing,
 }
@@ -89,8 +91,8 @@ data entry_quote_pending: ParetoEntry = ParetoEntry {
   identity: id_quote_pending,
   display_label: "quote-pending",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 1 },
-    AxisReading { axis: axis_power_id, value_micro: 1 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 1) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 1) },
   ],
   missing_inputs: ["a written quote is outstanding"],
 }
@@ -99,7 +101,7 @@ data entry_reading_hole: ParetoEntry = ParetoEntry {
   identity: id_reading_hole,
   display_label: "reading-hole",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 50 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 50) },
   ],
   missing_inputs: no_missing,
 }
@@ -110,9 +112,9 @@ data entry_double_reading: ParetoEntry = ParetoEntry {
   identity: id_double_reading,
   display_label: "double-reading",
   readings: [
-    AxisReading { axis: axis_cost_id, value_micro: 10 },
-    AxisReading { axis: axis_cost_id, value_micro: 999 },
-    AxisReading { axis: axis_power_id, value_micro: 700 },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 10) },
+    AxisReading { axis: axis_cost_id, interval_micro: degenerate_interval(point: 999) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 700) },
   ],
   missing_inputs: no_missing,
 }
@@ -166,7 +168,8 @@ fn dominators_of(s: ParetoStanding) -> List<Domination> {
   match s {
     DominatedBy { dominators } => dominators,
     ProvisionallyNonDominated { sensitivities } => no_dominations,
-    IncomparablePendingEvidence { missing } => no_dominations,
+    NotComputable { missing } => no_dominations,
+    PendingEvidence { undecided } => no_dominations,
     SelectionRefused { cause } => no_dominations,
   }
 }
@@ -183,9 +186,15 @@ fn winning_axis_count_of(s: ParetoStanding, dominator: DeclarationRef) -> Int {
   })
 }
 
+// THE HONEST GAP, and only that. This asks whether the SUBJECT declared an input it does not have
+// -- nothing is broken and nothing is being hidden. It deliberately answers false for a projector
+// contradiction, which std.pareto now routes to SelectionRefused, and false for readings that are
+// present but merely too coarse. Folding any of those together would silently widen every claim
+// below, which is what the single old arm did.
 fn standing_is_incomparable(s: ParetoStanding) -> Bool {
   match s {
-    IncomparablePendingEvidence { missing } => true,
+    NotComputable { missing } => true,
+    PendingEvidence { undecided } => false,
     ProvisionallyNonDominated { sensitivities } => false,
     DominatedBy { dominators } => false,
     SelectionRefused { cause } => false,
@@ -195,7 +204,8 @@ fn standing_is_incomparable(s: ParetoStanding) -> Bool {
 fn standing_is_refused(s: ParetoStanding) -> Bool {
   match s {
     SelectionRefused { cause } => true,
-    IncomparablePendingEvidence { missing } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
     ProvisionallyNonDominated { sensitivities } => false,
     DominatedBy { dominators } => false,
   }
@@ -205,7 +215,8 @@ fn witness_not_dominated(s: ParetoStanding) -> Bool {
   match s {
     DominatedBy { dominators } => false,
     ProvisionallyNonDominated { sensitivities } => true,
-    IncomparablePendingEvidence { missing } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
     SelectionRefused { cause } => false,
   }
 }
@@ -234,7 +245,8 @@ test fn witness_tradeoff_pair_both_survive() -> Bool {
   let cheap_carries_sensitivities = match cheap {
     ProvisionallyNonDominated { sensitivities } => count(sensitivities) > 0,
     DominatedBy { dominators } => false,
-    IncomparablePendingEvidence { missing } => false,
+    NotComputable { missing } => false,
+    PendingEvidence { undecided } => false,
     SelectionRefused { cause } => false,
   }
   witness_not_dominated(s: cheap) && witness_not_dominated(s: strong)
@@ -257,24 +269,33 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
 // REFUSE, and the arm is named.
 //
 // CONTROL 4 - THE FAIL-CLOSED DISCRIMINATOR. An entry that claims complete inputs while
-// lacking a compared reading REFUSES the pair, and the refusal reaches the standing as
-// incomparable rather than being skipped: a partial comparison never silently survives.
-// The refusal poisons the field WHEREVER the hole sits - before or after a valid dominator.
+// lacking a compared reading REFUSES the pair, and the refusal reaches the standing rather than
+// being skipped: a partial comparison never silently survives. The refusal poisons the field
+// WHEREVER the hole sits - before or after a valid dominator.
+//
+// IT NOW REACHES SelectionRefused, NOT NotComputable, and the change is the point rather than a
+// relabelling. An entry declaring COMPLETE inputs while lacking a reading is not short of evidence:
+// it contradicts its own declaration, which is a projector defect and belongs with the other
+// structural contradictions. entry_quote_pending, two controls above, declares what it lacks and
+// still lands in NotComputable -- so this pair of claims is what makes the two states observably
+// different rather than two spellings of one.
 test fn witness_absent_reading_refuses_the_pair() -> Bool {
   let pair = compare_pair(a: entry_cheap_strong, b: entry_reading_hole, axes: both_axes)
   let pair_refuses = match pair {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
+    PairPendingEvidence { undecided_axes } => false,
   }
-  let standing_surfaces_it = standing_is_incomparable(s: entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
+  let standing_surfaces_it = standing_is_refused(s: entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
   let hole_never_dominates = match compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
+    PairPendingEvidence { undecided_axes } => false,
   }
-  let hole_poisons_the_field = standing_is_incomparable(s: entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
-  let hole_poisons_from_the_front = standing_is_incomparable(s: entry_standing(subject: entry_dear_weak, field: holed_field_hole_first, axes: both_axes, sensitivities: spine_sensitivities))
+  let hole_poisons_the_field = standing_is_refused(s: entry_standing(subject: entry_cheap_strong, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
+  let hole_poisons_from_the_front = standing_is_refused(s: entry_standing(subject: entry_dear_weak, field: holed_field_hole_first, axes: both_axes, sensitivities: spine_sensitivities))
   pair_refuses && standing_surfaces_it && hole_never_dominates && hole_poisons_the_field && hole_poisons_from_the_front
 }
 
@@ -295,6 +316,7 @@ fn standing_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>)
     PairDominates { winning_axes } => true,
     PairNoDominance => false,
     PairRefused { cause } => false,
+    PairPendingEvidence { undecided_axes } => false,
   }
 }
 
@@ -340,6 +362,7 @@ test fn witness_duplicate_reading_refuses_the_pair() -> Bool {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
     PairNoDominance => false,
+    PairPendingEvidence { undecided_axes } => false,
   }
 }
 
@@ -373,4 +396,177 @@ fn pareto_witness_main() -> ProcessExit {
     && witness_duplicate_candidate_identity_refuses()
     && witness_duplicate_reading_refuses_the_pair()
   if all_pass { ExitSuccess } else { ExitFailure { code: 1, reason: report } }
+}
+
+
+// ---------------------------------------------------------------------------
+// INTERVAL EVIDENCE. The controls below are the discriminating reds for the state this
+// vocabulary could not previously express, and they stay enrolled now that it can
+// (DESIGN 4b(4)): each one returned a CONFIDENT answer before the cut.
+
+fn le_int(a: Int, b: Int) -> Bool { a <= b }
+
+// A widening fixture. A refused construction would be a fixture defect, and it is surfaced as an
+// obviously-wrong degenerate rather than silently swapped into order -- the refusal arm belongs to
+// std.interval's own witness, not this one.
+fn span(low: Int, high: Int) -> OrderedClosedInterval<Int> {
+  match closed_interval(low: low, high: high, le: le_int) {
+    IntervalReady { interval } => interval
+    IntervalRefused { reason } => degenerate_interval(point: 0)
+  }
+}
+
+fn cmp_lower_better(a: OrderedClosedInterval<Int>, b: OrderedClosedInterval<Int>) -> AxisComparison {
+  axis_comparison_interval(goal: LowerIsBetter, a: a, b: b)
+}
+
+fn is_undecided(c: AxisComparison) -> Bool {
+  match c { UndecidedOnEvidence => true  Better => false  Same => false  Worse => false }
+}
+
+fn is_same(c: AxisComparison) -> Bool {
+  match c { Same => true  Better => false  Worse => false  UndecidedOnEvidence => false }
+}
+
+fn is_better(c: AxisComparison) -> Bool {
+  match c { Better => true  Same => false  Worse => false  UndecidedOnEvidence => false }
+}
+
+// SEPARATION DECIDES; TOUCHING DOES NOT. [10,20] vs [30,40] is decided because every value one
+// could take beats every value the other could. [10,20] vs [20,30] is NOT: both true values could
+// be exactly 20.
+test fn separated_intervals_decide_and_touching_ones_do_not() -> Bool {
+  is_better(c: cmp_lower_better(a: span(low: 10, high: 20), b: span(low: 30, high: 40)))
+    && is_undecided(c: cmp_lower_better(a: span(low: 10, high: 20), b: span(low: 20, high: 30)))
+    && is_undecided(c: cmp_lower_better(a: span(low: 10, high: 30), b: span(low: 20, high: 40)))
+}
+
+// THE CASE MOST EASILY GOT WRONG, and the reason `Same` is reserved for degenerates. Two readings
+// of [10,20] say both true values lie in one region; they do NOT say the true values are equal.
+// Answering Same here would manufacture an equality the measurement never established -- and it is
+// exactly what a point-valued reading did to every coarse measurement before this cut.
+test fn identical_wide_intervals_are_undecided_not_same() -> Bool {
+  is_undecided(c: cmp_lower_better(a: span(low: 10, high: 20), b: span(low: 10, high: 20)))
+    && is_same(c: cmp_lower_better(a: degenerate_interval(point: 15), b: degenerate_interval(point: 15)))
+}
+
+data entry_wide_a: ParetoEntry = ParetoEntry {
+  identity: DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_a", field: WholeDeclaration },
+  display_label: "wide a",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: span(low: 100, high: 200) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 500) },
+  ],
+  missing_inputs: [],
+}
+
+data entry_wide_b: ParetoEntry = ParetoEntry {
+  identity: DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_b", field: WholeDeclaration },
+  display_label: "wide b",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: span(low: 150, high: 250) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 400) },
+  ],
+  missing_inputs: [],
+}
+
+// entry_wide_c is known WORSE on power than wide_a while its cost overlaps: the directional
+// question is already settled against it, whatever the cost turns out to be.
+data entry_wide_c: ParetoEntry = ParetoEntry {
+  identity: DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_c", field: WholeDeclaration },
+  display_label: "wide c",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: span(low: 150, high: 250) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 100) },
+  ],
+  missing_inputs: [],
+}
+
+// NO KNOWN WORSE AXIS + AN UNDECIDED ONE IS PENDING, because sharpening the undecided axis really
+// can decide it either way. Before the cut this compared as a confident dominance on the point
+// estimates alone.
+test fn overlap_with_no_worse_axis_is_pending_not_dominance() -> Bool {
+  match compare_pair(a: entry_wide_a, b: entry_wide_b, axes: both_axes) {
+    PairPendingEvidence { undecided_axes } => count(undecided_axes) == 1
+    PairDominates { winning_axes } => false
+    PairNoDominance => false
+    PairRefused { cause } => false
+  }
+}
+
+// A KNOWN WORSE AXIS ENDS THE DIRECTIONAL QUESTION, and this is the asymmetry that keeps pending
+// from over-reporting. wide_c is worse on power; no sharpening of its overlapping cost can make it
+// dominate, because dominance requires NO worse axis at all. So this is ordinary no-dominance, and
+// reporting it as pending would send someone to measure a question whose answer cannot matter.
+test fn a_known_worse_axis_is_no_dominance_not_pending() -> Bool {
+  match compare_pair(a: entry_wide_c, b: entry_wide_a, axes: both_axes) {
+    PairNoDominance => true
+    PairPendingEvidence { undecided_axes } => false
+    PairDominates { winning_axes } => false
+    PairRefused { cause } => false
+  }
+}
+
+// entry_wide_d overlaps wide_a on cost and TIES it on power, so neither is known worse anywhere:
+// this is the field-grain shape that is genuinely pending. wide_b will not do, because it is known
+// WORSE on power, which the directional law correctly resolves to plain no-dominance.
+data entry_wide_d: ParetoEntry = ParetoEntry {
+  identity: DeclarationRef { module_path: "test.claim.pareto_selection_witness", decl_name: "entry_wide_d", field: WholeDeclaration },
+  display_label: "wide d",
+  readings: [
+    AxisReading { axis: axis_cost_id, interval_micro: span(low: 150, high: 250) },
+    AxisReading { axis: axis_power_id, interval_micro: degenerate_interval(point: 500) },
+  ],
+  missing_inputs: [],
+}
+
+// PENDING REACHES THE STANDING RATHER THAN THE FRONTIER, which is why the state is carried this far
+// instead of being resolved inside the pair fold. Before the cut, a challenger that could not be
+// separated read as ordinary non-dominance and the subject came back ProvisionallyNonDominated --
+// on the frontier, asserted from evidence that had not established it.
+test fn pending_evidence_reaches_the_standing_rather_than_the_frontier() -> Bool {
+  match entry_standing(subject: entry_wide_a, field: [entry_wide_a, entry_wide_d], axes: both_axes, sensitivities: spine_sensitivities) {
+    PendingEvidence { undecided } => true
+    NotComputable { missing } => false
+    ProvisionallyNonDominated { sensitivities } => false
+    DominatedBy { dominators } => false
+    SelectionRefused { cause } => false
+  }
+}
+
+// AND A PROVEN DOMINATOR STILL SETTLES IT. entry_wide_c is dominated outright by wide_a on power
+// with cost overlapping, so its standing is DominatedBy -- not pending. Being dominated is
+// established by that one comparison, and uncertainty elsewhere cannot un-establish it. Without
+// this control the precedence could invert and every dominated candidate would read as pending.
+test fn a_proven_domination_outranks_pending_evidence_at_field_grain() -> Bool {
+  match entry_standing(subject: entry_wide_c, field: [entry_wide_a, entry_wide_c], axes: [axis_power], sensitivities: spine_sensitivities) {
+    DominatedBy { dominators } => count(dominators) == 1
+    NotComputable { missing } => false
+    PendingEvidence { undecided } => false
+    ProvisionallyNonDominated { sensitivities } => false
+    SelectionRefused { cause } => false
+  }
+}
+
+
+// THE THREE NON-STANDINGS ARE OBSERVABLY DIFFERENT, and this is the control that keeps them so. All
+// three refuse to name a winner, which is why one arm could carry all of them unnoticed; they are
+// separated because their remedies are not the same. Supply the input; fix the projector; measure
+// more sharply. If any two of these ever collapse, this goes red.
+test fn the_three_non_standings_are_distinct() -> Bool {
+  let honest_gap = entry_standing(subject: entry_quote_pending, field: clean_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let contradiction = entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities)
+  let too_coarse = entry_standing(subject: entry_wide_a, field: [entry_wide_a, entry_wide_d], axes: both_axes, sensitivities: spine_sensitivities)
+  standing_is_incomparable(s: honest_gap) && !standing_is_refused(s: honest_gap)
+    && standing_is_refused(s: contradiction) && !standing_is_incomparable(s: contradiction)
+    && match too_coarse {
+         PendingEvidence { undecided } => true
+         NotComputable { missing } => false
+         SelectionRefused { cause } => false
+         ProvisionallyNonDominated { sensitivities } => false
+         DominatedBy { dominators } => false
+       }
+    && pareto_label(s: honest_gap) == "not computable"
+    && pareto_label(s: too_coarse) == "pending evidence"
+    && pareto_label(s: contradiction) == "selection refused"
 }
