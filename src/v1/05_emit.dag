@@ -1047,12 +1047,6 @@ type ShellResultChannel
   | ShellChanExitSuccess
   | ShellChanExitCode
   | ShellChanStdoutLines
-  | ShellChanStdoutTotalBytes
-  | ShellChanStderrTotalBytes
-  | ShellChanStdoutRetainedBytes
-  | ShellChanStderrRetainedBytes
-  | ShellChanStdoutTruncated
-  | ShellChanStderrTruncated
 
 type ShellResultField {
   channel: ShellResultChannel
@@ -1074,22 +1068,27 @@ type ShellEmissionRefusal
 // when no `from` key is authored -- so the two directions of the one procedure
 // (DESIGN section 4) read the same rule rather than agreeing by coincidence.
 //
-// NOT MODELED, named rather than left to be inferred: `stdout_digest_hex` and
-// `stderr_digest_hex`, which the interpreter answers and the emitted realization
-// has no digest to answer with. They refuse as a counted capability gap; the
-// next-rung trigger is a digest facility in the emitted runtime.
+// NOT MODELED, named rather than left to be inferred, because each names a fact
+// the emitted realization cannot honestly produce:
+//
+//   the byte-accounting and truncation channels -- stdout/stderr_total_bytes,
+//   _retained_bytes and _truncated. An operation declaring them also declares a
+//   capture policy (gunbc.WitnessBin.Run carries a WitnessStderrCapturePolicy
+//   input), and the emitted `std::process::Command` body implements no policy at
+//   all. Answering `false` and a raw length would not be a conservative default,
+//   it would assert that the declared policy ran and did not truncate. The
+//   next-rung trigger is the emitted realization implementing the declared
+//   capture policy; until then these refuse as a counted capability gap.
+//
+//   the digest channels -- stdout/stderr_digest_hex, which the interpreter
+//   answers and the emitted realization has no digest facility for. The
+//   next-rung trigger is that facility in the emitted runtime.
 fn shell_result_channel_of_key(key: String) -> ShellResultChannel? {
   if key == "stdout" { Present { value: ShellChanStdout } }
   else if key == "stderr" { Present { value: ShellChanStderr } }
   else if key == "exit_success" || key == "success" || key == "exists" { Present { value: ShellChanExitSuccess } }
   else if key == "exit_code" { Present { value: ShellChanExitCode } }
   else if key == "stdout_lines" { Present { value: ShellChanStdoutLines } }
-  else if key == "stdout_total_bytes" { Present { value: ShellChanStdoutTotalBytes } }
-  else if key == "stderr_total_bytes" { Present { value: ShellChanStderrTotalBytes } }
-  else if key == "stdout_retained_bytes" { Present { value: ShellChanStdoutRetainedBytes } }
-  else if key == "stderr_retained_bytes" { Present { value: ShellChanStderrRetainedBytes } }
-  else if key == "stdout_truncated" { Present { value: ShellChanStdoutTruncated } }
-  else if key == "stderr_truncated" { Present { value: ShellChanStderrTruncated } }
   else { none }
 }
 
@@ -1097,7 +1096,7 @@ fn shell_emission_refusal_fact(refusal: ShellEmissionRefusal) -> String {
   match refusal {
     ShellOutputKeyNotModeled { key: k } =>
       concat("shell transport output key '", k,
-        "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code, stdout_lines, stdout_total_bytes, stderr_total_bytes, stdout_retained_bytes, stderr_retained_bytes, stdout_truncated and stderr_truncated")
+        "' has no modeled channel -- the modeled channels are stdout, stderr, exit_success, success, exists, exit_code and stdout_lines")
   }
 }
 

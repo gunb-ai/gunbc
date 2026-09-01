@@ -202,9 +202,6 @@ import v1.compiler.emit {
   BoundOperation, RestBound, ShellBound, LocalBound, FileBound, BindingRefused,
   ShellResultField, ShellResultChannel, ShellChanStdout, ShellChanStderr,
   ShellChanExitSuccess, ShellChanExitCode, ShellChanStdoutLines,
-  ShellChanStdoutTotalBytes, ShellChanStderrTotalBytes,
-  ShellChanStdoutRetainedBytes, ShellChanStderrRetainedBytes,
-  ShellChanStdoutTruncated, ShellChanStderrTruncated,
   bind_operation_transport, transport_binding_refusal_fact,
   FileVerb, FileRead, FileWrite, FileWriteOwnerOnly, FileDelete, FileList,
   FileResultField, FileResultChannel, FileChanSuccess, FileChanByteCount,
@@ -14075,11 +14072,9 @@ fn shell_stderr_prelude(result_fields: List<ShellResultField>) -> String {
 // default arm this replaced is not weakened, it is DELETED: the coproduct has no
 // inhabitant left for it to answer.
 //
-// The retained/total and truncated channels answer the FACTS OF THIS
-// REALIZATION, not the interpreter's. `std::process::Command` output is captured
-// whole, so nothing is truncated and the retained byte count IS the total one --
-// `false` and the full length are what is true here, not defaults standing in for
-// a measurement the emitted code declines to take.
+// `exit_code` renders the same convention the interpreter answers it with
+// (`result.exit_code as i64`), so the two directions of one procedure agree by
+// derivation rather than by two people writing the same expression.
 fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> String {
   let base = match channel {
     ShellChanStdout => "stdout.clone()"
@@ -14088,12 +14083,6 @@ fn emit_shell_channel_expr(channel: ShellResultChannel, is_optional: Bool) -> St
     ShellChanExitCode => "(output.status.code().unwrap_or(-1) as i64)"
     ShellChanStdoutLines =>
       rust_shared_wrap_ctor(inner_expr: "stdout.lines().filter(|l| !l.is_empty()).map(|l| l.trim().to_string()).collect()")
-    ShellChanStdoutTotalBytes => "(output.stdout.len() as i64)"
-    ShellChanStderrTotalBytes => "(output.stderr.len() as i64)"
-    ShellChanStdoutRetainedBytes => "(output.stdout.len() as i64)"
-    ShellChanStderrRetainedBytes => "(output.stderr.len() as i64)"
-    ShellChanStdoutTruncated => "false"
-    ShellChanStderrTruncated => "false"
   }
   if is_optional { concat("Some(", base, ")") } else { base }
 }
