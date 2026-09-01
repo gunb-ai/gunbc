@@ -1393,8 +1393,11 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let entry_file = phase_label;
     let subject = subject_digest_for_closure(&sources);
     // In-process share tier (resolved_graph_memo): always on — the ReferenceTier in
-    // front of the opt-in cross-process store. A subject this process has already
-    // assembled is served by reference, eliminating the per-entry reconcile assembly
+    // front of the opt-in cross-process store. Every MultiEntryIndex constructs this map empty;
+    // it is neither persisted nor shared across the build and witnesses processes. Therefore a
+    // hit is evidence that this same required-lane process already produced a strict judgment
+    // for the subject, not evidence borrowed from another run. A subject this process has
+    // already assembled is served by reference, eliminating the per-entry reconcile assembly
     // residue on re-resolve (Track A denomination receipt, resolve-split #6535).
     if let Some((graph, si, compile_clean_diags)) = index.resolved_graph_memo.borrow().get(&subject)
     {
@@ -1527,6 +1530,13 @@ pub(crate) fn resolved_graph_from_sources_with_index(
     let typed =
         reconcile_with_typed_cache(graph.clone(), source_indices.clone(), global_table, index)
             .map_err(|e| join_via_index_stage_refusal(&annotation_diags, &source_indices, e))?;
+    if typecheck_gate == ResolveTypecheckGate::Strict {
+        // `typed` carries the completed per-module typecheck and its diagnostics. Record the
+        // verdict before testing whether it is positive: a blocking diagnostic is stronger
+        // evidence of visibility than a green result. Parse/resolve aborts and a reconcile that
+        // produced no typed result never reach this boundary and are not credited.
+        record_required_lane_judged_sources(&sources);
+    }
     // Assembly `other` is derived only when the exclusive reconcile rows fit inside the
     // containing reconcile span. A timing overlap is an attribution refusal, never a
     // saturating clamp to a plausible zero.
@@ -1650,12 +1660,6 @@ pub(crate) fn resolved_graph_from_sources_with_index(
         record_provider_bootstrap_store_skip();
     }
 
-    if typecheck_gate == ResolveTypecheckGate::Strict {
-        // Reaching here means every parsed module completed resolve, normalize, strict
-        // typecheck, and ownership without a blocking diagnostic. Record judgment only at that
-        // boundary; being indexed or merely submitted to this function is not this receipt.
-        record_required_lane_judged_sources(&sources);
-    }
     Ok((typed, source_indices, compile_clean_diags))
 }
 
@@ -1731,6 +1735,14 @@ pub(crate) fn resolved_graph_from_sources(
         }
     };
 
+    if typecheck_gate == ResolveTypecheckGate::Strict && result.graph.is_some() {
+        // A produced graph is the compile-to-resolved path's completed strict judgment receipt,
+        // whether its diagnostics are positive or negative.
+        if let Some(strict_sources) = strict_sources.as_ref() {
+            record_required_lane_judged_sources(strict_sources);
+        }
+    }
+
     let has_errors = result
         .diagnostics
         .iter()
@@ -1767,9 +1779,6 @@ pub(crate) fn resolved_graph_from_sources(
         .graph
         .clone()
         .ok_or_else(|| "compilation produced no graph".to_string())?;
-    if let Some(strict_sources) = strict_sources.as_ref() {
-        record_required_lane_judged_sources(strict_sources);
-    }
     Ok((graph, result.source_indices.clone()))
 }
 
