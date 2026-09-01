@@ -85,12 +85,11 @@ fn allocatable(capacity: NodeCapacity) -> ByteSize? {
 type QuantizedCandidate {
   identity: ReleaseIdentity
   quant_label: NonEmptyStr
-  weights: ByteSize
   quality_rank: Int
   declared_context: TokenCount
   semantic_context_verified_to: TokenCount?
   fresh_prefill_observations: List<FreshPrefillObservation>
-  kv_per_token: ByteSize?
+  resident_footprint_observations: List<ResidentFootprintObservation>
 }
 
 // PREFILL RATE IS NOT A SCALAR, and this repository's own measurements falsified the scalar that
@@ -178,16 +177,86 @@ fn slowest_fresh_rate_at_floor(
     })
 }
 
-// KV scales with context and with how many sessions are simultaneously RESIDENT. Sessions parked to
-// disk between turns do not count -- their KV is not in memory -- which is why hot_sessions is the
-// parameter rather than a total session count.
-fn kv_footprint(per_token: ByteSize, context: TokenCount, hot_sessions: Nat) -> ByteSize {
-  byte_size(count: byte_size_count(b: per_token) * token_count_value(t: context) * hot_sessions)
+// MEMORY FIT IS AN OBSERVATION, NOT A PRODUCT -- and the arithmetic that used to stand here is the
+// reason this carrier exists.
+//
+// What stood here was `weights + kv_per_token * context * hot_sessions`, with kv_per_token fixed at
+// 88,064 bytes and annotated "exact rather than estimated" because it was DERIVED from architecture:
+// 43 blocks, one latent KV head, key and value lengths of 512. Read back off the running server, one
+// build at four context depths resides in 86,532,465,622 / 87,064,355,798 / 87,692,389,907 /
+// 88,865,253,620 bytes at 131,072 / 262,144 / 400,000 / 1,048,576 tokens. The segment rates are
+// 4,058 then 4,556 then 1,808 bytes per token.
+//
+// THE FUNCTION IS FALSIFIED, NOT ITS COEFFICIENT. No scalar reproduces that curve, so replacing
+// 88,064 with a better-sourced constant, an averaged slope or a fitted curve would only manufacture
+// a second unobserved answer wearing better provenance. The derived figure also fails on its own
+// terms: at 88,064 B/token a 1,048,576 window is 92.3 GB of KV, which with 86.5 GB of weights
+// exceeds the node total -- and that configuration loads and serves.
+//
+// So a footprint is not computed. It is READ, at a stated depth, on a stated node, under a stated
+// concurrency, by a stated instrument -- and each of those is part of the FACT rather than context
+// around it, because a reading that does not carry them cannot be checked against the demand it is
+// being used to answer.
+type ResidentFootprintObservation {
+  realization: NonEmptyStr
+  runtime: NonEmptyStr
+  node: NonEmptyStr
+  instrument: NonEmptyStr
+  context_depth: TokenCount
+  concurrent_sessions: Nat
+  resident: ByteSize
 }
 
-fn resident_footprint(weights: ByteSize, per_token: ByteSize, context: TokenCount, hot_sessions: Nat) -> ByteSize {
-  let kv = kv_footprint(per_token: per_token, context: context, hot_sessions: hot_sessions)
-  byte_size(count: byte_size_count(b: weights) + byte_size_count(b: kv))
+// The observation that answers a demand for `floor` context at `hot_sessions` resident sessions, or
+// Absent when none does.
+//
+// DEEPER QUALIFIES SHALLOWER; SHALLOWER NEVER QUALIFIES DEEPER. That direction is the single
+// assumption this function makes, and it is stated rather than buried: footprint is monotone in
+// depth, so a reading at or beyond the floor upper-bounds the floor cost, while a shallower reading
+// bounds nothing and flatters the candidate. Among qualifying readings the SMALLEST is the tightest
+// sound bound, so that is the one returned.
+//
+// CONCURRENCY IS NOT RECOVERED BY MULTIPLICATION. A one-session reading says nothing executable
+// about two simultaneously resident sessions -- shared weights, allocator behaviour and per-session
+// caches do not decompose into a per-session term this instrument can see. A demand above the
+// observed concurrency is UNANSWERABLE, exactly as a deeper floor is, and never a one-session number
+// scaled up.
+//
+// THE WHOLE OBSERVATION IS RETURNED, not its byte count. Detaching `resident` would strip the depth,
+// node, runtime and instrument that make the answer checkable, and a fit established from a reading
+// nobody can locate again is not established.
+fn resident_footprint_at_floor(
+  observations: List<ResidentFootprintObservation>,
+  floor: TokenCount,
+  hot_sessions: Nat,
+) -> ResidentFootprintObservation? {
+  let qualifying = filter(observations, o =>
+    token_count_value(t: o.context_depth) >= token_count_value(t: floor)
+      && o.concurrent_sessions >= hot_sessions)
+  let tightest: ResidentFootprintObservation? = none
+  fold(qualifying, tightest, (best, o) =>
+    match best {
+      Absent => Present { value: o }
+      Present { value: incumbent } => Present { value: tighter_bound(a: o, b: incumbent) }
+    })
+}
+
+// The comparison is a NAMED BINARY OPERATION rather than an inline match inside the fold, and the
+// reason is a compiler limitation worth recording rather than routing silently around: a value bound
+// by a `Present { value: x }` pattern over a fold accumulator does not carry its type to a FIELD
+// ACCESS -- `x.resident` resolves as `no field 'resident' on type 'Unit'` -- while the same binding
+// passed as a typed function ARGUMENT unifies correctly, which is why the prefill fold above never
+// hit it. Seeding the fold with an annotated `none` does not repair the inference. So the accumulator
+// type is established here by the parameter list. This is a real gap in accumulator type propagation,
+// not a stylistic preference, and it will keep shaping folds until it is fixed at the language layer.
+fn tighter_bound(
+  a: ResidentFootprintObservation,
+  b: ResidentFootprintObservation,
+) -> ResidentFootprintObservation {
+  match byte_size_count(b: a.resident) < byte_size_count(b: b.resident) {
+    true => a
+    false => b
+  }
 }
 
 // ============================ CONSTRAINTS ============================
@@ -212,14 +281,18 @@ type ServingConstraints {
 // carry restated what the constructor already says, and a second malformation would need its own arm
 // rather than a different sentence. Prose whose content the type fixes is dead data (DESIGN 4c).
 type MissingFact
-  = KvFootprintUnmeasured
+  = ResidentFootprintUnmeasuredAtFloor { floor: TokenCount, sessions: Nat }
   | PrefillRateUnmeasuredAtFloor { floor: TokenCount, regime: ServingRegime }
   | SemanticContextUnverifiedAtFloor { floor: TokenCount, declared: TokenCount }
   | CapacityMalformed
 
 fn missing_fact_wire(missing: MissingFact) -> String {
   match missing {
-    KvFootprintUnmeasured => "kv-footprint-unmeasured"
+    ResidentFootprintUnmeasuredAtFloor { floor: f, sessions: n } =>
+      join([
+        "no resident-footprint reading at or beyond ", to_string(token_count_value(t: f)),
+        " tokens with at least ", to_string(n), " resident session(s)",
+      ], "")
     PrefillRateUnmeasuredAtFloor { floor: f, regime: g } =>
       join([
         "no ", serving_regime_wire(regime: g), " observation at or beyond ",
@@ -251,11 +324,18 @@ type CandidateVerdict
 // Evaluated in a fixed order so the reported axis is deterministic: capability floors first, then
 // fit. A candidate that fails several axes reports the first, and the ordering puts the axis the
 // operator can act on soonest at the front.
-// EVALUATION ORDER IS LOAD-BEARING, not stylistic. Memory fit is decidable from weights, KV cost and
-// capacity alone, so it is settled FIRST: a candidate that cannot be resident does not need a
-// retrieval receipt or a prefill observation, and demanding evidence before rejecting it would turn
-// a decidable no into an unanswerable maybe. Only once a candidate could actually serve do we ask
-// whether it is EVIDENCED to serve at this floor.
+// EVALUATION ORDER IS LOAD-BEARING, not stylistic: memory fit is settled FIRST, because a candidate
+// that cannot be resident does not need a retrieval receipt or a prefill observation to be refused.
+//
+// THE JUSTIFICATION FOR THAT ORDER CHANGED, and saying so is the point. It used to read that memory
+// fit was DECIDABLE from weights, KV cost and capacity alone, so ordering it first turned no
+// decidable answer into an unanswerable one. That is no longer true and was never true: fit is now
+// established from an observation, so the memory arm can itself return Unanswerable, and the order
+// buys refusal economy rather than decidability. A candidate with no qualifying footprint reading is
+// unresolved on the FIRST axis, not admitted past it -- which is why the roster answer for a
+// partially measured candidate is a refusal to select and not a default win for whoever was
+// measured. Only once a candidate is evidenced to be resident do we ask whether it is evidenced to
+// RETRIEVE and to SERVE at this floor.
 //
 // The context test consumes semantic_context_verified_to -- an observed retrieval depth -- and NEVER
 // declared_context. A publisher declaring 1,048,576 positions has made a claim about what the
@@ -273,19 +353,21 @@ fn evaluate_candidate(
       quant_label: candidate.quant_label,
       missing: CapacityMalformed,
     }
-    Present { value: room } => match candidate.kv_per_token {
+    Present { value: room } => match resident_footprint_at_floor(
+      observations: candidate.resident_footprint_observations,
+      floor: constraints.context_floor,
+      hot_sessions: constraints.hot_sessions,
+    ) {
       Absent => ServingCandidateUnanswerable {
         identity: candidate.identity,
         quant_label: candidate.quant_label,
-        missing: KvFootprintUnmeasured,
+        missing: ResidentFootprintUnmeasuredAtFloor {
+          floor: constraints.context_floor,
+          sessions: constraints.hot_sessions,
+        },
       }
-      Present { value: per_token } => {
-        let required = resident_footprint(
-          weights: candidate.weights,
-          per_token: per_token,
-          context: constraints.context_floor,
-          hot_sessions: constraints.hot_sessions,
-        )
+      Present { value: observed } => {
+        let required = observed.resident
         match byte_size_count(b: required) > byte_size_count(b: room) {
           true => ServingCandidateRejected {
             identity: candidate.identity,

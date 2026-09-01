@@ -11,15 +11,16 @@ import gunbc.model.publication { ReleaseIdentity }
 import gunbc.model.choice {
   PrefillRateUnmeasuredAtFloor, SemanticContextUnverifiedAtFloor,
   FreshPrefillObservation, prefill_rate_at_floor,
+  ResidentFootprintObservation, resident_footprint_at_floor,
   FreshSessionPrefill, WarmContinuation, serving_regime_wire,
   NodeCapacity, QuantizedCandidate, ServingConstraints,
   CandidateVerdict, ServingCandidateAdmissible, ServingCandidateRejected,
   RejectionAxis, DoesNotFitMemory, ContextBelowFloor, PrefillBelowFloor,
   ServingChoice, ChoseCandidate, NoCandidateAdmissible, SelectionUnanswerable,
   UnanswerableCause, UnresolvedCandidateCouldWin, CrossReleaseQualityOrderAbsent, QualityRankTie,
-  ServingCandidateUnanswerable, MissingFact, KvFootprintUnmeasured, CapacityMalformed,
+  ServingCandidateUnanswerable, MissingFact, ResidentFootprintUnmeasuredAtFloor, CapacityMalformed,
   evaluate_candidate, choose_serving_candidate,
-  allocatable, firmware_carveout, kv_footprint,
+  allocatable, firmware_carveout,
 }
 
 // THE FIXTURE IS MEASURED, not invented. Every number here was read off the running nodes or
@@ -30,8 +31,16 @@ import gunbc.model.choice {
 //   nominal         137,438,953,472 B = 128 GiB      (vendor sheet)
 //   carveout          6,778,802,176 B =   6.31 GiB   (firmware, never reaches the kernel)
 //
-// KV is exact rather than estimated: the architecture reports 43 blocks, ONE latent KV head (MLA),
-// and key/value lengths of 512, so a token costs 43 * 1 * (512+512) * 2 = 88,064 bytes.
+// KV WAS NOT EXACT, AND THIS BLOCK IS WHY THE MODULE NOW REFUSES TO COMPUTE FOOTPRINTS AT ALL.
+// It read: "KV is exact rather than estimated -- 43 blocks, ONE latent KV head (MLA), key/value
+// lengths of 512, so a token costs 43 * 1 * (512+512) * 2 = 88,064 bytes." That number is DERIVED
+// from architecture and was labelled measured, in the fixture for a module whose subject is refusing
+// exactly that substitution. Loading the build and reading it back falsified both the constant and
+// the linear form it was multiplied through (see gunbc.model.choice ResidentFootprintObservation).
+//
+// Every footprint below is now a reading. Re-derive any of them by loading the build at an explicit
+// num_ctx and reading `size_vram` back from the Ollama /api/ps surface on the named node; that
+// instrument, not any number transcribed here, is the authority.
 data node_capacity: NodeCapacity = NodeCapacity {
   node_name: "spark-a3ee" as NonEmptyStr,
   nominal: byte_size(count: 137438953472),
@@ -39,7 +48,19 @@ data node_capacity: NodeCapacity = NodeCapacity {
   runtime_overhead: byte_size(count: 3000000000),
 }
 
-data kv_per_token: ByteSize = byte_size(count: 88064)
+// THE READINGS, spark-a3ee, Ollama 0.32.9, one resident session, /api/ps size_vram. `size` and
+// `size_vram` agreed exactly on this unified-memory node, so nothing turns on which field is read.
+fn iq2_xxs_footprint(depth: Nat, resident: Nat) -> ResidentFootprintObservation {
+  ResidentFootprintObservation {
+    realization: "hf.co/antirez/deepseek-v4-gguf:latest" as NonEmptyStr,
+    runtime: "ollama 0.32.9" as NonEmptyStr,
+    node: "spark-a3ee" as NonEmptyStr,
+    instrument: "/api/ps size_vram after load at explicit num_ctx" as NonEmptyStr,
+    context_depth: token_count(count: depth),
+    concurrent_sessions: 1,
+    resident: byte_size(count: resident),
+  }
+}
 
 // RELEASE IDENTITIES, exact rather than display names. Publisher, family and revision together are
 // what decide whether two candidates share an ordinal quality scale, so the selector is keyed by
@@ -69,7 +90,6 @@ data qwen_release: ReleaseIdentity = ReleaseIdentity {
 data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
   identity: deepseek_v4_flash_release,
   quant_label: "IQ2_XXS" as NonEmptyStr,
-  weights: byte_size(count: 86720111200),
   quality_rank: 2,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
@@ -78,18 +98,32 @@ data build_iq2_xxs: QuantizedCandidate = QuantizedCandidate {
     FreshPrefillObservation { depth: token_count(count: 255061), rate: tokens_per_second(count: 197) },
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
   ],
-  kv_per_token: Present { value: kv_per_token },
+  resident_footprint_observations: [
+    iq2_xxs_footprint(depth: 131072, resident: 86532465622),
+    iq2_xxs_footprint(depth: 262144, resident: 87064355798),
+    iq2_xxs_footprint(depth: 400000, resident: 87692389907),
+    iq2_xxs_footprint(depth: 1048576, resident: 88865253620),
+  ],
 }
 
 data build_iq3_s: QuantizedCandidate = QuantizedCandidate {
   identity: deepseek_v4_flash_release,
   quant_label: "UD-IQ3_S" as NonEmptyStr,
-  weights: byte_size(count: 116100000000),
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: none,
   fresh_prefill_observations: [],
-  kv_per_token: Present { value: kv_per_token },
+  resident_footprint_observations: [
+    ResidentFootprintObservation {
+      realization: "deepseek-v4-flash:iq3s" as NonEmptyStr,
+      runtime: "ollama 0.32.9" as NonEmptyStr,
+      node: "spark-a3ee" as NonEmptyStr,
+      instrument: "/api/ps size_vram after load at explicit num_ctx" as NonEmptyStr,
+      context_depth: token_count(count: 400000),
+      concurrent_sessions: 1,
+      resident: byte_size(count: 116970000000),
+    },
+  ],
 }
 
 fn installed() -> List<QuantizedCandidate> {
@@ -143,32 +177,77 @@ test fn w_capacity_grains_differ_and_only_kernel_visible_is_spendable() -> Bool 
   }
 }
 
-// KV at the operator's floor, from the model's own dimensions: 400,000 * 88,064 = 35.2 GB.
-test fn w_kv_at_the_context_floor_is_derived_from_architecture() -> Bool {
-  byte_size_count(b: kv_footprint(
-    per_token: kv_per_token, context: token_count(count: 400000), hot_sessions: 1)) == 35225600000
-}
-
-// THE CLAIM THE MODULE EXISTS FOR. At a 400k floor the HIGHER-quality build is REJECTED ON MEMORY
-// and the selector returns the 2-bit one. This is the answer that reversed the session's working
-// assumption -- precision and the context floor compete for one node's memory, and the selector
-// says so from the numbers rather than from an argument.
-test fn w_at_the_400k_floor_the_higher_quality_build_is_rejected_on_memory() -> Bool {
+// THE CLAIM THE MODULE EXISTS FOR, AND THE ONE IT GOT WRONG.
+//
+// What stood here asserted that at a 400k floor the higher-quality IQ3_S is REJECTED ON MEMORY and
+// the 2-bit build wins -- reported as the result that reversed the session's working assumption,
+// that precision and context compete for one node's memory. It was an artifact of the falsified
+// 88,064 B/token constant, which charged 35.2 GB of KV at that floor. Loaded on the node, IQ3_S
+// residents a 400,000 window in 116,970,000,000 B against 127,660,151,296 B allocatable. IT FITS.
+//
+// AND FITTING IS NOT WINNING, which is the second half of the correction and the more expensive one
+// to have missed. Reversing a memory rejection does not promote the candidate; it moves it off the
+// first axis and onto the next, where it has no evidence at all. IQ3_S carries no retrieval receipt
+// and no prefill observation, so it is UNANSWERABLE on semantic context. Unknown is not qualified,
+// exactly as unknown is not rejected.
+test fn w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved() -> Bool {
   match evaluate_candidate(candidate: build_iq3_s, capacity: node_capacity, constraints: floor_400k) {
-    ServingCandidateRejected { identity: _, quant_label: _, axis: a } =>
-      match a {
-        DoesNotFitMemory { required: _, allocatable: _ } => true
-        ContextBelowFloor { declared: _, floor: _ } => false
-        PrefillBelowFloor { measured: _, floor: _ } => false
+    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
+      match m {
+        SemanticContextUnverifiedAtFloor { floor: f, declared: d } =>
+          token_count_value(t: f) == 400000 && token_count_value(t: d) == 1048576
+        ResidentFootprintUnmeasuredAtFloor { floor: _, sessions: _ } => false
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
+        CapacityMalformed => false
       }
+    ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
-    ServingCandidateUnanswerable { identity: _, quant_label: _, missing: _ } => false
   }
 }
 
-test fn w_at_the_400k_floor_the_two_bit_build_is_chosen() -> Bool {
-  chosen_label(choice: choose_serving_candidate(
-    candidates: installed(), capacity: node_capacity, constraints: floor_400k)) == "IQ2_XXS"
+// SO THE REAL ROSTER HAS NO WINNER. IQ2_XXS is measured on every axis and IQ3_S outranks it while
+// being unresolved, so a selection would be a default win for whoever happened to be measured. The
+// selector refuses, and the refusal names the unresolved candidate as the reason.
+test fn w_the_real_roster_refuses_while_the_higher_rank_is_unresolved() -> Bool {
+  match choose_serving_candidate(
+    candidates: installed(), capacity: node_capacity, constraints: floor_400k) {
+    SelectionUnanswerable { cause: _, evaluations: e } => length(e) == 2
+    ChoseCandidate { verdict: _ } => false
+    NoCandidateAdmissible { rejections: _ } => false
+  }
+}
+
+// THE POSITIVE CONTROL FOR THE FOOTPRINT AXIS: the 2-bit build IS resident-established at the floor,
+// so the refusal above is not a footprint carrier that answers nothing. Its qualifying reading is
+// the 400,000 one rather than the 1,048,576 one -- the tightest sound bound at or beyond the floor.
+test fn w_the_two_bit_build_is_resident_established_at_the_floor() -> Bool {
+  match resident_footprint_at_floor(
+    observations: build_iq2_xxs.resident_footprint_observations,
+    floor: token_count(count: 400000),
+    hot_sessions: 1,
+  ) {
+    Present { value: o } =>
+      byte_size_count(b: o.resident) == 87692389907
+        && token_count_value(t: o.context_depth) == 400000
+    Absent => false
+  }
+}
+
+// A SHALLOWER READING DOES NOT QUALIFY A DEEPER FLOOR, and a demand above the observed concurrency
+// is unanswerable rather than multiplied. Both arms discriminate against the same observation list
+// that positively answers one hot session at 400k above.
+test fn w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint() -> Bool {
+  let obs = build_iq2_xxs.resident_footprint_observations
+  match resident_footprint_at_floor(
+    observations: obs, floor: token_count(count: 2000000), hot_sessions: 1) {
+    Present { value: _ } => false
+    Absent =>
+      match resident_footprint_at_floor(
+        observations: obs, floor: token_count(count: 400000), hot_sessions: 2) {
+        Present { value: _ } => false
+        Absent => true
+      }
+  }
 }
 
 // THE DISCRIMINATING CONTROL, on a CONSTRUCTED pair rather than the installed builds.
@@ -179,33 +258,46 @@ test fn w_at_the_400k_floor_the_two_bit_build_is_chosen() -> Bool {
 // was whether the runtime ACCEPTS a num_ctx value, which a two-token request answers without ever
 // allocating the cache, so it established nothing about retrieval.
 //
+// SYNTHETIC footprints for the declared ordering fixtures below. These are not fleet readings and
+// say so in every field: the node is named "fixture", so a real constraint can never be answered by
+// one, and the ordering claims they support are about the SELECTOR and not about any hardware.
+fn fixture_footprint(resident: Nat) -> ResidentFootprintObservation {
+  ResidentFootprintObservation {
+    realization: "fixture" as NonEmptyStr,
+    runtime: "fixture" as NonEmptyStr,
+    node: "fixture" as NonEmptyStr,
+    instrument: "declared fixture, not a reading" as NonEmptyStr,
+    context_depth: token_count(count: 1048576),
+    concurrent_sessions: 1,
+    resident: byte_size(count: resident),
+  }
+}
+
 // These two are declared fixtures exercising the ordering rule, NOT fleet observations. They share a
 // release, so a maximum over them exists, and they differ only in quality_rank and weights. Without
 // this control every other claim here is satisfied by a function that returns its first argument.
 data fixture_low_rank: QuantizedCandidate = QuantizedCandidate {
   identity: fixture_release,
   quant_label: "LOW" as NonEmptyStr,
-  weights: byte_size(count: 20000000000),
   quality_rank: 1,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
   fresh_prefill_observations: [
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
-  kv_per_token: Present { value: byte_size(count: 20000) },
+  resident_footprint_observations: [fixture_footprint(resident: 28000000000)],
 }
 
 data fixture_high_rank: QuantizedCandidate = QuantizedCandidate {
   identity: fixture_release,
   quant_label: "HIGH" as NonEmptyStr,
-  weights: byte_size(count: 30000000000),
   quality_rank: 9,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
   fresh_prefill_observations: [
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 400) },
   ],
-  kv_per_token: Present { value: byte_size(count: 20000) },
+  resident_footprint_observations: [fixture_footprint(resident: 38000000000)],
 }
 
 test fn w_the_higher_quality_candidate_wins_when_both_are_admissible() -> Bool {
@@ -227,8 +319,8 @@ test fn w_a_declared_context_never_qualifies_without_a_retrieval_receipt() -> Bo
       match m {
         SemanticContextUnverifiedAtFloor { floor: _, declared: d } =>
           token_count_value(t: d) == 1048576
-        KvFootprintUnmeasured => false
-        PrefillRateUnmeasuredAtFloor { floor: _ } => false
+        ResidentFootprintUnmeasuredAtFloor { floor: _, sessions: _ } => false
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
         CapacityMalformed => false
       }
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
@@ -255,15 +347,27 @@ test fn w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor() -> Bool
 // When nothing is admissible the selector REFUSES and hands back every rejection, so the binding
 // axis is read rather than argued. A best-effort pick here would reintroduce the silent degradation
 // the whole exercise removes.
+//
+// IT IS RUN ON A STARVED NODE, NOT ON AN ABSURD FLOOR, and that change is a consequence of the
+// footprint repair rather than a convenience. This claim used to ask for an 8,000,000-token floor,
+// which under the old arithmetic multiplied out to a memory REJECTION. There is no footprint reading
+// at that depth and never will be one, so the honest answer there is now UNANSWERABLE -- the
+// candidates have not failed the test, they have not taken it. To witness rejection the candidates
+// must be evidenced and the room must be genuinely too small, so the capacity shrinks instead of the
+// floor growing. The fixtures are used because they are resident-established at depth by
+// construction; the installed builds are not, at any depth beyond what was actually loaded.
 test fn w_nothing_admissible_refuses_and_reports_every_rejection() -> Bool {
-  let impossible = ServingConstraints {
-    context_floor: token_count(count: 8000000),
-    hot_sessions: 1,
-    prefill_floor: tokens_per_second(count: 0),
-    prefill_regime: FreshSessionPrefill,
+  let starved = NodeCapacity {
+    node_name: "fixture-starved" as NonEmptyStr,
+    nominal: byte_size(count: 34000000000),
+    kernel_visible: byte_size(count: 30000000000),
+    runtime_overhead: byte_size(count: 3000000000),
   }
   match choose_serving_candidate(
-    candidates: installed(), capacity: node_capacity, constraints: impossible) {
+    candidates: [fixture_low_rank, fixture_high_rank],
+    capacity: starved,
+    constraints: floor_400k,
+  ) {
     NoCandidateAdmissible { rejections: r } => length(r) == 2
     ChoseCandidate { verdict: _ } => false
     SelectionUnanswerable { cause: _, evaluations: _ } => false
@@ -317,7 +421,7 @@ test fn w_a_warm_floor_over_fresh_only_receipts_is_unanswerable() -> Bool {
       match m {
         PrefillRateUnmeasuredAtFloor { floor: _, regime: g } =>
           serving_regime_wire(regime: g) == "warm-continuation"
-        KvFootprintUnmeasured => false
+        ResidentFootprintUnmeasuredAtFloor { floor: _, sessions: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
         CapacityMalformed => false
       }
@@ -328,9 +432,10 @@ test fn w_a_warm_floor_over_fresh_only_receipts_is_unanswerable() -> Bool {
 
 test fn w_all_serving_choice_claims_hold() -> Bool {
   w_capacity_grains_differ_and_only_kernel_visible_is_spendable()
-    && w_kv_at_the_context_floor_is_derived_from_architecture()
-    && w_at_the_400k_floor_the_higher_quality_build_is_rejected_on_memory()
-    && w_at_the_400k_floor_the_two_bit_build_is_chosen()
+    && w_at_the_400k_floor_the_higher_quality_build_fits_and_is_still_unresolved()
+    && w_the_real_roster_refuses_while_the_higher_rank_is_unresolved()
+    && w_the_two_bit_build_is_resident_established_at_the_floor()
+    && w_a_shallow_or_more_concurrent_demand_has_no_qualifying_footprint()
     && w_the_higher_quality_candidate_wins_when_both_are_admissible()
     && w_a_declared_context_never_qualifies_without_a_retrieval_receipt()
     && w_a_shallow_prefill_observation_does_not_answer_a_deeper_floor()
@@ -349,22 +454,22 @@ test fn w_all_serving_choice_claims_hold() -> Bool {
 data build_unmeasured: QuantizedCandidate = QuantizedCandidate {
   identity: deepseek_v4_flash_release,
   quant_label: "UD-IQ4_XS" as NonEmptyStr,
-  weights: byte_size(count: 136700000000),
   quality_rank: 4,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
   fresh_prefill_observations: [
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 135) },
   ],
-  kv_per_token: none,
+  resident_footprint_observations: [],
 }
 
 test fn w_an_unmeasured_candidate_is_unanswerable_not_rejected() -> Bool {
   match evaluate_candidate(candidate: build_unmeasured, capacity: node_capacity, constraints: floor_400k) {
     ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
       match m {
-        KvFootprintUnmeasured => true
-        PrefillRateUnmeasuredAtFloor { floor: _ } => false
+        ResidentFootprintUnmeasuredAtFloor { floor: f, sessions: n } =>
+          token_count_value(t: f) == 400000 && n == 1
+        PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
         SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
         CapacityMalformed => false
       }
@@ -394,14 +499,13 @@ test fn w_selection_refuses_while_an_unresolved_candidate_could_win() -> Bool {
 data other_release: QuantizedCandidate = QuantizedCandidate {
   identity: qwen_release,
   quant_label: "Q8_0" as NonEmptyStr,
-  weights: byte_size(count: 22600000000),
   quality_rank: 3,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
   fresh_prefill_observations: [
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 900) },
   ],
-  kv_per_token: Present { value: byte_size(count: 20000) },
+  resident_footprint_observations: [fixture_footprint(resident: 30600000000)],
 }
 
 test fn w_two_admissible_releases_refuse_for_want_of_a_cross_release_order() -> Bool {
@@ -436,8 +540,8 @@ test fn w_malformed_capacity_is_unanswerable_not_a_memory_rejection() -> Bool {
         ServingCandidateUnanswerable { identity: _, quant_label: _, missing: m } =>
           match m {
             CapacityMalformed => true
-            KvFootprintUnmeasured => false
-            PrefillRateUnmeasuredAtFloor { floor: _ } => false
+            ResidentFootprintUnmeasuredAtFloor { floor: _, sessions: _ } => false
+            PrefillRateUnmeasuredAtFloor { floor: _, regime: _ } => false
             SemanticContextUnverifiedAtFloor { floor: _, declared: _ } => false
           }
         ServingCandidateRejected { identity: _, quant_label: _, axis: _ } => false
@@ -460,27 +564,25 @@ test fn w_all_answerability_claims_hold() -> Bool {
 data fixture_tied_a: QuantizedCandidate = QuantizedCandidate {
   identity: fixture_release,
   quant_label: "TIED-A" as NonEmptyStr,
-  weights: byte_size(count: 20000000000),
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
   fresh_prefill_observations: [
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
-  kv_per_token: Present { value: byte_size(count: 20000) },
+  resident_footprint_observations: [fixture_footprint(resident: 28000000000)],
 }
 
 data fixture_tied_b: QuantizedCandidate = QuantizedCandidate {
   identity: fixture_release,
   quant_label: "TIED-B" as NonEmptyStr,
-  weights: byte_size(count: 21000000000),
   quality_rank: 5,
   declared_context: token_count(count: 1048576),
   semantic_context_verified_to: Present { value: token_count(count: 400060) },
   fresh_prefill_observations: [
     FreshPrefillObservation { depth: token_count(count: 400060), rate: tokens_per_second(count: 500) },
   ],
-  kv_per_token: Present { value: byte_size(count: 20000) },
+  resident_footprint_observations: [fixture_footprint(resident: 29000000000)],
 }
 
 fn is_tie_refusal(choice: ServingChoice) -> Bool {
