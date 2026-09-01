@@ -2,7 +2,6 @@ module v2.workflow.floor_cost_debt
 
 import v2.std.algebra { Cons, Empty, list_flat_map, any }
 import v2.std.collection { List }
-import v2.std.text { String }
 
 // THE OVER-COST WITHHOLDING MECHANISM. ITS POPULATION IS NOT STATED HERE -- ASK
 // `floor_cost_debt_population_report`, WHICH FOLDS THE SAME CHUNKS THE ROSTER DOES.

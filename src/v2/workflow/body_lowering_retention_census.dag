@@ -41,7 +41,6 @@ import v2.std.node {
   Value,
 }
 import v2.std.optional { Absent, Optional, Present }
-import v2.std.text { String }
 
 // WHY THIS IS NOT "COUNT THE WRAPPER-RETAINED DIAGNOSTICS".
 //
