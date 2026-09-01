@@ -20,6 +20,11 @@ data src_observed: String = "name: witnesses\nenv:\n  CARGO_TERM_COLOR: always\n
 
 data src_absent: String = "name: witnesses\nenv:\n  CARGO_TERM_COLOR: always\njobs:\n  build:\n    runs-on: linux\n"
 
+// A SEQUENCE DOCUMENT PARSES AND IS STILL NOT A WORKFLOW. It is the discriminating input for the
+// distinction the producer draws: a document that is not a mapping refuses as unparsable rather
+// than reporting that the workflow declares no epoch, which is a different remedy.
+data src_not_a_mapping: String = "- name: witnesses\n- env: nothing\n"
+
 data src_duplicated: String = "name: witnesses\nenv:\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.1\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: 2026-09-01.2\njobs:\n  build:\n    runs-on: linux\n"
 
 data src_empty_value: String = "name: witnesses\nenv:\n  GUNBC_REQUIRED_CI_CONTRACT_EPOCH: \"\"\njobs:\n  build:\n    runs-on: linux\n"
@@ -61,6 +66,13 @@ test fn witness_empty_epoch_is_malformed_not_observed() -> Bool {
 test fn witness_non_string_epoch_is_malformed_not_observed() -> Bool {
   match required_ci_epoch_from_workflow_source(src: src_non_string) {
     RequiredCiEpochUnobservable { cause: RequiredCiEpochMalformed { detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn witness_a_document_that_is_not_a_mapping_is_unparsable_not_absent() -> Bool {
+  match required_ci_epoch_from_workflow_source(src: src_not_a_mapping) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: _ } } => true
     _ => false
   }
 }

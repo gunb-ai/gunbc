@@ -22,6 +22,8 @@ import gunbc.required_ci_epoch_observation {
   RequiredCiEpochObservation,
   RequiredCiEpochObserved,
   RequiredCiEpochUnobservable,
+  RequiredCiEpochCommitUnreadable,
+  RequiredCiEpochPathUnreadable,
   observe_required_ci_epoch_at_commit,
 }
 import gunbc.fleet_revision_acceptance {
@@ -91,7 +93,7 @@ type EpochCommitPair {
 // The two commits are consecutive in one repository, and the only write between them is this
 // function's single blob -- so "the trees differ only in the epoch member" is a property of what is
 // written, not a claim about two independently authored fixtures.
-func commit_epoch_fixture(repo: FilePath, epoch: String, branch: String) -> String {
+fn commit_epoch_fixture(repo: FilePath, epoch: String, branch: String) -> String {
   let written = Filesystem.Write(
     path: fixture_repo_file(repo: repo, name: artifact_path(a: WitnessFloorYamlArtifact)),
     content: fixture_workflow_source(epoch: epoch),
@@ -106,7 +108,7 @@ func commit_epoch_fixture(repo: FilePath, epoch: String, branch: String) -> Stri
   }
 }
 
-func build_epoch_fixture(repo: FilePath) -> EpochCommitPair {
+fn build_epoch_fixture(repo: FilePath) -> EpochCommitPair {
   let made = shell.Mkdir.Parents(path: fixture_workflow_dir(repo: repo) as FilePath)
   let initialized = git.Core.InitInRepo(repo: repo)
   let email = git.Core.ConfigLocalSetInRepo(repo: repo, key: "user.email", value: "witness@gunbc.invalid")
@@ -149,7 +151,7 @@ fn fixture_event_at(head_sha: String) -> WorkflowRunEvent {
 // ONE AXIS. Both arms run this function; the only thing that differs between them is WHICH of the
 // two fixture commits is named as the run's head_sha, and every other field of the event, the
 // repository, and the reader are identical.
-func run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
+fn run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
   let dir = shell.Mktemp.Dir()
   let fixture = build_epoch_fixture(repo: dir.path)
   let head_sha = if mismatching { fixture.mismatching_sha } else { fixture.matching_sha }
@@ -175,7 +177,7 @@ func run_epoch_experiment(mismatching: Bool) -> EpochExperiment {
 
 // THE DISCRIMINATING RED. Exactly one refusal, naming the contract-epoch axis and carrying both
 // epochs, through the live fleet-desired composition.
-test func a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution() -> Bool {
+test fn a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_real_execution() -> Bool {
   let e = run_epoch_experiment(mismatching: true)
   e.setup_ok
     && match e.observation {
@@ -195,7 +197,7 @@ test func a_run_of_the_contract_at_another_epoch_refuses_naming_both_epochs_by_r
 
 // THE PAIRED CONTROL. The same experiment at the required epoch admits through the same fold, so
 // the refusal above is the epoch and not the fixture.
-test func a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -> Bool {
+test fn a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution() -> Bool {
   let e = run_epoch_experiment(mismatching: false)
   e.setup_ok
     && match e.observation {
@@ -210,4 +212,61 @@ test func a_run_of_the_contract_at_the_required_epoch_admits_by_real_execution()
       FleetDesiredRevisionAccepted { accepted: _ } => true
       FleetDesiredRevisionRefused { cause: _ } => false
     }
+}
+
+// THE TWO READ FAILURES ARE EXECUTED, NOT ASSERTED. The reader separates "the commit cannot be read"
+// from "the path is absent from a readable commit" by asking git two questions rather than by
+// matching one error message, and on this repository BOTH failures print the same `fatal: path ...`
+// shape -- measured, which is why the substring route was rejected. These two witnesses are what
+// makes that separation evidence: each reaches the reader through a real repository, and a reader
+// that collapsed the two causes would fail exactly one of them.
+data fixture_unknown_commit_hex: String = "3333333333333333333333333333333333333333"
+
+fn observe_in_fixture_repo(head_sha: String, commit_the_workflow: Bool) -> RequiredCiEpochObservation {
+  let dir = shell.Mktemp.Dir()
+  let made = shell.Mkdir.Parents(path: fixture_workflow_dir(repo: dir.path) as FilePath)
+  let initialized = git.Core.InitInRepo(repo: dir.path)
+  let email = git.Core.ConfigLocalSetInRepo(repo: dir.path, key: "user.email", value: "witness@gunbc.invalid")
+  let name = git.Core.ConfigLocalSetInRepo(repo: dir.path, key: "user.name", value: "gunbc contract epoch witness")
+  let seeded = if commit_the_workflow {
+    commit_epoch_fixture(repo: dir.path, epoch: required_ci_contract_epoch as String, branch: "seeded")
+  } else {
+    commit_unrelated_fixture(repo: dir.path)
+  }
+  let at = if head_sha == "" { seeded } else { head_sha }
+  let observed = observe_required_ci_epoch_at_commit(
+    address: GitWorktreeAt { path: dir.path },
+    head_sha: at as GitRef,
+  )
+  let cleaned = shell.Remove.RecursiveForce(path: dir.path)
+  observed
+}
+
+fn commit_unrelated_fixture(repo: FilePath) -> String {
+  let written = Filesystem.Write(
+    path: fixture_repo_file(repo: repo, name: "unrelated.txt"),
+    content: "a commit with no workflow document",
+  )
+  let staged = git.Core.AddAllInRepo(repo: repo).exit_code
+  let committed = git.Core.CommitInRepo(repo: repo, message: "unrelated").exit_code
+  let resolved = git.Core.RevParseInRepo(repo: repo, target: "HEAD" as GitRef)
+  if written.success && staged == 0 && committed == 0 && resolved.exit_code == 0 {
+    trim(s: resolved.revision)
+  } else {
+    ""
+  }
+}
+
+test fn a_commit_that_is_not_in_the_repository_is_unreadable_not_absent_by_real_execution() -> Bool {
+  match observe_in_fixture_repo(head_sha: fixture_unknown_commit_hex, commit_the_workflow: true) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochCommitUnreadable { detail: _ } } => true
+    _ => false
+  }
+}
+
+test fn a_readable_commit_without_the_workflow_is_path_absent_not_commit_unreadable_by_real_execution() -> Bool {
+  match observe_in_fixture_repo(head_sha: "", commit_the_workflow: false) {
+    RequiredCiEpochUnobservable { cause: RequiredCiEpochPathUnreadable { detail: _ } } => true
+    _ => false
+  }
 }

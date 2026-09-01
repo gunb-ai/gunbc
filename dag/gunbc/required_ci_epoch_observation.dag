@@ -44,16 +44,13 @@ type RequiredCiEpochObservation
   = RequiredCiEpochObserved { epoch: ContractEpoch }
   | RequiredCiEpochUnobservable { cause: RequiredCiEpochUnobserved }
 
-fn yaml_top_level_entries(doc: YamlValue) -> List<YamlKeyValue> {
-  match doc {
-    YamlMapping { entries: es } => es
-    _ => []
-  }
-}
-
-fn yaml_env_entries(doc: YamlValue) -> List<YamlKeyValue> {
+// A DOCUMENT THAT IS NOT A MAPPING IS UNPARSABLE, NOT EMPTY. An earlier shape answered "no top-level
+// entries" for a scalar or sequence document, which flowed into the absent arm and reported that the
+// workflow declares no epoch -- a widened failure wearing the name of a precise one. The distinction
+// is decided once, in the producer below, where the document is already in hand.
+fn yaml_env_entries(entries: List<YamlKeyValue>) -> List<YamlKeyValue> {
   fold(
-    yaml_top_level_entries(doc: doc),
+    entries,
     init: [],
     f: fn(acc, kv) {
       if kv.key == "env" {
@@ -90,20 +87,29 @@ fn epoch_from_entry(kv: YamlKeyValue) -> RequiredCiEpochObservation {
 fn required_ci_epoch_from_workflow_source(src: String) -> RequiredCiEpochObservation {
   match ingest_yaml_source(src: src) {
     YamlIngestRejected { reason: r } => RequiredCiEpochUnobservable { cause: RequiredCiEpochDocumentUnparsable { detail: r } }
-    IngestedYaml { value: doc } => {
-      let hits = epoch_entries_in(entries: yaml_env_entries(doc: doc))
-      let n = hits.length()
-      if n == 0 {
-        RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
-      } else if n > 1 {
-        RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } }
-      } else {
-        match first(hits) {
-          Present { value: kv } => epoch_from_entry(kv: kv)
-          Absent => RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
+    IngestedYaml { value: doc } =>
+      match doc {
+        YamlMapping { entries: es } => {
+          let hits = epoch_entries_in(entries: yaml_env_entries(entries: es))
+          let n = hits.length()
+          if n == 0 {
+            RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
+          } else if n > 1 {
+            RequiredCiEpochUnobservable { cause: RequiredCiEpochDuplicated { occurrences: n } }
+          } else {
+            match first(hits) {
+              Present { value: kv } => epoch_from_entry(kv: kv)
+              Absent => RequiredCiEpochUnobservable { cause: RequiredCiEpochAbsent }
+            }
+          }
         }
+        _ =>
+          RequiredCiEpochUnobservable {
+            cause: RequiredCiEpochDocumentUnparsable {
+              detail: "the workflow document is not a mapping, so it declares no env block at all",
+            },
+          }
       }
-    }
   }
 }
 
