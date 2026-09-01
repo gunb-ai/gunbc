@@ -20172,18 +20172,31 @@ pub fn application_argument_identities(
     })
 }
 
+pub fn type_head_preserving_property(p: Rc<Node>) -> bool {
+    (p.name.clone() == "sole_constructor".to_string())
+}
+
 pub fn exposure_view_for_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<TypeHeadExposure> {
     {
         let identity = node_declaration_identity(n.clone(), source_indices.clone());
+        let head_erasing_properties = Rc::new({
+            let mut __result = Vec::new();
+            for p in n.properties.clone().iter().cloned() {
+                if !type_head_preserving_property(p.clone()) {
+                    __result.push(p);
+                }
+            }
+            __result
+        });
         match (identity.clone() == "::".to_string()) {
             true => Rc::new(TypeHeadExposure::StuckTypeHead {
                 cause: "declaration identity unavailable".to_string(),
             }),
             false => match ((n.type_annotation.clone() != std::option::Option::None)
-                || ((n.properties.clone().len() as i64) > 0))
+                || ((head_erasing_properties.clone().len() as i64) > 0))
             {
                 true => Rc::new(TypeHeadExposure::OpaqueTypeHead {
                     type_identity: identity.clone(),
