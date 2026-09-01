@@ -629,7 +629,86 @@ fn test_sig_or_none(
 
 #[cfg(test)]
 mod bare_reference_scanner_tests {
-    use super::{bare_identifier_candidates, module_self_declared_names};
+    use super::{
+        bare_identifier_candidates, explicit_import_member_names, module_self_declared_names,
+    };
+
+    /// A caret symbol literal is a Symbol, not a reference to a declaration. RED before the
+    /// `^` guard landed: `probe` appeared in the reference set, so a file whose only use of
+    /// the spelling is `^probe` was reported AMBIGUOUS against unrelated modules declaring
+    /// `fn probe`. One of the real sites is the caret-symbol lex test itself.
+    #[test]
+    fn a_caret_symbol_literal_is_not_an_identifier_reference() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f() -> Int { match tokenize(text: \"x\", file: ^probe) { _ => 1 } }\n",
+        );
+        assert!(
+            !c.names.contains("probe"),
+            "^probe is a symbol literal, not a reference to whatever declares `fn probe`"
+        );
+        assert!(
+            c.names.contains("tokenize") || c.call_position.contains("tokenize"),
+            "positive control: a real call in the same source IS still collected"
+        );
+    }
+
+    /// The workflow binding form binds with no `let` keyword, so the binder-keyword rule
+    /// cannot see it. RED before the fix: `page` resolved against the whole pool.
+    #[test]
+    fn a_bare_assignment_target_is_bound_not_referenced() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f() -> Int {\n  page = fetch(limit: 1)\n  return page.total\n}\n",
+        );
+        assert!(c.bound.contains("page"), "`page = expr` binds page");
+        assert!(
+            !c.names.contains("page"),
+            "a bound name is never a reference to another module's declaration"
+        );
+        assert!(
+            !c.bound.contains("fetch"),
+            "positive control: the call on the right-hand side is not bound by this rule"
+        );
+    }
+
+    /// `==` and `=>` must not be read as the binding form.
+    #[test]
+    fn a_comparison_and_a_lambda_arrow_are_not_the_binding_form() {
+        let c = bare_identifier_candidates(
+            "module t\nfn f(xs: List<Int>) -> Bool { total == 1 && any(xs, f: e => e > 0) }\n",
+        );
+        assert!(
+            !c.bound.contains("total"),
+            "`total ==` is a comparison, not a binding"
+        );
+        assert!(
+            c.names.contains("total"),
+            "so `total` stays a real reference"
+        );
+    }
+
+    /// An import edge is the authority for a name it names, so the resolve loop subtracts
+    /// these before consulting the global bare census. Without that precedence, an author
+    /// who added the disambiguating import would STILL see the ambiguity refusal, because
+    /// the import does not remove the name from the census's candidate set.
+    #[test]
+    fn explicit_import_members_are_read_including_the_alias_binder() {
+        let names = explicit_import_member_names(
+            "module t\nimport v2.std.logic { Bool, True as Yes }\nimport std.types\n",
+        );
+        assert!(names.contains("Bool"), "a plain member is named");
+        assert!(
+            names.contains("Yes"),
+            "`True as Yes` binds Yes locally — Yes is what a bare reference names"
+        );
+        assert!(
+            !names.contains("True"),
+            "the aliased-away original is not the local binder"
+        );
+        assert!(
+            !names.contains("std.types"),
+            "a memberless import names no members, and the module path is not a member"
+        );
+    }
 
     /// Every coproduct shape the corpus actually writes. The multiline form is the one
     /// review 55386 caught being missed, and it is how `std.spatial_frame` declares
