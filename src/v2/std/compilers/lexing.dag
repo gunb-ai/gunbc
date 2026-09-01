@@ -36,8 +36,8 @@ type LexCharClass
 
 type LexPattern
   = EmptyPattern
-  | LiteralPattern { text: String }
-  | KeywordPattern { text: String }
+  | LiteralPattern { text: v2.std.text.String }
+  | KeywordPattern { text: v2.std.text.String }
   | CharPattern { char: Char }
   | CharClassPattern { class: LexCharClass }
   | SequencePattern { left: LexPattern, right: LexPattern }
