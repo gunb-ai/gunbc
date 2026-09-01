@@ -849,36 +849,12 @@ fn algebra_row_for_receiver(
         .cloned()
 }
 
-/// What a declared return template says about the result's `Optional`-ness, in BOTH directions.
-///
-/// The naive symmetric rule -- "a row that does not declare `OptionalOf` must not return an
-/// Optional" -- is WRONG and would be the over-refusal this file already made once. `ReceiverSelf`,
-/// `ReceiverElement`, `ReceiverKey`, `ReceiverValue` and `AlgebraTypeVariable` are all satisfiable
-/// BY an Optional at runtime: `[Absent] |> reverse` is a list of Optionals, and `fold` over an
-/// Optional accumulator returns one. Only a template naming a CONCRETE non-Optional shape
-/// constrains the result in the negative direction, so only those refuse.
-enum DeclaredOptionality {
-    MustBeOptional,
-    MustNotBeOptional,
-    Unconstrained,
-}
-
-fn declared_optionality(t: &crate::std_algebra::AlgebraTypeTemplate) -> DeclaredOptionality {
-    use crate::std_algebra::AlgebraTypeTemplate as T;
-    match t {
-        T::OptionalOf { .. } => DeclaredOptionality::MustBeOptional,
-        T::NamedTemplate { .. }
-        | T::ContainerOf { .. }
-        | T::TupleOf { .. }
-        | T::WitnessOf { .. }
-        | T::CallableOf { .. } => DeclaredOptionality::MustNotBeOptional,
-        T::ReceiverSelf
-        | T::ReceiverElement
-        | T::ReceiverKey
-        | T::ReceiverValue
-        | T::AlgebraTypeVariable { .. } => DeclaredOptionality::Unconstrained,
-    }
-}
+/// THE DECISION LIVES IN `dag/std/algebra.dag` AND THIS CALLS IT. `algebra_result_optionality`
+/// is the roster's own answer to what a declared return template says about a result's
+/// Optional-ness, and it is generated into `std_algebra.rs` from the same rows the emit arm reads.
+/// It was written here in Rust first, which was the fork this branch exists to close, one file
+/// over from where it was being closed. Its three arms and the reason the third exists are
+/// documented at the declaration, not restated here.
 
 /// What an argument value is, with respect to the `Optional` contract.
 enum OptionalArg {
@@ -959,9 +935,9 @@ fn algebra_result_matches_declared_optionality(
         None => return Ok(value),
     };
     let is_opt = is_optional_value(&value, ctx);
-    match declared_optionality(&row.return_type) {
-        DeclaredOptionality::Unconstrained => Ok(value),
-        DeclaredOptionality::MustBeOptional => {
+    match crate::std_algebra::algebra_result_optionality(row.return_type.clone()) {
+        crate::std_algebra::AlgebraResultOptionality::OptionalityUnconstrained => Ok(value),
+        crate::std_algebra::AlgebraResultOptionality::OptionalityRequired => {
             if is_opt {
                 Ok(value)
             } else {
@@ -976,7 +952,7 @@ fn algebra_result_matches_declared_optionality(
                 })
             }
         }
-        DeclaredOptionality::MustNotBeOptional => {
+        crate::std_algebra::AlgebraResultOptionality::OptionalityForbidden => {
             if is_opt {
                 Err(InterpError::TypeError {
                     msg: format!(

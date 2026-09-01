@@ -168,12 +168,83 @@ test fn a_present_optional_is_unequal_to_none() -> Bool {
 // Optional at runtime, so only a template naming a concrete shape constrains the negative
 // direction.
 //
-// NO ENROLLED RED EXISTS FOR EITHER HALF AND THAT IS MEASURED, NOT ASSUMED: zero spellings in
-// dag/std/algebra.dag declare mixed optionality across profiles today, so the old scan happened to
-// reach the right optionality for every live spelling and no accepted program can distinguish the
-// two selections. The discrimination is therefore MUTATION-MEASURED: with the `join` arm altered
-// to return optional_present(..), `["a", "b"] |> join(",")` refuses with "produced an `Optional`
-// where dag/std/algebra.dag declares a concrete non-optional return", and passes again unaltered.
-// NEXT-RUNG TRIGGER: a spelling whose profiles disagree about optionality entering the algebra, or
-// a fixture harness able to present synthetic algebra rows to the judgement -- at which point the
-// red becomes authorable and enrolls here rather than being re-measured by hand.
+// THE RED IS AUTHORABLE AT THE FIXTURE BOUNDARY AND IS ENROLLED BELOW. I first recorded it as
+// unauthorable, on the grounds that zero spellings in dag/std/algebra.dag declare mixed optionality
+// across profiles -- true, and the wrong boundary. DESIGN section 4b turns on whether the forbidden
+// state is expressible as SOURCE HANDED TO THE COMPILER BY A FIXTURE, not on whether the ACCEPTED
+// CORPUS contains it, and a compiler is precisely a thing whose regression probes are invalid
+// programs. Both halves of the judgement now take their input as a PARAMETER --
+// std.primitive_identity's algebra_signature_from_candidates already did, for exactly this reason,
+// and std.algebra's algebra_result_optionality does -- so a planted pair is expressible and the
+// evidence is enrollable. Declining it would have been specification-without-execution.
+//
+// The mutation control is kept beside them rather than replaced: with the `join` arm altered to
+// return optional_present(..), `["a", "b"] |> join(",")` refuses with "produced an `Optional` where
+// dag/std/algebra.dag declares a concrete non-optional return", and passes again unaltered. The
+// planted rows prove the DECISION; the mutation proves the interpreter arm is wired to it.
+//
+// BOTH PLANTED ROWS WERE MUTATION-CHECKED AND THEY DISCRIMINATE IN OPPOSITE DIRECTIONS, so neither
+// is satisfiable by a constant answer. Changing `ReceiverElement` to `OptionalityForbidden` reds
+// the receiver-relative row and leaves the pair green; changing `NamedTemplate` to
+// `OptionalityRequired` reds the pair and leaves the receiver-relative row green.
+//
+// AND ONE INSTRUMENT FACT THAT COST A MUTATION RUN, RECORDED BECAUSE IT WILL COST THE NEXT ONE.
+// Mutating the EMITTED MIRROR (src/v1/stage0/src/std_algebra.rs) does not move an INTERPRETED
+// witness at all -- the interpreter reads dag/std/algebra.dag, so the mirror is the wrong subject
+// and the mutation reads as "the control does not discriminate" when it means "the control never
+// saw the change". The mutation has to be made in the .dag. The reverse holds for the `join`
+// control above, whose subject IS the interpreter arm and therefore IS the Rust.
+
+// THE SAME-SPELLING, OPPOSITE-OPTIONALITY PAIR. One spelling, two candidate lists standing for two
+// profiles, opposite verdicts. A judgement that selected by spelling over a merged population could
+// not answer these two differently, so this is the discriminating input the live corpus does not
+// contain.
+fn forked_spelling_optional_profile() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "forked", param_types: [ReceiverSelf], return_type: OptionalOf { inner: ReceiverElement }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn forked_spelling_concrete_profile() -> List<AlgebraFieldTemplate> {
+  [
+    { name: "forked", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+}
+
+fn optionality_of(candidates: List<AlgebraFieldTemplate>) -> AlgebraResultOptionality {
+  match algebra_signature_from_candidates(canonical_name: "forked" as NonEmptyStr, candidates: candidates) {
+    SignatureResolved { parameters: _, result: r } => algebra_result_optionality(result: r)
+    SignatureAmbiguousOnProfile { canonical_name: _, candidate_count: _ } => OptionalityUnconstrained
+    SignatureAbsentFromProfile { canonical_name: _ } => OptionalityUnconstrained
+    SignatureNotGrounded { reason: _ } => OptionalityUnconstrained
+  }
+}
+
+test fn one_spelling_two_profiles_two_verdicts() -> Bool {
+  match optionality_of(candidates: forked_spelling_optional_profile()) {
+    OptionalityRequired =>
+      match optionality_of(candidates: forked_spelling_concrete_profile()) {
+        OptionalityForbidden => true
+        OptionalityRequired => false
+        OptionalityUnconstrained => false
+      }
+    OptionalityForbidden => false
+    OptionalityUnconstrained => false
+  }
+}
+
+// THE THIRD ARM IS NOT A HOLE, AND THIS IS THE ROW THAT SAYS SO. A row returning ReceiverElement
+// constrains NOTHING about the result's optionality, because the receiver's element may itself be
+// an Optional -- `[Absent] |> first` is `Present { value: Absent }`. Without this control, a
+// judgement that answered Forbidden for every non-OptionalOf template would still satisfy the pair
+// above, and it would refuse correct programs.
+test fn a_receiver_relative_return_constrains_neither_direction() -> Bool {
+  let planted: List<AlgebraFieldTemplate> = [
+    { name: "forked", param_types: [ReceiverSelf], return_type: ReceiverElement, size_effect: none, cost_shape: none, callback_element_position: none }
+  ]
+  match optionality_of(candidates: planted) {
+    OptionalityUnconstrained => true
+    OptionalityRequired => false
+    OptionalityForbidden => false
+  }
+}

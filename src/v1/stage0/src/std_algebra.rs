@@ -2,6 +2,7 @@
 // Source module: std.algebra
 
 use self::AlgebraProfile::*;
+use self::AlgebraResultOptionality::*;
 use self::AlgebraSupportAxis::*;
 use self::AlgebraTypeTemplate::*;
 use self::CarrierRowMembership::*;
@@ -2071,6 +2072,40 @@ pub fn algebra_method_template_name(name: String) -> bool {
     }
 }
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum AlgebraResultOptionality {
+    OptionalityRequired,
+    OptionalityForbidden,
+    OptionalityUnconstrained,
+}
+
+pub fn algebra_result_optionality(result: Rc<AlgebraTypeTemplate>) -> AlgebraResultOptionality {
+    match (*result.clone()).clone() {
+        AlgebraTypeTemplate::OptionalOf { inner: _, .. } => {
+            AlgebraResultOptionality::OptionalityRequired
+        }
+        AlgebraTypeTemplate::NamedTemplate { name: _, .. } => {
+            AlgebraResultOptionality::OptionalityForbidden
+        }
+        AlgebraTypeTemplate::ContainerOf { .. } => AlgebraResultOptionality::OptionalityForbidden,
+        AlgebraTypeTemplate::TupleOf { .. } => AlgebraResultOptionality::OptionalityForbidden,
+        AlgebraTypeTemplate::WitnessOf { inner: _, .. } => {
+            AlgebraResultOptionality::OptionalityForbidden
+        }
+        AlgebraTypeTemplate::CallableOf { .. } => AlgebraResultOptionality::OptionalityForbidden,
+        AlgebraTypeTemplate::ReceiverSelf => AlgebraResultOptionality::OptionalityUnconstrained,
+        AlgebraTypeTemplate::ReceiverElement => AlgebraResultOptionality::OptionalityUnconstrained,
+        AlgebraTypeTemplate::ReceiverKey => AlgebraResultOptionality::OptionalityUnconstrained,
+        AlgebraTypeTemplate::ReceiverValue => AlgebraResultOptionality::OptionalityUnconstrained,
+        AlgebraTypeTemplate::AlgebraTypeVariable { id: _, .. } => {
+            AlgebraResultOptionality::OptionalityUnconstrained
+        }
+    }
+}
+
 pub fn algebra_templates_for_profile(profile: AlgebraProfile) -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
     match profile.clone() {
         AlgebraProfile::OrderedRingProfile => ordered_ring_templates(),
@@ -2185,3 +2220,9 @@ pub struct ShapeSortBody;
 pub struct FiniteSupport;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct OpenSupport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OptionalityRequired;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OptionalityForbidden;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OptionalityUnconstrained;

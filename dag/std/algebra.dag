@@ -796,6 +796,41 @@ fn algebra_method_template_name(name: String) -> Bool {
     |> any(profile => algebra_templates_for_profile(profile: profile) |> any(t => t.name == name))
 }
 
+// WHAT A DECLARED RETURN TEMPLATE SAYS ABOUT THE RESULT'S Optional-NESS, AND WHAT IT DECLINES TO
+// SAY. This is the single authority both realizations of every algebra arm answer to: the Rust
+// emit arm produces `Option<T>` exactly where a row declares `OptionalOf`, and the interpreter
+// refuses a result that disagrees with the same row. It lived only in the interpreter, in Rust,
+// which is the fork this vocabulary exists to close -- a second hand-written answer to a question
+// the roster already decides.
+//
+// THREE ARMS, NOT TWO, AND THE THIRD IS THE POINT. A template naming a CONCRETE shape constrains
+// the result in both directions. A template that stands for something the receiver supplies --
+// ReceiverSelf, ReceiverElement, ReceiverKey, ReceiverValue, or a type variable -- constrains it in
+// NEITHER, because every one of them is inhabitable BY an Optional at runtime: `[Absent] |> reverse`
+// is a list of Optionals and a fold over an Optional accumulator returns one. Collapsing those into
+// "not declared Optional, therefore must not be Optional" would refuse correct programs, which is
+// the over-refusal DESIGN section 5 calls fabricating in the other direction.
+type AlgebraResultOptionality
+  = OptionalityRequired
+  | OptionalityForbidden
+  | OptionalityUnconstrained
+
+fn algebra_result_optionality(result: AlgebraTypeTemplate) -> AlgebraResultOptionality {
+  match result {
+    OptionalOf { inner: _ } => OptionalityRequired
+    NamedTemplate { name: _ } => OptionalityForbidden
+    ContainerOf { source: _, element: _ } => OptionalityForbidden
+    TupleOf { first: _, second: _ } => OptionalityForbidden
+    WitnessOf { inner: _ } => OptionalityForbidden
+    CallableOf { params: _, return_type: _ } => OptionalityForbidden
+    ReceiverSelf => OptionalityUnconstrained
+    ReceiverElement => OptionalityUnconstrained
+    ReceiverKey => OptionalityUnconstrained
+    ReceiverValue => OptionalityUnconstrained
+    AlgebraTypeVariable { id: _ } => OptionalityUnconstrained
+  }
+}
+
 fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTemplate> {
   match profile {
     OrderedRingProfile => ordered_ring_templates()
