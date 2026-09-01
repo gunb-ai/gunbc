@@ -12111,88 +12111,6 @@ pub fn record_lit_alias_struct_expansion(
     }
 }
 
-pub fn record_lit_construction_field_names(
-    type_name: String,
-    scope: Rc<InferScope>,
-) -> Option<Rc<Vec<String>>> {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        match crate::v1_compiler_infer_env::lookup_type_by_name(
-            scope.type_env.clone(),
-            type_name.clone(),
-        ) {
-            Some(decl) => {
-                if ((((decl.params.clone().len() as i64) == 0)
-                    && (decl.connective.clone() == Connective::Conj))
-                    && ((decl.children.clone().len() as i64) > 0))
-                {
-                    Some(Rc::new({
-                        let mut __result = Vec::new();
-                        for f in decl.children.clone().iter().cloned() {
-                            __result
-                                .push(crate::v1_std_core::authored_name_at(si.clone(), f.clone()));
-                        }
-                        __result
-                    }))
-                } else {
-                    std::option::Option::None
-                }
-            }
-            std::option::Option::None => std::option::Option::None,
-        }
-    }
-}
-
-pub fn record_lit_variant_arm_field_names(
-    type_name: String,
-    scope: Rc<InferScope>,
-) -> Option<Rc<Vec<String>>> {
-    {
-        let si = scope.type_env.clone().source_indices.clone();
-        match variant_owner_node(scope.clone(), type_name.clone()) {
-            Some(owner) => match Rc::new({
-                let mut __result = Vec::new();
-                for v in owner.children.clone().iter().cloned() {
-                    if (crate::v1_std_core::authored_name_at(si.clone(), v.clone())
-                        == crate::v1_std_core::qualified_last_segment(type_name.clone()))
-                    {
-                        __result.push(v);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned()
-            {
-                Some(arm) => {
-                    let ea = expand_type_for_field_access(
-                        arm.clone(),
-                        scope.type_env.clone(),
-                        scope.module_name.clone(),
-                    )
-                    .resolved
-                    .clone();
-                    let fields = if (ea.connective.clone() == Connective::Conj) {
-                        ea.children.clone()
-                    } else {
-                        arm.children.clone()
-                    };
-                    Some(Rc::new({
-                        let mut __result = Vec::new();
-                        for f in fields.iter().cloned() {
-                            __result
-                                .push(crate::v1_std_core::authored_name_at(si.clone(), f.clone()));
-                        }
-                        __result
-                    }))
-                }
-                std::option::Option::None => std::option::Option::None,
-            },
-            std::option::Option::None => std::option::Option::None,
-        }
-    }
-}
-
 pub fn type_has_sole_constructor(type_name: String, scope: Rc<InferScope>) -> bool {
     match crate::v1_compiler_infer_env::lookup_type_by_name(
         scope.type_env.clone(),
@@ -12478,15 +12396,6 @@ pub fn infer_record_lit_structural(
             Some(expansion) => expansion.diagnostics.clone(),
             std::option::Option::None => Rc::new(vec![]),
         };
-        let construction_field_names = match type_name.clone() {
-            Some(tn) => match record_lit_construction_field_names(tn.clone(), scope.clone()) {
-                Some(names) => Some(names.clone()),
-                std::option::Option::None => {
-                    record_lit_variant_arm_field_names(tn.clone(), scope.clone())
-                }
-            },
-            std::option::Option::None => std::option::Option::None,
-        };
         let tn_str = match type_name.clone() {
             Some(tn) => tn.clone(),
             std::option::Option::None => "".to_string(),
@@ -12580,6 +12489,29 @@ pub fn infer_record_lit_structural(
         } else {
             Rc::new(vec![])
         };
+        let construction_field_names =
+            if ((tn_str.clone() == "".to_string()) || presence_name_is_ambiguous.clone()) {
+                std::option::Option::None
+            } else {
+                if ((presence_fields.clone().len() as i64) > 0) {
+                    Some(Rc::new({
+                        let mut __result = Vec::new();
+                        for sf in presence_fields.iter().cloned() {
+                            __result.push(crate::v1_std_core::authored_name_at(
+                                si_presence.clone(),
+                                sf.clone(),
+                            ));
+                        }
+                        __result
+                    }))
+                } else {
+                    if (presence_variant_owner.clone() != std::option::Option::None) {
+                        Some(Rc::new(vec![]))
+                    } else {
+                        std::option::Option::None
+                    }
+                }
+            };
         let missing_field_diags = if ((((tn_str.clone() == "".to_string())
             || ((presence_fields.clone().len() as i64) == 0))
             || is_zero_field_variant_tag_reference.clone())
