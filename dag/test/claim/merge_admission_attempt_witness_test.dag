@@ -577,3 +577,100 @@ test fn schemas_are_distinct_and_pinned_to_their_declared_versions() -> Bool {
     && (merge_admission_receipt_schema_v2 == "gunbc.merge_admission_receipt.v3")
     && (merge_admission_tested_subject_schema == "gunbc.merge_admission_tested_subject.v2")
 }
+
+// THE GUARD ARMS THIS SUITE NEVER EXERCISED, and the receipt that proves it did not.
+//
+// parse_receipt_wire_v2 and parse_tested_subject_wire each reject a receipt whose SCHEMA line is
+// wrong or whose required fields are BLANK. Those arms had no case here: the suite reaches
+// parse_gate_roster_hash_wire and compose_walk_attempt_id directly and feeds the wire parsers only
+// well-formed text, a trailing line and a malformed PR line. Measured, not assumed -- mutating the
+// blank-field comparison in gunbc.merge_admission_produce to a string no field can equal left all
+// 30 witnesses PASSING. An uncovered guard reads as a covered one, and a rewrite of these arms
+// would have been verified by a suite that could not see them.
+//
+// Each row varies ONE line of a wire that parses, which is the convention the rows above state.
+
+fn wire_v2_with_lines(schema: String, attempt: String, roster: String, conclusion: String, head: String, base: String) -> String {
+  join([schema, attempt, roster, conclusion, head, base], "\n")
+}
+
+fn good_v2_lines_conclusion() -> String {
+  match parse_receipt_wire_v2(text: render_receipt_wire_v2(receipt: receipt_fx(attempt: attempt_a(), head: head_sha_fx))) {
+    Present { value: _ } => "success"
+    Absent => "UNPARSEABLE-FIXTURE"
+  }
+}
+
+fn v2_refuses(text: String) -> Bool {
+  match parse_receipt_wire_v2(text: text) { Present { value: _ } => false  Absent => true }
+}
+
+// Positive control: the same builder with every line correct MUST parse, or every row below is
+// satisfied by a wire that was malformed for some other reason.
+test fn wire_v2_built_from_explicit_lines_parses() -> Bool {
+  match parse_receipt_wire_v2(text: wire_v2_with_lines(
+    schema: merge_admission_receipt_schema_v2,
+    attempt: attempt_a_raw,
+    roster: render_gate_roster_hash_wire(hash: roster_fx()),
+    conclusion: good_v2_lines_conclusion(),
+    head: head_sha_fx,
+    base: base_commit_fx,
+  )) { Present { value: _ } => true  Absent => false }
+}
+
+test fn wire_v2_refuses_a_wrong_schema_line() -> Bool {
+  v2_refuses(text: wire_v2_with_lines(
+    schema: "gunbc.merge_admission_receipt.v2",
+    attempt: attempt_a_raw,
+    roster: render_gate_roster_hash_wire(hash: roster_fx()),
+    conclusion: good_v2_lines_conclusion(),
+    head: head_sha_fx,
+    base: base_commit_fx,
+  ))
+}
+
+test fn wire_v2_refuses_a_blank_gate_roster_hash_line() -> Bool {
+  v2_refuses(text: wire_v2_with_lines(
+    schema: merge_admission_receipt_schema_v2,
+    attempt: attempt_a_raw,
+    roster: "",
+    conclusion: good_v2_lines_conclusion(),
+    head: head_sha_fx,
+    base: base_commit_fx,
+  ))
+}
+
+test fn wire_v2_refuses_a_blank_head_sha_line() -> Bool {
+  v2_refuses(text: wire_v2_with_lines(
+    schema: merge_admission_receipt_schema_v2,
+    attempt: attempt_a_raw,
+    roster: render_gate_roster_hash_wire(hash: roster_fx()),
+    conclusion: good_v2_lines_conclusion(),
+    head: "",
+    base: base_commit_fx,
+  ))
+}
+
+test fn wire_v2_refuses_a_blank_base_commit_line() -> Bool {
+  v2_refuses(text: wire_v2_with_lines(
+    schema: merge_admission_receipt_schema_v2,
+    attempt: attempt_a_raw,
+    roster: render_gate_roster_hash_wire(hash: roster_fx()),
+    conclusion: good_v2_lines_conclusion(),
+    head: head_sha_fx,
+    base: "",
+  ))
+}
+
+// The object-id wire's algorithm prefix is the other comparison pair, and its else-arm answers none
+// for an unrecognised algorithm, so a wrong prefix must refuse while both declared ones parse.
+test fn object_id_wire_accepts_both_declared_algorithms_and_refuses_a_third() -> Bool {
+  match parse_git_object_id_wire(raw: "sha1:abc1234def5678901234567890abcd1234567890") {
+    Present { value: _ } =>
+      match parse_git_object_id_wire(raw: "md5:abc1234def5678901234567890abcd1234567890") {
+        Present { value: _ } => false
+        Absent => true
+      }
+    Absent => false
+  }
+}
