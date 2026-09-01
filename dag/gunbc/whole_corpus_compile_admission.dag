@@ -9,8 +9,10 @@ import gunbc.seed_growth { SeedGrowthJustification }
 import gunbc.host_budget_source {
   HostBudgetResolution,
   HostBudgetResolved,
+  HostBudgetDeclaredUnverified,
   HostBudgetUnreadable,
   HostBudgetSource,
+  HostBudgetObserved,
   host_budget_source_label,
 }
 
@@ -135,8 +137,12 @@ fn whole_corpus_compile_admission_at_budget(
 fn whole_corpus_compile_admission(budget: HostBudgetResolution) -> WholeCorpusCompileAdmission {
   match budget {
     HostBudgetUnreadable { reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
-    HostBudgetResolved { source: s, bytes: b } =>
-      whole_corpus_compile_admission_at_budget(bytes: b, source: s)
+    HostBudgetDeclaredUnverified { requested_bytes: _, reason: r } => WholeCorpusCompileRefusedBudgetUnreadable { reason: r }
+    HostBudgetResolved {
+      effective_bytes: b,
+      requested_bytes: _,
+      observation: HostBudgetObserved { source: s, bytes: _ }
+    } => whole_corpus_compile_admission_at_budget(bytes: b, source: s)
   }
 }
 

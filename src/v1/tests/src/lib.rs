@@ -7,6 +7,8 @@
 pub mod helpers;
 
 #[cfg(test)]
+mod ambiguous_prefix_infix_newline_test;
+#[cfg(test)]
 mod anonymous_record_struct_resolution_test;
 #[cfg(test)]
 mod class_b_trim_specimen_test;
