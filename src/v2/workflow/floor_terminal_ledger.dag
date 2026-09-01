@@ -5,7 +5,6 @@ import std.content_hash { Fnv1a64Structural }
 import extdeps.git.object_store { GitObjectId }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
-import v2.std.text { String }
 import v2.workflow.floor2_prepared_subject { WitnessIdentity, witness_identity_qualified_name }
 import v2.workflow.required_floor {
   ClaimSafetyOutcome,
