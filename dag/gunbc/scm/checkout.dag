@@ -14,6 +14,10 @@ import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.object_store {
   ObjectId,
   ObjectRecord,
+  SemanticNodeObjectRef,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
   ObjectStore,
   StoredEdge,
   NodeRecordFound,
@@ -28,7 +32,7 @@ import gunbc.scm.object_store {
 // and a single timeline. Keeping the commit to its root is what lets two commits be compared,
 // deduplicated and reconstructed without consulting any history at all.
 type Commit {
-  root: ObjectId
+  root: NodeTarget
 }
 
 // AN AUTHORED SOURCE AT A PROGRAM POSITION IS ITS OWN REFUSAL, NOT A MISSING OBJECT.
@@ -70,7 +74,7 @@ fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEd
   match acc.refusal {
     Present { value: _ } => acc
     Absent =>
-      match checkout_object(store: store, identity: stored.target) {
+      match checkout_node_target(store: store, target: stored.target) {
         CheckoutRefused { cause: cause } =>
           CheckoutEdgeAcc { edges: acc.edges, refusal: Present { value: cause } }
         CheckedOut { program: child } =>
@@ -78,6 +82,23 @@ fn checkout_edge_step(store: ObjectStore, acc: CheckoutEdgeAcc, stored: StoredEd
             edges: concat([Edge { label: stored.label, target: child }], acc.edges),
             refusal: acc.refusal,
           }
+      }
+  }
+}
+
+// AN UNCONTAINED TARGET IS RESOLVED HERE, NOT PREJUDGED ABSENT. The arm records that the DOCUMENT
+// did not carry the object; it does not record that this store lacks it, and a graft may have
+// supplied it since. So both arms go through the same lookup and the uncontained one keeps the two
+// negatives apart -- absent, or a file -- exactly as the resolved arm does.
+fn checkout_node_target(store: ObjectStore, target: NodeTarget) -> CheckoutOutcome {
+  match target {
+    NodeTargetResolved(reference) => checkout_object(store: store, identity: reference)
+    NodeTargetUnresolved(locator) =>
+      match find_node_record(store: store, identity: locator) {
+        NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
+        NodeRecordIsAuthoredSource { identity: i } =>
+          CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
+        NodeRecordFound(record) => checkout_record(store: store, record: record)
       }
   }
 }
@@ -97,8 +118,14 @@ fn checkout_record(store: ObjectStore, record: ObjectRecord) -> CheckoutOutcome 
   }
 }
 
-fn checkout_object(store: ObjectStore, identity: ObjectId) -> CheckoutOutcome {
-  match find_node_record(store: store, identity: identity) {
+// THE REFUSALS SURVIVE THE BRAND, AND SAYING WHY IS THE HONEST PART. A SemanticNodeObjectRef was
+// minted against an object of node kind IN SOME STORE; it does not carry WHICH store. A reference
+// minted against one store and resolved against another can therefore still find nothing, or find a
+// file -- so these two arms are a live boundary between stores rather than a wall the brand already
+// built. What the brand removes is the AUTHORING mistake: no caller can hand this function a
+// locator it never resolved to a node at all.
+fn checkout_object(store: ObjectStore, identity: SemanticNodeObjectRef) -> CheckoutOutcome {
+  match find_node_record(store: store, identity: identity.locator) {
     NodeRecordAbsent { identity: i } => CheckoutRefused { cause: MissingObject { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       CheckoutRefused { cause: ObjectIsAuthoredSource { identity: i } }
@@ -113,7 +140,7 @@ fn checkout_object(store: ObjectStore, identity: ObjectId) -> CheckoutOutcome {
 // agreement, which is precisely the property that makes a monotonic store unable to name a program
 // on its own.
 fn checkout(store: ObjectStore, commit: Commit) -> CheckoutOutcome {
-  checkout_object(store: store, identity: commit.root)
+  checkout_node_target(store: store, target: commit.root)
 }
 
 // The rebuilt program carries OccurrenceSynthetic throughout, because occurrence identity is
@@ -122,7 +149,7 @@ fn checkout(store: ObjectStore, commit: Commit) -> CheckoutOutcome {
 // and reconstruct identically. Round-trip equality is therefore asserted on content identity, never
 // on occurrence provenance -- and asserting it on provenance would be asserting the one property the
 // model says must not matter.
-fn commit_of_root(root: ObjectId) -> Commit {
+fn commit_of_root(root: NodeTarget) -> Commit {
   Commit { root: root }
 }
 
@@ -190,7 +217,7 @@ fn checkout_repository_at(repo: RepositoryEnvelope, reference: RepositoryCommitR
   match commit_at_reference(commits: repo.commits, reference: reference) {
     Absent => CheckoutReferenceUnresolved { reference: reference }
     Present { value: selected } =>
-      match checkout(store: repo.store, commit: commit_of_root(root: selected.root)) {
+      match checkout(store: repo.store, commit: commit_of_root(root: NodeTargetResolved(selected.root))) {
         CheckoutRefused { cause: cause } =>
           CheckoutProgramUnreconstructable { reference: reference, cause: cause }
         CheckedOut { program: program } =>

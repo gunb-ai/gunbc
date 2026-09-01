@@ -4,7 +4,10 @@ import std.types { Bool, String, List, Int }
 import std.minted_identity { MintedId, MintedIdAllocator }
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.scm.object_store { ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision }
+import gunbc.scm.object_store {
+  ObjectStore, ObjectId, empty_store, store_node, Stored, LocatorCollision,
+  NodeTarget, NodeTargetResolved, NodeTargetUnresolved,
+}
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -39,13 +42,14 @@ fn status_witness_atom(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
 
-type StatusWitnessStored { store: ObjectStore, identity: ObjectId }
+type StatusWitnessStored { store: ObjectStore, identity: NodeTarget }
 
 fn status_witness_stored(name: Symbol) -> StatusWitnessStored {
   match store_node(store: empty_store(), n: status_witness_atom(name: name)) {
-    Stored { store: store, identity: identity } => StatusWitnessStored { store: store, identity: identity }
+    Stored { store: store, node: node } =>
+      StatusWitnessStored { store: store, identity: NodeTargetResolved(node) }
     LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-      StatusWitnessStored { store: empty_store(), identity: identity }
+      StatusWitnessStored { store: empty_store(), identity: NodeTargetUnresolved(identity) }
   }
 }
 

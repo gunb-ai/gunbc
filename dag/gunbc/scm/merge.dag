@@ -21,6 +21,10 @@ import v2.std.dependency {
 
 import gunbc.scm.object_store {
   ObjectId,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
+  node_target_locator,
   ObjectStore,
   StoreOutcome,
   Stored,
@@ -43,7 +47,7 @@ import gunbc.scm.checkout {
   CheckoutRefused,
   MissingObject,
   ObjectIsAuthoredSource,
-  checkout_object,
+  checkout_node_target,
 }
 
 // A REQUIREMENT IS AUTHORED, AND ABSENCE IS ONE OF THE THINGS THAT CAN BE AUTHORED. This is the
@@ -304,7 +308,7 @@ fn edge_label_role(label: EdgeLabel) -> Symbol? {
 // preservation law mean object reuse: nothing is recomputed for a role no proposal implicates, so
 // "unchanged" is the same object and not a fresh derivation that hashes equal.
 fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
-  match find_node_record(store: store, identity: target.root) {
+  match find_node_record(store: store, identity: node_target_locator(target: target.root)) {
     NodeRecordAbsent { identity: i } => TargetUnreadable { cause: TargetRootMissing { identity: i } }
     NodeRecordIsAuthoredSource { identity: i } =>
       TargetUnreadable { cause: TargetRootIsAuthoredSource { identity: i } }
@@ -316,7 +320,7 @@ fn target_roles(store: ObjectStore, target: Commit) -> TargetReadOutcome {
             Present { value: role } =>
               concat([ResolvedRole {
                 role: role,
-                value: PreservedFromTarget { object: stored.target },
+                value: PreservedFromTarget { object: node_target_locator(target: stored.target) },
               }], acc)
           }
         })),
@@ -462,10 +466,10 @@ fn normalize_requirement(store: ObjectStore, req: Requirement) -> NormalizeOutco
           NormalizeRefused {
             cause: BindingLocatorCollision { role: role, identity: identity },
           }
-        Stored { store: store, identity: identity } =>
+        Stored { store: store, node: node } =>
           Normalized {
             store: store,
-            desired: DesiredBindingPresent { object: identity },
+            desired: DesiredBindingPresent { object: node.locator },
           }
       }
   }
@@ -632,7 +636,7 @@ fn root_edge_step(store: ObjectStore, acc: MergeRootAcc, r: ResolvedRole) -> Mer
 // it will fail to compile here instead of arriving as a fourth spelling of "missing". Found by
 // external review of gunbc#9891, which is also the review that added the arm this consumer ignored.
 fn root_edge_for(store: ObjectStore, acc: MergeRootAcc, role: Symbol, object: ObjectId) -> MergeRootAcc {
-  match checkout_object(store: store, identity: object) {
+  match checkout_node_target(store: store, target: NodeTargetUnresolved(object)) {
     CheckoutRefused { cause: cause } =>
       MergeRootAcc {
         edges: acc.edges,
@@ -759,10 +763,10 @@ fn finish_merge(
               MergeRefused {
                 cause: BindingLocatorCollision { role: ^commit_root, identity: identity },
               }
-            Stored { store: store, identity: identity } =>
+            Stored { store: store, node: node } =>
               Merged {
                 store: store,
-                commit: Commit { root: identity },
+                commit: Commit { root: NodeTargetResolved(node) },
                 roles: applied.roles,
               }
           }

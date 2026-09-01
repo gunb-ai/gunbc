@@ -18,7 +18,9 @@ import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.render { Document, RenderCapability }
 import std.symbols { Ascii }
 import extdeps.render.surface { serialize_document, PlainTerminal, GithubActions }
-import gunbc.scm.object_store { empty_store, store_node, Stored, LocatorCollision, ObjectId, ObjectStore }
+import gunbc.scm.object_store {
+  empty_store, store_node, Stored, LocatorCollision, ObjectId, ObjectStore,
+}
 import v2.std.node { Node, Symbol, TypeNode, Atom, node_synthetic }
 import extdeps.render.ansi { ansi_escape }
 import gunbc.scm.repository_envelope {
@@ -33,6 +35,7 @@ import gunbc.scm.status {
   RepositoryStatus,
   StatusCheckout,
   CheckedOutCommit,
+  NothingCheckedOut,
 }
 import gunbc.scm.log { repository_log, CommitLog }
 import extdeps.languages.json.parse { JsonDocumentGap, JsonDocumentMalformedAt }
@@ -63,10 +66,21 @@ fn render_witness_atom(name: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: name } }, children: [])
 }
 
-fn render_witness_object_id() -> ObjectId {
+// THE FIXTURE CANNOT FABRICATE A ROOT REFERENCE, so the collision arm answers with the whole
+// STATUS rather than with a reference it does not have. `CheckedOutCommit.root` is a
+// SemanticNodeObjectRef and only the store mints one; a fixture that could invent one would be the
+// forge the seal exists to prevent. The arm is unreachable -- the store is empty -- and it now says
+// so by producing the no-checkout status instead of a plausible-looking identity.
+fn render_witness_checked_out(message: String) -> RepositoryStatus {
   match store_node(store: empty_store(), n: render_witness_atom(name: ^r1)) {
-    Stored { store: _, identity: identity } => identity
-    LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
+    Stored { store: _, node: node } =>
+      RepositoryStatus {
+        checkout: CheckedOutCommit { root: node, message: message },
+        commit_count: 1,
+        staged: [],
+      }
+    LocatorCollision { identity: _, existing: _, incoming: _ } =>
+      RepositoryStatus { checkout: NothingCheckedOut, commit_count: 1, staged: [] }
   }
 }
 
@@ -263,14 +277,6 @@ test fn bytes_and_exit_status_are_independent_facts() -> Bool {
 // success" is now UNWRITABLE rather than false, so a fixture asserting it could not be authored and
 // the check would be permanently green BY CONSTRUCTION -- the decoration section 4b names as worse
 // than absent. What is asserted is the reachable behaviour a caller can still get wrong.
-fn render_witness_checked_out(message: String) -> RepositoryStatus {
-  RepositoryStatus {
-    checkout: CheckedOutCommit { root: render_witness_object_id(), message: message },
-    commit_count: 1,
-    staged: [],
-  }
-}
-
 fn control_byte_response(message: String) -> CliWireResponse {
   scm_status_cli_response(
     result: ScmReadAnswered { path: "repo.json", answer: render_witness_checked_out(message: message) },

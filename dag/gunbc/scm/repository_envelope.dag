@@ -86,6 +86,10 @@ import gunbc.scm.object_store {
   NodeRecordIsAuthoredSource,
   ObjectId,
   ObjectStore,
+  NodeTarget,
+  SemanticNodeObjectRef,
+  node_target_locator,
+  scm_object_ref_locator,
   empty_store,
   find_node_record,
 }
@@ -128,7 +132,13 @@ import gunbc.scm.load_standing {
 // dissolve-on: a deterministic emission order -- a topological order with a content-digest tie-break
 // -- which is canonical because the digests are already content-derived. That is a real change to
 // encode_object_table rather than a flag, so it is a separate slice, not a footnote.
-data repository_envelope_format_tag: String = "gunbc-scm-repository-v1"
+// v2, FOR TWO CHANGES THAT ARE BOTH SCHEMA CHANGES BY THIS STACK'S OWN RULE. The embedded object
+// table is gunbc.scm.commit_closure_json_v2's, which now admits authored-source entries, so a v1
+// reader refuses documents this writer can produce. And a commit's `root` is now RESOLVED against
+// that table at decode -- a root the table does not carry, or carries as a file, refuses here rather
+// than being admitted and noticed later -- so the set of documents that decode is different in both
+// directions. Either change alone would move the tag.
+data repository_envelope_format_tag: String = "gunbc-scm-repository-v2"
 
 // THE IDENTITY RULE IS VERSIONED SEPARATELY FROM THE SCHEMA, AND THE TWO ARE DIFFERENT AXES.
 //
@@ -143,7 +153,13 @@ data repository_envelope_format_tag: String = "gunbc-scm-repository-v1"
 // deliberately NOT derived from the code that implements the rule: a tag computed from the current
 // implementation would agree with itself by construction and could never disagree, which is the
 // change-detector failure -- it would go green precisely when the rule changed.
-data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v1"
+// THE IDENTITY RULE MOVES ON ITS OWN AXIS, AND IT MOVED. v1 named ONE derivation: fnv1a64 over the
+// canonicalized node structure. The store now derives a second family -- an authored source's
+// identity, from content_hash_tagged_structural over a domain tag and the bytes -- and a document
+// carrying both families is reconstructed by a rule v1 does not describe. A reader that accepted v1
+// here and then met a source entry would reconstruct identities by a rule the document never
+// claimed, which is precisely the silent reinterpretation this tag exists to turn into a refusal.
+data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v2"
 
 // ANCESTRY IS A COMMIT REFERENCE, NOT A NODE REFERENCE, and that is this module's own ruling reused
 // rather than a fresh choice. The annotation on `checked_out` records why it resolves against the
@@ -159,7 +175,7 @@ data repository_node_identity_rule_tag: String = "fnv1a64-structural-canonical-v
 // wall that would become redundant at this cut.
 type RepositoryCommit sole_constructor {
   reference: RepositoryCommitRef
-  root: ObjectId
+  root: SemanticNodeObjectRef
   message: String
   ancestry: CommitAncestry
 }
@@ -230,6 +246,8 @@ type RepositoryDecodeRefusal
   | RepositoryFormatUnrecognized { found: String }
   | RepositoryIdentityRuleUnrecognized { found: String }
   | RepositoryCommitRootReferenceUnresolved { reference: String }
+  | RepositoryCommitRootNotInObjectTable { root: ObjectId }
+  | RepositoryCommitRootIsAuthoredSource { root: ObjectId }
   | RepositoryCheckoutReferenceUnresolved { reference: RepositoryCommitRef }
   | RepositoryCommitReferenceDuplicatedOnWire { reference: RepositoryCommitRef }
   | RepositoryCommitParentNotPreviouslyAdmitted { parent: RepositoryCommitRef }
@@ -285,23 +303,30 @@ type RepositoryCommitMint
 // a different commit. A descendant accepts only an EXISTING parent, so construction order makes a
 // cycle unwritable internally. This function performs no persistence, CLI action, or host effect.
 //
+// THE MINT TAKES A TARGET AND HANDS BACK A BRANDED ROOT, which is the resolve-at-the-boundary shape
+// the reference types are for. A caller may hold a bare locator -- from a document, from a fixture,
+// from anywhere -- so requiring a SemanticNodeObjectRef here would have moved the problem rather
+// than solved it. What the row stores is the reference THE STORE handed back for the record it
+// actually found, never the caller's word for it, so a RepositoryCommit's root cannot name a file.
+//
 // THE ROOT ADMISSION ASKS FOR A NODE, NOT FOR A LOCATOR. `store_contains` answers about the locator
 // and is kind-agnostic by design, so asking it here admitted an authored-source object as a commit
 // root -- a commit that mints cleanly and then refuses at checkout, which is the wrong place for the
 // refusal to appear and the wrong owner to name in it.
 fn mint_repository_commit(
   repository: RepositoryEnvelope,
-  root: ObjectId,
+  root: NodeTarget,
   message: String,
   parent: RepositoryCommitRef?,
 ) -> RepositoryCommitMint {
   if repository.commit_allocator.next_ordinal < 0 {
     RepositoryCommitMintAllocatorInvalid { next_ordinal: repository.commit_allocator.next_ordinal }
   } else {
-    match find_node_record(store: repository.store, identity: root) {
-      NodeRecordAbsent { identity: _ } => RepositoryCommitMintRootMissing { root: root }
-      NodeRecordIsAuthoredSource { identity: _ } => RepositoryCommitMintRootIsAuthoredSource { root: root }
-      NodeRecordFound(_) =>
+    match find_node_record(store: repository.store, identity: node_target_locator(target: root)) {
+      NodeRecordAbsent { identity: r } => RepositoryCommitMintRootMissing { root: r }
+      NodeRecordIsAuthoredSource { identity: r } =>
+        RepositoryCommitMintRootIsAuthoredSource { root: r }
+      NodeRecordFound(record) =>
         match parent {
           Present { value: parent_ref } =>
             match commit_at_reference(commits: repository.commits, reference: parent_ref) {
@@ -309,7 +334,7 @@ fn mint_repository_commit(
               Present { value: _ } =>
                 mint_repository_commit_admitted(
                   repository: repository,
-                  root: root,
+                  root: record.identity,
                   message: message,
                   ancestry: DescendsFrom { parent: parent_ref },
                 )
@@ -317,7 +342,7 @@ fn mint_repository_commit(
           Absent =>
             mint_repository_commit_admitted(
               repository: repository,
-              root: root,
+              root: record.identity,
               message: message,
               ancestry: RootCommit,
             )
@@ -328,7 +353,7 @@ fn mint_repository_commit(
 
 fn mint_repository_commit_admitted(
   repository: RepositoryEnvelope,
-  root: ObjectId,
+  root: SemanticNodeObjectRef,
   message: String,
   ancestry: CommitAncestry,
 ) -> RepositoryCommitMint {
@@ -399,7 +424,7 @@ fn encode_commit_record(acc: EncodeAcc, commit: RepositoryCommit) -> JsonValue {
   json_object(
     members: [
       json_kv(key: "id", value: json_int(n: minted_id_ordinal(id: commit.reference.identity))),
-      json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root)),
+      json_kv(key: "root", value: encoded_root_reference(acc: acc, root: commit.root.locator)),
       json_kv(key: "message", value: json_string(s: commit.message)),
       json_kv(key: "ancestry", value: encode_ancestry(ancestry: commit.ancestry)),
     ]
@@ -567,9 +592,9 @@ fn unresolved_commit_root_step(acc: EncodeAcc, found: ObjectId?, commit: Reposit
   match found {
     Present { value: _ } => found
     Absent =>
-      match position_of(positions: acc.positions, identity: commit.root) {
+      match position_of(positions: acc.positions, identity: commit.root.locator) {
         Present { value: _ } => none
-        Absent => Present { value: commit.root }
+        Absent => Present { value: commit.root.locator }
       }
   }
 }
@@ -703,11 +728,27 @@ type ResolvedCommitAcc {
 // authored-order fold admits each unique in-range key only after its parent, so duplicate, dangling,
 // forward and cyclic edges all refuse at the first unadmitted edge. The old all-start ancestry walk
 // was cubic; this keyed pass is linear in commits against the map.
-fn resolve_pending_commits(pending: List<PendingCommit>, next_ordinal: Int) -> ResolvedCommitAcc {
+// THE DOCUMENT'S ROOT LOCATOR BECOMES A NODE REFERENCE HERE, OR THE DOCUMENT REFUSES.
+//
+// This is the one boundary at which a file's locator can still arrive in a position that requires a
+// program: inside the model the brand makes that unwritable, but a document is bytes and can say
+// anything. So the store decoded from the same document is the authority that mints the brand, and
+// the two negatives stay separate for the reason they do everywhere else -- an object table that
+// does not carry the root at all is a different defect, with a different remedy, from one that
+// carries a FILE under it.
+//
+// Refusing here rather than later is what makes the brand honest. Admitting the row with an
+// unresolved root and leaving the encoder to notice would put a RepositoryEnvelope in a reader's
+// hands whose commit root names nothing -- a value the type now claims cannot exist.
+fn resolve_pending_commits(
+  store: ObjectStore,
+  pending: List<PendingCommit>,
+  next_ordinal: Int
+) -> ResolvedCommitAcc {
   match fold(
     pending,
     init: ResolvedCommitAcc { commits: [], seen: empty_map(), refusal: none },
-    f: fn(acc, c) { resolve_pending_step(next_ordinal: next_ordinal, acc: acc, c: c) }
+    f: fn(acc, c) { resolve_pending_step(store: store, next_ordinal: next_ordinal, acc: acc, c: c) }
   ) {
     ResolvedCommitAcc { commits: reversed, seen: seen, refusal: refusal } =>
       ResolvedCommitAcc { commits: reverse(reversed), seen: seen, refusal: refusal }
@@ -715,9 +756,43 @@ fn resolve_pending_commits(pending: List<PendingCommit>, next_ordinal: Int) -> R
 }
 
 fn resolve_pending_step(
+  store: ObjectStore,
   next_ordinal: Int,
   acc: ResolvedCommitAcc,
   c: PendingCommit
+) -> ResolvedCommitAcc {
+  match acc.refusal {
+    Present { value: _ } => acc
+    Absent =>
+      match find_node_record(store: store, identity: c.root) {
+        NodeRecordAbsent { identity: r } =>
+          ResolvedCommitAcc {
+            commits: acc.commits,
+            seen: acc.seen,
+            refusal: Present { value: RepositoryCommitRootNotInObjectTable { root: r } },
+          }
+        NodeRecordIsAuthoredSource { identity: r } =>
+          ResolvedCommitAcc {
+            commits: acc.commits,
+            seen: acc.seen,
+            refusal: Present { value: RepositoryCommitRootIsAuthoredSource { root: r } },
+          }
+        NodeRecordFound(record) =>
+          resolve_pending_step_admitted(
+            next_ordinal: next_ordinal,
+            acc: acc,
+            c: c,
+            root: record.identity,
+          )
+      }
+  }
+}
+
+fn resolve_pending_step_admitted(
+  next_ordinal: Int,
+  acc: ResolvedCommitAcc,
+  c: PendingCommit,
+  root: SemanticNodeObjectRef
 ) -> ResolvedCommitAcc {
   match acc.refusal {
     Present { value: _ } => acc
@@ -754,7 +829,7 @@ fn resolve_pending_step(
                 commits: concat(
                   [RepositoryCommit {
                     reference: c.reference,
-                    root: c.root,
+                    root: root,
                     message: c.message,
                     ancestry: DescendsFrom { parent: parent },
                   }],
@@ -769,7 +844,7 @@ fn resolve_pending_step(
               commits: concat(
                 [RepositoryCommit {
                   reference: c.reference,
-                  root: c.root,
+                  root: root,
                   message: c.message,
                   ancestry: RootCommit,
                 }],
@@ -823,7 +898,8 @@ fn decode_commit_root(positions: DecodePositions, root_value: JsonValue) -> Comm
     TargetUncontained { digest: root } => CommitRootDecoded { root: root }
     TargetContainedAt { reference: reference } =>
       match resolve_reference(positions: positions, reference: reference) {
-        Present { value: root } => CommitRootDecoded { root: root }
+        Present { value: found } =>
+          CommitRootDecoded { root: scm_object_ref_locator(reference: found) }
         Absent =>
           CommitRootRefused { cause: RepositoryCommitRootReferenceUnresolved { reference: reference } }
       }
@@ -1045,6 +1121,7 @@ fn decode_repository_body_with_allocator(v: JsonValue, next_ordinal: Int) -> Rep
                         Present { value: c } => RepositoryDecodeRefused { cause: c }
                         Absent =>
                           match resolve_pending_commits(
+                            store: store,
                             pending: reverse(reversed_commits),
                             next_ordinal: next_ordinal,
                           ) {
@@ -1187,6 +1264,8 @@ fn repository_envelope_load_standing(cause: RepositoryDecodeRefusal) -> LoadStan
         TargetReferenceUncontainedDigestInvalid { found: _ } => LoadDocumentMalformed
       }
     RepositoryCommitRootReferenceUnresolved { reference: _ } => LoadDocumentMalformed
+    RepositoryCommitRootNotInObjectTable { root: _ } => LoadDocumentMalformed
+    RepositoryCommitRootIsAuthoredSource { root: _ } => LoadDocumentMalformed
     RepositoryCheckoutReferenceUnresolved { reference: _ } => LoadDocumentMalformed
     RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => LoadDocumentMalformed
     RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => LoadDocumentMalformed

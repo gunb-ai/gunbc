@@ -20,6 +20,10 @@ import gunbc.scm.object_store {
   StoreOutcome,
   Stored,
   LocatorCollision,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
+  node_target_locator,
   CopyOutcome,
   Copied,
   CopySourceAbsent,
@@ -89,18 +93,33 @@ fn parent_node() -> Node {
 }
 
 // A store holding the parent AND its child, with the parent's identity.
-type BuiltStore { store: ObjectStore, root: ObjectId, child: ObjectId }
+// THE ROOT IS A NodeTarget AND THE CHILD IS A LOCATOR, which is the two questions this fixture is
+// actually asked. The root is handed to CommitClosure, a node-requiring position; the child is only
+// ever compared against the identities a completeness fold reports, which are addresses.
+type BuiltStore { store: ObjectStore, root: NodeTarget, child: ObjectId }
 
 fn build_full_store() -> BuiltStore {
   match store_node(store: empty_store(), n: child_node()) {
     LocatorCollision { identity: _, existing: _, incoming: _ } =>
-      BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
-    Stored { store: s1, identity: child_id } =>
+      BuiltStore {
+        store: empty_store(),
+        root: NodeTargetUnresolved(fallback_id()),
+        child: fallback_id(),
+      }
+    Stored { store: s1, node: child_node_ref } =>
       match store_node(store: s1, n: parent_node()) {
         LocatorCollision { identity: _, existing: _, incoming: _ } =>
-          BuiltStore { store: empty_store(), root: fallback_id(), child: fallback_id() }
-        Stored { store: s2, identity: parent_id } =>
-          BuiltStore { store: s2, root: parent_id, child: child_id }
+          BuiltStore {
+            store: empty_store(),
+            root: NodeTargetUnresolved(fallback_id()),
+            child: fallback_id(),
+          }
+        Stored { store: s2, node: parent_ref } =>
+          BuiltStore {
+            store: s2,
+            root: NodeTargetResolved(parent_ref),
+            child: child_node_ref.locator,
+          }
       }
   }
 }
@@ -109,7 +128,7 @@ fn build_full_store() -> BuiltStore {
 // structural fact that this value cannot satisfy, so a build failure cannot pass as a green.
 fn fallback_id() -> ObjectId {
   match store_node(store: empty_store(), n: child_node()) {
-    Stored { store: _, identity: i } => i
+    Stored { store: _, node: n } => n.locator
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
@@ -119,8 +138,12 @@ fn fallback_id() -> ObjectId {
 // completeness.
 fn build_grafted_store() -> ObjectStore {
   let full = build_full_store()
-  match copy_object(from: full.store, to: empty_store(), identity: full.root) {
-    Copied { store: s, identity: _ } => s
+  match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.root),
+  ) {
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -156,23 +179,33 @@ fn closure_two_child_parent_node() -> Node {
   )
 }
 
-type TwoChildStore { store: ObjectStore, root: ObjectId, first: ObjectId, second: ObjectId }
+type TwoChildStore { store: ObjectStore, root: NodeTarget, first: ObjectId, second: ObjectId }
 
 fn two_child_fallback() -> TwoChildStore {
-  TwoChildStore { store: empty_store(), root: fallback_id(), first: fallback_id(), second: fallback_id() }
+  TwoChildStore {
+    store: empty_store(),
+    root: NodeTargetUnresolved(fallback_id()),
+    first: fallback_id(),
+    second: fallback_id(),
+  }
 }
 
 fn build_two_child_store() -> TwoChildStore {
   match store_node(store: empty_store(), n: closure_alpha_child_node()) {
     LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-    Stored { store: s1, identity: alpha_id } =>
+    Stored { store: s1, node: alpha_ref } =>
       match store_node(store: s1, n: closure_beta_child_node()) {
         LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-        Stored { store: s2, identity: beta_id } =>
+        Stored { store: s2, node: beta_ref } =>
           match store_node(store: s2, n: closure_two_child_parent_node()) {
             LocatorCollision { identity: _, existing: _, incoming: _ } => two_child_fallback()
-            Stored { store: s3, identity: parent_id } =>
-              TwoChildStore { store: s3, root: parent_id, first: alpha_id, second: beta_id }
+            Stored { store: s3, node: parent_ref } =>
+              TwoChildStore {
+                store: s3,
+                root: NodeTargetResolved(parent_ref),
+                first: alpha_ref.locator,
+                second: beta_ref.locator,
+              }
           }
       }
   }
@@ -192,8 +225,12 @@ fn first_missing_is(missing: List<ObjectId>, expected: ObjectId) -> Bool {
 
 test fn two_uncontained_children_are_named_in_order() -> Bool {
   let built = build_two_child_store()
-  let grafted = match copy_object(from: built.store, to: empty_store(), identity: built.root) {
-    Copied { store: s, identity: _ } => s
+  let grafted = match copy_object(
+    from: built.store,
+    to: empty_store(),
+    identity: node_target_locator(target: built.root),
+  ) {
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -243,7 +280,7 @@ test fn a_closure_missing_its_own_root_names_the_root() -> Bool {
   let closure = CommitClosure { store: empty_store(), root: full.root }
   let missing = unresolved_identities(closure: closure)
   (list_length(items: missing) == 1)
-    && names_exactly(missing: missing, expected: full.root)
+    && names_exactly(missing: missing, expected: node_target_locator(target: full.root))
     && !closure_is_complete(closure: closure)
 }
 
@@ -300,7 +337,7 @@ test fn the_mint_refuses_a_complete_closure() -> Bool {
 
 // Mints an admission for the closure under test, or reports the refusal. Every claim below routes
 // through this, so none of them can accidentally encode a closure the mint never admitted.
-fn admitted_for(store: ObjectStore, root: ObjectId) -> PartialClosureAdmissionOutcome {
+fn admitted_for(store: ObjectStore, root: NodeTarget) -> PartialClosureAdmissionOutcome {
   admit_partial_commit_closure(
     closure: CommitClosure { store: store, root: root },
     reason: ClosureTrimmedForTransfer

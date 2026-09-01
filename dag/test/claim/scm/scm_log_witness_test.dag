@@ -11,6 +11,9 @@ import gunbc.scm.object_store {
   store_node,
   Stored,
   LocatorCollision,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
 }
 import gunbc.scm.ancestry { RepositoryCommitRef }
 import gunbc.scm.repository_envelope {
@@ -44,15 +47,15 @@ fn log_witness_atom(name: Symbol) -> Node {
 
 type LogWitnessStored {
   store: ObjectStore
-  identity: ObjectId
+  identity: NodeTarget
 }
 
 fn log_witness_store_one(store: ObjectStore, name: Symbol) -> LogWitnessStored {
   match store_node(store: store, n: log_witness_atom(name: name)) {
-    Stored { store: next, identity: identity } =>
-      LogWitnessStored { store: next, identity: identity }
+    Stored { store: next, node: node } =>
+      LogWitnessStored { store: next, identity: NodeTargetResolved(node) }
     LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-      LogWitnessStored { store: store, identity: identity }
+      LogWitnessStored { store: store, identity: NodeTargetUnresolved(identity) }
   }
 }
 
@@ -69,7 +72,7 @@ fn log_witness_empty(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn log_witness_mint(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn log_witness_mint(repo: RepositoryEnvelope, root: NodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo

@@ -65,12 +65,15 @@ import gunbc.scm.load_standing {
   LoadIdentityCollision,
 }
 
-// SIX CAUSES, TWO REMEDIES, AND THE SPLIT BETWEEN THEM IS THE WHOLE POINT OF THE TYPE.
+// SEVEN CAUSES, TWO REMEDIES, AND THE SPLIT BETWEEN THEM IS THE WHOLE POINT OF THE TYPE.
 //
-// Five of these say the document does not conform to a schema this build claims to understand: a tag
+// Six of these say the document does not conform to a schema this build claims to understand: a tag
 // naming a kind, connective, behavior or label that is not in the closed vocabulary, or an edge
-// target naming a position the document does not carry. Those are malformed bytes to a reader that
-// should have understood them.
+// target naming a position the document does not carry -- or naming one it DOES carry that holds an
+// authored source where a child edge requires a program. Those are malformed bytes to a reader that
+// should have understood them. The last is the one boundary at which a file can still be presented
+// in a node position: inside the model the reference types make it unwritable, but a document is
+// bytes and can say anything, so the wall there is a typed refusal rather than a constructor.
 //
 // ObjectTableObjectCollision is NOT that, and conflating it with the five is the error this type
 // exists to prevent. Two distinct records claiming one structural locator is an honest hash
@@ -82,6 +85,7 @@ type ObjectTableDecodeRefusal
   | ObjectTableUnknownBehaviorTag { found: String }
   | ObjectTableUnknownLabelTag { found: String }
   | ObjectTableEdgeTargetUnresolved { reference: String }
+  | ObjectTableEdgeTargetIsAuthoredSource { reference: String }
   | ObjectTableObjectCollision { identity: ObjectId }
 
 // THE AUTHORITY THAT OWNS THE CAUSES OWNS THE STANDING DECISION, per DESIGN section 3: the dispatch
@@ -89,7 +93,7 @@ type ObjectTableDecodeRefusal
 // shared vocabulary and the consumer sees only the standing. gunbc.scm.load_standing's header states
 // the same rule from the other side -- a new format is a new classifier beside its own refusals.
 //
-// This match is exhaustive over the six and assigns per cause, never per group. The collision arm is
+// This match is exhaustive over the seven and assigns per cause, never per group. The collision arm is
 // the load-bearing one: it must not reach LoadDocumentMalformed, because that is the only standing
 // permitting supersession.
 fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
@@ -100,5 +104,6 @@ fn object_table_load_standing(cause: ObjectTableDecodeRefusal) -> LoadStanding {
     ObjectTableUnknownBehaviorTag { found: _ } => LoadDocumentMalformed
     ObjectTableUnknownLabelTag { found: _ } => LoadDocumentMalformed
     ObjectTableEdgeTargetUnresolved { reference: _ } => LoadDocumentMalformed
+    ObjectTableEdgeTargetIsAuthoredSource { reference: _ } => LoadDocumentMalformed
   }
 }

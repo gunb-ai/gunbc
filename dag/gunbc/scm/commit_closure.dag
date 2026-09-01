@@ -86,8 +86,10 @@ import gunbc.scm.object_store {
   AuthoredSourceObject,
   ObjectStore,
   StoredEdge,
+  NodeTarget,
   object_id_eq,
-  store_contains,
+  store_contains_node_target,
+  node_target_locator,
   store_records_in_dependency_order,
 }
 
@@ -204,7 +206,7 @@ fn admitted_unresolved(admitted: AdmittedPartialCommitClosure) -> List<ObjectId>
 // A closure is the store plus the root the commit names. Nothing about how it is written down.
 type CommitClosure {
   store: ObjectStore
-  root: ObjectId
+  root: NodeTarget
 }
 
 // WHY THE WIRE ARM IS "UNCONTAINED" AND THIS FUNCTION SAYS "UNRESOLVED", which is not two names for
@@ -293,7 +295,11 @@ fn uncontained_in_record(store: ObjectStore, acc: List<ObjectId>, record: Object
     record.children,
     init: acc,
     f: fn(inner, child) {
-      if store_contains(store: store, identity: child.target) { inner } else { concat([child.target], inner) }
+      if store_contains_node_target(store: store, target: child.target) {
+        inner
+      } else {
+        concat([node_target_locator(target: child.target)], inner)
+      }
     }
   )
 }
@@ -302,7 +308,11 @@ fn uncontained_in_record(store: ObjectStore, acc: List<ObjectId>, record: Object
 // incompleteness there is -- a document that names a commit whose top object it does not carry.
 // The predecessor encoded the root positionally too, so this case was as unnameable as the rest.
 fn unresolved_root(closure: CommitClosure) -> List<ObjectId> {
-  if store_contains(store: closure.store, identity: closure.root) { [] } else { [closure.root] }
+  if store_contains_node_target(store: closure.store, target: closure.root) {
+    []
+  } else {
+    [node_target_locator(target: closure.root)]
+  }
 }
 
 fn closure_is_complete(closure: CommitClosure) -> Bool {

@@ -28,6 +28,8 @@ import v2.std.node {
 
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
+  SourceStored, SourceLocatorCollision,
+  NodeTarget, NodeTargetResolved, NodeTargetUnresolved, node_target_locator,
   empty_store, object_id_eq, store_node, store_object_count,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision, copy_object,
   store_authored_source,
@@ -50,6 +52,7 @@ import gunbc.scm.repository_envelope {
   RepositoryIdentityRuleUnrecognized,
   RepositoryTargetReferenceRefused,
   RepositoryCommitRootReferenceUnresolved, RepositoryCheckoutReferenceUnresolved,
+  RepositoryCommitRootNotInObjectTable, RepositoryCommitRootIsAuthoredSource,
   RepositoryUnexpectedMember, RepositoryMemberContext,
   RepositoryEnvelopeMembers, RepositoryCommitMembers,
   encode_repository_checked,
@@ -122,12 +125,13 @@ fn scm_env_program_two() -> Node {
   )
 }
 
-type ScmEnvPut { store: ObjectStore, identity: ObjectId }
+type ScmEnvPut { store: ObjectStore, identity: NodeTarget }
 
 fn scm_env_put(store: ObjectStore, n: Node) -> ScmEnvPut {
   match store_node(store: store, n: n) {
-    Stored { store: s, identity: i } => ScmEnvPut { store: s, identity: i }
-    LocatorCollision { identity: i, existing: _, incoming: _ } => ScmEnvPut { store: store, identity: i }
+    Stored { store: s, node: n } => ScmEnvPut { store: s, identity: NodeTargetResolved(n) }
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      ScmEnvPut { store: store, identity: NodeTargetUnresolved(i) }
   }
 }
 
@@ -144,7 +148,7 @@ fn scm_env_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn scm_env_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn scm_env_minted_or(repo: RepositoryEnvelope, root: NodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
@@ -229,7 +233,7 @@ test fn scm_env_the_commit_counter_distinguishes_a_populated_repository() -> Boo
 // the roots into one string in order is how order is compared at all. A membership check would have
 // passed for a decoder that reversed the log.
 fn scm_env_root_signature(commits: List<RepositoryCommit>) -> String {
-  fold(commits, init: "", f: fn(acc, c) { concat(acc, concat("|", c.root.digest as String)) })
+  fold(commits, init: "", f: fn(acc, c) { concat(acc, concat("|", c.root.locator.digest as String)) })
 }
 
 test fn scm_env_commit_identities_survive_reconstruction() -> Bool {
@@ -535,7 +539,10 @@ fn scm_env_absent_root_repository() -> RepositoryEnvelope {
       v: c,
       key: "root",
       value: json_object(members: [
-        json_kv(key: "uncontained", value: json_string(s: orphan.identity.digest as String)),
+        json_kv(
+          key: "uncontained",
+          value: json_string(s: node_target_locator(target: orphan.identity).digest as String),
+        ),
       ]),
     ),
   )
@@ -576,8 +583,12 @@ fn scm_env_non_commit_checkout_repository() -> RepositoryEnvelope {
 // one nobody can resolve back, and a tag-only claim could not tell the two apart.
 test fn scm_env_an_uncontained_target_refuses_to_encode_and_names_it() -> Bool {
   let full = scm_env_put(store: empty_store(), n: scm_env_program_two())
-  let grafted = match copy_object(from: full.store, to: empty_store(), identity: full.identity) {
-    Copied { store: s, identity: _ } => s
+  let grafted = match copy_object(
+    from: full.store,
+    to: empty_store(),
+    identity: node_target_locator(target: full.identity),
+  ) {
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -658,6 +669,8 @@ fn scm_env_decode_cause_tag(outcome: RepositoryDecodeOutcome) -> String {
         RepositoryFormatUnrecognized { found: _ } => "format"
         RepositoryIdentityRuleUnrecognized { found: _ } => "identity_rule"
         RepositoryCommitRootReferenceUnresolved { reference: _ } => "commit_root"
+        RepositoryCommitRootNotInObjectTable { root: _ } => "commit_root_absent"
+        RepositoryCommitRootIsAuthoredSource { root: _ } => "commit_root_source"
         RepositoryCheckoutReferenceUnresolved { reference: _ } => "checked_out"
         RepositoryCommitReferenceDuplicatedOnWire { reference: _ } => "commit_duplicate"
         RepositoryCommitParentNotPreviouslyAdmitted { parent: _ } => "commit_parent"
@@ -1142,15 +1155,16 @@ test fn scm_env_reordering_rows_does_not_change_which_commit_a_key_names() -> Bo
 // back in the refusal, so a refusal naming some other locator does not satisfy it.
 test fn env_a_commit_root_that_is_a_source_file_refuses_as_authored_source() -> Bool {
   match store_authored_source(store: empty_store(), text: "not a program") {
-    LocatorCollision { identity: _, existing: _, incoming: _ } => false
-    Stored { store: store, identity: file } =>
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => false
+    SourceStored { store: store, source: file } =>
       match mint_repository_commit(
         repository: scm_env_repository_with_store(store: store),
-        root: file,
+        root: NodeTargetUnresolved(file.locator),
         message: "root is a file",
         parent: none,
       ) {
-        RepositoryCommitMintRootIsAuthoredSource { root: r } => object_id_eq(left: r, right: file)
+        RepositoryCommitMintRootIsAuthoredSource { root: r } =>
+          object_id_eq(left: r, right: file.locator)
         RepositoryCommitMinted { repository: _, reference: _ } => false
         RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => false
         RepositoryCommitMintParentMissing { parent: _ } => false

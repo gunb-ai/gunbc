@@ -19,9 +19,17 @@ import gunbc.scm.object_store {
   StoreOutcome,
   Stored,
   LocatorCollision,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
   empty_store,
   store_node,
   store_authored_source,
+  insert_from_structure,
+  StoredEdge,
   object_id_eq,
 }
 
@@ -79,15 +87,42 @@ type Fixture {
 
 fn store_or_empty(outcome: StoreOutcome) -> ObjectStore {
   match outcome {
-    Stored { store: store, identity: _ } => store
+    Stored { store: store, node: _ } => store
     LocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+fn root_or(outcome: StoreOutcome, fallback: ObjectId) -> NodeTarget {
+  match outcome {
+    Stored { store: _, node: node } => NodeTargetResolved(node)
+    LocatorCollision { identity: _, existing: _, incoming: _ } => NodeTargetUnresolved(fallback)
   }
 }
 
 fn identity_or(outcome: StoreOutcome, fallback: ObjectId) -> ObjectId {
   match outcome {
-    Stored { store: _, identity: identity } => identity
+    Stored { store: _, node: node } => node.locator
     LocatorCollision { identity: _, existing: _, incoming: _ } => fallback
+  }
+}
+
+// THE SOURCE FIXTURE'S ROOT IS AN UNRESOLVED TARGET, AND THAT IS THE ONLY SHAPE IT COULD HAVE.
+// store_authored_source hands back an AuthoredSourceObjectRef, which no node-requiring position
+// accepts, so the file's LOCATOR is what reaches the commit -- a bare address whose kind nothing has
+// established. That is exactly the state merge must resolve and refuse on, and it is still fully
+// authorable, which is why this claim survives the reference types rather than being deleted by
+// them.
+fn source_store_or_empty(outcome: SourceStoreOutcome) -> ObjectStore {
+  match outcome {
+    SourceStored { store: store, source: _ } => store
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
+  }
+}
+
+fn source_root_or(outcome: SourceStoreOutcome, fallback: ObjectId) -> NodeTarget {
+  match outcome {
+    SourceStored { store: _, source: source } => NodeTargetUnresolved(source.locator)
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } => NodeTargetUnresolved(fallback)
   }
 }
 
@@ -99,13 +134,13 @@ fn fixture_with(edges: List<Edge>) -> Fixture {
   let outcome = store_node(store: empty_store(), n: scope_of(edges: edges))
   Fixture {
     store: store_or_empty(outcome: outcome),
-    target: Commit { root: identity_or(outcome: outcome, fallback: fallback_id()) },
+    target: Commit { root: root_or(outcome: outcome, fallback: fallback_id()) },
   }
 }
 
 fn fallback_id() -> ObjectId {
   match store_node(store: empty_store(), n: merge_witness_leaf(name: ^fallback)) {
-    Stored { store: _, identity: identity } => identity
+    Stored { store: _, node: node } => node.locator
     LocatorCollision { identity: identity, existing: _, incoming: _ } => identity
   }
 }
@@ -621,15 +656,15 @@ test fn an_empty_proposal_set_preserves_the_target() -> Bool {
 //
 // Each claim is paired with a control that substitutes a NODE at the same position, so the refusal is
 // attributable to the object's KIND rather than to the fixture being unmergeable.
-fn merge_witness_source_store() -> StoreOutcome {
+fn merge_witness_source_store() -> SourceStoreOutcome {
   store_authored_source(store: empty_store(), text: "not a program\n")
 }
 
 fn merge_witness_source_fixture() -> Fixture {
   let outcome = merge_witness_source_store()
   Fixture {
-    store: store_or_empty(outcome: outcome),
-    target: Commit { root: identity_or(outcome: outcome, fallback: fallback_id()) },
+    store: source_store_or_empty(outcome: outcome),
+    target: Commit { root: source_root_or(outcome: outcome, fallback: fallback_id()) },
   }
 }
 
@@ -672,6 +707,78 @@ test fn merge_a_target_root_that_is_a_file_refuses_as_authored_source() -> Bool 
 // about an empty proposal list or a single-object store.
 test fn merge_a_target_root_that_is_a_node_does_not_refuse() -> Bool {
   let fx = paired_fixture()
+  merge_refusal_tag(
+    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+  ) == "merged"
+}
+
+// THE CHILD ARM, WITNESSED WHERE ITS INPUT CAN NOW BE BUILT.
+//
+// This claim used to live beside the closure-document builder, because a document was the only thing
+// that could put a file into a child edge. It is not any more: a contained edge target is resolved
+// before the decoder writes it, so that document refuses at decode and never reaches merge.
+//
+// The arm is still reachable, and this is the shape that reaches it. A child edge may carry an
+// UNRESOLVED target -- a bare locator whose kind nothing has established, which is what a partial
+// closure's uncontained reference decodes to -- and the store here holds a FILE at that locator. So
+// merge resolves the role value and must refuse naming the child's KIND. Against the wildcard this
+// PR removed, which mapped every checkout refusal to TargetChildMissing, it reports "child_missing"
+// for an object that is present: that is the discriminating red.
+//
+// The record is built through insert_from_structure rather than by hand, because ObjectRecord is
+// sole_constructor -- the fixture chooses the STRUCTURE and the store derives the identity, so this
+// target is incomplete-by-construction and never dishonest.
+fn merge_witness_role_over_a_file_fixture() -> Fixture {
+  match store_authored_source(store: empty_store(), text: "not a program\n") {
+    SourceLocatorCollision { identity: _, existing: _, incoming: _ } =>
+      Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(fallback_id()) } }
+    SourceStored { store: with_file, source: file } =>
+      match insert_from_structure(
+        store: with_file,
+        kind: TypeNode { connective: Conj },
+        children: [
+          StoredEdge { label: Named { name: ^s }, target: NodeTargetUnresolved(file.locator) },
+        ],
+      ) {
+        LocatorCollision { identity: i, existing: _, incoming: _ } =>
+          Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(i) } }
+        Stored { store: assembled, node: root } =>
+          Fixture { store: assembled, target: Commit { root: NodeTargetResolved(root) } }
+      }
+  }
+}
+
+test fn merge_a_role_whose_value_is_a_file_refuses_as_authored_source() -> Bool {
+  let fx = merge_witness_role_over_a_file_fixture()
+  merge_refusal_tag(
+    o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
+  ) == "child_source"
+}
+
+// CONTROL, one fact apart: the same assembly with a NODE under the child edge merges. Without it a
+// merge that refused every hand-assembled target would satisfy the claim above.
+fn merge_witness_role_over_a_node_fixture() -> Fixture {
+  match store_node(store: empty_store(), n: merge_witness_leaf(name: ^child)) {
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(i) } }
+    Stored { store: with_child, node: child } =>
+      match insert_from_structure(
+        store: with_child,
+        kind: TypeNode { connective: Conj },
+        children: [
+          StoredEdge { label: Named { name: ^s }, target: NodeTargetUnresolved(child.locator) },
+        ],
+      ) {
+        LocatorCollision { identity: i, existing: _, incoming: _ } =>
+          Fixture { store: empty_store(), target: Commit { root: NodeTargetUnresolved(i) } }
+        Stored { store: assembled, node: root } =>
+          Fixture { store: assembled, target: Commit { root: NodeTargetResolved(root) } }
+      }
+  }
+}
+
+test fn merge_a_role_whose_value_is_a_node_merges() -> Bool {
+  let fx = merge_witness_role_over_a_node_fixture()
   merge_refusal_tag(
     o: merge(store: fx.store, target: fx.target, target_dependencies: [], proposals: [])
   ) == "merged"

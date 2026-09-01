@@ -23,8 +23,8 @@ import gunbc.scm.object_store {
   NodeRecordAbsent,
   NodeRecordFound,
   NodeRecordIsAuthoredSource,
-  ObjectId,
   ObjectStore,
+  SemanticNodeObjectRef,
   find_node_record,
 }
 import gunbc.scm.repository_envelope { RepositoryEnvelope, RepositoryCommit }
@@ -79,8 +79,8 @@ type CommitLogAcc {
   rows: List<CommitLogRow>
 }
 
-fn logged_commit_standing(store: ObjectStore, root: ObjectId) -> LoggedCommitStanding {
-  match find_node_record(store: store, identity: root) {
+fn logged_commit_standing(store: ObjectStore, root: SemanticNodeObjectRef) -> LoggedCommitStanding {
+  match find_node_record(store: store, identity: root.locator) {
     NodeRecordFound(_) => LoggedCommitRootHeld
     NodeRecordAbsent { identity: _ } => LoggedCommitRootMissingFromStore
     NodeRecordIsAuthoredSource { identity: _ } => LoggedCommitRootIsAuthoredSource

@@ -16,6 +16,8 @@ import gunbc.scm.object_table_json {
   ObjectTableUnknownBehaviorTag,
   ObjectTableUnknownLabelTag,
   ObjectTableEdgeTargetUnresolved,
+  ObjectTableEdgeTargetIsAuthoredSource,
+  ObjectTableEdgeTargetIsAuthoredSource,
   ObjectTableObjectCollision,
   object_table_load_standing,
 }
@@ -114,9 +116,19 @@ import gunbc.scm.object_store {
   AuthoredSourceEmpty,
   AuthoredSourceText,
   StoredEdge,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
+  node_target_locator,
+  ScmObjectRef,
+  SemanticNodeRef,
+  AuthoredSourceRef,
   StoreOutcome,
   Stored,
   LocatorCollision,
+  SourceStoreOutcome,
+  SourceStored,
+  SourceLocatorCollision,
   empty_store,
   insert_from_structure,
   store_authored_source,
@@ -166,6 +178,7 @@ type ClosureDocRefusal
   = ClosureDocMemberReadRefused { cause: MemberReadRefusal }
   | ClosureDocFormatUnrecognized { found: String }
   | ClosureDocRootPositionUnresolved { reference: String }
+  | ClosureDocRootIsAuthoredSource { reference: String }
   | ClosureDocUnexpectedMember { context: ClosureDocMemberContext, key: String }
   | ClosureDocTargetReferenceRefused { cause: TargetReferenceRefusal }
   | ClosureDocObjectTableRefused { cause: ObjectTableDecodeRefusal }
@@ -223,10 +236,24 @@ fn member_set_refusal(v: JsonValue, allowed: List<String>, context: ClosureDocMe
 }
 
 type ClosureDocLoadOutcome
-  = ClosureDocLoaded { store: ObjectStore, root: ObjectId }
+  = ClosureDocLoaded { store: ObjectStore, root: NodeTarget }
   | ClosureDocRefused { cause: ClosureDocRefusal }
 
-data closure_document_format_tag: String = "gunbc-scm-commit-closure-v2"
+// THE TAG MOVES BECAUSE THE SCHEMA GREW A MEMBER, WHICH IS THIS MODULE'S OWN STATED POLICY.
+//
+// The comment above says it in as many words: the format tag means "I understand this EXACT schema",
+// additive evolution within a version is deliberately foreclosed, and a schema that grows a member
+// grows a NEW FORMAT TAG. The object table now admits `{"source": ...}` entries, which a reader of
+// the v2 schema refuses. Continuing to write "…-v2" over that would have been a meaning fork under
+// DESIGN section 3 -- one name, two materially different contracts -- and it would have been THIS
+// module's policy broken by this module. Named by external review of gunbc#9891.
+//
+// ONE TAG, NOT TWO, AND THE REASON IS THAT NO v2 DOCUMENT EXISTS TO BE COMPATIBLE WITH. A decoder
+// that supported both would say so by admitting both tags; there is nothing to admit. The only
+// producer of these bytes is a witness rebuilt from source every run, so there is no durable
+// artifact whose v2 spelling has to keep loading, and inventing a compatibility arm for an empty
+// population would be machinery with no consumer.
+data closure_document_format_tag: String = "gunbc-scm-commit-closure-v3"
 
 // WHAT THIS MODULE IS AND IS NOT, so the next layer is not built on a wrong assumption.
 //
@@ -392,7 +419,10 @@ fn encode_edge(positions: EncodePositions, e: StoredEdge) -> JsonValue {
   json_object(
     members: concat(
       encode_label(l: e.label),
-      [json_kv(key: "target", value: encode_target(positions: positions, target: e.target))]
+      [json_kv(
+        key: "target",
+        value: encode_target(positions: positions, target: node_target_locator(target: e.target)),
+      )]
     )
   )
 }
@@ -560,9 +590,9 @@ fn an_uncontained_key(missing: List<ObjectId>) -> String {
   })
 }
 
-fn encode_closure_document(store: ObjectStore, root: ObjectId) -> JsonValue {
+fn encode_closure_document(store: ObjectStore, root: NodeTarget) -> JsonValue {
   let acc = encode_object_table(store: store)
-  let root_reference = encoded_root_reference(acc: acc, root: root)
+  let root_reference = encoded_root_reference(acc: acc, root: node_target_locator(target: root))
   json_object(
     members: [
       json_kv(key: "format", value: json_string(s: closure_document_format_tag)),
@@ -680,9 +710,14 @@ fn decode_kind(kind_value: JsonValue) -> KindDecode {
 // is O(n log n); the refusal semantics are unchanged, because a reference still resolves ONLY
 // against positions already decoded -- the map is populated in the same forward order the list was,
 // so a forward or fabricated reference is still absent and still refuses.
-type DecodePositions = Map<String, ObjectId>
+// THE POSITION MAP CARRIES THE KIND, WHICH IS WHY A FILE CANNOT ARRIVE AS A CHILD. It held a bare
+// ObjectId, so a resolved edge target came back as an address and the decoder had nothing to
+// discriminate on -- an entry that decoded to an authored source was written into a node's child
+// edge and only failed much later, at checkout, as a refusal owned by the wrong layer. Storing the
+// branded reference makes the kind available exactly where the document is being believed.
+type DecodePositions = Map<String, ScmObjectRef>
 
-fn resolve_reference(positions: DecodePositions, reference: String) -> ObjectId? {
+fn resolve_reference(positions: DecodePositions, reference: String) -> ScmObjectRef? {
   map_lookup(m: positions, key: reference)
 }
 
@@ -803,15 +838,26 @@ fn decode_edge_step(positions: DecodePositions, acc: EdgeAcc, edge_value: JsonVa
                   }
                 TargetUncontained { digest: identity } =>
                   EdgeAcc {
-                    edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
+                    edges: concat(
+                      [StoredEdge { label: label, target: NodeTargetUnresolved(identity) }],
+                      acc.edges,
+                    ),
                     refusal: acc.refusal,
                   }
                 TargetContainedAt { reference: reference } =>
                   match resolve_reference(positions: positions, reference: reference) {
-                    Present { value: identity } =>
+                    Present { value: SemanticNodeRef(node) } =>
                       EdgeAcc {
-                        edges: concat([StoredEdge { label: label, target: identity }], acc.edges),
+                        edges: concat(
+                          [StoredEdge { label: label, target: NodeTargetResolved(node) }],
+                          acc.edges,
+                        ),
                         refusal: acc.refusal,
+                      }
+                    Present { value: AuthoredSourceRef(_) } =>
+                      EdgeAcc {
+                        edges: acc.edges,
+                        refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableEdgeTargetIsAuthoredSource { reference: reference } } },
                       }
                     Absent =>
                       EdgeAcc {
@@ -924,17 +970,21 @@ fn decode_object_step(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
 // derived rather than what the document said.
 fn decode_authored_source(acc: DecodeAcc, text: String) -> DecodeAcc {
   match store_authored_source(store: acc.store, text: text) {
-    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+    SourceLocatorCollision { identity: i, existing: _, incoming: _ } =>
       DecodeAcc {
         store: acc.store,
         positions: acc.positions,
         next: acc.next,
         refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableObjectCollision { identity: i } } },
       }
-    Stored { store: next_store, identity: identity } =>
+    SourceStored { store: next_store, source: source } =>
       DecodeAcc {
         store: next_store,
-        positions: map_insert(m: acc.positions, key: position_reference(n: acc.next), value: identity),
+        positions: map_insert(
+          m: acc.positions,
+          key: position_reference(n: acc.next),
+          value: AuthoredSourceRef(source),
+        ),
         next: acc.next + 1,
         refusal: acc.refusal,
       }
@@ -977,13 +1027,13 @@ fn decode_object_members(acc: DecodeAcc, object_value: JsonValue) -> DecodeAcc {
                                 next: acc.next,
                                 refusal: Present { value: ClosureDocObjectTableRefused { cause: ObjectTableObjectCollision { identity: i } } },
                               }
-                            Stored { store: next_store, identity: identity } =>
+                            Stored { store: next_store, node: node } =>
                               DecodeAcc {
                                 store: next_store,
                                 positions: map_insert(
                                   m: acc.positions,
                                   key: position_reference(n: acc.next),
-                                  value: identity,
+                                  value: SemanticNodeRef(node),
                                 ),
                                 next: acc.next + 1,
                                 refusal: acc.refusal,
@@ -1064,10 +1114,14 @@ fn decode_closure_document_body(v: JsonValue) -> ClosureDocLoadOutcome {
                   match decode_target_reference(target_value: root_value) {
                     TargetReferenceRefused { cause: c } =>
                       ClosureDocRefused { cause: ClosureDocTargetReferenceRefused { cause: c } }
-                    TargetUncontained { digest: root } => ClosureDocLoaded { store: store, root: root }
+                    TargetUncontained { digest: root } =>
+                      ClosureDocLoaded { store: store, root: NodeTargetUnresolved(root) }
                     TargetContainedAt { reference: reference } =>
                       match resolve_reference(positions: positions, reference: reference) {
-                        Present { value: root } => ClosureDocLoaded { store: store, root: root }
+                        Present { value: SemanticNodeRef(root) } =>
+                          ClosureDocLoaded { store: store, root: NodeTargetResolved(root) }
+                        Present { value: AuthoredSourceRef(_) } =>
+                          ClosureDocRefused { cause: ClosureDocRootIsAuthoredSource { reference: reference } }
                         Absent =>
                           ClosureDocRefused { cause: ClosureDocRootPositionUnresolved { reference: reference } }
                       }
@@ -1143,6 +1197,7 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
       }
     ClosureDocUnexpectedMember { context: _, key: _ } => LoadDocumentMalformed
     ClosureDocRootPositionUnresolved { reference: _ } => LoadDocumentMalformed
+    ClosureDocRootIsAuthoredSource { reference: _ } => LoadDocumentMalformed
     ClosureDocObjectTableRefused { cause: c } => object_table_load_standing(cause: c)
     ClosureDocTargetReferenceRefused { cause: c } =>
       match c {
@@ -1164,7 +1219,7 @@ fn closure_document_load_standing(cause: ClosureDocRefusal) -> LoadStanding {
 // predecessor format could not produce: a document whose uncontained references leave objects the
 // store does not hold loads correctly and is PARTIAL, which is a success with an obligation rather
 // than a failure. Completeness is derived from the objects, never a flag beside them.
-fn loaded_closure_standing(store: ObjectStore, root: ObjectId) -> LoadStanding {
+fn loaded_closure_standing(store: ObjectStore, root: NodeTarget) -> LoadStanding {
   if closure_is_complete(closure: CommitClosure { store: store, root: root }) {
     LoadComplete
   } else {

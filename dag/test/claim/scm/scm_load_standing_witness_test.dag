@@ -14,6 +14,7 @@ import std.types { Bool, Int, List }
 import v2.std.node { Node, Edge, Named, Conj, Atom, TypeNode, node_synthetic }
 import gunbc.scm.object_store {
   ObjectId, ObjectStore, StoreOutcome, Stored, LocatorCollision,
+  NodeTarget, NodeTargetResolved, NodeTargetUnresolved, node_target_locator,
   CopyOutcome, Copied, CopySourceAbsent, CopyLocatorCollision,
   empty_store, copy_object, store_node,
 }
@@ -67,15 +68,17 @@ fn ls_parent() -> Node {
   )
 }
 
-type LsBuilt { store: ObjectStore, root: ObjectId }
+type LsBuilt { store: ObjectStore, root: NodeTarget }
 
 fn ls_full() -> LsBuilt {
   match store_node(store: empty_store(), n: ls_child()) {
-    LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: empty_store(), root: i }
-    Stored { store: s1, identity: _ } =>
+    LocatorCollision { identity: i, existing: _, incoming: _ } =>
+      LsBuilt { store: empty_store(), root: NodeTargetUnresolved(i) }
+    Stored { store: s1, node: _ } =>
       match store_node(store: s1, n: ls_parent()) {
-        LocatorCollision { identity: i, existing: _, incoming: _ } => LsBuilt { store: empty_store(), root: i }
-        Stored { store: s2, identity: p } => LsBuilt { store: s2, root: p }
+        LocatorCollision { identity: i, existing: _, incoming: _ } =>
+          LsBuilt { store: empty_store(), root: NodeTargetUnresolved(i) }
+        Stored { store: s2, node: p } => LsBuilt { store: s2, root: NodeTargetResolved(p) }
       }
   }
 }
@@ -83,7 +86,7 @@ fn ls_full() -> LsBuilt {
 fn ls_grafted() -> ObjectStore {
   let full = ls_full()
   match copy_object(from: full.store, to: empty_store(), identity: full.root) {
-    Copied { store: s, identity: _ } => s
+    Copied { store: s, reference: _ } => s
     CopySourceAbsent { identity: _ } => empty_store()
     CopyLocatorCollision { identity: _, existing: _, incoming: _ } => empty_store()
   }
@@ -105,7 +108,7 @@ fn ls_other_generation() -> ObjectId {
 
 fn ls_child_identity() -> ObjectId {
   match store_node(store: empty_store(), n: ls_child()) {
-    Stored { store: _, identity: i } => i
+    Stored { store: _, node: n } => n.locator
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
@@ -118,7 +121,7 @@ fn ls_permits(standing: LoadStanding) -> Bool {
       evidence: observe_generation(
         slot: slot,
         examined_root: slot.generation,
-        schema_identity: "gunbc-scm-commit-closure-v2",
+        schema_identity: "gunbc-scm-commit-closure-v3",
         standing: standing,
         authority: decl_ref(
           module_path: "test.claim.scm_load_standing_witness",

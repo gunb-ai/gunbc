@@ -48,7 +48,7 @@ fn sup_node(tag: Symbol) -> Node {
 
 fn sup_identity(tag: Symbol) -> ObjectId {
   match store_node(store: empty_store(), n: sup_node(tag: tag)) {
-    Stored { store: _, identity: i } => i
+    Stored { store: _, node: n } => n.locator
     LocatorCollision { identity: i, existing: _, incoming: _ } => i
   }
 }
@@ -78,7 +78,7 @@ fn sup_evidence(slot: HeadSlot, examined_root: ObjectId, standing: LoadStanding)
   observe_generation(
     slot: slot,
     examined_root: examined_root,
-    schema_identity: "gunbc-scm-commit-closure-v2",
+    schema_identity: "gunbc-scm-commit-closure-v3",
     standing: standing,
     authority: sup_authority(),
   )

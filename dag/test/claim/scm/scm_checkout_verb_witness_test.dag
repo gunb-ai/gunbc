@@ -19,6 +19,9 @@ import gunbc.scm.object_store {
   store_node,
   Stored,
   LocatorCollision,
+  NodeTarget,
+  NodeTargetResolved,
+  NodeTargetUnresolved,
 }
 import gunbc.scm.repository_envelope {
   RepositoryEnvelope,
@@ -71,14 +74,14 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // duplicates (#8707), which this layer's witness files already document hitting.
 type ScmCkPut {
   store: ObjectStore
-  identity: ObjectId
+  identity: NodeTarget
 }
 
 fn scm_ck_put(store: ObjectStore, n: Node) -> ScmCkPut {
   match store_node(store: store, n: n) {
-    Stored { store: s, identity: identity } => ScmCkPut { store: s, identity: identity }
+    Stored { store: s, node: node } => ScmCkPut { store: s, identity: NodeTargetResolved(node) }
     LocatorCollision { identity: identity, existing: _, incoming: _ } =>
-      ScmCkPut { store: store, identity: identity }
+      ScmCkPut { store: store, identity: NodeTargetUnresolved(identity) }
   }
 }
 
@@ -99,7 +102,7 @@ fn scm_ck_repository_with_store(store: ObjectStore) -> RepositoryEnvelope {
   }
 }
 
-fn scm_ck_minted_or(repo: RepositoryEnvelope, root: ObjectId, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
+fn scm_ck_minted_or(repo: RepositoryEnvelope, root: NodeTarget, message: String, parent: RepositoryCommitRef?) -> RepositoryEnvelope {
   match mint_repository_commit(repository: repo, root: root, message: message, parent: parent) {
     RepositoryCommitMinted { repository: minted, reference: _ } => minted
     RepositoryCommitMintAllocatorInvalid { next_ordinal: _ } => repo
