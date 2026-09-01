@@ -37854,30 +37854,46 @@ fn emit_expected_red_roster_join_summary(
     report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
 ) {
     use crate::v1_compiler_expected_red_roster_join::{
-        expected_red_roster_join_not_evaluated, expected_red_roster_join_now_passes,
-        expected_red_roster_join_roster_len, expected_red_roster_join_still_red, is_not_evaluated,
-        not_evaluated_reason,
+        disposition_reason, expected_red_roster_join_not_evaluated,
+        expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
+        expected_red_roster_join_still_red, expected_red_roster_join_suppressed, is_not_evaluated,
+        is_suppressed,
     };
     let head = report.run_head.as_deref().unwrap_or("(unresolved)");
     eprintln!(
         "[expected-red-roster-join] roster={} still_red={} now_passes={} not_evaluated={} \
-         (head={head})",
+         suppressed={} (head={head})",
         expected_red_roster_join_roster_len(report.clone()),
         expected_red_roster_join_still_red(report.clone()),
         expected_red_roster_join_now_passes(report.clone()),
         expected_red_roster_join_not_evaluated(report.clone()),
+        expected_red_roster_join_suppressed(report.clone()),
     );
     eprintln!("[expected-red-roster-join] {}", report.run_note);
+    // Reason counts for BOTH absence-of-verdict arms, printed under their own prefix so
+    // `not_evaluated.budget_refused` and `suppressed.outside_required_gate` cannot be read as
+    // one population: the first was attempted and produced nothing, the second was never
+    // attempted at all.
     let mut reason_counts: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
+    let mut suppressed_counts: std::collections::BTreeMap<String, usize> =
         std::collections::BTreeMap::new();
     for row in report.rows.iter() {
         if is_not_evaluated(row.disposition.clone()) {
-            let reason = not_evaluated_reason(row.disposition.clone());
-            *reason_counts.entry(reason).or_default() += 1;
+            *reason_counts
+                .entry(disposition_reason(row.disposition.clone()))
+                .or_default() += 1;
+        } else if is_suppressed(row.disposition.clone()) {
+            *suppressed_counts
+                .entry(disposition_reason(row.disposition.clone()))
+                .or_default() += 1;
         }
     }
     for (reason, count) in reason_counts {
         eprintln!("[expected-red-roster-join] not_evaluated.{reason}={count}");
+    }
+    for (reason, count) in suppressed_counts {
+        eprintln!("[expected-red-roster-join] {reason}={count}");
     }
 }
 
@@ -37886,9 +37902,9 @@ fn write_expected_red_roster_join_tsv(
     report: &Rc<crate::v1_compiler_expected_red_roster_join::ExpectedRedRosterJoinReport>,
 ) -> Result<(), String> {
     use crate::v1_compiler_expected_red_roster_join::{
-        disposition_label, expected_red_roster_join_not_evaluated,
+        disposition_label, disposition_reason, expected_red_roster_join_not_evaluated,
         expected_red_roster_join_now_passes, expected_red_roster_join_roster_len,
-        expected_red_roster_join_still_red, not_evaluated_reason,
+        expected_red_roster_join_still_red, expected_red_roster_join_suppressed,
     };
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("expected_red_roster_join create {path}: {e}"))?;
@@ -37902,14 +37918,15 @@ fn write_expected_red_roster_join_tsv(
         .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
     writeln!(
         file,
-        "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}",
+        "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}\tsuppressed={}",
         expected_red_roster_join_roster_len(report.clone()),
         expected_red_roster_join_still_red(report.clone()),
         expected_red_roster_join_now_passes(report.clone()),
         expected_red_roster_join_not_evaluated(report.clone()),
+        expected_red_roster_join_suppressed(report.clone()),
     )
     .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
-    writeln!(file, "identity\tdisposition\tnot_evaluated_reason\tdetail")
+    writeln!(file, "identity\tdisposition\treason\tdetail")
         .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
     for row in report.rows.iter() {
         writeln!(
@@ -37917,7 +37934,7 @@ fn write_expected_red_roster_join_tsv(
             "{}\t{}\t{}\t{}",
             row.identity,
             disposition_label(row.disposition.clone()),
-            not_evaluated_reason(row.disposition.clone()),
+            disposition_reason(row.disposition.clone()),
             row.detail.replace('\t', " ").replace('\n', " ")
         )
         .map_err(|e| format!("expected_red_roster_join row: {e}"))?;
