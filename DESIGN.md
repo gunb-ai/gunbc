@@ -218,6 +218,7 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `sealing_property_erases_structure`
 - `disagreement_census_blind_to_agreed_wrong`
 - `undecided_fraction_read_as_denominator`
+- `restoration_promise_names_a_route_that_does_not_exist`
 
 ## Building & checks
 
