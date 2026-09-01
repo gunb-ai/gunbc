@@ -40,14 +40,31 @@ type NodeCapacity {
   runtime_overhead: ByteSize
 }
 
-fn firmware_carveout(capacity: NodeCapacity) -> ByteSize {
-  byte_size(count: byte_size_count(b: capacity.nominal) - byte_size_count(b: capacity.kernel_visible))
+// SUBTRACTION OVER Nat TRAPS, so both of these answer with an option rather than assuming their
+// operands are ordered. A vendor sheet smaller than the kernel's own reading, or an overhead
+// allowance exceeding the machine, is a MALFORMED CAPACITY -- a fact about the inputs, not a verdict
+// about any candidate -- and the selector reports it as unanswerable rather than trapping or
+// silently clamping to zero. Clamping would be the absorbing-fallback shape: an impossible machine
+// would quietly become a machine with no room, and every candidate would be rejected on memory for
+// a reason that was never true.
+fn firmware_carveout(capacity: NodeCapacity) -> ByteSize? {
+  match byte_size_count(b: capacity.kernel_visible) > byte_size_count(b: capacity.nominal) {
+    true => none
+    false => Present {
+      value: byte_size(count: byte_size_count(b: capacity.nominal) - byte_size_count(b: capacity.kernel_visible)),
+    }
+  }
 }
 
 // The bytes a model may actually occupy: what the kernel can hand out, less what the serving runtime
 // and OS need to stay alive. Deliberately NOT derived from a live availability sample.
-fn allocatable(capacity: NodeCapacity) -> ByteSize {
-  byte_size(count: byte_size_count(b: capacity.kernel_visible) - byte_size_count(b: capacity.runtime_overhead))
+fn allocatable(capacity: NodeCapacity) -> ByteSize? {
+  match byte_size_count(b: capacity.runtime_overhead) > byte_size_count(b: capacity.kernel_visible) {
+    true => none
+    false => Present {
+      value: byte_size(count: byte_size_count(b: capacity.kernel_visible) - byte_size_count(b: capacity.runtime_overhead)),
+    }
+  }
 }
 
 // ============================ CANDIDATES ============================
@@ -62,20 +79,20 @@ type QuantizedCandidate {
   weights: ByteSize
   quality_rank: Int
   declared_context: TokenCount
-  kv_per_token: ByteSize
-  measured_prefill_rate: TokensPerSecond
+  kv_per_token: ByteSize?
+  measured_prefill_rate: TokensPerSecond?
 }
 
 // KV scales with context and with how many sessions are simultaneously RESIDENT. Sessions parked to
 // disk between turns do not count -- their KV is not in memory -- which is why hot_sessions is the
 // parameter rather than a total session count.
-fn kv_footprint(candidate: QuantizedCandidate, context: TokenCount, hot_sessions: Nat) -> ByteSize {
-  byte_size(count: byte_size_count(b: candidate.kv_per_token) * token_count_value(t: context) * hot_sessions)
+fn kv_footprint(per_token: ByteSize, context: TokenCount, hot_sessions: Nat) -> ByteSize {
+  byte_size(count: byte_size_count(b: per_token) * token_count_value(t: context) * hot_sessions)
 }
 
-fn resident_footprint(candidate: QuantizedCandidate, context: TokenCount, hot_sessions: Nat) -> ByteSize {
-  let kv = kv_footprint(candidate: candidate, context: context, hot_sessions: hot_sessions)
-  byte_size(count: byte_size_count(b: candidate.weights) + byte_size_count(b: kv))
+fn resident_footprint(weights: ByteSize, per_token: ByteSize, context: TokenCount, hot_sessions: Nat) -> ByteSize {
+  let kv = kv_footprint(per_token: per_token, context: context, hot_sessions: hot_sessions)
+  byte_size(count: byte_size_count(b: weights) + byte_size_count(b: kv))
 }
 
 // ============================ CONSTRAINTS ============================
@@ -90,6 +107,23 @@ type ServingConstraints {
 
 // ============================ THE DECISION ============================
 
+// UNKNOWN IS NOT REJECTED, and conflating them is how a selector comes to assert more than it knows.
+// A candidate whose KV cost was never measured has not failed the memory test -- it has not TAKEN
+// it. Reporting that as a rejection would let a fully-measured but worse candidate win by default,
+// and the answer would look identical to one where the better candidate genuinely lost.
+type MissingFact
+  = KvFootprintUnmeasured
+  | PrefillRateUnmeasured
+  | CapacityMalformed { detail: String }
+
+fn missing_fact_wire(missing: MissingFact) -> String {
+  match missing {
+    KvFootprintUnmeasured => "kv-footprint-unmeasured"
+    PrefillRateUnmeasured => "prefill-rate-unmeasured"
+    CapacityMalformed { detail: d } => join(["capacity-malformed: ", d], "")
+  }
+}
+
 // Why a candidate was rejected, at the grain that tells you what to change. One axis per arm, so a
 // census over rejections partitions cleanly into "buy hardware", "lower a floor", "wait for a
 // better artifact".
@@ -101,6 +135,7 @@ type RejectionAxis
 type CandidateVerdict
   = ServingCandidateAdmissible { candidate: QuantizedCandidate, resident: ByteSize, headroom: ByteSize }
   | ServingCandidateRejected { model_name: NonEmptyStr, quant_label: NonEmptyStr, axis: RejectionAxis }
+  | ServingCandidateUnanswerable { model_name: NonEmptyStr, quant_label: NonEmptyStr, missing: MissingFact }
 
 // Evaluated in a fixed order so the reported axis is deterministic: capability floors first, then
 // fit. A candidate that fails several axes reports the first, and the ordering puts the axis the
@@ -110,37 +145,62 @@ fn evaluate_candidate(
   capacity: NodeCapacity,
   constraints: ServingConstraints,
 ) -> CandidateVerdict {
-  let required = resident_footprint(
-    candidate: candidate,
-    context: constraints.context_floor,
-    hot_sessions: constraints.hot_sessions,
-  )
-  let room = allocatable(capacity: capacity)
-  match token_count_value(t: candidate.declared_context) < token_count_value(t: constraints.context_floor) {
-    true => ServingCandidateRejected {
+  match allocatable(capacity: capacity) {
+    Absent => ServingCandidateUnanswerable {
       model_name: candidate.model_name,
       quant_label: candidate.quant_label,
-      axis: ContextBelowFloor { declared: candidate.declared_context, floor: constraints.context_floor },
+      missing: CapacityMalformed {
+        detail: "declared runtime overhead exceeds the kernel-visible total, so no allocatable figure exists",
+      },
     }
-    false => match tokens_per_second_count(r: candidate.measured_prefill_rate) < tokens_per_second_count(r: constraints.prefill_floor) {
-      true => ServingCandidateRejected {
+    Present { value: room } => match candidate.kv_per_token {
+      Absent => ServingCandidateUnanswerable {
         model_name: candidate.model_name,
         quant_label: candidate.quant_label,
-        axis: PrefillBelowFloor {
-          measured: candidate.measured_prefill_rate,
-          floor: constraints.prefill_floor,
-        },
+        missing: KvFootprintUnmeasured,
       }
-      false => match byte_size_count(b: required) > byte_size_count(b: room) {
+      Present { value: per_token } => match candidate.measured_prefill_rate {
+        Absent => ServingCandidateUnanswerable {
+          model_name: candidate.model_name,
+          quant_label: candidate.quant_label,
+          missing: PrefillRateUnmeasured,
+        }
+        Present { value: prefill } => {
+      let required = resident_footprint(
+        weights: candidate.weights,
+        per_token: per_token,
+        context: constraints.context_floor,
+        hot_sessions: constraints.hot_sessions,
+      )
+      match token_count_value(t: candidate.declared_context) < token_count_value(t: constraints.context_floor) {
         true => ServingCandidateRejected {
           model_name: candidate.model_name,
           quant_label: candidate.quant_label,
-          axis: DoesNotFitMemory { required: required, allocatable: room },
+          axis: ContextBelowFloor { declared: candidate.declared_context, floor: constraints.context_floor },
         }
-        false => ServingCandidateAdmissible {
-          candidate: candidate,
-          resident: required,
-          headroom: byte_size(count: byte_size_count(b: room) - byte_size_count(b: required)),
+        false => match tokens_per_second_count(r: prefill) < tokens_per_second_count(r: constraints.prefill_floor) {
+          true => ServingCandidateRejected {
+            model_name: candidate.model_name,
+            quant_label: candidate.quant_label,
+            axis: PrefillBelowFloor {
+              measured: prefill,
+              floor: constraints.prefill_floor,
+            },
+          }
+          false => match byte_size_count(b: required) > byte_size_count(b: room) {
+            true => ServingCandidateRejected {
+              model_name: candidate.model_name,
+              quant_label: candidate.quant_label,
+              axis: DoesNotFitMemory { required: required, allocatable: room },
+            }
+            false => ServingCandidateAdmissible {
+              candidate: candidate,
+              resident: required,
+              headroom: byte_size(count: byte_size_count(b: room) - byte_size_count(b: required)),
+            }
+          }
+        }
+      }
         }
       }
     }
@@ -151,6 +211,7 @@ fn verdict_is_admissible(verdict: CandidateVerdict) -> Bool {
   match verdict {
     ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => true
     ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => false
   }
 }
 
@@ -158,6 +219,7 @@ fn verdict_quality(verdict: CandidateVerdict) -> Int {
   match verdict {
     ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.quality_rank
     ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => 0 - 1
+    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => 0 - 1
   }
 }
 
@@ -167,6 +229,32 @@ fn verdict_quality(verdict: CandidateVerdict) -> Int {
 type ServingChoice
   = ChoseCandidate { verdict: CandidateVerdict }
   | NoCandidateAdmissible { rejections: List<CandidateVerdict> }
+  | SelectionUnanswerable { cause: UnanswerableCause, evaluations: List<CandidateVerdict> }
+
+// WHY NO ANSWER EXISTS YET, as distinct from no candidate qualifying. Both refuse; they tell the
+// operator to do completely different things.
+//
+// UnresolvedCandidateCouldWin is the answerability rule. Choosing the best ANSWERABLE candidate is
+// not choosing the best candidate: if an unmeasured entry might beat the apparent winner once
+// measured, the honest output is that the question is open, and the remedy is a measurement rather
+// than a purchase.
+//
+// CrossReleaseQualityOrderAbsent is the consequence of preference being ordinal WITHIN a release.
+// Two releases each carrying their own ordinal have no join, so a maximum over them does not exist
+// and returning one MANUFACTURES an ordering the inputs never contained. The remedy is an operator
+// policy or accumulated head-to-head evidence, not a tie-break rule invented here.
+type UnanswerableCause
+  = UnresolvedCandidateCouldWin { unresolved_count: Nat }
+  | CrossReleaseQualityOrderAbsent { distinct_release_count: Nat }
+
+fn unanswerable_cause_wire(cause: UnanswerableCause) -> String {
+  match cause {
+    UnresolvedCandidateCouldWin { unresolved_count: n } =>
+      join(["unresolved candidates could change the optimum: ", to_string(n)], "")
+    CrossReleaseQualityOrderAbsent { distinct_release_count: n } =>
+      join(["no cross-release quality order exists over ", to_string(n), " distinct releases"], "")
+  }
+}
 
 fn choose_serving_candidate(
   candidates: List<QuantizedCandidate>,
@@ -175,10 +263,54 @@ fn choose_serving_candidate(
 ) -> ServingChoice {
   let verdicts = map(candidates, c =>
     evaluate_candidate(candidate: c, capacity: capacity, constraints: constraints))
+  let unresolved = filter(verdicts, v => verdict_is_unanswerable(verdict: v))
   let admissible = filter(verdicts, v => verdict_is_admissible(verdict: v))
-  match highest_quality(verdicts: admissible) {
-    Absent => NoCandidateAdmissible { rejections: verdicts }
-    Present { value: best } => ChoseCandidate { verdict: best }
+  match length(unresolved) > 0 {
+    true => SelectionUnanswerable {
+      cause: UnresolvedCandidateCouldWin { unresolved_count: length(unresolved) },
+      evaluations: verdicts,
+    }
+    false => match distinct_release_count(verdicts: admissible) > 1 {
+      true => SelectionUnanswerable {
+        cause: CrossReleaseQualityOrderAbsent { distinct_release_count: distinct_release_count(verdicts: admissible) },
+        evaluations: verdicts,
+      }
+      false => match highest_quality(verdicts: admissible) {
+        Absent => NoCandidateAdmissible { rejections: verdicts }
+        Present { value: best } => ChoseCandidate { verdict: best }
+      }
+    }
+  }
+}
+
+fn verdict_is_unanswerable(verdict: CandidateVerdict) -> Bool {
+  match verdict {
+    ServingCandidateUnanswerable { model_name: _, quant_label: _, missing: _ } => true
+    ServingCandidateAdmissible { candidate: _, resident: _, headroom: _ } => false
+    ServingCandidateRejected { model_name: _, quant_label: _, axis: _ } => false
+  }
+}
+
+// How many DISTINCT releases the admissible set spans. Preference is ordinal within one release, so
+// more than one release means the maximum this function would return does not exist.
+//
+// The dedupe is the corpus's fold/any/append idiom rather than a call to guarantee_measurement's
+// distinct_string_count: std carries no distinct, and reaching into the guarantee-measurement module
+// for a list primitive would invert the layering -- a model-selection authority would then depend on
+// a measurement authority for something neither owns.
+fn distinct_release_count(verdicts: List<CandidateVerdict>) -> Nat {
+  length(fold(map(verdicts, v => verdict_model_name(verdict: v)), [], (acc, n) =>
+    match any(acc, e => e == n) {
+      true => acc
+      false => append(acc, [n])
+    }))
+}
+
+fn verdict_model_name(verdict: CandidateVerdict) -> String {
+  match verdict {
+    ServingCandidateAdmissible { candidate: c, resident: _, headroom: _ } => c.model_name as String
+    ServingCandidateRejected { model_name: m, quant_label: _, axis: _ } => m as String
+    ServingCandidateUnanswerable { model_name: m, quant_label: _, missing: _ } => m as String
   }
 }
 
