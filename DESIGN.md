@@ -209,6 +209,8 @@ One row per class, each carrying its recognition rule and its receipts, in [docs
 - `meaning_fork`
 - `externalized_degradation`
 - `mistyped_body_radiates_nonlocal_diagnostics`
+- `instrument_output_read_as_subject_content`
+- `executed_conjunct_discriminates_nothing`
 
 ## Building & checks
 
